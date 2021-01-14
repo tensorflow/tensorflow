@@ -1181,6 +1181,9 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     }
 
     // Create the params handle.
+    // TODO(kaixih@nvidia.com): Should be removed when cudnnRNNForward*** and
+    // cudnnRNNForward***Ex are removed from the codebase, since the new API
+    // doesn't need param descriptors any more.
     SE_ASSIGN_OR_RETURN(auto params_desc,
                         CudnnRnnParamsDescriptor::Create(
                             cudnn, input_size, data_type, rnn_desc.get(),
@@ -1653,10 +1656,16 @@ port::Status CheckRNNParameterSize(
     const CudnnHandle& cudnn, const CudnnRnnDescriptor& rnn_desc,
     const CudnnRnnSequenceTensorDescriptor& input_desc) {
   size_t params_size_in_bytes = 0;
+#if CUDNN_VERSION >= 8000
+  RETURN_IF_CUDNN_ERROR(cudnnGetRNNWeightSpaceSize(
+      /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+      /*sizeInBytes=*/&params_size_in_bytes));
+#else
   RETURN_IF_CUDNN_ERROR(cudnnGetRNNParamsSize(
       /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
       /*xDesc=*/input_desc.handles()[0], /*sizeInBytes=*/&params_size_in_bytes,
       /*dataType=*/rnn_desc.data_type()));
+#endif
   if (static_cast<int64>(params_size_in_bytes) !=
       rnn_desc.ParamsSizeInBytes()) {
     return port::Status(port::error::INVALID_ARGUMENT,
@@ -1741,6 +1750,7 @@ port::Status CudnnSupport::DoRnnForwardImpl(
     Stream* stream, const CudnnRnnDescriptor& rnn_desc,
     const CudnnRnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<T>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const CudnnRnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<T>& input_h_data,
     const CudnnRnnStateTensorDescriptor& input_c_desc,
@@ -1764,6 +1774,78 @@ port::Status CudnnSupport::DoRnnForwardImpl(
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   SE_RETURN_IF_ERROR(CheckRNNParameterSize(cudnn, rnn_desc, input_desc));
+
+  // In CUDNN v8.0, the cudnnRNNForward*** and cudnnRNNForward***Ex have been
+  // deprecated. Instead, we use the cudnnRNNForward which requires the
+  // sequence_lengths parameter.
+#if CUDNN_VERSION >= 8000
+  if (input_desc.is_var_seq_lengths()) {
+    DeviceMemory<uint8> workspace;
+    DeviceMemory<uint8> reserve_space;
+    cudnnForwardMode_t rnn_fwd_mode;
+    if (is_training) {
+      rnn_fwd_mode = CUDNN_FWD_MODE_TRAINING;
+    } else {
+      rnn_fwd_mode = CUDNN_FWD_MODE_INFERENCE;
+    }
+    size_t reserve_space_size_in_bytes = 0;
+    size_t workspace_size_in_bytes = 0;
+    RETURN_IF_CUDNN_ERROR(cudnnGetRNNTempSpaceSizes(
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+        /*fMode=*/rnn_fwd_mode, /*xDesc=*/input_desc.data_handle(),
+        /*workSpaceSize=*/&workspace_size_in_bytes,
+        /*reserveSpaceSize=*/&reserve_space_size_in_bytes));
+
+    if (workspace_size_in_bytes > 0) {
+      SE_ASSIGN_OR_RETURN(workspace, workspace_allocator->AllocateBytes(
+                                         workspace_size_in_bytes));
+    }
+    if (reserve_space_size_in_bytes > 0) {
+      SE_ASSIGN_OR_RETURN(reserve_space, reserve_space_allocator->AllocateBytes(
+                                             reserve_space_size_in_bytes));
+    }
+
+    std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
+    const bool is_profiling = output_profile_result != nullptr;
+    if (is_profiling) {
+      timer.reset(new GpuTimer(parent_));
+      // The start and stop of the timer should be as close to the Cudnn call as
+      // possible. It is still possible for other threads to issue workload on
+      // to this stream. So it could take multiple profiling measurements.
+      if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
+        return port::Status(port::error::INTERNAL, "Failed to start timer");
+      }
+    }
+
+    RETURN_IF_CUDNN_ERROR(cudnnRNNForward(
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+        /*fwdMode=*/rnn_fwd_mode,
+        /*devSeqLengths=*/reinterpret_cast<const int*>(
+                              seq_lengths_data.opaque()),
+        /*xDesc=*/input_desc.data_handle(), /*x=*/input_data.opaque(),
+        /*yDesc=*/output_desc.data_handle(), /*y=*/output_data->opaque(),
+        /*hxDesc=*/input_h_desc.handle(), /*hx=*/input_h_data.opaque(),
+        /*hy=*/output_h_data->opaque(),
+        /*cxDesc=*/input_c_desc.handle(), /*cx=*/input_c_data.opaque(),
+        /*cy=*/output_c_data->opaque(),
+        /*weightSpaceSize=*/rnn_desc.ParamsSizeInBytes(),
+        /*weightSpace=*/params.opaque(),
+        /*workSpaceSize=*/workspace.size(), /*workspace=*/workspace.opaque(),
+        /*reserveSpaceSizeInBytes=*/reserve_space.size(),
+        /*reserveSpace=*/reserve_space.opaque()));
+
+    if (is_profiling) {
+      if (!timer->Stop(AsGpuStream(stream))) {
+        return port::Status(port::error::INTERNAL, "Failed to stop timer");
+      }
+      auto algo_desc = *rnn_desc.algorithm_config().algorithm();
+      output_profile_result->set_algorithm(algo_desc);
+      output_profile_result->set_elapsed_time_in_ms(
+          timer->GetElapsedMilliseconds());
+    }
+    return port::Status::OK();
+  }
+#endif
   SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
                       CreateRnnWorkspace(stream, cudnn, rnn_desc, input_desc,
                                          workspace_allocator))
@@ -1828,7 +1910,6 @@ port::Status CudnnSupport::DoRnnForwardImpl(
     }
   } else {
     if (input_desc.is_var_seq_lengths()) {
-      // cudnnSetRNNPaddingMode(rnn_desc.handle(), CUDNN_RNN_PADDED_IO_ENABLED);
       RETURN_IF_CUDNN_ERROR(cudnnRNNForwardTrainingEx(
           /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
           /*xDesc=*/input_desc.data_handle(), /*x=*/input_data.opaque(),
@@ -1881,6 +1962,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
     Stream* stream, const CudnnRnnDescriptor& rnn_desc,
     const CudnnRnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<T>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const CudnnRnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<T>& input_h_data,
     const CudnnRnnStateTensorDescriptor& input_c_desc,
@@ -1911,6 +1993,91 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   SE_RETURN_IF_ERROR(CheckRNNParameterSize(cudnn, rnn_desc, input_desc));
+
+  // In CUDNN v8.0, the cudnnRNNForward*** and cudnnRNNForward***Ex have been
+  // deprecated. Instead, we use the cudnnRNNForward which requires the
+  // sequence_lengths parameter.
+#if CUDNN_VERSION >= 8000
+  if (input_desc.is_var_seq_lengths()) {
+    DeviceMemory<uint8> workspace;
+    size_t workspace_size_in_bytes = 0;
+    RETURN_IF_CUDNN_ERROR(cudnnGetRNNTempSpaceSizes(
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+        /*fMode=*/CUDNN_FWD_MODE_TRAINING, /*xDesc=*/input_desc.data_handle(),
+        /*workSpaceSize=*/&workspace_size_in_bytes,
+        /*reserveSpaceSize=*/NULL));
+    if (workspace_size_in_bytes > 0) {
+      SE_ASSIGN_OR_RETURN(workspace, workspace_allocator->AllocateBytes(
+                                         workspace_size_in_bytes));
+    }
+
+    std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
+    const bool is_profiling = output_profile_result != nullptr;
+    if (is_profiling) {
+      timer.reset(new GpuTimer(parent_));
+      // The start and stop of the timer should be as close to the Cudnn call as
+      // possible. It is still possible for other threads to issue workload on
+      // to this stream. So it could take multiple profiling measurements.
+      if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
+        return port::Status(port::error::INTERNAL, "Failed to start timer");
+      }
+    }
+
+    RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardData_v8(
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+        /*devSeqLengths=*/reinterpret_cast<const int*>(
+                              seq_lengths_data.opaque()),
+        /*yDesc=*/output_desc.data_handle(), /*y=*/output_data.opaque(),
+        /*dy=*/output_backprop_data.opaque(),
+        /*xDesc=*/input_desc.data_handle(),
+        /*dx=*/input_backprop_data->opaque(),
+        /*hxDesc=*/input_h_desc.handle(), /*hx=*/input_h_data.opaque(),
+        /*dhy=*/output_h_backprop_data.opaque(),
+        /*dhx=*/input_h_backprop_data->opaque(),
+        /*cxDesc=*/input_c_desc.handle(), /*cx=*/input_c_data.opaque(),
+        /*dcy=*/output_c_backprop_data.opaque(),
+        /*dcx=*/input_c_backprop_data->opaque(),
+        /*weightSpaceSize=*/rnn_desc.ParamsSizeInBytes(),
+        /*weightSpace=*/params.opaque(),
+        /*workSpaceSize=*/workspace.size(), /*workSpace=*/workspace.opaque(),
+        /*reserveSpaceSize=*/reserve_space_data->size(),
+        /*reserveSpace=*/reserve_space_data->opaque()));
+
+    if (params_backprop_data != nullptr) {
+      // Clear the dw to zeros.
+      stream->ThenMemZero(params_backprop_data, params_backprop_data->size());
+      RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardWeights_v8(
+          /*handle=*/cudnn.handle(),
+          /*rnnDesc=*/rnn_desc.handle(),
+          /*addGrad=*/CUDNN_WGRAD_MODE_ADD,
+          /*devSeqLengths=*/reinterpret_cast<const int*>(
+                                seq_lengths_data.opaque()),
+          /*xDesc=*/input_desc.data_handle(),
+          /*x=*/input_data.opaque(),
+          /*hDesc=*/input_h_desc.handle(),
+          /*hx=*/input_h_data.opaque(),
+          /*yDesc=*/output_desc.data_handle(),
+          /*y=*/output_data.opaque(),
+          /*weightSpaceSize=*/rnn_desc.ParamsSizeInBytes(),
+          /*dweightSpace=*/params_backprop_data->opaque(),
+          /*workSpaceSize=*/workspace.size(),
+          /*workSpace=*/workspace.opaque(),
+          /*reserveSpaceSize=*/reserve_space_data->size(),
+          /*reserveSpace=*/reserve_space_data->opaque()));
+    }
+
+    if (is_profiling) {
+      if (!timer->Stop(AsGpuStream(stream))) {
+        return port::Status(port::error::INTERNAL, "Failed to stop timer");
+      }
+      auto algo_desc = *rnn_desc.algorithm_config().algorithm();
+      output_profile_result->set_algorithm(algo_desc);
+      output_profile_result->set_elapsed_time_in_ms(
+          timer->GetElapsedMilliseconds());
+    }
+    return port::Status::OK();
+  }
+#endif
   SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
                       CreateRnnWorkspace(stream, cudnn, rnn_desc, input_desc,
                                          workspace_allocator));
@@ -2121,6 +2288,7 @@ bool CudnnSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<Eigen::half>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<Eigen::half>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2152,10 +2320,11 @@ bool CudnnSupport::DoRnnForward(
   return IsStatusOk(
       DoRnnForwardImpl<Eigen::half>(
           stream, cudnn_rnn_desc, cudnn_input_desc, input_data,
-          cudnn_input_h_desc, input_h_data, cudnn_input_c_desc, input_c_data,
-          params, cudnn_output_desc, output_data, cudnn_output_h_desc,
-          output_h_data, cudnn_output_c_desc, output_c_data, is_training,
-          reserve_space_allocator, workspace_allocator, output_profile_result),
+          seq_lengths_data, cudnn_input_h_desc, input_h_data,
+          cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
+          output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
+          output_c_data, is_training, reserve_space_allocator,
+          workspace_allocator, output_profile_result),
       /*report_error=*/!output_profile_result);
 }
 
@@ -2163,6 +2332,7 @@ bool CudnnSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<float>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<float>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2193,10 +2363,11 @@ bool CudnnSupport::DoRnnForward(
   return IsStatusOk(
       DoRnnForwardImpl<float>(
           stream, cudnn_rnn_desc, cudnn_input_desc, input_data,
-          cudnn_input_h_desc, input_h_data, cudnn_input_c_desc, input_c_data,
-          params, cudnn_output_desc, output_data, cudnn_output_h_desc,
-          output_h_data, cudnn_output_c_desc, output_c_data, is_training,
-          reserve_space_allocator, workspace_allocator, output_profile_result),
+          seq_lengths_data, cudnn_input_h_desc, input_h_data,
+          cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
+          output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
+          output_c_data, is_training, reserve_space_allocator,
+          workspace_allocator, output_profile_result),
       /*report_error=*/!output_profile_result);
 }
 
@@ -2204,6 +2375,7 @@ bool CudnnSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<double>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<double>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2235,10 +2407,11 @@ bool CudnnSupport::DoRnnForward(
   return IsStatusOk(
       DoRnnForwardImpl<double>(
           stream, cudnn_rnn_desc, cudnn_input_desc, input_data,
-          cudnn_input_h_desc, input_h_data, cudnn_input_c_desc, input_c_data,
-          params, cudnn_output_desc, output_data, cudnn_output_h_desc,
-          output_h_data, cudnn_output_c_desc, output_c_data, is_training,
-          reserve_space_allocator, workspace_allocator, output_profile_result),
+          seq_lengths_data, cudnn_input_h_desc, input_h_data,
+          cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
+          output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
+          output_c_data, is_training, reserve_space_allocator,
+          workspace_allocator, output_profile_result),
       /*report_error=*/!output_profile_result);
 }
 
@@ -2246,6 +2419,7 @@ bool CudnnSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<Eigen::half>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<Eigen::half>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2284,13 +2458,13 @@ bool CudnnSupport::DoRnnBackward(
   return IsStatusOk(
       DoRnnBackwardImpl<Eigen::half>(
           stream, cudnn_rnn_desc, cudnn_input_desc, input_data,
-          cudnn_input_h_desc, input_h_data, cudnn_input_c_desc, input_c_data,
-          params, cudnn_output_desc, output_data, cudnn_output_h_desc,
-          output_h_data, cudnn_output_c_desc, output_c_data,
-          output_backprop_data, output_h_backprop_data, output_c_backprop_data,
-          input_backprop_data, input_h_backprop_data, input_c_backprop_data,
-          params_backprop_data, reserve_space_data, workspace_allocator,
-          output_profile_result),
+          seq_lengths_data, cudnn_input_h_desc, input_h_data,
+          cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
+          output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
+          output_c_data, output_backprop_data, output_h_backprop_data,
+          output_c_backprop_data, input_backprop_data, input_h_backprop_data,
+          input_c_backprop_data, params_backprop_data, reserve_space_data,
+          workspace_allocator, output_profile_result),
       /*report_error=*/!output_profile_result);
 }
 
@@ -2298,6 +2472,7 @@ bool CudnnSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<float>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<float>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2335,13 +2510,13 @@ bool CudnnSupport::DoRnnBackward(
   return IsStatusOk(
       DoRnnBackwardImpl<float>(
           stream, cudnn_rnn_desc, cudnn_input_desc, input_data,
-          cudnn_input_h_desc, input_h_data, cudnn_input_c_desc, input_c_data,
-          params, cudnn_output_desc, output_data, cudnn_output_h_desc,
-          output_h_data, cudnn_output_c_desc, output_c_data,
-          output_backprop_data, output_h_backprop_data, output_c_backprop_data,
-          input_backprop_data, input_h_backprop_data, input_c_backprop_data,
-          params_backprop_data, reserve_space_data, workspace_allocator,
-          output_profile_result),
+          seq_lengths_data, cudnn_input_h_desc, input_h_data,
+          cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
+          output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
+          output_c_data, output_backprop_data, output_h_backprop_data,
+          output_c_backprop_data, input_backprop_data, input_h_backprop_data,
+          input_c_backprop_data, params_backprop_data, reserve_space_data,
+          workspace_allocator, output_profile_result),
       /*report_error=*/!output_profile_result);
 }
 
@@ -2349,6 +2524,7 @@ bool CudnnSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<double>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<double>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2387,13 +2563,13 @@ bool CudnnSupport::DoRnnBackward(
   return IsStatusOk(
       DoRnnBackwardImpl<double>(
           stream, cudnn_rnn_desc, cudnn_input_desc, input_data,
-          cudnn_input_h_desc, input_h_data, cudnn_input_c_desc, input_c_data,
-          params, cudnn_output_desc, output_data, cudnn_output_h_desc,
-          output_h_data, cudnn_output_c_desc, output_c_data,
-          output_backprop_data, output_h_backprop_data, output_c_backprop_data,
-          input_backprop_data, input_h_backprop_data, input_c_backprop_data,
-          params_backprop_data, reserve_space_data, workspace_allocator,
-          output_profile_result),
+          seq_lengths_data, cudnn_input_h_desc, input_h_data,
+          cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
+          output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
+          output_c_data, output_backprop_data, output_h_backprop_data,
+          output_c_backprop_data, input_backprop_data, input_h_backprop_data,
+          input_c_backprop_data, params_backprop_data, reserve_space_data,
+          workspace_allocator, output_profile_result),
       /*report_error=*/!output_profile_result);
 }
 

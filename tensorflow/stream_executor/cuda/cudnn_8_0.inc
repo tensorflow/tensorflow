@@ -1786,6 +1786,16 @@ cudnnStatus_t CUDNNWINAPI cudnnSetPersistentRNNPlan(
   return func_ptr(rnnDesc, plan);
 }
 
+cudnnStatus_t CUDNNWINAPI cudnnGetRNNWeightSpaceSize(
+	  cudnnHandle_t handle, cudnnRNNDescriptor_t rnnDesc,
+    size_t *weightSpaceSize) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
+	    cudnnHandle_t, cudnnRNNDescriptor_t, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnGetRNNWeightSpaceSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, rnnDesc, weightSpaceSize);
+}
+
 cudnnStatus_t CUDNNWINAPI cudnnGetRNNWorkspaceSize(
     cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc,
     const int seqLength, const cudnnTensorDescriptor_t *xDesc,
@@ -1796,6 +1806,19 @@ cudnnStatus_t CUDNNWINAPI cudnnGetRNNWorkspaceSize(
   static auto func_ptr = LoadSymbol<FuncPtr>("cudnnGetRNNWorkspaceSize");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(handle, rnnDesc, seqLength, xDesc, sizeInBytes);
+}
+
+cudnnStatus_t CUDNNWINAPI cudnnGetRNNTempSpaceSizes(
+    cudnnHandle_t handle, cudnnRNNDescriptor_t rnnDesc,
+    cudnnForwardMode_t fMode, cudnnRNNDataDescriptor_t xDesc,
+    size_t *workSpaceSize, size_t *reserveSpaceSize) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
+      cudnnHandle_t, cudnnRNNDescriptor_t, cudnnForwardMode_t,
+      cudnnRNNDataDescriptor_t, size_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnGetRNNTempSpaceSizes");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, rnnDesc, fMode, xDesc, workSpaceSize,
+                  reserveSpaceSize);
 }
 
 cudnnStatus_t CUDNNWINAPI
@@ -2748,6 +2771,28 @@ cudnnStatus_t CUDNNWINAPI cudnnRNNForwardTrainingEx(
                   reserveSpace, reserveSpaceSizeInBytes);
 }
 
+cudnnStatus_t CUDNNWINAPI cudnnRNNForward(
+	  cudnnHandle_t handle, cudnnRNNDescriptor_t rnnDesc,
+    cudnnForwardMode_t fwdMode, const int32_t devSeqLengths[],
+    cudnnRNNDataDescriptor_t xDesc, const void *x,
+    cudnnRNNDataDescriptor_t yDesc, void *y, cudnnTensorDescriptor_t hDesc,
+    const void *hx, void *hy, cudnnTensorDescriptor_t cDesc, const void *cx,
+    void *cy, size_t weightSpaceSize, const void *weightSpace,
+    size_t workSpaceSize, void *workSpace, size_t reserveSpaceSize,
+    void *reserveSpace) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
+      cudnnHandle_t, cudnnRNNDescriptor_t, cudnnForwardMode_t, const int32_t [],
+      cudnnRNNDataDescriptor_t, const void *, cudnnRNNDataDescriptor_t, void *,
+      cudnnTensorDescriptor_t, const void *, void *, cudnnTensorDescriptor_t,
+      const void *, void *, size_t, const void *, size_t, void *, size_t,
+      void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnRNNForward");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, rnnDesc, fwdMode, devSeqLengths, xDesc, x, yDesc, y,
+                  hDesc, hx, hy, cDesc, cx, cy, weightSpaceSize, weightSpace,
+                  workSpaceSize, workSpace, reserveSpaceSize, reserveSpace);
+}
+
 cudnnStatus_t CUDNNWINAPI cudnnRNNBackwardDataEx(
     cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc,
     const cudnnRNNDataDescriptor_t yDesc, const void *y,
@@ -2787,6 +2832,28 @@ cudnnStatus_t CUDNNWINAPI cudnnRNNBackwardDataEx(
                   reserveSpaceSizeInBytes);
 }
 
+cudnnStatus_t CUDNNWINAPI cudnnRNNBackwardData_v8(
+    cudnnHandle_t handle, cudnnRNNDescriptor_t rnnDesc,
+    const int32_t devSeqLengths[], cudnnRNNDataDescriptor_t yDesc,
+    const void *y, const void *dy, cudnnRNNDataDescriptor_t xDesc, void *dx,
+    cudnnTensorDescriptor_t hDesc, const void *hx, const void *dhy, void *dhx,
+    cudnnTensorDescriptor_t cDesc, const void *cx, const void *dcy, void *dcx,
+    size_t weightSpaceSize, const void *weightSpace, size_t workSpaceSize,
+    void *workSpace, size_t reserveSpaceSize, void *reserveSpace) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
+      cudnnHandle_t, cudnnRNNDescriptor_t, const int32_t [],
+      cudnnRNNDataDescriptor_t, const void *, const void *,
+      cudnnRNNDataDescriptor_t, void *, cudnnTensorDescriptor_t, const void *,
+      const void *, void *, cudnnTensorDescriptor_t, const void *, const void *,
+      void *, size_t, const void *, size_t, void *, size_t, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnRNNBackwardData_v8");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, rnnDesc, devSeqLengths, yDesc, y, dy, xDesc, dx,
+                  hDesc, hx, dhy, dhx, cDesc, cx, dcy, dcx, weightSpaceSize,
+                  weightSpace, workSpaceSize, workSpace, reserveSpaceSize,
+                  reserveSpace);
+}
+
 cudnnStatus_t CUDNNWINAPI cudnnRNNBackwardWeightsEx(
     cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc,
     const cudnnRNNDataDescriptor_t xDesc, const void *x,
@@ -2804,6 +2871,26 @@ cudnnStatus_t CUDNNWINAPI cudnnRNNBackwardWeightsEx(
   return func_ptr(handle, rnnDesc, xDesc, x, hxDesc, hx, yDesc, y, workSpace,
                   workSpaceSizeInBytes, dwDesc, dw, reserveSpace,
                   reserveSpaceSizeInBytes);
+}
+
+cudnnStatus_t CUDNNWINAPI cudnnRNNBackwardWeights_v8(
+    cudnnHandle_t handle, cudnnRNNDescriptor_t rnnDesc, 
+    cudnnWgradMode_t addGrad, const int32_t devSeqLengths[],
+    cudnnRNNDataDescriptor_t xDesc, const void *x,
+    cudnnTensorDescriptor_t hDesc, const void *hx,
+    cudnnRNNDataDescriptor_t yDesc, const void *y, size_t weightSpaceSize,
+    void *dweightSpace, size_t workSpaceSize, void *workSpace,
+    size_t reserveSpaceSize, void *reserveSpace) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
+      cudnnHandle_t, cudnnRNNDescriptor_t, cudnnWgradMode_t, const int32_t [],
+      cudnnRNNDataDescriptor_t, const void *, cudnnTensorDescriptor_t,
+		  const void *, cudnnRNNDataDescriptor_t, const void *, size_t, void *,
+	    size_t, void *, size_t, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnRNNBackwardWeights_v8");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, rnnDesc, addGrad, devSeqLengths, xDesc, x, hDesc, hx,
+                  yDesc, y, weightSpaceSize, dweightSpace, workSpaceSize,
+                  workSpace, reserveSpaceSize, reserveSpace);
 }
 
 cudnnStatus_t CUDNNWINAPI cudnnMultiHeadAttnBackwardData(
