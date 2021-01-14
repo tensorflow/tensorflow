@@ -35,7 +35,7 @@ namespace mlir {
 // This class will process an HloModule with the supplied BufferAssignment and
 // populate the MLIR ModuleOp with the computation converted in the LHLO
 // dialect.
-class LhloDialectEmitter : public xla::DfsHloVisitorWithDefault {
+class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
  public:
   // Initializes internal data structures. It must be called before calling any
   // of the visitors.
@@ -49,45 +49,46 @@ class LhloDialectEmitter : public xla::DfsHloVisitorWithDefault {
         builder_(module.getContext()),
         i8_type_(builder_.getIntegerType(8)) {}
 
-  xla::StatusOr<mlir::Operation*> EmitOp(xla::HloInstruction* instr);
+  xla::StatusOr<mlir::Operation*> EmitOp(const xla::HloInstruction* instr);
 
   xla::StatusOr<mhlo::ScatterDimensionNumbers> GetScatterDimensionNumbers(
-      xla::HloInstruction* instr);
+      const xla::HloInstruction* instr);
 
  private:
-  xla::StatusOr<lmhlo::SortOp> EmitSortOp(xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::FusionOp> EmitFusionOp(xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::ScatterOp> EmitScatterOp(xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::SortOp> EmitSortOp(const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::FusionOp> EmitFusionOp(const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::ScatterOp> EmitScatterOp(
+      const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo::SelectAndScatterOp> EmitSelectAndScatterOp(
-      xla::HloInstruction* instr);
+      const xla::HloInstruction* instr);
 
-  xla::StatusOr<Operation*> EmitCustomCallOp(xla::HloInstruction* instr);
+  xla::StatusOr<Operation*> EmitCustomCallOp(const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo_gpu::CholeskyOp> EmitCholesky(
-      xla::HloCustomCallInstruction* custom_call);
+      const xla::HloCustomCallInstruction* custom_call);
   xla::StatusOr<Operation*> EmitGemm(
-      xla::HloCustomCallInstruction* custom_call);
+      const xla::HloCustomCallInstruction* custom_call);
   xla::StatusOr<Operation*> EmitDnnConvolution(
-      xla::HloCustomCallInstruction* custom_call);
+      const xla::HloCustomCallInstruction* custom_call);
   xla::StatusOr<Operation*> EmitDnnBatchNorm(
-      xla::HloCustomCallInstruction* custom_call);
+      const xla::HloCustomCallInstruction* custom_call);
 
-  xla::StatusOr<lmhlo::ReduceOp> EmitReduceOp(xla::HloInstruction* instr);
-  xla::StatusOr<GetGlobalMemrefOp> EmitConstant(xla::HloInstruction* instr) {
-    return EmitConstant(static_cast<const xla::HloInstruction*>(instr));
-  }
+  xla::StatusOr<lmhlo::ReduceOp> EmitReduceOp(const xla::HloInstruction* instr);
   xla::StatusOr<GetGlobalMemrefOp> EmitConstant(
       const xla::HloInstruction* instr);
 
-  xla::StatusOr<lmhlo::CompareOp> EmitCompareOp(xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::CompareOp> EmitCompareOp(
+      const xla::HloInstruction* instr);
 
-  ::xla::StatusOr<lmhlo::InfeedOp> EmitInfeedOp(::xla::HloInstruction* instr);
-  ::xla::StatusOr<lmhlo::OutfeedOp> EmitOutfeedOp(::xla::HloInstruction* instr);
-  ::xla::StatusOr<lmhlo::MapOp> EmitMapOp(::xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::InfeedOp> EmitInfeedOp(const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::OutfeedOp> EmitOutfeedOp(
+      const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::MapOp> EmitMapOp(const xla::HloInstruction* instr);
 
   xla::StatusOr<lmhlo::ReducePrecisionOp> EmitReducePrecisionOp(
-      xla::HloInstruction* instr);
+      const xla::HloInstruction* instr);
 
-  xla::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
+      const xla::HloInstruction* instr);
 
   // Create LHLO operation operands given an XLA HLO instruction. By default,
   // all XLA HLO operands and results are converted to MLIR and appended to
@@ -95,14 +96,14 @@ class LhloDialectEmitter : public xla::DfsHloVisitorWithDefault {
   // operands of the instruction are converted to MLIR. The function returns the
   // actual number of operands and results generated for MLIR in `num_arguments`
   // and `num_results`.
-  xla::Status CreateOperands(xla::HloInstruction* instr,
+  xla::Status CreateOperands(const xla::HloInstruction* instr,
                              absl::optional<xla::int64> num_operands,
                              SmallVectorImpl<Value>& operands,
                              size_t& num_arguments, size_t& num_results);
 
   template <typename OpType>
   xla::StatusOr<OpType> CreateOpWithoutAttrs(
-      xla::HloInstruction* instr,
+      const xla::HloInstruction* instr,
       absl::optional<xla::int64> num_operands = absl::nullopt) {
     size_t unused;
     return CreateOpWithoutAttrs<OpType>(instr, unused, unused, num_operands);
@@ -110,11 +111,13 @@ class LhloDialectEmitter : public xla::DfsHloVisitorWithDefault {
 
   template <typename OpType>
   xla::StatusOr<OpType> CreateOpWithoutAttrs(
-      xla::HloInstruction* instr, size_t& num_arguments, size_t& num_results,
+      const xla::HloInstruction* instr, size_t& num_arguments,
+      size_t& num_results,
       absl::optional<xla::int64> num_operands = absl::nullopt);
 
   template <typename OpType>
-  OpType CreateOpWithoutAttrs(xla::HloInstruction* instr, ValueRange operands);
+  OpType CreateOpWithoutAttrs(const xla::HloInstruction* instr,
+                              ValueRange operands);
 
   template <typename T>
   DenseIntElementsAttr GetI64DenseElementsAttr(const T& container) {
@@ -133,11 +136,11 @@ class LhloDialectEmitter : public xla::DfsHloVisitorWithDefault {
     return GetI64DenseElementsAttr(elements);
   }
 
-  tensorflow::Status DefaultAction(xla::HloInstruction* instr) final;
+  tensorflow::Status DefaultAction(const xla::HloInstruction* instr) final;
 
   // Computation parameters don't need any specific handling when they are
   // visited, they are already processed when we enter a new computation.
-  tensorflow::Status HandleParameter(xla::HloInstruction* instr) final {
+  tensorflow::Status HandleParameter(const xla::HloInstruction* instr) final {
     return tensorflow::Status::OK();
   }
 
