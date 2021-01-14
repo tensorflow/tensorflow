@@ -47,6 +47,10 @@ from tensorflow.python.platform import test
 
 TMP_WORK_DIR = data_service_test_base.TMP_WORK_DIR
 NO_WORK_DIR = data_service_test_base.NO_WORK_DIR
+# Some clusters may take a long time to shut down due to blocked outstanding
+# RPCs. We store the clusters here so that they are destroyed at end of process
+# instead of slowing down unit tests.
+GLOBAL_CLUSTERS = set()
 
 
 class DataServiceOpsTest(data_service_test_base.TestBase,
@@ -289,6 +293,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
           combinations.combine(num_workers=[1, 3], num_consumers=[1, 2, 5])))
   def testRoundRobin(self, num_workers, num_consumers):
     cluster = self.create_cluster(num_workers=num_workers)
+    # Round robin reads can cause slow cluster shutdown.
+    GLOBAL_CLUSTERS.add(cluster)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
     ds = ds.repeat()
@@ -325,6 +331,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     # Tests a common use case for round robin reads. At each step, all
     # consumers should get batches with the same bucket size.
     cluster = self.create_cluster(num_workers=4)
+    # Round robin reads can cause slow cluster shutdown.
+    GLOBAL_CLUSTERS.add(cluster)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements, output_type=dtypes.int32)
     ds = ds.shuffle(num_elements)

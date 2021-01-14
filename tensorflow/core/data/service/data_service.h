@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
 
+#include "grpcpp/impl/codegen/client_context.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -148,6 +150,10 @@ class DataServiceWorkerClient : public DataServiceClientBase {
                     absl::optional<int64> round_index,
                     CompressedElement& element, bool& end_of_sequence);
 
+  // Makes a best effort to cancel all outstanding calls in progress for the
+  // client, and causes further calls to return Cancelled status.
+  void TryCancel();
+
  protected:
   Status EnsureInitialized() override;
 
@@ -156,6 +162,12 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   // Initialization is guarded by `mu_`, but using the stub does not require
   // holding `mu_`
   std::unique_ptr<WorkerService::Stub> stub_;
+  // Set of all currently active clients contexts. Used to support
+  // cancellation.
+  absl::flat_hash_set<::grpc::ClientContext*> active_contexts_ GUARDED_BY(mu_);
+  // Indicates that the client has been cancelled, so no further requests should
+  // be accepted.
+  bool cancelled_ GUARDED_BY(mu_) = false;
 };
 
 // Creates and initializes a new tf.data service dispatcher client.

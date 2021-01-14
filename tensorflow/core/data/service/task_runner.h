@@ -112,7 +112,7 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
 class RoundRobinTaskRunner : public TaskRunner {
  public:
   RoundRobinTaskRunner(std::unique_ptr<TaskIterator> iterator,
-                       int64 num_consumers, int64 timeout_us);
+                       int64 num_consumers);
   Status GetNext(const Request& request, std::vector<Tensor>& element,
                  bool& end_of_task) override;
 
@@ -121,7 +121,6 @@ class RoundRobinTaskRunner : public TaskRunner {
   Status FillBuffer();
 
   const int64 num_consumers_;
-  const int64 timeout_us_;
   std::unique_ptr<TaskIterator> iterator_;
   mutex mu_;
   // Condition variable notified whenever we start a new round of round-robin.

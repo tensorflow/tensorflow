@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -249,6 +250,12 @@ Status DataServiceWorkerClient::GetElement(int64 task_id,
                                            CompressedElement& element,
                                            bool& end_of_sequence) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
+  {
+    mutex_lock l(mu_);
+    if (cancelled_) {
+      return errors::Cancelled("Client was cancelled.");
+    }
+  }
   GetElementRequest req;
   req.set_task_id(task_id);
   if (consumer_index.has_value()) {
@@ -259,7 +266,15 @@ Status DataServiceWorkerClient::GetElement(int64 task_id,
   }
   GetElementResponse resp;
   grpc::ClientContext ctx;
+  {
+    mutex_lock l(mu_);
+    active_contexts_.insert(&ctx);
+  }
   grpc::Status s = stub_->GetElement(&ctx, req, &resp);
+  {
+    mutex_lock l(mu_);
+    active_contexts_.erase(&ctx);
+  }
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get element", s);
   }
@@ -283,6 +298,14 @@ Status DataServiceWorkerClient::EnsureInitialized() {
   auto channel = grpc::CreateCustomChannel(address_, credentials, args);
   stub_ = WorkerService::NewStub(channel);
   return Status::OK();
+}
+
+void DataServiceWorkerClient::TryCancel() {
+  mutex_lock l(mu_);
+  cancelled_ = true;
+  for (const auto& ctx : active_contexts_) {
+    ctx->TryCancel();
+  }
 }
 
 Status CreateDataServiceDispatcherClient(

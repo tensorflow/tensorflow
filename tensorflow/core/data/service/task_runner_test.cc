@@ -22,7 +22,6 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace {
-const int64 kNoTimeoutUs = 60ull * 60 * 1000 * 1000;  // 60 minutes.
 
 class TestTaskIterator : public TaskIterator {
  public:
@@ -97,7 +96,7 @@ TEST_P(ConsumeParallelTest, ConsumeParallel) {
     elements.push_back(element);
   }
   RoundRobinTaskRunner runner(absl::make_unique<TestTaskIterator>(elements),
-                              num_consumers, kNoTimeoutUs);
+                              num_consumers);
   std::vector<std::vector<int64>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;
   mutex mu;
@@ -150,7 +149,7 @@ TEST(RoundRobinTaskRunner, ConsumeParallelPartialRound) {
     elements.push_back(element);
   }
   RoundRobinTaskRunner runner(absl::make_unique<TestTaskIterator>(elements),
-                              num_consumers, kNoTimeoutUs);
+                              num_consumers);
   std::vector<std::vector<int64>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;
   mutex mu;

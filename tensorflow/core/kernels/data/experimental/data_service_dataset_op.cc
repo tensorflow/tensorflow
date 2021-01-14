@@ -234,6 +234,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
+      for (const auto& task : tasks_) {
+        task->worker->TryCancel();
+      }
       cancelled_ = true;
       worker_thread_cv_.notify_all();
       manager_thread_cv_.notify_all();
