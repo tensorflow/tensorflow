@@ -52,7 +52,7 @@ using StackTraceFilter = std::function<bool(const char*)>;
 // A class for capturing Python stack trace.
 class StackTrace final {
  public:
-  static constexpr int kStackTraceInitialSize = 10;
+  static constexpr int kStackTraceInitialSize = 30;
 
   StackTrace() {}
 
