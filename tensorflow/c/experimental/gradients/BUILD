@@ -214,6 +214,7 @@ tf_cuda_cc_test(
         "//tensorflow/c/eager:c_api_test_util",
         "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ] + if_libtpu(

@@ -106,14 +106,16 @@ void CheckTensorValue(AbstractTensorHandle* t, absl::Span<const float> manuals,
   delete[] danalytical;
 }
 
-Model BuildGradModel(Model forward, size_t num_inputs, const string& op,
+Model BuildGradModel(Model ops, size_t num_inputs, string ops_name,
                      GradientFunctionFactory gradient_function_factory) {
-  return [&, forward, gradient_function_factory](
+  return [num_inputs, forward_ops = std::move(ops),
+          forward_name = std::move(ops_name),
+          gradient_factory = std::move(gradient_function_factory)](
              AbstractContext* ctx,
              absl::Span<AbstractTensorHandle* const> inputs,
              absl::Span<AbstractTensorHandle*> outputs) -> Status {
     GradientRegistry registry;
-    TF_RETURN_IF_ERROR(registry.Register(op, gradient_function_factory));
+    TF_RETURN_IF_ERROR(registry.Register(forward_name, gradient_factory));
 
     Tape tape(/*persistent=*/false);
     for (size_t i{}; i < num_inputs; ++i) {
@@ -122,7 +124,7 @@ Model BuildGradModel(Model forward, size_t num_inputs, const string& op,
     std::vector<AbstractTensorHandle*> temp_outputs(1);
     AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, registry));
     TF_RETURN_IF_ERROR(
-        forward(tape_ctx.get(), inputs, absl::MakeSpan(temp_outputs)));
+        forward_ops(tape_ctx.get(), inputs, absl::MakeSpan(temp_outputs)));
 
     TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
                                             /*sources=*/inputs,
