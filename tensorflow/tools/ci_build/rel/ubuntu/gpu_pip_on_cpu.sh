@@ -18,7 +18,7 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_pip_deps pip3.6
+install_ubuntu_16_python_pip_deps python3.6
 # Update Bazel to the desired version
 install_bazelisk
 
