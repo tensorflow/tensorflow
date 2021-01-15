@@ -139,6 +139,12 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
        (2, 2, 2)),
       ('Bidirectional',
        lambda: wrappers.Bidirectional(recurrent.SimpleRNN(units=4)), (2, 2, 2)),
+      ('AttentionLayer',
+       lambda: dense_attention.Attention(causal=True),
+       [(2, 2, 3), (2, 3, 3), (2, 3, 3)]),
+      ('AdditiveAttentionLayerCausal',
+       lambda: dense_attention.AdditiveAttention(causal=True),
+       [(2, 3, 4), (2, 3, 4), (2, 3, 4)]),
   )
   def test_layer(self, f32_layer_fn, input_shape, rtol=2e-3, atol=2e-3,
                  input_data=None):
