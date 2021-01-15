@@ -311,6 +311,7 @@ INSTANTIATE_TEST_SUITE_P(Writer, SingleSubgraphTest, ::testing::Bool());
 struct ReshapeTestPattern {
   int num_inputs;
   bool is_param_valid;
+  bool has_buggy_non_flatten_shape;
 };
 
 class ReshapeLayerTest : public ::testing::TestWithParam<ReshapeTestPattern> {};
@@ -326,10 +327,19 @@ TEST_P(ReshapeLayerTest, ReshapeLayerTest) {
                                            TfLiteQuantization());
   ASSERT_LE(param.num_inputs, 2);
   if (param.num_inputs == 2) {
-    interpreter.SetTensorParametersReadOnly(
-        /*tensor_index=*/1, kTfLiteInt32, /*name=*/"b", /*dims=*/{3},
-        TfLiteQuantization(), reinterpret_cast<char*>(output_shape),
-        sizeof(output_shape));
+    // Some TOCO generated models have buggy shape arguments, which are required
+    // to be flatten, for example, dims={3, 1} instead of dims={3}.
+    if (param.has_buggy_non_flatten_shape) {
+      interpreter.SetTensorParametersReadOnly(
+          /*tensor_index=*/1, kTfLiteInt32, /*name=*/"b", /*dims=*/{3, 1},
+          TfLiteQuantization(), reinterpret_cast<char*>(output_shape),
+          sizeof(output_shape));
+    } else {
+      interpreter.SetTensorParametersReadOnly(
+          /*tensor_index=*/1, kTfLiteInt32, /*name=*/"b", /*dims=*/{3},
+          TfLiteQuantization(), reinterpret_cast<char*>(output_shape),
+          sizeof(output_shape));
+    }
   }
   interpreter.SetTensorParametersReadWrite(/*tensor_index=*/total_tensors - 1,
                                            kTfLiteFloat32, /*name=*/"c",
@@ -373,15 +383,22 @@ TEST_P(ReshapeLayerTest, ReshapeLayerTest) {
 INSTANTIATE_TEST_SUITE_P(
     Writer, ReshapeLayerTest,
     ::testing::Values(ReshapeTestPattern{/*num_inputs=*/2,
-                                         /*is_param_valid=*/true},
+                                         /*is_param_valid=*/true,
+                                         /*has_buggy_non_flatten_shape=*/false},
                       ReshapeTestPattern{/*num_inputs=*/2,
-                                         /*is_param_valid=*/false},
+                                         /*is_param_valid=*/false,
+                                         /*has_buggy_non_flatten_shape=*/false},
                       ReshapeTestPattern{/*num_inputs=*/1,
-                                         /*is_param_valid=*/true}),
+                                         /*is_param_valid=*/true,
+                                         /*has_buggy_non_flatten_shape=*/false},
+                      ReshapeTestPattern{/*num_inputs=*/2,
+                                         /*is_param_valid=*/true,
+                                         /*has_buggy_non_flatten_shape=*/true}),
     [](const ::testing::TestParamInfo<ReshapeLayerTest::ParamType>& info) {
       std::stringstream ss;
       ss << "num_inputs_" << info.param.num_inputs << "_valid_param_"
-         << info.param.is_param_valid;
+         << info.param.is_param_valid << "_buggy_shape_"
+         << info.param.has_buggy_non_flatten_shape;
       std::string name = ss.str();
       return name;
     });
