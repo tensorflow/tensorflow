@@ -48,6 +48,7 @@ filegroup(
     name = "experimental_unary_kernel_srcs",
     srcs = [
         "gpu_op_asin.cc",
+        "gpu_op_asinh.cc",
         "gpu_op_atan.cc",
         "gpu_op_ceil.cc",
         "gpu_op_complex.cc",
@@ -113,6 +114,7 @@ tf_kernel_library(
         # link them in even if they are currently not needed yet.
         ":abs_kernels",
         ":asin_kernels",
+        ":asinh_kernels",
         ":atan_kernels",
         ":ceil_kernels",
         ":complex_kernels",
@@ -315,6 +317,16 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "asin",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "asinh",
     tile_size = "256",
     types = [
         "f32",
