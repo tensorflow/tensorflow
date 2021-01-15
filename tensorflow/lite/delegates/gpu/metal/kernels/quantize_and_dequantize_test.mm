@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize_test_util.h"
 
 using ::tflite::NudgeQuantizationRange;
 using ::tflite::gpu::DataType;
@@ -36,11 +37,12 @@ using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
 
-// TODO: Add per-op test if possible.
 @interface QuantizeAndDequantizeTest : XCTestCase
 @end
 
-@implementation QuantizeAndDequantizeTest
+@implementation QuantizeAndDequantizeTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+}
 - (void)setUp {
   [super setUp];
 }
@@ -160,6 +162,26 @@ using ::tflite::gpu::metal::SingleOpModel;
   status =
       CompareVectors({0.0f, -0.900014f, 0.249998f, 0.499995f, 0.444431f, 0.0f}, model.GetOutput(0),
                      1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testQuantAndDequant_Dim2Bits8 {
+  auto status = QuantAndDequant_Dim2Bits8Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testQuantAndDequant_Dim3Bits8_NegativeRange {
+  auto status = QuantAndDequant_Dim3Bits8_NegativeRangeTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testQuantAndDequant_Dim3Bits16 {
+  auto status = QuantAndDequant_Dim3Bits16Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testQuantAndDequant_Dim2Bits16_NegativeRange {
+  auto status = QuantAndDequant_Dim2Bits16_NegativeRangeTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

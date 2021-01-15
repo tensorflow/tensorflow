@@ -430,6 +430,20 @@ cc_library(
 )
 
 cc_library(
+    name = "quantize_and_dequantize_test_util",
+    testonly = 1,
+    srcs = ["quantize_and_dequantize_test_util.cc"],
+    hdrs = ["quantize_and_dequantize_test_util.h"],
+    deps = [
+        ":quantize_and_dequantize",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+    ],
+)
+
+cc_library(
     name = "reduce",
     srcs = ["reduce.cc"],
     hdrs = ["reduce.h"],
