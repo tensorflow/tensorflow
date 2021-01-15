@@ -928,7 +928,7 @@ func @broadcast_to(%arg0: tensor<16xf32>) -> tensor<16x16x16x16xf32> {
 
 // CHECK-LABEL: func @complex
 func @complex(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<3xcomplex<f32>> {
-  // CHECK: "mhlo.complex"
+  // CHECK: chlo.broadcast_complex
   %1 = "tf.Complex"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xcomplex<f32>>
   return %1 : tensor<3xcomplex<f32>>
 }

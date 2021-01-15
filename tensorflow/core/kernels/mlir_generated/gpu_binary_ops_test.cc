@@ -469,6 +469,25 @@ GENERATE_DEFAULT_TESTS(BitwiseXor,
 GENERATE_DEFAULT_TESTS(BitwiseXor,
                        /*test_name=*/Int64, int64, int64, baseline_bitwise_xor)
 
+/// Test `tf.Complex`.
+
+template <typename T>
+std::complex<T> baseline_complex(T lhs, T rhs) {
+  return std::complex<T>(lhs, rhs);
+}
+
+GENERATE_DEFAULT_TESTS_2(
+    Complex,
+    /*test_name=*/C64, float, float, std::complex<float>, std::complex<float>,
+    test::DefaultInput<float>(), test::DefaultInput<float>(), baseline_complex,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().AddTout())
+GENERATE_DEFAULT_TESTS_2(
+    Complex,
+    /*test_name=*/C128, double, double, std::complex<double>,
+    std::complex<double>, test::DefaultInput<double>(),
+    test::DefaultInput<double>(), baseline_complex,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().AddTout())
+
 /// Test `tf.Div`.
 
 template <typename T>

@@ -92,6 +92,7 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
 
 foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
                          [TF_Atan2Op, HLOClient_BroadcastAtan2Op],
+                         [TF_ComplexOp, HLOClient_BroadcastComplexOp],
                          [TF_DivOp, HLOClient_BroadcastDivOp],
                          [TF_LeftShiftOp, HLOClient_BroadcastShiftLeftOp],
                          [TF_MaximumOp, HLOClient_BroadcastMaxOp],
@@ -110,8 +111,6 @@ def LowerRightShiftSigned :
 
 // TODO(hinsu): Lower unsigned types to HLO_ShiftRightLogical once the HLO op
 // supports unsigned integers.
-
-def : Pat<(TF_ComplexOp $r, $i), (HLO_ComplexOp $r, $i)>;
 
 // Performs a substitution of FloorDiv, pseudo code below:
 //
