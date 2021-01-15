@@ -54,6 +54,7 @@ filegroup(
         "gpu_op_conj.cc",
         "gpu_op_cos.cc",
         "gpu_op_exp.cc",
+        "gpu_op_expm1.cc",
         "gpu_op_floor.cc",
         "gpu_op_imag.cc",
         "gpu_op_is_inf.cc",
@@ -117,6 +118,7 @@ tf_kernel_library(
         ":conj_kernels",
         ":cos_kernels",
         ":exp_kernels",
+        ":expm1_kernels",
         ":floor_kernels",
         ":imag_kernels",
         ":is_inf_kernels",
@@ -622,6 +624,7 @@ gen_kernel_library(
     for name in [
         "ceil",
         "exp",
+        "expm1",
         "floor",
         "is_finite",
         "log",
