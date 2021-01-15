@@ -410,6 +410,13 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
     }
   }
 
+  for (const auto& attr : op_->getAttrs()) {
+    if (attr.second.isa<SymbolRefAttr>()) {
+      return op_->emitRemark()
+             << "ops with symbol references are not supported";
+    }
+  }
+
   auto nodedef_or = tensorflow::ConvertTFDialectOpToNodeDef(
       op_, name_mapper_.GetUniqueName(op_), /*ignore_unregistered_attrs=*/true);
   if (!nodedef_or.ok()) {
