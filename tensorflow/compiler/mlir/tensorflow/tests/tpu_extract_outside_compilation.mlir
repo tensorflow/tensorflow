@@ -606,6 +606,60 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return %1 : tensor<?xi32>
   }
 
+  // Ensures that separate send/recvs are added for values that are used by ops inside of multiple IfRegions.
+
+  // CHECK-LABEL: func @outside_compiled_ops_multiple_tf_if
+  func @outside_compiled_ops_multiple_tf_if(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+
+    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:       %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK:           %[[PREDICATE_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK-SAME:      key = "if_predicate_channel_2"
+    // CHECK:              %[[ARG_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK-SAME:         key = "host_compute_channel_0_args"
+    // CHECK:              "tf.D"(%[[ARG_RECV_OUTPUT]])
+    // CHECK:              %[[ARG_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK-SAME:         key = "host_compute_channel_1_args"
+    // CHECK:              "tf.F"(%[[ARG_RECV_OUTPUT]])
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            "tf._XlaHostComputeMlir"
+    // CHECK-SAME:       key = "if_predicate_channel_2"
+    // CHECK-NEXT:       tf.IfRegion"
+    // CHECK:              "tf._XlaHostComputeMlir"(%[[A_OUTPUT]])
+    // CHECK-SAME:         recv_key = "host_compute_channel_0_retvals"
+    // CHECK-SAME:         send_key = "host_compute_channel_0_args"
+    // CHECK:            tf.IfRegion"
+    // CHECK:              "tf._XlaHostComputeMlir"(%[[A_OUTPUT]])
+    // CHECK-SAME:         recv_key = "host_compute_channel_1_retvals"
+    // CHECK-SAME:         send_key = "host_compute_channel_1_args"
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+      %2 = "tf_device.cluster"() ( {
+        %3 = "tf.A"() : () -> (tensor<?xi32>)
+        %6 = "tf.G"() : () -> (tensor<i1>)
+
+        "tf.IfRegion"(%6) ({
+          "tf.D"(%3) {_xla_outside_compilation = "auto"} : (tensor<?xi32>) -> ()
+          "tf.Yield"() : () -> ()
+        }, {
+          "tf.Yield"() : () -> ()
+        }) { is_stateless = false} : (tensor<i1>) -> ()
+
+        "tf.IfRegion"(%6) ({
+          "tf.F"(%3) {_xla_outside_compilation = "auto"} : (tensor<?xi32>) -> ()
+          "tf.Yield"() : () -> ()
+        }, {
+          "tf.Yield"() : () -> ()
+        }) { is_stateless = false} : (tensor<i1>) -> ()
+
+        tf_device.return %3 : tensor<?xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<?xi32>
+      tf_device.return %2 : tensor<?xi32>
+    }
+
+    return %1 : tensor<?xi32>
+  }
+
   // Tests extraction of an outside compiled tf.IfRegion op where the entirety
   // of tf.IfRegion op is outside compiled
 
