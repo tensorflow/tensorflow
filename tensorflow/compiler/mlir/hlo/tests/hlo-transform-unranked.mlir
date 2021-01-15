@@ -160,7 +160,7 @@ func @addUnrankedUnranked(
 // CHECK-NEXT:           %[[LHS_SHAPE:.*]] = shape.shape_of %[[LHS]] : tensor<*xf32> -> tensor<?xindex>
 // CHECK-NEXT:           %[[LHS_RANK:.*]] = shape.rank %[[LHS_SHAPE]] : tensor<?xindex> -> index
 // CHECK-NEXT:           %[[C0:.*]] = constant 0 : index
-// CHECK-NEXT:           %[[LHS_IS_SCALAR:.*]] = cmpi "eq", %[[LHS_RANK]], %[[C0]] : index
+// CHECK-NEXT:           %[[LHS_IS_SCALAR:.*]] = cmpi eq, %[[LHS_RANK]], %[[C0]] : index
 //                       Handle scalar LHS case
 // CHECK-NEXT:           %[[VAL_8:.*]] = scf.if %[[LHS_IS_SCALAR]] -> (tensor<*xf32>) {
 // CHECK-NEXT:             %[[SCALAR_LHS:.*]] = tensor.cast %[[LHS]] : tensor<*xf32> to tensor<f32>
@@ -174,7 +174,7 @@ func @addUnrankedUnranked(
 // CHECK-NEXT:           } else {
 // CHECK-NEXT:             %[[RHS_SHAPE:.*]] = shape.shape_of %[[RHS]] : tensor<*xf32> -> tensor<?xindex>
 // CHECK-NEXT:             %[[RHS_RANK:.*]] = shape.rank %[[RHS_SHAPE]] : tensor<?xindex> -> index
-// CHECK-NEXT:             %[[RHS_IS_SCALAR:.*]] = cmpi "eq", %[[RHS_RANK]], %[[C0]] : index
+// CHECK-NEXT:             %[[RHS_IS_SCALAR:.*]] = cmpi eq, %[[RHS_RANK]], %[[C0]] : index
 //                         Handle scalar RHS case
 // CHECK-NEXT:             %[[VAL_14:.*]] = scf.if %[[RHS_IS_SCALAR]] -> (tensor<*xf32>) {
 // CHECK-NEXT:               %[[SCALAR_RHS:.*]] = tensor.cast %[[RHS]] : tensor<*xf32> to tensor<f32>
@@ -197,11 +197,11 @@ func @addUnrankedUnranked(
 // CHECK-NEXT:                 %[[RESHAPED_SAME_RESULT:.*]] = "mhlo.dynamic_reshape"(%[[FLATTENED_RESULT]], %[[ANY_SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
 // CHECK-NEXT:                 scf.yield %[[RESHAPED_SAME_RESULT]] : tensor<*xf32>
 // CHECK-NEXT:               } else {
-// CHECK-NEXT:                 %[[LHS_RANK_GREATER:.*]] = cmpi "sgt", %[[LHS_RANK]], %[[RHS_RANK]] : index
+// CHECK-NEXT:                 %[[LHS_RANK_GREATER:.*]] = cmpi sgt, %[[LHS_RANK]], %[[RHS_RANK]] : index
 // CHECK-NEXT:                 %[[GREATEST_RANK:.*]] = select %[[LHS_RANK_GREATER]], %[[LHS_RANK]], %[[RHS_RANK]] : index
 //                             Handle rank 1 specialization
 // CHECK-NEXT:                 %[[C1:.*]] = constant 1 : index
-// CHECK-NEXT:                 %[[GREATEST_RANK_IS_1:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C1]] : index
+// CHECK-NEXT:                 %[[GREATEST_RANK_IS_1:.*]] = cmpi eq, %[[GREATEST_RANK]], %[[C1]] : index
 // CHECK-NEXT:                 %[[RESULT_RANK_1:.*]] = scf.if %[[GREATEST_RANK_IS_1]] -> (tensor<*xf32>) {
 // CHECK-NEXT:                   %[[CONST_SHAPE_1:.*]] = shape.const_shape [1]
 // CHECK-NEXT:                   %[[BROADCASTED_LHS_1:.*]] = shape.broadcast %[[LHS_SHAPE]], %[[CONST_SHAPE_1]] : tensor<?xindex>, tensor<1xindex> -> tensor<?xindex>
@@ -215,7 +215,7 @@ func @addUnrankedUnranked(
 // CHECK-NEXT:                   scf.yield %[[RESULT_1]] : tensor<*xf32>
 // CHECK-NEXT:                 } else {
 // CHECK-NEXT:                   %[[C2:.*]] = constant 2 : index
-// CHECK-NEXT:                   %[[GREATEST_RANK_IS_2:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C2]] : index
+// CHECK-NEXT:                   %[[GREATEST_RANK_IS_2:.*]] = cmpi eq, %[[GREATEST_RANK]], %[[C2]] : index
 //                               Handle rank 2 specialization
 // CHECK-NEXT:                   %[[VAL_26:.*]] = scf.if %[[GREATEST_RANK_IS_2]] -> (tensor<*xf32>) {
 // CHECK-NEXT:                     %[[CONST_SHAPE_2:.*]] = shape.const_shape [1, 1]
@@ -230,7 +230,7 @@ func @addUnrankedUnranked(
 // CHECK-NEXT:                     scf.yield %[[RESULT_2]] : tensor<*xf32>
 // CHECK-NEXT:                   } else {
 // CHECK-NEXT:                     %[[C3:.*]] = constant 3 : index
-// CHECK-NEXT:                     %[[GREATEST_RANK_IS_3:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C3]] : index
+// CHECK-NEXT:                     %[[GREATEST_RANK_IS_3:.*]] = cmpi eq, %[[GREATEST_RANK]], %[[C3]] : index
 //                                 Handle rank 3 specialization
 // CHECK-NEXT:                     %[[VAL_34:.*]] = scf.if %[[GREATEST_RANK_IS_3]] -> (tensor<*xf32>) {
 // CHECK-NEXT:                       %[[CONST_SHAPE_3:.*]] = shape.const_shape [1, 1, 1]
@@ -245,7 +245,7 @@ func @addUnrankedUnranked(
 // CHECK-NEXT:                       scf.yield %[[RESULT_3]] : tensor<*xf32>
 // CHECK-NEXT:                     } else {
 // CHECK-NEXT:                       %[[C4:.*]] = constant 4 : index
-// CHECK-NEXT:                       %[[GREATEST_RANK_IS_4:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C4]] : index
+// CHECK-NEXT:                       %[[GREATEST_RANK_IS_4:.*]] = cmpi eq, %[[GREATEST_RANK]], %[[C4]] : index
 //                                   Handle rank 4 specialization
 // CHECK-NEXT:                       %[[VAL_42:.*]] = scf.if %[[GREATEST_RANK_IS_4]] -> (tensor<*xf32>) {
 // CHECK-NEXT:                         %[[CONST_SHAPE_4:.*]] = shape.const_shape [1, 1, 1, 1]
@@ -260,7 +260,7 @@ func @addUnrankedUnranked(
 // CHECK-NEXT:                         scf.yield %[[RESULT_4]] : tensor<*xf32>
 // CHECK-NEXT:                       } else {
 // CHECK-NEXT:                         %[[C5:.*]] = constant 5 : index
-// CHECK-NEXT:                         %[[GREATEST_RANK_IS_5:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C5]] : index
+// CHECK-NEXT:                         %[[GREATEST_RANK_IS_5:.*]] = cmpi eq, %[[GREATEST_RANK]], %[[C5]] : index
 //                                     Handle rank 5 specialization
 // CHECK-NEXT:                         %[[VAL_50:.*]] = scf.if %[[GREATEST_RANK_IS_5]] -> (tensor<*xf32>) {
 // CHECK-NEXT:                           %[[CONST_SHAPE_5:.*]] = shape.const_shape [1, 1, 1, 1, 1]
@@ -275,7 +275,7 @@ func @addUnrankedUnranked(
 // CHECK-NEXT:                           scf.yield %[[RESULT_5]] : tensor<*xf32>
 // CHECK-NEXT:                         } else {
 // CHECK-NEXT:                           %[[C6:.*]] = constant 6 : index
-// CHECK-NEXT:                           %[[GREATEST_RANK_IS_6:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C6]] : index
+// CHECK-NEXT:                           %[[GREATEST_RANK_IS_6:.*]] = cmpi eq, %[[GREATEST_RANK]], %[[C6]] : index
 // CHECK-NEXT:                           assert %[[GREATEST_RANK_IS_6]]
 //                                       Handle rank 6 specialization
 // CHECK-NEXT:                           %[[CONST_SHAPE_6:.*]] = shape.const_shape [1, 1, 1, 1, 1, 1]
