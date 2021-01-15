@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/prelu_test_util.h"
 
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
@@ -42,7 +43,10 @@ using ::tflite::gpu::metal::SingleOpModel;
 @interface PReLUTest : XCTestCase
 @end
 
-@implementation PReLUTest
+@implementation PReLUTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+}
+
 - (void)setUp {
   [super setUp];
 }
@@ -154,6 +158,21 @@ using ::tflite::gpu::metal::SingleOpModel;
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({0, -2, 1, -6}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testPReLUAlpha {
+  auto status = PReLUAlphaTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testPReLUAlphaClip {
+  auto status = PReLUAlphaClipTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testPReLUHWCAlpha {
+  auto status = PReLUHWCAlphaTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

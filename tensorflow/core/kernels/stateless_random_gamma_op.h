@@ -27,11 +27,59 @@ namespace functor {
 template <typename Device, typename T>
 struct StatelessRandomGammaFunctor {
   static Status Fill(OpKernelContext* ctx, const T* alpha_flat,
-                     int64 num_alphas, int64 samples_per_alpha,
+                     int64 num_samples, int64 num_alphas,
+                     int64 samples_per_alpha,
                      const random::PhiloxRandom& random, T* samples_flat);
 };
 
 }  // namespace functor
+
+// Buffer that holds multiple samples. Operator()(random::PhiloxRandom*) returns
+// a single sample from this buffer. If the buffer is empty, it first generates
+// new samples using the provided distribution.
+//
+// If the call to Distribution::operator() returns samples[0...N-1], then this
+// class returns samples in the following order:
+//
+//   samples[N-1], samples[N-2],..., samples[1], samples[0]
+//
+// For comparison, random::SingleSampleAdapter returns samples in
+// the following order:
+//
+//   samples[0], samples[1],...,samples[N-2], samples[N-1].
+//
+template <class Distribution>
+class RandomSampleBuffer {
+ public:
+  typedef typename Distribution::ResultElementType ResultElementType;
+
+  PHILOX_DEVICE_INLINE
+  explicit RandomSampleBuffer(Distribution* distribution)
+      : distribution_(distribution), remaining_numbers_(0) {}
+
+  PHILOX_DEVICE_INLINE
+  ResultElementType operator()(random::PhiloxRandom* random) {
+    if (remaining_numbers_ == 0) {
+      results_ = (*distribution_)(random);
+      remaining_numbers_ = Distribution::kResultElementCount;
+    }
+
+    remaining_numbers_--;
+    return results_[remaining_numbers_];
+  }
+
+  // Mark this buffer as empty. The next call to operator() will fill it
+  // with new random numbers.
+  PHILOX_DEVICE_INLINE
+  void Clear() { remaining_numbers_ = 0; }
+
+ private:
+  typedef typename Distribution::ResultType ResultType;
+
+  Distribution* distribution_;
+  ResultType results_;
+  int remaining_numbers_;
+};
 
 }  // namespace tensorflow
 

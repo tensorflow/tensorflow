@@ -133,6 +133,8 @@ cc_library(
 
 cc_library(
     name = "testing_util",
+    testonly = 1,
+    srcs = ["testing_util.cc"],
     hdrs = ["testing_util.h"],
     deps = [
         ":gpu_operation",
@@ -141,6 +143,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:tensor",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -117,7 +117,6 @@ cc_library(
         "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_lib_no_ops",
         "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/stream_executor/lib",
     ] + if_tensorrt([
         ":tensorrt_lib",
         "@local_config_cuda//cuda:cuda_headers",
@@ -240,10 +239,13 @@ tf_cuda_library(
     deps = [
         ":trt_logging",
         ":utils",
+        ":trt_allocator",
+        ":common_utils",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor/lib",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -294,6 +296,7 @@ tf_cuda_library(
     ],
     deps = [
         ":trt_allocator",
+        ":trt_engine_utils",
         ":trt_logging",
         ":utils",
         "//tensorflow/core:framework_headers_lib",

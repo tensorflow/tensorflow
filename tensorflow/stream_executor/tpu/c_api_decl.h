@@ -41,6 +41,13 @@ enum TpuVersionEnum {
   kTpuV4,
 };
 
+typedef struct TpuRuntimeVersion {
+  // The three version numbers are: major, minor, patch
+  int version[3];
+  const char* metadata;
+  size_t metadata_size;
+} TpuRuntimeVersion;
+
 typedef struct SE_Platform SE_Platform;
 typedef struct SE_StreamExecutor SE_StreamExecutor;
 typedef struct SE_Stream SE_Stream;

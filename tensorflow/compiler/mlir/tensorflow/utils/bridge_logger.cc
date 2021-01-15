@@ -53,8 +53,10 @@ inline static void Log(BridgeLoggerConfig::PrintCallbackFn print_callback,
 
   std::unique_ptr<llvm::raw_ostream> os;
   std::string filepath;
-  if (CreateFileForDumping(name, &os, &filepath).ok()) print_callback(*os);
-  VLOG(1) << "Dumped MLIR module to " << filepath;
+  if (CreateFileForDumping(name, &os, &filepath).ok()) {
+    print_callback(*os);
+    LOG(INFO) << "Dumped MLIR module to " << filepath;
+  }
 }
 
 void BridgeLoggerConfig::printBeforeIfEnabled(mlir::Pass* pass,
@@ -80,7 +82,7 @@ bool BridgeLoggerConfig::should_print(mlir::Pass* pass) {
     }
   }
   // no pattern matches pass
-  VLOG(2) << "Not logging pass " << pass_name
+  VLOG(1) << "Not logging pass " << pass_name
           << " because it does not match any pattern in "
              "MLIR_BRIDGE_LOG_PASS_PATTERNS";
   return false;

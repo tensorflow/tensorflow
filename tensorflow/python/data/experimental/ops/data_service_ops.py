@@ -111,10 +111,6 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
       max_outstanding_requests = dataset_ops.AUTOTUNE
     if task_refresh_interval_hint_ms is None:
       task_refresh_interval_hint_ms = dataset_ops.AUTOTUNE
-    if consumer_index is None:
-      consumer_index = -1
-    if num_consumers is None:
-      num_consumers = -1
 
     self._dataset_id = ops.convert_to_tensor(
         dataset_id, dtype=dtypes.int64, name="dataset_id")
@@ -127,9 +123,13 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     self._job_name = ops.convert_to_tensor(
         job_name, dtype=dtypes.string, name="job_name")
     self._consumer_index = ops.convert_to_tensor(
-        consumer_index, dtype=dtypes.int64, name="consumer_index")
+        -1 if consumer_index is None else consumer_index,
+        dtype=dtypes.int64,
+        name="consumer_index")
     self._num_consumers = ops.convert_to_tensor(
-        num_consumers, dtype=dtypes.int64, name="num_consumers")
+        -1 if num_consumers is None else num_consumers,
+        dtype=dtypes.int64,
+        name="num_consumers")
     self._max_outstanding_requests = ops.convert_to_tensor(
         max_outstanding_requests,
         dtype=dtypes.int64,
@@ -138,7 +138,19 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     # represented by scalar DT_VARIANTs.
     self._element_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
 
-    if num_consumers >= 0:
+    if num_consumers is None:
+      variant_tensor = gen_experimental_dataset_ops.data_service_dataset(
+          dataset_id=self._dataset_id,
+          processing_mode=self._processing_mode,
+          address=self._address,
+          protocol=self._protocol,
+          job_name=self._job_name,
+          max_outstanding_requests=self._max_outstanding_requests,
+          task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+          iteration_counter=gen_experimental_dataset_ops
+          .dummy_iteration_counter(),
+          **self._flat_structure)
+    else:
       variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v2(
           dataset_id=self._dataset_id,
           processing_mode=self._processing_mode,
@@ -147,18 +159,6 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
           job_name=self._job_name,
           consumer_index=self._consumer_index,
           num_consumers=self._num_consumers,
-          max_outstanding_requests=self._max_outstanding_requests,
-          task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
-          iteration_counter=gen_experimental_dataset_ops
-          .dummy_iteration_counter(),
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_experimental_dataset_ops.data_service_dataset(
-          dataset_id=self._dataset_id,
-          processing_mode=self._processing_mode,
-          address=self._address,
-          protocol=self._protocol,
-          job_name=self._job_name,
           max_outstanding_requests=self._max_outstanding_requests,
           task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
           iteration_counter=gen_experimental_dataset_ops

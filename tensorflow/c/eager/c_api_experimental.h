@@ -517,6 +517,29 @@ TF_CAPI_EXPORT extern void TFE_RegisterCustomDevice(TFE_Context* ctx,
                                                     void* device_info,
                                                     TF_Status* status);
 
+// Creates a new TensorHandle from memory residing in a custom device. Takes
+// ownership of the memory, and will call `deallocator` to release it after TF
+// no longer needs it or in case of error.
+//
+// `num_dims_callback` is a callback computing the rank of the tensor, and
+// `dim_callback` computes the axis length at `dim_index`. Shapes are specified
+// via callbacks because retrieving the shape of a tensor is a blocking
+// operation for async eager; custom devices should avoid retrieving shapes of
+// tensors they wrap until the custom device tensor's shape is explicitly
+// requested where possible.
+//
+// `arg` is passed to the callbacks unmodified for any extra information the
+// caller needs to provide them.
+//
+// This call is similar to `TFE_NewTensorHandleFromDeviceMemory`, but does not
+// require blocking waiting for exact shapes.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
+    TFE_Context* ctx, const char* device_name, TF_DataType, void* data,
+    int (*num_dims_callback)(void* data, void* arg, TF_Status* status),
+    int64_t (*dim_callback)(void* data, int dim_index, void* arg,
+                            TF_Status* status),
+    void (*deallocator)(void* data, void* arg), void* arg, TF_Status* status);
+
 TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      const char* function_name,
                                                      TF_Buffer* buf,

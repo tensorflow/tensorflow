@@ -2487,7 +2487,10 @@ struct WhileResultOperandsMatchAndImplicitCapture
       if (getElementTypeOrSelf(ba.getType()).isa<TF::ResourceType>()) {
         bool has_read_only_variables = true;
         for (auto user : ba.getUsers()) {
-          // Ternimator ops, for example, tfl::yield op, should be ignored.
+          // Ternimator ops, for example, tfl::yield op, should be ignored since
+          // the argument can be used for yielding as the `body` function result
+          // and that does not give any meaningful points to the decision
+          // whether the given arugment is a read-only variable or not.
           if (user->hasTrait<OpTrait::IsTerminator>()) continue;
           if (!llvm::isa<mlir::TF::ReadVariableOp>(user)) {
             has_read_only_variables = false;

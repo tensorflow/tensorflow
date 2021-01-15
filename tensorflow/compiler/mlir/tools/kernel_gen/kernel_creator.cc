@@ -243,6 +243,14 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
   }
+  auto gpu_modules = module.getOps<mlir::gpu::GPUModuleOp>();
+  auto num_modules = std::distance(gpu_modules.begin(), gpu_modules.end());
+  if (num_modules != 1) {
+    LOG(WARNING) << "There should be exactly one GPU Module, but got "
+                 << num_modules
+                 << ". Currently we leak memory if there is more than one "
+                    "module, see https://bugs.llvm.org/show_bug.cgi?id=48385";
+  }
   return Status::OK();
 }
 
@@ -342,19 +350,6 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
                                         print_ptx, enable_ftz));
   TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get()));
   return module;
-}
-
-StatusOr<std::string> ExtractGpuBinary(mlir::ModuleOp module) {
-  auto gpu_modules = module.getOps<mlir::gpu::GPUModuleOp>();
-  if (std::distance(gpu_modules.begin(), gpu_modules.end()) != 1) {
-    return InternalError("There should be exactly one GPU Module");
-  }
-  mlir::gpu::GPUModuleOp gpu_mod = *gpu_modules.begin();
-  auto blob = gpu_mod->getAttrOfType<mlir::StringAttr>(kGpuBinaryAttrName);
-  if (blob == nullptr) {
-    return InternalError("No binary blob found in the module");
-  }
-  return blob.getValue().str();
 }
 
 }  // namespace kernel_gen

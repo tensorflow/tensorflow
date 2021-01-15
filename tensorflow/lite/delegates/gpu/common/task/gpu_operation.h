@@ -38,6 +38,9 @@ namespace gpu {
 namespace cl {
 class ClOperation;
 }
+namespace metal {
+class ComputeTask;
+}
 
 // kCustom: default value
 //   GPUOperation::GetGridSize must be overloaded
@@ -145,6 +148,7 @@ class GPUOperation {
 
  protected:
   friend class cl::ClOperation;
+  friend class metal::ComputeTask;
   friend flatbuffers::Offset<tflite::gpu::data::GPUOperation> Encode(
       const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const tflite::gpu::data::GPUOperation* fb_op,

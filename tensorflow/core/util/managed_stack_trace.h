@@ -22,21 +22,35 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Maps filename/line_no combination into a stack frame.
+using StackTraceMap =
+    std::function<absl::optional<StackFrame>(std::pair<const char*, int>)>;
+
+// Returns "true" on filenames which should be skipped.
+using StackTraceFilter = std::function<bool(const char*)>;
+
+using ToStackFramesFunctor = std::vector<StackFrame>(int, const StackTraceMap&,
+                                                     const StackTraceFilter&,
+                                                     bool, int);
+
 // Language agnostic stack trace class. It only saves an id, and language
 // clients are responsible for managing the actual stack trace objects.
 class ManagedStackTrace {
  public:
-  ManagedStackTrace(int id, std::vector<StackFrame> (*to_stack_frames)(int))
+  ManagedStackTrace(int id, ToStackFramesFunctor* to_stack_frames)
       : id_(id), to_stack_frames_(to_stack_frames) {}
 
   // Returns stack trace as a vector of `StackFrame`s.
-  std::vector<StackFrame> ToStackFrames() const {
-    return to_stack_frames_(id_);
+  std::vector<StackFrame> ToStackFrames(const StackTraceMap& mapper = {},
+                                        const StackTraceFilter& filtered = {},
+                                        bool reverse_traversal = false,
+                                        int limit = -1) const {
+    return to_stack_frames_(id_, mapper, filtered, reverse_traversal, limit);
   }
 
  private:
   int id_;
-  std::vector<StackFrame> (*to_stack_frames_)(int);
+  ToStackFramesFunctor* to_stack_frames_;
 };
 
 }  // namespace tensorflow

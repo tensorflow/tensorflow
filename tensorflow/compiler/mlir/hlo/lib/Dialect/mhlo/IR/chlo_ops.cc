@@ -32,6 +32,20 @@ static LogicalResult Verify(T op) {
   return success();
 }
 
+static constexpr float kF16MaxFiniteValue = 0x1.ffcP15;
+
+Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val) {
+  Type ty = getElementTypeOrSelf(val.getType());
+  if (ty.isF16()) {
+    return getConstantLike(b, loc, kF16MaxFiniteValue, val);
+  } else if (ty.isF32()) {
+    return getConstantLike(b, loc, std::numeric_limits<float>::max(), val);
+  } else if (ty.isF64()) {
+    return getConstantLike(b, loc, std::numeric_limits<double>::max(), val);
+  }
+  llvm_unreachable("unhandled type");
+}
+
 //===----------------------------------------------------------------------===//
 // BinaryOps
 //===----------------------------------------------------------------------===//

@@ -42,9 +42,6 @@ xla::StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     bool embed_memref_prints = false, bool generate_fatbin = true,
     bool print_ptx = false, bool enable_ftz = false);
 
-// Extracts gpu_binary from the converted module.
-xla::StatusOr<std::string> ExtractGpuBinary(mlir::ModuleOp module);
-
 }  // namespace kernel_gen
 }  // namespace tensorflow
 

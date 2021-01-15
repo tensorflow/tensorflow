@@ -121,6 +121,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -185,6 +186,24 @@ objc_library(
 )
 
 objc_library(
+    name = "linear_storage",
+    srcs = ["linear_storage.cc"],
+    hdrs = ["linear_storage.h"],
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+    ],
+    sdk_frameworks = ["Metal"],
+    deps = [
+        ":gpu_object",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
+    ],
+)
+
+objc_library(
     name = "metal_arguments",
     srcs = ["metal_arguments.cc"],
     hdrs = ["metal_arguments.h"],
@@ -195,6 +214,7 @@ objc_library(
     deps = [
         ":buffer",
         ":gpu_object",
+        ":linear_storage",
         ":metal_device",
         ":metal_spatial_tensor",
         ":texture2d",

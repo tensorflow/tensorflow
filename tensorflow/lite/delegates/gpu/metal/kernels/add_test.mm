@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/add_test_util.h"
 
 using ::tflite::gpu::ElementwiseAttributes;
 using ::tflite::gpu::BHWC;
@@ -120,6 +121,24 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status =
       CompareVectors({11.0, 22.0, 13.0, 24.0, 15.0, 26.0, 17.0, 28.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testAddTwoEqualTensors {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+  auto status = AddTwoEqualTensorsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testAddFirstTensorHasMoreChannelsThanSecond {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+  auto status = AddFirstTensorHasMoreChannelsThanSecondTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testAddFirstTensorHasLessChannelsThanSecond {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+  auto status = AddFirstTensorHasLessChannelsThanSecond(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

@@ -48,11 +48,15 @@ filegroup(
     name = "experimental_unary_kernel_srcs",
     srcs = [
         "gpu_op_asin.cc",
+        "gpu_op_asinh.cc",
         "gpu_op_atan.cc",
         "gpu_op_ceil.cc",
+        "gpu_op_complex.cc",
         "gpu_op_conj.cc",
         "gpu_op_cos.cc",
+        "gpu_op_cosh.cc",
         "gpu_op_exp.cc",
+        "gpu_op_expm1.cc",
         "gpu_op_floor.cc",
         "gpu_op_imag.cc",
         "gpu_op_is_inf.cc",
@@ -110,11 +114,15 @@ tf_kernel_library(
         # link them in even if they are currently not needed yet.
         ":abs_kernels",
         ":asin_kernels",
+        ":asinh_kernels",
         ":atan_kernels",
         ":ceil_kernels",
+        ":complex_kernels",
         ":conj_kernels",
         ":cos_kernels",
+        ":cosh_kernels",
         ":exp_kernels",
+        ":expm1_kernels",
         ":floor_kernels",
         ":imag_kernels",
         ":is_inf_kernels",
@@ -153,7 +161,6 @@ tf_kernel_library(
         "gpu_op_logical_or.cc",
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
-        "gpu_op_pow.cc",
         "gpu_op_right_shift.cc",
         "gpu_op_sub.cc",
     ],
@@ -181,7 +188,6 @@ tf_kernel_library(
         ":minimum_kernels",
         ":mul_kernels",
         ":not_equal_kernels",
-        ":pow_kernels",
         ":right_shift_kernels",
         ":sub_kernels",
         "//third_party/eigen3",
@@ -230,7 +236,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "gpu_binary_ops_test",
-    size = "medium",
+    size = "small",
     srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_binary_ops_test.cc"]),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
@@ -320,6 +326,16 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "asinh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "atan",
     tile_size = "256",
     types = [
@@ -337,6 +353,16 @@ gen_kernel_library(
         "f64",
     ],
     unroll_factors = "2",
+)
+
+gen_kernel_library(
+    name = "cosh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -622,6 +648,7 @@ gen_kernel_library(
     for name in [
         "ceil",
         "exp",
+        "expm1",
         "floor",
         "is_finite",
         "log",
@@ -648,15 +675,3 @@ gen_kernel_library(
         "sin",
     ]
 ]
-
-gen_kernel_library(
-    name = "pow",
-    tile_size = "256,1,1",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i64",
-    ],
-    unroll_factors = "4",
-)

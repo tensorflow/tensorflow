@@ -84,7 +84,8 @@ class GpuUnaryOpTest : public OpsTestBase {
     if (config.expect_strictly_equal) {
       test::ExpectEqual(expected_tensor, *GetOutput(0));
     } else {
-      test::ExpectClose(expected_tensor, *GetOutput(0));
+      test::ExpectClose(expected_tensor, *GetOutput(0), kAbsoluteTolerance,
+                        kRelativeTolerance);
     }
   }
 
@@ -106,6 +107,9 @@ class GpuUnaryOpTest : public OpsTestBase {
   }
 
  private:
+  constexpr static double kAbsoluteTolerance = 0.001;
+  constexpr static double kRelativeTolerance = 0.001;
+
   template <typename T, typename BaselineT, typename OutT,
             typename BaselineOutT>
   absl::InlinedVector<OutT, 10> ComputeExpectedOutput(
@@ -186,6 +190,14 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Asin, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::asin, test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.Asinh`.
+
+GENERATE_DEFAULT_TEST(Asinh, DT_FLOAT, DT_FLOAT, std::asinh,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Asinh, DT_DOUBLE, DT_DOUBLE, std::asinh,
+                      test::GpuOpsTestConfig())
+
 /// Test `tf.Atan`.
 
 GENERATE_DEFAULT_TEST(Atan, DT_FLOAT, DT_FLOAT, std::atan,
@@ -229,6 +241,14 @@ GENERATE_DEFAULT_TEST(Cos, DT_DOUBLE, DT_DOUBLE, std::cos,
 GENERATE_DEFAULT_TEST_2(Cos, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cos,
                         test::GpuOpsTestConfig())
 
+/// Test `tf.Cosh`.
+
+GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
+                      test::GpuOpsTestConfig())
+
 /// Test `tf.Exp`.
 
 GENERATE_DEFAULT_TEST(Exp, DT_FLOAT, DT_FLOAT, std::exp,
@@ -238,6 +258,17 @@ GENERATE_DEFAULT_TEST(Exp, DT_DOUBLE, DT_DOUBLE, std::exp,
                       test::GpuOpsTestConfig())
 
 GENERATE_DEFAULT_TEST_2(Exp, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::exp,
+                        test::GpuOpsTestConfig())
+
+/// Test `tf.Expm1`.
+
+GENERATE_DEFAULT_TEST(Expm1, DT_FLOAT, DT_FLOAT, std::expm1,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Expm1, DT_DOUBLE, DT_DOUBLE, std::expm1,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Expm1, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::expm1,
                         test::GpuOpsTestConfig())
 
 /// Test `tf.Floor`.

@@ -43,6 +43,7 @@ MAP_HLO_TO_LHLO(AndOp);
 MAP_HLO_TO_LHLO(Atan2Op);
 MAP_HLO_TO_LHLO(BroadcastInDimOp);
 MAP_HLO_TO_LHLO(CeilOp);
+MAP_HLO_TO_LHLO(ClampOp);
 MAP_HLO_TO_LHLO(ConstOp);
 MAP_HLO_TO_LHLO(CompareOp);
 MAP_HLO_TO_LHLO(ComplexOp);
