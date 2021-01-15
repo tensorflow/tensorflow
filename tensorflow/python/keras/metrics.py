@@ -3558,12 +3558,16 @@ def get(identifier):
     A Keras metric as a `function`/ `Metric` class instance.
 
   Raises:
-    ValueError: If `identifier` cannot be interpreted.
+    ValueError: If `identifier` cannot be interpreted or uppercase versions of built-ins.
   """
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
-    return deserialize(str(identifier))
+    if str(identifier).lower() in ['accuracy', 'acc', 'crossentropy', 'ce']:
+      raise ValueError(
+          'Could not interpret metric function identifier: {}'.format(identifier))
+    else:
+      return deserialize(str(identifier))
   elif callable(identifier):
     return identifier
   else:
