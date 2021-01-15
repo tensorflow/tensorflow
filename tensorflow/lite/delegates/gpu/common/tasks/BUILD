@@ -296,6 +296,19 @@ cc_library(
 )
 
 cc_library(
+    name = "elementwise_test_util",
+    testonly = 1,
+    srcs = ["elementwise_test_util.cc"],
+    hdrs = ["elementwise_test_util.h"],
+    deps = [
+        ":elementwise",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "fully_connected",
     srcs = ["fully_connected.cc"],
     hdrs = ["fully_connected.h"],
