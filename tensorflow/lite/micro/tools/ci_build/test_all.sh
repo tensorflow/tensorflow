@@ -24,6 +24,8 @@ ROOT_DIR=${SCRIPT_DIR}/../../../../..
 cd "${ROOT_DIR}"
 pwd
 
+echo "Starting to run micro tests at `date`"
+
 make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true
 make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn clean DISABLE_DOWNLOADS=true
 if [ -d tensorflow/lite/micro/tools/make/downloads ]; then
@@ -39,10 +41,24 @@ tensorflow/lite/micro/tools/ci_build/test_code_style.sh PRESUBMIT
 # pipeline and reduces duplication associated with setting up the docker
 # environment.
 
-echo "Starting to run micro tests at `date`"
+if [[ ${1} == "GITHUB_PRESUBMIT" ]]; then
+  # We enable bazel as part of the github CI only. This is because the same
+  # checks are already part of the internal CI and there isn't a good reason to
+  # duplicate them.
+  #
+  # Another reason is that the bazel checks involve some patching of TF
+  # workspace and BUILD files and this is an experiment to see what the
+  # trade-off should be between the maintenance overhead, increased CI time from
+  # the unnecessary TF downloads.
+  #
+  # See https://github.com/tensorflow/tensorflow/issues/46465 and
+  # http://b/177672856 for more context.
+  echo "Running bazel tests at `date`"
+  tensorflow/lite/micro/tools/ci_build/test_bazel.sh
+fi
 
 echo "Running x86 tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_x86.sh PRESUBMIT
+tensorflow/lite/micro/tools/ci_build/test_x86.sh
 
 echo "Running bluepill tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_bluepill.sh
@@ -63,5 +79,6 @@ tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 
 echo "Running cortex_m_generic tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_cortex_m_generic.sh
+
 
 echo "Finished all micro tests at `date`"

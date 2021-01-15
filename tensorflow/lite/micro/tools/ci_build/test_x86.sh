@@ -52,11 +52,3 @@ readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile build TAGS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile test
 
-#if [[ ${1} == "PRESUBMIT" ]]; then
-#  # Most of TFLM external contributors only use make and we add the bazel builds
-#  # as part of the CI checks. The errors, if any, will be visible to external
-#  # contributors and can be reproduced by installing bazel on their local
-#  # machines, or using the TFLM Docker container.
-#  CC=clang bazel test tensorflow/lite/micro/... --test_tag_filters=-no_oss --build_tag_filters=-no_oss
-#  CC=clang bazel test tensorflow/lite/micro/... --test_tag_filters=-no_oss --build_tag_filters=-no_oss --copt=-DTF_LITE_STATIC_MEMORY
-#fi
