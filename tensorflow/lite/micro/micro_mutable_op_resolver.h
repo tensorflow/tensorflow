@@ -193,7 +193,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddExp() {
-    return AddBuiltin(BuiltinOperator_EXP, tflite::ops::micro::Register_EXP(),
+    return AddBuiltin(BuiltinOperator_EXP, Register_EXP(),
                       ParseExp);
   }
 
