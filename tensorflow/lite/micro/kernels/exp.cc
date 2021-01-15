@@ -25,12 +25,15 @@ namespace ops {
 namespace micro {
 namespace exp {
 
+constexpr int kInputTensor = 0;
+constexpr int kOutputTensor = 0;
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TF_LITE_ENSURE(context, input != nullptr);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TF_LITE_ENSURE(context, output != nullptr);
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
@@ -44,9 +47,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteEvalTensor* input =
-      tflite::micro::GetEvalInput(context, node, 0);
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
   TfLiteEvalTensor* output =
-      tflite::micro::GetEvalOutput(context, node, 0);
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
   int flat_size = MatchingFlatSize(tflite::micro::GetTensorShape(input),
                                    tflite::micro::GetTensorShape(output));
 
