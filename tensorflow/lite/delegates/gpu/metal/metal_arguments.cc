@@ -220,6 +220,18 @@ std::string MetalArguments::ScalarArgumentsToStructWithScalarFields(
       ReplaceAllWords(kArgsPrefix + fvalue.first, "U." + fvalue.first, code);
     }
   }
+  for (const auto& hfvalue : args->half_values_) {
+    auto& new_val = float_values_[hfvalue.first];
+    new_val.value = hfvalue.second.value;
+    new_val.active = hfvalue.second.active;
+    if (hfvalue.second.active) {
+      new_val.bytes_offset = pos * 4;
+      pos++;
+      struct_desc += "  float " + hfvalue.first + ";\n";
+      ReplaceAllWords(kArgsPrefix + hfvalue.first,
+                      "static_cast<half>(U." + hfvalue.first + ")", code);
+    }
+  }
   for (auto& ivalue : args->int_values_) {
     auto& new_val = int_values_[ivalue.first];
     new_val.value = ivalue.second.value;
@@ -275,6 +287,21 @@ std::string MetalArguments::ScalarArgumentsToStructWithVec4Fields(
       std::string new_name =
           "U.cmp_float4_" + std::to_string(pos / 4) + channels[pos % 4];
       ReplaceAllWords(kArgsPrefix + fvalue.first, new_name, code);
+      pos++;
+    }
+  }
+  for (const auto& hfvalue : args->half_values_) {
+    auto& new_val = float_values_[hfvalue.first];
+    new_val.value = hfvalue.second.value;
+    new_val.active = hfvalue.second.active;
+    if (hfvalue.second.active) {
+      new_val.bytes_offset = pos * 4;
+      if (pos % 4 == 0) {
+        struct_desc += "  float4 cmp_float4_" + std::to_string(pos / 4) + ";\n";
+      }
+      std::string new_name = "static_cast<half>(U.cmp_float4_" +
+                             std::to_string(pos / 4) + channels[pos % 4] + ")";
+      ReplaceAllWords(kArgsPrefix + hfvalue.first, new_name, code);
       pos++;
     }
   }
@@ -348,8 +375,18 @@ absl::Status MetalArguments::SetFloat(const std::string& name, float value) {
 }
 
 absl::Status MetalArguments::SetHalf(const std::string& name, half value) {
-  return absl::UnimplementedError(
-      "No support of half uniforms in Metal backend");
+  auto it = float_values_.find(name);
+  if (it == float_values_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No half argument with name - ", name));
+  }
+  it->second.value = value;
+  if (it->second.active) {
+    float* ptr =
+        reinterpret_cast<float*>(&const_data_[it->second.bytes_offset]);
+    *ptr = value;
+  }
+  return absl::OkStatus();
 }
 
 absl::Status MetalArguments::SetObjectRef(const std::string& name,
