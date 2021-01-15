@@ -354,6 +354,7 @@ TEST_P(ReshapeLayerTest, ReshapeLayerTest) {
   tflite::ops::builtin::BuiltinOpResolver resolver;
   TfLiteReshapeParams* builtin_data = reinterpret_cast<TfLiteReshapeParams*>(
       malloc(sizeof(TfLiteReshapeParams)));
+  memset(builtin_data, 0, sizeof(TfLiteReshapeParams));
   if (param.is_param_valid) {
     builtin_data->num_dimensions = 3;
     for (int dim = 0; dim < builtin_data->num_dimensions; ++dim) {
