@@ -272,6 +272,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       self.assertEmpty(functions)
 
+  def testImplementsAttributeWorksWithGradientTape(self):
+    add = lambda x, y: x + y ** 2
+    add = def_function.function(experimental_implements='MyFunc')(add)
+    x = variables.Variable(3.0)
+    y = variables.Variable(2.0)
+
+    with backprop.GradientTape() as tape:
+      g = add(x, y)
+
+    dg_dy, dg_dx = tape.gradient(g, [y, x])
+    self.assertEqual(dg_dy.numpy(), 4.0)
+    self.assertEqual(dg_dx.numpy(), 1.0)
+
   def testImplementsAttributeWorksOnVariables(self):
     with context.graph_mode(), self.cached_session():
       v = def_function.function(
