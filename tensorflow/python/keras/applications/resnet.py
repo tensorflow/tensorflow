@@ -405,12 +405,12 @@ def block3(x,
       depth_multiplier=c,
       use_bias=False,
       name=name + '_2_conv')(x)
-  x_shape = backend.int_shape(x)[1:-1]
-  x = layers.Reshape(x_shape + (groups, c, c))(x)
+  x_shape = backend.shape(x)[:-1]
+  x = backend.reshape(x, backend.concatenate([x_shape, (groups, c, c)]))
   x = layers.Lambda(
       lambda x: sum(x[:, :, :, :, i] for i in range(c)),
       name=name + '_2_reduce')(x)
-  x = layers.Reshape(x_shape + (filters,))(x)
+  x = backend.reshape(x, backend.concatenate([x_shape, (filters,)]))
   x = layers.BatchNormalization(
       axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(x)
   x = layers.Activation('relu', name=name + '_2_relu')(x)
