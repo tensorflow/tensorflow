@@ -414,6 +414,19 @@ cc_library(
 )
 
 cc_library(
+    name = "prelu_test_util",
+    testonly = 1,
+    srcs = ["prelu_test_util.cc"],
+    hdrs = ["prelu_test_util.h"],
+    deps = [
+        ":prelu",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "quantize_and_dequantize",
     srcs = ["quantize_and_dequantize.cc"],
     hdrs = ["quantize_and_dequantize.h"],
