@@ -226,6 +226,15 @@ class StackTraceWrapper : public AbstractStackTrace {
         });
   }
 
+  static bool IsInternalFrameForFilename(absl::string_view file_name) {
+    // Use a simple heuristic for now.
+    // TODO(cheshire): Build a more sophisticated mechanism, rely on @tf.export.
+    return (absl::StrContains(file_name, "tensorflow/python") ||
+            absl::StrContains(file_name, "tensorflow\\python")) &&
+           !absl::StrContains(file_name, "keras") &&
+           !absl::StrContains(file_name, "test.py");
+  }
+
   absl::optional<StackFrame> StackTraceMapping(SourceLoc loc) const {
     if (source_map_->contains(loc)) {
       return source_map_->at(loc);
