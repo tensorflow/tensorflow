@@ -398,6 +398,19 @@ def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj", [],
   }];
 }
 
+def HLOClient_CoshOp : HLOClient_UnaryElementwiseOp<"cosh", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Cosh operator";
+
+  let description = [{
+    Returns `Cosh(operand)` element-wise.
+
+    $$
+    \cosh(x) = (e^x + e^-x) / 2
+    $$
+  }];
+}
+
 def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh", [],
     HLO_FpOrComplexTensor> {
   let summary = "Sinh operation";

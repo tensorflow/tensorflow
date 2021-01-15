@@ -84,7 +84,8 @@ class GpuUnaryOpTest : public OpsTestBase {
     if (config.expect_strictly_equal) {
       test::ExpectEqual(expected_tensor, *GetOutput(0));
     } else {
-      test::ExpectClose(expected_tensor, *GetOutput(0));
+      test::ExpectClose(expected_tensor, *GetOutput(0), kAbsoluteTolerance,
+                        kRelativeTolerance);
     }
   }
 
@@ -106,6 +107,9 @@ class GpuUnaryOpTest : public OpsTestBase {
   }
 
  private:
+  constexpr static double kAbsoluteTolerance = 0.001;
+  constexpr static double kRelativeTolerance = 0.001;
+
   template <typename T, typename BaselineT, typename OutT,
             typename BaselineOutT>
   absl::InlinedVector<OutT, 10> ComputeExpectedOutput(
@@ -228,6 +232,14 @@ GENERATE_DEFAULT_TEST(Cos, DT_DOUBLE, DT_DOUBLE, std::cos,
 
 GENERATE_DEFAULT_TEST_2(Cos, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cos,
                         test::GpuOpsTestConfig())
+
+/// Test `tf.Cosh`.
+
+GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
+                      test::GpuOpsTestConfig())
 
 /// Test `tf.Exp`.
 

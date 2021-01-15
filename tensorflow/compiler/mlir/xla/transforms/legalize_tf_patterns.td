@@ -588,6 +588,7 @@ foreach Mapping = [
                    [TF_AsinOp, HLOClient_AsinOp],
                    [TF_AtanOp, HLOClient_AtanOp],
                    [TF_CeilOp, HLO_CeilOp],
+                   [TF_CoshOp, HLOClient_CoshOp],
                    [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_ConjOp, HLOClient_ConjOp],
                    [TF_CosOp, HLO_CosOp],

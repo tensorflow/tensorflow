@@ -62,7 +62,7 @@ def : Pat<(HLOClient_AcosOp NonComplexElementType:$input),
 
 // Expand asin to MHLO dialect as follows:
 //   asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
-def : Pat<(HLOClient_AsinOp $input),
+def : Pat<(HLOClient_AsinOp NonComplexElementType:$input),
   (HLO_MulOp
     (HLO_ConstantLike<"2"> $input),
     (HLO_Atan2Op
@@ -91,6 +91,36 @@ def : Pat<(HLOClient_AtanOp $input),
 //   conj(x) = (re(x), -im(x)).
 def : Pat<(HLOClient_ConjOp $v),
           (HLO_ComplexOp (HLO_RealOp $v), (HLO_NegOp (HLO_ImagOp $v)))>;
+
+// Express `cosh` as
+//   cosh(x) = (e^x + e^-x) / 2
+//           = e^(x + log(1/2)) + e^(-x + log(1/2))
+//
+// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not.
+//
+// This incorrectly overflows to inf for two f32 input values, namely
+// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+// we deem this acceptable.
+def : Pat<(HLOClient_CoshOp NonComplexElementType:$input),
+  (HLO_AddOp
+    (HLO_ExpOp
+      (HLO_AddOp
+        $input,
+        (HLO_LogOp
+          (HLO_ConstantLike<"0.5"> $input)
+        )
+      )
+    ),
+    (HLO_ExpOp
+      (HLO_AddOp
+        (HLO_NegOp $input),
+        (HLO_LogOp
+          (HLO_ConstantLike<"0.5"> $input)
+        )
+      )
+    )
+  )>;
 
 // Express `sinh` as
 //   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
@@ -136,7 +166,7 @@ def : Pat<(HLOClient_SinhOp NonComplexElementType:$input),
 
 // Express tan in MHLO dialect as
 //   tan(x) = sin(x) / cos(x).
-def : Pat<(HLOClient_TanOp $input),
+def : Pat<(HLOClient_TanOp NonComplexElementType:$input),
   (HLO_DivOp
     (HLO_SinOp $input),
     (HLO_CosOp $input)

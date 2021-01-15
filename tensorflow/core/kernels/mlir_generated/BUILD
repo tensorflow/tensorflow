@@ -53,6 +53,7 @@ filegroup(
         "gpu_op_complex.cc",
         "gpu_op_conj.cc",
         "gpu_op_cos.cc",
+        "gpu_op_cosh.cc",
         "gpu_op_exp.cc",
         "gpu_op_expm1.cc",
         "gpu_op_floor.cc",
@@ -117,6 +118,7 @@ tf_kernel_library(
         ":complex_kernels",
         ":conj_kernels",
         ":cos_kernels",
+        ":cosh_kernels",
         ":exp_kernels",
         ":expm1_kernels",
         ":floor_kernels",
@@ -339,6 +341,16 @@ gen_kernel_library(
         "f64",
     ],
     unroll_factors = "2",
+)
+
+gen_kernel_library(
+    name = "cosh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
 )
 
 gen_kernel_library(
