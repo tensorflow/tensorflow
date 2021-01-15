@@ -169,6 +169,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
+  // Filter weights will always be symmetric quantized since we only support
+  // int8 quantization.
+  TFLITE_DCHECK(filter->params.zero_point == 0);
+
+  TFLITE_DCHECK(GetTensorShape(output).DimensionsCount() == 2);
+
   return CalculateOpData(context, params->activation, input->type, input,
                          filter, bias, output, data);
 }
@@ -197,11 +203,6 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                  tflite::micro::GetTensorShape(output),
                  tflite::micro::GetTensorData<int8_t>(output));
 #elif defined(FUSION_F1)
-  FullyConnectedParams op_params = FullyConnectedParamsQuantized(data);
-  // Weights will always be symmetric quantized since we only support int
-  // quantization.
-  TFLITE_DCHECK(op_params.weights_offset == 0);
-
   const RuntimeShape& output_shape = tflite::micro::GetTensorShape(output);
   const int num_batches = output_shape.Dims(0);
   const int output_depth = output_shape.Dims(1);
@@ -210,6 +211,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
 
+  FullyConnectedParams op_params = FullyConnectedParamsQuantized(data);
   for (int b = 0; b < num_batches; ++b) {
     TF_LITE_ENSURE_EQ(
         context,
