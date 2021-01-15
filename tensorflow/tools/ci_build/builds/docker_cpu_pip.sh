@@ -23,13 +23,13 @@ pip install portpicker
 pip install *.whl
 
 # Install bazelisk
-rm -rf $HOME/bin/bazel
-mkdir $HOME/bin/bazel
-wget --no-verbose -O "$HOME/bin/bazel" \
+rm -rf ~/bin/bazel
+mkdir ~/bin/bazel
+wget --no-verbose -O "~/bin/bazel" \
     "https://github.com/bazelbuild/bazelisk/releases/download/v1.3.0/bazelisk-linux-amd64"
-chmod u+x "$HOME/bin/bazel"
-if [[ ! ":$PATH:" =~ :"$HOME"/bin/?: ]]; then
-  PATH="$HOME/bin:$PATH"
+chmod u+x "~/bin/bazel"
+if [[ ! ":$PATH:" =~ :"~"/bin/?: ]]; then
+  PATH="~/bin:$PATH"
 fi
 which bazel
 bazel version
