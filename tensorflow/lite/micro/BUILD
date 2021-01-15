@@ -388,5 +388,4 @@ bzl_library(
     name = "build_def_bzl",
     srcs = ["build_def.bzl"],
     visibility = [":micro"],
-    deps = ["//tensorflow:tensorflow_bzl"],
 )
