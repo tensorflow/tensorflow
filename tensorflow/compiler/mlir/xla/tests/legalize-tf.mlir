@@ -3761,6 +3761,29 @@ func @conv2d_backprop_filter(
   return %result : tensor<100x28x28x1xf32>
 }
 
+// CHECK-LABEL: @conv2d_backprop_filter_grouped
+func @conv2d_backprop_filter_grouped(
+    %input: tensor<1x2x2x2xf32>,
+    %out_backprop: tensor<1x1x1x2xf32>
+  ) -> tensor<2x2x1x2xf32> {
+
+  // CHECK: "mhlo.convolution"(%arg0, %arg1) {
+  // CHECK-SAME:  batch_group_count = 2 : i64,
+  // CHECK-SAME:  feature_group_count = 1 : i64,
+
+  %filter_sizes = "tf.Const" () { value = dense<[2, 2, 1, 2]> : tensor<4xi32> } : () -> tensor<4xi32>
+  %result = "tf.Conv2DBackpropFilter"(%input, %filter_sizes, %out_backprop) {
+    data_format = "NHWC",
+    dilations = [1, 1, 1, 1],
+    explicit_paddings = [],
+    padding = "VALID",
+    strides = [1, 1, 1, 1],
+    use_cudnn_on_gpu = true
+  } : (tensor<1x2x2x2xf32>, tensor<4xi32>, tensor<1x1x1x2xf32>) -> tensor<2x2x1x2xf32>
+  return %result : tensor<2x2x1x2xf32>
+}
+
+
 // CHECK-LABEL: @conv3d_backprop_filter
 func @conv3d_backprop_filter(%input: tensor<2x8x8x8x1xf32>, %out_backprop: tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32> {
   // CHECK: %[[RESULT:.*]] = "mhlo.convolution"(%arg0, %arg1)
