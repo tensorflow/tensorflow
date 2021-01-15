@@ -28,7 +28,4 @@ REGISTER_ALIASED_KERNEL(RealDiv, Div, f16, Eigen::half)
 REGISTER_ALIASED_KERNEL(RealDiv, Div, f32, float)
 REGISTER_ALIASED_KERNEL(RealDiv, Div, f64, double)
 
-REGISTER_ALIASED_KERNEL(TruncatedDiv, Div, i16, int16)
-REGISTER_ALIASED_KERNEL(TruncatedDiv, Div, i64, int64)
-
 }  // namespace tensorflow
