@@ -76,6 +76,13 @@ class BufferedInputStream : public InputStreamInterface {
   // no special treatment.
   string ReadLineAsString();
 
+  // Skip one text line of data.
+  //
+  // If successful, returns OK.  If we are already at the end of the
+  // file, we return an OUT_OF_RANGE error.  Otherwise, we return
+  // some other non-OK status.
+  tensorflow::Status SkipLine();
+
   // Reads the entire contents of the file into *result.
   //
   // Note: the amount of memory used by this function call is unbounded, so only

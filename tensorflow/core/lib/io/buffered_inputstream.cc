@@ -220,5 +220,28 @@ string BufferedInputStream::ReadLineAsString() {
   return result;
 }
 
+Status BufferedInputStream::SkipLine() {
+  Status s;
+  bool skipped = false;
+  while (true) {
+    if (pos_ == limit_) {
+      // Get more data into buffer
+      s = FillBuffer();
+      if (limit_ == 0) {
+        break;
+      }
+    }
+    char c = buf_[pos_++];
+    skipped = true;
+    if (c == '\n') {
+      return Status::OK();
+    }
+  }
+  if (errors::IsOutOfRange(s) && skipped) {
+    return Status::OK();
+  }
+  return s;
+}
+
 }  // namespace io
 }  // namespace tensorflow

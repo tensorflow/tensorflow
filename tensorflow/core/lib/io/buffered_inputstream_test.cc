@@ -189,6 +189,76 @@ TEST(BufferedInputStream, ReadLine_CRLF) {
   }
 }
 
+TEST(BufferedInputStream, SkipLine1) {
+  Env* env = Env::Default();
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
+  TF_ASSERT_OK(
+      WriteStringToFile(env, fname, "line one\nline two\nline three\n"));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  for (auto buf_size : BufferSizes()) {
+    std::unique_ptr<RandomAccessInputStream> input_stream(
+        new RandomAccessInputStream(file.get()));
+    BufferedInputStream in(input_stream.get(), buf_size);
+    string line;
+    TF_ASSERT_OK(in.SkipLine());
+    TF_ASSERT_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "line two");
+    TF_ASSERT_OK(in.SkipLine());
+    EXPECT_TRUE(errors::IsOutOfRange(in.SkipLine()));
+    // A second call should also return end of file
+    EXPECT_TRUE(errors::IsOutOfRange(in.SkipLine()));
+  }
+}
+
+TEST(BufferedInputStream, SkipLine_NoTrailingNewLine) {
+  Env* env = Env::Default();
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three"));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  for (auto buf_size : BufferSizes()) {
+    std::unique_ptr<RandomAccessInputStream> input_stream(
+        new RandomAccessInputStream(file.get()));
+    BufferedInputStream in(input_stream.get(), buf_size);
+    string line;
+        TF_ASSERT_OK(in.SkipLine());
+    TF_ASSERT_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "line two");
+    TF_ASSERT_OK(in.SkipLine());
+    EXPECT_TRUE(errors::IsOutOfRange(in.SkipLine()));
+    // A second call should also return end of file
+    EXPECT_TRUE(errors::IsOutOfRange(in.SkipLine()));
+  }
+}
+
+TEST(BufferedInputStream, SkipLine_EmptyLines) {
+  Env* env = Env::Default();
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
+  TF_ASSERT_OK(
+      WriteStringToFile(env, fname, "line one\n\n\nline two"));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  for (auto buf_size : BufferSizes()) {
+    std::unique_ptr<RandomAccessInputStream> input_stream(
+        new RandomAccessInputStream(file.get()));
+    BufferedInputStream in(input_stream.get(), buf_size);
+    string line;
+    TF_ASSERT_OK(in.SkipLine());
+    TF_ASSERT_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "");
+    TF_ASSERT_OK(in.SkipLine());
+    TF_ASSERT_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "line two");
+  }
+}
+
 TEST(BufferedInputStream, ReadNBytes) {
   Env* env = Env::Default();
   string fname;
