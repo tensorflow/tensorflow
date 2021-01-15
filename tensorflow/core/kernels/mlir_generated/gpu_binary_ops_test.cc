@@ -560,6 +560,27 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Double, double, double, test::DefaultInput<double>(),
     test::DefaultInputNonZero<double>(), baseline_floor_div);
 
+/// Test `tf.RealDiv`.
+
+template <typename T>
+T baseline_real_div(T lhs, T rhs) {
+  return lhs / rhs;
+}
+
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Half, Eigen::half, Eigen::half,
+    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
+    baseline_real_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Float, float, float, test::DefaultInput<float>(),
+    test::DefaultInputNonZero<float>(), baseline_real_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Double, double, double, test::DefaultInput<double>(),
+    test::DefaultInputNonZero<double>(), baseline_real_div);
+
 /// Test `tf.Greater`.
 
 template <typename T>
