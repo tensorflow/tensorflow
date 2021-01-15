@@ -3368,7 +3368,7 @@ class SavedModelSignatureDefImporterLite {
   const GraphDebugInfo& debug_info() const { return debug_info_; }
 
  private:
-  const MetaGraphDef& meta_graph_def_;
+  MetaGraphDef meta_graph_def_;
   const GraphDebugInfo& debug_info_;
   std::unique_ptr<Graph> graph_;
   absl::Span<std::string> exported_names_;
@@ -3379,10 +3379,11 @@ class SavedModelSignatureDefImporterLite {
 
 Status SavedModelSignatureDefImporterLite::InitializeGraph(
     MLIRImportOptions import_options) {
-  // TODO(jpienaar): Remove need to const_cast.
-  if (import_options.enable_grappler)
-    TF_RETURN_IF_ERROR(
-        RunGrappler(const_cast<MetaGraphDef*>(&meta_graph_def_)));
+  if (import_options.enable_grappler) {
+    // Grappler is best-effort.
+    auto status = RunGrappler(&meta_graph_def_);
+    if (!status.ok()) LOG(WARNING) << status;
+  }
 
   GraphDef graph_def = meta_graph_def_.graph_def();
   if (import_options.upgrade_legacy) {

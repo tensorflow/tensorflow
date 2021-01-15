@@ -130,6 +130,10 @@ Status RunGrappler(MetaGraphDef* meta_graph_def) {
   std::unique_ptr<grappler::GrapplerItem> item =
       grappler::GrapplerItemFromMetaGraphDef("graph", *meta_graph_def,
                                              grappler::ItemConfig());
+  if (!item) {
+    return tensorflow::errors::Internal(
+        "Failed to create grappler item from MetaGraphDef.");
+  }
 
   grappler::VirtualCluster cluster(&dev_set);
   return grappler::RunMetaOptimizer(std::move(*item), config_proto, cpu_device,
