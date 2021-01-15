@@ -87,7 +87,7 @@ class CuptiTracer {
   bool IsAvailable() const;
   bool NeedRootAccess() const { return need_root_access_; }
 
-  void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
+  bool Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
   void Disable();
 
   Status HandleCallback(CUpti_CallbackDomain domain, CUpti_CallbackId cbid,

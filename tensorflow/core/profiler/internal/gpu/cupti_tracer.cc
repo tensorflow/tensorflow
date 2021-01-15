@@ -1597,7 +1597,7 @@ int CuptiTracer::NumGpus() {
   return num_gpus;
 }
 
-void CuptiTracer::Enable(const CuptiTracerOptions &option,
+bool CuptiTracer::Enable(const CuptiTracerOptions &option,
                          CuptiTraceCollector *collector) {
   option_ = option;
   collector_ = collector;
@@ -1612,11 +1612,12 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
 
   Status status = EnableApiTracing();
   need_root_access_ |= status.code() == error::PERMISSION_DENIED;
-  if (!status.ok()) return;
+  if (!status.ok()) return false;
 
   if (option_->enable_activity_api) {
     EnableActivityTracing().IgnoreError();
   }
+  return true;
 }
 
 void CuptiTracer::Disable() {

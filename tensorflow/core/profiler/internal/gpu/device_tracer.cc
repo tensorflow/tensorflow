@@ -158,7 +158,11 @@ Status GpuTracer::DoStart() {
                                           start_gputime_ns);
 
   AnnotationStack::Enable(true);
-  cupti_tracer_->Enable(options_, cupti_collector_.get());
+  bool ret = cupti_tracer_->Enable(options_, cupti_collector_.get());
+  if (!ret) {
+    return errors::Unavailable("CUPTI cannot be enabled. Another profile "
+                               "session might be running.");
+  }
   return Status::OK();
 }
 
