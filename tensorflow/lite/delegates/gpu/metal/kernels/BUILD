@@ -540,6 +540,7 @@ objc_library(
     deps = [
         ":relu",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
     ],
 )
 
@@ -903,6 +904,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/kernels/internal:quantization_util",
