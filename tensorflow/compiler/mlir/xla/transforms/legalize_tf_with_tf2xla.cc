@@ -194,6 +194,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::PadOp>(),
     TypeID::get<TF::ParameterizedTruncatedNormalOp>(),
     TypeID::get<TF::PlaceholderWithDefaultOp>(),
+    TypeID::get<TF::PolygammaOp>(),
+    TypeID::get<TF::PopulationCountOp>(),
     TypeID::get<TF::PowOp>(),
     // TODO(hinsu): Canonicalize QuantizeAndDequantize and
     // QuantizeAndDequantizeV2 to QuantizeAndDequantizeV3 by converting
@@ -271,7 +273,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
     TypeID::get<TF::XlaSortOp>(),
-    TypeID::get<TF::XlaSvdOp>()
+    TypeID::get<TF::XlaSvdOp>(),
+    TypeID::get<TF::ZetaOp>()
   };
   // clang-format on
 

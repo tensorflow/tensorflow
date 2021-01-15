@@ -66,6 +66,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               // the version one was rollbacked and the builtin op code number
               // has been changed because of builtin op code shortage problem.
               {{BuiltinOperator_BROADCAST_TO, 2}, kPendingReleaseVersion},
+              {{BuiltinOperator_BROADCAST_TO, 3}, kPendingReleaseVersion},
               {{BuiltinOperator_CONV_2D, 1}, "1.5.0"},
               {{BuiltinOperator_CONV_2D, 2}, "1.14.0"},
               {{BuiltinOperator_CONV_2D, 3}, "1.14.0"},
@@ -339,6 +340,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_CUMSUM, 1}, "2.4.0"},
               {{BuiltinOperator_CALL_ONCE, 1}, kPendingReleaseVersion},
               {{BuiltinOperator_RFFT2D, 1}, kPendingReleaseVersion},
+              {{BuiltinOperator_CONV_3D, 1}, kPendingReleaseVersion},
           });
 
   std::pair<BuiltinOperator, int> version_key = {op_code, op_version};

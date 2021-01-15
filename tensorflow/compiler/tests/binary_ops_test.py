@@ -514,8 +514,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=expected,
             equality_test=NextAfterEqualityTest)
 
-  @test_util.disable_mlir_bridge(
-      "Complex types not supported in CreateDenseElementsAttrFromLiteral")
   def testComplexOps(self):
     for dtype in self.complex_types:
       ctypes = {np.complex64: np.float32, np.complex128: np.float64}

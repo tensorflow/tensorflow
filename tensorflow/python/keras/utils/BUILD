@@ -74,7 +74,6 @@ py_library(
         ":data_utils",
         ":io_utils",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/ops/losses:loss_reduction",
     ],
 )
 

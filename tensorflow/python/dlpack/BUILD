@@ -19,6 +19,9 @@ cuda_py_test(
     name = "dlpack_test",
     srcs = ["dlpack_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_tfrt",  # TODO(b/177356372)
+    ],
     deps = [
         ":dlpack",
         "//tensorflow/python/eager:test",

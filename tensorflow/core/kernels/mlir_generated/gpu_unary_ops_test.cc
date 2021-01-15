@@ -175,6 +175,25 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
     test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.Asin`.
+
+// Test only values in the function domain. The othweise returned nan value
+// fails comparison for equality.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Asin, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
+    std::asin, test::GpuOpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Asin, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
+    std::asin, test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
+/// Test `tf.Atan`.
+
+GENERATE_DEFAULT_TEST(Atan, DT_FLOAT, DT_FLOAT, std::atan,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Atan, DT_DOUBLE, DT_DOUBLE, std::atan,
+                      test::GpuOpsTestConfig())
+
 /// Test `tf.Ceil`.
 
 GENERATE_DEFAULT_TEST(Ceil, DT_FLOAT, DT_FLOAT, std::ceil,
@@ -247,34 +266,20 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
 
 /// Test `tf.IsInf`.
 
-// TODO(b/162575339): The tests currently still fails with CUDA_ILLEGAL_ADDRESS
-// when Test with unranked kernels.
-TEST_F(GpuUnaryOpTest, DISABLED_IsInfFloat) {
-  Test<float, float, bool, bool>(
-      /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<float>(),
-      /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual());
-}
+GENERATE_DEFAULT_TEST_2(
+    IsInf, DT_FLOAT, DT_FLOAT, DT_BOOL, DT_BOOL, std::isinf,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 
-TEST_F(GpuUnaryOpTest, DISABLED_IsInfDouble) {
-  // Workaround for gcc bug, it would fail with "unresolved overloaded function
-  // type" if passing std::isinf with type double. So we use type float for
-  // comparing expected values.
-  Test<double, float, bool, bool>(
-      /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<double>(),
-      /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual());
-}
+// Workaround for gcc bug, it would fail with "unresolved overloaded function
+// type" if passing std::isinf with type double. So we use type float for
+// comparing expected values.
+GENERATE_DEFAULT_TEST_2(
+    IsInf, DT_DOUBLE, DT_FLOAT, DT_BOOL, DT_BOOL, std::isinf,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 
-TEST_F(GpuUnaryOpTest, DISABLED_IsInfHalf) {
-  Test<Eigen::half, float, bool, bool>(
-      /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<Eigen::half>(),
-      /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual());
-}
+GENERATE_DEFAULT_TEST_2(
+    IsInf, DT_HALF, DT_FLOAT, DT_BOOL, DT_BOOL, std::isinf,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 
 /// Test `tf.Log`.
 
@@ -289,6 +294,21 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     Log, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
     test::DefaultInputGreaterThanZero<Eigen::half>(), std::log,
+    test::GpuOpsTestConfig())
+
+/// Test `tf.Log1p`.
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Log1p, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterThanZero<float>(),
+    std::log1p, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Log1p, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterThanZero<double>(),
+    std::log1p, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Log1p, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputGreaterThanZero<Eigen::half>(), std::log1p,
     test::GpuOpsTestConfig())
 
 /// Test `tf.LogicalNot`

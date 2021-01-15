@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
+#include "tensorflow/compiler/xla/python/pmap_lib.h"
 #include "tensorflow/compiler/xla/python/profiler.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -243,6 +244,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
+      .def("live_buffers", &PyClient::LiveBuffers)
       .def("host_id", &PyClient::host_id)
       .def("get_default_device_assignment",
            &PyClient::GetDefaultDeviceAssignment)
@@ -414,6 +416,7 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildOutfeedReceiverSubmodule(&m);
   BuildPytreeSubmodule(m);
   BuildJaxjitSubmodule(m);
+  jax::BuildPmapSubmodule(m);
   BuildTracebackSubmodule(m);
 
   py::class_<DistributedRuntimeService,

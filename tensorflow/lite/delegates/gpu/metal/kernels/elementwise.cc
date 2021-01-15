@@ -88,9 +88,9 @@ ComputeTaskDescriptor ElementwiseWithTwoInputs(const OperationDef& definition,
                                                OperationType op_type) {
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
-  const std::string x_coord = second_shape.w == 1 ? "0" : "gid.x";
-  const std::string y_coord = second_shape.h == 1 ? "0" : "gid.y";
-  const std::string s_coord = second_shape.c == 1 ? "0" : "gid.z";
+  const std::string x_coord = second_shape.w == 1 ? "0" : "X_COORD";
+  const std::string y_coord = second_shape.h == 1 ? "0" : "Y_COORD";
+  const std::string s_coord = second_shape.c == 1 ? "0" : "S_COORD";
   std::string code;
   code = "  FLT4 src_1 = args.second_tensor.Read(" + x_coord + ", " + y_coord +
          ", " + s_coord + ");\n";
@@ -99,7 +99,9 @@ ComputeTaskDescriptor ElementwiseWithTwoInputs(const OperationDef& definition,
     code += "  src_1.z = src_1.x;\n";
     code += "  src_1.w = src_1.x;\n";
   }
-  code += "  value = " + TwoInputFunctor(op_type, "value", "src_1") + ";\n";
+  code +=
+      "  in_out_value = " + TwoInputFunctor(op_type, "in_out_value", "src_1") +
+      ";\n";
 
   desc.shader_source = code;
 
@@ -112,7 +114,7 @@ ComputeTaskDescriptor ElementwiseWithOneInput(const OperationDef& definition,
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   desc.shader_source =
-      "    value = " + OneInputFunctor(op_type, "value") + ";\n";
+      "    in_out_value = " + OneInputFunctor(op_type, "in_out_value") + ";\n";
   return desc;
 }
 
@@ -138,7 +140,7 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
     linear_desc.size = linear_desc.data.size();
     desc.args.AddObject(
         "linear", absl::make_unique<BufferDescriptor>(std::move(linear_desc)));
-    desc.shader_source += "  FLT4 second_arg = args.linear.Read(gid.z);\n";
+    desc.shader_source += "  FLT4 second_arg = args.linear.Read(S_COORD);\n";
   } else if (hwc_buf) {
     TensorDescriptor hwc_desc{definition.GetDataType(),
                               TensorStorageType::BUFFER, Layout::HWC};
@@ -146,9 +148,9 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
     desc.args.AddObject(
         "hwc", absl::make_unique<TensorDescriptor>(std::move(hwc_desc)));
 
-    const std::string x_coord = hwc_buf->shape.w == 1 ? "0" : "gid.x";
-    const std::string y_coord = hwc_buf->shape.h == 1 ? "0" : "gid.y";
-    const std::string s_coord = hwc_buf->shape.c == 1 ? "0" : "gid.z";
+    const std::string x_coord = hwc_buf->shape.w == 1 ? "0" : "X_COORD";
+    const std::string y_coord = hwc_buf->shape.h == 1 ? "0" : "Y_COORD";
+    const std::string s_coord = hwc_buf->shape.c == 1 ? "0" : "S_COORD";
     desc.shader_source += "  FLT4 second_arg = args.hwc.Read(" + x_coord +
                           ", " + y_coord + ", " + s_coord + ");\n";
     if (hwc_buf->shape.c == 1) {
@@ -157,8 +159,9 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
       desc.shader_source += "  second_arg.w = second_arg.x;\n";
     }
   }
-  desc.shader_source +=
-      "  value = " + TwoInputFunctor(op_type, "value", "second_arg") + ";\n";
+  desc.shader_source += "  in_out_value = " +
+                        TwoInputFunctor(op_type, "in_out_value", "second_arg") +
+                        ";\n";
   return desc;
 }
 

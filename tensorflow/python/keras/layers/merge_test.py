@@ -22,12 +22,14 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import test
 
 
@@ -242,8 +244,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     out = keras.layers.Add()([input1, input2])
     model = keras.models.Model(inputs=[input1, input2], outputs=out)
     out_ragged = model.predict([ragged_data, ragged_data], steps=1)
-    out_ragged = ragged_tensor.convert_to_tensor_or_ragged_tensor(
-        out_ragged).to_tensor()
+    out_ragged = convert_ragged_tensor_value(out_ragged).to_tensor()
 
     input1 = keras.Input(shape=(None,))
     input2 = keras.Input(shape=(None,))
@@ -402,6 +403,16 @@ class MergeLayersTestNoExecution(test.TestCase):
     self.assertLen(concat2.inbound_nodes[0].input_tensors, 3)
 
     keras.Model(a, c)  # Ensure model can be built.
+
+
+def convert_ragged_tensor_value(inputs):
+  if isinstance(inputs, ragged_tensor_value.RaggedTensorValue):
+    flat_values = ops.convert_to_tensor_v2_with_dispatch(
+        value=inputs.flat_values,
+        name='flat_values')
+    return ragged_tensor.RaggedTensor.from_nested_row_splits(
+        flat_values, inputs.nested_row_splits, validate=False)
+  return inputs
 
 
 if __name__ == '__main__':

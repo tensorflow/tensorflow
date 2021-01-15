@@ -42,7 +42,7 @@ class ConvolutionThunk : public Thunk {
   // Constructs a thunk for launching a DNN convolution.
   //
   // operand_slices should be in the same order as cudnn_call->operands().
-  ConvolutionThunk(ThunkInfo thunk_info, GpuConvConfig&& config,
+  ConvolutionThunk(ThunkInfo thunk_info, GpuConvConfig config,
                    std::vector<BufferAllocation::Slice> operand_slices,
                    BufferAllocation::Slice result_slice,
                    BufferAllocation::Slice scratch_slice);

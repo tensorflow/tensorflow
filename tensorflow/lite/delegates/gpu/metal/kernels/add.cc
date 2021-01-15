@@ -39,8 +39,8 @@ ComputeTaskDescriptor Add(const OperationDef& definition) {
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
     const std::string tensor_name = "src_tensor_" + std::to_string(i);
     desc.AddSrcTensor(tensor_name, definition.src_tensors[i]);
-    desc.shader_source +=
-        "  value += args." + tensor_name + ".Read(gid.x, gid.y, gid.z);\n";
+    desc.shader_source += "  in_out_value += args." + tensor_name +
+                          ".Read(X_COORD, Y_COORD, S_COORD);\n";
   }
 
   return desc;

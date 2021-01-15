@@ -43,6 +43,20 @@ struct PaddingValues {
   int16_t height_offset;
 };
 
+struct Padding3DValues {
+  int16_t width;
+  int16_t height;
+  int16_t depth;
+  // offset is used for calculating "remaining" padding, for example, `width`
+  // is 1 and `width_offset` is 1, so padding_left is 1 while padding_right is
+  // 1 + 1 = 2.
+  int16_t width_offset;
+  // Same as width_offset except it's over the height dimension.
+  int16_t height_offset;
+  // Same as width_offset except it's over the depth dimension.
+  int16_t depth_offset;
+};
+
 // This enumeration allows for non-default formats for the weights array
 // of a fully-connected operator, allowing the use of special optimized
 // runtime paths.
@@ -849,6 +863,19 @@ struct ConvParams {
   // uint8_t, etc, activation params.
   int32_t quantized_activation_min;
   int32_t quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
+};
+
+struct Conv3DParams {
+  Padding3DValues padding_values;
+  int stride_width;
+  int stride_height;
+  int stride_depth;
+  int dilation_width;
+  int dilation_height;
+  int dilation_depth;
   // float activation params.
   float float_activation_min;
   float float_activation_max;

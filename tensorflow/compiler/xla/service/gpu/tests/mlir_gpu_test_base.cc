@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 
 namespace xla {
 namespace gpu {
@@ -39,7 +40,8 @@ StatusOr<ExecutionOutput> MlirGpuTestBase::RunMlirModule(
     absl::Span<const se::DeviceMemoryBase> arguments) {
   llvm::LLVMContext llvm_context;
   auto llvm_module = absl::make_unique<llvm::Module>("", llvm_context);
-  llvm_module->setTargetTriple("nvptx");
+  llvm_module->setTargetTriple(nvptx::kTargetTriple);
+  llvm_module->setDataLayout(nvptx::kDataLayout);
 
   se::StreamExecutor* stream_exec = stream->parent();
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);

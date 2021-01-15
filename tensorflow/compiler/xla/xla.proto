@@ -374,6 +374,10 @@ message ExecutionOptions {
   // If set, deduplicate hlo into function calls to reduce binary size. Only
   // works on TPU.
   bool deduplicate_hlo = 12;
+
+  // If set, broadcast replicated parameters to all replicas, using collectives.
+  // Only applicable to TPU.
+  bool broadcast_replicated_parameters_via_collectives = 13;
 }
 
 message GetDeviceHandlesRequest {

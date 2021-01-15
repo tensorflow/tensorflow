@@ -1,11 +1,8 @@
-// RUN: tf-opt -xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT %s | FileCheck %s
-
-// INVALID_DEVICE: xla-opt -xla-legalize-tf-with-tf2xla=device-type=INVALID_DEVICE %s | FileCheck %s
+// RUN: tf-opt -xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT %s -verify-diagnostics | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
 // CHECK-LABEL: abs
-// expected-error@+1 {{unsupported device}}
 func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: %[[RESULT:.*]] = "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   %0 = "tf.Abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
@@ -17,7 +14,6 @@ func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: unknown_op
 func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: tf.CustomTestOp
-  // expected-remark@+1 {{constant 20}}
   %0 = "tf.CustomTestOp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>

@@ -33,7 +33,7 @@ CollectivePermuteConfig GetCollectivePermuteConfig(const HloInstruction* instr);
 // Thunk that implements the collective-permute HLO.
 class CollectivePermuteThunk : public Thunk {
  public:
-  CollectivePermuteThunk(ThunkInfo thunk_info, CollectivePermuteConfig&& config,
+  CollectivePermuteThunk(ThunkInfo thunk_info, CollectivePermuteConfig config,
                          const BufferAllocation::Slice& src,
                          const BufferAllocation::Slice& dest);
 

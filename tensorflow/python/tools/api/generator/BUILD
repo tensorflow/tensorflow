@@ -24,6 +24,7 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/tools/api/generator:doc_srcs",
+        "//tensorflow/python/util:fast_module_type",
     ],
 )
 

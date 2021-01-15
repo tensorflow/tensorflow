@@ -1070,6 +1070,24 @@ struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
   static constexpr bool has_errors = true;
 };
 
+// Version of safe_pow for integers which returns 0 if RHS is negative instead
+// of raising an error. For use on GPUs, where we cannot raise an error.
+template <typename T>
+struct safe_pow_ignore_error_op {
+  static_assert(std::is_integral<T>::value, "Integer type expected");
+  EIGEN_EMPTY_STRUCT_CTOR(safe_pow_ignore_error_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
+                                                     const T& y) const {
+    if (y < 0) {
+      return T{0};
+    }
+    return Eigen::internal::scalar_pow_op<T, T>{}(x, y);
+  }
+};
+
+template <typename T>
+struct safe_pow_ignore_error : base<T, safe_pow_ignore_error_op<T>> {};
+
 template <typename T>
 struct maximum
     : base<T, Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNaN>> {};

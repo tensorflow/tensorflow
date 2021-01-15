@@ -254,6 +254,7 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "no_tfrt",  # TFRT doesn't support custom device yet.
     ],
     deps = [
         ":context",
@@ -916,6 +917,7 @@ tf_xla_py_test(
     tags = [
         "no_mac",
         "no_pip",
+        "no_tfrt",  # TODO(b/177333820)
         "no_windows",
     ],
     use_xla_device = False,
@@ -1022,7 +1024,6 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
-        "notap",  # b/175813762
         "optonly",  # times out
     ],
     deps = [

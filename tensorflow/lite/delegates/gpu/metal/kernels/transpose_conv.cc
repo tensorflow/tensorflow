@@ -46,19 +46,14 @@ std::string GetDeconvolution(const ConvolutionTransposedAttributes& attr) {
     constant short2 kernel_offset = {$8, $9};
   )";
   std::string shader_source = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
     constant int src_depth = $1;
     constant int dst_depth = $2;
     constant int dst_channels = $3;
     constant int dst_channels_aligned = $4;
 
     $5
-
-    $$0
     kernel void ComputeFunction(
-                                $$1
+                                $$0
                                 uint2 ugid[[thread_position_in_grid]]) {
       if (static_cast<int>(ugid.x) >= args.dst_tensor.Width() ||
           static_cast<int>(ugid.y) >= args.dst_tensor.Height()) {
@@ -103,8 +98,6 @@ std::string GetDeconvolution(const ConvolutionTransposedAttributes& attr) {
 
       for (short l = 0; l < dst_depth; ++l) {
         FLT4 value = FLT4(out[l * 4], out[l * 4 + 1], out[l * 4 + 2], out[l * 4 + 3]) + args.biases.Read(l);
-        uint3 gid = uint3(ugid.x, ugid.y, uint(l));
-        $$2
         args.dst_tensor.Write(value, ugid.x, ugid.y, l);
       }
     }
@@ -135,9 +128,6 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
     constant short2 kernel_offset = {$8, $9};
   )";
   std::string shader_source = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
     constant int src_depth = $1;
     constant int dst_depth = $2;
     constant int dst_channels = $3;
@@ -147,9 +137,8 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
 
     constant short2 src_local_size = {$6, $7};
 
-    $$0
     kernel void ComputeFunction(
-                                $$1
+                                $$0
                                 uint2 tid[[thread_position_in_threadgroup]],
                                 uint2 ugid[[thread_position_in_grid]]) {
       float out[$4];
@@ -225,8 +214,6 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
 
       for (short l = 0; l < dst_depth; ++l) {
         FLT4 value = FLT4(out[l * 4], out[l * 4 + 1], out[l * 4 + 2], out[l * 4 + 3]) + args.biases.Read(l);
-        uint3 gid = uint3(ugid.x, ugid.y, uint(l));
-        $$2
         args.dst_tensor.Write(value, ugid.x, ugid.y, l);
       }
     }
@@ -263,11 +250,7 @@ std::string GetDeconvolution4x4(const int2& block_size,
                                   ? "SIMDGROUP_BARRIER"
                                   : "threadgroup_barrier";
   std::string c = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 group_id[[threadgroup_position_in_grid]],
                             uint3 tid3d[[thread_position_in_threadgroup]],
                             uint3 ugid[[thread_position_in_grid]]) {
@@ -400,8 +383,6 @@ kernel void ComputeFunction(
           c += "  if (" + x_check + " && " + y_check + ") {\n";
           c += "    FLT4 value = FLT4(" + R + ") + bias_val;\n";
           std::string dst_coords = dst_x + ", " + dst_y + ", Z";
-          c += "    uint3 gid = uint3(" + dst_coords + ");\n";
-          c += "    $2\n";
           c += "    args.dst_tensor.Write(value, " + dst_coords + ");\n";
           c += "  }\n";
         }

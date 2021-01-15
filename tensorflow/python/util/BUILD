@@ -575,12 +575,35 @@ tf_py_test(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "fast_module_type",
+    srcs = ["fast_module_type.cc"],
+    module_name = "fast_module_type",
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "fast_module_type_test",
+    srcs = ["fast_module_type_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":fast_module_type",
+        "//tensorflow/python:platform",
+    ],
+)
+
 tf_py_test(
     name = "module_wrapper_test",
     size = "small",
     srcs = ["module_wrapper_test.py"],
     python_version = "PY3",
     deps = [
+        ":fast_module_type",
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/tools/compatibility:all_renames_v2",

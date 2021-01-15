@@ -81,12 +81,12 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // Compute index I of the ARG buffer and check whether it is in padding area.
 // CHECK:  [[START_I:%.*]] = muli [[II]], [[C2]] : index
 // CHECK:  [[ARG_I:%.*]] = addi [[START_I]], [[WIN_I]] : index
-// CHECK:  [[ARG_I_FITS:%.*]] = cmpi "ult", [[ARG_I]], [[C112]] : index
+// CHECK:  [[ARG_I_FITS:%.*]] = cmpi ult, [[ARG_I]], [[C112]] : index
 
 // Compute index J of the ARG buffer and check whether it is in padding area.
 // CHECK:  [[START_J:%.*]] = muli [[JJ]], [[C2]] : index
 // CHECK:  [[ARG_J:%.*]] = addi [[START_J]], [[WIN_J]] : index
-// CHECK:  [[ARG_J_FITS:%.*]] = cmpi "ult", [[ARG_J]], [[C112]] : index
+// CHECK:  [[ARG_J_FITS:%.*]] = cmpi ult, [[ARG_J]], [[C112]] : index
 
 // Update `INBOUNDS`, i.e. whether or not ARG indices are inside the boundaries
 // of the buffer or they are in the padding area.

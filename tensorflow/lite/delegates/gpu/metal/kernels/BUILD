@@ -64,6 +64,7 @@ objc_library(
     deps = [
         ":add",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
     ],
 )
 
@@ -812,8 +813,11 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/delegates/gpu/metal:metal_device",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "@FP16",
         "@com_google_absl//absl/memory",
@@ -896,6 +900,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/kernels/internal:quantization_util",

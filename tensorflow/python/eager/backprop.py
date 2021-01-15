@@ -1012,7 +1012,7 @@ class GradientTape(object):
        called with an unknown value.
     """
     if self._tape is None:
-      raise RuntimeError("A non-persistent GradientTape can only be used to"
+      raise RuntimeError("A non-persistent GradientTape can only be used to "
                          "compute one set of gradients (or jacobians)")
     if self._recording:
       if not self._persistent:
@@ -1154,7 +1154,7 @@ class GradientTape(object):
       ValueError: If vectorization of jacobian computation fails.
     """
     if self._tape is None:
-      raise RuntimeError("A non-persistent GradientTape can only be used to"
+      raise RuntimeError("A non-persistent GradientTape can only be used to "
                          "compute one set of gradients (or jacobians)")
 
     flat_sources = nest.flatten(sources)

@@ -67,6 +67,7 @@ cc_library(
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
+        "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",

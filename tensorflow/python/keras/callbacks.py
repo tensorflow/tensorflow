@@ -1697,7 +1697,10 @@ class EarlyStopping(Callback):
     restore_best_weights: Whether to restore model weights from
         the epoch with the best value of the monitored quantity.
         If False, the model weights obtained at the last step of
-        training are used.
+        training are used. An epoch will be restored regardless
+        of the performance relative to the `baseline`. If no epoch
+        improves on `baseline`, training will run for `patience`
+        epochs and restore weights from the best epoch in that set.
 
   Example:
 
@@ -1757,30 +1760,33 @@ class EarlyStopping(Callback):
     # Allow instances to be re-used
     self.wait = 0
     self.stopped_epoch = 0
-    if self.baseline is not None:
-      self.best = self.baseline
-    else:
-      self.best = np.Inf if self.monitor_op == np.less else -np.Inf
+    self.best = np.Inf if self.monitor_op == np.less else -np.Inf
     self.best_weights = None
 
   def on_epoch_end(self, epoch, logs=None):
     current = self.get_monitor_value(logs)
     if current is None:
       return
-    if self.monitor_op(current - self.min_delta, self.best):
+    if self.restore_best_weights and self.best_weights is None:
+      # Restore the weights after first epoch if no progress is ever made.
+      self.best_weights = self.model.get_weights()
+
+    self.wait += 1
+    if self._is_improvement(current, self.best):
       self.best = current
-      self.wait = 0
       if self.restore_best_weights:
         self.best_weights = self.model.get_weights()
-    else:
-      self.wait += 1
-      if self.wait >= self.patience:
-        self.stopped_epoch = epoch
-        self.model.stop_training = True
-        if self.restore_best_weights:
-          if self.verbose > 0:
-            print('Restoring model weights from the end of the best epoch.')
-          self.model.set_weights(self.best_weights)
+      # Only restart wait if we beat both the baseline and our previous best.
+      if self.baseline is None or self._is_improvement(current, self.baseline):
+        self.wait = 0
+
+    if self.wait >= self.patience:
+      self.stopped_epoch = epoch
+      self.model.stop_training = True
+      if self.restore_best_weights and self.best_weights is not None:
+        if self.verbose > 0:
+          print('Restoring model weights from the end of the best epoch.')
+        self.model.set_weights(self.best_weights)
 
   def on_train_end(self, logs=None):
     if self.stopped_epoch > 0 and self.verbose > 0:
@@ -1794,6 +1800,9 @@ class EarlyStopping(Callback):
                       'which is not available. Available metrics are: %s',
                       self.monitor, ','.join(list(logs.keys())))
     return monitor_value
+
+  def _is_improvement(self, monitor_value, reference_value):
+    return self.monitor_op(monitor_value - self.min_delta, reference_value)
 
 
 @keras_export('keras.callbacks.RemoteMonitor')

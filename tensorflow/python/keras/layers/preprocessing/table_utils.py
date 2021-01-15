@@ -31,6 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import gfile
 
 
@@ -131,14 +132,18 @@ class TableHandler(object):
         inputs, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return self._sparse_lookup(inputs)
 
-    # Try to convert lists/arrays to tensors or RaggedTensors.
-    inputs = ragged_tensor.convert_to_tensor_or_ragged_tensor(inputs)
-
-    # Run the lookup operation on the converted tensor.
     if tf_utils.is_ragged(inputs):
+      if isinstance(inputs, ragged_tensor_value.RaggedTensorValue):
+        flat_values = ops.convert_to_tensor_v2_with_dispatch(
+            value=inputs.flat_values,
+            name="flat_values")
+        inputs = ragged_tensor.RaggedTensor.from_nested_row_splits(
+            flat_values, inputs.nested_row_splits, validate=False)
       return self._ragged_lookup(inputs)
-    else:
-      return self._tensor_lookup(inputs)
+
+    # For normal tensor inputs
+    inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
+    return self._tensor_lookup(inputs)
 
   def _eval(self, tensor):
     if self.use_v1_apis:

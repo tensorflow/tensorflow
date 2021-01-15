@@ -96,6 +96,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     config->set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
     config->set_deduplicate_hlo(execution_options->deduplicate_hlo());
+    config->set_broadcast_replicated_params(
+        execution_options->broadcast_replicated_parameters_via_collectives());
     config->set_seed(execution_options->seed());
     config->set_launch_id(execution_options->launch_id());
     config->set_debug_options(execution_options->debug_options());

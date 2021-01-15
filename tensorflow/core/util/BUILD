@@ -481,6 +481,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

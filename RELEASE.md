@@ -25,6 +25,11 @@
     gathered at runtime to be used in embedding layer partitioning decisions.
 * `tf.keras.metrics.AUC` now support logit predictions.
 * Creating `tf.random.Generator` under `tf.distribute.Strategy` scopes is now allowed (except for `tf.distribute.experimental.CentralStorageStrategy` and `tf.distribute.experimental.ParameterServerStrategy`). Different replicas will get different random-number streams.
+* `tf.data`:
+    *   tf.data service now supports strict round-robin reads, which is useful
+        for synchronous training workloads where example sizes vary. With strict
+        round robin reads, users can guarantee that consumers get similar-sized
+        examples in the same step.
 
 ## Bug Fixes and Other Changes
 
@@ -66,6 +71,7 @@
                 directly.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
+        *   Additional tests and fixes for ADD and SUB operators.
     *  Added support for saved model's session initializer through
          `TFLiteConverter.from_saved_model`.
     *  Added DEPTH_TO_SPACE support in Post training quantization.
@@ -78,7 +84,8 @@
         * TFLiteConverter exports models with SignatureDef
         * Interpreter supports getting a list of signatures and getting callable
           function for a given signaturedef.
-    * Add int8 support for `ReshapeV2`.
+    *  Add int8 support for `ReshapeV2`.
+    *  Add experimental support for optimization with sparsity.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with

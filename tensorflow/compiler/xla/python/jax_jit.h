@@ -150,6 +150,11 @@ struct DevicePutResult {
   std::unique_ptr<PjRtBuffer> owned_buffer;
 };
 
+// Returns the ArgSignature associated with an argument. Returns an error if
+// the argument is not supported.
+StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
+                                           bool jax_enable_x64);
+
 // Moves a device-like object to be on device.
 // - If the object is already on device, `owned_buffer` will be nullptr.
 // - If it's not, a new buffer will be created and returned using
@@ -159,7 +164,7 @@ struct DevicePutResult {
 // If `obj` is not convertible to a `PjRtBuffer` from C++, an error will be
 // returned; float0 dtype and `_DeviceArray` with non-trivial LazyExpr are not
 // supported yet.
-StatusOr<DevicePutResult> DevicePut(pybind11::handle obj, PjRtDevice* to_device,
+StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
                                     bool jax_enable_x64, PyClient& pyclient);
 
 // The function to call in `xla.cc` to add the bindings for this module.

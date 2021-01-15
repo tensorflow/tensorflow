@@ -45,8 +45,8 @@ TEST_F(OpenCLOperationTest, Abs) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::ABS);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::ABS);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -72,8 +72,8 @@ TEST_F(OpenCLOperationTest, Cos) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::COS);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::COS);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -99,8 +99,8 @@ TEST_F(OpenCLOperationTest, Copy) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::COPY);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::COPY);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -124,8 +124,8 @@ TEST_F(OpenCLOperationTest, Elu) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::ELU);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::ELU);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -152,8 +152,8 @@ TEST_F(OpenCLOperationTest, Exp) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::EXP);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::EXP);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -181,8 +181,8 @@ TEST_F(OpenCLOperationTest, HardSwish) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::HARD_SWISH);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::HARD_SWISH);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -209,8 +209,8 @@ TEST_F(OpenCLOperationTest, Log) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::LOG);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::LOG);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -236,8 +236,8 @@ TEST_F(OpenCLOperationTest, Neg) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::NEG);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::NEG);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -262,8 +262,8 @@ TEST_F(OpenCLOperationTest, Rsqrt) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::RSQRT);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::RSQRT);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -291,8 +291,8 @@ TEST_F(OpenCLOperationTest, Sigmoid) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::SIGMOID);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::SIGMOID);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -317,8 +317,8 @@ TEST_F(OpenCLOperationTest, Sin) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::SIN);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::SIN);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -345,8 +345,8 @@ TEST_F(OpenCLOperationTest, Sqrt) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::SQRT);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::SQRT);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -373,8 +373,8 @@ TEST_F(OpenCLOperationTest, Square) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::SQUARE);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::SQUARE);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),
@@ -399,8 +399,8 @@ TEST_F(OpenCLOperationTest, Tanh) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
-          CreateElementwiseOneInput(op_def, OperationType::TANH);
+      GPUOperation operation = CreateElementwiseOneInput(
+          creation_context_.GetGpuInfo(), op_def, OperationType::TANH);
       ASSERT_OK(ExecuteGPUOperation(
           src_tensor, creation_context_,
           absl::make_unique<GPUOperation>(std::move(operation)),

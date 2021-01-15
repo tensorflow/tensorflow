@@ -151,7 +151,6 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
         "//tensorflow/python/ops/losses",
-        "//tensorflow/python/ops/losses:loss_reduction",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -595,6 +594,9 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    tpu_tags = [
+        "no_oss",
+    ],
     deps = [
         "//tensorflow/python:stateful_random_ops",
         "//tensorflow/python/compat:v2_compat",
@@ -808,10 +810,13 @@ py_library(
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:tf_decorator",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -826,6 +831,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python/distribute/cluster_resolver:tfconfig_cluster_resolver_py",
+        "//tensorflow/python/eager:context",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -964,6 +970,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "notsan",  # b/177098062
     ],
     deps = [
         ":collective_all_reduce_strategy",

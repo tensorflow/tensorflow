@@ -446,6 +446,7 @@ def _rpath_linkopts(name):
     return select({
         clean_dep("//tensorflow:macos"): [
             "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
+            "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text",
         ],
         clean_dep("//tensorflow:windows"): [],
         "//conditions:default": [
@@ -1823,6 +1824,14 @@ def py_strict_binary(name, **kwargs):
 def py_strict_library(name, **kwargs):
     native.py_library(name = name, **kwargs)
 
+# Placeholder to use until bazel supports pytype_strict_binary.
+def pytype_strict_binary(name, **kwargs):
+    native.py_binary(name = name, **kwargs)
+
+# Placeholder to use until bazel supports pytype_strict_library.
+def pytype_strict_library(name, **kwargs):
+    native.py_library(name = name, **kwargs)
+
 # Placeholder to use until bazel supports py_strict_test.
 def py_strict_test(name, **kwargs):
     py_test(name = name, **kwargs)
@@ -1920,21 +1929,24 @@ def pywrap_tensorflow_macro(
 
     if not version_script:
         version_script = select({
-            "@local_config_cuda//cuda:darwin": clean_dep("//tensorflow:tf_exported_symbols.lds"),
+            "//tensorflow:macos": clean_dep("//tensorflow:tf_exported_symbols.lds"),
             "//conditions:default": clean_dep("//tensorflow:tf_version_script.lds"),
         })
     vscriptname = name + "_versionscript"
     _append_init_to_versionscript(
         name = vscriptname,
         is_version_script = select({
-            "@local_config_cuda//cuda:darwin": False,
+            "//tensorflow:macos": False,
             "//conditions:default": True,
         }),
         module_name = module_name,
         template_file = version_script,
     )
     extra_linkopts = select({
-        "@local_config_cuda//cuda:darwin": [
+        clean_dep("//tensorflow:macos"): [
+            # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
+            # not being exported.  There should be a better way to deal with this.
+            "-Wl,-w",
             "-Wl,-exported_symbols_list,$(location %s.lds)" % vscriptname,
         ],
         clean_dep("//tensorflow:windows"): [],
@@ -1944,9 +1956,6 @@ def pywrap_tensorflow_macro(
         ],
     })
     extra_deps += select({
-        "@local_config_cuda//cuda:darwin": [
-            "%s.lds" % vscriptname,
-        ],
         clean_dep("//tensorflow:windows"): [],
         "//conditions:default": [
             "%s.lds" % vscriptname,
@@ -2578,7 +2587,10 @@ def pybind_extension(
             ],
         }),
         linkopts = linkopts + _rpath_linkopts(name) + select({
-            "@local_config_cuda//cuda:darwin": [
+            clean_dep("//tensorflow:macos"): [
+                # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
+                # not being exported.  There should be a better way to deal with this.
+                "-Wl,-w",
                 "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
             ],
             clean_dep("//tensorflow:windows"): [],

@@ -49,28 +49,18 @@ static inline void ApplyTimeWeightsBiasAndActivation(
         scratch_ptr_batch);
   }
 
-  // Initialize output with bias if provided.
-  if (bias_ptr) {
-    tensor_utils::VectorBatchVectorAssign(bias_ptr, num_units, batch_size,
-                                          output_ptr);
-  } else {
-    std::fill_n(output_ptr, batch_size * num_units, 0.0f);
-  }
-
   // Reduction sum.
-  for (int b = 0; b < batch_size; ++b) {
-    float* output_ptr_batch = output_ptr + b * num_units;
-    float* scratch_ptr_batch = scratch_ptr + b * num_filters;
-    tensor_utils::ReductionSumVector(scratch_ptr_batch, output_ptr_batch,
-                                     num_units, rank);
+  tensor_utils::ReductionSumVector(scratch_ptr, output_ptr,
+                                   batch_size * num_units, rank);
+  // Add bias if provided.
+  if (bias_ptr) {
+    tensor_utils::VectorBatchVectorAdd(bias_ptr, num_units, batch_size,
+                                       output_ptr);
   }
 
   // Apply activation.
-  for (int b = 0; b < batch_size; ++b) {
-    float* output_ptr_batch = output_ptr + b * num_units;
-    tensor_utils::ApplyActivationToVector(output_ptr_batch, num_units,
-                                          activation, output_ptr_batch);
-  }
+  tensor_utils::ApplyActivationToVector(output_ptr, batch_size * num_units,
+                                        activation, output_ptr);
 }
 
 inline void EvalIntegerSVDF(
@@ -138,19 +128,13 @@ inline void EvalIntegerSVDF(
 
   // Reduce, add bias, rescale, activation.
   {
+    // Reduce.
+    tensor_utils::ReductionSumVector(scratch_data, output_temp_data,
+                                     n_batch * n_unit, n_rank);
     // Add bias.
     if (bias_data) {
-      tensor_utils::VectorBatchVectorAssign(bias_data, n_unit, n_batch,
-                                            output_temp_data);
-    } else {
-      std::fill_n(output_temp_data, n_batch * n_unit, 0);
-    }
-    // Reduce.
-    for (int b = 0; b < n_batch; ++b) {
-      int32_t* output_temp_ptr = output_temp_data + b * n_unit;
-      int32_t* scratch_data_batch = scratch_data + b * n_filter;
-      tensor_utils::ReductionSumVector(scratch_data_batch, output_temp_ptr,
-                                       n_unit, n_rank);
+      tensor_utils::VectorBatchVectorAdd(bias_data, n_unit, n_batch,
+                                         output_temp_data);
     }
     // Rescale.
     const int32_t output_max = std::numeric_limits<int8_t>::max();

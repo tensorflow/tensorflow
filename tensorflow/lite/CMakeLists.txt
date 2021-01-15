@@ -206,6 +206,7 @@ endif()
 if(TFLITE_ENABLE_GPU)
   find_package(opencl_headers REQUIRED)
   find_package(vulkan_headers REQUIRED)
+  find_package(fp16_headers REQUIRED)
   # Android NDK already has OpenGL, EGL headers.
   if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
     find_package(opengl_headers REQUIRED)

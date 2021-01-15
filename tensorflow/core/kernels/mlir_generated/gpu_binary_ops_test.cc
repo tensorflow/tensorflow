@@ -373,15 +373,53 @@ T baseline_add(T lhs, T rhs) {
   return lhs + rhs;
 }
 
-GENERATE_DEFAULT_TESTS(AddV2,
-                       /*test_name=*/Half, Eigen::half, Eigen::half,
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Half, Eigen::half, Eigen::half,
                        baseline_add)
-GENERATE_DEFAULT_TESTS(AddV2,
-                       /*test_name=*/Float, float, float, baseline_add)
-GENERATE_DEFAULT_TESTS(AddV2,
-                       /*test_name=*/Double, double, double, baseline_add)
-GENERATE_DEFAULT_TESTS(AddV2,
-                       /*test_name=*/Int64, int64, int64, baseline_add)
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Float, float, float, baseline_add)
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Double, double, double,
+                       baseline_add)
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int64, int64, int64, baseline_add)
+
+/// Test `tf.Atan2`.
+
+// Prevent the undefined case (0, 0) with non-zero rhs values.
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/FloatRhsNonZero, float, float, test::DefaultInput<float>(),
+    test::DefaultInputNonZero<float>(), std::atan2);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/DoubleRhsNonZero, double, double,
+    test::DefaultInput<double>(), test::DefaultInputNonZero<double>(),
+    std::atan2);
+
+// Prevent the undefined case (0, 0) with non-zero lhs values.
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/FloatLhsNonZero, float, float,
+    test::DefaultInputNonZero<float>(), test::DefaultInput<float>(),
+    std::atan2);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/DoubleLhsNonZero, double, double,
+    test::DefaultInputNonZero<double>(), test::DefaultInput<double>(),
+    std::atan2);
+
+// Test some particularly interesting cases.
+TEST_F(GpuBinaryOpTest, Atan2FloatSpecialCases) {
+  TestEqualShapes<float, float, float, float>(
+      "Atan2", /*shape=*/{20},
+      test::InputAsVector<float>({1, 1, 1, 0, -1, -1, -1, 0}),
+      test::InputAsVector<float>({1, 0, -1, -1, -1, 0, 1, 1}), std::atan2,
+      test::GpuOpsTestConfig().ExpectStrictlyEqual());
+}
+TEST_F(GpuBinaryOpTest, Atan2DoubleSpecialCases) {
+  TestEqualShapes<double, double, double, double>(
+      "Atan2", /*shape=*/{20},
+      test::InputAsVector<double>({1, 1, 1, 0, -1, -1, -1, 0}),
+      test::InputAsVector<double>({1, 0, -1, -1, -1, 0, 1, 1}), std::atan2,
+      test::GpuOpsTestConfig().ExpectStrictlyEqual());
+}
 
 /// Test `tf.BitwiseAnd`.
 

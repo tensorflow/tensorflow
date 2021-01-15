@@ -147,6 +147,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteString:
       FillString(value, output);
       break;
+    case kTfLiteInt8:
+      TF_LITE_FILL(int8_t);
+      break;
     default:
       context->ReportError(
           context,

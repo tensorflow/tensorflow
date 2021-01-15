@@ -81,6 +81,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
@@ -3238,15 +3239,15 @@ Status IrEmitterUnnested::HandleAllToAll(HloInstruction* hlo) {
 Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(xla_infeed));
 
-  auto infeed_op = mlir::dyn_cast<mlir::lmhlo::InfeedOp>(input.op);
+  auto infeed_op = mlir::cast<mlir::lmhlo::InfeedOp>(input.op);
 
-  std::vector<InfeedThunk::ShapedSlice> dest_slices;
+  std::vector<ShapedSlice> dest_slices;
   dest_slices.reserve(infeed_op.outputs().size());
 
   for (mlir::Value output : infeed_op.outputs()) {
     TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(output));
     const Shape& shape = TypeToShape(output.getType());
-    dest_slices.push_back(InfeedThunk::ShapedSlice{slice, shape});
+    dest_slices.push_back(ShapedSlice{slice, shape});
   }
 
   AddThunkToThunkSequence(
@@ -3255,7 +3256,22 @@ Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
 }
 
 Status IrEmitterUnnested::HandleOutfeed(HloInstruction* outfeed) {
-  return ThunkEmitter(this).HandleOutfeed(outfeed);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(outfeed));
+
+  auto outfeed_op = mlir::cast<mlir::lmhlo::OutfeedOp>(input.op);
+
+  std::vector<ShapedSlice> source_slices;
+  source_slices.reserve(outfeed_op.operands().size());
+
+  for (mlir::Value operand : outfeed_op.operands()) {
+    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(operand));
+    const Shape& shape = TypeToShape(operand.getType());
+    source_slices.push_back(ShapedSlice{slice, shape});
+  }
+
+  AddThunkToThunkSequence(absl::make_unique<OutfeedThunk>(
+      input.thunk_info, std::move(source_slices)));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
@@ -4378,8 +4394,8 @@ void IrEmitterUnnested::EmitPrologueForReduction(
       }
       const HloInstruction* init_value = reduce_hlo->operand(1);
 
-      init_ir_value = (*fused_emitter->GetGenerator(init_value))(
-                          IrArray::Index(b_.getInt32Ty()))
+      init_ir_value = (*fused_emitter->GetGenerator(
+          init_value))(IrArray::Index(b_.getInt32Ty()))
                           .ValueOrDie();
     } else {
       init_ir_value = operand_ir_arrays[1].EmitReadArrayElement(

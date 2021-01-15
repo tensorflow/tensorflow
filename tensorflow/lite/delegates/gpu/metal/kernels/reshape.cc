@@ -35,11 +35,7 @@ namespace metal {
 namespace {
 std::string GetReshapeCode() {
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   const int3 igid = int3(gid);
 
@@ -62,8 +58,6 @@ kernel void ComputeFunction(
       value[i] = args.src_tensor.Read(src_x, src_y, src_layer)[src_channel];
     }
   }
-
-  $2
   args.dst_tensor.Write(value, igid.x, igid.y, igid.z);
 })";
   return code;
@@ -71,11 +65,7 @@ kernel void ComputeFunction(
 
 std::string GetReshapex4Code() {
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   int X = gid.x;
   int Y = gid.y;
@@ -91,7 +81,6 @@ kernel void ComputeFunction(
   int src_z = t0 - src_x * args.src_tensor.Slices();  // t0 % args.src_tensor.Slices();
 
   FLT4 value = args.src_tensor.Read(src_x, src_y, src_z);
-  $2
   args.dst_tensor.Write(value, X, Y, Z);
 })";
   return code;

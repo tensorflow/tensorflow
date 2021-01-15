@@ -22,16 +22,16 @@ pip --version
 pip install portpicker
 pip install *.whl
 
-# Make bazel version the same as the env that invokes this script
-rm -rf ~/bazel
-mkdir ~/bazel
-pushd ~/bazel
-wget https://github.com/bazelbuild/bazel/releases/download/"${BAZEL_VERSION}"/bazel-"${BAZEL_VERSION}"-installer-linux-x86_64.sh
-chmod +x bazel-*.sh
-./bazel-"${BAZEL_VERSION}"-installer-linux-x86_64.sh --user
-rm bazel-"${BAZEL_VERSION}"-installer-linux-x86_64.sh
-PATH="/bazel_pip/bin:$PATH"
-popd
+# Install bazelisk
+rm -rf $HOME/bin/bazel
+mkdir $HOME/bin/bazel
+wget --no-verbose -O "$HOME/bin/bazel" \
+    "https://github.com/bazelbuild/bazelisk/releases/download/v1.3.0/bazelisk-linux-amd64"
+chmod u+x "$HOME/bin/bazel"
+if [[ ! ":$PATH:" =~ :"$HOME"/bin/?: ]]; then
+  PATH="$HOME/bin:$PATH"
+fi
+which bazel
 bazel version
 
 # Use default configuration

@@ -1,7 +1,6 @@
 # Utilities for signature_defs in TFLite
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
@@ -11,17 +10,11 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-TFLITE_DEFAULT_COPTS = if_not_windows([
-    "-Wall",
-    "-Wno-comment",
-    "-Wno-extern-c-compat",
-])
-
 cc_library(
     name = "signature_def_util",
     srcs = ["signature_def_util.cc"],
     hdrs = ["signature_def_util.h"],
-    copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
+    copts = tflite_copts() + tflite_copts_warnings(),
     deps = [
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",

@@ -1566,3 +1566,17 @@ func @permutation_broadcast_of_reshape(%arg: tensor<?xf32>,
 }
 // CHECK: mhlo.dynamic_reshape
 // CHECK: mhlo.dynamic_broadcast_in_dim
+
+// CHECK-LABEL: @reshape_of_same_shape_op_result
+func @reshape_of_same_shape_op_result(%arg: tensor<?xf32>,
+    %shape: tensor<2xindex>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dynamic_reshape"(%arg, %shape)
+    : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %1 = "mhlo.abs"(%0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  %2 = "mhlo.dynamic_reshape"(%1, %shape)
+    : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  return %2 : tensor<?x?xf32>
+}
+// CHECK: mhlo.dynamic_reshape
+// CHECK-NEXT: mhlo.abs
+// CHECK-NOT: mhlo.dynamic_reshape

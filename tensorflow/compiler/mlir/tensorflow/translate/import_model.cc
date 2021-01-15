@@ -182,8 +182,6 @@ class NameUniquifier : public OpOrArgNameMapper {
 
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
                           bool restrict_functionalization_to_tpu_nodes) {
-  TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(*graph, *flib_def));
-
   // If `restrict_functionalization_to_tpu_nodes` is true let filter function
   // return true for `_tpu_replicate` nodes, otherwise don't set filter.
   NodeFilter node_filter =
@@ -3307,11 +3305,11 @@ class SavedModelSignatureDefImporterLite {
   static StatusOr<mlir::OwningModuleRef> Convert(
       const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
       absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-      bool upgrade_legacy, bool import_restore = true) {
+      tensorflow::MLIRImportOptions options, bool import_restore = true) {
     LoadImporterDialects(*context);
     SavedModelSignatureDefImporterLite importer(
         meta_graph_def, debug_info, exported_names, context, import_restore);
-    TF_RETURN_IF_ERROR(importer.InitializeGraph(upgrade_legacy));
+    TF_RETURN_IF_ERROR(importer.InitializeGraph(options));
     TF_ASSIGN_OR_RETURN(auto module, importer.ConvertSignatures());
 
     SortSavedModelModule(*module);
@@ -3334,9 +3332,8 @@ class SavedModelSignatureDefImporterLite {
         symbol_table_(module_.get()),
         import_restore_(import_restore) {}
 
-  // Initializes Graph from saved model GraphDef. If `upgrade_legacy` is set,
-  // functionalization is ran on the Graph.
-  Status InitializeGraph(bool upgrade_legacy);
+  // Initializes Graph from saved model GraphDef.
+  Status InitializeGraph(MLIRImportOptions import_options);
 
   // Converts the SavedModel to the SavedModel dialect. Creates an MLIR function
   // for each signature.
@@ -3371,7 +3368,7 @@ class SavedModelSignatureDefImporterLite {
   const GraphDebugInfo& debug_info() const { return debug_info_; }
 
  private:
-  const MetaGraphDef& meta_graph_def_;
+  MetaGraphDef meta_graph_def_;
   const GraphDebugInfo& debug_info_;
   std::unique_ptr<Graph> graph_;
   absl::Span<std::string> exported_names_;
@@ -3381,16 +3378,27 @@ class SavedModelSignatureDefImporterLite {
 };
 
 Status SavedModelSignatureDefImporterLite::InitializeGraph(
-    bool upgrade_legacy) {
-  GraphConstructorOptions options;
-  options.allow_internal_ops = true;
-  options.add_default_attributes = true;
+    MLIRImportOptions import_options) {
+  if (import_options.enable_grappler) {
+    // Grappler is best-effort.
+    auto status = RunGrappler(&meta_graph_def_);
+    if (!status.ok()) LOG(WARNING) << status;
+  }
 
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
-      options, meta_graph_def_.graph_def(), graph_.get()));
+  GraphDef graph_def = meta_graph_def_.graph_def();
+  if (import_options.upgrade_legacy) {
+    TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(
+        graph_def, graph_->flib_def().default_registry()));
+  }
+
+  GraphConstructorOptions graph_ctor_options;
+  graph_ctor_options.allow_internal_ops = true;
+  graph_ctor_options.add_default_attributes = true;
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph(graph_ctor_options, graph_def, graph_.get()));
 
   // TODO(jpienaar): Remove need to const_cast.
-  if (upgrade_legacy) {
+  if (import_options.upgrade_legacy) {
     TF_RETURN_IF_ERROR(UpgradeLegacyGraph(
         graph_.get(),
         const_cast<FunctionLibraryDefinition*>(&graph_->flib_def()),
@@ -3663,7 +3671,7 @@ class SavedModelSignatureDefImporter {
   // the given meta graph to an MLIR Module.
   static StatusOr<mlir::OwningModuleRef> Convert(
       const SavedModelBundle& bundle, absl::Span<std::string> exported_names,
-      mlir::MLIRContext* context, bool upgrade_legacy) {
+      mlir::MLIRContext* context, tensorflow::MLIRImportOptions options) {
     // debug_info might not be loaded with loader_lite.
     GraphDebugInfo debug_info;
     if (bundle.debug_info != nullptr) debug_info = *bundle.debug_info;
@@ -3671,7 +3679,7 @@ class SavedModelSignatureDefImporter {
     TF_ASSIGN_OR_RETURN(auto module,
                         SavedModelSignatureDefImporterLite::Convert(
                             bundle.meta_graph_def, debug_info, exported_names,
-                            context, upgrade_legacy, /*import_restore=*/false));
+                            context, options, /*import_restore=*/false));
 
     mlir::OpBuilder builder(module->getContext());
     (*module)->setAttr("tf_saved_model.under_construction",
@@ -3729,6 +3737,10 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
   if (add_default_attributes) {
     TF_RETURN_IF_ERROR(PreprocessGraphDef(&specs, &preprocessed_graphdef));
   }
+  if (specs.upgrade_legacy) {
+    TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(
+        preprocessed_graphdef, graph.flib_def().default_registry()));
+  }
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
       options, std::move(preprocessed_graphdef), &graph));
   return ConvertGraphToMlir(graph, debug_info, graph.flib_def(), specs,
@@ -3773,17 +3785,17 @@ StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlir(
     const SavedModelBundle& saved_model, absl::Span<std::string> exported_names,
-    mlir::MLIRContext* context, bool upgrade_legacy) {
+    mlir::MLIRContext* context, MLIRImportOptions options) {
   return SavedModelSignatureDefImporter::Convert(saved_model, exported_names,
-                                                 context, upgrade_legacy);
+                                                 context, options);
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlirLite(
     const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    bool upgrade_legacy) {
+    MLIRImportOptions options) {
   return SavedModelSignatureDefImporterLite::Convert(
-      meta_graph_def, debug_info, exported_names, context, upgrade_legacy);
+      meta_graph_def, debug_info, exported_names, context, options);
 }
 
 std::string MlirModuleToString(mlir::ModuleOp module,
