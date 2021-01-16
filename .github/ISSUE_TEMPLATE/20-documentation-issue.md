@@ -6,7 +6,7 @@ labels: 'type:docs'
 ---
 
 
-Thank you for submitting a TensorFlow documentation issue. Per our GitHub
+Thank you for submitting a TensorFlow documentation issue. As per our GitHub
 policy, we only address code/doc bugs, performance issues, feature requests, and
 build/installation issues on GitHub.
 
