@@ -53,11 +53,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (input->type == kTfLiteFloat32) {
     reference_ops::Exp(tflite::micro::GetTensorData<float>(input),
-                       static_cast <size_t>(flat_size),
+                       static_cast<size_t>(flat_size),
                        tflite::micro::GetTensorData<float>(output));
   } else {
-    TF_LITE_KERNEL_LOG(context,
-                       "Type %s (%d) currently not supported by Exp.",
+    TF_LITE_KERNEL_LOG(context, "Type %s (%d) currently not supported by Exp.",
                        TfLiteTypeGetName(input->type), input->type);
     return kTfLiteError;
   }
