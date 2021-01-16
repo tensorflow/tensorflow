@@ -66,7 +66,6 @@ TF_LITE_MICRO_TEST(SingleDim) {
   const int input_dims[] = {1, 1, 7};
   const float input_values[] = {0.0f,    1.0f,  -1.0f, 100.0f,
                                 -100.0f, 0.01f, -0.01f};
-  };
 
   // (1.17549e-038 ~ 3.40282e+038), so the golden is set to float32's upper
   // limit.
