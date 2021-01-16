@@ -415,7 +415,7 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildOpsSubmodule(&m);
   BuildOutfeedReceiverSubmodule(&m);
   BuildPytreeSubmodule(m);
-  BuildJaxjitSubmodule(m);
+  jax::BuildJaxjitSubmodule(m);
   jax::BuildPmapSubmodule(m);
   BuildTracebackSubmodule(m);
 
