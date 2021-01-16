@@ -175,7 +175,8 @@ class MklAddNOp : public OpKernel {
       }
 
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(ctx, cpu_engine));
+      MklDnnThreadPool eigen_tp(ctx);
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
       // Create memory descriptor for MKL-DNN.
       // If all input in Tensorflow format, create block memory descriptor,

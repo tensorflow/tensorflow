@@ -18,7 +18,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::stream;
 
@@ -453,7 +453,8 @@ class MklSliceOp : public OpKernel {
           MklSlicePrimitiveFactory<T>::Get(sliceParams);
       // Execute slice reorder.
       std::shared_ptr<stream> slice_stream;
-      slice_stream.reset(CreateStream(context, reorder_prim->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      slice_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
       reorder_prim->Execute(sliceParams, slice_stream);
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +

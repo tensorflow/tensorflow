@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -106,39 +107,20 @@ struct MklDnnThreadPool : public dnnl::threadpool_iface {
   Eigen::ThreadPoolInterface* eigen_interface_ = nullptr;
 };
 
-class MklDnnThreadPoolWrapper {
- public:
-  static MklDnnThreadPoolWrapper& GetInstance() {
-    static MklDnnThreadPoolWrapper instance_;
-    return instance_;
-  }
-  MklDnnThreadPool* CreateThreadPoolPtr(OpKernelContext* ctx) {
-    mutex_lock l(m_);
-    if (threadpool_map_.empty() ||
-        threadpool_map_.find(ctx->device()) == threadpool_map_.end()) {
-      auto tp_iface = new MklDnnThreadPool(ctx);
-      threadpool_map_.emplace(std::make_pair(ctx->device(), tp_iface));
-      return tp_iface;
-    } else {
-      auto entry = threadpool_map_.find(ctx->device());
-      return entry->second;
-    }
-  }
+}  // namespace tensorflow
 
- private:
-  mutex m_;
-  std::unordered_map<DeviceBase*, MklDnnThreadPool*> threadpool_map_;
-  MklDnnThreadPoolWrapper() {}
-  MklDnnThreadPoolWrapper(const MklDnnThreadPoolWrapper&) = delete;
-  MklDnnThreadPoolWrapper& operator=(const MklDnnThreadPoolWrapper&) = delete;
-  ~MklDnnThreadPoolWrapper() {
-    for (auto& tp : threadpool_map_) {
-      delete tp.second;
-    }
-  }
+#else
+
+namespace tensorflow {
+
+// This struct was just added to enable successful OMP-based build.
+struct MklDnnThreadPool {
+  MklDnnThreadPool() = default;
+  MklDnnThreadPool(OpKernelContext* ctx) {}
 };
 
 }  // namespace tensorflow
+
 #endif  // ENABLE_MKLDNN_THREADPOOL
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_MKL_THREADPOOL_H_

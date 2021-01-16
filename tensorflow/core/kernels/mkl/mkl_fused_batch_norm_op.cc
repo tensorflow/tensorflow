@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #define GET_FLAG(bn_flag) static_cast<int>(mkldnn::normalization_flags::bn_flag)
 #define IS_SET(cflag) (context_.flags & GET_FLAG(cflag))
@@ -866,7 +866,8 @@ class MklFusedBatchNormOp : public OpKernel {
 
       // Execute
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, bn_fwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, bn_fwd->GetEngine()));
       bn_fwd->Execute(src_data, weights_op_data, dst_data, mean_op_data,
                       variance_op_data, fwd_cpu_stream, ws_data);
       float adjust_factor = 1.0;
@@ -1272,7 +1273,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
       // Execute
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, bn_bwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      bwd_cpu_stream.reset(CreateStream(&eigen_tp, bn_bwd->GetEngine()));
       bn_bwd->Execute(src_data, mean_data, variance_data, diff_dst_data,
                       weights_data, diff_src_data, diff_weights_data,
                       res_space_data, bwd_cpu_stream);

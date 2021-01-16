@@ -26,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/util/work_sharder.h"
@@ -167,7 +167,8 @@ class MklLRNOp : public OpKernel {
       src_dnn_data.CheckReorderToOpMem(lrn_prim_desc.src_desc(), cpu_engine_);
 
       std::vector<primitive> net;
-      fwd_stream_.reset(CreateStream(context, cpu_engine_));
+      MklDnnThreadPool eigen_tp(context);
+      fwd_stream_.reset(CreateStream(&eigen_tp, cpu_engine_));
       net.push_back(lrn_forward(lrn_prim_desc));
       std::vector<std::unordered_map<int, memory>> net_args;
       net_args.push_back({{MKLDNN_ARG_SRC, src_dnn_data.GetOpMem()},

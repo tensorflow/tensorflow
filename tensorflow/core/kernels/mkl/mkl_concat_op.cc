@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::concat;
 using mkldnn::stream;
@@ -732,7 +732,8 @@ class MklConcatOp : public OpKernel {
           DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
 
           std::shared_ptr<stream> fwd_cpu_stream;
-          fwd_cpu_stream.reset(CreateStream(context, cpu_engine));
+          MklDnnThreadPool eigen_tp(context);
+          fwd_cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
           if (dnn_shape_dst.IsMklTensor())
             dst_md = dnn_shape_dst.GetMklLayout();
@@ -769,7 +770,9 @@ class MklConcatOp : public OpKernel {
           dst_md = dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout()
                                                : dst_md;
           std::shared_ptr<stream> fwd_cpu_stream;
-          fwd_cpu_stream.reset(CreateStream(context, concat_fwd->GetEngine()));
+          MklDnnThreadPool eigen_tp(context);
+          fwd_cpu_stream.reset(
+              CreateStream(&eigen_tp, concat_fwd->GetEngine()));
           dst.SetUsrMem(dst_md, dst_tensor);
           dst.SetUsrMemDataHandle(dst_tensor, fwd_cpu_stream);
           // Execute concat
