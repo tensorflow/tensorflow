@@ -30,6 +30,7 @@ tf_py_build_info_genrule(
 py_library(
     name = "build_info",
     srcs = ["build_info.py"],
+    srcs_version = "PY3",
 )
 
 py_library(
@@ -45,7 +46,7 @@ py_library(
             "device_context.py",  # In platform_device_context.
         ],
     ) + ["build_info.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":build_info",
         "//tensorflow/core:protos_all_py",
@@ -62,7 +63,7 @@ py_library(
 py_library(
     name = "benchmark",
     srcs = ["benchmark.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":platform",
         "//tensorflow/python:client",
@@ -73,13 +74,13 @@ py_library(
 py_library(
     name = "analytics",
     srcs = ["analytics.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "device_context",
     srcs = ["device_context.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
@@ -89,7 +90,7 @@ py_library(
 py_library(
     name = "test",
     srcs = ["googletest.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":benchmark",
         "@absl_py//absl/testing:absltest",
@@ -184,7 +185,7 @@ tf_python_pybind_extension(
 py_library(
     name = "client_testlib",
     srcs = ["test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":test",
         "//tensorflow/python:client",

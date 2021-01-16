@@ -10,7 +10,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "cluster_coordinator",
     srcs = ["cluster_coordinator.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":metric_utils",
         ":utils",
@@ -126,7 +126,7 @@ tf_py_test(
 py_library(
     name = "metric_utils",
     srcs = ["metric_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:monitoring",
     ],
@@ -150,7 +150,7 @@ tf_py_test(
 py_library(
     name = "utils",
     srcs = ["utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:training_server_lib",
     ],
@@ -158,6 +158,6 @@ py_library(
 
 py_library(
     name = "remote_eager_lib",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )

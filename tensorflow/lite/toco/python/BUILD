@@ -75,6 +75,7 @@ cc_library(
 py_library(
     name = "tensorflow_wrap_toco",
     srcs = ["tensorflow_wrap_toco.py"],
+    srcs_version = "PY3",
     visibility = [
         "//learning/expander/pod/deep_pod/utils:__subpackages__",
         "//research/handwriting/converters/tflite:__subpackages__",

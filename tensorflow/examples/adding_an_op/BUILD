@@ -23,7 +23,7 @@ py_library(
     name = "zero_out_op_1",
     srcs = ["zero_out_op_1.py"],
     data = [":zero_out_op_kernel_1.so"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -36,7 +36,7 @@ py_library(
     name = "zero_out_op_2",
     srcs = ["zero_out_op_2.py"],
     data = [":zero_out_op_kernel_2.so"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -49,14 +49,14 @@ py_library(
     name = "zero_out_op_3",
     srcs = ["zero_out_op_3.py"],
     data = [":zero_out_op_kernel_3.so"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_library(
     name = "zero_out_grad_2",
     srcs = ["zero_out_grad_2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -123,7 +123,7 @@ py_library(
     name = "cuda_op",
     srcs = ["cuda_op.py"],
     data = [":cuda_op_kernel.so"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 

@@ -17,6 +17,7 @@ filegroup(
 py_library(
     name = "feature_column",
     srcs = ["__init__.py"],
+    srcs_version = "PY3",
     deps = [
         ":base_feature_layer",
         ":dense_features",
@@ -28,6 +29,7 @@ py_library(
 py_library(
     name = "base_feature_layer",
     srcs = ["base_feature_layer.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:variable_scope",
@@ -42,6 +44,7 @@ py_library(
     srcs = [
         "dense_features.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":base_feature_layer",
         "//tensorflow/python:framework_ops",
@@ -57,6 +60,7 @@ py_library(
     srcs = [
         "dense_features_v2.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":base_feature_layer",
         ":dense_features",
@@ -120,6 +124,7 @@ tf_py_test(
 py_library(
     name = "sequence_feature_column",
     srcs = ["sequence_feature_column.py"],
+    srcs_version = "PY3",
     deps = [
         ":base_feature_layer",
         "//tensorflow/python:array_ops",

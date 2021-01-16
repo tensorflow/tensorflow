@@ -25,6 +25,7 @@ py_library(
         # Include the TF upgrade script to users can run it directly after install TF
         "//tensorflow/tools/compatibility:tf_upgrade_v2",
     ],
+    srcs_version = "PY3",
     deps = [
         ":saved_model_aot_compile",
         ":saved_model_utils",
@@ -41,7 +42,7 @@ py_library(
 py_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_test(
@@ -62,7 +63,7 @@ py_test(
 py_library(
     name = "freeze_graph_lib",
     srcs = ["freeze_graph.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":saved_model_utils",
         "//tensorflow/core:protos_all_py",
@@ -90,7 +91,7 @@ py_binary(
 py_library(
     name = "freeze_graph_main_lib",
     srcs = ["freeze_graph.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":freeze_graph_lib",
     ],
@@ -107,7 +108,7 @@ py_binary(
 py_library(
     name = "import_pb_to_tensorboard_lib",
     srcs = ["import_pb_to_tensorboard.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python",
@@ -151,7 +152,7 @@ py_binary(
 py_library(
     name = "inspect_checkpoint_lib",
     srcs = ["inspect_checkpoint.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
@@ -162,7 +163,7 @@ py_library(
 py_library(
     name = "strip_unused_lib",
     srcs = ["strip_unused_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
@@ -173,7 +174,7 @@ py_library(
 py_library(
     name = "module_util",
     srcs = ["module_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_binary(
@@ -211,7 +212,7 @@ py_test(
 py_library(
     name = "optimize_for_inference_lib",
     srcs = ["optimize_for_inference_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
@@ -234,7 +235,7 @@ py_binary(
 py_library(
     name = "optimize_for_inference_main_lib",
     srcs = ["optimize_for_inference.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
@@ -270,7 +271,7 @@ py_test(
 py_library(
     name = "selective_registration_header_lib",
     srcs = ["selective_registration_header_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
@@ -291,7 +292,7 @@ py_binary(
 py_library(
     name = "print_selective_registration_header_lib",
     srcs = ["print_selective_registration_header.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":selective_registration_header_lib",
@@ -322,7 +323,7 @@ py_binary(
 py_library(
     name = "saved_model_cli_lib",
     srcs = ["saved_model_cli.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         # Note: if you make any changes here, make corresponding changes to the
         # deps of the "tools_pip" target in this file.  Otherwise release builds
@@ -338,7 +339,7 @@ py_library(
 py_library(
     name = "saved_model_aot_compile",
     srcs = ["saved_model_aot_compile.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python",
         "//tensorflow/python:tf_optimizer",

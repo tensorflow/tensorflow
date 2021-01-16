@@ -8,6 +8,7 @@ package(
 py_library(
     name = "mnist_testing_utils",
     srcs = ["mnist_testing_utils.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:extra_py_tests_deps",

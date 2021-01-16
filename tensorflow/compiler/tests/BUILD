@@ -41,7 +41,7 @@ py_library(
     name = "xla_test",
     testonly = 1,
     srcs = ["xla_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -65,7 +65,7 @@ py_library(
         "__init__.py",
         "test_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -1729,7 +1729,7 @@ py_library(
     name = "lstm",
     testonly = 1,
     srcs = ["lstm.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",

@@ -76,7 +76,7 @@ py_library(
     srcs = [
         "tpu_client.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_client_extension",

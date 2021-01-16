@@ -8,7 +8,7 @@ package(
 py_library(
     name = "feature_column_py",
     srcs = ["feature_column_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -20,7 +20,7 @@ py_library(
 py_library(
     name = "feature_column",
     srcs = ["feature_column.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":utils",
         "@six_archive//:six",
@@ -65,7 +65,7 @@ py_library(
         "sequence_feature_column.py",
         "serialization.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":utils",
@@ -127,6 +127,7 @@ py_library(
     name = "feature_column_test_main_lib",
     srcs = ["feature_column_test.py"],
     data = [":vocabulary_testdata"],
+    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_py",
@@ -169,6 +170,7 @@ py_library(
     name = "feature_column_v2_test_main_lib",
     srcs = ["feature_column_v2_test.py"],
     data = [":vocabulary_testdata"],
+    srcs_version = "PY3",
     deps = [
         ":feature_column_py",
         ":feature_column_v2",
@@ -197,7 +199,7 @@ py_library(
 py_library(
     name = "utils",
     srcs = ["utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",

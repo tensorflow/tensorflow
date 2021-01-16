@@ -111,7 +111,7 @@ py_binary(
 py_library(
     name = "flatbuffer_utils",
     srcs = ["flatbuffer_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/python/platform",
@@ -138,7 +138,7 @@ py_test(
 py_library(
     name = "test_utils",
     srcs = ["test_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
         "@flatbuffers//:runtime_py",

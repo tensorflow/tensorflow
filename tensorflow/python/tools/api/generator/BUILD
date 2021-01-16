@@ -19,7 +19,7 @@ exports_files(
 py_library(
     name = "create_python_api",
     srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:util",
@@ -31,7 +31,7 @@ py_library(
 py_library(
     name = "doc_srcs",
     srcs = ["doc_srcs.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:util",
