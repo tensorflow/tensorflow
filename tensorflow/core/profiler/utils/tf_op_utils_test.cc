@@ -157,6 +157,18 @@ TEST(TfOpUtilsTest, OpWithoutTypeTest) {
   EXPECT_EQ(TfOpEventName(kName), "OpName");  // without trailing ':'
 }
 
+TEST(TfOpUtilsTest, NameScopeTest) {
+  const absl::string_view kName = "scope-1/scope2/OpName:OpType";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kTensorFlow);
+  EXPECT_EQ(tf_op.name, "scope-1/scope2/OpName");
+  EXPECT_EQ(tf_op.type, "OpType");
+  std::vector<absl::string_view> name_scopes = ParseTfNameScopes(tf_op);
+  EXPECT_EQ(name_scopes.size(), 2);
+  EXPECT_EQ(name_scopes[0], "scope-1");
+  EXPECT_EQ(name_scopes[1], "scope2");
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow
