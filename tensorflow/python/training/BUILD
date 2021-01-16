@@ -499,6 +499,7 @@ py_library(
     srcs = ["slot_creator.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:resource_variable_ops",
