@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 
 namespace xla {
@@ -414,8 +415,7 @@ HloSharding CreateMatchingShardingOnDims(const Shape& target_shape,
 absl::optional<GatherParallelDimSharding>
 GatherOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
-    absl::Span<const int64> indices_parallel_dims,
-    absl::Span<const int64> operand_parallel_dims);
+    const hlo_sharding_util::GatherParallelDims& parallel_dims);
 
 }  // namespace spmd
 }  // namespace xla
