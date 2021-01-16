@@ -24,9 +24,6 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import base_preprocessing_layer
-from tensorflow.python.keras.layers import convolutional
-from tensorflow.python.keras.layers.preprocessing import image_preprocessing
-from tensorflow.python.keras.layers.preprocessing import normalization
 from tensorflow.python.keras.layers.preprocessing import preprocessing_stage
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.ops import array_ops
@@ -85,20 +82,6 @@ class PreprocessingStageTest(
     # Test error with bad data
     with self.assertRaisesRegex(ValueError, 'requires a '):
       stage.adapt(None)
-
-  def test_mixing_preprocessing_and_regular_layers(self):
-    stage = preprocessing_stage.PreprocessingStage([
-        image_preprocessing.CenterCrop(16, 16),
-        normalization.Normalization(),
-        convolutional.Conv2D(4, 3)
-    ])
-    data = np.ones((16, 20, 20, 3), dtype='float32')
-    stage.adapt(data)
-    _ = stage(data)
-    stage.compile('rmsprop', 'mse')
-    stage.fit(data, np.ones((16, 14, 14, 4)))
-    _ = stage.evaluate(data, np.ones((16, 14, 14, 4)))
-    _ = stage.predict(data)
 
 
 if __name__ == '__main__':
