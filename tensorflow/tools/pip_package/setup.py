@@ -54,15 +54,15 @@ _VERSION = '2.9.0'
 # when building the pip package.
 project_name = 'tensorflow'
 if '--project_name' in sys.argv:
-  project_name_idx = sys.argv.index('--project_name')
-  project_name = sys.argv[project_name_idx + 1]
-  sys.argv.remove('--project_name')
-  sys.argv.pop(project_name_idx)
+project_name_idx = sys.argv.index('--project_name')
+project_name = sys.argv[project_name_idx + 1]
+sys.argv.remove('--project_name')
+sys.argv.pop(project_name_idx)
 
 # Returns standard if a tensorflow-* package is being built, and nightly if a
 # tf_nightly-* package is being built.
 def standard_or_nightly(standard, nightly):
-  return nightly if 'tf_nightly' in project_name else standard
+return nightly if 'tf_nightly' in project_name else standard
 
 # All versions of TF need these packages. We indicate the widest possible range
 # of package releases possible to be as up-to-date as possible as well as to
@@ -74,11 +74,11 @@ def standard_or_nightly(standard, nightly):
 # different versioning scheme (e.g., PVP), we use different bound specifier and
 # comment the versioning scheme.
 REQUIRED_PACKAGES = [
-    'absl-py >= 1.0.0',
-    'astunparse >= 1.6.0',
-    'flatbuffers >= 1.12',
-    # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
-    'gast >= 0.2.1, <= 0.4.0',
+  'absl-py >= 1.0.0',
+  'astunparse >= 1.6.0',
+  'flatbuffers >= 1.12',
+  # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
+  'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
     'keras_preprocessing >= 1.1.1', # 1.1.0 needs tensorflow==1.7
@@ -86,7 +86,7 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.9.2',
-    'setuptools < 60',  # TODO(b/211495558): Breaking change in v60 on distutils
+    'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
