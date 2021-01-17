@@ -89,7 +89,9 @@ ENTRY main {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  // Copy insertion
+  // Copy instruction is added after bitcast because of copy-insertion pass,
+  // so we check the entire hlo module to verify there is no reduce instruction
+  // in this case.
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
 // CHECK: ENTRY %main (input: f32[1,3,1,4,1,5,1]) -> f32[3,4,5,1] {
