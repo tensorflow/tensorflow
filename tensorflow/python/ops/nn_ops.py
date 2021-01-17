@@ -2321,7 +2321,7 @@ def conv2d_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-defau
       The stride of the sliding window for each dimension of the input
       of the convolution. Must be in the same order as the dimension specified
       with format.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -2383,7 +2383,7 @@ def conv2d_backprop_input(  # pylint: disable=redefined-builtin,dangerous-defaul
       The stride of the sliding window for each dimension of the input
       of the convolution. Must be in the same order as the dimension specified
       with format.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -2526,7 +2526,7 @@ def conv2d_transpose_v2(
       value is given it is replicated in the `H` and `W` dimension. By default
       the `N` and `C` dimensions are set to 0. The dimension order is determined
       by the value of `data_format`, see below for details.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -4490,7 +4490,7 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
       of the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `N` or `N+2`. The
       stride of the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -4569,7 +4569,7 @@ def max_pool(value,
       The size of the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`.
       The stride of the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -4627,7 +4627,7 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
       window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1` or `3`. The stride of
       the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NWC"`, this should be in the form `[[0, 0], [pad_left,
@@ -4683,7 +4683,7 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
       stride of the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,

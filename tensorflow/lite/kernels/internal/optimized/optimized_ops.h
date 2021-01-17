@@ -76,6 +76,7 @@ using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd4DSlow;
 using reference_ops::BroadcastMul4DSlow;
+using reference_ops::BroadcastSub16POTSlow;
 using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
@@ -104,7 +105,6 @@ using reference_ops::Round;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
-using reference_ops::StridedSlice;
 using reference_ops::Sub16;
 
 // TODO(b/80247582) Remove this constant.
@@ -1342,6 +1342,8 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
                        int8_t* im2col_data, CpuBackendContext* context) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -1352,15 +1354,22 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
   const int filter_width = filter_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
 
+  const int input_zero_point = 0;
   const int8_t* gemm_input_data = nullptr;
   int num_input;
+  const bool need_dilated_im2col =
+      dilation_width_factor != 1 || dilation_height_factor != 1;
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;
 
-  if (need_im2col) {
+  if (need_dilated_im2col) {
+    DilatedIm2col(params, input_zero_point, input_shape, input_data,
+                  filter_shape, output_shape, im2col_data);
+    gemm_input_data = im2col_data;
+    num_input = im2col_shape.FlatSize();
+  } else if (need_im2col) {
     TFLITE_DCHECK(im2col_data);
     // symmetric quantization assumes zero point of 0.
-    const int input_zero_point = 0;
 
     Im2col(params, filter_height, filter_width, input_zero_point, input_shape,
            input_data, im2col_shape, im2col_data);
@@ -1476,7 +1485,6 @@ inline void HybridConvPerChannel(
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
   TFLITE_DCHECK_EQ(scratch_shape.FlatSize(), output_shape.FlatSize());
   if (!compute_row_sums || *compute_row_sums) {
-    memset(row_sums, 0, sizeof(int32_t) * filter_rows);
     tensor_utils::ReductionSumVector(filter_data, row_sums, filter_rows,
                                      filter_cols);
     if (compute_row_sums) {
@@ -5447,6 +5455,108 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape, TfLiteTensor* output) {
   SequentialTensorWriter<T> writer(input, output);
   return Slice(op_params, input_shape, output_shape, &writer);
+}
+
+// Note: This implementation is only optimized for the case where the inner
+// stride == 1.
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const RuntimeShape& unextended_output_shape,
+                         SequentialTensorWriter<T>* writer) {
+  using strided_slice::LoopCondition;
+  using strided_slice::StartForAxis;
+  using strided_slice::StopForAxis;
+
+  ruy::profiler::ScopeLabel label("StridedSlice");
+
+  // Note that the output_shape is not used herein.
+  tflite::StridedSliceParams params_copy = op_params;
+
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 5);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(5, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(5, unextended_output_shape);
+
+  // Reverse and pad to 5 dimensions because that is what the runtime code
+  // requires (ie. all shapes must be 5D and are given backwards).
+  strided_slice::StridedSlicePadIndices(&params_copy, 5);
+
+  const int start_0 = StartForAxis(params_copy, input_shape, 0);
+  const int stop_0 = StopForAxis(params_copy, input_shape, 0, start_0);
+  const int start_1 = StartForAxis(params_copy, input_shape, 1);
+  const int stop_1 = StopForAxis(params_copy, input_shape, 1, start_1);
+  const int start_2 = StartForAxis(params_copy, input_shape, 2);
+  const int stop_2 = StopForAxis(params_copy, input_shape, 2, start_2);
+  const int start_3 = StartForAxis(params_copy, input_shape, 3);
+  const int stop_3 = StopForAxis(params_copy, input_shape, 3, start_3);
+  const int start_4 = StartForAxis(params_copy, input_shape, 4);
+  const int stop_4 = StopForAxis(params_copy, input_shape, 4, start_4);
+  const bool inner_stride_is_1 = params_copy.strides[4] == 1;
+
+  for (int offset_0 = start_0 * input_shape.Dims(1),
+           end_0 = stop_0 * input_shape.Dims(1),
+           step_0 = params_copy.strides[0] * input_shape.Dims(1);
+       !LoopCondition(offset_0, end_0, params_copy.strides[0]);
+       offset_0 += step_0) {
+    for (int offset_1 = (offset_0 + start_1) * input_shape.Dims(2),
+             end_1 = (offset_0 + stop_1) * input_shape.Dims(2),
+             step_1 = params_copy.strides[1] * input_shape.Dims(2);
+         !LoopCondition(offset_1, end_1, params_copy.strides[1]);
+         offset_1 += step_1) {
+      for (int offset_2 = (offset_1 + start_2) * input_shape.Dims(3),
+               end_2 = (offset_1 + stop_2) * input_shape.Dims(3),
+               step_2 = params_copy.strides[2] * input_shape.Dims(3);
+           !LoopCondition(offset_2, end_2, params_copy.strides[2]);
+           offset_2 += step_2) {
+        for (int offset_3 = (offset_2 + start_3) * input_shape.Dims(4),
+                 end_3 = (offset_2 + stop_3) * input_shape.Dims(4),
+                 step_3 = params_copy.strides[3] * input_shape.Dims(4);
+             !LoopCondition(offset_3, end_3, params_copy.strides[3]);
+             offset_3 += step_3) {
+          // When the stride is 1, the inner loop is equivalent to the
+          // optimized slice inner loop. Otherwise, it is identical to the
+          // strided_slice reference implementation inner loop.
+          if (inner_stride_is_1) {
+            const int len = stop_4 - start_4;
+            if (len > 0) {
+              writer->WriteN(offset_3 + start_4, len);
+            }
+          } else {
+            for (int offset_4 = offset_3 + start_4, end_4 = offset_3 + stop_4;
+                 !LoopCondition(offset_4, end_4, params_copy.strides[4]);
+                 offset_4 += params_copy.strides[4]) {
+              writer->Write(offset_4);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  SequentialTensorWriter<T> writer(input_data, output_data);
+  StridedSlice<T>(op_params, unextended_input_shape, unextended_output_shape,
+                  &writer);
+}
+
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const TfLiteTensor* input,
+                         const RuntimeShape& unextended_output_shape,
+                         TfLiteTensor* output) {
+  SequentialTensorWriter<T> writer(input, output);
+  StridedSlice<T>(op_params, unextended_input_shape, unextended_output_shape,
+                  &writer);
 }
 
 template <typename T>

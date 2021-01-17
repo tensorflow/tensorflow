@@ -43,7 +43,7 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PY_EXE% -m pip install "wheel ~= 0.35"
 %PY_EXE% -m pip install "wrapt ~= 1.12.1"
 @REM We need to pin gast dependency exactly
-%PY_EXE% -m pip install "gast == 0.3.3"
+%PY_EXE% -m pip install "gast == 0.4.0"
 @REM Finally, install tensorboard and estimator
 @REM Note that here we want the latest version that matches (b/156523241)
 %PY_EXE% -m pip install --upgrade --force-reinstall "tb-nightly ~= 2.4.0.a"

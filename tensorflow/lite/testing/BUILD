@@ -98,6 +98,7 @@ py_library(
     data = [
         "//tensorflow/lite/toco",
     ],
+    srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
         "//tensorflow:tensorflow_py",
@@ -108,7 +109,7 @@ py_library(
 py_library(
     name = "op_tests",
     srcs = glob(["op_tests/*.py"]),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
         "//tensorflow:tensorflow_py",
@@ -119,7 +120,7 @@ py_library(
 py_library(
     name = "generate_examples_lib",
     srcs = ["generate_examples_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":op_tests",
         ":zip_test_utils",
@@ -130,7 +131,7 @@ py_library(
 py_library(
     name = "zip_test_utils",
     srcs = ["zip_test_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":_pywrap_string_util",
         ":generate_examples_report",
@@ -156,7 +157,7 @@ py_binary(
 py_library(
     name = "generate_examples_report",
     srcs = ["generate_examples_report.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 cc_library(

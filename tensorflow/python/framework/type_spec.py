@@ -351,7 +351,8 @@ class TypeSpec(object):
 
   def __make_cmp_key(self, value):
     """Converts `value` to a hashable key."""
-    if isinstance(value, (int, float, bool, dtypes.DType, TypeSpec)):
+    if isinstance(value,
+                  (int, float, bool, np.generic, dtypes.DType, TypeSpec)):
       return value
     if isinstance(value, compat.bytes_or_text_types):
       return value

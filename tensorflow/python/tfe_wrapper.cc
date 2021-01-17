@@ -1006,8 +1006,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
   m.def("TFE_ContextOptionsSetDevicePlacementPolicy",
         &TFE_ContextOptionsSetDevicePlacementPolicy);
-  m.def("TFE_ContextOptionsSetLazyRemoteInputsCopy",
-        &TFE_ContextOptionsSetLazyRemoteInputsCopy);
   m.def("TFE_ContextOptionsSetTfrt", &TFE_ContextOptionsSetTfrt);
   m.def("TFE_ContextOptionsSetAsync", &TFE_ContextOptionsSetAsync);
   m.def("TFE_DeleteContextOptions", &TFE_DeleteContextOptions,

@@ -49119,6 +49119,37 @@ func ReverseSequence(scope *Scope, input tf.Output, seq_lengths tf.Output, seq_d
 	return op.Output(0)
 }
 
+// DataServiceDatasetV2Attr is an optional argument to DataServiceDatasetV2.
+type DataServiceDatasetV2Attr func(optionalAttr)
+
+// DataServiceDatasetV2TaskRefreshIntervalHintMs sets the optional task_refresh_interval_hint_ms attribute to value.
+// If not specified, defaults to -1
+func DataServiceDatasetV2TaskRefreshIntervalHintMs(value int64) DataServiceDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["task_refresh_interval_hint_ms"] = value
+	}
+}
+
+// Creates a dataset that reads data from the tf.data service.
+func DataServiceDatasetV2(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, job_name tf.Output, consumer_index tf.Output, num_consumers tf.Output, max_outstanding_requests tf.Output, iteration_counter tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetV2Attr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DataServiceDatasetV2",
+		Input: []tf.Input{
+			dataset_id, processing_mode, address, protocol, job_name, consumer_index, num_consumers, max_outstanding_requests, iteration_counter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Fetches multiple values from infeed as an XLA tuple.
 //
 // Arguments:

@@ -9,7 +9,7 @@ package(
 py_library(
     name = "profiler",
     srcs = ["profiler.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":model_analyzer",
@@ -23,7 +23,7 @@ py_library(
 py_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:util",
@@ -45,7 +45,7 @@ cuda_py_test(
 py_library(
     name = "profiler_v2",
     srcs = ["profiler_v2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:errors",
@@ -74,7 +74,7 @@ cuda_py_test(
 py_library(
     name = "option_builder",
     srcs = ["option_builder.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":tfprof_logger",
     ],
@@ -83,7 +83,7 @@ py_library(
 py_library(
     name = "model_analyzer",
     srcs = ["model_analyzer.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":option_builder",
         ":tfprof_logger",
@@ -137,7 +137,7 @@ cuda_py_test(
 py_library(
     name = "tfprof_logger",
     srcs = ["tfprof_logger.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -167,7 +167,7 @@ tf_py_test(
 py_library(
     name = "profile_context",
     srcs = ["profile_context.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":model_analyzer",
         ":tfprof_logger",
@@ -197,7 +197,7 @@ cuda_py_test(
 py_library(
     name = "pprof_profiler",
     srcs = ["pprof_profiler.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["@com_google_pprof//:pprof_proto_py"],
 )
 
@@ -223,7 +223,7 @@ py_test(
 py_library(
     name = "trace",
     srcs = ["trace.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//tensorflow:internal",
@@ -237,7 +237,7 @@ py_library(
 py_library(
     name = "traceme",
     srcs = ["traceme.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":trace",
     ],

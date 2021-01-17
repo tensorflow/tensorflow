@@ -168,7 +168,7 @@ Status HeapReadyManager::Init(
   // the same node_manager.
   node_map_ = node_map;
   nodes_.clear();
-  waiting_queue_.clear();
+  curr_node_ = nullptr;
 
   // Sets up the comparator for the heap.
   greater_ = Greater();
@@ -176,38 +176,44 @@ Status HeapReadyManager::Init(
   return Status::OK();
 }
 
+void HeapReadyManager::AddNode(const NodeDef* node) {
+  // push_heap in AddNode and pop_heap in RemoveCurrNode() guarantees that the
+  // first element is the node with minimum time_ready.
+  nodes_.push_back(node);
+  std::push_heap(nodes_.begin(), nodes_.end(), greater_);
+}
+
 const NodeDef* HeapReadyManager::GetCurrNode() {
+  if (curr_node_) return curr_node_;
   if (nodes_.empty()) {
-    // Nothing in the node_; probably, the very first call. Move waiting_queue_
-    // to node_.
-    DrainWaitingQueue();
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
   }
-  return nodes_.front();
+  const std::string node_name = nodes_.front()->name();
+  // Next time we call GetCurrNode(), it just returns the cached copy
+  // curr_node_, until we call the RemoveCurrNode().
+  curr_node_ = nodes_.front();
+  // Remove current node from the heap immediately. Because if we wait until
+  // later, the heap could have gotten re-organized if AddNode is called. The
+  // current node is anyways cached, incase GetCurrNode() is called again.
+  std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
+  nodes_.pop_back();
+  return curr_node_;
 }
 
 void HeapReadyManager::RemoveCurrNode() {
-  if (nodes_.empty()) {
-    // Make sure that there is a node to be removed at the front of nodes_.
-    GetCurrNode();
+  if (curr_node_) {
+    // If cached copy exists, remove that.
+    // Reset curr_node_ so that GetCurrNode() finds another node.
+    curr_node_ = nullptr;
+  } else {
+    // If cached copy not present, then remove entry from the heap queue.
+    std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
+    nodes_.pop_back();
   }
-  std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
-  nodes_.pop_back();
-  DrainWaitingQueue();
 }
 
 bool HeapReadyManager::Empty() const {
-  return nodes_.empty() && waiting_queue_.empty();
-}
-
-void HeapReadyManager::DrainWaitingQueue() {
-  for (const auto* node : waiting_queue_) {
-    // push_heap in AddNode() and pop_heap in RemoveCurrNode() guarantees that
-    // the first element is the node with minimum time_ready.
-    nodes_.push_back(node);
-    std::push_heap(nodes_.begin(), nodes_.end(), greater_);
-  }
-  waiting_queue_.clear();
+  return nodes_.empty() && curr_node_ == nullptr;
 }
 
 bool FirstReadyCmp(
@@ -492,7 +498,12 @@ Status SchedulerState::Init(const GrapplerItem* item,
       const string in_device = DeviceName(input_node);
       const auto input_node_port_num = NodePosition(input_node_name);
 
-      if (curr_node_device == in_device) {
+      // Control dependencies should be treated as high priority. Current
+      // Channel device doesn't model a separate virual channel for control v/s
+      // data transfers. So in the interim, it may be okay to let control
+      // dependencies magically flow across devices bypassing the channel
+      // device.
+      if (curr_node_device == in_device || IsControlInput(input_node_name)) {
         // Same device: connect input_node and curr_node directly.
         curr_node_state.inputs.push_back(
             std::make_pair(input_node, input_node_port_num));
@@ -1344,11 +1355,11 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   auto new_nodes = scheduler_state_->MarkNodeExecuted(
       node, node_costs,
       scheduler_state_->CreateOpContext(ready_nodes_->GetCurrNode()));
-  ready_nodes_->RemoveCurrNode();
   // Add the set of new nodes obtained from MarkNodeExecuted() to ready_nodes_.
   for (auto node : new_nodes) {
     ready_nodes_->AddNode(node);
   }
+  ready_nodes_->RemoveCurrNode();
   return !ready_nodes_->Empty();
 }
 

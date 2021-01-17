@@ -50,6 +50,8 @@ namespace tflite {
 /// reporter, if provided) is at least as long as interpreter's lifetime.
 class InterpreterBuilder {
  public:
+  /// For this constructor, the ErrorReporter will be extracted from the
+  /// FlatBufferModel.
   InterpreterBuilder(const FlatBufferModel& model,
                      const OpResolver& op_resolver);
   /// Builds an interpreter given only the raw flatbuffer Model object (instead

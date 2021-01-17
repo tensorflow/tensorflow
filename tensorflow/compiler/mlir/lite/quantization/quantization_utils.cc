@@ -72,10 +72,10 @@ static void ExpandVerySmallRange(ArrayRef<double> mins, ArrayRef<double> maxs,
 // input_type/min/max/storag_type_width/narrow_range.
 // This is entry point to the Quant dialect and used for both quantizing
 // activations and weights.
-static Type GetQuantizedType(Builder builder, Type input_type,
-                             ArrayRef<double> min, ArrayRef<double> max,
-                             int quant_dim, int storage_type_width,
-                             bool narrow_range, bool is_signed) {
+Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
+                      ArrayRef<double> max, int quant_dim,
+                      int storage_type_width, bool narrow_range,
+                      bool is_signed) {
   auto converter =
       quant::ExpressedToQuantizedConverter::forInputType(input_type);
 
@@ -253,10 +253,10 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
   return TypeAttr::get(final_type);
 }
 
-static void ExtractMinMaxFromAttr(DenseFPElementsAttr values, int dim_size,
-                                  int slice_size, bool symmetric,
-                                  SmallVector<double, 4>& mins,
-                                  SmallVector<double, 4>& maxs) {
+void ExtractMinMaxFromAttr(DenseFPElementsAttr values, int dim_size,
+                           int slice_size, bool symmetric,
+                           SmallVector<double, 4>& mins,
+                           SmallVector<double, 4>& maxs) {
   // If all the element values are same we don't need to scan the content.
   if (values.isSplat()) {
     double single_value =

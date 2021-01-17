@@ -151,9 +151,11 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool, "blue")),
       ("NumpyMetadata",
        TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool,
-                      np.array([[1, 2], [3, 4]])),
+                      (np.int32(1), np.float32(1.),
+                       np.array([[1, 2], [3, 4]]))),
        TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool,
-                      np.array([[1, 2], [3, 4]]))),
+                      (np.int32(1), np.float32(1.),
+                       np.array([[1, 2], [3, 4]])))),
       )
   def testEquality(self, v1, v2):
     # pylint: disable=g-generic-assert

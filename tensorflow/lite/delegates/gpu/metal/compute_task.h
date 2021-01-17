@@ -27,9 +27,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 namespace tflite {
@@ -46,57 +48,41 @@ class ComputeTask {
   ComputeTask(const ComputeTask&) = delete;
   ComputeTask& operator=(const ComputeTask&) = delete;
 
+  void Init(std::unique_ptr<ComputeTaskDescriptor>&& task_desc);
+
+  void Init(std::unique_ptr<GPUOperation>&& operation);
+
+  ComputeTaskDescriptor& GetTaskDesc() { return *task_desc_; }
+  const ComputeTaskDescriptor& GetTaskDesc() const { return *task_desc_; }
+
   /// Returns empty string or error if shader can't be compiled.
-  absl::Status CompileWithDevice(id<MTLDevice> device,
-                                 const NodeDescriptor& desc,
-                                 CalculationsPrecision precision);
+  absl::Status Compile(CalculationsPrecision precision, MetalDevice* device);
+
+  absl::Status CompileOp(MetalDevice* device);
 
   /// Updates parameters for inputs/outputs/intermediate tensors
-  absl::Status UpdateParamsWithDevice(
-      id<MTLDevice> device, const std::map<ValueId, BHWC>& tensor_shapes);
+  absl::Status UpdateParams(const GpuInfo& gpu_info,
+                            const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes);
 
-  bool HasInOutIds(const std::set<ValueId>& ids) const;
+  // should be called after changes of inputs/outputs.
+  absl::Status UpdateOpParams();
 
   void EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder);
 
-  std::vector<ValueId> GetOutputIds() const;
-  std::vector<ValueId> GetInputIds() const;
+  void EncodeOpWithEncoder(id<MTLComputeCommandEncoder> encoder);
 
   void SetSrcTensor(const MetalSpatialTensor& tensor, int index);
 
   void SetDstTensor(const MetalSpatialTensor& tensor, int index);
 
-  void SetDescription(const std::string& description);
-
  private:
-  struct InputBuffer {
-    ValueId uid;
-    id<MTLBuffer> metal_handle;
-  };
-
-  struct OutputBuffer {
-    ValueId uid;
-    id<MTLBuffer> metal_handle;
-  };
-
-  struct UniformBuffer {
-    std::vector<uint8_t> data;
-    UniformsFunction data_function;
-  };
-
+  std::unique_ptr<ComputeTaskDescriptor> task_desc_;
+  std::unique_ptr<GPUOperation> operation_ = nullptr;
   id<MTLComputePipelineState> program_;
-  std::vector<InputBuffer> input_buffers_;
-  std::vector<OutputBuffer> output_buffers_;
-  std::vector<id<MTLBuffer>> immutable_buffers_;
-  std::vector<UniformBuffer> uniform_buffers_;
+  MetalArguments metal_args_;
   uint3 groups_size_;
   uint3 groups_count_;
-  DispatchParamsFunction resize_function_;
-  std::string description_;
-  MetalArguments metal_args_;
-  std::vector<std::string> src_tensors_names_;
-  std::vector<std::string> dst_tensors_names_;
-  bool tensors_as_args_;
 };
 
 }  // namespace metal

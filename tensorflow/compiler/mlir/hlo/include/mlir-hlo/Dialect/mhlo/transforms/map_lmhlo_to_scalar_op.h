@@ -430,6 +430,18 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::LogOp>(Location loc,
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::Log1pOp>(Location loc,
+                                                    ArrayRef<Type> result_types,
+                                                    ArrayRef<Value> args,
+                                                    OpBuilder* b) {
+  auto ty = result_types.front().cast<FloatType>();
+  Value x = args.front();
+  Value one = b->create<ConstantOp>(loc, b->getFloatAttr(ty, 1.0));
+  Value x_plus_one = b->create<AddFOp>(loc, x, one);
+  return b->create<::mlir::LogOp>(loc, x_plus_one);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::MaxOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
@@ -449,6 +461,23 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MinOp>(Location loc,
       IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
       ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "LT", result_types,
                                                        args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::ClampOp>(Location loc,
+                                                    ArrayRef<Type> result_types,
+                                                    ArrayRef<Value> args,
+                                                    OpBuilder* b) {
+  assert(args.size() == 3 && "expected 3 arguments");
+  Value lb = args[0];
+  Value x = args[1];
+  Value ub = args[2];
+
+  // clamp(lb, x, ub) = max(min(x, ub), lb)
+  Value min_x_ub =
+      MapLhloOpToStdScalarOp<lmhlo::MinOp>(loc, result_types, {x, ub}, b);
+  return MapLhloOpToStdScalarOp<lmhlo::MaxOp>(loc, result_types, {min_x_ub, lb},
+                                              b);
 }
 
 template <>

@@ -96,8 +96,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
-               bool async, const bool lazy_copy_function_remote_inputs,
-               const DeviceMgr* device_mgr, bool device_mgr_owned,
+               bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
                Rendezvous* rendezvous,
                DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
@@ -189,8 +188,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // modified unless this method returns `Status::OK()`.
   Status SelectDevice(DeviceNameUtils::ParsedName preferred,
                       const NodeDef& ndef, Device** out) const;
-
-  bool LazyCopyFunctionRemoteInputs() const;
 
   bool FindFunctionByName(const string& name) const;
 

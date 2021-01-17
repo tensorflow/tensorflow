@@ -43,34 +43,27 @@ ComputeTaskDescriptor PReLU(const OperationDef& definition,
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   if (attr.clip != 0) {
+    desc.args.AddFloat("clip", attr.clip);
     desc.shader_source =
-        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
-      device FLT4* const alphas, float clip) {
-        return FLT4(clamp(value, FLT4(0.0f), FLT4(clip)) + alphas[gid.z] * min(FLT4(0.0f), value));
-    })";
+        R"(
+  in_out_value = FLT4(clamp(in_out_value, FLT4(0.0f), FLT4(args.clip)) + args.alpha.Read(S_COORD) * min(FLT4(0.0f), in_out_value));
+)";
   } else {
     desc.shader_source =
-        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
-      device FLT4* const alphas) {
-        return FLT4(max(FLT4(0.0f), value) + alphas[gid.z] * min(FLT4(0.0f), value));
-    })";
+        R"(
+  in_out_value = FLT4(max(FLT4(0.0f), in_out_value) + args.alpha.Read(S_COORD) * min(FLT4(0.0f), in_out_value));
+)";
   }
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {"device FLT4* const",
-       GetByteBufferConverted(alpha_buffer->data, data_type)},
-  };
-  if (attr.clip != 0) {
-    desc.uniform_buffers = {
-        {"constant float&",
-         [attr](const std::vector<BHWC>& src_shapes,
-                const std::vector<BHWC>& dst_shapes) {
-           std::vector<uint8_t> attr_clip =
-               GetByteBuffer(std::vector<float>{attr.clip});
-           return attr_clip;
-         }},
-    };
-  }
+  const int dst_channels_aligned = AlignByN(alpha_buffer->shape.v, 4);
+  BufferDescriptor alpha_desc;
+  alpha_desc.element_type = data_type;
+  alpha_desc.element_size = 4;
+  alpha_desc.data = GetByteBufferConvertedResized(alpha_buffer->data, data_type,
+                                                  dst_channels_aligned);
+  alpha_desc.size = alpha_desc.data.size();
+  desc.args.AddObject(
+      "alpha", absl::make_unique<BufferDescriptor>(std::move(alpha_desc)));
   return desc;
 }
 
@@ -83,34 +76,22 @@ ComputeTaskDescriptor PReLUFull(const OperationDef& definition,
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   if (attr.clip != 0) {
+    desc.args.AddFloat("clip", attr.clip);
     desc.shader_source =
-        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
-      device FLT4* const alphas, float clip) {
-        return FLT4(clamp(value, FLT4(0.0f), FLT4(clip)) + alphas[linear_index] * min(FLT4(0.0f), value));
-    })";
+        R"(
+  in_out_value = FLT4(clamp(in_out_value, FLT4(0.0f), FLT4(args.clip)) + args.alpha.Read(X_COORD, Y_COORD, S_COORD) * min(FLT4(0.0f), in_out_value));
+)";
   } else {
     desc.shader_source =
-        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
-      device FLT4* const alphas) {
-        return FLT4(max(FLT4(0.0f), value) + alphas[linear_index] * min(FLT4(0.0f), value));
-    })";
+        R"(
+  in_out_value = FLT4(max(FLT4(0.0f), in_out_value) + args.alpha.Read(X_COORD, Y_COORD, S_COORD) * min(FLT4(0.0f), in_out_value));
+)";
   }
-  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {"device FLT4* const",
-       GetByteBufferConverted(ConvertToPHWC4(*alpha), data_type)},
-  };
-  if (attr.clip != 0) {
-    desc.uniform_buffers = {
-        {"constant float&",
-         [attr](const std::vector<BHWC>& src_shapes,
-                const std::vector<BHWC>& dst_shapes) {
-           std::vector<uint8_t> attr_clip =
-               GetByteBuffer(std::vector<float>{attr.clip});
-           return attr_clip;
-         }},
-    };
-  }
+  TensorDescriptor alpha_desc{definition.GetDataType(),
+                              TensorStorageType::BUFFER, Layout::HWC};
+  alpha_desc.UploadData(*alpha);
+  desc.args.AddObject(
+      "alpha", absl::make_unique<TensorDescriptor>(std::move(alpha_desc)));
   return desc;
 }
 

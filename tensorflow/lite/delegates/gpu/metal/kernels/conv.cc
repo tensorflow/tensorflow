@@ -192,8 +192,8 @@ std::string GenerateConvolution(const ConvParams& params) {
   ids_params.local_ids = {"tid3d.x", "tid3d.y", "tid3d.z"};
   ids_params.local_sizes = {"lsize.x", "lsize.y", "lsize.z"};
   ids_params.linear_wh = params.linear_wh;
-  ids_params.task_size_w = "params.task_sizes.x";
-  ids_params.task_size_wh = "params.task_sizes.y";
+  ids_params.task_size_w = "args.task_size_x";
+  ids_params.task_size_wh = "args.task_size_y";
   ids_params.linear_whs = params.linear_whs;
   ids_params.block_size = params.block_size;
   ids_params.launch_order = params.work_group_launch_order;
@@ -233,16 +233,8 @@ std::string GenerateConvolution(const ConvParams& params) {
   std::string c;
   c.reserve(16 * 1024);  // Reserve large enough buffer.
   c += R"(
-#include <metal_stdlib>
-using namespace metal;
-
-struct uniforms {
-    int4 task_sizes;
-};
-$0
-
 kernel void ComputeFunction(
-    $1
+    $0
     uint tid[[thread_index_in_threadgroup]],
     uint3 group_id[[threadgroup_position_in_grid]],
     uint3 tid3d[[thread_position_in_threadgroup]],
@@ -549,9 +541,8 @@ kernel void ComputeFunction(
         c += "      FLT4 value = FLT4(r" + s_zyx + ");\n";
         c += "      int linear_index = offset_" + s_yx +
              " + args.dst_tensor.SliceStride() * " + s_z + ";\n";
-        c += "      uint3 gid = uint3(X + " + s_x + ", Y + " + s_y + ", Z + " +
-             s_z + ");\n";
-        c += "      $2\n";
+        c += "      args.dst_tensor.Linking(value, X + " + s_x + ", Y + " +
+             s_y + ", Z + " + s_z + ");\n";
         c += "      args.dst_tensor.WriteLinear(value, linear_index);\n";
         c += "    }\n";
       }
@@ -605,19 +596,6 @@ std::vector<float> ReorderWeightsForConv(
     }
   }
   return weights_reordered;
-}
-
-std::vector<uint8_t> GetUniformBuffer(const BHWC& dst_size,
-                                      const ConvParams& params) {
-  const int grid_x = DivideRoundUp(dst_size.w, params.block_size.x);
-  const int grid_y = DivideRoundUp(dst_size.h, params.block_size.y);
-  std::vector<int> uniform_params = {
-      grid_x,
-      grid_x * grid_y,
-      0,  // dummy, for alignment
-      0,  // dummy, for alignment
-  };
-  return GetByteBuffer(uniform_params);
 }
 
 int GetGroupsCount(const BHWC& dst_shape, const int3& wg_size,
@@ -990,7 +968,6 @@ ComputeTaskDescriptor ConvolutionGeneric(const OperationDef& definition,
       GetConvParams(gpu_info, attr, definition.precision, dst_shape);
 
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GenerateConvolution(params);
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -1032,13 +1009,18 @@ ComputeTaskDescriptor ConvolutionGeneric(const OperationDef& definition,
   desc.args.AddObject(
       "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [params](const std::vector<BHWC>& src_shapes,
-                const std::vector<BHWC>& dst_shapes) {
-         return GetUniformBuffer(dst_shapes[0], params);
-       }},
-  };
+  desc.args.AddInt("task_size_x");
+  desc.args.AddInt("task_size_y");
+
+  desc.update_function = {[params](const std::vector<BHWC>& src_shapes,
+                                   const std::vector<BHWC>& dst_shapes,
+                                   ArgumentsBinder* args) -> absl::Status {
+    const int grid_x = DivideRoundUp(dst_shapes[0].w, params.block_size.x);
+    const int grid_y = DivideRoundUp(dst_shapes[0].h, params.block_size.y);
+    RETURN_IF_ERROR(args->SetInt("task_size_x", grid_x));
+    RETURN_IF_ERROR(args->SetInt("task_size_y", grid_x * grid_y));
+    return absl::OkStatus();
+  }};
 
   desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
                                   const std::vector<BHWC>& dst_shapes) {
@@ -1091,7 +1073,6 @@ ComputeTaskDescriptor ConvolutionWino4x4To6x6(
   }
 
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GenerateConvolution(params);
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -1129,13 +1110,18 @@ ComputeTaskDescriptor ConvolutionWino4x4To6x6(
   desc.args.AddObject(
       "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [params](const std::vector<BHWC>& src_shapes,
-                const std::vector<BHWC>& dst_shapes) {
-         return GetUniformBuffer(dst_shapes[0], params);
-       }},
-  };
+  desc.args.AddInt("task_size_x");
+  desc.args.AddInt("task_size_y");
+
+  desc.update_function = {[params](const std::vector<BHWC>& src_shapes,
+                                   const std::vector<BHWC>& dst_shapes,
+                                   ArgumentsBinder* args) -> absl::Status {
+    const int grid_x = DivideRoundUp(dst_shapes[0].w, params.block_size.x);
+    const int grid_y = DivideRoundUp(dst_shapes[0].h, params.block_size.y);
+    RETURN_IF_ERROR(args->SetInt("task_size_x", grid_x));
+    RETURN_IF_ERROR(args->SetInt("task_size_y", grid_x * grid_y));
+    return absl::OkStatus();
+  }};
 
   desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
                                   const std::vector<BHWC>& dst_shapes) {

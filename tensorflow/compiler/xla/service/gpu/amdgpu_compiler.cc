@@ -100,8 +100,14 @@ GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
         << "Couldn't get AMDGPU ISA version for device; assuming gfx803.";
     isa_version = 803;
   }
+  std::string gcn_arch_name =
+      stream_exec->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
+  if (gcn_arch_name == stream_exec->GetDeviceDescription().kUndefinedString) {
+    LOG(WARNING) << "Couldn't get AMDGPU GCN Arch for device; assuming gfx803.";
+    gcn_arch_name = "gfx803";
+  }
 
-  return isa_version;
+  return std::make_pair(isa_version, gcn_arch_name);
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
@@ -127,14 +133,6 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     TF_ASSIGN_OR_RETURN(
         hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version, module_config,
                                       rocdl_dir_));
-  }
-
-  if (debug_module) {
-    llvm_ir::DumpIrIfEnabled(*debug_module, *llvm_module, /*optimized=*/false);
-  }
-
-  if (user_post_optimization_hook_) {
-    user_post_optimization_hook_(*llvm_module);
   }
 
   return std::pair<std::string, std::vector<uint8>>("", std::move(hsaco));

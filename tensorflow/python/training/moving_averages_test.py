@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -490,6 +493,20 @@ class ExponentialMovingAverageTest(test.TestCase):
       # both get added to vars_to_restore.
       self.assertEqual(len(vars_to_restore), 1)
       self.assertIn("v/foo_avg", vars_to_restore)
+
+  @test_util.deprecated_graph_mode_only
+  def testCopyXlaSharding(self):
+    ema = moving_averages.ExponentialMovingAverage(0.25, name="foo_avg")
+    v = variables.Variable(_Repeat(10.0, 2), name="v")
+    self.assertIsNone(xla_sharding.get_tensor_sharding(v))
+    v = xla_sharding.mesh_split(v, np.array([0, 1]), [0], use_sharding_op=False)
+    self.assertIsNotNone(xla_sharding.get_tensor_sharding(v))
+    self.evaluate(variables.global_variables_initializer())
+    ema.apply([v])
+    avg = ema.average(v)
+    self.assertEqual(
+        xla_sharding.get_tensor_sharding(v),
+        xla_sharding.get_tensor_sharding(avg))
 
 
 if __name__ == "__main__":

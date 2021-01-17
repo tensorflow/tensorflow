@@ -34,7 +34,7 @@ namespace gpu {
 namespace {
 
 bool IsConstZeros(const Node& node) {
-  if (node.operation.type != ToString(OperationType::CONST)) {
+  if (node.operation.type != ToString(OperationType::CONSTANT)) {
     return false;
   }
   auto& attr =

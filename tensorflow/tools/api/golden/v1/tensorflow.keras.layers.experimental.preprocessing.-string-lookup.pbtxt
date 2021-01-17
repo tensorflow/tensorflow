@@ -54,6 +54,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "is_adapted"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "losses"
     mtype: "<type \'property\'>"
   }
@@ -95,6 +99,10 @@ tf_class {
   }
   member {
     name: "stateful"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "streaming"
     mtype: "<type \'property\'>"
   }
   member {
@@ -174,6 +182,10 @@ tf_class {
     argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "compile"
+    argspec: "args=[\'self\', \'run_eagerly\', \'steps_per_execution\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "compute_mask"
     argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -187,6 +199,10 @@ tf_class {
   }
   member_method {
     name: "count_params"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "finalize_state"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -238,12 +254,28 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "make_adapt_function"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "merge_state"
+    argspec: "args=[\'self\', \'layers\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_state"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "set_vocabulary"
     argspec: "args=[\'self\', \'vocab\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_weights"
     argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update_state"
+    argspec: "args=[\'self\', \'data\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "vocab_size"

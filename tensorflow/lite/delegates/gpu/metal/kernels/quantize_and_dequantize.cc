@@ -29,20 +29,12 @@ ComputeTaskDescriptor QuantizeAndDequantize(
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   desc.shader_source = R"(
-    FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, float3 params) {
-      value = clamp(value, FLT4(params.x), FLT4(params.y));
-      value = (value - FLT4(params.x)) / FLT4(params.z);
-      return round(value) * FLT4(params.z) + FLT4(params.x);
-    }
-  )";
-  desc.uniform_buffers = {
-      {"constant float3&",
-       [attr](const std::vector<BHWC>& src_shapes,
-              const std::vector<BHWC>& dst_shapes) {
-         return GetByteBuffer(
-             std::vector<float>{attr.min, attr.max, attr.scale});
-       }},
-  };
+  in_out_value = clamp(in_out_value, FLT4(args.qmin), FLT4(args.qmax));
+  in_out_value = (in_out_value - FLT4(args.qmin)) / FLT4(args.qscale);
+  in_out_value = round(in_out_value) * FLT4(args.qscale) + FLT4(args.qmin);)";
+  desc.args.AddFloat("qmax", attr.max);
+  desc.args.AddFloat("qmin", attr.min);
+  desc.args.AddFloat("qscale", attr.scale);
   return desc;
 }
 

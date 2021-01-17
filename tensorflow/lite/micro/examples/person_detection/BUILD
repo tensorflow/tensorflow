@@ -6,9 +6,11 @@ load(
     "tflite_micro_cc_test",
 )
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "model_settings",
@@ -61,7 +63,6 @@ tflite_micro_cc_test(
         ":model_settings",
         ":person_detect_model_data",
         ":simple_images_test_data",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
@@ -140,7 +141,6 @@ cc_binary(
         ":image_provider",
         ":model_settings",
         ":person_detect_model_data",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",

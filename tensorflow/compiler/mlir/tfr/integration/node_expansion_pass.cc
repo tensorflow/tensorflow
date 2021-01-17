@@ -44,8 +44,13 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
   // The rewrite is enabled for all the tf ops and it is a no-op if the tf op
   // isn't a composite op. The following ops are explicitly skipped here because
   // their "no-op" expansion is known to cause problems in some cases.
-  static const char* kOpsToSkip[] = {"IdentityOp", "NoOp", "OptionalHasValue",
-                                     "OptionalGetValue", "VarHandleOp"};
+  static const char* kOpsToSkip[] = {
+      "IdentityOp",
+      "NoOp",              // b/174596063
+      "OptionalHasValue",  // b/173136483
+      "OptionalGetValue",  // b/173136483
+      "VarHandleOp",       // b/176819198
+  };
   for (const char* skip : kOpsToSkip) {
     if (absl::StartsWith(orig_op->op_name(), skip)) return Status::OK();
   }

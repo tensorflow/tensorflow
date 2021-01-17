@@ -12,7 +12,7 @@ py_library(
     srcs = [
         "dataset_serialization_test_base.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",

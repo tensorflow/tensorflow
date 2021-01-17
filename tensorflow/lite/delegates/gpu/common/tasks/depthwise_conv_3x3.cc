@@ -312,8 +312,8 @@ bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr) {
 DepthwiseConv3x3 CreateDepthwiseConv3x3(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
-  bool weights_are_buffer = !gpu_info.SupportsImageBuffer() ||
-                            gpu_info.IsPowerVR() || gpu_info.IsMali();
+  bool weights_are_buffer =
+      !gpu_info.SupportsImages() || gpu_info.IsPowerVR() || gpu_info.IsMali();
   bool local_mem_uploads = weights_are_buffer && gpu_info.IsPowerVR();
   DepthwiseConv3x3 result(definition, weights_are_buffer, local_mem_uploads,
                           gpu_info);

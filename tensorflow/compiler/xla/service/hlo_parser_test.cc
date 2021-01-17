@@ -1197,11 +1197,11 @@ ENTRY InfeedToOutfeed {
   token0 = token[] after-all()
   infeed = ((u32[3]{0}, pred[]), token[]) infeed(token0)
   infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
-  outfeed = token[] outfeed(infeed.data, token0)
+  outfeed = token[] outfeed(infeed.data, token0), outfeed_shape=(u32[3]{0}, pred[])
   ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token0)
   infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
   infeed.1.token = token[] get-tuple-element(infeed.1), index=1
-  outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)
+  outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token), outfeed_shape=(u32[3]{0}, pred[])
 }
 
 )"
@@ -3383,6 +3383,101 @@ TEST_F(HloParserTest,
   EXPECT_THAT(
       result.status().error_message(),
       ::testing::HasSubstr("unexpected attribute \"branch_computations\""));
+}
+
+// Result shape inference tests cases.
+TEST_F(HloParserTest, InferUnaryShape) {
+  constexpr char text[] = R"(HloModule InferUnaryShapeTest
+ENTRY InferUnaryShape {
+  a = f32[2,10]{1,0} parameter(0)
+  ROOT v = abs(a)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+}
+
+TEST_F(HloParserTest, InferBinaryShape) {
+  constexpr char text[] = R"(HloModule InferBinaryShapeTest
+ENTRY InferBinaryShape {
+  a = f32[2,10]{1,0} parameter(0)
+  b = f32[2,10]{1,0} parameter(1)
+  ROOT sum = add(a, b)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      module->entry_computation()->ComputeProgramShape().result(),
+      ShapeUtil::MakeShapeWithLayout(F32, {2, 10}, {1, 0})));
+}
+
+TEST_F(HloParserTest, InferTernaryShape) {
+  constexpr char text[] = R"(HloModule InferTernaryShapeTest
+ENTRY InferTernaryShape {
+  p = pred[] constant(true)
+  f = s32[] constant(-42)
+  t = s32[] constant(42)
+  ROOT select = select(p, f, t)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      module->entry_computation()->ComputeProgramShape().result(),
+      ShapeUtil::MakeScalarShape(S32)));
+}
+
+TEST_F(HloParserTest, InferDotShape) {
+  constexpr char text[] = R"(HloModule InferDotShapeTest
+ENTRY InferDotShape {
+  a = f32[2,10]{1,0} parameter(0)
+  b = f32[10,2]{1,0} parameter(1)
+  ROOT dot = dot(a, b), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      module->entry_computation()->ComputeProgramShape().result(),
+      ShapeUtil::MakeShape(F32, {2}, {0})));
+}
+
+TEST_F(HloParserTest, InferTupleShape) {
+  constexpr char text[] = R"(HloModule InferTupleShapeTest
+ENTRY InferTupleShape () -> s32[2,3] {
+  c0 = f32[3]{0} constant({1, 2, 3})
+  c1 = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } })
+  tuple = tuple(c0, c1)
+  ROOT get = get-tuple-element(tuple), index=1, sharding={maximal device=0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      module->entry_computation()->ComputeProgramShape().result(),
+      ShapeUtil::MakeShapeWithLayout(S32, {2, 3}, {1, 0})));
+}
+
+TEST_F(HloParserTest, InferShapeMixedExplicitShape) {
+  constexpr char text[] = R"(HloModule InferUnaryShapeTest
+Negate {
+  x = f32[] parameter(0)
+  ROOT negate = negate(x)
+}
+
+Identity {
+  y = f32[] parameter(0)
+  ROOT copy = copy(y)
+}
+
+ENTRY InferUnaryShape {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  p = pred[] parameter(2)
+  c = f32[] add(a, b)
+  ROOT conditional = conditional(p, a, c), true_computation=Negate, false_computation=Identity
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      module->entry_computation()->ComputeProgramShape().result(),
+      ShapeUtil::MakeScalarShape(F32)));
 }
 
 }  // namespace

@@ -191,7 +191,7 @@ void InitializeInputs(int left, int right,
 // Invokes a prebuilt interpreter.
 absl::Status Invoke(std::unique_ptr<Interpreter>* interpreter);
 
-// Usability structure, which is used to pass parameters data to parametrized
+// Usability structure, which is used to pass parameters data to parameterized
 // tests.
 struct TestParams {
   // A gtest name, which will be used for a generated tests.

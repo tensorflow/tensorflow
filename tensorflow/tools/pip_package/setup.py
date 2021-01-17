@@ -91,7 +91,7 @@ REQUIRED_PACKAGES = [
     'wrapt ~= 1.12.1',
     # These packages need to be pinned exactly as newer versions are
     # incompatible with the rest of the ecosystem
-    'gast == 0.3.3',
+    'gast == 0.4.0',
     # TensorFlow ecosystem packages that TF exposes API for
     # These need to be in sync with the existing TF version
     # They are updated during the release process

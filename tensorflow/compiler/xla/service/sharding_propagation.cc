@@ -555,6 +555,75 @@ bool InferDotShardingFromOperands(
   return changed;
 }
 
+bool InferGatherParallelShardingFromOperands(
+    HloInstruction* instruction,
+    const hlo_sharding_util::GatherParallelDims& parallel_dims,
+    bool may_combine_partial_sharding) {
+  auto from_operand = [instruction](
+                          int64 operand_index,
+                          absl::Span<const int64> output_aligned_parallel_dims,
+                          absl::Span<const int64> output_parallel_dims) {
+    const HloInstruction* operand = instruction->operand(operand_index);
+    const HloSharding& operand_sharding = operand->sharding();
+    if (operand_sharding.IsTileMaximal()) {
+      return operand_sharding;
+    }
+    auto dnums = instruction->gather_dimension_numbers();
+    std::vector<int64> output_tile_dims(instruction->shape().rank(), 1);
+    std::vector<int64> index_non_parallel_dims;
+    index_non_parallel_dims.reserve(operand->shape().rank());
+    // Detect non parallel dimensions in the index.
+    for (int i = 0; i < operand->shape().rank(); ++i) {
+      if (!absl::c_linear_search(output_aligned_parallel_dims, i)) {
+        index_non_parallel_dims.push_back(i);
+      }
+    }
+    // Collect tile dimensions in the operand. The order of the parallel
+    // dimensions in output_aligned_parallel_dims is the same as that of the
+    // output
+    for (int i = 0; i < output_aligned_parallel_dims.size(); ++i) {
+      const int64 indices_idx = output_aligned_parallel_dims[i];
+      const int64 output_idx = output_parallel_dims[i];
+      output_tile_dims[output_idx] =
+          operand_sharding.tile_assignment().dim(indices_idx);
+    }
+    HloSharding replicate_non_parallel_dims =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            operand_sharding, index_non_parallel_dims);
+    if (replicate_non_parallel_dims.ReplicateOnLastTileDim()) {
+      output_tile_dims.push_back(
+          replicate_non_parallel_dims.tile_assignment().dimensions().back());
+    }
+    auto output_tile_assignment = replicate_non_parallel_dims.tile_assignment();
+    output_tile_assignment.Reshape(output_tile_dims);
+    return replicate_non_parallel_dims.ReplicateOnLastTileDim()
+               ? HloSharding::PartialTile(output_tile_assignment)
+               : HloSharding::Tile(output_tile_assignment);
+  };
+
+  bool changed = false;
+  auto output_parallel_dims =
+      hlo_sharding_util::GatherParallelOutputDims(*instruction, parallel_dims);
+  if (IsSpatiallyPartitioned(instruction->operand(0))) {
+    changed |= MaybeImproveInstructionSharding(
+        from_operand(
+            0,
+            absl::MakeConstSpan(
+                hlo_sharding_util::GatherOutputAlignedOperandParallelDims(
+                    *instruction, parallel_dims)),
+            absl::MakeConstSpan(output_parallel_dims)),
+        instruction, may_combine_partial_sharding);
+  }
+  if (IsSpatiallyPartitioned(instruction->operand(1))) {
+    changed |= MaybeImproveInstructionSharding(
+        from_operand(1,
+                     absl::MakeConstSpan(parallel_dims.indices_parallel_dims),
+                     absl::MakeConstSpan(output_parallel_dims)),
+        instruction, may_combine_partial_sharding);
+  }
+  return changed;
+}
+
 // Convolution handling for InferShardingFromOperands().
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                           int64 aggressiveness,
@@ -1030,6 +1099,14 @@ bool InferShardingFromOperands(HloInstruction* instruction,
     }
     case HloOpcode::kGather: {
       bool changed = false;
+      if (is_spmd) {
+        auto gather_parallel_dims =
+            hlo_sharding_util::GetGatherBatchParallelDims(*instruction);
+        if (gather_parallel_dims) {
+          changed |= InferGatherParallelShardingFromOperands(
+              instruction, *gather_parallel_dims, may_combine_partial_sharding);
+        }
+      }
       if (IsSpatiallyPartitioned(instruction->operand(1))) {
         HloSharding new_sharding = hlo_sharding_util::GatherOutputSharding(
             instruction->operand(1)->sharding(), instruction);

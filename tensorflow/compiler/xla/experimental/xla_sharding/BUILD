@@ -9,6 +9,7 @@ package(
 py_library(
     name = "xla_sharding",
     srcs = ["xla_sharding.py"],
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla/python:xla",

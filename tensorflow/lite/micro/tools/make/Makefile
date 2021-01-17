@@ -195,6 +195,7 @@ TARGET_TOOLCHAIN_ROOT :=
 # This default build is most suited for usual development and testing as is
 # highlighted by the discussion on this github pull request:
 # https://github.com/tensorflow/tensorflow/pull/42314#issuecomment-694360567
+BUILD_TYPE := default
 ifeq ($(BUILD_TYPE), debug)
 	# Specifying BUILD_TYPE=debug adds debug symbols to the binary (and makes it
 	# larger) and should be used to run a binary with gdb.
@@ -328,6 +329,7 @@ tensorflow/lite/micro/kernels/ethosu.cc \
 tensorflow/lite/micro/kernels/flexbuffers_generated_data.cc \
 tensorflow/lite/micro/kernels/floor.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
+tensorflow/lite/micro/kernels/fully_connected_common.cc \
 tensorflow/lite/micro/kernels/hard_swish.cc \
 tensorflow/lite/micro/kernels/kernel_runner.cc \
 tensorflow/lite/micro/kernels/kernel_util.cc \
@@ -385,7 +387,6 @@ $(wildcard tensorflow/lite/micro/benchmarks/*model_data.h) \
 $(wildcard tensorflow/lite/micro/kernels/*.h) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.h) \
 LICENSE \
-tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
 tensorflow/lite/c/c_api_types.h \
 tensorflow/lite/c/common.h \
@@ -453,8 +454,7 @@ tensorflow/lite/kernels/op_macros.h \
 tensorflow/lite/kernels/padding.h \
 tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/schema/schema_utils.h \
-tensorflow/lite/version.h
+tensorflow/lite/schema/schema_utils.h
 
 # TODO(b/165940489): Figure out how to avoid including fixed point
 # platform-specific headers.
@@ -544,6 +544,10 @@ TARGETS_WITHOUT_MAKEFILES := \
 $(HOST_OS) \
 arduino
 
+# This specific string needs to be outputted for a test to be recognized as
+# having passed.
+TEST_PASS_STRING:='~~~ALL TESTS PASSED~~~'
+
 # ${TARGET}_makefile.inc can set this to true to allow it to defined a custom
 # implementation for `make test`. See bluepill_makefile as an example.
 TARGET_SPECIFIC_MAKE_TEST:=0
@@ -584,7 +588,8 @@ ALL_SRCS := \
 	$(MICROLITE_TEST_SRCS)
 
 # Where compiled objects are stored.
-GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
+
+GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)_$(BUILD_TYPE)/
 OBJDIR := $(GENDIR)obj/
 BINDIR := $(GENDIR)bin/
 LIBDIR := $(GENDIR)lib/
@@ -651,7 +656,7 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	@test -f $(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $(TARGET)?'; exit 1)
-	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
+	$(TEST_SCRIPT) $< $(TEST_PASS_STRING)
 
 # snease: Add %.bin rule here since BINDIR is now defined
 # These are microcontroller-specific rules for converting the ELF output

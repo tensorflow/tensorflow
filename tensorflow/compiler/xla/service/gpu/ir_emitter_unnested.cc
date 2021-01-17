@@ -81,6 +81,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
@@ -224,14 +225,14 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
               .getValue()
               .getSExtValue(),
           size);
-    } else if (mlir::isa<mlir::GetGlobalMemrefOp>(op)) {
+    } else if (auto get_global = mlir::dyn_cast<mlir::GetGlobalMemrefOp>(op)) {
+      auto module = get_global->getParentOfType<mlir::ModuleOp>();
+      auto global = mlir::cast<mlir::GlobalMemrefOp>(
+          module.lookupSymbol(get_global.name()));
       int64_t index =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-      int64_t offset =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_offset").getInt();
-      int64_t size =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_size").getInt();
-      return BufferAllocation::Slice(&allocations[index], offset, size);
+          global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+      return BufferAllocation::Slice(&allocations[index], 0,
+                                     allocations[index].size());
     }
     return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
   }
@@ -769,6 +770,71 @@ Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
   return EmitLoopFusionFromMlir(input, output_shape);
 }
 
+Status IrEmitterUnnested::HandleConstant(HloInstruction* constant) {
+  return Status::OK();
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(constant));
+  return EmitConstant(input);
+}
+
+Status IrEmitterUnnested::EmitConstant(MlirEmitterInput mlir_input) {
+  auto get_global = mlir::cast<mlir::GetGlobalMemrefOp>(mlir_input.op);
+  auto module = get_global->getParentOfType<mlir::ModuleOp>();
+  auto global =
+      mlir::cast<mlir::GlobalMemrefOp>(module.lookupSymbol(get_global.name()));
+
+  auto literal = global.initial_value()->dyn_cast<mlir::DenseElementsAttr>();
+  TF_RET_CHECK(literal);
+
+  const bool should_emit_initializer = literal.getType().getNumElements() > 1;
+
+  TF_ASSIGN_OR_RETURN(int element_bytes,
+                      GetElementTypeBytes(literal.getType().getElementType()));
+  llvm::ArrayType* global_type = llvm::ArrayType::get(
+      b_.getInt8Ty(), literal.getType().getNumElements() * element_bytes);
+
+  GpuExecutable::ConstantInfo info;
+  llvm::Constant* initializer;
+  if (should_emit_initializer) {
+    std::vector<uint8> content;
+    TF_RETURN_IF_ERROR(CopyDenseElementsDataToXlaFormat(literal, &content));
+    initializer = llvm::ConstantDataArray::get<uint8>(
+        ir_emitter_context_->llvm_module()->getContext(), content);
+  } else {
+    TF_RETURN_IF_ERROR(
+        CopyDenseElementsDataToXlaFormat(literal, &info.content));
+    initializer = llvm::ConstantAggregateZero::get(global_type);
+  }
+
+  // These globals will be looked up by name by GpuExecutable so we need to
+  // give them an external linkage.  Not all of their uses are visible in
+  // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
+  // merely preserves their names (like available_externally), we also need
+  // to ensure that they stick around even if they're "unused".
+  //
+  // We may have to be more clever here in the future if we notice that we're
+  // keeping around too many globals because of their linkage.
+  unsigned global_address_space =
+      llvm_ir::GetGlobalMemoryAddressSpace(*ir_emitter_context_->llvm_module());
+
+  llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
+      global_type, /*isConstant=*/should_emit_initializer,
+      llvm::GlobalValue::ExternalLinkage,
+      /*Initializer=*/initializer, global.sym_name(),
+      /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+      /*AddressSpace=*/global_address_space,
+      /*isExternallyInitialized=*/false);
+  global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
+  ir_emitter_context_->llvm_module()->getGlobalList().push_back(
+      global_for_const);
+
+  info.symbol_name.assign(global.sym_name().begin(), global.sym_name().end());
+
+  info.allocation_index =
+      global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+  ir_emitter_context_->constants().push_back(std::move(info));
+  return Status::OK();
+}
+
 Status IrEmitterUnnested::HandleConditional(HloInstruction* conditional) {
   TF_ASSIGN_OR_RETURN(auto thunk, BuildConditionalThunk(conditional));
   AddThunkToThunkSequence(std::move(thunk));
@@ -1122,6 +1188,8 @@ Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
     descriptor.result_shape = apply_layout(TypeToShape(conv_result.getType()),
                                            op.backend_config().result_layout());
     descriptor.dnums = ConvertConvDimensionNumbers(op.dimension_numbers());
+    descriptor.scratch_size =
+        input.extra_slice->shape.tuple_shapes(1).dimensions(0);
     mlir::DenseIntElementsAttr window_strides = op.window_strides().getValue();
     mlir::DenseIntElementsAttr padding = op.padding().getValue();
     mlir::DenseIntElementsAttr lhs_dilation = op.lhs_dilation().getValue();
@@ -3171,15 +3239,15 @@ Status IrEmitterUnnested::HandleAllToAll(HloInstruction* hlo) {
 Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(xla_infeed));
 
-  auto infeed_op = mlir::dyn_cast<mlir::lmhlo::InfeedOp>(input.op);
+  auto infeed_op = mlir::cast<mlir::lmhlo::InfeedOp>(input.op);
 
-  std::vector<InfeedThunk::ShapedSlice> dest_slices;
+  std::vector<ShapedSlice> dest_slices;
   dest_slices.reserve(infeed_op.outputs().size());
 
   for (mlir::Value output : infeed_op.outputs()) {
     TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(output));
     const Shape& shape = TypeToShape(output.getType());
-    dest_slices.push_back(InfeedThunk::ShapedSlice{slice, shape});
+    dest_slices.push_back(ShapedSlice{slice, shape});
   }
 
   AddThunkToThunkSequence(
@@ -3188,7 +3256,22 @@ Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
 }
 
 Status IrEmitterUnnested::HandleOutfeed(HloInstruction* outfeed) {
-  return ThunkEmitter(this).HandleOutfeed(outfeed);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(outfeed));
+
+  auto outfeed_op = mlir::cast<mlir::lmhlo::OutfeedOp>(input.op);
+
+  std::vector<ShapedSlice> source_slices;
+  source_slices.reserve(outfeed_op.operands().size());
+
+  for (mlir::Value operand : outfeed_op.operands()) {
+    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(operand));
+    const Shape& shape = TypeToShape(operand.getType());
+    source_slices.push_back(ShapedSlice{slice, shape});
+  }
+
+  AddThunkToThunkSequence(absl::make_unique<OutfeedThunk>(
+      input.thunk_info, std::move(source_slices)));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
@@ -3595,21 +3678,9 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Value init_value,
   }
 
   if (const_init) {
-    Shape init_shape = TypeToShape(init_value.getType());
-    CHECK(ShapeUtil::IsScalar(init_shape));
-    int64 num_bytes = ShapeUtil::ByteSizeOfElements(init_shape);
-    bool bool_init;
-    absl::Span<const uint8> literal_bytes(
-        reinterpret_cast<const uint8*>(const_init.getRawData().data()),
-        num_bytes);
-    auto init_type = init_value.getType().dyn_cast<mlir::ShapedType>();
-    if (init_shape.element_type() == PRED) {
-      TF_RET_CHECK(num_bytes == 1);
-      TF_RET_CHECK(init_type.getElementTypeBitWidth() == 1);
-      bool_init = *const_init.getBoolValues().begin();
-      literal_bytes =
-          absl::MakeSpan(reinterpret_cast<const uint8_t*>(&bool_init), 1);
-    }
+    std::vector<uint8> literal_bytes;
+    TF_RETURN_IF_ERROR(
+        CopyDenseElementsDataToXlaFormat(const_init, &literal_bytes));
 
     TF_ASSIGN_OR_RETURN(auto dest_slice, GetAllocationSliceForMlir(dest));
 
@@ -4323,8 +4394,8 @@ void IrEmitterUnnested::EmitPrologueForReduction(
       }
       const HloInstruction* init_value = reduce_hlo->operand(1);
 
-      init_ir_value = (*fused_emitter->GetGenerator(init_value))(
-                          IrArray::Index(b_.getInt32Ty()))
+      init_ir_value = (*fused_emitter->GetGenerator(
+          init_value))(IrArray::Index(b_.getInt32Ty()))
                           .ValueOrDie();
     } else {
       init_ir_value = operand_ir_arrays[1].EmitReadArrayElement(

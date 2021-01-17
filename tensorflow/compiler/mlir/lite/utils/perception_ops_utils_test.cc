@@ -44,7 +44,7 @@ FuncOp createMaxUnpoolingFunc(
 
   func.addEntryBlock();
   mlir::StringAttr attr_value = builder->getStringAttr("MaxUnpooling2D");
-  func.setAttr("tf._implements", attr_value);
+  func->setAttr("tf._implements", attr_value);
   return func;
 }
 

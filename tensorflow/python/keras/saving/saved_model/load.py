@@ -204,13 +204,9 @@ def _generate_object_paths(object_graph_def):
   """Traverses through an ObjectGraphDef and builds a map of all node paths."""
   paths = {0: 'root'}
   nodes_to_visit = [0]
-  visited_nodes = set([])
 
   while nodes_to_visit:
     current_node = nodes_to_visit.pop()
-    # if current_node in visited_nodes:
-    #   continue
-    visited_nodes.add(current_node)
     current_path = paths[current_node]
     for reference in object_graph_def.nodes[current_node].children:
       if reference.node_id in paths:
@@ -454,20 +450,20 @@ class KerasObjectLoader(object):
 
   def _revive_graph_network(self, metadata, node_id):
     """Revives a graph network from config."""
-    class_name = compat.as_str(metadata['class_name'])
-    config = metadata.get('config')
-
     # Determine whether the metadata contains information for reviving a
     # functional or Sequential model.
+    config = metadata.get('config')
+    if not generic_utils.validate_config(config):
+      return None
+
+    class_name = compat.as_str(metadata['class_name'])
+    if generic_utils.get_registered_object(class_name) is not None:
+      return None
     model_is_functional_or_sequential = (
         metadata.get('is_graph_network', False) or
-        metadata['class_name'] == 'Sequential' or
-        metadata['class_name'] == 'Functional')
-    if not (generic_utils.validate_config(config) and
-            model_is_functional_or_sequential
-           ) or generic_utils.get_registered_object(class_name) is not None:
-      # Model should not be revived as a graph network. Try reviving directly
-      # from config or as a custom model.
+        class_name == 'Sequential' or
+        class_name == 'Functional')
+    if not model_is_functional_or_sequential:
       return None
 
     # Revive functional and sequential models as blank model objects for now (

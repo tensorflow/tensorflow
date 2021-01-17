@@ -52,6 +52,15 @@ PyBuffer::~PyBuffer() {
   }
 }
 
+pybind11::tuple PyBuffer::python_shape() const {
+  return IntSpanToTuple(buffer()->on_host_shape().dimensions());
+}
+
+pybind11::dtype PyBuffer::python_dtype() const {
+  PrimitiveType primitive = buffer()->on_host_shape().element_type();
+  return PrimitiveTypeToDtype(primitive).ValueOrDie();
+}
+
 ClientAndPtr<PjRtDevice> PyBuffer::device() const {
   return WrapWithClient(client_, buffer_->device());
 }

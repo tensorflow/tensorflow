@@ -742,6 +742,41 @@ public final class InterpreterTest {
       String[] expectedSignatureOutputs = {"output_0"};
       assertThat(signatureOutputs).isEqualTo(expectedSignatureOutputs);
 
+      Tensor outputTensor = interpreter.getOutputTensorFromSignature("output_0", "mul_add");
+      Tensor inputTensor = interpreter.getInputTensorFromSignature("x", "mul_add");
+      assertThat(outputTensor.numElements()).isEqualTo(1);
+      assertThat(inputTensor.numElements()).isEqualTo(1);
+
+      // Test null input name.
+      try {
+        inputTensor = interpreter.getInputTensorFromSignature(null, "mul_add");
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e).hasMessageThat().contains("Invalid input tensor name provided (null)");
+      }
+      // Test invalid input name.
+      try {
+        inputTensor = interpreter.getInputTensorFromSignature("xx", "mul_add");
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e).hasMessageThat().contains("Invalid input tensor");
+      }
+
+      // Test null output name.
+      try {
+        outputTensor = interpreter.getOutputTensorFromSignature(null, "mul_add");
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e).hasMessageThat().contains("Invalid output tensor name provided (null)");
+      }
+      // Test invalid output name.
+      try {
+        outputTensor = interpreter.getOutputTensorFromSignature("yy", "mul_add");
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e).hasMessageThat().contains("Invalid output tensor");
+      }
+
       FloatBuffer output = FloatBuffer.allocate(1);
       float[] inputX = {2.0f};
       float[] inputY = {4.0f};

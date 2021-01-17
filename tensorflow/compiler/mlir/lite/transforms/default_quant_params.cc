@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
-#include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_lstm.h"
+#include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
 
 //===----------------------------------------------------------------------===//
 // The Pass to add default quantization parameters for the activations which

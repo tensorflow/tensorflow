@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -86,6 +87,22 @@ struct RemoveUnusedTensorToMemrefOperations
     });
   }
 };
+
+struct CollapseParallelLoopsTo1D
+    : public mlir::PassWrapper<CollapseParallelLoopsTo1D, mlir::FunctionPass> {
+  void runOnFunction() override {
+    getFunction().walk([&](mlir::scf::ParallelOp op) {
+      unsigned num_loops = op.getNumLoops();
+      if (num_loops == 1) return;
+      std::vector<unsigned> combinedLoops;
+      combinedLoops.reserve(num_loops);
+      for (unsigned i = 0; i < num_loops; ++i) {
+        combinedLoops.push_back(i);
+      }
+      mlir::collapseParallelLoops(op, {combinedLoops});
+    });
+  }
+};
 }  // end anonymous namespace
 
 Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
@@ -99,22 +116,13 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   pm.addNestedPass<mlir::FuncOp>(mlir::createTransformUnrankedHloPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 
   // Transform HLO operations to LinAlg.
   pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
-  // We have to anticipate later unrolling in tiling to make sure that we get
-  // the requested tiling after unrolling. Compute the new tiling here if
-  // needed.
-  llvm::SmallVector<int64_t, 4> tiling_for_unrolling, inner_tile;
-  tiling_for_unrolling.reserve(tile_sizes.size());
-  for (auto pair : llvm::zip(tile_sizes, unroll_factors)) {
-    tiling_for_unrolling.push_back(std::get<0>(pair) * std::get<1>(pair));
-    inner_tile.push_back(std::get<1>(pair));
-  }
-  tiling_for_unrolling.append(
-      tile_sizes.drop_front(unroll_factors.size()).begin(), tile_sizes.end());
   // Fuse linalg operations.
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgFusionOfTensorOpsPass());
 
@@ -132,8 +140,6 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   // equality can be determined based on `linalg.generic` operations.
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateBufferReusePass());
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::createLinalgTilingToParallelLoopsPass((tiling_for_unrolling)));
   // Transform the Linalg ops inside of the loop nest into parallel loops.
   pm.addNestedPass<mlir::FuncOp>(
       ::mlir::createConvertLinalgToParallelLoopsPass());
@@ -141,19 +147,32 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   // that loop bounds have the same value.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
-  // Fuse the inner-most loops.
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::kernel_gen::transforms::CreateFuseInnerParallelLoopsPass());
   // Run CSE to ensure that loads and stores to the same subview get
   // recognized as such.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+
+  // Collapse and tile parallel loops.
+  pm.addNestedPass<mlir::FuncOp>(std::make_unique<CollapseParallelLoopsTo1D>());
+  // We have to anticipate later unrolling in tiling to make sure that we get
+  // the requested tiling after unrolling. Compute the new tiling here if
+  // needed.
+  llvm::SmallVector<int64_t, 4> tiling_for_unrolling, inner_tile;
+  tiling_for_unrolling.reserve(tile_sizes.size());
+  for (auto pair : llvm::zip(tile_sizes, unroll_factors)) {
+    tiling_for_unrolling.push_back(std::get<0>(pair) * std::get<1>(pair));
+    inner_tile.push_back(std::get<1>(pair));
+  }
+  tiling_for_unrolling.append(
+      tile_sizes.drop_front(unroll_factors.size()).begin(), tile_sizes.end());
+  pm.addNestedPass<mlir::FuncOp>(
+      ::mlir::createParallelLoopTilingPass(tiling_for_unrolling));
   if (!unroll_factors.empty()) {
     pm.addNestedPass<mlir::FuncOp>(
         ::mlir::createParallelLoopTilingPass(inner_tile));
   }
-  // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+
   // Greedily map the remaining loop to GPU hardware dimensions.
   pm.addNestedPass<::mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateMapParallelLoopsPass());
@@ -223,6 +242,14 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   }
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
+  }
+  auto gpu_modules = module.getOps<mlir::gpu::GPUModuleOp>();
+  auto num_modules = std::distance(gpu_modules.begin(), gpu_modules.end());
+  if (num_modules != 1) {
+    LOG(WARNING) << "There should be exactly one GPU Module, but got "
+                 << num_modules
+                 << ". Currently we leak memory if there is more than one "
+                    "module, see https://bugs.llvm.org/show_bug.cgi?id=48385";
   }
   return Status::OK();
 }
@@ -323,19 +350,6 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
                                         print_ptx, enable_ftz));
   TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get()));
   return module;
-}
-
-StatusOr<std::string> ExtractGpuBinary(mlir::ModuleOp module) {
-  auto gpu_modules = module.getOps<mlir::gpu::GPUModuleOp>();
-  if (std::distance(gpu_modules.begin(), gpu_modules.end()) != 1) {
-    return InternalError("There should be exactly one GPU Module");
-  }
-  mlir::gpu::GPUModuleOp gpu_mod = *gpu_modules.begin();
-  auto blob = gpu_mod->getAttrOfType<mlir::StringAttr>(kGpuBinaryAttrName);
-  if (blob == nullptr) {
-    return InternalError("No binary blob found in the module");
-  }
-  return blob.getValue().str();
 }
 
 }  // namespace kernel_gen

@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -96,6 +97,14 @@ SmallVector<Value, 2> ExtractDynamicSizes(OpBuilder& b, Location loc,
     dyn_sizes.push_back(b.create<DimOp>(loc, tensor, en.index()));
   }
   return dyn_sizes;
+}
+
+SmallVector<int64_t, 4> Extract1DVector(DenseIntElementsAttr elements) {
+  SmallVector<int64_t, 4> ret;
+  for (const APInt& element : elements) {
+    ret.push_back(element.getLimitedValue());
+  }
+  return ret;
 }
 
 template <typename OpTy, bool isLHLO = true>
@@ -434,6 +443,55 @@ class HloBroadcastInDimConverter
     return {
         AffineMap::get(nloops, /*symbolCount=*/0, dim_exprs, b->getContext()),
         b->getMultiDimIdentityMap(nloops)};
+  }
+};
+
+class HloDynamicBroadcastInDimConverter
+    : public OpConversionPattern<mhlo::DynamicBroadcastInDimOp> {
+ public:
+  using OpConversionPattern<mhlo::DynamicBroadcastInDimOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    // Convert only if the producer is an HLO constant. Ideally the pattern
+    // (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`) should be converted
+    // to an Tensor-dialect op similar to TF ConstantLikeOp.
+    if (!op.operand().getDefiningOp<mhlo::ConstOp>()) return failure();
+
+    mhlo::DynamicBroadcastInDimOp::Adaptor adaptor(op);
+    Value operand = adaptor.operand();
+    auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+    if (!operand_type || operand_type.getRank() != 0) return failure();
+
+    Value shape = adaptor.output_dimensions();
+    auto shape_type = shape.getType().cast<RankedTensorType>();
+    int64_t result_rank = shape_type.getDimSize(0);
+
+    SmallVector<Value, 2> dyn_dims;
+    Location loc = op.getLoc();
+    for (int i = 0; i < result_rank; ++i) {
+      Value index = rewriter.create<ConstantIndexOp>(loc, i);
+      dyn_dims.push_back(rewriter.create<tensor::ExtractOp>(loc, shape, index));
+    }
+    auto result_type = op.getType().cast<RankedTensorType>();
+
+    int64_t nloops = result_type.getRank();
+    Value init = rewriter.create<linalg::InitTensorOp>(
+        loc, dyn_dims, result_type.getShape(), result_type.getElementType());
+    Operation* generic = rewriter.create<linalg::GenericOp>(
+        loc, TypeRange{init.getType()}, ValueRange{operand},
+        /*outputBuffers=*/ValueRange{init},
+        llvm::makeArrayRef(
+            {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, {},
+                            rewriter.getContext()),
+             rewriter.getMultiDimIdentityMap(nloops)}),
+        GetNParallelLoopsAttrs(nloops),
+        [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
+          nested_builder.create<linalg::YieldOp>(loc, *args.begin());
+        });
+    rewriter.replaceOp(op, generic->getResults());
+    return success();
   }
 };
 
@@ -964,6 +1022,198 @@ class SliceConverter : public OpConversionPattern<lmhlo::SliceOp> {
   }
 };
 
+enum class DotOperationType {
+  kVectorDot = 0,
+  kMatrixVector = 1,
+  kMatrixMatrix = 2,
+  kUnsupported = 3
+};
+
+DotOperationType GetDotOperationType(mhlo::DotOp dot_op) {
+  ArrayRef<int64_t> lhs_shape =
+      dot_op.lhs().getType().cast<ShapedType>().getShape();
+  ArrayRef<int64_t> rhs_shape =
+      dot_op.rhs().getType().cast<ShapedType>().getShape();
+  auto shape_matches = [](int64_t a, int64_t b) {
+    return a == ShapedType::kDynamicSize || b == ShapedType::kDynamicSize ||
+           a == b;
+  };
+  if (lhs_shape.size() == 1 && rhs_shape.size() == 1 &&
+      shape_matches(lhs_shape[0], rhs_shape[0])) {
+    return DotOperationType::kVectorDot;
+  }
+  if (lhs_shape.size() == 2 && rhs_shape.size() == 1 &&
+      shape_matches(lhs_shape[1], rhs_shape[0])) {
+    return DotOperationType::kMatrixVector;
+  }
+  if (rhs_shape.size() == 2 && rhs_shape.size() == 2 &&
+      shape_matches(lhs_shape[1], rhs_shape[0])) {
+    return DotOperationType::kMatrixMatrix;
+  }
+  return DotOperationType::kUnsupported;
+}
+
+SmallVector<Value, 8> GetDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
+                                                 Value lhs, Value rhs,
+                                                 ShapedType result_type,
+                                                 DotOperationType type) {
+  SmallVector<Value, 8> dyn_shape;
+  switch (type) {
+    case DotOperationType::kMatrixMatrix: {
+      if (result_type.isDynamicDim(0))
+        dyn_shape.push_back(b.create<DimOp>(loc, lhs, 0));
+      if (result_type.isDynamicDim(1))
+        dyn_shape.push_back(b.create<DimOp>(loc, rhs, 1));
+      break;
+    }
+    case DotOperationType::kMatrixVector: {
+      if (result_type.isDynamicDim(0))
+        dyn_shape.push_back(b.create<DimOp>(loc, lhs, 0));
+      break;
+    }
+    case DotOperationType::kVectorDot:
+    case DotOperationType::kUnsupported:
+    default: {
+      break;
+    }
+  }
+  return dyn_shape;
+}
+
+class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
+ public:
+  using OpConversionPattern<mhlo::DotOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::DotOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!VerifyHloOpBufferOrTensorSemantics</*isLHLO=*/false>(op)) {
+      return failure();
+    }
+    Location loc = op.getLoc();
+    mhlo::DotOp::Adaptor adaptor(args);
+    Type result_type = op.getResult().getType();
+    auto shaped_type = result_type.cast<ShapedType>();
+    DotOperationType op_type = GetDotOperationType(op);
+    SmallVector<Value, 8> dyn_shape = GetDotOpInitTensorDynSizes(
+        rewriter, loc, adaptor.lhs(), adaptor.rhs(), shaped_type, op_type);
+    auto zero_attr = rewriter.getZeroAttr(shaped_type.getElementType());
+    Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
+    auto init_tensor = rewriter.create<DynamicTensorFromElementsOp>(
+        loc, result_type, dyn_shape);
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      SmallVector<Type, 4> arg_types(shaped_type.getRank(),
+                                     rewriter.getIndexType());
+      Region& region = init_tensor.body();
+      Block* block = rewriter.createBlock(&region, region.begin(), arg_types);
+      rewriter.setInsertionPointToEnd(block);
+      rewriter.create<YieldOp>(loc, zero);
+    }
+    linalg::LinalgOp linalg_op;
+    switch (op_type) {
+      case DotOperationType::kMatrixMatrix: {
+        linalg_op = rewriter.create<linalg::MatmulOp>(
+            loc, TypeRange{result_type},
+            ValueRange{adaptor.lhs(), adaptor.rhs()}, ValueRange{init_tensor});
+        break;
+      }
+      case DotOperationType::kMatrixVector: {
+        linalg_op = rewriter.create<linalg::MatvecOp>(
+            loc, TypeRange{result_type},
+            ValueRange{adaptor.lhs(), adaptor.rhs()}, ValueRange{init_tensor});
+        break;
+      }
+      case DotOperationType::kVectorDot: {
+        linalg_op = rewriter.create<linalg::DotOp>(
+            loc, TypeRange{result_type},
+            ValueRange{adaptor.lhs(), adaptor.rhs()}, ValueRange{init_tensor});
+        break;
+      }
+      case DotOperationType::kUnsupported:
+      default: {
+        return op.emitError("unsupported dot operation type");
+      }
+    }
+    rewriter.replaceOp(op, linalg_op->getResults());
+    return success();
+  }
+};
+
+SmallVector<Value, 8> GetDotGeneralOpInitTensorDynSizes(
+    OpBuilder& b, Location loc, Value lhs, Value rhs, ShapedType result_type) {
+  SmallVector<Value, 8> dyn_shape;
+  if (result_type.isDynamicDim(0))
+    dyn_shape.push_back(b.create<DimOp>(loc, lhs, 0));
+  if (result_type.isDynamicDim(1))
+    dyn_shape.push_back(b.create<DimOp>(loc, lhs, 1));
+  if (result_type.isDynamicDim(2))
+    dyn_shape.push_back(b.create<DimOp>(loc, rhs, 2));
+  return dyn_shape;
+}
+
+class DotGeneralOpOnTensorsConversion
+    : public OpConversionPattern<mhlo::DotGeneralOp> {
+ public:
+  using OpConversionPattern<mhlo::DotGeneralOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::DotGeneralOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!VerifyHloOpBufferOrTensorSemantics</*isLHLO=*/false>(op)) {
+      return failure();
+    }
+    mhlo::DotDimensionNumbers dim_numbers = op.dot_dimension_numbers();
+    auto lhs_bathcing_dims =
+        Extract1DVector(dim_numbers.lhs_batching_dimensions());
+    auto rhs_bathcing_dims =
+        Extract1DVector(dim_numbers.rhs_batching_dimensions());
+    auto lhs_contracting_dims =
+        Extract1DVector(dim_numbers.lhs_contracting_dimensions());
+    auto rhs_contracting_dims =
+        Extract1DVector(dim_numbers.rhs_contracting_dimensions());
+    if (lhs_bathcing_dims.size() != 1 || lhs_bathcing_dims[0] != 0) {
+      return rewriter.notifyMatchFailure(
+          op, "expected lhs batching dimensions exactly {0}");
+    }
+    if (rhs_bathcing_dims.size() != 1 || rhs_bathcing_dims[0] != 0) {
+      return rewriter.notifyMatchFailure(
+          op, "expected rhs batching dimensions exactly {0}");
+    }
+    if (lhs_contracting_dims.size() != 1 || lhs_contracting_dims[0] != 2) {
+      return rewriter.notifyMatchFailure(
+          op, "expected lhs contracting dimensions exactly {2}");
+    }
+    if (rhs_contracting_dims.size() != 1 || rhs_contracting_dims[0] != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "expected rhs contracting dimensions exactly {1}");
+    }
+    Location loc = op.getLoc();
+    mhlo::DotGeneralOp::Adaptor adaptor(args);
+    Type result_type = op.getResult().getType();
+    auto shaped_type = result_type.cast<ShapedType>();
+    SmallVector<Value, 8> dyn_shape = GetDotGeneralOpInitTensorDynSizes(
+        rewriter, loc, adaptor.lhs(), adaptor.rhs(), shaped_type);
+    auto zero_attr = rewriter.getZeroAttr(shaped_type.getElementType());
+    Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
+    auto init_tensor = rewriter.create<DynamicTensorFromElementsOp>(
+        loc, result_type, dyn_shape);
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      SmallVector<Type, 4> arg_types(shaped_type.getRank(),
+                                     rewriter.getIndexType());
+      Region& region = init_tensor.body();
+      Block* block = rewriter.createBlock(&region, region.begin(), arg_types);
+      rewriter.setInsertionPointToEnd(block);
+      rewriter.create<YieldOp>(loc, zero);
+    }
+    auto linalg_op = rewriter.create<linalg::BatchMatmulOp>(
+        loc, /*resultTensorTypes=*/TypeRange{result_type},
+        /*inputs=*/ValueRange{adaptor.lhs(), adaptor.rhs()},
+        /*outputBuffers=*/ValueRange{init_tensor});
+    rewriter.replaceOp(op, linalg_op.getResults());
+    return success();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
@@ -977,6 +1227,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<lmhlo::AndOp>,
                    PointwiseToLinalgConverter<lmhlo::Atan2Op>,
                    PointwiseToLinalgConverter<lmhlo::CeilOp>,
+                   PointwiseToLinalgConverter<lmhlo::ClampOp>,
                    PointwiseToLinalgConverter<lmhlo::CompareOp>,
                    PointwiseToLinalgConverter<lmhlo::ComplexOp>,
                    PointwiseToLinalgConverter<lmhlo::ConvertOp>,
@@ -989,6 +1240,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<lmhlo::ImagOp>,
                    PointwiseToLinalgConverter<lmhlo::IsFiniteOp>,
                    PointwiseToLinalgConverter<lmhlo::LogOp>,
+                   PointwiseToLinalgConverter<lmhlo::Log1pOp>,
                    PointwiseToLinalgConverter<lmhlo::MaxOp>,
                    PointwiseToLinalgConverter<lmhlo::MinOp>,
                    PointwiseToLinalgConverter<lmhlo::MulOp>,
@@ -1067,7 +1319,7 @@ struct HloLegalizeToLinalgPass
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           scf::SCFDialect>();
+                           tensor::TensorDialect, scf::SCFDialect>();
 
     auto func = getFunction();
     mhlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -1091,13 +1343,14 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           OwningRewritePatternList* patterns) {
   patterns
       ->insert<BroadcastConverter<mhlo::BroadcastOp, false>,
-               ConstConverter<mhlo::ConstOp>, HloBroadcastInDimConverter,
-               IotaConverter<mhlo::IotaOp, false>,
+               ConstConverter<mhlo::ConstOp>, HloDynamicBroadcastInDimConverter,
+               HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp, false>,
                PointwiseToLinalgConverter<mhlo::AbsOp, false>,
                PointwiseToLinalgConverter<mhlo::AddOp, false>,
                PointwiseToLinalgConverter<mhlo::AndOp, false>,
                PointwiseToLinalgConverter<mhlo::Atan2Op, false>,
                PointwiseToLinalgConverter<mhlo::CeilOp, false>,
+               PointwiseToLinalgConverter<mhlo::ClampOp, false>,
                PointwiseToLinalgConverter<mhlo::CompareOp, false>,
                PointwiseToLinalgConverter<mhlo::ComplexOp, false>,
                PointwiseToLinalgConverter<mhlo::ConvertOp, false>,
@@ -1109,6 +1362,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                PointwiseToLinalgConverter<mhlo::ImagOp, false>,
                PointwiseToLinalgConverter<mhlo::IsFiniteOp, false>,
                PointwiseToLinalgConverter<mhlo::LogOp, false>,
+               PointwiseToLinalgConverter<mhlo::Log1pOp, false>,
                PointwiseToLinalgConverter<mhlo::MaxOp, false>,
                PointwiseToLinalgConverter<mhlo::MinOp, false>,
                PointwiseToLinalgConverter<mhlo::MulOp, false>,
@@ -1131,7 +1385,9 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                PointwiseToLinalgConverter<mhlo::XorOp, false>,
                ReshapeOpConverter<mhlo::ReshapeOp, false>,
                ReverseConverter<mhlo::ReverseOp, false>,
-               TransposeConverter<mhlo::TransposeOp, false>>(context);
+               TransposeConverter<mhlo::TransposeOp, false>,
+               DotOpOnTensorsConversion, DotGeneralOpOnTensorsConversion>(
+          context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {

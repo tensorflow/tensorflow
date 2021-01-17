@@ -413,6 +413,7 @@ cc_library(
         "hlo_instructions.cc",
         "hlo_module.cc",
         "hlo_module_metadata.cc",
+        "hlo_op_metadata.cc",
         "hlo_opcode.cc",
         "hlo_schedule.cc",
         "hlo_sharding.cc",
@@ -430,6 +431,7 @@ cc_library(
         "hlo_instructions.h",
         "hlo_module.h",
         "hlo_module_metadata.h",
+        "hlo_op_metadata.h",
         "hlo_opcode.h",
         "hlo_schedule.h",
         "hlo_sharding.h",
@@ -479,6 +481,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -486,6 +489,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -761,6 +765,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
@@ -2392,6 +2397,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/flags:flag",
     ],
 )
 
@@ -3362,6 +3368,7 @@ cc_library(
     hdrs = ["logical_buffer_analysis.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":logical_buffer",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -3377,6 +3384,7 @@ cc_library(
     hdrs = ["tuple_points_to_analysis.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_dataflow_analysis",
         ":logical_buffer",
         ":logical_buffer_analysis",
@@ -3403,6 +3411,7 @@ tf_cc_test(
     srcs = ["tuple_points_to_analysis_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_creation_utils",
         ":hlo_matchers",
         ":instruction_fusion",
@@ -4197,12 +4206,12 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_casting_utils",
-        ":hlo_module_config",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_builder_mixin",
@@ -4839,6 +4848,7 @@ cc_library(
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_lexer",
+        ":shape_inference",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

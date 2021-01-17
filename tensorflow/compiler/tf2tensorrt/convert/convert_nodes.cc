@@ -4990,17 +4990,24 @@ Status ConvertConcat(OpConverterParams* params) {
         "Number of inputs for ConcatV2 is inconsistent with N attribute, at ",
         node_def.name());
   }
-  // Validate inputs. Values must be tensors for now.
-  std::vector<std::pair<string, bool>> inputs_is_weight;
+  // Validate inputs. Values must be tensors for now, although it would be
+  // possible to accept weights in explicit batch mode. See CheckInputsWeights
+  // for details. TODO(tfeher): Allow weight input in explicit batch mode.
+  std::vector<std::pair<string, TrtInputArg>> inputs_kinds;
+  TrtInputArg expected_input = TrtInputArg::kTensor;
   for (int i = 0; i < num_inputs; ++i) {
-    inputs_is_weight.push_back({StrCat("values_", i), false});
+    inputs_kinds.push_back({StrCat("values_", i), expected_input});
   }
-  inputs_is_weight.push_back({"axis", true});
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_is_weight));
-  // TODO(tmorris): There is a bug with Concat and INT32 in TRT - it is supposed
-  // to be supported.
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  inputs_kinds.push_back({"axis", TrtInputArg::kWeight});
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_kinds));
+
+#if IS_TRT_VERSION_GE(7, 0, 0, 0)
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
+                                   DataType::DT_INT32};
+#else
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF};
+#endif
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
   const auto axis = inputs.at(num_inputs).weights().GetSpan<int>();
   if (axis.size() != 1) {
     return errors::InvalidArgument("Axis for ConcatV2 must be a scalar, at ",
@@ -5009,7 +5016,7 @@ Status ConvertConcat(OpConverterParams* params) {
   int trt_axis = 0;
   const auto dim = inputs.at(0).GetTrtDims();
   TF_RETURN_IF_ERROR(ConvertAxis(axis[0], dim.nbDims, node_def.name(),
-                                 /*use_implicit_batch=*/true, &trt_axis));
+                                 params->use_implicit_batch, &trt_axis));
   // Check that dimensions match on non-concatenate axis.
   TF_RETURN_IF_ERROR(VerifyShapesMatch(
       absl::Span<const TRT_TensorOrWeights>(inputs).first(num_inputs), trt_axis,
@@ -5558,7 +5565,7 @@ Status ConvertArgMinMax(OpConverterParams* params) {
   int trt_axis;
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
-                                 /*use_implicit_batch=*/true, &trt_axis));
+                                 params->use_implicit_batch, &trt_axis));
   nvinfer1::TopKOperation topk_op;
   if (node_def.op() == "ArgMin") {
     topk_op = nvinfer1::TopKOperation::kMIN;
@@ -5567,6 +5574,18 @@ Status ConvertArgMinMax(OpConverterParams* params) {
   } else {
     return errors::InvalidArgument("Unsupported ArgMin/Max operation");
   }
+
+#if !IS_TRT_VERSION_GE(7, 0, 0, 11)
+  const nvinfer1::Dims trt_dims = params->inputs.at(0).GetTrtDims();
+  if (trt_dims.nbDims >= 4) {
+    string trt_dim_str = DebugString(trt_dims);
+
+    return errors::Unimplemented(node_def.op(), "op is not able to support",
+                                 " tensors with 4+ dimensions (excluding batch",
+                                 " size). Received: ", trt_dim_str);
+  }
+#endif
+
   if (params->validation_only) return Status::OK();
 
   // Use TopK with k = 1. Only indices output is needed (output 1).
@@ -5578,16 +5597,13 @@ Status ConvertArgMinMax(OpConverterParams* params) {
   nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
 
   // Squeeze on axis.
-  std::vector<int> size(dims.d, dims.d + dims.nbDims);
-  size.erase(size.begin() + trt_axis);
-  nvinfer1::Dims new_dims;
-  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(size, &new_dims));
+  std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
+  input_dims[trt_axis] = 0;
   nvinfer1::ITensor* output_tensor = nullptr;
-  TF_RETURN_IF_ERROR(PrepareTensorForShape(
-      params->converter, TRT_TensorOrWeights(output_indices_tensor), new_dims,
-      /*validation_only=*/false, &output_tensor, node_def));
-
+  TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
+      output_indices_tensor, &input_dims, params, &output_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+
   return Status::OK();
 }
 
@@ -5771,7 +5787,7 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
   return Status::OK();
 }
 
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
 Status ConvertCombinedNMS(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"boxes", false},
@@ -5793,13 +5809,22 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   // Validate tensors and weights (also set some of the needed plugin fields)
   const auto boxes_dims = boxes_tensor->getDimensions();
   const auto scores_dims = scores_tensor->getDimensions();
-  if (boxes_dims.nbDims != 3) {
+  if (!params->use_implicit_batch &&
+      (!HasStaticShape(boxes_dims) || !HasStaticShape(scores_dims))) {
+    return errors::Unimplemented(
+        "TensorRT BatchedNMS Plugin requires input with static shape");
+  }
+  const int offset = params->use_implicit_batch ? 0 : 1;
+  if (boxes_dims.nbDims != 3 + offset) {
     return errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin input boxes must be 3-D excluding batch ",
+        "TensorRT BatchedNMS Plugin input boxes must be 4-D including batch ",
         node_def.name());
   }
-  const int num_classes = scores_dims.d[1];
-  bool box_check = boxes_dims.d[1] == 1 || boxes_dims.d[1] == num_classes;
+  const int class_idx = 1 + offset;
+  const int num_classes = scores_dims.d[class_idx];
+  const int num_boxes = boxes_dims.d[0 + offset];
+  bool box_check =
+      boxes_dims.d[class_idx] == 1 || boxes_dims.d[class_idx] == num_classes;
   if (!box_check) {
     return errors::InvalidArgument(
         "TensorRT BatchedNMS Plugin third dimension of boxes must be either 1 "
@@ -5848,23 +5873,32 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   if (params->validation_only) return Status::OK();
 
-  // TF op CombinedNonMaxSuppression doesn't have the option of
-  // not normalizing coordinates.
+  // TRT op is_normalized=False treats input corrdinates as pixels and
+  // calculates width/height as (max - min + 1).
+  //
+  // TF op CombinedNonMaxSuppression doesn't care about the normalization and
+  // calculates width/height  as (max-min).
+  //
+  // We set is_normalized = true to be consistent with TF IOU calculaton.
   const bool is_normalized = true;
-  // Set plugin fields and the field collection
+
   TFAttrs attrs(node_def);
-  bool share_location = (boxes_dims.d[1] == 1);
+  bool share_location = (boxes_dims.d[class_idx] == 1);
   const bool pad_per_class = attrs.get<bool>("pad_per_class");
-  int top_k;
+  const bool clip_boxes = attrs.get<bool>("clip_boxes");
+  int keep_top_k = 0;
   if (pad_per_class) {
-    top_k = std::min(max_size_per_class * num_classes, max_total_size);
+    keep_top_k = std::min(max_size_per_class * num_classes, max_total_size);
   } else {
-    top_k = max_total_size;
+    keep_top_k = max_total_size;
   }
-  const int keep_top_k = top_k;
+  // According to the batchedNMS plugin description we need to set top_k so that
+  // keep_top_k <= top_k
+  // https://github.com/NVIDIA/TensorRT/tree/master/plugin/batchedNMSPlugin
+  const int top_k = std::max(num_boxes, keep_top_k);
   float score_thresh = *(static_cast<float*>(score_threshold.GetValues()));
   const int background_id = -1;
-  nvinfer1::PluginField fields[8] = {
+  nvinfer1::PluginField fields[9] = {
       nvinfer1::PluginField{"shareLocation", &share_location,
                             nvinfer1::PluginFieldType::kINT32, 1},
       nvinfer1::PluginField{"backgroundLabelId", &background_id,
@@ -5881,8 +5915,9 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
                             nvinfer1::PluginFieldType::kFLOAT32, 1},
       nvinfer1::PluginField{"isNormalized", &is_normalized,
                             nvinfer1::PluginFieldType::kINT32, 1},
-  };
-  nvinfer1::PluginFieldCollection fc{8, fields};
+      nvinfer1::PluginField{"clipBoxes", &clip_boxes,
+                            nvinfer1::PluginFieldType::kINT32, 1}};
+  nvinfer1::PluginFieldCollection fc{9, fields};
 
   // Get plugin creator
   auto creator =
@@ -5907,33 +5942,11 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   // Set plugin outputs
   nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+
   // TRT6 fixes (removes) the extra last dimension in CombinedNMS outputs
   nvinfer1::ITensor* output_num_detections = layer->getOutput(0);
   nvinfer1::ITensor* output_nmsed_scores = layer->getOutput(2);
   nvinfer1::ITensor* output_nmsed_classes = layer->getOutput(3);
-#else
-  nvinfer1::ITensor* output_num_detections = nullptr;
-  nvinfer1::ITensor* output_nmsed_scores = nullptr;
-  nvinfer1::ITensor* output_nmsed_classes = nullptr;
-
-  auto shrink_last_dim = [&](int output_index, nvinfer1::ITensor** out_tensor) {
-    nvinfer1::ITensor* in_tensor = layer->getOutput(output_index);
-    nvinfer1::Dims dims = in_tensor->getDimensions();
-    if (dims.d[dims.nbDims - 1] != 1) {
-      return errors::Internal("Expect last dims to be 1, for tensor ",
-                              DebugString(*in_tensor));
-    }
-    --dims.nbDims;
-    TF_RETURN_IF_ERROR(PrepareTensorForShape(
-        params->converter, TRT_TensorOrWeights(in_tensor), dims,
-        /*validation_only=*/false, out_tensor, node_def, output_index));
-    return Status::OK();
-  };
-  TF_RETURN_IF_ERROR(shrink_last_dim(2, &output_nmsed_scores));
-  TF_RETURN_IF_ERROR(shrink_last_dim(3, &output_nmsed_classes));
-  TF_RETURN_IF_ERROR(shrink_last_dim(0, &output_num_detections));
-#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_boxes));
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_scores));
@@ -5942,7 +5955,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   return Status::OK();
 }
-#endif  // IS_TRT_VERSION_GE(5, 1, 0, 0)
+#endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status ConvertResize(OpConverterParams* params) {
@@ -6083,7 +6096,7 @@ static void RegisterValidatableOpConverters(
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   (*registration)["ClipByValue"] = ConvertClipByValue;
 #endif
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
 #endif
   (*registration)["AddN"] = ConvertAddN;

@@ -21,7 +21,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "debug_py",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":check_numerics_callback",
@@ -47,6 +47,7 @@ py_library(
 py_library(
     name = "debug_pip",
     data = [":grpc_tensorflow_server"],
+    srcs_version = "PY3",
     deps = [
         ":cli_test_utils",
         ":debug_py",
@@ -64,13 +65,13 @@ py_library(
 py_library(
     name = "op_callbacks_common",
     srcs = ["lib/op_callbacks_common.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "check_numerics_callback",
     srcs = ["lib/check_numerics_callback.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":op_callbacks_common",
         ":source_utils",
@@ -84,7 +85,7 @@ py_library(
 py_library(
     name = "dumping_callback",
     srcs = ["lib/dumping_callback.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_events_writer",
         ":op_callbacks_common",
@@ -99,7 +100,7 @@ py_library(
 py_library(
     name = "dumping_callback_test_lib",
     srcs = ["lib/dumping_callback_test_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":check_numerics_callback",
         ":debug_events_reader",
@@ -111,13 +112,13 @@ py_library(
 py_library(
     name = "common",
     srcs = ["lib/common.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "debug_events_reader",
     srcs = ["lib/debug_events_reader.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
@@ -129,7 +130,7 @@ py_library(
 py_library(
     name = "debug_events_monitors",
     srcs = ["lib/debug_events_monitors.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
@@ -141,7 +142,7 @@ py_library(
 py_library(
     name = "debug_events_writer",
     srcs = ["lib/debug_events_writer.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
@@ -151,7 +152,7 @@ py_library(
 py_library(
     name = "debug_graphs",
     srcs = ["lib/debug_graphs.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
@@ -165,7 +166,7 @@ py_library(
 py_library(
     name = "debug_data",
     srcs = ["lib/debug_data.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//third_party/py/tf_slim:__subpackages__",
@@ -185,7 +186,7 @@ py_library(
 py_library(
     name = "debug_gradients",
     srcs = ["lib/debug_gradients.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_data",
         ":debug_graphs",
@@ -199,7 +200,7 @@ py_library(
 py_library(
     name = "debug_utils",
     srcs = ["lib/debug_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_binary(
@@ -215,7 +216,7 @@ py_library(
     srcs = [
         "lib/grpc_tensorflow_server.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
@@ -226,7 +227,7 @@ py_library(
 py_library(
     name = "source_utils",
     srcs = ["lib/source_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":profiling",
         "//third_party/py/numpy",
@@ -236,7 +237,7 @@ py_library(
 py_library(
     name = "source_remote",
     srcs = ["lib/source_remote.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":common",
         ":debug_service_pb2_grpc",
@@ -248,7 +249,7 @@ py_library(
 py_library(
     name = "framework",
     srcs = ["wrappers/framework.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_utils",
         "//tensorflow/core:protos_all_py",
@@ -262,7 +263,7 @@ py_library(
 py_library(
     name = "debugger_cli_common",
     srcs = ["cli/debugger_cli_common.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tf_session",
@@ -274,20 +275,20 @@ py_library(
 py_library(
     name = "cli_config",
     srcs = ["cli/cli_config.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":debugger_cli_common"],
 )
 
 py_library(
     name = "command_parser",
     srcs = ["cli/command_parser.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "tensor_format",
     srcs = ["cli/tensor_format.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_data",
         ":debugger_cli_common",
@@ -298,7 +299,7 @@ py_library(
 py_library(
     name = "cli_shared",
     srcs = ["cli/cli_shared.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":command_parser",
         ":common",
@@ -315,7 +316,7 @@ py_library(
 py_library(
     name = "evaluator",
     srcs = ["cli/evaluator.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_data",
         "//third_party/py/numpy",
@@ -325,7 +326,7 @@ py_library(
 py_library(
     name = "analyzer_cli",
     srcs = ["cli/analyzer_cli.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":cli_config",
         ":cli_shared",
@@ -342,13 +343,13 @@ py_library(
 py_library(
     name = "profiling",
     srcs = ["lib/profiling.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "profile_analyzer_cli",
     srcs = ["cli/profile_analyzer_cli.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":cli_shared",
         ":command_parser",
@@ -363,7 +364,7 @@ py_library(
 py_library(
     name = "base_ui",
     srcs = ["cli/base_ui.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":cli_config",
         ":command_parser",
@@ -374,14 +375,14 @@ py_library(
 py_library(
     name = "curses_widgets",
     srcs = ["cli/curses_widgets.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":debugger_cli_common"],
 )
 
 py_library(
     name = "curses_ui",
     srcs = ["cli/curses_ui.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":base_ui",
         ":cli_shared",
@@ -396,7 +397,7 @@ py_library(
 py_library(
     name = "readline_ui",
     srcs = ["cli/readline_ui.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":base_ui",
         ":debugger_cli_common",
@@ -406,7 +407,7 @@ py_library(
 py_library(
     name = "ui_factory",
     srcs = ["cli/ui_factory.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":curses_ui",
         ":readline_ui",
@@ -416,7 +417,7 @@ py_library(
 py_library(
     name = "dumping_wrapper",
     srcs = ["wrappers/dumping_wrapper.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//third_party/py/tf_slim:__subpackages__",
@@ -432,7 +433,7 @@ py_library(
 py_library(
     name = "grpc_wrapper",
     srcs = ["wrappers/grpc_wrapper.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":common",
         ":framework",
@@ -443,7 +444,7 @@ py_library(
 py_library(
     name = "local_cli_wrapper",
     srcs = ["wrappers/local_cli_wrapper.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":analyzer_cli",
         ":cli_shared",
@@ -461,7 +462,7 @@ py_library(
 py_library(
     name = "hooks",
     srcs = ["wrappers/hooks.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//third_party/py/tf_slim:__subpackages__",
@@ -488,7 +489,7 @@ py_binary(
 py_library(
     name = "offline_analyzer_lib",
     srcs = ["cli/offline_analyzer.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":analyzer_cli",
         ":debug_data",
@@ -499,6 +500,7 @@ py_library(
 
 py_library(
     name = "debug_examples_v1",
+    srcs_version = "PY3",
     deps = [
         ":debug_errors_lib",
         ":debug_fibonacci_lib",
@@ -511,6 +513,7 @@ py_library(
 
 py_library(
     name = "debug_examples_v2",
+    srcs_version = "PY3",
     deps = [
         ":debug_fibonacci_lib",
         ":debug_mnist_lib",
@@ -539,7 +542,7 @@ py_library(
         "examples/v1/debug_fibonacci.py",
         "examples/v2/debug_fibonacci_v2.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
@@ -559,7 +562,7 @@ py_binary(
 py_library(
     name = "debug_errors_lib",
     srcs = ["examples/v1/debug_errors.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
@@ -598,7 +601,7 @@ py_library(
         "examples/v1/debug_mnist_v1.py",
         "examples/v2/debug_mnist_v2.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
@@ -616,7 +619,7 @@ py_binary(
 py_library(
     name = "debug_tflearn_iris_lib",
     srcs = ["examples/v1/debug_tflearn_iris.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
@@ -635,7 +638,7 @@ py_binary(
 py_library(
     name = "debug_keras_lib",
     srcs = ["examples/v1/debug_keras.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
@@ -970,7 +973,7 @@ py_test(
 py_library(
     name = "session_debug_testlib",
     srcs = ["lib/session_debug_testlib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_data",
         ":debug_graphs",
@@ -1001,7 +1004,7 @@ py_library(
 py_library(
     name = "debug_service_pb2_grpc",
     srcs = ["lib/debug_service_pb2_grpc.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core/debug:debug_service_proto_py",
     ],
@@ -1010,7 +1013,7 @@ py_library(
 py_library(
     name = "grpc_debug_server",
     srcs = ["lib/grpc_debug_server.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":debug_graphs",
@@ -1023,7 +1026,7 @@ py_library(
 py_library(
     name = "grpc_debug_test_server",
     srcs = ["lib/grpc_debug_test_server.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_data",
         ":debug_utils",
@@ -1209,7 +1212,7 @@ py_test(
 py_library(
     name = "cli_test_utils",
     srcs = ["cli/cli_test_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 cuda_py_test(

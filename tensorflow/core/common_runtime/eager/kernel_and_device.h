@@ -97,16 +97,11 @@ typedef absl::variant<Tensor, TensorShape> EagerKernelRet;
 // https://www.tensorflow.org/code/tensorflow/core/kernels/ops_testutil.h
 class KernelAndDevice : public core::RefCounted {
  public:
-  struct Context {
-    bool log_device_placement = false;
-    bool eager_lazy_copy = false;
-  };
-
   // Populates this with a kernel appropriate for 'ndef'.
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  virtual Status Init(const Context& ctx, const NodeDef& ndef,
+  virtual Status Init(const bool log_device_placement, const NodeDef& ndef,
                       GraphCollector* graph_collector) = 0;
 
   // Non-multi-device functions are run using regular CallOp and look like
@@ -205,7 +200,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
   ~KernelAndDeviceOp() override {}
 
-  Status Init(const Context& ctx, const NodeDef& ndef,
+  Status Init(const bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
@@ -290,10 +285,10 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   bool IsCrossProcess() override { return is_cross_process_; }
 
-  Status InstantiateFunc(const Context& ctx, const NodeDef& ndef,
+  Status InstantiateFunc(const bool log_device_placement, const NodeDef& ndef,
                          GraphCollector* graph_collector);
 
-  Status Init(const Context& ctx, const NodeDef& ndef,
+  Status Init(const bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,

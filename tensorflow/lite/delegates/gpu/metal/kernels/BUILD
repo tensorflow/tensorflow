@@ -64,6 +64,7 @@ objc_library(
     deps = [
         ":add",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
     ],
 )
 
@@ -230,6 +231,7 @@ objc_library(
     deps = [
         ":elementwise",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
     ],
 )
 
@@ -458,6 +460,7 @@ objc_library(
     deps = [
         ":prelu",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
     ],
 )
 
@@ -499,6 +502,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "//tensorflow/lite/kernels/internal:quantization_util",
     ],
@@ -538,6 +542,7 @@ objc_library(
     deps = [
         ":relu",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
     ],
 )
 
@@ -812,8 +817,11 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/delegates/gpu/metal:metal_device",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "@FP16",
         "@com_google_absl//absl/memory",
@@ -872,9 +880,11 @@ objc_library(
         "elementwise_test.mm",
         "fully_connected_test.mm",
         "max_unpooling_test.mm",
+        "mean_test.mm",
         "padding_test.mm",
         "pooling_test.mm",
         "prelu_test.mm",
+        "quantize_and_dequantize_test.mm",
         "relu_test.mm",
         "reshape_test.mm",
         "resize_test.mm",
@@ -894,8 +904,14 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/kernels/internal:quantization_util",
     ],
 )
 

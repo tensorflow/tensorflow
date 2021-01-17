@@ -9,7 +9,7 @@ package(
 py_library(
     name = "loss_scale",
     srcs = ["loss_scale.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -30,7 +30,7 @@ py_library(
 py_library(
     name = "loss_scale_optimizer",
     srcs = ["loss_scale_optimizer.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":loss_scale",
         "//tensorflow/python:control_flow_ops",
@@ -86,13 +86,13 @@ py_test(
 py_library(
     name = "mixed_precision_global_state",
     srcs = ["mixed_precision_global_state.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "mixed_precision",
     srcs = ["mixed_precision.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":loss_scale",
         ":loss_scale_optimizer",
@@ -117,7 +117,7 @@ cuda_py_test(
 py_library(
     name = "loss_scaling_gradient_tape",
     srcs = ["loss_scaling_gradient_tape.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":loss_scale",
         "//tensorflow/python:array_ops",

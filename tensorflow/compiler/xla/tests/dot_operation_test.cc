@@ -302,7 +302,7 @@ template <>
 void ParametricDotTest::ComputeAndCompareR2WithError<Eigen::half>(
     XlaBuilder* builder, const Array2D<Eigen::half>& expected,
     absl::Span<GlobalData* const> arguments) {
-  ErrorSpec error_spec(0.3, 5e-3);
+  ErrorSpec error_spec(0.3, 7e-3);
   ComputeAndCompareR2(builder, expected, arguments, error_spec);
 }
 
@@ -1465,7 +1465,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(U16IotaDot)) {
+XLA_TEST_F(DotOperationTextTest, U16IotaDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1481,7 +1481,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(U16IotaSquaredDot)) {
+XLA_TEST_F(DotOperationTextTest, U16IotaSquaredDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1500,7 +1500,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(S16IotaDot)) {
+XLA_TEST_F(DotOperationTextTest, S16IotaDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1515,7 +1515,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(S16IotaSquaredDot)) {
+XLA_TEST_F(DotOperationTextTest, S16IotaSquaredDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1534,7 +1534,22 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(S8Dot)) {
+XLA_TEST_F(DotOperationTextTest, PREDDot) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = pred[20,2] parameter(0)
+  arg1 = pred[2,20] parameter(1)
+  ROOT dot = pred[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, S8Dot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1597,6 +1612,23 @@ ENTRY MatrixVectorComplex {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{4e-3, 4e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, MatrixVectorBF16) {
+  absl::string_view hlo_string =
+      R"(
+HloModule MatrixVectorBF16
+
+ENTRY MatrixVectorBF16 {
+  p0 = bf16[128] parameter(0)
+  p1 = bf16[128,256] parameter(1)
+  p2 = bf16[256] parameter(2)
+  dot = bf16[256] dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT add = bf16[256] add(dot, p2)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
 // Regression test for b/138155357, where we were incorrectly creating a dot-add

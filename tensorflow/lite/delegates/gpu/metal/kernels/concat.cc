@@ -50,12 +50,8 @@ std::string GetConcatChannelsCode(const OperationDef& op_def,
   }
 
   std::string c = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
-    $0
     kernel void ComputeFunction(
-                                $1
+                                $0
                                 uint3 ugid[[thread_position_in_grid]]) {
   int X = static_cast<int>(ugid.x);
   int Y = static_cast<int>(ugid.y);
@@ -84,30 +80,14 @@ std::string GetConcatChannelsCode(const OperationDef& op_def,
         c += "  for (int i = 0; i < " + t_name + ".Slices(); i += 2) {\n";
         c += "    FLT4 result0 = " + t_name + ".Read(" + coords + ", i);\n";
         c += "    FLT4 result1 = " + t_name + ".Read(" + coords + ", i + 1);\n";
-        c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(S));\n";
-        c += "    args.dst_tensor.GetAddress(linear_index, " + coords +
-             ", S);\n";
-        c += "    $2\n";
-        c += "    FLT4 value = result0;\n";
-        c += "    args.dst_tensor.Write(value, " + coords + ", S);\n";
-        c += "    gid = uint3(ugid.x, ugid.y, uint(S + 1));\n";
-        c += "    args.dst_tensor.GetAddress(linear_index2, " + coords +
-             ", S);\n";
-        c += "    linear_index = linear_index2;\n";
-        c += "    $2\n";
-        c += "    value = result1;\n";
-        c += "    args.dst_tensor.Write(value, " + coords + ", S + 1);\n";
+        c += "    args.dst_tensor.Write(result0, " + coords + ", S);\n";
+        c += "    args.dst_tensor.Write(result1, " + coords + ", S + 1);\n";
         c += "    S += 2;\n";
         c += "  }\n";
       } else {
         c += "  for (int i = 0; i < " + t_name + ".Slices(); ++i) {\n";
         c += "    FLT4 result = " + t_name + ".Read(" + coords + ", i);\n";
-        c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(S));\n";
-        c += "    args.dst_tensor.GetAddress(linear_index, " + coords +
-             ", S);\n";
-        c += "    $2\n";
-        c += "    FLT4 value = result;\n";
-        c += "    args.dst_tensor.Write(value, " + coords + ", S);\n";
+        c += "    args.dst_tensor.Write(result, " + coords + ", S);\n";
         c += "    S++;\n";
         c += "  }\n";
       }
@@ -132,13 +112,6 @@ std::string GetConcatChannelsCode(const OperationDef& op_def,
           out_channel++;
           if (out_channel == 4) {
             out_channel = 0;
-            c += "  {\n";
-            c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(" +
-                 std::to_string(z) + "));\n";
-            c += "    args.dst_tensor.GetAddress(linear_index, " + coords +
-                 ", " + std::to_string(z) + ");\n";
-            c += "    $2\n";
-            c += "  }\n";
             c += "  args.dst_tensor.Write(value, " + coords + ", " +
                  std::to_string(z) + ");\n";
             z++;
@@ -148,13 +121,6 @@ std::string GetConcatChannelsCode(const OperationDef& op_def,
       }
     }
     if (out_channel != 0) {
-      c += "  {\n";
-      c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(" + std::to_string(z) +
-           "));\n";
-      c += "    args.dst_tensor.GetAddress(linear_index, " + coords + ", " +
-           std::to_string(z) + ");\n";
-      c += "    $2\n";
-      c += "  }\n";
       c += "  args.dst_tensor.Write(value, " + coords + ", " +
            std::to_string(z) + ");\n";
     }
@@ -174,7 +140,6 @@ ComputeTaskDescriptor ConcatZ(const OperationDef& definition,
     channels.push_back(shape.c);
   }
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetConcatChannelsCode(definition, channels);
 
   for (int i = 0; i < definition.src_tensors.size(); ++i) {
@@ -241,12 +206,8 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
   }
 
   std::string c = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
-    $0
     kernel void ComputeFunction(
-                                $1
+                                $0
                                 uint3 ugid[[thread_position_in_grid]]) {
 )";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
@@ -285,11 +246,6 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
     c += "  } \n";
     c += "  coord -= " + field + ";\n";
   }
-  c += "  {\n";
-  c += "    uint3 gid = uint3(ugid.x, ugid.y, ugid.z);\n";
-  c += "    args.dst_tensor.GetAddress(linear_index, " + dst_coord + ");\n";
-  c += "    $2\n";
-  c += "  }\n";
   c += "  args.dst_tensor.Write(value, " + dst_coord + ");\n";
   c += "}\n";
   return c;
@@ -300,7 +256,6 @@ ComputeTaskDescriptor ConcatX(const OperationDef& definition,
                               const ConcatAttributes& attr,
                               const std::vector<BHWC>& input_shapes) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetConcatKernelCode(definition, attr);
 
   for (int i = 0; i < input_shapes.size(); ++i) {
@@ -325,7 +280,6 @@ ComputeTaskDescriptor ConcatY(const OperationDef& definition,
                               const ConcatAttributes& attr,
                               const std::vector<BHWC>& input_shapes) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetConcatKernelCode(definition, attr);
 
   for (int i = 0; i < input_shapes.size(); ++i) {
