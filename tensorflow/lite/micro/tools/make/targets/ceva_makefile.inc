@@ -103,5 +103,8 @@ MICROLITE_CC_HDRS += \
   tensorflow/lite/micro/kernels/ceva/types.h \
   tensorflow/lite/micro/kernels/ceva/CEVA_basic_op.h
 
+MICROLITE_CC_SRCS += \
+  tensorflow/lite/micro/kernels/ceva/ceva_common.cc
+
 
 endif
