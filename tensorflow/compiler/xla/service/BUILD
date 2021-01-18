@@ -481,6 +481,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -488,6 +489,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -2395,6 +2397,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/flags:flag",
     ],
 )
 

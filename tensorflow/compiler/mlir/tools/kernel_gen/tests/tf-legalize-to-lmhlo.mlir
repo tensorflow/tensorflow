@@ -26,3 +26,9 @@ func @sinh(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.Sinh"(%arg0) { } : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
+
+func @erf(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf.Erf"(%arg0) { } : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+

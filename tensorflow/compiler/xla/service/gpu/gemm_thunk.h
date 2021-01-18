@@ -48,7 +48,7 @@ class GemmThunk : public Thunk {
  public:
   // Constructs a thunk that computes "output = (lhs <dot> rhs) * alpha" using
   // BLAS gemm (alpha is stored in the instruction GemmBackendConfig).
-  GemmThunk(ThunkInfo thunk_info, GpuGemmConfig&& config,
+  GemmThunk(ThunkInfo thunk_info, GpuGemmConfig config,
             const BufferAllocation::Slice& lhs_buffer,
             const BufferAllocation::Slice& rhs_buffer,
             const BufferAllocation::Slice& output_buffer,

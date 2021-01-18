@@ -25,6 +25,20 @@ import six
 
 from tensorflow.python.util import tf_decorator
 
+
+# inspect.signature() is preferred over inspect.getfullargspec() in PY3.
+# Note that while it can handle TFDecorators, it will ignore a TFDecorator's
+# provided ArgSpec/FullArgSpec and instead return the signature of the
+# inner-most function.
+def signature(obj, *, follow_wrapped=True):
+  """TFDecorator-aware replacement for inspect.signature."""
+  return _inspect.signature(
+      tf_decorator.unwrap(obj)[1], follow_wrapped=follow_wrapped)
+
+
+Parameter = _inspect.Parameter
+Signature = _inspect.Signature
+
 ArgSpec = _inspect.ArgSpec
 
 

@@ -22,5 +22,6 @@ tf_gen_op_wrapper_py(
 py_library(
     name = "xla_ops_grad",
     srcs = ["xla_ops_grad.py"],
+    srcs_version = "PY3",
     deps = ["//tensorflow/python:framework_ops"],
 )

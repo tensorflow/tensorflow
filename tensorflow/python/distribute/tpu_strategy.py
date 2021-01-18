@@ -22,6 +22,7 @@ import atexit
 import collections
 import contextlib
 import copy
+import functools
 import weakref
 
 from absl import logging
@@ -62,6 +63,7 @@ from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 _XLA_OP_BY_OP_INPUTS_LIMIT = 200
@@ -99,6 +101,113 @@ def validate_run_function(fn):
         "`strategy.run` is a `tf.function` or "
         "`strategy.run` is called inside a `tf.function` if "
         "eager behavior is enabled.")
+
+
+def _maybe_partial_apply_variables(fn, args, kwargs):
+  """Inspects arguments to partially apply any DistributedVariable.
+
+  This avoids an automatic cast of the current variable value to tensor.
+
+  Note that a variable may be captured implicitly with Python scope instead of
+  passing it to run(), but supporting run() keeps behavior consistent
+  with MirroredStrategy.
+
+  Since positional arguments must be applied from left to right, this function
+  does some tricky function inspection to move variable positional arguments
+  into kwargs. As a result of this, we can't support passing Variables as *args,
+  nor as args to functions which combine both explicit positional arguments and
+  *args.
+
+  Args:
+    fn: The function to run, as passed to run().
+    args: Positional arguments to fn, as passed to run().
+    kwargs: Keyword arguments to fn, as passed to run().
+
+  Returns:
+    A tuple of the function (possibly wrapped), args, kwargs (both
+    possibly filtered, with members of args possibly moved to kwargs).
+    If no variables are found, this function is a noop.
+
+  Raises:
+    ValueError: If the function signature makes unsupported use of *args, or if
+      too many arguments are passed.
+  """
+
+  def is_distributed_var(x):
+    flat = nest.flatten(x)
+    return flat and isinstance(flat[0], values.DistributedVariable)
+
+  # We will split kwargs into two dicts, one of which will be applied now.
+  var_kwargs = {}
+  nonvar_kwargs = {}
+
+  if kwargs:
+    var_kwargs = {k: v for k, v in kwargs.items() if is_distributed_var(v)}
+  if var_kwargs:
+    nonvar_kwargs = {
+        k: v for k, v in kwargs.items() if not is_distributed_var(v)
+    }
+
+  # Dump the argument names of `fn` to a list. This will include both positional
+  # and keyword arguments, but since positional arguments come first we can
+  # look up names of positional arguments by index.
+  positional_args = []
+  index_of_star_args = None
+  for i, p in enumerate(tf_inspect.signature(fn).parameters.values()):
+
+    if p.kind == tf_inspect.Parameter.POSITIONAL_OR_KEYWORD:
+      positional_args.append(p.name)
+
+    if p.kind == tf_inspect.Parameter.VAR_POSITIONAL:
+      # We'll raise an error later if a variable is passed to *args, since we
+      # can neither pass it by name nor partially apply it. This case only
+      # happens once at most.
+      index_of_star_args = i
+
+    if p.kind == tf_inspect.Parameter.POSITIONAL_ONLY:
+      # This is a rare Python feature, indicating a / in the arg list.
+      if var_kwargs or any(is_distributed_var(a) for a in args):
+        raise ValueError(
+            "Mixing Variables and positional-only parameters not supported by "
+            "TPUStrategy.")
+      return fn, args, kwargs
+
+  star_args = []
+  have_seen_var_arg = False
+
+  for i, a in enumerate(args):
+    if is_distributed_var(a):
+      if index_of_star_args is not None and i >= index_of_star_args:
+        raise ValueError(
+            "TPUStrategy.run() cannot handle Variables passed to *args. "
+            "Either name the function argument, or capture the Variable "
+            "implicitly.")
+      if len(positional_args) <= i:
+        raise ValueError(
+            "Too many positional arguments passed to call to TPUStrategy.run()."
+        )
+      var_kwargs[positional_args[i]] = a
+      have_seen_var_arg = True
+    else:
+      if index_of_star_args is not None and i >= index_of_star_args:
+        if have_seen_var_arg:
+          raise ValueError(
+              "TPUStrategy.run() cannot handle both Variables and a mix of "
+              "positional args and *args. Either remove the *args, or capture "
+              "the Variable implicitly.")
+        else:
+          star_args.append(a)
+          continue
+
+      if len(positional_args) <= i:
+        raise ValueError(
+            "Too many positional arguments passed to call to TPUStrategy.run()."
+        )
+      nonvar_kwargs[positional_args[i]] = a
+
+  if var_kwargs:
+    return functools.partial(fn, **var_kwargs), star_args, nonvar_kwargs
+  return fn, args, kwargs
 
 
 @tf_export("distribute.TPUStrategy", v1=[])
@@ -271,6 +380,8 @@ class TPUStrategyV2(distribute_lib.Strategy):
       objects, or `Tensor`s (for example, if running on a single replica).
     """
     validate_run_function(fn)
+
+    fn, args, kwargs = _maybe_partial_apply_variables(fn, args, kwargs)
 
     # Note: the target function is converted to graph even when in Eager mode,
     # so autograph is on by default here.
@@ -533,6 +644,8 @@ class TPUStrategy(distribute_lib.Strategy):
     """See base class."""
     validate_run_function(fn)
 
+    fn, args, kwargs = _maybe_partial_apply_variables(fn, args, kwargs)
+
     # Note: the target function is converted to graph even when in Eager mode,
     # so autograph is on by default here.
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
@@ -646,6 +759,8 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
       (for example, if running on a single replica).
     """
     validate_run_function(fn)
+
+    fn, args, kwargs = _maybe_partial_apply_variables(fn, args, kwargs)
 
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
     options = options or distribute_lib.RunOptions()

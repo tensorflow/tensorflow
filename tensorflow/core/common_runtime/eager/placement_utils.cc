@@ -183,19 +183,15 @@ Status MaybePinToResourceDevice(Device** device, const EagerOperation& op) {
 }
 
 Status MaybePinToCustomDevice(VariantDevice* device, const EagerOperation& op) {
-  // If operation was already placed on a custom device, use it.
-  if (absl::holds_alternative<CustomDevice*>(op.Device())) {
-    *device = op.Device();
-    return Status::OK();
-  } else if (!op.DeviceName().empty()) {
-    // Don't override explicit placements.
-    return Status::OK();
-  }
-
   // Ops are placed on a custom device if there's no other explicit requested
-  // placement and there is only one custom device in the op inputs.
+  // placement and there is only one custom device in the op
+  // inputs.
+  //
+  // Resource-dtype inputs take precedence over non-resource inputs and explicit
+  // placements; this function pins ops with a resource-dtype custom device
+  // input to that custom device.
+  CustomDevice* first = nullptr;
   if (!op.Inputs().empty()) {
-    CustomDevice* first = nullptr;
     for (const ImmediateExecutionTensorHandle* generic_input : op.Inputs()) {
       // TODO(b/175427838): It would be nice to be able to use tensorflow::isa
       // here.
@@ -219,10 +215,33 @@ Status MaybePinToCustomDevice(VariantDevice* device, const EagerOperation& op) {
         }
       }
     }
-    if (first != nullptr) {
-      *device = first;
-      return Status::OK();
+    for (const ImmediateExecutionTensorHandle* generic_input : op.Inputs()) {
+      if (generic_input->DataType() == DT_RESOURCE) {
+        if (CustomDeviceTensorHandle::classof(generic_input)) {
+          const CustomDeviceTensorHandle* input =
+              down_cast<const CustomDeviceTensorHandle*>(generic_input);
+          // There's only one custom device input, and it's a resource input, so
+          // we'll force-place the op on to that custom device. As with physical
+          // devices, this overrides any explicit placement for the op.
+          *device = input->device();
+          return Status::OK();
+        } else {
+          // Don't set a custom device if there's a physical-device resource
+          // input.
+          return Status::OK();
+        }
+      }
     }
+  }
+  // Since there are no resource-dtype inputs, we'll respect explicit placements
+  // before considering input-based placement.
+  if (absl::holds_alternative<CustomDevice*>(op.Device())) {
+    *device = op.Device();
+  } else if (op.DeviceName().empty() && first != nullptr) {
+    // If there are non-resource inputs on a custom device we will default the
+    // op to that custom device, but not override an explicit op placement.
+    *device = first;
+    return Status::OK();
   }
 
   return Status::OK();

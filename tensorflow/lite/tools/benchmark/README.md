@@ -52,6 +52,41 @@ and the following optional parameters:
     those parameters that are set by parsing their values from the commandline
     flags.
 
+### Model input parameters
+By default, the tool will use randomized data for model inputs. The following
+parameters allow users to specify customized input values to the model when
+running the benchmark tool:
+
+*   `input_layer`: `string` \
+    A comma-separated list of input layer names, e.g. 'input1,input2'. Note all
+    inputs of the model graph need to be specified. However, the input name
+    does not need to match that encoded in the model. Additionally, the order
+    of input layer names specified here is assumed to be same with that is seen
+    by the Tensorflow Lite interpreter. This is a bit inconvenient but the
+    [visualization tool](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/visualize.py)
+    should help to find this order.
+*   `input_layer_shape`: `string` \
+    A colon-separated list of input layer shapes, where each shape is a
+    comma-separated list, e.g. '1,30:1,10'. Similar to `input_layer`, this
+    parameter also requires shapes of all inputs be specified, and the order of
+    inputs be same with that is seen by the interpreter.
+*   `input_layer_value_range`: `string` \
+    A map-like string representing value range for *integer* input layers. Each
+    item is separated by ':', and the item value consists of input layer name
+    and integer-only range values (both low and high are inclusive) separated by
+    ',', e.g. 'input1,1,2:input2,0,254'. Note that the input layer name must
+    exist in the list of names specified by `input_layer`.
+*   `input_layer_value_files`: `string` \
+    A map-like string representing files that contain input values. Each
+    item is separated by ',', and the item value consists of input layer name
+    and the file path separated by ':',
+    e.g. 'input1:file_path1,input2:file_path2'. If a input name appears in both
+    `input_layer_value_range` and `input_layer_value_files`,
+    the corresponding input value range specified by`input_layer_value_range`
+    will be ignored. The file format is binary, and the content should be either
+    a byte array or null-separated strings. Note that the inpput layer name must
+    also exist in the list of names specified by `input_layer`.
+
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
 [the delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
@@ -102,6 +137,10 @@ the reported data on hexagon is in cycles, not in ms like on cpu.
 #### External delegate
 *   `external_delegate_path`: `string` (default="")
 *   `external_delegate_options`: `string` (default="")
+
+As some delegates are only available on certain platforms, when running the
+benchmark tool on a particular platform, specifying `--help` will print out all
+supported parameters.
 
 ## To build/install/run
 

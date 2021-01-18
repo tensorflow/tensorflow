@@ -260,7 +260,7 @@ class Conv(Layer):
           def _apply_fn(o):
             return nn.bias_add(o, self.bias, data_format=self._tf_data_format)
 
-          outputs = nn_ops.squeeze_batch_dims(
+          outputs = conv_utils.squeeze_batch_dims(
               outputs, _apply_fn, inner_rank=self.rank + 1)
         else:
           outputs = nn.bias_add(

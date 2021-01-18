@@ -58,7 +58,6 @@ cc_binary(
     ],
     deps = [
         ":micro_benchmark",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",

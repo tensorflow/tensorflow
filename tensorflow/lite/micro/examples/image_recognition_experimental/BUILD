@@ -35,7 +35,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":image_model_data",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",

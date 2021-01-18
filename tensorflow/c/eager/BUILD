@@ -132,6 +132,7 @@ filegroup(
         "tfe_monitoring_internal.h",
         "tfe_op_attrs_internal.h",
         "tfe_tensor_debug_info_internal.h",
+        "tfe_tensorhandle_internal.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",

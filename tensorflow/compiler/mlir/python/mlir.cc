@@ -169,9 +169,11 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 
   mlir::MLIRContext context;
 
+  tensorflow::MLIRImportOptions import_options;
+  import_options.upgrade_legacy = upgrade_legacy;
   auto module_or = SavedModelSignatureDefsToMlirImportLite(
       saved_model_path, tag_set, /*exported_names=*/{}, &context,
-      upgrade_legacy);
+      import_options);
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";
@@ -200,8 +202,10 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   // Convert the SavedModelBundle to an MLIR module.
 
   mlir::MLIRContext context;
+  tensorflow::MLIRImportOptions import_options;
+  import_options.upgrade_legacy = upgrade_legacy;
   auto module_or =
-      ConvertSavedModelV1ToMlir(bundle, {}, &context, upgrade_legacy);
+      ConvertSavedModelV1ToMlir(bundle, {}, &context, import_options);
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";

@@ -269,6 +269,9 @@ class HloSharding {
   // Gets the number of tiles. If it has partial replication, this will not
   // equal the device count.
   int64 NumTiles() const;
+  // Like NumTiles() but considers only some specific dimensions passed as
+  // argument
+  int64 NumTiles(absl::Span<const int64> dims) const;
 
  private:
   explicit HloSharding(bool manual, bool replicated,

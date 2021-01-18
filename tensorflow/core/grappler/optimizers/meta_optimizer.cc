@@ -269,9 +269,6 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
-  if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
-  }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
@@ -280,6 +277,9 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<GenericLayoutOptimizer>(
         /*optimization level*/ cfg_.layout_optimizer(),
         /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
+  }
+  if (cfg_.remapping() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
   if (cfg_.loop_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(

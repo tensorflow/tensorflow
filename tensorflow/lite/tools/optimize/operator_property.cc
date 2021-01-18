@@ -106,6 +106,12 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.version = 2;
       property.quantizable_int16 = false;
       break;
+    case BuiltinOperator_BROADCAST_TO:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
     case BuiltinOperator_DEPTH_TO_SPACE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};

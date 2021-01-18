@@ -69,6 +69,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core/common_runtime/gpu:gpu_init",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",

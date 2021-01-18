@@ -484,42 +484,72 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
 class CAPICustomDeviceTensorHandle
     : public tensorflow::CustomDeviceTensorHandle {
  public:
+  using NumDimsCallback = std::function<int(TF_Status* status)>;
+  using DimCallback = std::function<int64_t(int dim_index, TF_Status* status)>;
+  using DeallocatorCallback = std::function<void()>;
+
   CAPICustomDeviceTensorHandle(tensorflow::ImmediateExecutionContext* context,
                                tensorflow::CustomDevice* device,
                                tensorflow::DataType dtype, void* data,
-                               size_t len, std::vector<tensorflow::int64> shape,
-                               void (*deallocator)(void* data, size_t len,
-                                                   void* arg),
-                               void* deallocator_arg)
+                               NumDimsCallback num_dims_callback,
+                               DimCallback dim_callback,
+                               DeallocatorCallback deallocator)
       : tensorflow::CustomDeviceTensorHandle(context, device, dtype),
         data_(data),
-        len_(len),
-        shape_(shape),
-        deallocator_(deallocator),
-        deallocator_arg_(deallocator_arg) {}
-  ~CAPICustomDeviceTensorHandle() override {
-    deallocator_(data_, len_, deallocator_arg_);
-  }
+        num_dims_callback_(num_dims_callback),
+        dim_callback_(dim_callback),
+        deallocator_(deallocator) {}
+
+  ~CAPICustomDeviceTensorHandle() override { deallocator_(); }
   void* DevicePointer() const override { return data_; }
   Status NumDims(int* num_dims) const override {
-    *num_dims = shape_.size();
-    return Status::OK();
+    TF_Status s;
+    *num_dims = num_dims_callback_(&s);
+    return s.status;
   }
   Status Dim(int dim_index, int64* dim) const override {
-    *dim = shape_[dim_index];
-    return Status::OK();
+    TF_Status s;
+    *dim = dim_callback_(dim_index, &s);
+    return s.status;
   }
 
  private:
   void* const data_;
-  size_t len_;
-  std::vector<tensorflow::int64> shape_;
-  void (*const deallocator_)(void* data, size_t len, void* arg);
-  void* const deallocator_arg_;
+  NumDimsCallback num_dims_callback_;
+  DimCallback dim_callback_;
+  DeallocatorCallback deallocator_;
 };
 
 }  // namespace
 }  // namespace tensorflow
+
+TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
+    TFE_Context* ctx, const char* device_name, TF_DataType dtype, void* data,
+    int (*num_dims_callback)(void* data, void* arg, TF_Status* status),
+    int64_t (*dim_callback)(void* data, int dim_index, void* arg,
+                            TF_Status* status),
+    void (*deallocator)(void* data, void* arg), void* arg, TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  tensorflow::CustomDevice* device = nullptr;
+  if (!context->FindCustomDeviceFromName(device_name, &device)) {
+    deallocator(data, arg);
+    status->status =
+        tensorflow::errors::InvalidArgument(device_name, " unknown device.");
+    return nullptr;
+  }
+  return tensorflow::wrap(new tensorflow::CAPICustomDeviceTensorHandle(
+      context, device, *reinterpret_cast<tensorflow::DataType*>(&dtype), data,
+      /*num_dims_callback=*/
+      [num_dims_callback, data, arg](TF_Status* status) {
+        return num_dims_callback(data, arg, status);
+      },
+      /*dim_callback=*/
+      [dim_callback, data, arg](int dim_index, TF_Status* status) {
+        return dim_callback(data, dim_index, arg, status);
+      },
+      /*deallocator=*/[deallocator, data, arg]() { deallocator(data, arg); }));
+}
 
 TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     TFE_Context* ctx, const char* device_name, TF_DataType dtype,
@@ -548,8 +578,17 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   if (custom_device != nullptr) {
     return tensorflow::wrap(new tensorflow::CAPICustomDeviceTensorHandle(
         context, custom_device,
-        *reinterpret_cast<tensorflow::DataType*>(&dtype), data, len, dimvec,
-        deallocator, deallocator_arg));
+        *reinterpret_cast<tensorflow::DataType*>(&dtype), data,
+        /*num_dims_callback=*/
+        [num_dims](TF_Status* status) { return num_dims; },
+        /*dim_callback=*/
+        [dimvec](int dim_index, TF_Status* status) {
+          return dimvec[dim_index];
+        },
+        /*deallocator=*/
+        [data, len, deallocator, deallocator_arg]() {
+          deallocator(data, len, deallocator_arg);
+        }));
   }
 
   // TODO(apassos) do we need to wrap the deallocator here to make sure to sync

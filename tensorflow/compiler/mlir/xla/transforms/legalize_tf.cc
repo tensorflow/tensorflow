@@ -4327,17 +4327,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
         tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
     const int64_t in_depth = input_shape[feature_dim];
     const int64_t filter_in_depth = *(filter_shape.begin() + num_spatial_dims);
-    const int64_t feature_group_count = in_depth / filter_in_depth;
-
-    if (feature_group_count != 1) {
-      /*
-          // TODO(parkers): translate this code to mlir.
-          activations = TransposeInputForGroupConvolutionBackpropFilter(
-              activations, input_shape, feature_group_count, batch_dim,
-         feature_dim);
-      */
-      return failure();
-    }
+    const int64_t batch_group_count = in_depth / filter_in_depth;
 
     // Compute ConvDimensionNumbers, dilation, and padding.
     SmallVector<int64_t, num_spatial_dims> spatial_dims;
@@ -4448,8 +4438,8 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
             /*output_spatial_dimensions=*/
             GetI64ElementsAttrForSeq(0, num_spatial_dims, &rewriter),
             rewriter.getContext()),
-        rewriter.getI64IntegerAttr(feature_group_count),
-        /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
+        /*feature_group_count=*/rewriter.getI64IntegerAttr(1),
+        rewriter.getI64IntegerAttr(batch_group_count),
         /*precision_config=*/ArrayAttr());
 
     rewriter.replaceOp(op, {result});
