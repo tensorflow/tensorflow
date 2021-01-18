@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -51,6 +52,12 @@ bool useCudaMemoryGuardAllocator() {
   const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
   return debug_allocator_str != nullptr &&
          std::strcmp(debug_allocator_str, "memory_guard") == 0;
+}
+
+bool useCudaMallocAsyncAllocator() {
+  const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
+  return debug_allocator_str != nullptr &&
+      std::strcmp(debug_allocator_str, "cuda_malloc_async") == 0;
 }
 
 }  // namespace
@@ -138,6 +145,13 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
       // **WARNING** probably will not work in a multi-gpu scenario
       gpu_allocator =
           new GPUcudaMallocAllocator(gpu_allocator, platform_gpu_id);
+    } else if (useCudaMallocAsyncAllocator()) {
+      LOG(INFO) << "Using CUDA malloc Async allocator for GPU.";
+      // If true, passes all allocation requests through to cudaMallocAsync
+      // TODO: useful for doing memory debugging with tools like cuda-memcheck
+      // TODO: **WARNING** probably will not work in a multi-gpu scenario
+      gpu_allocator =
+          new GPUcudaMallocAsyncAllocator(platform_gpu_id, total_bytes);
     }
 
     Allocator* recording_allocator = nullptr;

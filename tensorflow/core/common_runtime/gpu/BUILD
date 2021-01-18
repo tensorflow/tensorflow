@@ -106,6 +106,7 @@ filegroup(
     srcs = [
         "gpu_bfc_allocator.h",
         "gpu_cudamalloc_allocator.h",
+        "gpu_cudamallocasync_allocator.h",
         "gpu_debug_allocator.h",
         "gpu_device.h",
         "gpu_id.h",
@@ -125,6 +126,7 @@ tf_cuda_library(
     name = "gpu_runtime_impl",
     srcs = [
         "gpu_cudamalloc_allocator.cc",
+        "gpu_cudamallocasync_allocator.cc",
         "gpu_debug_allocator.cc",
         "gpu_device.cc",
         "gpu_device_factory.cc",

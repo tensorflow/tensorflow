@@ -460,6 +460,9 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
         << " (rounded to " << rounded_bytes << ")"
         << "requested by op "
         << ScopedMemoryDebugAnnotation::CurrentAnnotation().pending_op_name
+        << "\nIf the cause is memory fragmentation maybe the environment "
+        << "variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will "
+        << "improve the situation. \nCurrent allocation summary follows."
         << "\nCurrent allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
     LOG(WARNING) << RenderOccupancy();
