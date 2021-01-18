@@ -869,7 +869,8 @@ def HLO_ClampOp : HLO_Op<"clamp",
 }
 
 def HLO_ConcatenateOp : HLO_Op<"concatenate",
-    [NoSideEffect, SameOperandsAndResultElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]>, BASE_HLO_ConcatenateOp {
+    [NoSideEffect, SameOperandsAndResultElementType,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]>, BASE_HLO_ConcatenateOp {
 
   let arguments = (ins
     Variadic<HLO_Tensor>:$val,
@@ -904,7 +905,8 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]>, BASE_HLO_ConvOp {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CopyOp {
+def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]>,
+    BASE_HLO_CopyOp {
   let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
   let hasFolder = 1;
@@ -941,7 +943,8 @@ def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]>, BASE_HLO_DotOp {
   let results = (outs HLO_Tensor);
 }
 
-def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>, BASE_HLO_DotGeneralOp {
+def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>,
+    BASE_HLO_DotGeneralOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -1140,7 +1143,8 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]>,
   let hasFolder = 1;
 }
 
-def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects, SameOperandsAndResultShape]>, BASE_HLO_SortOp {
+def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects,
+                                 SameOperandsAndResultShape]>, BASE_HLO_SortOp {
   let arguments = (ins
     Variadic<HLO_Tensor>:$operands,
     DefaultValuedAttr<I64Attr, "-1">:$dimension,
@@ -1316,7 +1320,8 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]>, BASE_HLO_RngBitGeneratorOp {
+def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]>,
+    BASE_HLO_RngBitGeneratorOp {
   let arguments = (ins
     // TODO(jpienaar): This could be an enum instead.
     I32Attr:$rng_algorithm,
@@ -1379,8 +1384,9 @@ def HLO_BitcastOp : HLO_Op<"bitcast", [NoSideEffect]>, BASE_HLO_BitcastOp {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_ReducePrecisionOp: HLO_Op<"reduce_precision", [SameOperandsAndResultShape]>,
-                           BASE_HLO_ReducePrecisionOp {
+def HLO_ReducePrecisionOp :
+    HLO_Op<"reduce_precision", [SameOperandsAndResultShape]>,
+    BASE_HLO_ReducePrecisionOp {
   let arguments = (ins
     HLO_FpTensor:$operand,
     I32Attr:$exponent_bits,
