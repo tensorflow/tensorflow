@@ -41,6 +41,16 @@ IrEmitterNested::IrEmitterNested(const HloModuleConfig& hlo_module_config,
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/true),
       nested_computation_(nested_computation) {}
 
+StatusOr<std::unique_ptr<IrEmitterNested>> IrEmitterNested::Create(
+    const HloModuleConfig& hlo_module_config,
+    const HloComputation& nested_computation,
+    IrEmitterContext* ir_emitter_context) {
+  std::unique_ptr<IrEmitterNested> emitter(new IrEmitterNested(
+      hlo_module_config, nested_computation, ir_emitter_context));
+  TF_RETURN_IF_ERROR(emitter->EmitConstants(nested_computation, false));
+  return emitter;
+}
+
 // Nested function serves the same purpose on GPU as a thread-local function on
 // a CPU.
 Status IrEmitterNested::CodegenNestedComputation() {
@@ -67,8 +77,6 @@ Status IrEmitterNested::CodegenNestedComputation() {
         root_shape, ir_emitter_context_->llvm_module()->getDataLayout());
     argument_dereferenceable_bytes.push_back(root_size);
   }
-  // The base pointer of the memory block for all pre-allocated temp buffers.
-  argument_types.push_back(b_.getInt8PtrTy());
 
   llvm::FunctionType* function_type =
       llvm::FunctionType::get(b_.getVoidTy(), argument_types, false);
@@ -119,8 +127,8 @@ Status IrEmitterNested::CodegenNestedComputation() {
     llvm::Value* root_value = bindings_.GetBasePointer(*root_instruction);
     const Shape& return_shape = root_instruction->shape();
 
-    // Second last argument is the out parameter.
-    llvm::Argument* out_parameter = std::prev(function->arg_end(), 2);
+    // Last argument is the out parameter.
+    llvm::Argument* out_parameter = std::prev(function->arg_end(), 1);
 
     if (ShapeUtil::IsScalar(return_shape)) {
       llvm::Value* ret_value = Load(root_value, "load_ret_value");

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -136,7 +137,12 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
     resp_.InitAlloc(dst_device_, alloc_attrs_);
-    auto cb = [this, recv_done = std::move(recv_done)](const Status& s) {
+    auto abort_checked = std::make_shared<Notification>();
+    auto cb = [this, abort_checked,
+               recv_done = std::move(recv_done)](const Status& s) {
+      // Make sure the Rendezvous abort checking is finished before running the
+      // callback, which might destroy the current call object.
+      abort_checked->WaitForNotification();
       if (!s.ok()) {
         mutex_lock l(mu_);
         status_.Update(s);
@@ -144,6 +150,22 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
       recv_done();
     };
     wi_->RecvTensorAsync(&opts_, &req_, &resp_, std::move(cb));
+
+    // NOTE: Check if the rendezvous was aborted after sending out the RPC. The
+    // ordering is important because `StartAbort` could be called right before
+    // the `RecvTensorAsync` request registers its RPC cancellation to `opts_`.
+    // In that case, the previous `StartAbort` would not trigger the
+    // cancellation of this call.
+    Status s;
+    {
+      mutex_lock l(mu_);
+      s = status_;
+    }
+    if (!s.ok()) {
+      opts_.StartCancel();
+    }
+    // Notify that the abort check has finished.
+    abort_checked->Notify();
   }
 
   string src_worker_;
@@ -197,7 +219,7 @@ class RpcRecvTensorFreeList {
   }
 
  private:
-  static const int kMaxObjects = 1000;
+  static constexpr int kMaxObjects = 1000;
 
   mutex mu_;
   std::vector<RpcRecvTensorCall*> objects_ TF_GUARDED_BY(mu_);
@@ -255,6 +277,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 
   // RendezvousMgr already aborted, shouldn't send RPC call any more
   if (!call->status().ok()) {
+    DeregisterCall(call);
     // NOTE: `*sess` can potentially be deleted before we return from
     // `call->done()(...)`, so we must release the worker before calling the
     // callback.

@@ -23,10 +23,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 
 
-# TODO(jsimsa): Support RE matching for both individual transformation (e.g. to
-# account for indexing) and transformation sequence.
 def assert_next(transformations):
   """A transformation that asserts which transformations happen next.
+
+  Transformations should be referred to by their base name, not including
+  version suffix. For example, use "Batch" instead of "BatchV2". "Batch" will
+  match any of "Batch", "BatchV1", "BatchV2", etc.
 
   Args:
     transformations: A `tf.string` vector `tf.Tensor` identifying the
@@ -119,5 +121,3 @@ class _SleepDataset(dataset_ops.UnaryUnchangedStructureDataset):
         self._sleep_microseconds,
         **self._flat_structure)
     super(_SleepDataset, self).__init__(input_dataset, variant_tensor)
-
-

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import binascii
 import codecs
+import importlib
 import marshal
 import os
 import re
@@ -28,11 +29,10 @@ import types as python_types
 
 import numpy as np
 import six
-
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 _GLOBAL_CUSTOM_OBJECTS = {}
@@ -70,7 +70,7 @@ class CustomObjectScope(object):
     layer = Dense.from_config(config)
   ```
 
-  Arguments:
+  Args:
       *args: Dictionary or dictionaries of `{name: object}` pairs.
   """
 
@@ -130,7 +130,7 @@ def register_keras_serializable(package='Custom', name=None):
   The object will be registered under the key 'package>name' where `name`,
   defaults to the object name if not passed.
 
-  Arguments:
+  Args:
     package: The package that this class belongs to.
     name: The name to serialize this class under in this package. If None, the
       class' name will be used.
@@ -293,9 +293,23 @@ def class_and_config_for_serialized_keras_object(
   class_name = config['class_name']
   cls = get_registered_object(class_name, custom_objects, module_objects)
   if cls is None:
-    raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
+    raise ValueError(
+        'Unknown {}: {}. Please ensure this object is '
+        'passed to the `custom_objects` argument. See '
+        'https://www.tensorflow.org/guide/keras/save_and_serialize'
+        '#registering_the_custom_object for details.'
+        .format(printable_module_name, class_name))
 
   cls_config = config['config']
+  # Check if `cls_config` is a list. If it is a list, return the class and the
+  # associated class configs for recursively deserialization. This case will
+  # happen on the old version of sequential model (e.g. `keras_version` ==
+  # "2.0.6"), which is serialized in a different structure, for example
+  # "{'class_name': 'Sequential',
+  #   'config': [{'class_name': 'Embedding', 'config': ...}, {}, ...]}".
+  if isinstance(cls_config, list):
+    return (cls, cls_config)
+
   deserialized_objects = {}
   for key, item in cls_config.items():
     if isinstance(item, dict) and '__passive_serialization__' in item:
@@ -366,7 +380,12 @@ def deserialize_keras_object(identifier,
       obj = module_objects.get(object_name)
       if obj is None:
         raise ValueError(
-            'Unknown ' + printable_module_name + ': ' + object_name)
+            'Unknown {}: {}. Please ensure this object is '
+            'passed to the `custom_objects` argument. See '
+            'https://www.tensorflow.org/guide/keras/save_and_serialize'
+            '#registering_the_custom_object for details.'
+            .format(printable_module_name, object_name))
+
     # Classes passed by name are instantiated with no args, functions are
     # returned as-is.
     if tf_inspect.isclass(obj):
@@ -383,7 +402,7 @@ def deserialize_keras_object(identifier,
 def func_dump(func):
   """Serializes a user defined function.
 
-  Arguments:
+  Args:
       func: the function to serialize.
 
   Returns:
@@ -406,7 +425,7 @@ def func_dump(func):
 def func_load(code, defaults=None, closure=None, globs=None):
   """Deserializes a user defined function.
 
-  Arguments:
+  Args:
       code: bytecode of the function.
       defaults: defaults of the function.
       closure: closure of the function.
@@ -423,7 +442,7 @@ def func_load(code, defaults=None, closure=None, globs=None):
   def ensure_value_to_cell(value):
     """Ensures that a value is converted to a python cell object.
 
-    Arguments:
+    Args:
         value: Any value that needs to be casted to the cell type
 
     Returns:
@@ -455,7 +474,7 @@ def func_load(code, defaults=None, closure=None, globs=None):
 def has_arg(fn, name, accept_all=False):
   """Checks if a callable accepts a given keyword argument.
 
-  Arguments:
+  Args:
       fn: Callable to inspect.
       name: Check if `fn` can be called with `name` as a keyword argument.
       accept_all: What to return if there is no parameter called `name` but the
@@ -467,14 +486,14 @@ def has_arg(fn, name, accept_all=False):
   arg_spec = tf_inspect.getfullargspec(fn)
   if accept_all and arg_spec.varkw is not None:
     return True
-  return name in arg_spec.args
+  return name in arg_spec.args or name in arg_spec.kwonlyargs
 
 
 @keras_export('keras.utils.Progbar')
 class Progbar(object):
   """Displays a progress bar.
 
-  Arguments:
+  Args:
       target: Total number of steps expected, None if unknown.
       width: Progress bar width on screen.
       verbose: Verbosity mode, 0 (silent), 1 (verbose), 2 (semi-verbose)
@@ -516,10 +535,12 @@ class Progbar(object):
     self._start = time.time()
     self._last_update = 0
 
+    self._time_after_first_step = None
+
   def update(self, current, values=None, finalize=None):
     """Updates the progress bar.
 
-    Arguments:
+    Args:
         current: Index of current step.
         values: List of tuples: `(name, value_for_last_step)`. If `name` is in
           `stateful_metrics`, `value_for_last_step` will be displayed as-is.
@@ -587,10 +608,7 @@ class Progbar(object):
       self._total_width = len(bar)
       sys.stdout.write(bar)
 
-      if current:
-        time_per_unit = (now - self._start) / current
-      else:
-        time_per_unit = 0
+      time_per_unit = self._estimate_step_duration(current, now)
 
       if self.target is None or finalize:
         if time_per_unit >= 1 or time_per_unit == 0:
@@ -654,11 +672,42 @@ class Progbar(object):
   def add(self, n, values=None):
     self.update(self._seen_so_far + n, values)
 
+  def _estimate_step_duration(self, current, now):
+    """Estimate the duration of a single step.
+
+    Given the step number `current` and the corresponding time `now`
+    this function returns an estimate for how long a single step
+    takes. If this is called before one step has been completed
+    (i.e. `current == 0`) then zero is given as an estimate. The duration
+    estimate ignores the duration of the (assumed to be non-representative)
+    first step for estimates when more steps are available (i.e. `current>1`).
+    Args:
+      current: Index of current step.
+      now: The current time.
+    Returns: Estimate of the duration of a single step.
+    """
+    if current:
+      # there are a few special scenarios here:
+      # 1) somebody is calling the progress bar without ever supplying step 1
+      # 2) somebody is calling the progress bar and supplies step one mulitple
+      #    times, e.g. as part of a finalizing call
+      # in these cases, we just fall back to the simple calculation
+      if self._time_after_first_step is not None and current > 1:
+        time_per_unit = (now - self._time_after_first_step) / (current - 1)
+      else:
+        time_per_unit = (now - self._start) / current
+
+      if current == 1:
+        self._time_after_first_step = now
+      return time_per_unit
+    else:
+      return 0
+
 
 def make_batches(size, batch_size):
   """Returns a list of batch indices (tuples of indices).
 
-  Arguments:
+  Args:
       size: Integer, total size of the data to slice into batches.
       batch_size: Integer, batch size.
 
@@ -680,7 +729,7 @@ def slice_arrays(arrays, start=None, stop=None):
 
   Can also work on list/array of indices: `slice_arrays(x, indices)`
 
-  Arguments:
+  Args:
       arrays: Single array or list of arrays.
       start: can be an integer index (start index) or a list/array of indices
       stop: integer (stop index); should be None if `start` was a list.
@@ -722,7 +771,7 @@ def to_list(x):
   If a tensor is passed, we return
   a list of size 1 containing the tensor.
 
-  Arguments:
+  Args:
       x: target object to be normalized.
 
   Returns:
@@ -792,7 +841,31 @@ def populate_dict_with_module_objects(target_dict, modules, obj_filter):
       if obj_filter(obj):
         target_dict[name] = obj
 
-# Aliases
 
+class LazyLoader(python_types.ModuleType):
+  """Lazily import a module, mainly to avoid pulling in large dependencies."""
+
+  def __init__(self, local_name, parent_module_globals, name):
+    self._local_name = local_name
+    self._parent_module_globals = parent_module_globals
+    super(LazyLoader, self).__init__(name)
+
+  def _load(self):
+    """Load the module and insert it into the parent's globals."""
+    # Import the target module and insert it into the parent's namespace
+    module = importlib.import_module(self.__name__)
+    self._parent_module_globals[self._local_name] = module
+    # Update this object's dict so that if someone keeps a reference to the
+    #   LazyLoader, lookups are efficient (__getattr__ is only called on lookups
+    #   that fail).
+    self.__dict__.update(module.__dict__)
+    return module
+
+  def __getattr__(self, item):
+    module = self._load()
+    return getattr(module, item)
+
+
+# Aliases
 
 custom_object_scope = CustomObjectScope  # pylint: disable=invalid-name

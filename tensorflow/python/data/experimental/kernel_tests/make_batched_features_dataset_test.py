@@ -223,7 +223,7 @@ class MakeBatchedFeaturesDatasetTest(
 
   @combinations.generate(test_base.default_test_combinations())
   def testOldStyleReader(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"The `reader` argument must return a `Dataset` object. "
         r"`tf.ReaderBase` subclasses are not supported."):
       _ = readers.make_batched_features_dataset(

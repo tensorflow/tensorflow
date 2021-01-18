@@ -25,8 +25,8 @@ from tensorflow.core.framework import types_pb2
 # protobuf errors where a file is defined twice on MacOS.
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-from tensorflow.python import _pywrap_bfloat16
 from tensorflow.python import _dtypes
+from tensorflow.python.lib.core import _pywrap_bfloat16
 from tensorflow.python.util.tf_export import tf_export
 
 _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
@@ -607,6 +607,9 @@ assert len(_ANY_TO_TF) == sum(
 def as_dtype(type_value):
   """Converts the given `type_value` to a `DType`.
 
+  Note: `DType` values are interned. When passed a new `DType` object,
+  `as_dtype` always returns the interned value.
+
   Args:
     type_value: A value that can be converted to a `tf.DType` object. This may
       currently be a `tf.DType` object, a [`DataType`
@@ -620,7 +623,7 @@ def as_dtype(type_value):
     TypeError: If `type_value` cannot be converted to a `DType`.
   """
   if isinstance(type_value, DType):
-    return type_value
+    return _INTERN_TABLE[type_value.as_datatype_enum]
 
   if isinstance(type_value, np.dtype):
     try:
@@ -630,7 +633,8 @@ def as_dtype(type_value):
 
   try:
     return _ANY_TO_TF[type_value]
-  except KeyError:
+  except (KeyError, TypeError):
+    # TypeError indicates that type_value is not hashable.
     pass
 
   if hasattr(type_value, "dtype"):
@@ -638,6 +642,9 @@ def as_dtype(type_value):
       return _NP_TO_TF[np.dtype(type_value.dtype).type]
     except (KeyError, TypeError):
       pass
+
+  if isinstance(type_value, _dtypes.DType):
+    return _INTERN_TABLE[type_value.as_datatype_enum]
 
   raise TypeError("Cannot convert value %r to a TensorFlow DType." %
                   (type_value,))

@@ -268,6 +268,11 @@ StatusOr<bool> AllReduceCombiner::Run(HloModule* module) {
   VLOG(1) << "Running AllReduceCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
+  if (combine_threshold_in_bytes_ <= 0 || combine_threshold_count_ <= 0) {
+    VLOG(1) << "Skip AllReduceCombiner because the threshold is zero";
+    return false;
+  }
+
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {
     VLOG(1) << "Skip AllReduceCombiner because the module contains all-reduce "
                "with constrained layouts";

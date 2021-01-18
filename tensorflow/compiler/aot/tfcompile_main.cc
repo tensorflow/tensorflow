@@ -67,6 +67,8 @@ int main(int argc, char** argv) {
   flags.entry_point = "entry";
   flags.debug_info_path_begin_marker = "";
 
+  // Note that tfcompile.bzl's tf_library macro sets fast math flags as that is
+  // generally the preferred case.
   std::vector<tensorflow::Flag> flag_list;
   AppendMainFlags(&flag_list, &flags);
   xla::AppendDebugOptionsFlags(&flag_list);

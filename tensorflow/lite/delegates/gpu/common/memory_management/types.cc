@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 
 #include <algorithm>
-#include <cstdint>
+#include <cstddef>
 #include <queue>
 #include <vector>
 

@@ -18,22 +18,20 @@ limitations under the License.
 namespace tensorflow {
 
 struct Entry;
-class ImmutableExecutorState;
+struct NodeItem;
 class Tensor;
 
 // Returns a pointer to the tensor in `input` if one exists, or `nullptr`.
 const Tensor* GetTensorValueForDump(const Entry& input);
 
-// Writes a LOG(WARNING) message describing the state of the pending node
-// `node_id` in the graph described by `immutable_state`.
-void DumpPendingNodeState(const ImmutableExecutorState& immutable_state,
-                          const int node_id, const Entry* input_vector,
+// Writes a LOG(WARNING) message describing the state of the given pending node
+// in the graph described by `immutable_state`.
+void DumpPendingNodeState(const NodeItem& node_item, const Entry* input_vector,
                           const bool show_nodes_with_no_ready_inputs);
 
-// Writes a LOG(WARNING) message describing the state of the active node
-// `node_id` in the graph described by `immutable_state`.
-void DumpActiveNodeState(const ImmutableExecutorState& immutable_state,
-                         const int node_id, const Entry* input_vector);
+// Writes a LOG(WARNING) message describing the state of the given active node
+// in the graph described by `immutable_state`.
+void DumpActiveNodeState(const NodeItem& node_item, const Entry* input_vector);
 
 }  // namespace tensorflow
 

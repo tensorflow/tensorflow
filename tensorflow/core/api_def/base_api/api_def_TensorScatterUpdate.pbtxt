@@ -33,72 +33,35 @@ This operation is very similar to `tf.scatter_nd`, except that the updates are
 scattered onto an existing tensor (as opposed to a zero-tensor). If the memory
 for the existing tensor cannot be re-used, a copy is made and updated.
 
-If `indices` contains duplicates, then their updates are accumulated (summed).
+If `indices` contains duplicates, then we pick the last update for the index.
 
-**WARNING**: The order in which updates are applied is nondeterministic, so the
-output will be nondeterministic if `indices` contains duplicates -- because
-of some numerical approximation issues, numbers summed in different order
-may yield different results.
+If an out of bound index is found on CPU, an error is returned.
+
+**WARNING**: There are some GPU specific semantics for this operation.
+- If an out of bound index is found, the index is ignored.
+- The order in which updates are applied is nondeterministic, so the output
+will be nondeterministic if `indices` contains duplicates.
 
 `indices` is an integer tensor containing indices into a new tensor of shape
-`shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+`shape`.
 
-    indices.shape[-1] <= shape.rank
+* `indices` must have at least 2 axes: `(num_updates, index_depth)`.
+* The last axis of `indices` is how deep to index into `tensor` so  this index
+  depth must be less than the rank of `tensor`: `indices.shape[-1] <= tensor.ndim`
 
-The last dimension of `indices` corresponds to indices into elements
-(if `indices.shape[-1] = shape.rank`) or slices
-(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
-`shape`.  `updates` is a tensor with shape
+if `indices.shape[-1] = tensor.rank` this Op indexes and updates scalar elements.
+if `indices.shape[-1] < tensor.rank` it indexes and updates slices of the input
+`tensor`.
 
-    indices.shape[:-1] + shape[indices.shape[-1]:]
+Each `update` has a rank of `tensor.rank - indices.shape[-1]`.
+The overall shape of `updates` is:
 
-The simplest form of scatter is to insert individual elements in a tensor by
-index. For example, say we want to insert 4 scattered elements in a rank-1
-tensor with 8 elements.
+```
+indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
+```
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
-</div>
+For usage examples see the python [tf.tensor_scatter_nd_update](
+https://www.tensorflow.org/api_docs/python/tf/tensor_scatter_nd_update) function
 
-In Python, this scatter operation would look like this:
-
-    >>> indices = tf.constant([[4], [3], [1], [7]])
-    >>> updates = tf.constant([9, 10, 11, 12])
-    >>> tensor = tf.ones([8], dtype=tf.int32)
-    >>> print(tf.tensor_scatter_nd_update(tensor, indices, updates))
-    tf.Tensor([ 1 11  1 10  9  1  1 12], shape=(8,), dtype=int32)
-
-We can also, insert entire slices of a higher rank tensor all at once. For
-example, if we wanted to insert two slices in the first dimension of a
-rank-3 tensor with two matrices of new values.
-
-In Python, this scatter operation would look like this:
-
-    >>> indices = tf.constant([[0], [2]])
-    >>> updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
-    ...                         [7, 7, 7, 7], [8, 8, 8, 8]],
-    ...                        [[5, 5, 5, 5], [6, 6, 6, 6],
-    ...                         [7, 7, 7, 7], [8, 8, 8, 8]]])
-    >>> tensor = tf.ones([4, 4, 4], dtype=tf.int32)
-    >>> print(tf.tensor_scatter_nd_update(tensor, indices, updates).numpy())
-    [[[5 5 5 5]
-      [6 6 6 6]
-      [7 7 7 7]
-      [8 8 8 8]]
-     [[1 1 1 1]
-      [1 1 1 1]
-      [1 1 1 1]
-      [1 1 1 1]]
-     [[5 5 5 5]
-      [6 6 6 6]
-      [7 7 7 7]
-      [8 8 8 8]]
-     [[1 1 1 1]
-      [1 1 1 1]
-      [1 1 1 1]
-      [1 1 1 1]]]
-
-Note that on CPU, if an out of bound index is found, an error is returned.
-On GPU, if an out of bound index is found, the index is ignored.
 END
 }

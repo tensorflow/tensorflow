@@ -48,8 +48,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -152,11 +151,14 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
 
   // Create an engine and add it to the cache of the resource.
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine();
-  TrtUniquePtrType<nvinfer1::IExecutionContext> context(
-      engine->createExecutionContext());
+  auto context_status =
+      ExecutionContext::Create(engine.get(), resource->allocator_.get());
+  TF_ASSERT_OK(context_status.status());
+
   resource->cache_.emplace(
       std::vector<TensorShape>{TensorShape({1, 1})},
-      absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
+      absl::make_unique<EngineContext>(std::move(engine),
+                                       std::move(context_status.ValueOrDie())));
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
   EXPECT_FALSE(resource->RefCountIsOne());
@@ -246,5 +248,4 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

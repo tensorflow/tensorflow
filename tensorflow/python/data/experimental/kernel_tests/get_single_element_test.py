@@ -64,7 +64,7 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertAllEqual([skip], sparse_val.values)
       self.assertAllEqual([skip], sparse_val.dense_shape)
     else:
-      with self.assertRaisesRegexp(error, error_msg):
+      with self.assertRaisesRegex(error, error_msg):
         self.evaluate(get_single_element.get_single_element(dataset))
 
   @combinations.generate(test_base.default_test_combinations())

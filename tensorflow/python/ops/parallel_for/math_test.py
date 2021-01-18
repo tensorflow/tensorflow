@@ -23,6 +23,7 @@ from absl.testing import parameterized
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -81,6 +82,11 @@ class MathTest(PForTestCase, parameterized.TestCase):
     self._test_unary_cwise_ops(complex_ops, True)
 
   def test_unary_cwise_real_ops_1(self):
+    if test.is_built_with_rocm():
+      # TODO(rocm):
+      # This fails on ROCm...see JIRA ticket 236756
+      self.skipTest("Fails on ROCM")
+
     real_ops = [
         lambda x: math_ops.acosh(1 + math_ops.square(x)),
         math_ops.abs,
@@ -89,8 +95,6 @@ class MathTest(PForTestCase, parameterized.TestCase):
         math_ops.asinh,
         math_ops.atan,
         math_ops.atanh,
-        math_ops.bessel_i0e,
-        math_ops.bessel_i1e,
         math_ops.cos,
         math_ops.cosh,
         math_ops.digamma,
@@ -106,6 +110,8 @@ class MathTest(PForTestCase, parameterized.TestCase):
         math_ops.log,
         math_ops.log1p,
         math_ops.ndtri,
+        special_math_ops.bessel_i0e,
+        special_math_ops.bessel_i1e,
     ]
     self._test_unary_cwise_ops(real_ops, False)
 
@@ -150,72 +156,84 @@ class MathTest(PForTestCase, parameterized.TestCase):
       self._test_loop_fn(loop_fn, 3)
 
   def test_binary_cwise_ops(self):
-    logical_ops = [
-        math_ops.logical_and, math_ops.logical_or, math_ops.logical_xor
-    ]
+    # Enable tensor equality to test `equal` and `not_equal` ops below.
+    default_equality = framework_ops.Tensor._USE_EQUALITY
+    framework_ops.enable_tensor_equality()
+    try:
+      logical_ops = [
+          math_ops.logical_and, math_ops.logical_or, math_ops.logical_xor
+      ]
 
-    # Wrapper functions restricting the range of inputs of zeta and polygamma.
-    def safe_polygamma(x, y):
-      return math_ops.polygamma(
-          math_ops.round(clip_ops.clip_by_value(y, 1, 10)), x * x + 1)
+      # Wrapper functions restricting the range of inputs of zeta and polygamma.
+      def safe_polygamma(x, y):
+        return math_ops.polygamma(
+            math_ops.round(clip_ops.clip_by_value(y, 1, 10)), x * x + 1)
 
-    def safe_zeta(x, y):
-      return math_ops.zeta(x * x + 1, y * y)
+      def safe_zeta(x, y):
+        return math_ops.zeta(x * x + 1, y * y)
 
-    float_ops = [
-        math_ops.add,
-        math_ops.add_v2,
-        math_ops.atan2,
-        math_ops.complex,
-        math_ops.div,
-        math_ops.divide,
-        math_ops.div_no_nan,
-        math_ops.equal,
-        math_ops.floor_mod,
-        math_ops.greater,
-        math_ops.greater_equal,
-        math_ops.igamma,
-        math_ops.igammac,
-        math_ops.igamma_grad_a,
-        math_ops.less,
-        math_ops.less_equal,
-        math_ops.maximum,
-        math_ops.minimum,
-        math_ops.mod,
-        math_ops.multiply,
-        math_ops.not_equal,
-        math_ops.pow,
-        math_ops.squared_difference,
-        math_ops.subtract,
-        math_ops.truncate_mod,
-        safe_polygamma,
-        safe_zeta,
-    ]
-    # FloorDiv fails on XLA due floor's discontinuities exacerbating small
-    # division differences.
-    if not test_util.is_xla_enabled():
-      float_ops += [math_ops.floor_div]
-    for op in logical_ops + float_ops:
-      x = random_ops.random_uniform([7, 3, 5])
-      y = random_ops.random_uniform([3, 5])
-      if op in logical_ops:
-        x = x > 0
-        y = y > 0
+      float_ops = [
+          math_ops.add,
+          math_ops.add_v2,
+          math_ops.atan2,
+          math_ops.complex,
+          math_ops.div,
+          math_ops.divide,
+          math_ops.div_no_nan,
+          math_ops.equal,
+          lambda x, y: framework_ops.convert_to_tensor(x == y),
+          lambda x, y: framework_ops.convert_to_tensor(x != y),
+          math_ops.floor_mod,
+          math_ops.greater,
+          math_ops.greater_equal,
+          math_ops.igamma,
+          math_ops.igammac,
+          math_ops.igamma_grad_a,
+          math_ops.less,
+          math_ops.less_equal,
+          math_ops.maximum,
+          math_ops.minimum,
+          math_ops.mod,
+          math_ops.multiply,
+          math_ops.not_equal,
+          math_ops.pow,
+          math_ops.squared_difference,
+          math_ops.subtract,
+          math_ops.truncate_mod,
+          safe_polygamma,
+      ]
+      # FloorDiv fails on XLA due floor's discontinuities exacerbating small
+      # division differences.
+      if not test_util.is_xla_enabled():
+        float_ops += [math_ops.floor_div]
+        # TODO(b/168912036): Re-enable once GPU + XLA issues for Zeta are
+        # resolved.
+        if not test_util.is_gpu_available():
+          float_ops += [safe_zeta]
+      for op in logical_ops + float_ops:
+        x = random_ops.random_uniform([7, 3, 5])
+        y = random_ops.random_uniform([3, 5])
+        if op in logical_ops:
+          x = x > 0
+          y = y > 0
 
-      output_dtypes = []
+        output_dtypes = []
 
-      # pylint: disable=cell-var-from-loop
-      def loop_fn(i):
-        x1 = array_ops.gather(x, i)
-        y1 = array_ops.gather(y, i)
-        outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
-        del output_dtypes[:]
-        output_dtypes.extend(t.dtype for t in outputs)
-        return outputs
+        # pylint: disable=cell-var-from-loop
+        def loop_fn(i):
+          x1 = array_ops.gather(x, i)
+          y1 = array_ops.gather(y, i)
+          outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
+          del output_dtypes[:]
+          output_dtypes.extend(t.dtype for t in outputs)
+          return outputs
 
-      # pylint: enable=cell-var-from-loop
+        # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3)
+        self._test_loop_fn(loop_fn, 3)
+    finally:
+      if not default_equality:
+        framework_ops.disable_tensor_equality()
 
   def test_approximate_equal(self):
     x = random_ops.random_uniform([3, 5])
@@ -251,6 +269,9 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
     self._test_loop_fn(loop_fn, 4)
 
+  @test_util.run_without_tensor_float_32(
+      "Calls matmul in parallel for-loop and compares result to calling matmul "
+      "in sequential for-loop")
   def test_matmul(self):
     for tr_a in (True, False):
       for tr_b in (True, False):
@@ -331,7 +352,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         math_ops.reduce_min,
         math_ops.reduce_mean,
     ]:
-      for axis in ([1], None, [0, 2]):
+      for axis in ([1], None, [0, 2], constant_op.constant([1], dtypes.int64)):
         for keepdims in (True, False):
 
           # pylint: disable=cell-var-from-loop
@@ -346,7 +367,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
   def test_boolean_reduction(self):
     x = random_ops.random_uniform([2, 3, 4, 5]) > 0.5
     for op in [math_ops.reduce_any, math_ops.reduce_all]:
-      for axis in ([1], None, [0, 2]):
+      for axis in ([1], None, [0, 2], constant_op.constant([1], dtypes.int64)):
         for keepdims in (True, False):
 
           # pylint: disable=cell-var-from-loop
@@ -392,7 +413,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
   def test_cum_sum(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
-    for axis in (1, -2):
+    for axis in (1, -2, constant_op.constant(1, dtypes.int64)):
       for exclusive in (True, False):
         for reverse in (True, False):
 
@@ -408,7 +429,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
   def test_cum_prod(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
-    for axis in (1, -2):
+    for axis in (1, -2, constant_op.constant(1, dtypes.int64)):
       for exclusive in (True, False):
         for reverse in (True, False):
 
@@ -735,6 +756,9 @@ class LinalgTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  @test_util.run_without_tensor_float_32(
+      "Calls einsum in parallel for-loop and compares result to calling einsum "
+      "in sequential for-loop")
   def test_einsum(self):
     b = 10
     x_series = random_ops.random_uniform([b, 9, 9])

@@ -125,7 +125,7 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
   for (const string& input : inputs) {
     node->add_input(input);
   }
-  for (auto attr : attributes) {
+  for (const auto& attr : attributes) {
     (*node->mutable_attr())[attr.first] = attr.second;
   }
   return node;

@@ -21,18 +21,25 @@ limitations under the License.
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/eager/tfe_op_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -322,205 +329,6 @@ TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status) {
   return ret;
 }
 
-TFE_Context* TFE_CreateContextFromSession(TF_Session* session,
-                                          TF_Status* status) {
-  auto* opts = TFE_NewContextOptions();
-
-  // Reduce GPU memory allocation, and set appropriate config options for TFE
-  // context.
-  auto* config = TF_CreateConfig(
-      /*xla*/ false, /* gpu_memory_allow_growth */ true, /* num_cpu_devices */
-      10);
-  TFE_ContextOptionsSetConfig(opts, config->data, config->length, status);
-  if (!status->status.ok()) {
-    CHECK(!config);
-    TFE_DeleteContextOptions(opts);
-    return nullptr;
-  }
-
-  auto* ctx = TFE_NewContextFromSession(opts, session, status);
-  TF_DeleteBuffer(config);
-  TFE_DeleteContextOptions(opts);
-  return ctx;
-}
-
-// TODO: retrieve the device string via TFE_ContextListDevices()
-static const char DEFAULT_CPU_DEVICE[] =
-    "/job:localhost/replica:0/task:0/device:CPU:0";
-
-static TFE_TensorHandle* createTFEQueue(TFE_Context* ctx, TF_DataType inputType,
-                                        int tensor_id, TF_Status* status) {
-  std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> queueOp(
-      TFE_NewOp(ctx, "FIFOQueueV2", status), TFE_DeleteOp);
-  TFE_OpSetDevice(queueOp.get(), DEFAULT_CPU_DEVICE, status);
-  if (!status->status.ok()) return nullptr;
-  // TODO: use NAMED_TENSOR_QUEUE_CAPACITY in S4TF compiler.
-  TFE_OpSetAttrInt(queueOp.get(), "capacity", 1);
-  TFE_OpSetAttrTypeList(queueOp.get(), "component_types", &inputType, 1);
-  auto shared_name = tensorflow::strings::StrCat("fifo_queue_", tensor_id);
-  TFE_OpSetAttrString(queueOp.get(), "shared_name", shared_name.data(),
-                      shared_name.size());
-  TFE_OpSetAttrString(queueOp.get(), "container", "", 0);
-
-  // TODO: consider making this an unknown shape.
-  const int64_t* dims_ptr = nullptr;
-  int num_dims = 0;
-  TFE_OpSetAttrShapeList(queueOp.get(), "shapes", &dims_ptr, &num_dims,
-                         /*num_values*/ 0, status);
-  if (!status->status.ok()) return nullptr;
-
-  int num_retvals = 1;
-  TFE_TensorHandle* queue = nullptr;
-  TFE_Execute(queueOp.get(), &queue, &num_retvals, status);
-  if (!status->status.ok()) return nullptr;
-  CHECK_EQ(num_retvals, 1);
-
-  return queue;
-}
-
-static void createTFEEnqueue(TFE_Context* ctx, TF_DataType inputType,
-                             TFE_TensorHandle* queue, TFE_TensorHandle* tensor,
-                             TF_Status* status) {
-  TFE_Op* op = TFE_NewOp(ctx, "QueueEnqueueV2", status);
-  if (!status->status.ok()) return;
-  std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> op_deleter(op, TFE_DeleteOp);
-  TFE_OpSetDevice(op, DEFAULT_CPU_DEVICE, status);
-  if (!status->status.ok()) return;
-  TFE_OpAddInput(op, queue, status);
-  if (!status->status.ok()) return;
-  TFE_OpAddInput(op, tensor, status);
-  if (!status->status.ok()) return;
-  TFE_OpSetAttrTypeList(op, "Tcomponents", &inputType, 1);
-  TFE_OpSetAttrInt(op, "timeout_ms", -1);
-
-  int num_retvals = 0;
-  TFE_Execute(op, nullptr /*retvals*/, &num_retvals, status);
-  if (!status->status.ok()) return;
-  CHECK_EQ(num_retvals, 0);
-}
-
-static TFE_TensorHandle* createTFEDequeue(TFE_Context* ctx,
-                                          TF_DataType inputType,
-                                          TFE_TensorHandle* queue,
-                                          TF_Status* status) {
-  TFE_Op* op = TFE_NewOp(ctx, "QueueDequeueV2", status);
-  if (!status->status.ok()) return nullptr;
-  std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> op_deleter(op, TFE_DeleteOp);
-  TFE_OpSetDevice(op, DEFAULT_CPU_DEVICE, status);
-  if (!status->status.ok()) return nullptr;
-
-  TFE_OpAddInput(op, queue, status);
-  if (!status->status.ok()) return nullptr;
-  TFE_OpSetAttrTypeList(op, "component_types", &inputType, 1);
-  TFE_OpSetAttrInt(op, "timeout_ms", -1);
-  TFE_TensorHandle* ret;
-  int num_retvals = 1;
-  TFE_Execute(op, &ret, &num_retvals, status);
-  if (!status->status.ok()) return nullptr;
-  CHECK_EQ(num_retvals, 1);
-  return ret;
-}
-
-TFE_TensorHandle* TFE_DequeueNamedTensor(TF_Session* session, int tensor_id,
-                                         TF_DataType inputType,
-                                         TF_Status* status) {
-  assert(session);
-  VLOG(1) << "Dequeuing data tensor with id " << tensor_id;
-
-  auto ctx = TFE_CreateContextFromSession(session, status);
-  if (!status->status.ok()) return nullptr;
-  std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> ctx_deleter(
-      ctx, TFE_DeleteContext);
-
-  TFE_TensorHandle* queue = createTFEQueue(ctx, inputType, tensor_id, status);
-  if (!status->status.ok()) return nullptr;
-  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-      queue_deleter(queue, TFE_DeleteTensorHandle);
-
-  auto* ret = createTFEDequeue(ctx, inputType, queue, status);
-  return ret;
-}
-
-TFE_TensorHandle* TFE_DequeueNamedTensorFromCtx(TFE_Context* ctx, int tensor_id,
-                                                TF_DataType inputType,
-                                                TF_Status* status) {
-  TFE_TensorHandle* queue = createTFEQueue(ctx, inputType, tensor_id, status);
-  if (!status->status.ok()) return nullptr;
-  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-      queue_deleter(queue, TFE_DeleteTensorHandle);
-
-  auto* ret = createTFEDequeue(ctx, inputType, queue, status);
-
-  return ret;
-}
-
-void TFE_EnqueueNamedTensor(TF_Session* session, int tensor_id,
-                            TFE_TensorHandle* tensor, TF_Status* status) {
-  assert(session);
-  VLOG(1) << "Enqueuing data tensor with id " << tensor_id;
-
-  auto ctx = TFE_CreateContextFromSession(session, status);
-  if (!status->status.ok()) return;
-  std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> ctx_deleter(
-      ctx, TFE_DeleteContext);
-
-  TF_DataType inputType = TFE_TensorHandleDataType(tensor);
-  TFE_TensorHandle* queue = createTFEQueue(ctx, inputType, tensor_id, status);
-  if (!status->status.ok()) return;
-  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-      queue_deleter(queue, TFE_DeleteTensorHandle);
-
-  createTFEEnqueue(ctx, inputType, queue, tensor, status);
-}
-
-void TFE_EnqueueNamedTensorFromCtx(TFE_Context* ctx, int tensor_id,
-                                   TFE_TensorHandle* tensor,
-                                   TF_Status* status) {
-  VLOG(1) << "Enqueuing data tensor with id " << tensor_id;
-
-  TF_DataType inputType = TFE_TensorHandleDataType(tensor);
-  TFE_TensorHandle* queue = createTFEQueue(ctx, inputType, tensor_id, status);
-  if (!status->status.ok()) return;
-  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-      queue_deleter(queue, TFE_DeleteTensorHandle);
-
-  createTFEEnqueue(ctx, inputType, queue, tensor, status);
-}
-
-void TFE_EnqueueVariantTensor(TF_Session* session, int tensor_id,
-                              TFE_TensorHandle* tensor, TF_Status* status) {
-  VLOG(1) << "Enqueuing variant tensor with id " << tensor_id;
-
-  auto ctx = TFE_CreateContextFromSession(session, status);
-  if (!status->status.ok()) return;
-  std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> ctx_deleter(
-      ctx, TFE_DeleteContext);
-
-  TFE_TensorHandle* queue = createTFEQueue(ctx, TF_VARIANT, tensor_id, status);
-  if (!status->status.ok()) return;
-  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-      queue_deleter(queue, TFE_DeleteTensorHandle);
-
-  createTFEEnqueue(ctx, TF_VARIANT, queue, tensor, status);
-}
-
-TFE_TensorHandle* TFE_DequeueVariantTensor(TF_Session* session, int tensor_id,
-                                           TF_Status* status) {
-  VLOG(1) << "Dequeuing variant tensor with id " << tensor_id;
-
-  auto ctx = TFE_CreateContextFromSession(session, status);
-  if (!status->status.ok()) return nullptr;
-  std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> ctx_deleter(
-      ctx, TFE_DeleteContext);
-
-  TFE_TensorHandle* queue = createTFEQueue(ctx, TF_VARIANT, tensor_id, status);
-  if (!status->status.ok()) return nullptr;
-  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-      queue_deleter(queue, TFE_DeleteTensorHandle);
-
-  return createTFEDequeue(ctx, TF_VARIANT, queue, status);
-}
-
 void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
   status->status = tensorflow::errors::Internal(errMsg);
 }
@@ -619,10 +427,9 @@ void TF_AttrBuilderSetType(TF_AttrBuilder* builder, const char* attr_name,
 void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder, const char* attr_name,
                                const TF_DataType* values, int num_values) {
   auto iter = builder->attr_names.insert(attr_name).first;
-  builder->Set(
-      (*iter).c_str(),
-      tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
-          reinterpret_cast<const tensorflow::DataType*>(values), num_values));
+  builder->Set(*iter, tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
+                          reinterpret_cast<const tensorflow::DataType*>(values),
+                          num_values));
 }
 
 void TF_AttrBuilderCheckCanRunOnDevice(TF_AttrBuilder* builder,
@@ -686,8 +493,7 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
 
   status->status = tensorflow::Status::OK();
-  return new TFE_TensorHandle{
-      tensorflow::TensorHandle::CreateLocalHandle(tensor)};
+  return tensorflow::wrap(tensorflow::TensorHandle::CreateLocalHandle(tensor));
 }
 
 namespace {
@@ -708,7 +514,7 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
 
   // New server created for new server_def. Unused if updating server_def.
   tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   tensorflow::GrpcServer* grpc_server =
       dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
   if (grpc_server == nullptr) {
@@ -723,12 +529,12 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
 
     LOG_AND_RETURN_IF_ERROR(context->StoreCollectiveOpsServer(
         std::move(new_server), grpc_server->worker_env()->device_mgr,
-        grpc_server->worker_env()->collective_executor_mgr));
+        grpc_server->worker_env()->collective_executor_mgr.get()));
   } else {
     LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
     LOG_AND_RETURN_IF_ERROR(context->StoreCollectiveOpsServer(
         /*new_server=*/nullptr, grpc_server->worker_env()->device_mgr,
-        grpc_server->worker_env()->collective_executor_mgr));
+        grpc_server->worker_env()->collective_executor_mgr.get()));
   }
   return tensorflow::Status::OK();
 #undef LOG_AND_RETURN_IF_ERROR
@@ -747,6 +553,29 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
     return;
   }
   status->status = EnableCollectiveOps(server_def, ctx);
+}
+
+TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
+                                                  TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  auto collective_executor_handle = context->GetCollectiveExecutorHandle();
+  collective_executor_handle->get()->StartAbort(status->status);
+}
+
+TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(
+    TFE_Context* ctx, const char* task, int64_t timeout_in_ms,
+    TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  auto collective_executor_handle = context->GetCollectiveExecutorHandle();
+  tensorflow::Notification done;
+  collective_executor_handle->get()->remote_access()->CheckPeerHealth(
+      task, timeout_in_ms, [&done, status](const Status& s) {
+        status->status = s;
+        done.Notify();
+      });
+  done.WaitForNotification();
 }
 
 TF_ShapeAndTypeList* TF_NewShapeAndTypeList(int num_items) {
@@ -803,6 +632,9 @@ void TF_DeleteShapeAndTypeListArray(TF_ShapeAndTypeList** shape_list_array,
 
 namespace tensorflow {
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+
+// Helpers for loadding a TensorFlow PluggableDevice plugin (a .so file).
+Status LoadPluggableDeviceLibrary(const char* library_filename, void** result);
 }  // namespace tensorflow
 
 void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
@@ -822,14 +654,13 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
 
   const int num_inputs = input_shapes->num_items;
   NodeDef node_def;
-  node_def.set_name(tfe_op->operation->Name());
-  node_def.set_op(tfe_op->operation->Name());
+  tensorflow::ImmediateExecutionOperation* op = tensorflow::unwrap(tfe_op);
+  node_def.set_name(op->Name());
+  node_def.set_op(op->Name());
   for (int i = 0; i < num_inputs; ++i) {
     node_def.add_input("dummy_input");
   }
-  OperationFromInterface(tfe_op->operation)
-      ->Attrs()
-      .FillAttrValueMap(node_def.mutable_attr());
+  OperationFromInterface(op)->Attrs().FillAttrValueMap(node_def.mutable_attr());
 
   const tensorflow::OpRegistrationData* op_reg_data;
   status->status =
@@ -916,4 +747,46 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
 void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
     TF_ImportGraphDefOptions* opts, unsigned char enable) {
   opts->opts.validate_colocation_constraints = enable;
+}
+
+// Load a Pluggable Device library.
+// On success, returns the handle to library in result and return OK from the
+// function. Otherwise return nullptr in result and error Status from the
+// function.
+//
+// If `library_filename` has already been loaded, we return a cached handle.
+// Device and Kernels/Ops are registered as globals when a library is loaded
+// for the first time.
+TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
+                                          TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+  status->status = tensorflow::errors::Unimplemented(
+      "PluggableDevice plugin functionality is not supported on mobile");
+  return nullptr;
+#else
+  TF_Library* lib_handle = new TF_Library;
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static std::unordered_map<std::string, void*>* loaded_libs =
+      new std::unordered_map<std::string, void*>();
+  tensorflow::Env* env = tensorflow::Env::Default();
+  {
+    tensorflow::mutex_lock lock(mu);
+    auto it = loaded_libs->find(library_filename);
+    if (it != loaded_libs->end()) {
+      lib_handle->lib_handle = it->second;
+    } else {
+      status->status =
+          env->LoadDynamicLibrary(library_filename, &lib_handle->lib_handle);
+      if (!status->status.ok()) {
+        delete lib_handle;
+        return nullptr;
+      }
+    }
+    return lib_handle;
+  }
+#endif
+}
+
+void TF_DeletePluggableDeviceLibraryHandle(TF_Library* lib_handle) {
+  delete lib_handle;
 }

@@ -24,13 +24,27 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 namespace {
+
+// Builds a custom call to a method named 'softmax' or 'log_softmax'.
+xla::StatusOr<xla::XlaOp> BuildSoftmaxCustomCall(xla::XlaBuilder* b,
+                                                 xla::XlaOp logits, bool log) {
+  TF_ASSIGN_OR_RETURN(xla::Shape logits_shape, b->GetShape(logits));
+  return xla::CustomCallWithLayout(b, log ? "log_softmax" : "softmax", {logits},
+                                   logits_shape, {logits_shape});
+}
 
 class SoftmaxOp : public XlaOpKernel {
  public:
@@ -55,6 +69,15 @@ class SoftmaxOp : public XlaOpKernel {
     auto logits = ctx->Input(0);
 
     xla::XlaBuilder* const b = ctx->builder();
+
+    if (ctx->compiler()->options().allow_cpu_custom_calls &&
+        ctx->compiler()->options().custom_fake_quant_op_calls) {
+      xla::XlaOp custom_call_output =
+          b->ReportErrorOrReturn(BuildSoftmaxCustomCall(b, logits, log_));
+      ctx->SetOutput(0, custom_call_output);
+      return;
+    }
+
     const xla::XlaComputation& max_func = *ctx->GetOrCreateMax(type);
 
     // Find the max in each batch, resulting in a tensor of shape [batch]
@@ -127,7 +150,11 @@ std::pair<xla::XlaOp, xla::XlaOp> CrossEntropyWithLogits(
   // along classes
   // (The subtraction broadcasts along the batch dimension.)
   auto sub = xla::Sub(shifted_logits, log_sum_exp, {kBatchDim});
-  auto mul = xla::Mul(xla::Neg(labels), sub);
+  // Make sure the multiplication doesn't result in -inf * 0.
+  auto safe_sub = xla::Select(xla::Eq(labels, xla::ZerosLike(labels)),
+                              xla::ZerosLike(sub), sub);
+  auto mul = xla::Mul(xla::Neg(labels), safe_sub);
+
   auto sum = xla::Reduce(XlaHelpers::ConvertElementType(mul, accumulation_type),
                          XlaHelpers::Zero(b, accumulation_type),
                          *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});

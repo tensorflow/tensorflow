@@ -35,19 +35,19 @@ struct ExportParams {
 
 // Transform the given tf.mini model into a TF Lite flatbuffer and deposit the
 // result in the given string.
-tensorflow::Status Export(const Model& model, string* output_file_contents,
+tensorflow::Status Export(const Model& model, std::string* output_file_contents,
                           const ExportParams& params);
 
 // Export API with custom TFLite operator mapping.
 tensorflow::Status Export(
-    const Model& model, string* output_file_contents,
+    const Model& model, std::string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type);
 
 // This is for backward-compatibility.
 // TODO(ycling): Remove the deprecated entry functions.
 inline void Export(const Model& model, bool allow_custom_ops,
-                   bool quantize_weights, string* output_file_contents) {
+                   bool quantize_weights, std::string* output_file_contents) {
   ExportParams params;
   params.allow_custom_ops = allow_custom_ops;
   params.quantize_weights =
@@ -60,7 +60,7 @@ inline void Export(const Model& model, bool allow_custom_ops,
 // TODO(ycling): Remove the deprecated entry functions.
 inline void Export(
     const Model& model, bool allow_custom_ops, bool quantize_weights,
-    string* output_file_contents,
+    std::string* output_file_contents,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   ExportParams params;
   params.allow_custom_ops = allow_custom_ops;
@@ -72,7 +72,7 @@ inline void Export(
 
 // This is for backward-compatibility.
 // TODO(ycling): Remove the deprecated entry functions.
-inline void Export(const Model& model, string* output_file_contents) {
+inline void Export(const Model& model, std::string* output_file_contents) {
   ExportParams params;
   params.allow_custom_ops = true;
   auto status = Export(model, output_file_contents, params);
@@ -82,7 +82,7 @@ inline void Export(const Model& model, string* output_file_contents) {
 namespace details {
 
 // A map from tensor name to its final position in the TF Lite buffer.
-using TensorsMap = std::unordered_map<string, int>;
+using TensorsMap = std::unordered_map<std::string, int>;
 
 // A key to identify an operator.
 // Only when `type` is `kUnsupported`, `custom_code` is filled to

@@ -15,7 +15,7 @@
 # pylint: disable=invalid-name
 """Inception V3 model for Keras.
 
-Reference paper:
+Reference:
   - [Rethinking the Inception Architecture for Computer Vision](
       http://arxiv.org/abs/1512.00567) (CVPR 2016)
 """
@@ -23,14 +23,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -56,7 +55,7 @@ def InceptionV3(
     classifier_activation='softmax'):
   """Instantiates the Inception v3 architecture.
 
-  Reference paper:
+  Reference:
   - [Rethinking the Inception Architecture for Computer Vision](
       http://arxiv.org/abs/1512.00567) (CVPR 2016)
 
@@ -64,10 +63,11 @@ def InceptionV3(
   Note that the data format convention used by the model is
   the one specified in the `tf.keras.backend.image_data_format()`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.inception_v3.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For InceptionV3, call `tf.keras.applications.inception_v3.preprocess_input`
+  on your inputs before passing them to the model.
 
-  Arguments:
+  Args:
     include_top: Boolean, whether to include the fully-connected
       layer at the top, as the last layer of the network. Default to `True`.
     weights: One of `None` (random initialization),
@@ -109,7 +109,7 @@ def InceptionV3(
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -369,7 +369,7 @@ def conv2d_bn(x,
               name=None):
   """Utility function to apply conv + BN.
 
-  Arguments:
+  Args:
     x: input tensor.
     filters: filters in `Conv2D`.
     num_row: height of the convolution kernel.
@@ -416,5 +416,7 @@ def decode_predictions(preds, top=5):
 
 
 preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
-    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+    mode='',
+    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF,
+    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

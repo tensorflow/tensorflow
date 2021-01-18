@@ -25,9 +25,11 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/string_type.h"
 
 // Note: this is part of TF Lite's Flex delegation code which is to be
@@ -47,9 +49,18 @@ limitations under the License.
 // retrieve the associated NodeDef, which is then used to configure the
 // corresponding TensorFlow/Eager Op.
 
+using tensorflow::shape_inference::DimensionHandle;
+using tensorflow::shape_inference::InferenceContext;
+using tensorflow::shape_inference::ShapeAndType;
+using tensorflow::shape_inference::ShapeHandle;
+
+const std::string GetDimsDebugString(const TfLiteIntArray* dims) {
+  return absl::StrCat("[", absl::StrJoin(tflite::TfLiteIntArrayView(dims), ","),
+                      "]");
+}
+
 namespace tflite {
 namespace flex {
-namespace kernel {
 
 struct OpNode;
 
@@ -188,6 +199,9 @@ class OpNode {
   void set_index(int index) { index_ = index; }
 
   const tensorflow::NodeDef& nodedef() const { return nodedef_; }
+  const tensorflow::OpRegistrationData* op_reg_data() const {
+    return op_reg_data_;
+  }
 
   const OpInputs& inputs() const { return inputs_; }
   OpInputs* mutable_inputs() { return &inputs_; }
@@ -222,10 +236,9 @@ class OpNode {
     }
 
     // Fill NodeDef with defaults if it's a valid op.
-    const tensorflow::OpRegistrationData* op_reg_data;
     TF_RETURN_IF_ERROR(
-        tensorflow::OpRegistry::Global()->LookUp(nodedef_.op(), &op_reg_data));
-    AddDefaultsToNodeDef(op_reg_data->op_def, &nodedef_);
+        tensorflow::OpRegistry::Global()->LookUp(nodedef_.op(), &op_reg_data_));
+    AddDefaultsToNodeDef(op_reg_data_->op_def, &nodedef_);
 
     return tensorflow::Status::OK();
   }
@@ -250,19 +263,16 @@ class OpNode {
 
     // Precalculating a cache key saves about 10% of inference time for very
     // small models.
-    op_->MutableAttrs()->CacheKey(op_->GetDeviceName());
+    op_->MutableAttrs()->CacheKey(op_->DeviceName());
 
     return tensorflow::Status::OK();
   }
 
-  void ClearEagerInputs() {
-    for (tensorflow::TensorHandle* h : *op_->MutableInputs()) {
-      if (h) h->Unref();
-    }
-    op_->MutableInputs()->clear();
-  }
+  void ClearEagerInputs() { op_->Clear(); }
 
   tensorflow::Status BuildEagerInputs(const BufferMap* buffer_map) {
+    absl::InlinedVector<tensorflow::TensorHandle*, 4>* op_inputs;
+    TF_RETURN_IF_ERROR(op_->MutableTensorHandleInputs(&op_inputs));
     for (int i = 0; i < inputs_.Size(); ++i) {
       int input_index = inputs_.TfLiteIndex(i);
       TensorSource s = inputs_.GetTensorSource(i);
@@ -277,14 +287,14 @@ class OpNode {
         tensorflow::TensorHandle* handle =
             tensorflow::TensorHandle::CreateLocalHandle(
                 buffer_map->GetTensor(input_index));
-        op_->MutableInputs()->push_back(handle);
+        op_inputs->push_back(handle);
       } else {
         // If this is a forwardable tensor, we will remove it from the previous
         // op's list, giving TF the opportunity to reuse its buffer.
         bool unref_handle = inputs_.IsForwardable(i);
         auto* handle =
             s.node->outputs_.GetHandle(s.node_output_index, unref_handle);
-        op_->MutableInputs()->push_back(handle);
+        op_inputs->push_back(handle);
       }
     }
     return tensorflow::Status::OK();
@@ -312,6 +322,8 @@ class OpNode {
   int index_;
   // The corresponding NodeDef, containing the attributes for the op.
   tensorflow::NodeDef nodedef_;
+  // The corresponding OpRegistrationData pointer.
+  const tensorflow::OpRegistrationData* op_reg_data_;
   // List of inputs, as TF Lite tensor indices.
   OpInputs inputs_;
   // List of outputs, as TF Lite tensor indices.
@@ -331,9 +343,12 @@ tensorflow::Status ExecuteFlexOp(TfLiteContext* context, BufferMap* buffer_map,
   node_data->mutable_outputs()->ResetTensorHandles();
   int num_retvals = node_data->NumOutputs();
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      EagerExecute(node_data->op(),
-                   node_data->mutable_outputs()->GetTensorHandles()->data(),
-                   &num_retvals),
+      node_data->op()->Execute(
+          absl::MakeSpan(
+              reinterpret_cast<tensorflow::AbstractTensorHandle**>(
+                  node_data->mutable_outputs()->GetTensorHandles()->data()),
+              num_retvals),
+          &num_retvals),
       " (while executing '", node_data->name(), "' via Eager)");
 
   if (num_retvals != node_data->NumOutputs()) {
@@ -357,33 +372,29 @@ struct OpData {
   std::vector<int> subgraph_outputs;
 };
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* op_data = new OpData;
+DelegateKernel::DelegateKernel() : op_data_(new OpData) {}
+DelegateKernel::~DelegateKernel() {}
 
-  const TfLiteDelegateParams* params =
-      reinterpret_cast<const TfLiteDelegateParams*>(buffer);
-  CHECK(params);
-  CHECK(params->delegate);
-  CHECK(params->delegate->data_);
-  op_data->eager_context =
-      reinterpret_cast<DelegateData*>(params->delegate->data_)
-          ->GetEagerContext();
-  op_data->buffer_map = reinterpret_cast<DelegateData*>(params->delegate->data_)
-                            ->GetBufferMap(context);
+TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
+                                  const TfLiteDelegateParams* params) {
+  auto* flex_delegate_data =
+      reinterpret_cast<FlexDelegate*>(params->delegate->data_)->mutable_data();
+  op_data_->eager_context = flex_delegate_data->GetEagerContext();
+  op_data_->buffer_map = flex_delegate_data->GetBufferMap(context);
 
   CHECK(params->output_tensors);
   std::set<int> output_set;
   for (auto tensor_index : TfLiteIntArrayView(params->output_tensors)) {
-    op_data->subgraph_outputs.push_back(tensor_index);
+    op_data_->subgraph_outputs.push_back(tensor_index);
     output_set.insert(tensor_index);
   }
 
   CHECK(params->input_tensors);
   for (auto tensor_index : TfLiteIntArrayView(params->input_tensors)) {
-    op_data->subgraph_inputs.push_back(tensor_index);
+    op_data_->subgraph_inputs.push_back(tensor_index);
   }
 
-  op_data->nodes.reserve(params->nodes_to_replace->size);
+  op_data_->nodes.reserve(params->nodes_to_replace->size);
 
   CHECK(params->nodes_to_replace);
   tensorflow::Status status;
@@ -392,8 +403,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
     TfLiteRegistration* reg;
     context->GetNodeAndRegistration(context, node_index, &node, &reg);
 
-    op_data->nodes.emplace_back(new OpNode(node->inputs, node->outputs));
-    OpNode& node_data = *op_data->nodes.back();
+    op_data_->nodes.emplace_back(new OpNode(node->inputs, node->outputs));
+    OpNode& node_data = *op_data_->nodes.back();
 
     node_data.set_index(node_index);
     node_data.set_name("");
@@ -401,16 +412,11 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
     status = node_data.InitializeNodeDef(node->custom_initial_data,
                                          node->custom_initial_data_size);
     if (!status.ok()) break;
-    status = node_data.BuildEagerOp(op_data->eager_context);
+    status = node_data.BuildEagerOp(op_data_->eager_context);
     if (!status.ok()) break;
   }
 
-  if (ConvertStatus(context, status) != kTfLiteOk) {
-    // We can't return an error from this function but ConvertStatus will
-    // report them and we will stop processing in Prepare() if anything went
-    // wrong.
-    return op_data;
-  }
+  TF_LITE_ENSURE_STATUS(ConvertStatus(context, status));
 
   // Given a TfLite tensor index, return the OpNode that produces it,
   // along with it index into that OpNodes list of outputs.
@@ -418,7 +424,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 
   // Find out how each tensor is produced. This does not account for
   // tensors that are not produce by eager ops.
-  for (auto& node_data : op_data->nodes) {
+  for (auto& node_data : op_data_->nodes) {
     node_data->mutable_outputs()->InitializeGraphOutputs(output_set);
     for (int i = 0; i < node_data->outputs().Size(); ++i) {
       int output_index = node_data->outputs().TfLiteIndex(i);
@@ -428,21 +434,15 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 
   // For each node, resolve the inputs, so we can keep pointers to the nodes
   // that produces them.
-  for (auto& node_data : op_data->nodes) {
+  for (auto& node_data : op_data_->nodes) {
     node_data->mutable_inputs()->InitializeTensorSources(tflite_tensor_sources);
   }
-
-  return op_data;
+  return kTfLiteOk;
 }
 
-void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<OpData*>(buffer);
-}
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  const auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+TfLiteStatus DelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_MSG(
-      context, op_data->eager_context != nullptr,
+      context, op_data_->eager_context != nullptr,
       "Failed to initialize eager context. This often happens when a CPU "
       "device has not been registered, presumably because some symbols from "
       "tensorflow/core:core_cpu_impl were not linked into the binary.");
@@ -452,8 +452,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   std::map<int, int> tensor_ref_count;
 
   // Whenever we find a constant tensor, insert it in the buffer map.
-  BufferMap* buffer_map = op_data->buffer_map;
-  for (auto tensor_index : op_data->subgraph_inputs) {
+  BufferMap* buffer_map = op_data_->buffer_map;
+  for (auto tensor_index : op_data_->subgraph_inputs) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     if (IsConstantTensor(tensor)) {
       if (!buffer_map->HasTensor(tensor_index)) {
@@ -467,14 +467,26 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     tensor_ref_count[tensor_index] += 2;
   }
 
+  const bool shapes_are_valid =
+      (ValidateOutputTensorShapeConsistency(context) == kTfLiteOk);
+  if (shapes_are_valid) {
+    TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+               "FlexDelegate: All tensor shapes are consistent.");
+  } else {
+    TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+               "FlexDelegate: Some tensor shapes are inconsistent.");
+  }
+
   // All output tensors are allocated by TensorFlow/Eager, so we
   // mark them as kTfLiteDynamic.
-  for (auto tensor_index : op_data->subgraph_outputs) {
-    SetTensorToDynamic(&context->tensors[tensor_index]);
+  for (auto tensor_index : op_data_->subgraph_outputs) {
+    if (!shapes_are_valid) {
+      SetTensorToDynamic(&context->tensors[tensor_index]);
+    }
     ++tensor_ref_count[tensor_index];
   }
 
-  for (const auto& node_data : op_data->nodes) {
+  for (const auto& node_data : op_data_->nodes) {
     if (node_data->nodedef().op().empty()) {
       context->ReportError(context, "Invalid NodeDef in Flex op '%s'",
                            node_data->name().c_str());
@@ -490,7 +502,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // All tensors that are referenced exactly once are marked as "forwardable",
   // meaning that we will allow TensorFlow to reuse its buffer as the output of
   // an op.
-  for (auto& node_data : op_data->nodes) {
+  for (auto& node_data : op_data_->nodes) {
     for (int i = 0; i < node_data->inputs().Size(); ++i) {
       bool f = (tensor_ref_count[node_data->inputs().TfLiteIndex(i)] == 1);
       node_data->mutable_inputs()->SetForwardable(i, f);
@@ -500,13 +512,91 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
-  BufferMap* buffer_map = op_data->buffer_map;
+TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
+    TfLiteContext* context) const {
+  for (const auto& node_data : op_data_->nodes) {
+    auto op_name = node_data->name().c_str();
+    // Create an InferenceContext object.
+    auto num_inputs = node_data->inputs().Size();
+    std::vector<const tensorflow::Tensor*> input_tensors_vector(num_inputs,
+                                                                nullptr);
+    InferenceContext c(
+        TF_GRAPH_DEF_VERSION, node_data->nodedef(),
+        node_data->op_reg_data()->op_def, std::vector<ShapeHandle>(num_inputs),
+        input_tensors_vector, {},
+        std::vector<std::unique_ptr<std::vector<ShapeAndType>>>());
+
+    // Set input_shapes for ShapeInferenceFn.
+    for (int i = 0; i < num_inputs; ++i) {
+      const auto input_tensor_index = node_data->inputs().TfLiteIndex(i);
+      TfLiteTensor* tfl_tensor = &context->tensors[input_tensor_index];
+      // Provide constant input tensors since some op ("RFFT") needs it to
+      // calculate the output shape.
+      if (IsConstantTensor(tfl_tensor)) {
+        input_tensors_vector[i] =
+            op_data_->buffer_map->GetTensorPtr(input_tensor_index);
+      }
+      const auto dims_array = tfl_tensor->dims;
+      std::vector<DimensionHandle> dims(dims_array->size);
+      for (int j = 0; j < dims_array->size; ++j) {
+        dims[j] = c.MakeDim(dims_array->data[j]);
+      }
+      c.SetInput(i, c.MakeShape(dims));
+    }
+    c.set_input_tensors(input_tensors_vector);
+
+    tensorflow::Status status = c.construction_status();
+    if (!status.ok()) {
+      TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+                 "Shape construction failed for op '%s'", op_name);
+      return kTfLiteError;
+    }
+
+    // Run ShapeInferenceFn to calculate output shapes.
+    if (node_data->op_reg_data()->shape_inference_fn == nullptr) {
+      TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+                 "No shape inference function exists for op '%s'", op_name);
+      return kTfLiteError;
+    }
+    status = c.Run(node_data->op_reg_data()->shape_inference_fn);
+
+    // Compare calculated output shapes with node_data->outputs
+    auto num_outputs = node_data->outputs().Size();
+    if (num_outputs != c.num_outputs()) {
+      TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+                 "Number of output tensors are mismatched for op '%s' %d != %d",
+                 op_name, num_outputs, c.num_outputs());
+      return kTfLiteError;
+    }
+    for (int i = 0; i < num_outputs; ++i) {
+      const auto output_tensor_index = node_data->outputs().TfLiteIndex(i);
+      TfLiteTensor* tfl_tensor = &context->tensors[output_tensor_index];
+      // tfl_tensor->dims only has valid information if the given model is
+      // converted by the MLIR converter. Also when ResizeInputTensor() is
+      // called the dims information becomes invalid.
+      const std::string tfl_shape_string = GetDimsDebugString(tfl_tensor->dims);
+      const std::string calculated_shape_string = c.DebugString(c.output(i));
+      // Getting a shape string via c.DebugString() is the easiest way to get
+      // the shape information of the given ShapeHandle for now.
+      // TODO(b/169017408): Find a better approach without using debug string.
+      if (tfl_shape_string != calculated_shape_string) {
+        TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+                   "op '%s' output%d tensor#%d shape mismatch for  %s != %s",
+                   op_name, i, output_tensor_index, tfl_shape_string.c_str(),
+                   calculated_shape_string.c_str());
+        return kTfLiteError;
+      }
+    }
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
+  BufferMap* buffer_map = op_data_->buffer_map;
 
   // Insert a tensor in the buffer map for all inputs that are not constant.
   // Constants were handled in Prepare() already.
-  for (auto tensor_index : op_data->subgraph_inputs) {
+  for (auto tensor_index : op_data_->subgraph_inputs) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     if (!IsConstantTensor(tensor)) {
       // If this tensor is part of an earlier TF subgraph we should not add it
@@ -519,7 +609,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Execute the TensorFlow Ops sequentially.
-  for (auto& node_data : op_data->nodes) {
+  for (auto& node_data : op_data_->nodes) {
     TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(
         reinterpret_cast<Profiler*>(context->profiler),
         node_data->name().c_str(), node_data->index());
@@ -528,38 +618,40 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));
   }
 
-  for (auto tensor_index : op_data->subgraph_outputs) {
+  for (auto tensor_index : op_data_->subgraph_outputs) {
     if (!buffer_map->HasTensor(tensor_index)) {
       context->ReportError(context, "Cannot write to invalid tensor index %d",
                            tensor_index);
       return kTfLiteError;
     }
 
+    // Copy TF tensor data to TFL allocated buffer for non dynamic tensors.
+    // For dynamic tensors, copy shape and put buffer_handle for the later
+    // CopyFromBufferHandle() call.
     TfLiteTensor* tensor = &context->tensors[tensor_index];
-    TF_LITE_ENSURE_OK(
-        context,
-        CopyShapeAndType(context, buffer_map->GetTensor(tensor_index), tensor));
-    tensor->buffer_handle = tensor_index;
-    tensor->data_is_stale = true;
+    const tensorflow::Tensor& tf_tensor = buffer_map->GetTensor(tensor_index);
+    if (tensor->allocation_type == kTfLiteDynamic) {
+      TF_LITE_ENSURE_OK(context, CopyShapeAndType(context, tf_tensor, tensor));
+      tensor->buffer_handle = tensor_index;
+      tensor->data_is_stale = true;
+      continue;
+    }
+    // If the tensor isn't dynamic, we can copy data directly to the buffer of
+    // the tensor. Before copying the data, check if the target buffer has
+    // expected size.
+    if (tf_tensor.NumElements() != NumElements(tensor) ||
+        tf_tensor.TotalBytes() != tensor->bytes) {
+      TF_LITE_KERNEL_LOG(
+          context, "Tensor: %s(%d) buffer size mismatch %zu(%lld) != %ld(%ld)",
+          tensor->name, tensor_index, tf_tensor.TotalBytes(),
+          tf_tensor.NumElements(), tensor->bytes, NumElements(tensor));
+      return kTfLiteError;
+    }
+    tensorflow::StringPiece t_data = tf_tensor.tensor_data();
+    memcpy(tensor->data.raw, t_data.data(), t_data.size());
   }
 
   return kTfLiteOk;
-}
-
-}  // namespace kernel
-
-TfLiteRegistration GetKernel() {
-  TfLiteRegistration registration{
-      &kernel::Init,
-      &kernel::Free,
-      &kernel::Prepare,
-      &kernel::Eval,
-      nullptr,                 // .profiling_string
-      kTfLiteBuiltinDelegate,  // .builtin_code
-      "TfLiteFlexDelegate",    // .custom_name
-      1,                       // .version
-  };
-  return registration;
 }
 
 }  // namespace flex

@@ -158,6 +158,14 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
 
     int64 Cardinality() const override { return cardinality_; }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      for (const auto& input : inputs_) {
+        inputs->push_back(input);
+      }
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override {
       for (const auto& input : inputs_) {
         TF_RETURN_IF_ERROR(input->CheckExternalState());
@@ -319,6 +327,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       }
 
       void RunnerThread(IteratorContext* ctx, InvocationResult* result, int i) {
+        RecordStart(ctx);
+        auto cleanup = gtl::MakeCleanup([this, ctx]() { RecordStop(ctx); });
         int64 start = EnvTime::NowNanos();
         Status s = input_impls_[i]->GetNext(ctx, &result->out_tensors,
                                             &result->end_of_sequence);

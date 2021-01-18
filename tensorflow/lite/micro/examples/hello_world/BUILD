@@ -10,17 +10,19 @@ load(
     "micro_copts",
 )
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
-    name = "sine_model_data",
+    name = "model",
     srcs = [
-        "sine_model_data.cc",
+        "model.cc",
     ],
     hdrs = [
-        "sine_model_data.h",
+        "model.h",
     ],
     copts = micro_copts(),
 )
@@ -31,11 +33,10 @@ tflite_micro_cc_test(
         "hello_world_test.cc",
     ],
     deps = [
-        "//tensorflow/lite:schema_fbs_version",
+        ":model",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/examples/hello_world:sine_model_data",
-        "//tensorflow/lite/micro/kernels:all_ops_resolver",
-        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -52,7 +53,7 @@ cc_library(
     copts = micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -81,11 +82,17 @@ cc_binary(
     ],
     deps = [
         ":constants",
+        ":model",
         ":output_handler",
-        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/examples/hello_world:sine_model_data",
-        "//tensorflow/lite/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/schema:schema_fbs",
     ],
+)
+
+sh_test(
+    name = "hello_world_binary_test",
+    srcs = ["hello_world_binary_test.sh"],
+    data = [":hello_world"],
 )

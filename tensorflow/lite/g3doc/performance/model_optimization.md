@@ -5,8 +5,8 @@ optimizations can be applied to models so that they can be run within these
 constraints. In addition, some optimizations allow the use of specialized
 hardware for accelerated inference.
 
-Tensorflow Lite and the
-[Tensorflow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
+TensorFlow Lite and the
+[TensorFlow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
 provide tools to minimize the complexity of optimizing inference.
 
 It's recommended that you consider model optimization during your application
@@ -33,8 +33,8 @@ models have the following benefits:
     translate to better performance and stability.
 
 Quantization can reduce the size of a model in all of these cases, potentially
-at the expense of some accuracy. Pruning can reduce the size of a model for
-download by making it more easily compressible.
+at the expense of some accuracy. Pruning and clustering can reduce the size of a
+model for download by making it more easily compressible.
 
 ### Latency reduction
 
@@ -54,7 +54,7 @@ Some hardware accelerators, such as the
 with models that have been correctly optimized.
 
 Generally, these types of devices require models to be quantized in a specific
-way. See each hardware accelerators documentation to learn more about their
+way. See each hardware accelerator's documentation to learn more about their
 requirements.
 
 ## Trade-offs
@@ -70,7 +70,8 @@ certain models may gain some accuracy as a result of the optimization process.
 
 ## Types of optimization
 
-TensorFlow Lite currently supports optimization via quantization and pruning.
+TensorFlow Lite currently supports optimization via quantization, pruning and
+clustering.
 
 These are part of the
 [TensorFlow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization),
@@ -79,19 +80,19 @@ with TensorFlow Lite.
 
 ### Quantization
 
-[Quantization](https://www.tensorflow.org/model_optimization/guide/quantization)
+[Quantization](https://www.tensorflow.org/model_optimization/guide/quantization/post_training)
 works by reducing the precision of the numbers used to represent a model's
 parameters, which by default are 32-bit floating point numbers. This results in
 a smaller model size and faster computation.
 
 The following types of quantization are available in TensorFlow Lite:
 
-Technique                                                                                                      | Data requirements                | Size reduction | Accuracy                    | Supported hardware
--------------------------------------------------------------------------------------------------------------- | -------------------------------- | -------------- | --------------------------- | ------------------
-[Post-training float16 quantization](post_training_float16_quant.ipynb)                                        | No data                          | Up to 50%      | Insignificant accuracy loss | CPU, GPU
-[Post-training dynamic range quantization](post_training_quant.ipynb)                                          | No data                          | Up to 75%      | Accuracy loss               | CPU
-[Post-training integer quantization](post_training_integer_quant.ipynb)                                        | Unlabelled representative sample | Up to 75%      | Smaller accuracy loss       | CPU, EdgeTPU, Hexagon DSP
-[Quantization-aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize) | Labelled training data           | Up to 75%      | Smallest accuracy loss      | CPU, EdgeTPU, Hexagon DSP
+Technique                                                                                               | Data requirements                | Size reduction | Accuracy                    | Supported hardware
+------------------------------------------------------------------------------------------------------- | -------------------------------- | -------------- | --------------------------- | ------------------
+[Post-training float16 quantization](post_training_float16_quant.ipynb)                                 | No data                          | Up to 50%      | Insignificant accuracy loss | CPU, GPU
+[Post-training dynamic range quantization](post_training_quant.ipynb)                                   | No data                          | Up to 75%      | Accuracy loss               | CPU, GPU (Android)
+[Post-training integer quantization](post_training_integer_quant.ipynb)                                 | Unlabelled representative sample | Up to 75%      | Smaller accuracy loss       | CPU, GPU (Android), EdgeTPU, Hexagon DSP
+[Quantization-aware training](http://www.tensorflow.org/model_optimization/guide/quantization/training) | Labelled training data           | Up to 75%      | Smallest accuracy loss      | CPU, GPU (Android), EdgeTPU, Hexagon DSP
 
 Below are the latency and accuracy results for post-training quantization and
 quantization-aware training on a few models. All latency numbers are measured on
@@ -124,6 +125,47 @@ the numbers here:
   </figcaption>
 </figure>
 
+### Full integer quantization with int16 activations and int8 weights
+
+[Quantization with int16 activations](https://www.tensorflow.org/model_optimization/guide/quantization/post_training)
+is a full integer quantization scheme with activations in int16 and weights in
+int8. This mode can improve accuracy of the quantized model in comparison to the
+full integer quantization scheme with both activations and weights in int8
+keeping a similar model size. It is recommended when activations are sensitive
+to the quantization.
+
+<i>NOTE:</i> Currently only non-optimized reference kernel implementations are
+available in TFLite for this quantization scheme, so by default the performance
+will be slow compared to int8 kernels. Full advantages of this mode can
+currently be accessed via specialised hardware, or custom software.
+
+Below are the accuracy results for some models that benefit from this mode.
+<figure>
+  <table>
+    <tr>
+      <th>Model</th>
+      <th>Accuracy metric type </th>
+      <th>Accuracy (float32 activations) </th>
+      <th>Accuracy (int8 activations) </th>
+      <th>Accuracy (int16 activations) </th>
+    </tr> <tr><td>Wav2letter</td><td>WER</td><td>6.7%</td><td>7.7%</td>
+      <td>7.2%</td></tr>
+    <tr><td>DeepSpeech 0.5.1 (unrolled)</td><td>CER</td><td>6.13%</td><td>43.67%</td>
+      <td>6.52%</td></tr>
+    <tr><td>YoloV3</td><td>mAP(IOU=0.5)</td><td>0.577</td><td>0.563</td>
+      <td>0.574</td></tr>
+    <tr><td>MobileNetV1</td><td>Top-1 Accuracy</td><td>0.7062</td><td>0.694</td>
+      <td>0.6936</td></tr>
+    <tr><td>MobileNetV2</td><td>Top-1 Accuracy</td><td>0.718</td><td>0.7126</td>
+      <td>0.7137</td></tr>
+    <tr><td>MobileBert</td><td>F1(Exact match)</td><td>88.81(81.23)</td><td>2.08(0)</td>
+      <td>88.73(81.15)</td></tr>
+ </table>
+  <figcaption>
+    <b>Table 2</b> Benefits of model quantization with int16 activations
+  </figcaption>
+</figure>
+
 ### Pruning
 
 [Pruning](https://www.tensorflow.org/model_optimization/guide/pruning) works by
@@ -133,6 +175,17 @@ latency, but can be compressed more effectively. This makes pruning a useful
 technique for reducing model download size.
 
 In the future, TensorFlow Lite will provide latency reduction for pruned models.
+
+### Clustering
+
+[Clustering](https://www.tensorflow.org/model_optimization/guide/clustering)
+works by grouping the weights of each layer in a model into a predefined number
+of clusters, then sharing the centroid values for the weights belonging to each
+individual cluster. This reduces the number of unique weight values in a model,
+thus reducing its complexity.
+
+As a result, clustered models can be compressed more effectively, providing
+deployment benefits similar to pruning.
 
 ## Development workflow
 
@@ -144,11 +197,9 @@ broadly applicable and does not require training data.
 
 For cases where the accuracy and latency targets are not met, or hardware
 accelerator support is important,
-[quantization-aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external}
+[quantization-aware training](https://www.tensorflow.org/model_optimization/guide/quantization/training){:.external}
 is the better option. See additional optimization techniques under the
-[Tensorflow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization).
-
-Note: Quantization-aware training supports a subset of convolutional neural network architectures.
+[TensorFlow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization).
 
 If you want to further reduce your model size, you can try [pruning](#pruning)
-prior to quantizing your models.
+and/or [clustering](#clustering) prior to quantizing your models.

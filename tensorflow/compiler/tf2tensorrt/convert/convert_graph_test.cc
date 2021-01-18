@@ -34,8 +34,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -72,7 +71,7 @@ class FakeCluster : public grappler::Cluster {
   }
 
  private:
-  const DeviceSet* device_set_;
+  const DeviceSet* device_set_ = nullptr;
 };
 
 TEST(ConvertGraphTest, GetDeviceAndAllocator) {
@@ -152,7 +151,8 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
 
 class ConvertAfterShapesTest : public ::testing::Test {
  public:
-  Status RunConvertAfterShape(Scope s, GraphDef* output_graph_def) {
+  Status RunConvertAfterShape(Scope s, GraphDef* output_graph_def,
+                              int maximum_batch_size = 1000) {
     // Create GraphProperties.
     grappler::GrapplerItem item;
     TF_EXPECT_OK(s.ToGraphDef(&item.graph));
@@ -162,12 +162,12 @@ class ConvertAfterShapesTest : public ::testing::Test {
     // Construct ConversionParams.
     const std::vector<string> output_names{"output"};
     ConversionParams params;
-    params.input_graph_def = &item.graph;
     params.output_names = &output_names;
+    params.max_batch_size = maximum_batch_size;
     params.max_workspace_size_bytes = 8 << 20;
     params.output_graph_def = output_graph_def;
     params.minimum_segment_size = 1;
-    params.graph_properties = &graph_properties;
+    params.grappler_item = &item;
     params.use_calibration = false;
     params.trt_logger_name = "DefaultLogger";
 
@@ -232,5 +232,4 @@ TEST_F(ConvertAfterShapesTest, DirectlyConnectedEngines) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

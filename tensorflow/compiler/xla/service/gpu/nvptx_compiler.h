@@ -30,6 +30,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+void WarnIfBadDriverJITVersion();
+
 // NVPTXCompiler generates efficient GPU executables for NVPTX target.
 class NVPTXCompiler : public GpuCompiler {
  public:
@@ -49,10 +51,15 @@ class NVPTXCompiler : public GpuCompiler {
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
-      const HloModule* hlo_module, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec) override;
+      const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
+      const HloModule* debug_module) override;
 
  private:
+  StatusOr<std::vector<uint8>> LinkModules(
+      se::StreamExecutor* stream_exec,
+      std::vector<std::vector<uint8>> modules) override;
+
   tensorflow::mutex mutex_;
 
   // When compiling an HLO module, we need to find a path to the nvvm libdevice
@@ -69,7 +76,7 @@ class NVPTXCompiler : public GpuCompiler {
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
   std::vector<uint8> CompileGpuAsmOrGetCachedResult(
       se::StreamExecutor* stream_exec, const string& ptx, int cc_major,
-      int cc_minor, const HloModuleConfig& hlo_module_config);
+      int cc_minor, const HloModuleConfig& hlo_module_config, bool relocatable);
 
   // The compilation_cache_ map is a cache from {ptx string, cc_major, cc_minor}
   // -> cubin so we don't recompile the same ptx twice.  This is important for
@@ -84,24 +91,32 @@ class NVPTXCompiler : public GpuCompiler {
   // If compiling the ptx fails, we return an empty cubin, cross our fingers,
   // and leave compilation up to the driver.
   struct CompilationCacheKey {
-    CompilationCacheKey(std::string ptx, int cc_major, int cc_minor)
-        : ptx(std::move(ptx)), cc_major(cc_major), cc_minor(cc_minor) {}
+    CompilationCacheKey(std::string ptx, int cc_major, int cc_minor,
+                        bool relocatable)
+        : ptx(std::move(ptx)),
+          cc_major(cc_major),
+          cc_minor(cc_minor),
+          relocatable(relocatable) {}
     string ptx;
     int cc_major;
     int cc_minor;
+    bool relocatable;
   };
   struct CompilationCacheHash {
     size_t operator()(const CompilationCacheKey& key) const {
       return tensorflow::Hash64Combine(
-          tensorflow::Hash64Combine(tensorflow::Hash64(key.ptx), key.cc_major),
-          key.cc_minor);
+          tensorflow::Hash64Combine(
+              tensorflow::Hash64Combine(tensorflow::Hash64(key.ptx),
+                                        key.cc_major),
+              key.cc_minor),
+          key.relocatable);
     }
   };
   struct CompilationCacheEq {
     size_t operator()(const CompilationCacheKey& a,
                       const CompilationCacheKey& b) const {
       return a.cc_major == b.cc_major && a.cc_minor == b.cc_minor &&
-             a.ptx == b.ptx;
+             a.ptx == b.ptx && a.relocatable == b.relocatable;
     }
   };
   struct CompilationCacheValue {

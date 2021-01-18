@@ -139,6 +139,14 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
       TypeError:  If `diag.dtype` is not an allowed type.
       ValueError:  If `diag.dtype` is real, and `is_self_adjoint` is not `True`.
     """
+    parameters = dict(
+        diag=diag,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
 
     with ops.name_scope(name, values=[diag]):
       self._diag = linear_operator_util.convert_nonref_to_tensor(
@@ -158,11 +166,11 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
 
       super(LinearOperatorDiag, self).__init__(
           dtype=self._diag.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
       # TODO(b/143910018) Remove graph_parents in V3.
       self._set_graph_parents([self._diag])
@@ -251,7 +259,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     return array_ops.matrix_set_diag(x, new_diag)
 
   def _eigvals(self):
-    return ops.convert_to_tensor(self.diag)
+    return ops.convert_to_tensor_v2_with_dispatch(self.diag)
 
   def _cond(self):
     abs_diag = math_ops.abs(self.diag)

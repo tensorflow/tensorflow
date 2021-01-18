@@ -60,18 +60,12 @@ Status Session::PRun(const string& handle,
 }
 
 Session* NewSession(const SessionOptions& options) {
-  SessionFactory* factory;
-  Status s = SessionFactory::GetFactory(options, &factory);
-  if (!s.ok()) {
-    LOG(ERROR) << s;
-    return nullptr;
-  }
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   session_created->GetCell()->Set(true);
   Session* out_session;
-  s = NewSession(options, &out_session);
+  Status s = NewSession(options, &out_session);
   if (!s.ok()) {
     LOG(ERROR) << "Failed to create session: " << s;
     return nullptr;
@@ -84,7 +78,7 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
   Status s = SessionFactory::GetFactory(options, &factory);
   if (!s.ok()) {
     *out_session = nullptr;
-    LOG(ERROR) << s;
+    LOG(ERROR) << "Failed to get session factory: " << s;
     return s;
   }
   // Starts exporting metrics through a platform-specific monitoring API (if
@@ -94,6 +88,7 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
   s = factory->NewSession(options, out_session);
   if (!s.ok()) {
     *out_session = nullptr;
+    LOG(ERROR) << "Failed to create session: " << s;
   }
   return s;
 }

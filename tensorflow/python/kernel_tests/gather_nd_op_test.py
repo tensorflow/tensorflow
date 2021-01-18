@@ -275,7 +275,7 @@ class GatherNdTest(test.TestCase):
     expected_grads = np.array([[3, 4], [1, 2]], dtype=np.float64)
     with self.session(use_gpu=True):
       self.assertIndexedSlices(grads)
-      self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads).eval())
+      self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads))
 
   @test_util.run_deprecated_v1
   def testGradientsRank3Elements(self):
@@ -360,7 +360,7 @@ class GatherNdTest(test.TestCase):
         dtype=np.float64)
     with self.session(use_gpu=True):
       self.assertIndexedSlices(grads)
-      self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads).eval())
+      self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads))
 
   @test_util.run_v1_only("RefVariable is not supported in v2")
   def testGatherNdRefVariable(self):
@@ -396,7 +396,7 @@ class GatherNdOpBenchmark(test.Benchmark):
       t_params = variables.Variable(params)
       t_indices = variables.Variable(indices)
       gather_op = array_ops.gather_nd(t_params, t_indices)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(10):
         self.evaluate(gather_op)
       t1 = time.time()

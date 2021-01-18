@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_GL_INTEROP_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_GL_INTEROP_H_
 
-#include <vector>
-
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+
+#include <vector>
+
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
@@ -135,8 +136,6 @@ class GlInteropFabric {
   const EGLDisplay egl_display_;
   cl_context context_;
   cl_command_queue queue_;
-  CLEvent inbound_event_;
-  CLEvent outbound_event_;
   std::vector<cl_mem> memory_;
   AcquiredGlObjects gl_objects_;  // transient during Start/Finish calls.
 };

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -29,8 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #include "third_party/tensorrt/NvInfer.h"
 
@@ -140,9 +140,9 @@ class TrtShapeOptimizationProfile {
 #endif
 
   // Creates execution contexts for each optimization profile.
-  Status CreateExecutionContexts(
-      nvinfer1::ICudaEngine* engine,
-      std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context);
+  Status CreateExecutionContexts(nvinfer1::ICudaEngine* engine,
+                                 std::vector<ExecutionContext>& exec_context,
+                                 TRTBaseAllocator* memory_allocator);
 
   // Maps input vector shapes to TRT Optimization profiles (min, max, opt) i.e.
   // maps input_shapes_ to profiles_
@@ -173,6 +173,5 @@ class TrtShapeOptimizationProfile {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_SHAPE_OPTIMIZATION_PROFILES_H_

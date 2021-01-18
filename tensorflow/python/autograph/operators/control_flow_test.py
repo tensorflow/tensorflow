@@ -29,28 +29,39 @@ import numpy as np
 import six
 
 from tensorflow.python.autograph.operators import control_flow
-from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.autograph.operators import variables as variable_operators
 from tensorflow.python.autograph.utils import ag_logging
+from tensorflow.python.autograph.utils import testing
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import func_graph
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class ForLoopTest(test.TestCase):
+def _unranked_item(value):
+  rand_rank = random_ops.random_uniform(
+      shape=(), minval=3, maxval=4, dtype=dtypes.int32)
+  rand_shape = array_ops.ones([rand_rank], dtype=dtypes.int32)
+  return array_ops.fill(rand_shape, value)
+
+
+def _partial_shaped_bools():
+  rand_vect = math_ops.range(
+      random_ops.random_uniform(
+          shape=(), minval=2, maxval=3, dtype=dtypes.int32))
+  return array_ops.expand_dims_v2(rand_vect, 0) < 0
+
+
+class ForLoopTest(testing.AutoGraphTestCase):
 
   def test_tensor(self):
     def body(i):
@@ -70,7 +81,7 @@ class ForLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={})
-    self.assertEqual(self.evaluate(s), (1234,))
+    self.assertEqual(s, (1234,))
 
   def test_range_tensor(self):
     def body(i):
@@ -89,8 +100,10 @@ class ForLoopTest(test.TestCase):
         get_state=lambda: (s,),
         set_state=set_state,
         symbol_names=('s',),
-        opts={})
-    self.assertEqual(self.evaluate(s), (1234,))
+        opts={'iterate_names': 'i'})
+
+    self.assertEqual(s, (1234,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_range_tensor_explicit_limit_delta(self):
     def body(i):
@@ -109,8 +122,10 @@ class ForLoopTest(test.TestCase):
         get_state=lambda: (s,),
         set_state=set_state,
         symbol_names=('s',),
-        opts={})
-    self.assertEqual(self.evaluate(s), (-171207,))
+        opts={'iterate_names': 'i'})
+
+    self.assertEqual(s, (-171207,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_range_tensor_explicit_limit_negative_delta(self):
     def body(i):
@@ -129,8 +144,10 @@ class ForLoopTest(test.TestCase):
         get_state=lambda: (s,),
         set_state=set_state,
         symbol_names=('s',),
-        opts={})
-    self.assertEqual(self.evaluate(s), (171207,))
+        opts={'iterate_names': 'i'})
+
+    self.assertEqual(s, (171207,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_range_tensor_random_delta(self):
     def body(i):
@@ -150,8 +167,10 @@ class ForLoopTest(test.TestCase):
         get_state=lambda: (s,),
         set_state=set_state,
         symbol_names=('s',),
-        opts={})
-    self.assertEqual(self.evaluate(s), (1234,))
+        opts={'iterate_names': 'i'})
+
+    self.assertEqual(s, (1234,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_range_tensor_random_negative_delta(self):
     def body(i):
@@ -171,8 +190,10 @@ class ForLoopTest(test.TestCase):
         get_state=lambda: (s,),
         set_state=set_state,
         symbol_names=('s',),
-        opts={})
-    self.assertEqual(self.evaluate(s), (171207,))
+        opts={'iterate_names': 'i'})
+
+    self.assertEqual(s, (171207,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_tensor_with_extra_test_object_vars(self):
     class MutableObject(object):
@@ -198,7 +219,9 @@ class ForLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('state.field_1', 'state.field_2'),
         opts={})
-    self.assertEqual(self.evaluate((state.field_1, state.field_2)), (6, 6))
+
+    self.assertEqual((state.field_1, state.field_2), (6, 6))
+    self.assertOpCreated('StatelessWhile')
 
   def test_python(self):
     def body(i):
@@ -218,7 +241,9 @@ class ForLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={})
+
     self.assertEqual(s, 1234)
+    self.assertNoOpsCreated()
 
   def test_python_generator_with_extra_test(self):
     def new_generator():
@@ -251,6 +276,8 @@ class ForLoopTest(test.TestCase):
 
     self.assertEqual(next(gen), 4)
 
+    self.assertNoOpsCreated()
+
   def test_python_generator_with_extra_test_no_iterations(self):
     def new_generator():
       for i in range(5):
@@ -279,6 +306,8 @@ class ForLoopTest(test.TestCase):
 
     self.assertEqual(next(gen), 0)
 
+    self.assertNoOpsCreated()
+
   def test_tf_dataset(self):
     def body(i):
       nonlocal s
@@ -297,7 +326,9 @@ class ForLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={})
-    self.assertEqual(self.evaluate(s), (1234,))
+
+    self.assertEqual(s, (1234,))
+    self.assertOpCreated('ScanDataset')
 
   def test_dataset_with_extra_test(self):
     def body(i):
@@ -317,7 +348,9 @@ class ForLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={})
-    self.assertEqual(self.evaluate(s), (12,))
+
+    self.assertEqual(s, (12,))
+    self.assertOpCreated('ScanDataset')
 
   def test_dataset_with_extra_test_collection_vars(self):
     def body(i):
@@ -339,7 +372,9 @@ class ForLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('l[0]', 's'),
         opts={})
-    self.assertEqual(self.evaluate((l[0], s)), (3, 3))
+
+    self.assertEqual((l[0], s), (3, 3))
+    self.assertOpCreated('ScanDataset')
 
   def test_dataset_with_extra_test_iteration_limiting(self):
     def body(it):
@@ -360,100 +395,89 @@ class ForLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('i',),
         opts={})
-    self.assertEqual(self.evaluate(i), (3,))
+
+    self.assertEqual(i, (3,))
+    self.assertOpCreated('ScanDataset')
 
   def test_tf_dataset_no_loop_vars(self):
     def body(i):
       v.assign(v.read_value() * 10 + i)
 
-    v = variables.Variable(0, dtype=dtypes.int64)
-    self.evaluate(v.initializer)
+    v = self.variable('v', 0, dtypes.int64)
 
-    # tf.function required for the automatic control dependencies, and because
-    # ops test for its presence.
-    @def_function.function
-    def test_fn():
-      control_flow.for_stmt(
-          dataset_ops.Dataset.range(5),
-          extra_test=None,
-          body=body,
-          get_state=lambda: (),
-          set_state=lambda _: None,
-          symbol_names=(),
-          opts={})
+    control_flow.for_stmt(
+        dataset_ops.Dataset.range(5),
+        extra_test=None,
+        body=body,
+        get_state=lambda: (),
+        set_state=lambda _: None,
+        symbol_names=(),
+        opts={})
 
-    self.evaluate(test_fn())
-    self.assertEqual(self.evaluate(v.read_value()), 1234)
+    self.assertEqual(v.read_value(), 1234)
+    self.assertOpCreated('ScanDataset')
 
   def test_tf_iterator(self):
-    # graph-mode iterators are only supported inside tf.function.
-    @def_function.function
-    def test_fn():
-      def body(i):
-        nonlocal s
-        s = s * 10 + i
+    def body(i):
+      nonlocal s
+      s = s * 10 + i
 
-      def set_state(loop_vars):
-        nonlocal s
-        s, = loop_vars
+    def set_state(loop_vars):
+      nonlocal s
+      s, = loop_vars
 
-      s = constant_op.constant(0, dtype=dtypes.int64)
-      control_flow.for_stmt(
-          iter(dataset_ops.Dataset.range(5)),
-          extra_test=None,
-          body=body,
-          get_state=lambda: (s,),
-          set_state=set_state,
-          symbol_names=('s',),
-          opts={})
-      return s
-    self.assertAllEqual(test_fn(), 1234)
+    s = constant_op.constant(0, dtype=dtypes.int64)
+    control_flow.for_stmt(
+        iter(dataset_ops.Dataset.range(5)),
+        extra_test=None,
+        body=body,
+        get_state=lambda: (s,),
+        set_state=set_state,
+        symbol_names=('s',),
+        opts={})
+
+    self.assertEqual(s, 1234)
+    self.assertOpCreated('IteratorGetNextAsOptional')
 
   def test_tf_iterator_shape_invariants(self):
-    # graph-mode iterators are only supported inside tf.function.
-    @def_function.function
-    def test_fn():
-      def body(i):
-        nonlocal s
-        s = array_ops.concat([s, [i]], 0)
+    def body(i):
+      nonlocal s
+      s = array_ops.concat([s, [i]], 0)
 
-      def set_state(loop_vars):
-        nonlocal s
-        s, = loop_vars
+    def set_state(loop_vars):
+      nonlocal s
+      s, = loop_vars
 
-      s = constant_op.constant([], dtype=dtypes.int64)
-      control_flow.for_stmt(
-          iter(dataset_ops.Dataset.range(5)),
-          extra_test=None,
-          body=body,
-          get_state=lambda: (s,),
-          set_state=set_state,
-          symbol_names=('s',),
-          opts={'shape_invariants': [(s, tensor_shape.TensorShape([None]))]})
-      return s
-    self.assertAllEqual(test_fn(), [0, 1, 2, 3, 4])
+    s = constant_op.constant([], dtype=dtypes.int64)
+    control_flow.for_stmt(
+        iter(dataset_ops.Dataset.range(5)),
+        extra_test=None,
+        body=body,
+        get_state=lambda: (s,),
+        set_state=set_state,
+        symbol_names=('s',),
+        opts={'shape_invariants': [(s, tensor_shape.TensorShape([None]))]})
+
+    self.assertAllEqual(s, [0, 1, 2, 3, 4])
+    self.assertOpCreated('IteratorGetNextAsOptional')
 
   def test_tf_iterator_no_loop_vars(self):
     def body(i):
       v.assign(v.read_value() * 10 + i)
 
-    v = variables.Variable(0, dtype=dtypes.int64)
-    self.evaluate(v.initializer)
+    v = self.variable('v', 0, dtypes.int64)
 
-    # tf.function required for the automatic control dependencies.
-    @def_function.function
-    def test_fn():
-      control_flow.for_stmt(
-          iter(dataset_ops.Dataset.range(5)),
-          extra_test=None,
-          body=body,
-          get_state=lambda: (),
-          set_state=lambda _: None,
-          symbol_names=(),
-          opts={})
+    control_flow.for_stmt(
+        iter(dataset_ops.Dataset.range(5)),
+        extra_test=None,
+        body=body,
+        get_state=lambda: (),
+        set_state=lambda _: None,
+        symbol_names=(),
+        opts={})
 
-    self.evaluate(test_fn())
-    self.assertEqual(self.evaluate(v.read_value()), 1234)
+    self.assertEqual(v.read_value(), 1234)
+    self.assertOpCreated('IteratorGetNextAsOptional')
 
   def test_tf_ragged_tensor(self):
     def body(i):
@@ -473,7 +497,9 @@ class ForLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={})
-    self.assertEqual(self.evaluate(s), (123,))
+
+    self.assertEqual(s, (123,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_tf_ragged_tensor_higher_dimensional(self):
     def body(i):
@@ -497,30 +523,28 @@ class ForLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={})
-    self.assertEqual(self.evaluate(s), (12,))
+
+    self.assertEqual(s, (12,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_tf_ragged_tensor_no_loop_vars(self):
-    v = variables.Variable(0, dtype=dtypes.int32)
-    self.evaluate(v.initializer)
+    v = self.variable('v', 0, dtypes.int32)
 
     def body(i):
       v.assign(v.read_value() * 10 + i[0])
 
-    # tf.function required for the automatic control dependencies.
-    @def_function.function(autograph=False)
-    def test_fn():
-      control_flow.for_stmt(
-          ragged_factory_ops.constant([[1], [2, 4], [3]]),
-          extra_test=None,
-          body=body,
-          get_state=lambda: (),
-          set_state=lambda _: None,
-          symbol_names=(),
-          opts={})
+    control_flow.for_stmt(
+        ragged_factory_ops.constant([[1], [2, 4], [3]]),
+        extra_test=None,
+        body=body,
+        get_state=lambda: (),
+        set_state=lambda _: None,
+        symbol_names=(),
+        opts={})
 
-    self.evaluate(test_fn())
     # Note: 123 = ((0*10 + 1)*10+2)*10+3 (first element of each row).
-    self.assertEqual(self.evaluate(v.read_value()), 123)
+    self.assertEqual(v.read_value(), 123)
+    self.assertOpCreated('While')
 
   def _basic_loop(self, init_value, body_fn):
     def body(i):
@@ -543,28 +567,28 @@ class ForLoopTest(test.TestCase):
     return s
 
   def test_tensor_illegal_input(self):
-    with self.assertRaisesRegex(ValueError, '"s" may not be None'):
+    with self.assertRaisesRegex(ValueError, '\'s\' may not be None'):
       self._basic_loop(None, lambda i, s: s)
-    with self.assertRaisesRegex(ValueError, '"s" must be defined'):
-      self._basic_loop(special_values.Undefined(''), lambda i, s: s)
+    with self.assertRaisesRegex(ValueError, '\'s\' must be defined'):
+      self._basic_loop(variable_operators.Undefined(''), lambda i, s: s)
 
   def test_tensor_none_output(self):
-    with self.assertRaisesRegex(ValueError, '"s" is None at the end'):
+    with self.assertRaisesRegex(ValueError, '\'s\' is None at the end'):
       self._basic_loop(0, lambda i, s: None)
 
   def test_tensor_dtype_change(self):
-    with self.assertRaisesRegex(TypeError, '"s".* dtype float32 after'):
+    with self.assertRaisesRegex(TypeError, '\'s\'.* dtype float32 after'):
       self._basic_loop(0, lambda i, s: 1.0)
 
   def test_tensor_shape_change(self):
-    with self.assertRaisesRegex(ValueError, r'"s".* shape \(1,\) after'):
+    with self.assertRaisesRegex(ValueError, r'\'s\'.* shape \(1,\) after'):
       self._basic_loop(0, lambda i, s: np.array([1], dtype=np.int32))
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class WhileLoopTest(test.TestCase):
+class WhileLoopTest(testing.AutoGraphTestCase):
 
   def test_tensor(self):
+
     def body():
       nonlocal i, s
       s = s * 10 + i
@@ -584,40 +608,95 @@ class WhileLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('i', 's'),
         opts={})
-    self.assertEqual(self.evaluate((i, s)), (5, 1234))
+
+    self.assertEqual(i, 5)
+    self.assertEqual(s, 1234)
+    self.assertOpCreated('StatelessWhile')
+
+  def test_tensor_creating_variable(self):
+
+    def body():
+      nonlocal i, s
+      i = constant_op.constant(2)
+      s = i ** 5
+
+    def set_state(loop_vars):
+      nonlocal i, s
+      i, s = loop_vars
+
+    i = variable_operators.Undefined('i')
+    s = constant_op.constant(0)
+    control_flow.while_stmt(
+        test=lambda: math_ops.equal(s, 0),
+        body=body,
+        get_state=lambda: (i, s),
+        set_state=set_state,
+        symbol_names=('i', 's'),
+        opts={})
+
+    self.assertEqual(i, 2)
+    self.assertEqual(s, 32)
+    self.assertOpCreated('StatelessWhile')
+    # Check that the temporary staging of the body did not create extra ops.
+    # Node naming is inconsistent between V1 and V2.
+    self.assertGraphContains(r'(while/)?pow$', 1)
+
+  def test_tensor_creating_complex_variable(self):
+
+    def body():
+      nonlocal i, s
+      i = {'a': constant_op.constant(2), 'b': {'c': constant_op.constant(1)}}
+      s = i['a'] ** 5
+
+    def set_state(loop_vars):
+      nonlocal i, s
+      i, s = loop_vars
+
+    i = variable_operators.Undefined('i')
+    s = constant_op.constant(0)
+    control_flow.while_stmt(
+        test=lambda: math_ops.equal(s, 0),
+        body=body,
+        get_state=lambda: (i, s),
+        set_state=set_state,
+        symbol_names=('i', 's'),
+        opts={})
+
+    self.assertDictEqual(i, {'a': 2, 'b': {'c': 1}})
+    self.assertEqual(s, 32)
+    self.assertOpCreated('StatelessWhile')
+    # Check that the temporary staging of the body did not create extra ops.
+    # Node naming is inconsistent between V1 and V2.
+    self.assertGraphContains(r'(while/)?pow$', 1)
 
   def test_tensor_with_side_effecting_condition(self):
-    v = variables.Variable(0)
+    v = self.variable('v', 0, dtypes.int32)
 
-    # tf.function required for the automatic control dependencies.
-    @def_function.function
-    def test_fn():
-      def cond():
-        v.assign(v.read_value() * 10 + i)
-        return i < n
+    def cond():
+      v.assign(v.read_value() * 10 + i)
+      return i < n
 
-      def body():
-        nonlocal i
-        i += 1
+    def body():
+      nonlocal i
+      i += 1
 
-      def set_state(loop_vars):
-        nonlocal i
-        i, = loop_vars
+    def set_state(loop_vars):
+      nonlocal i
+      i, = loop_vars
 
-      i = 0
-      n = constant_op.constant(5)
-      control_flow.while_stmt(
-          test=cond,
-          body=body,
-          get_state=lambda: (i,),
-          set_state=set_state,
-          symbol_names=('i',),
-          opts={})
-      return i
+    i = 0
+    n = constant_op.constant(5)
+    control_flow.while_stmt(
+        test=cond,
+        body=body,
+        get_state=lambda: (i,),
+        set_state=set_state,
+        symbol_names=('i',),
+        opts={})
 
-    self.evaluate(v.initializer)
-    self.assertEqual(self.evaluate(test_fn()), (5,))
-    self.assertEqual(self.evaluate(v), (12345,))
+    self.assertEqual(i, (5,))
+    self.assertEqual(v, (12345,))
+    self.assertOpCreated('While')
 
   def test_tensor_with_python_state(self):
     class MutableObject(object):
@@ -642,7 +721,10 @@ class WhileLoopTest(test.TestCase):
         set_state=set_state,
         symbol_names=('i', 'state.field'),
         opts={})
-    self.assertEqual(self.evaluate((i, state.field)), (5, 1234))
+
+    self.assertEqual(i, 5)
+    self.assertEqual(state.field, 1234)
+    self.assertOpCreated('StatelessWhile')
 
   def test_python(self):
     def body():
@@ -660,7 +742,9 @@ class WhileLoopTest(test.TestCase):
         set_state=None,
         symbol_names=('i', 's'),
         opts={})
+
     self.assertEqual(s, 1234)
+    self.assertNoOpsCreated()
 
   def test_python_with_tensor_state(self):
     def body():
@@ -678,14 +762,16 @@ class WhileLoopTest(test.TestCase):
         set_state=None,
         symbol_names=('i', 's'),
         opts={})
+
     self.assertEqual(i, 5)
-    self.assertEqual(self.evaluate(s), 1234)
+    self.assertEqual(s, 1234)
+    self.assertOpsNotCreated(('While', 'StatelessWhile'))
 
   def test_python_while_infinite(self):
     if not __debug__:
       self.skipTest('Feature disabled in optimized mode.')
     with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 100):
-      with self.assertRaisesRegexp(ValueError, 'iteration limit'):
+      with self.assertRaisesRegex(ValueError, 'iteration limit'):
         control_flow.while_stmt(
             test=lambda: True,
             body=lambda: None,
@@ -698,7 +784,7 @@ class WhileLoopTest(test.TestCase):
     if not __debug__:
       self.skipTest('Feature disabled in optimized mode.')
     with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 100):
-      with self.assertRaisesRegexp(ValueError, 'iteration limit'):
+      with self.assertRaisesRegex(ValueError, 'iteration limit'):
         control_flow.for_stmt(
             iter_=range(101),
             extra_test=None,
@@ -760,6 +846,7 @@ class WhileLoopTest(test.TestCase):
             r'.* Large unrolled loop.*Add.*', out_capturer.getvalue()))
 
   def _basic_loop(self, init_value, body_fn):
+
     def body():
       nonlocal i, s
       s = body_fn(i, s)
@@ -782,120 +869,327 @@ class WhileLoopTest(test.TestCase):
     return s
 
   def test_tensor_illegal_input(self):
-    with self.assertRaisesRegex(ValueError, '"s" may not be None'):
+    with self.assertRaisesRegex(ValueError, "'s' may not be None"):
       self._basic_loop(None, lambda i, s: s)
-    with self.assertRaisesRegex(ValueError, '"s" must be defined'):
-      self._basic_loop(special_values.Undefined(''), lambda i, s: s)
+    with self.assertRaisesRegex(ValueError, "'s' must be defined"):
+      self._basic_loop(variable_operators.Undefined(''), lambda i, s: s)
 
   def test_tensor_none_output(self):
-    with self.assertRaisesRegex(ValueError, '"s" is None at the end'):
+    with self.assertRaisesRegex(ValueError, "'s' is None at the end"):
       self._basic_loop(0, lambda i, s: None)
 
   def test_tensor_dtype_change(self):
-    with self.assertRaisesRegex(TypeError, '"s".* dtype float32 after'):
+    with self.assertRaisesRegex(TypeError, "'s'.* dtype float32 after"):
       self._basic_loop(0, lambda i, s: 1.0)
 
   def test_tensor_shape_change(self):
-    with self.assertRaisesRegex(ValueError, r'"s".* shape \(1,\) after'):
+    with self.assertRaisesRegex(ValueError, r"'s'.* shape \(1,\) after"):
       self._basic_loop(0, lambda i, s: np.array([1], dtype=np.int32))
 
+  def _fixed_while_loop(self, cond_fn):
+    def test_():
+      return cond_fn(s)
 
-@test_util.run_all_in_graph_and_eager_modes
-class IfStmtTest(test.TestCase):
+    def body():
+      nonlocal s
+      s += 1
+
+    def set_state(loop_vars):
+      nonlocal s
+      s, = loop_vars
+
+    s = constant_op.constant(0)
+    control_flow.while_stmt(
+        test=test_,
+        body=body,
+        get_state=lambda: (s,),
+        set_state=set_state,
+        symbol_names=('s',),
+        opts={})
+    return s
+
+  def _assertFixedLoopResult(self, cond, expected):
+    def test_fn():
+      return self._fixed_while_loop(cond)
+    self.assertEqual(test_fn(), expected)
+
+  def test_tensor_legal_cond_scalar(self):
+    self._assertFixedLoopResult(lambda s: constant_op.constant(False), 0)
+    self._assertFixedLoopResult(lambda s: s < 2, 2)
+
+  def test_tensor_legal_cond_single_element_nd(self):
+    self._assertFixedLoopResult(lambda s: constant_op.constant([[False]]), 0)
+    self._assertFixedLoopResult(lambda s: _unranked_item(False), 0)
+
+  def _assertCondCheckFails(self, cond):
+    with self.assertRaisesRegex(
+        ValueError, 'condition of while loop expected to be `tf.bool`'):
+      self._fixed_while_loop(cond)
+
+  def test_tensor_illegal_cond_not_bool(self):
+    self._assertCondCheckFails(lambda s: constant_op.constant(1))
+    self._assertCondCheckFails(lambda s: s)
+
+  def test_tensor_illegal_cond_not_single_element(self):
+    self._assertCondCheckFails(lambda s: constant_op.constant([1, 2, 3]))
+    self._assertCondCheckFails(lambda s: constant_op.constant([True, False]))
+
+  def test_tensor_illegal_cond_not_single_element_dynamic_shape(self):
+    self._fixed_while_loop(lambda s: _partial_shaped_bools())
+    # TODO(mdan): This error is quite bad. Measure the cost of an assertion.
+    self.assertRaisesRuntime(
+        errors_impl.InvalidArgumentError, 'requested shape has 1')
+
+
+class IfStmtTest(testing.AutoGraphTestCase):
 
   def test_tensor(self):
 
     def test_fn(cond):
-      return control_flow.if_stmt(
-          cond=cond,
-          body=lambda: constant_op.constant(1),
-          orelse=lambda: constant_op.constant(-1),
-          get_state=lambda: (),
-          set_state=lambda _: None,
-          basic_symbol_names=('_',),
-          composite_symbol_names=())
+      def body():
+        nonlocal i
+        i = constant_op.constant(1)
 
-    self.assertEqual(1, self.evaluate(test_fn(constant_op.constant(True))))
-    self.assertEqual(-1, self.evaluate(test_fn(constant_op.constant(False))))
+      def orelse():
+        nonlocal i
+        i = constant_op.constant(-1)
+
+      def set_state(cond_vars):
+        nonlocal i
+        i, = cond_vars
+
+      i = None
+      control_flow.if_stmt(
+          cond=cond,
+          body=body,
+          orelse=orelse,
+          get_state=lambda: (i,),
+          set_state=set_state,
+          symbol_names=('i',),
+          nouts=1)
+      return i
+
+    self.assertEqual(test_fn(constant_op.constant(True)), 1)
+    self.assertEqual(test_fn(constant_op.constant(False)), -1)
+    self.assertOpCreated('StatelessIf')
+
+  def test_tensor_no_outputs(self):
+
+    def test_fn(cond):
+      def body():
+        nonlocal i
+        i = constant_op.constant(1)
+
+      def orelse():
+        nonlocal i
+        i = constant_op.constant(-1.0)
+
+      def set_state(cond_vars):
+        nonlocal i
+        i, = cond_vars
+
+      i = None
+      control_flow.if_stmt(
+          cond=cond,
+          body=body,
+          orelse=orelse,
+          get_state=lambda: (i,),
+          set_state=set_state,
+          symbol_names=('i',),
+          nouts=0)
+      return i
+
+    self.assertIsNone(test_fn(constant_op.constant(True)))
+    self.assertIsNone(test_fn(constant_op.constant(False)))
+    self.assertOpCreated('StatelessIf')
 
   def test_tensor_multiple_returns(self):
 
     def test_fn(cond):
-      return control_flow.if_stmt(
-          cond=cond,
-          body=lambda: (constant_op.constant(1), constant_op.constant(2)),
-          orelse=lambda: (constant_op.constant(-1), constant_op.constant(-2)),
-          get_state=lambda: (),
-          set_state=lambda _: None,
-          basic_symbol_names=('_',),
-          composite_symbol_names=())
+      def body():
+        nonlocal i, j
+        i = constant_op.constant(1)
+        j = constant_op.constant(2)
 
-    self.assertEqual((1, 2), self.evaluate(test_fn(constant_op.constant(True))))
-    self.assertEqual((-1, -2),
-                     self.evaluate(test_fn(constant_op.constant(False))))
+      def orelse():
+        nonlocal i, j
+        i = constant_op.constant(-1)
+        j = constant_op.constant(-2)
+
+      def set_state(cond_vars):
+        nonlocal i, j
+        i, j = cond_vars
+
+      i, j = None, None
+      control_flow.if_stmt(
+          cond=cond,
+          body=body,
+          orelse=orelse,
+          get_state=lambda: (i, j),
+          set_state=set_state,
+          symbol_names=('i', 'j'),
+          nouts=2)
+      return i, j
+
+    self.assertEqual(test_fn(constant_op.constant(True)), (1, 2))
+    self.assertEqual(test_fn(constant_op.constant(False)), (-1, -2))
+    self.assertOpCreated('StatelessIf')
 
   def test_python(self):
 
     def test_fn(cond):
-      return control_flow.if_stmt(
-          cond=cond,
-          body=lambda: 1,
-          orelse=lambda: -1,
-          get_state=lambda: (),
-          set_state=lambda _: None,
-          basic_symbol_names=('_',),
-          composite_symbol_names=())
+      def body():
+        nonlocal i
+        i = 1
 
-    self.assertEqual(1, test_fn(True))
-    self.assertEqual(-1, test_fn(False))
+      def orelse():
+        nonlocal i
+        i = -1
+
+      i = None
+      control_flow.if_stmt(
+          cond=cond,
+          body=body,
+          orelse=orelse,
+          get_state=None,
+          set_state=None,
+          symbol_names=('i',),
+          nouts=1)
+      return i
+
+    self.assertEqual(test_fn(True), 1)
+    self.assertEqual(test_fn(False), -1)
+    self.assertNoOpsCreated()
 
   def test_python_multiple_returns(self):
 
     def test_fn(cond):
-      return control_flow.if_stmt(
+      def body():
+        nonlocal i, j
+        i = 1
+        j = 2
+
+      def orelse():
+        nonlocal i, j
+        i = -1
+        j = -2
+
+      i, j = None, None
+      control_flow.if_stmt(
           cond=cond,
-          body=lambda: (1, 2),
-          orelse=lambda: (-1, -2),
-          get_state=lambda: (),
-          set_state=lambda _: None,
-          basic_symbol_names=('_',),
-          composite_symbol_names=())
+          body=body,
+          orelse=orelse,
+          get_state=None,
+          set_state=None,
+          symbol_names=('i', 'j'),
+          nouts=2)
+      return i, j
 
-    self.assertEqual((1, 2), test_fn(True))
-    self.assertEqual((-1, -2), test_fn(False))
+    self.assertEqual(test_fn(True), (1, 2))
+    self.assertEqual(test_fn(False), (-1, -2))
+    self.assertNoOpsCreated()
 
-  def _basic_cond(self, true_value, false_value):
-    # Eager cond had different semantics, we don't test those here.
-    with func_graph.FuncGraph('tmp').as_default():
-      return control_flow.if_stmt(
-          cond=constant_op.constant(True),
-          body=true_value,
-          orelse=false_value,
-          get_state=lambda: (),
-          set_state=lambda _: None,
-          basic_symbol_names=('s',),
-          composite_symbol_names=())
+  def _basic_cond(self, body_fn, else_fn):
+    def body():
+      nonlocal x
+      x = body_fn()
+
+    def orelse():
+      nonlocal x
+      x = else_fn()
+
+    def set_state(cond_vars):
+      nonlocal x
+      x, = cond_vars
+
+    x = 0
+    control_flow.if_stmt(
+        cond=constant_op.constant(True),
+        body=body,
+        orelse=orelse,
+        get_state=lambda: (x,),
+        set_state=set_state,
+        symbol_names=('x',),
+        nouts=1)
+    return x
 
   def test_tensor_none_output(self):
     with self.assertRaisesRegex(
-        ValueError, '"s" is None at the end of the TRUE branch'):
+        ValueError, "'x' is None at the end of the main branch"):
       self._basic_cond(lambda: None, lambda: 1)
     with self.assertRaisesRegex(
-        ValueError, '"s" is None at the end of the FALSE branch'):
+        ValueError, "'x' is None at the end of the else branch"):
       self._basic_cond(lambda: 1, lambda: None)
 
   def test_tensor_undefined_output(self):
     with self.assertRaisesRegex(
-        ValueError, "must also be initialized in the if.*'s'"):
-      self._basic_cond(lambda: special_values.Undefined('s'), lambda: 1)
+        ValueError, "'x' must also be initialized in the main branch"):
+      self._basic_cond(lambda: variable_operators.Undefined('x'), lambda: 1)
     with self.assertRaisesRegex(
-        ValueError, "must also be initialized in the else.*'s'"):
-      self._basic_cond(lambda: 1, lambda: special_values.Undefined('s'))
+        ValueError, "'x' must also be initialized in the else branch"):
+      self._basic_cond(lambda: 1, lambda: variable_operators.Undefined('s'))
 
   def test_tensor_dtype_change(self):
-    with self.assertRaisesRegex(TypeError, '"s" has dtype int32.*but.*float32'):
+    with self.assertRaisesRegex(
+        TypeError, "'x' has dtype int32.*but.*float32"):
       self._basic_cond(lambda: 1, lambda: 1.0)
 
+  def _fixed_cond(self, cond_val):
+    def body():
+      nonlocal x
+      x = 1
+
+    def orelse():
+      nonlocal x
+      x = -1
+
+    def set_state(cond_vars):
+      nonlocal x
+      x, = cond_vars
+
+    x = 0
+    control_flow.if_stmt(
+        cond=cond_val,
+        body=body,
+        orelse=orelse,
+        get_state=lambda: (x,),
+        set_state=set_state,
+        symbol_names=('x',),
+        nouts=1)
+    return x
+
+  def _assertFixedCondResult(self, cond, expected):
+    def test_fn():
+      return self._fixed_cond(cond)
+    self.assertEqual(test_fn(), expected)
+
+  def test_tensor_legal_cond_scalar(self):
+    self._assertFixedCondResult(constant_op.constant(True), 1)
+    self._assertFixedCondResult(constant_op.constant(False), -1)
+
+  def test_tensor_legal_cond_single_element_nd(self):
+    self._assertFixedCondResult(constant_op.constant([[True]]), 1)
+    self._assertFixedCondResult(constant_op.constant([[False]]), -1)
+    self._assertFixedCondResult(_unranked_item(True), 1)
+    self._assertFixedCondResult(_unranked_item(False), -1)
+
+  def _assertCondCheckFails(self, cond):
+    with self.assertRaisesRegex(
+        ValueError, 'condition of if statement expected to be `tf.bool`'):
+      self._fixed_cond(cond)
+
+  def test_tensor_illegal_cond_not_bool(self):
+    self._assertCondCheckFails(constant_op.constant(1))
+
+  def test_tensor_illegal_cond_not_single_element(self):
+    self._assertCondCheckFails(constant_op.constant([1, 2, 3]))
+    self._assertCondCheckFails(constant_op.constant([True, False]))
+
+  def test_tensor_illegal_cond_not_single_element_dynamic_shape(self):
+    self._fixed_cond(_partial_shaped_bools())
+    # TODO(mdan): This error is quite bad. Measure the cost of an assertion.
+    self.assertRaisesRuntime(
+        errors_impl.InvalidArgumentError, 'requested shape has 1')
 
 if __name__ == '__main__':
   test.main()

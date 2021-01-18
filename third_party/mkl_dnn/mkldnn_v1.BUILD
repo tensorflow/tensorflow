@@ -1,32 +1,43 @@
 exports_files(["LICENSE"])
 
 load(
+    "@org_tensorflow//tensorflow:tensorflow.bzl",
+    "tf_openmp_copts",
+)
+load(
     "@org_tensorflow//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
-    "if_mkl_v1_open_source_only",
+    "if_mkldnn_threadpool",
+)
+load(
+    "@org_tensorflow//third_party/mkl:build_defs.bzl",
+    "if_mkl_ml",
 )
 load(
     "@org_tensorflow//third_party:common.bzl",
     "template_rule",
 )
 
-config_setting(
-    name = "clang_linux_x86_64",
-    values = {
-        "cpu": "k8",
-        "define": "using_clang=true",
-    },
-)
+_DNNL_RUNTIME_OMP = {
+    "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_OMP",
+    "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_OMP",
+    "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
+}
+
+_DNNL_RUNTIME_THREADPOOL = {
+    "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_THREADPOOL",
+    "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_THREADPOOL",
+    "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
+}
 
 template_rule(
     name = "dnnl_config_h",
     src = "include/dnnl_config.h.in",
     out = "include/dnnl_config.h",
-    substitutions = {
-        "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_OMP",
-        "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_OMP",
-        "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
-    },
+    substitutions = if_mkldnn_threadpool(
+        _DNNL_RUNTIME_THREADPOOL,
+        if_false = _DNNL_RUNTIME_OMP,
+    ),
 )
 
 # Create the file mkldnn_version.h with MKL-DNN version numbers.
@@ -43,8 +54,8 @@ template_rule(
     out = "include/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "1",
-        "@DNNL_VERSION_MINOR@": "2",
-        "@DNNL_VERSION_PATCH@": "0",
+        "@DNNL_VERSION_MINOR@": "6",
+        "@DNNL_VERSION_PATCH@": "4",
         "@DNNL_VERSION_HASH@": "N/A",
     },
 )
@@ -59,29 +70,21 @@ cc_library(
         "src/cpu/**/*.cpp",
         "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
-    ]) + if_mkl_v1_open_source_only([
+        "src/cpu/x64/jit_utils/jitprofiling/*.c",
+        "src/cpu/x64/jit_utils/jitprofiling/*.h",
+    ]) + [
         ":dnnl_config_h",
-    ]) + [":dnnl_version_h"],
+        ":dnnl_version_h",
+    ],
     hdrs = glob(["include/*"]),
-    copts = [
-        "-fexceptions",
-        "-DUSE_MKL",
-        "-DUSE_CBLAS",
-    ] + if_mkl_open_source_only([
+    copts = select({
+        "@org_tensorflow//tensorflow:windows": [],
+        "//conditions:default": ["-fexceptions"],
+    }) + [
         "-UUSE_MKL",
         "-UUSE_CBLAS",
-    ]) + if_mkl_v1_open_source_only([
-        "-UUSE_MKL",
-        "-UUSE_CBLAS",
-    ]) + select({
-        "@org_tensorflow//tensorflow:linux_x86_64": [
-            "-fopenmp",  # only works with gcc
-        ],
-        # TODO(ibiryukov): enable openmp with clang by including libomp as a
-        # dependency.
-        ":clang_linux_x86_64": [],
-        "//conditions:default": [],
-    }),
+        "-DDNNL_ENABLE_MAX_CPU_ISA",
+    ] + tf_openmp_copts(),
     includes = [
         "include",
         "src",
@@ -91,21 +94,10 @@ cc_library(
         "src/cpu/xbyak",
     ],
     visibility = ["//visibility:public"],
-    deps = select({
-        "@org_tensorflow//tensorflow:linux_x86_64": [
-            "@mkl_linux//:mkl_headers",
-            "@mkl_linux//:mkl_libs_linux",
-        ],
-        "@org_tensorflow//tensorflow:macos": [
-            "@mkl_darwin//:mkl_headers",
-            "@mkl_darwin//:mkl_libs_darwin",
-        ],
-        "@org_tensorflow//tensorflow:windows": [
-            "@mkl_windows//:mkl_headers",
-            "@mkl_windows//:mkl_libs_windows",
-        ],
-        "//conditions:default": [],
-    }),
+    deps = if_mkl_ml(
+        ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
+        [],
+    ),
 )
 
 cc_library(
@@ -132,5 +124,38 @@ cc_library(
         "src/cpu/gemm",
         "src/cpu/xbyak",
     ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "mkl_dnn_aarch64",
+    srcs = glob([
+        "src/common/*.cpp",
+        "src/common/*.hpp",
+        "src/cpu/*.cpp",
+        "src/cpu/*.hpp",
+        "src/cpu/rnn/*.cpp",
+        "src/cpu/rnn/*.hpp",
+        "src/cpu/matmul/*.cpp",
+        "src/cpu/matmul/*.hpp",
+        "src/cpu/gemm/**/*",
+    ]) + [
+        ":dnnl_config_h",
+        ":dnnl_version_h",
+    ],
+    hdrs = glob(["include/*"]),
+    copts = [
+        "-fexceptions",
+        "-UUSE_MKL",
+        "-UUSE_CBLAS",
+    ],
+    includes = [
+        "include",
+        "src",
+        "src/common",
+        "src/cpu",
+        "src/cpu/gemm",
+    ],
+    linkopts = ["-lgomp"],
     visibility = ["//visibility:public"],
 )

@@ -9,10 +9,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "HDF5Matrix"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "OrderedEnqueuer"
     mtype: "<type \'type\'>"
   }
@@ -31,10 +27,6 @@ tf_module {
   member {
     name: "custom_object_scope"
     mtype: "<type \'type\'>"
-  }
-  member_method {
-    name: "convert_all_kernels_in_model"
-    argspec: "args=[\'model\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "deserialize_keras_object"
@@ -62,19 +54,19 @@ tf_module {
   }
   member_method {
     name: "model_to_dot"
-    argspec: "args=[\'model\', \'show_shapes\', \'show_layer_names\', \'rankdir\', \'expand_nested\', \'dpi\', \'subgraph\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'TB\', \'False\', \'96\', \'False\'], "
-  }
-  member_method {
-    name: "multi_gpu_model"
-    argspec: "args=[\'model\', \'gpus\', \'cpu_merge\', \'cpu_relocation\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
+    argspec: "args=[\'model\', \'show_shapes\', \'show_dtype\', \'show_layer_names\', \'rankdir\', \'expand_nested\', \'dpi\', \'subgraph\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'True\', \'TB\', \'False\', \'96\', \'False\'], "
   }
   member_method {
     name: "normalize"
     argspec: "args=[\'x\', \'axis\', \'order\'], varargs=None, keywords=None, defaults=[\'-1\', \'2\'], "
   }
   member_method {
+    name: "pack_x_y_sample_weight"
+    argspec: "args=[\'x\', \'y\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "plot_model"
-    argspec: "args=[\'model\', \'to_file\', \'show_shapes\', \'show_layer_names\', \'rankdir\', \'expand_nested\', \'dpi\'], varargs=None, keywords=None, defaults=[\'model.png\', \'False\', \'True\', \'TB\', \'False\', \'96\'], "
+    argspec: "args=[\'model\', \'to_file\', \'show_shapes\', \'show_dtype\', \'show_layer_names\', \'rankdir\', \'expand_nested\', \'dpi\'], varargs=None, keywords=None, defaults=[\'model.png\', \'False\', \'False\', \'True\', \'TB\', \'False\', \'96\'], "
   }
   member_method {
     name: "register_keras_serializable"
@@ -87,5 +79,9 @@ tf_module {
   member_method {
     name: "to_categorical"
     argspec: "args=[\'y\', \'num_classes\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'float32\'], "
+  }
+  member_method {
+    name: "unpack_x_y_sample_weight"
+    argspec: "args=[\'data\'], varargs=None, keywords=None, defaults=None"
   }
 }

@@ -96,8 +96,8 @@ do_pylint() {
   #   --incremental  Performs check on only the python files changed in the
   #                  last non-merge git commit.
 
-  # Use this list to whitelist pylint errors
-  ERROR_WHITELIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
+  # Use this list to allowlist pylint errors
+  ERROR_ALLOWLIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
 "^tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function\salready\sdefined "\
 "^tensorflow/python/feature_column/feature_column_test\.py.*\[E0110.*abstract-class-instantiated "\
@@ -109,13 +109,17 @@ do_pylint() {
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
 "^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/keras/engine/base_layer.py.*\[E1102.*not-callable "\
+"^tensorflow/python/keras/layers/preprocessing/.*\[E1102.*not-callable "\
 "^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/keras/legacy_tf_layers/base\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
 "^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
 "^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "\
-"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "
+"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "\
+"^tensorflow/\.py.*\[C0326.*bad-whitespace.*No space allowed around keyword argument assignment "
 
-  echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
+  echo "ERROR_ALLOWLIST=\"${ERROR_ALLOWLIST}\""
 
   if [[ $# != "0" ]]  && [[ $# != "1" ]]; then
     echo "Invalid syntax when invoking do_pylint"
@@ -124,6 +128,22 @@ do_pylint() {
   fi
 
   PYLINT_BIN="python3 -m pylint"
+
+  echo ""
+  echo "check whether pylint is available or not."
+  echo ""
+  ${PYLINT_BIN} --version
+  if [[ $? -eq 0 ]]
+  then
+    echo ""
+    echo "pylint available, proceeding with pylint sanity check."
+    echo ""
+  else
+    echo ""
+    echo "pylint not available." >&2
+    echo ""
+    return 1
+  fi
 
   if [[ "$1" == "--incremental" ]]; then
     PYTHON_SRC_FILES=$(get_py_files_to_check --incremental)
@@ -191,20 +211,21 @@ do_pylint() {
   # C0326 bad-whitespace
   # W0611 unused-import
   # W0622 redefined-builtin
-  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  # W9015 missing-param-doc
+  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622|\[W9015)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
   while read -r LINE; do
-    IS_WHITELISTED=0
-    for WL_REGEX in ${ERROR_WHITELIST}; do
+    IS_ALLOWLISTED=0
+    for WL_REGEX in ${ERROR_ALLOWLIST}; do
       if echo ${LINE} | grep -q "${WL_REGEX}"; then
-        echo "Found a whitelisted error:"
+        echo "Found an allowlisted error:"
         echo "  ${LINE}"
-        IS_WHITELISTED=1
+        IS_ALLOWLISTED=1
       fi
     done
 
-    if [[ ${IS_WHITELISTED} == "0" ]]; then
+    if [[ ${IS_ALLOWLISTED} == "0" ]]; then
       echo "${LINE}" >> ${NONWL_ERRORS_FILE}
       echo "" >> ${NONWL_ERRORS_FILE}
       ((N_ERRORS++))
@@ -213,11 +234,11 @@ do_pylint() {
 
   echo ""
   if [[ ${N_ERRORS} != 0 ]]; then
-    echo "FAIL: Found ${N_ERRORS} non-whitelisted pylint errors:"
+    echo "FAIL: Found ${N_ERRORS} non-allowlisted pylint errors:"
     cat "${NONWL_ERRORS_FILE}"
     return 1
   else
-    echo "PASS: No non-whitelisted pylint errors were found."
+    echo "PASS: No non-allowlisted pylint errors were found."
     return 0
   fi
 }
@@ -355,9 +376,10 @@ do_external_licenses_check(){
 
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
-  # Blacklist
+  # Denylist
   echo ${MISSING_LICENSES_FILE}
   grep \
+    -e "@bazel_tools//platforms" \
     -e "@bazel_tools//third_party/" \
     -e "@bazel_tools//tools" \
     -e "@local" \
@@ -370,12 +392,13 @@ do_external_licenses_check(){
     -v ${MISSING_LICENSES_FILE} > temp.txt
   mv temp.txt ${MISSING_LICENSES_FILE}
 
-  # Whitelist
+  # Allowlist
   echo ${EXTRA_LICENSE_FILE}
   grep \
     -e "//third_party/mkl" \
     -e "//third_party/mkl_dnn" \
     -e "@bazel_tools//src" \
+    -e "@bazel_tools//platforms" \
     -e "@bazel_tools//tools/" \
     -e "@org_tensorflow//tensorflow" \
     -e "@com_google_absl//" \
@@ -459,14 +482,9 @@ cmd_status(){
 }
 
 # Run bazel build --nobuild to test the validity of the BUILD files
-# TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
-# necessary since the @androidsdk WORKSPACE dependency is commented
-# out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/delegates/gpu/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/java/demo/app/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/schema/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
@@ -573,11 +591,6 @@ do_check_load_py_test() {
   python check_load_py_test.py
 }
 
-do_check_futures_test() {
-  cd "$ROOT_DIR/tensorflow/tools/test"
-  python check_futures_test.py
-}
-
 do_check_file_name_test() {
   cd "$ROOT_DIR/tensorflow/tools/test"
   python file_name_test.py
@@ -650,8 +663,8 @@ do_configure_test() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_configure_test" "do_pylint" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_bazel_deps_query" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
-SANITY_STEPS_DESC=("Run ./configure" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "bazel query" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
+SANITY_STEPS=("do_configure_test" "do_pylint" "do_buildifier" "do_bazel_nobuild" "do_bazel_deps_query" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
+SANITY_STEPS_DESC=("Run ./configure" "Python 3 pylint" "buildifier check" "bazel nobuild" "bazel query" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
 
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS=""
@@ -707,22 +720,36 @@ done
 # Print summary of build results
 COUNTER=0
 echo "==== Summary of sanity check results ===="
+TESTCASE_XML=''
 while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
   INDEX=COUNTER
   ((INDEX++))
 
   echo "${INDEX}. ${SANITY_STEPS[COUNTER]}: ${SANITY_STEPS_DESC[COUNTER]}"
+  TESTCASE_XML="${TESTCASE_XML} <testcase name=\"${SANITY_STEPS_DESC[COUNTER]}\" status=\"run\" classname=\"\" time=\"0\">"
+
   if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
     printf "  ${COLOR_GREEN}PASS${COLOR_NC}\n"
   else
     printf "  ${COLOR_RED}FAIL${COLOR_NC}\n"
+    TESTCASE_XML="${TESTCASE_XML} <failure message=\"\" type=\"\"/>"
   fi
+
+  TESTCASE_XML="${TESTCASE_XML} </testcase>"
 
   ((COUNTER++))
 done
 
 echo
 echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
+
+mkdir -p "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary"
+echo '<?xml version="1.0" encoding="UTF-8"?>'\
+  '<testsuites name="1"  tests="1" failures="0" errors="0" time="0">'\
+  '<testsuite name="Kokoro Summary" tests="'"$((FAIL_COUNTER + PASS_COUNTER))"\
+  '" failures="'"${FAIL_COUNTER}"'" errors="0" time="0">'\
+  "${TESTCASE_XML}"'</testsuite></testsuites>'\
+  > "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary/sponge_log.xml"
 
 echo
 if [[ ${FAIL_COUNTER} == "0" ]]; then

@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
+
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 
@@ -189,9 +189,8 @@ Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
 //
 // Emits a sequential loop if launch_dimensions is null.
 static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
-    HloInstruction* fusion,
-    GeneratorForOperandIrArrays operand_arrays_generator,
-    const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
+    HloInstruction* fusion, const IrArray& fusion_output_array,
+    FusedIrEmitter* fused_emitter,
     const gpu::LaunchDimensions* launch_dimensions, llvm::IRBuilder<>* b) {
   CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
   VLOG(2) << "EmitFusedDynamicUpdateSliceInPlace for "
@@ -220,14 +219,14 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
       LayoutUtil::CopyLayoutBetweenShapes(fusion->shape(), &update_shape));
 
   // Create element generators for update and start_indices.
-  FusedIrEmitter fused_emitter(std::move(operand_arrays_generator),
-                               elemental_emitter);
-  TF_RETURN_IF_ERROR(dynamic_update_slice->Accept(&fused_emitter));
-  ElementGenerator update_array_generator = fused_emitter.GetGenerator(update);
+  TF_ASSIGN_OR_RETURN(ElementGenerator update_array_generator,
+                      fused_emitter->GetGenerator(update));
 
-  IndexGenerator start_indices_generator = [&](int64 index) {
-    ElementGenerator element_generator =
-        fused_emitter.GetGenerator(dynamic_update_slice->operand(2 + index));
+  IndexGenerator start_indices_generator =
+      [&](int64 index) -> StatusOr<llvm::Value*> {
+    TF_ASSIGN_OR_RETURN(
+        ElementGenerator element_generator,
+        fused_emitter->GetGenerator(dynamic_update_slice->operand(2 + index)));
     return element_generator(IrArray::Index(b->getInt64Ty()));
   };
   bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());
@@ -236,25 +235,21 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
       fusion_output_array, launch_dimensions, IrName(fusion), b);
 }
 
-Status EmitFusedDynamicUpdateSliceInPlace(
-    HloInstruction* fusion,
-    GeneratorForOperandIrArrays operand_arrays_generator,
-    const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
-    llvm::IRBuilder<>* b) {
+Status EmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
+                                          const IrArray& fusion_output_array,
+                                          FusedIrEmitter* fused_emitter,
+                                          llvm::IRBuilder<>* b) {
   return EmitFusedDynamicUpdateSliceInPlaceImpl(
-      fusion, std::move(operand_arrays_generator), fusion_output_array,
-      elemental_emitter,
+      fusion, fusion_output_array, fused_emitter,
       /*launch_dimensions=*/nullptr, b);
 }
 
 Status EmitParallelFusedDynamicUpdateSliceInPlace(
-    HloInstruction* fusion,
-    GeneratorForOperandIrArrays operand_arrays_generator,
-    const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
+    HloInstruction* fusion, const IrArray& fusion_output_array,
+    FusedIrEmitter* fused_emitter,
     const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b) {
   return EmitFusedDynamicUpdateSliceInPlaceImpl(
-      fusion, std::move(operand_arrays_generator), fusion_output_array,
-      elemental_emitter, &launch_dimensions, b);
+      fusion, fusion_output_array, fused_emitter, &launch_dimensions, b);
 }
 
 }  // namespace llvm_ir

@@ -50,11 +50,14 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   // TransferManager methods below.
   std::vector<ShapedBuffer> argument_buffers;
   argument_buffers.reserve(arguments.size());
+  int device_ordinal = run_options->device_ordinal();
+  if (device_ordinal < 0) {
+    device_ordinal = 0;
+  }
   for (auto& argument : arguments) {
     const ShapeTree<MaybeOwningDeviceMemory>& buffers = argument.Buffers();
-    argument_buffers.push_back(ShapedBuffer(buffers.shape(), buffers.shape(),
-                                            /*platform=*/nullptr,
-                                            /*device_ordinal=*/0));
+    argument_buffers.push_back(ShapedBuffer(buffers.shape(),
+                                            /*device_ordinal=*/device_ordinal));
     auto in_it = buffers.begin();
     auto out_it = argument_buffers.back().buffers().begin();
     for (; in_it != buffers.end(); ++in_it, ++out_it) {
@@ -81,8 +84,17 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   for (int64 i = 0; i < computation->num_parameters(); ++i) {
     const auto& expected_shape = computation->parameter_instruction(i)->shape();
     const auto& actual_shape = argument_buffers[i].on_device_shape();
-    if (!Shape::Equal().MinorToMajorOnlyInLayout()(expected_shape,
-                                                   actual_shape)) {
+    bool shape_match = true;
+    if (expected_shape.is_dynamic()) {
+      if (!ShapeUtil::DynamicArrayShapeIsCompatible(actual_shape,
+                                                    expected_shape)) {
+        shape_match = false;
+      }
+    } else if (!Shape::Equal().MinorToMajorOnlyInLayout()(expected_shape,
+                                                          actual_shape)) {
+      shape_match = false;
+    }
+    if (!shape_match) {
       return InvalidArgument(
           "Shape mismatch on parameter %d.  Expected %s, but was %s.", i,
           ShapeUtil::HumanStringWithLayout(expected_shape),
@@ -100,11 +112,18 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     TF_ASSIGN_OR_RETURN(Literal arg_literal,
                         transfer_manager->TransferLiteralFromDevice(
                             run_options->stream(), argument_buffers[p]));
+    const auto& expected_shape = computation->parameter_instruction(p)->shape();
+    if (expected_shape.is_dynamic()) {
+      // Expand the input literal to expected shape.
+      arg_literal = arg_literal.ToBoundedDynamic(expected_shape);
+    }
     arg_literals.push_back(std::move(arg_literal));
   }
 
   TF_ASSIGN_OR_RETURN(Literal result_literal,
-                      Evaluate(*computation, arg_literals));
+                      Evaluate(run_options, *computation, arg_literals));
+  // Shrink the generated dynamic shape into static shape.
+  result_literal = result_literal.ToStatic();
 
   // Transform the result literal back into a ShapedBuffer.
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result_buffers,
@@ -122,14 +141,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     const double nanoseconds = (end_micros - start_micros) * 1000.0;
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
-  for (auto& argument : arguments) {
-    for (auto& index_buffer : *argument.MutableBuffers()) {
-      auto maybe_owning_buffer = index_buffer.second.Release();
-      if (maybe_owning_buffer) {
-        result.AddToBeReleased(std::move(*maybe_owning_buffer));
-      }
-    }
-  }
+  MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);
 }
 

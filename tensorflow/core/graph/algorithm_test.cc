@@ -18,11 +18,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -203,21 +203,21 @@ TEST(AlgorithmTest, PostOrderWithEdgeFilter) {
   }
 }
 
-static void BM_PruneForReverseReachability(int iters, int num_nodes,
-                                           int num_edges_per_node) {
-  testing::StopTiming();
+void BM_PruneForReverseReachability(::testing::benchmark::State& state) {
+  const int num_nodes = state.range(0);
+  const int num_edges_per_node = state.range(1);
   const GraphDef graph_def =
       test::CreateGraphDef(num_nodes, num_edges_per_node);
   const auto registry = OpRegistry::Global();
   GraphConstructorOptions opts;
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
+    state.PauseTiming();
     Graph graph(registry);
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
     std::unordered_set<const Node*> visited;
     visited.insert(graph.FindNodeId(graph.num_nodes() - 1));
-    testing::StartTiming();
+    state.ResumeTiming();
     PruneForReverseReachability(&graph, std::move(visited));
-    testing::StopTiming();
   }
 }
 BENCHMARK(BM_PruneForReverseReachability)->ArgPair(10, 2);

@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package tensorflow.data.experimental;
+
+// Configuration for a tf.data service DispatchServer.
+message DispatcherConfig {
+  // The port for the dispatcher to bind to. A value of 0 indicates that the
+  // dispatcher may bind to any available port.
+  int64 port = 1;
+  // The protocol for the dispatcher to use when connecting to workers.
+  string protocol = 2;
+  // A work directory to use for storing dispatcher state, and for recovering
+  // during restarts. The empty string indicates not to use any work directory.
+  string work_dir = 3;
+  // Whether to run in fault tolerant mode, where dispatcher state is saved
+  // across restarts. Requires that `work_dir` is nonempty.
+  bool fault_tolerant_mode = 4;
+  // How often the dispatcher should scan through to delete old and unused jobs.
+  int64 job_gc_check_interval_ms = 5;
+  // How long a job needs to be unused before it becomes a candidate for garbage
+  // collection.
+  int64 job_gc_timeout_ms = 6;
+}
+
+// Configuration for a tf.data service WorkerServer.
+message WorkerConfig {
+  // The port for the worker to bind to. A value of 0 indicates that the
+  // worker may bind to any available port.
+  int64 port = 1;
+  // The protocol for the worker to use when connecting to the dispatcher.
+  string protocol = 2;
+  // The address of the dispatcher to register with.
+  string dispatcher_address = 3;
+  // The address of the worker server. The substring "%port%", if specified,
+  // will be replaced with the worker's bound port. This is useful when the port
+  // is set to `0`.
+  string worker_address = 4;
+  // How often the worker should heartbeat to the master.
+  int64 heartbeat_interval_ms = 5;
+  // How long to retry requests to the dispatcher before giving up and reporting
+  // an error.
+  int64 dispatcher_timeout_ms = 6;
+}

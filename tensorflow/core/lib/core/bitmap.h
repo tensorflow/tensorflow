@@ -63,7 +63,7 @@ class Bitmap {
 
  private:
   typedef uint32 Word;
-  static const size_t kBits = 32;
+  static constexpr size_t kBits = 32;
 
   // Return the number of words needed to store n bits.
   static size_t NumWords(size_t n) { return (n + kBits - 1) / kBits; }

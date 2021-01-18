@@ -43,7 +43,8 @@ constexpr llvm::StringRef kNestedModule = "_tpu_v1_compat_outlined";
 // Inlining the islands calling into the nested module that was outlined.
 // This is the end of the TPU bridge in V1 compatibility mode.
 struct TPUBridgeExecutorIslandInlining
-    : public OperationPass<TPUBridgeExecutorIslandInlining, ModuleOp> {
+    : public PassWrapper<TPUBridgeExecutorIslandInlining,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -60,11 +61,11 @@ void TPUBridgeExecutorIslandInlining::runOnOperation() {
     LLVM_DEBUG(llvm::dbgs()
                << "Found call to inline: " << *call_op.getOperation() << "\n");
 
-    FuncOp called_func = dyn_cast_or_null<FuncOp>(
-        symbol_table.lookupSymbolIn(getOperation(), call_op.f()));
+    auto call_interface = cast<CallOpInterface>(call_op.getOperation());
+    auto called_func =
+        dyn_cast_or_null<FuncOp>(call_interface.resolveCallable());
 
-    if (failed(inlineCall(inliner,
-                          cast<CallOpInterface>(call_op.getOperation()),
+    if (failed(inlineCall(inliner, call_interface,
                           cast<CallableOpInterface>(called_func.getOperation()),
                           called_func.getCallableRegion(),
                           /* shouldCloneInlinedRegion = */ false))) {
@@ -95,7 +96,7 @@ PassRegistration<TPUBridgeExecutorIslandInlining> tpu_pass(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandInliningPass() {
   return std::make_unique<TPUBridgeExecutorIslandInlining>();
 }

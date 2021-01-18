@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/memory_helpers.h"
 
+#include <cstddef>
 #include <cstdint>
 
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -40,8 +46,7 @@ size_t AlignSizeUp(size_t size, size_t alignment) {
   return aligned_size;
 }
 
-TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size,
-                              ErrorReporter* reporter) {
+TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size) {
   switch (type) {
     case kTfLiteFloat32:
       *size = sizeof(float);
@@ -61,15 +66,19 @@ TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size,
     case kTfLiteInt64:
       *size = sizeof(int64_t);
       break;
+    case kTfLiteUInt64:
+      *size = sizeof(uint64_t);
+      break;
     case kTfLiteBool:
       *size = sizeof(bool);
       break;
     case kTfLiteComplex64:
       *size = sizeof(float) * 2;
       break;
+    case kTfLiteComplex128:
+      *size = sizeof(double) * 2;
+      break;
     default:
-      reporter->Report("Type %s (%d) not is not supported",
-                       TfLiteTypeGetName(type), type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -79,16 +88,70 @@ TfLiteStatus BytesRequiredForTensor(const tflite::Tensor& flatbuffer_tensor,
                                     size_t* bytes, size_t* type_size,
                                     ErrorReporter* error_reporter) {
   int element_count = 1;
-  for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
-    element_count *= flatbuffer_tensor.shape()->Get(n);
+  // If flatbuffer_tensor.shape == nullptr, then flatbuffer_tensor is a scalar
+  // so has 1 element.
+  if (flatbuffer_tensor.shape() != nullptr) {
+    for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
+      element_count *= flatbuffer_tensor.shape()->Get(n);
+    }
   }
 
   TfLiteType tf_lite_type;
   TF_LITE_ENSURE_STATUS(ConvertTensorType(flatbuffer_tensor.type(),
                                           &tf_lite_type, error_reporter));
-  TF_LITE_ENSURE_STATUS(
-      TfLiteTypeSizeOf(tf_lite_type, type_size, error_reporter));
+  TF_LITE_ENSURE_STATUS(TfLiteTypeSizeOf(tf_lite_type, type_size));
   *bytes = element_count * (*type_size);
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteEvalTensorByteLength(const TfLiteEvalTensor* eval_tensor,
+                                        size_t* out_bytes) {
+  TFLITE_DCHECK(out_bytes != nullptr);
+
+  int element_count = 1;
+  // If eval_tensor->dims == nullptr, then tensor is a scalar so has 1 element.
+  if (eval_tensor->dims != nullptr) {
+    for (int n = 0; n < eval_tensor->dims->size; ++n) {
+      element_count *= eval_tensor->dims->data[n];
+    }
+  }
+  size_t type_size;
+  TF_LITE_ENSURE_STATUS(TfLiteTypeSizeOf(eval_tensor->type, &type_size));
+  *out_bytes = element_count * type_size;
+  return kTfLiteOk;
+}
+
+TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context,
+                                               const TfLiteTensor* input1,
+                                               const TfLiteTensor* input2,
+                                               TfLiteTensor* output) {
+  const TfLiteTensor* input = nullptr;
+
+  TF_LITE_ENSURE(context, input1->dims != nullptr);
+  TF_LITE_ENSURE(context, input2->dims != nullptr);
+  TF_LITE_ENSURE(context, output->dims->size == 0);
+
+  input = input1->dims->size > input2->dims->size ? input1 : input2;
+  TF_LITE_ENSURE(context, output->type == input->type);
+
+  size_t size = 0;
+  TfLiteTypeSizeOf(input->type, &size);
+  const int dimensions_count = tflite::GetTensorShape(input).DimensionsCount();
+  for (int i = 0; i < dimensions_count; i++) {
+    size *= input->dims->data[i];
+  }
+
+  output->bytes = size;
+
+  output->dims =
+      reinterpret_cast<TfLiteIntArray*>(context->AllocatePersistentBuffer(
+          context, TfLiteIntArrayGetSizeInBytes(size)));
+
+  output->dims->size = input->dims->size;
+  for (int i = 0; i < dimensions_count; i++) {
+    output->dims->data[i] = input->dims->data[i];
+  }
+
   return kTfLiteOk;
 }
 

@@ -31,10 +31,9 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -42,7 +41,6 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -50,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -70,7 +69,6 @@ using llvm::isa;
 using mlir::BlockArgument;
 using mlir::Dialect;
 using mlir::Operation;
-using mlir::OperationState;
 using mlir::Value;
 using stream_executor::port::StatusOr;
 
@@ -79,46 +77,17 @@ namespace {
 constexpr char kInvalidExecutorGraphMsg[] =
     "Functions must be of a single Graph with single op Islands: ";
 
-bool IsLegalChar(char c, bool first_char) {
-  if (isalpha(c)) return true;
-  if (isdigit(c)) return true;
-  if (c == '.') return true;
-  if (c == '_') return true;
-
-  // First character of a node name can only be a letter, digit, dot or
-  // underscore.
-  if (first_char) return false;
-
-  if (c == '/') return true;
-  if (c == '-') return true;
-
-  return false;
-}
-
-// Convert characters in name that are considered illegal in TensorFlow Node
-// name to '.'.
-std::string LegalizeNodeName(llvm::StringRef name) {
-  assert(!name.empty() && "expected non-empty name");
-
-  std::string legalized_name;
-  bool first = true;
-  for (auto c : name) {
-    if (IsLegalChar(c, first)) {
-      legalized_name += c;
-    } else {
-      legalized_name += '.';
-    }
-    first = false;
-  }
-
-  return legalized_name;
-}
+constexpr char kDeviceAttr[] = "tf.device";
+constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 
 // OpOrArgLocNameMapper that legalizes the returned name.
 class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
  private:
   std::string GetName(OpOrVal op_or_val) override {
-    return LegalizeNodeName(OpOrArgLocNameMapper::GetName(op_or_val));
+    std::string name = OpOrArgLocNameMapper::GetName(op_or_val);
+    assert(!name.empty() && "expected non-empty name");
+    mlir::LegalizeNodeName(name);
+    return name;
   }
 };
 
@@ -127,7 +96,7 @@ class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
 Status HasSingleGraphSingleOpIslandsFunctions(mlir::ModuleOp module) {
   Status status = Status::OK();
   module.walk([&](mlir::FuncOp function) {
-    if (function.getBlocks().size() != 1) {
+    if (!llvm::hasSingleElement(function)) {
       status = errors::FailedPrecondition(
           kInvalidExecutorGraphMsg,
           "only single block functions are supported.");
@@ -143,7 +112,7 @@ Status HasSingleGraphSingleOpIslandsFunctions(mlir::ModuleOp module) {
       return mlir::WalkResult::interrupt();
     }
 
-    if (!has_single_element(block)) {
+    if (!hasSingleElement(block)) {
       status = errors::FailedPrecondition(
           kInvalidExecutorGraphMsg,
           "function does not only contain a single tf_executor.graph.");
@@ -251,6 +220,10 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
 
+  TF_RETURN_IF_ERROR(SetShapeAttribute("_output_shapes",
+                                       arg.getType().cast<mlir::ShapedType>(),
+                                       node_def->mutable_attr()));
+
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
       arg.getType().cast<mlir::TensorType>().getElementType(), &dtype));
@@ -263,17 +236,15 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   (*node_def->mutable_attr())["index"] = index_attr;
 
   if (auto device_attr =
-          func.getArgAttrOfType<mlir::StringAttr>(index, "tf.device")) {
+          func.getArgAttrOfType<mlir::StringAttr>(index, kDeviceAttr))
     *node_def->mutable_device() = device_attr.getValue().str();
-  }
 
-  if (auto resource_arg_unique_id_attr =
-          func.getArgAttrOfType<mlir::IntegerAttr>(
-              index, "tf.resource_arg_unique_id")) {
-    AttrValue unique_id_attr;
-    unique_id_attr.set_i(resource_arg_unique_id_attr.getInt());
-    (*node_def->mutable_attr())["_resource_arg_unique_id"] = unique_id_attr;
-  }
+  llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
+      func.getArgAttrs(index);
+  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr};
+  TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
+                                       /*remove_ref_type=*/false,
+                                       node_def->mutable_attr()));
 
   return node_def;
 }
@@ -298,6 +269,18 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   AttrValue index_attr;
   index_attr.set_i(index);
   (*node_def->mutable_attr())["index"] = index_attr;
+
+  if (auto device_attr =
+          function.getResultAttrOfType<mlir::StringAttr>(index, kDeviceAttr))
+    *node_def->mutable_device() = device_attr.getValue().str();
+
+  llvm::ArrayRef<mlir::NamedAttribute> func_res_i_attrs =
+      function.getResultAttrs(index);
+  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr};
+  TF_RETURN_IF_ERROR(ConvertAttributes(func_res_i_attrs, attrs_to_ignore,
+                                       /*remove_ref_type=*/false,
+                                       node_def->mutable_attr()));
+
   return node_def;
 }
 
@@ -417,62 +400,11 @@ bool IsEntryFunctionArg(BlockArgument arg) {
 // name will be used instead of generating a unique name.
 Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
                                  llvm::StringRef name) {
-  if (!IsEntryFunctionArg(arg) || !name.empty()) {
-    TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
-    Status status;
-    Node* node = graph_->AddNode(*node_def, &status);
-    TF_RETURN_IF_ERROR(status);
-    args_[arg] = node;
-    return status;
-  }
-
-  // If it is an argument from the "main" function, it has only one user, which
-  // is an input node. We recover the original input node and skip adding the
-  // argument node. The new input node will be handled as normal in the
-  // following steps.
-  if (!arg.hasOneUse()) {
-    return errors::FailedPrecondition(
-        "Arg in 'main' should only have one user.");
-  }
-  auto* input = *arg.user_begin();
-  auto* parent = input->getParentOp();
-  auto island = llvm::dyn_cast_or_null<mlir::tf_executor::IslandOp>(parent);
-  if (!island)
-    return errors::FailedPrecondition(
-        "User of arg in 'main' must be in an inner op of a "
-        "tf_executor.island.");
-
-  if (!island.control().use_empty())
-    return errors::FailedPrecondition(
-        "tf_executor.island of user of arg in 'main' must have no control "
-        "output users.");
-
-  auto input_name = input->getName().getStringRef();
-  input_name.consume_back(".input");
-
-  mlir::OpBuilder builder(island.getContext());
-  builder.setInsertionPointToStart(&island.GetBody());
-  auto loc = mlir::NameLoc::get(
-      builder.getIdentifier(op_to_name_.GetUniqueName(input)),
-      builder.getContext());
-  OperationState state(loc, input_name.str());
-  state.attributes.append(input->getAttrs().begin(), input->getAttrs().end());
-  for (auto op : input->getOperands()) {
-    // Skip the argument in the new operation.
-    if (op.isa<BlockArgument>()) continue;
-    state.operands.push_back(op);
-  }
-  state.types.append(input->getResultTypes().begin(),
-                     input->getResultTypes().end());
-  auto* inst = builder.createOperation(state);
-  // If it is one of the specified input names, then the new instruction should
-  // have the same name.
-  op_to_name_.InitOpName(inst, op_to_name_.GetUniqueName(input));
-  for (int index : llvm::seq<int>(0, input->getNumResults())) {
-    input->getResult(index).replaceAllUsesWith(inst->getResult(index));
-  }
-  input->dropAllReferences();
-  input->erase();
+  TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
+  Status status;
+  Node* node = graph_->AddNode(*node_def, &status);
+  TF_RETURN_IF_ERROR(status);
+  args_[arg] = node;
   return Status::OK();
 }
 
@@ -522,14 +454,11 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::Block& block = function.front();
 
-  // Determine if _Arg and _Retval nodes should use input and output names.
-  bool graph_as_function = false;
-
   // Extract input & output names if set.
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
   auto dict_attr =
-      function.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+      function->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   if (dict_attr) {
     TF_RET_CHECK(dict_attr.get("inputs").isa<mlir::StringAttr>())
         << "inputs missing in entry function attribute";
@@ -539,14 +468,13 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         input_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
     dict_attr.get("outputs").cast<mlir::StringAttr>().getValue().split(
         output_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
-    graph_as_function = configs.graph_as_function;
   }
 
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
 
   // Extract version info.
   VersionDef versions;
-  auto module = function.getParentOfType<mlir::ModuleOp>();
+  auto module = function->getParentOfType<mlir::ModuleOp>();
   if (mlir::succeeded(ExtractTfVersions(module, &versions))) {
     graph->set_versions(versions);
   }
@@ -562,60 +490,43 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // generate unique names.
   if (!output_names.empty()) {
     const int num_data_results = graph_op.getNumResults();
-    TF_RET_CHECK(output_names.size() == num_data_results)
+    const int64 output_names_size = output_names.size();
+    TF_RET_CHECK(output_names_size == num_data_results)
         << "output names (" << output_names.size()
         << ") != terminator operands (" << num_data_results << ")";
     llvm::DenseMap<Operation*, llvm::StringRef> output_op_to_name;
     llvm::StringMap<Operation*> name_to_op;
-    for (auto it : llvm::enumerate(graph_op.GetFetch().getOperands())) {
+    for (const auto& it : llvm::enumerate(graph_op.GetFetch().getOperands())) {
       // Skip control rets.
-      if (it.index() >= num_data_results) break;
-      // If there is a result index specified, ensure only one and that it
-      // matches the result index of the op.
-      auto result = it.value().cast<mlir::OpResult>();
-      std::string orig_name(output_names[it.index()]);
-      auto tensor_id = ParseTensorName(orig_name);
-      auto name = LegalizeNodeName(
-          llvm::StringRef(tensor_id.node().data(), tensor_id.node().size()));
+      const int64 index = it.index();
+      if (index >= num_data_results) break;
+      // TODO(jpienaar): If there is a result index specified, ensure only one
+      // and that it matches the result index of the op.
+      std::string name(output_names[index]);
+      auto tensor_id = ParseTensorName(name);
+      std::string tensor_id_node(tensor_id.node());
+      assert(!tensor_id_node.empty() && "expected non-empty name");
+      mlir::LegalizeNodeName(tensor_id_node);
 
-      if (graph_as_function) {
-        // Ensure name does not get reused.
-        (void)exporter.op_to_name_.GetUniqueName(name);
-        continue;
-      }
-
-      TF_RET_CHECK(result.getResultNumber() == tensor_id.index());
-      Operation* defining_op = GetIslandInnerOpOrSelf(result.getDefiningOp());
-      if (output_op_to_name.insert({defining_op, name}).second) {
-        TF_RET_CHECK(name_to_op.insert({name, defining_op}).second)
-            << "multiple operations associated with the same name";
-        exporter.op_to_name_.InitOpName(defining_op, name);
-      } else {
-        TF_RET_CHECK(output_op_to_name[defining_op] == name)
-            << "associating multiple names with the same op not supported";
-      }
+      // Ensure name does not get reused.
+      (void)exporter.op_to_name_.GetUniqueName(tensor_id_node);
     }
   }
 
   if (!input_names.empty()) {
     TF_RET_CHECK(input_names.size() == block.getNumArguments());
-    for (auto it : llvm::enumerate(function.getArguments())) {
+    for (const auto& it : llvm::enumerate(function.getArguments())) {
       // TODO(lyandy): Update when changing feed/fetch import.
-      std::string orig_name(input_names[it.index()]);
-      std::string name = LegalizeNodeName(orig_name);
+      std::string name(input_names[it.index()]);
+      assert(!name.empty() && "expected non-empty name");
+      mlir::LegalizeNodeName(name);
       auto tensor_id = ParseTensorName(name);
       TF_RET_CHECK(tensor_id.index() == 0)
           << "input port designation not supported";
       // Only assign user of argument the input name if the main graph did not
       // have its _Arg nodes lifted into the functions arguments.
-      if (graph_as_function) {
-        // Ensure name does not get reused.
-        (void)exporter.op_to_name_.GetUniqueName(name);
-      } else {
-        Operation* defining_op =
-            GetIslandInnerOpOrSelf(*it.value().user_begin());
-        exporter.op_to_name_.InitOpName(defining_op, name);
-      }
+      // Ensure name does not get reused.
+      (void)exporter.op_to_name_.GetUniqueName(name);
     }
   }
 
@@ -631,13 +542,12 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     }
 
     TF_RETURN_IF_ERROR(exporter.AddArgumentNode(
-        arg, index,
-        graph_as_function && !input_names.empty() ? input_names[index] : ""));
+        arg, index, !input_names.empty() ? input_names[index] : ""));
   }
 
   auto convert_called_function = [&](llvm::StringRef name) {
     auto func =
-        function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
+        function->getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
             name);
     if (func != nullptr) {
       TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, func, flib));
@@ -649,9 +559,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // Adds nodes for operations.
   for (Operation& inst : graph_op.GetBody()) {
     for (auto type : inst.getResultTypes())
-      if (!type.isa<mlir::TensorType>() &&
-          !type.isa<mlir::tf_executor::ControlType>() &&
-          !type.isa<mlir::tf_executor::TokenType>())
+      if (!type.isa<mlir::TensorType, mlir::tf_executor::ControlType,
+                    mlir::tf_executor::TokenType>())
         return errors::InvalidArgument(
             "Values must be of tensor type, TensorFlow control type, or "
             "TensorFlow token type. Found ",
@@ -662,10 +571,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // tf_executor.NextIteration.Sink will be used instead.
       continue;
     } else if (auto fetch = llvm::dyn_cast<mlir::tf_executor::FetchOp>(inst)) {
-      TF_RETURN_IF_ERROR(exporter.AddFetchNode(
-          function, fetch,
-          graph_as_function ? output_names
-                            : llvm::ArrayRef<llvm::StringRef>()));
+      TF_RETURN_IF_ERROR(exporter.AddFetchNode(function, fetch, output_names));
     } else if (auto island =
                    llvm::dyn_cast<mlir::tf_executor::IslandOp>(inst)) {
       Operation& inner_op = island.GetBody().front();
@@ -742,9 +648,9 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   // and populates the GradientDef.
   auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
   if (auto attr =
-          function.getAttrOfType<mlir::FlatSymbolRefAttr>(grad_string)) {
+          function->getAttrOfType<mlir::FlatSymbolRefAttr>(grad_string)) {
     auto grad_func =
-        function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
+        function->getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
             attr.getValue());
     TF_RETURN_IF_ERROR(
         ConvertLibFunction(configs, tf_dialect, grad_func, flib));
@@ -755,16 +661,8 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   }
 
   auto stateful_string = mlir::TF::TensorFlowDialect::GetStatefulAttrName();
-  if (auto attr = function.getAttrOfType<mlir::UnitAttr>(stateful_string)) {
+  if (auto attr = function->getAttrOfType<mlir::UnitAttr>(stateful_string)) {
     func_def.mutable_signature()->set_is_stateful(true);
-  }
-  for (int64 i = 0; i < function.getNumArguments(); ++i) {
-    if (auto resource_arg_unique_id_attr =
-            function.getArgAttrOfType<mlir::IntegerAttr>(
-                i, "tf.resource_arg_unique_id")) {
-      (*func_def.mutable_resource_arg_unique_id())[i] =
-          resource_arg_unique_id_attr.getInt();
-    }
   }
 
   // Ignore the gradient and is_stateful attribute on the function as they have
@@ -772,10 +670,33 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
       grad_string.data(), stateful_string.data()};
   llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
-      function.getDialectAttrs());
-  TF_RETURN_IF_ERROR(
-      ConvertAttributes(funcAttrs, attrs_to_ignore, func_def.mutable_attr()));
-  (*flib->add_function()) = func_def;
+      function->getDialectAttrs());
+  TF_RETURN_IF_ERROR(ConvertAttributes(funcAttrs, attrs_to_ignore,
+                                       /*remove_ref_type=*/false,
+                                       func_def.mutable_attr()));
+
+  for (int i = 0, e = function.getNumArguments(); i < e; ++i) {
+    if (auto resource_arg_unique_id_attr =
+            function.getArgAttrOfType<mlir::IntegerAttr>(
+                i, kResourceArgUniqueIdAttr)) {
+      (*func_def.mutable_resource_arg_unique_id())[i] =
+          resource_arg_unique_id_attr.getInt();
+    }
+
+    llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
+        function.getArgAttrs(i);
+    if (func_arg_i_attrs.empty()) continue;
+    absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
+        kDeviceAttr, kResourceArgUniqueIdAttr};
+    FunctionDef::ArgAttrs func_def_arg_i_attrs;
+    TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
+                                         /*remove_ref_type=*/false,
+                                         func_def_arg_i_attrs.mutable_attr()));
+    if (func_def_arg_i_attrs.attr().empty()) continue;
+    (*func_def.mutable_arg_attr())[i] = std::move(func_def_arg_i_attrs);
+  }
+
+  (*flib->add_function()) = std::move(func_def);
   return Status::OK();
 }
 
@@ -788,7 +709,7 @@ Status Exporter::Convert(mlir::ModuleOp module,
       mlir::Identifier::get("main", module.getContext());
   absl::optional<mlir::FuncOp> entry_func;
   FunctionDefLibrary flib;
-  auto tf_dialect = module.getContext()->getRegisteredDialect("tf");
+  auto tf_dialect = module.getContext()->getLoadedDialect("tf");
   for (auto function : module.getOps<mlir::FuncOp>()) {
     if (function.isExternal())
       return errors::FailedPrecondition("External functions not supported");
@@ -856,6 +777,24 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
     }
   }
   return graphdef;
+}
+
+stream_executor::port::Status ConvertMlirFunctionToFunctionLibraryDef(
+    mlir::FuncOp func, const GraphExportConfig& configs,
+    FunctionDef* function_def) {
+  Dialect* tf_dialect = func.getContext()->getLoadedDialect("tf");
+  FunctionDefLibrary flib;
+  TF_RETURN_IF_ERROR(
+      Exporter::ConvertLibFunction(configs, tf_dialect, func, &flib));
+  for (auto& func_def : flib.function()) {
+    if (func_def.signature().name() == func.getName()) {
+      *function_def = func_def;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument(
+      "Function couldn't be found in the FunctionDefLibrary after converting "
+      "from MLIR");
 }
 
 }  // namespace tensorflow

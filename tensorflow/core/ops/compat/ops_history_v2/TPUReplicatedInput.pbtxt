@@ -1,0 +1,101 @@
+op {
+  name: "TPUReplicatedInput"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "TPUReplicatedInput"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "is_mirrored_variable"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "index"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}
+op {
+  name: "TPUReplicatedInput"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "is_mirrored_variable"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "index"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "is_packed"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}

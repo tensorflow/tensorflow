@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/winograd.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -22,9 +22,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
@@ -80,9 +77,13 @@ TEST_F(OpenCLOperationTest, Winograd4x4To36) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       float eps;
       if (precision == CalculationsPrecision::F32) {
-        eps = 1e-5f * (env_.device().SupportsFP32RTN() ? 1.0f : 4.0f);
+        eps = 1e-5f * (env_.device().GetInfo().opencl_info.supports_fp32_rtn
+                           ? 1.0f
+                           : 4.0f);
       } else {
-        eps = 1e-2f * (env_.device().SupportsFP16RTN() ? 1.0f : 4.0f);
+        eps = 1e-2f * (env_.device().GetInfo().opencl_info.supports_fp16_rtn
+                           ? 1.0f
+                           : 4.0f);
       }
       OperationDef op_def;
       op_def.precision = precision;
@@ -93,11 +94,12 @@ TEST_F(OpenCLOperationTest, Winograd4x4To36) {
       Padding2D padding;
       padding.prepended = HW(1, 1);
       padding.appended = HW(1, 1);
-      Winograd4x4To36 wino_up;
-      ASSERT_OK(
-          CreateWinograd4x4To36(creation_context_, op_def, padding, &wino_up));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &wino_up,
-                                    BHWC(1, 36, 1, 1), &dst_tensor));
+      Winograd4x4To36 operation = CreateWinograd4x4To36(
+          creation_context_.GetGpuInfo(), op_def, padding);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<Winograd4x4To36>(std::move(operation)),
+          BHWC(1, 36, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), dst_ref.data));
     }
   }
@@ -111,7 +113,7 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
     src_tensor.data[i] = sin(i);
   }
 
-  Tensor<Linear, DataType::FLOAT32> biases;
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
   biases.shape = Linear(1);
   biases.data.resize(biases.shape.DimensionsProduct());
   for (int i = 0; i < biases.data.size(); ++i) {
@@ -152,9 +154,13 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       float eps;
       if (precision == CalculationsPrecision::F32) {
-        eps = 1e-5f * (env_.device().SupportsFP32RTN() ? 1.0f : 4.0f);
+        eps = 1e-5f * (env_.device().GetInfo().opencl_info.supports_fp32_rtn
+                           ? 1.0f
+                           : 4.0f);
       } else {
-        eps = 1e-2f * (env_.device().SupportsFP16RTN() ? 1.0f : 4.0f);
+        eps = 1e-2f * (env_.device().GetInfo().opencl_info.supports_fp16_rtn
+                           ? 1.0f
+                           : 4.0f);
       }
       OperationDef op_def;
       op_def.precision = precision;
@@ -162,11 +168,12 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Winograd36To4x4 wino_down;
-      ASSERT_OK(
-          CreateWinograd36To4x4(creation_context_, op_def, biases, &wino_down));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &wino_down,
-                                    BHWC(1, 4, 4, 1), &dst_tensor));
+      Winograd36To4x4 operation =
+          CreateWinograd36To4x4(creation_context_.GetGpuInfo(), op_def, biases);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<Winograd36To4x4>(std::move(operation)),
+          BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), dst_ref.data));
     }
   }

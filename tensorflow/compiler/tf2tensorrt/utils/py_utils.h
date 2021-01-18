@@ -21,12 +21,6 @@ namespace tensorrt {
 
 bool IsGoogleTensorRTEnabled();
 
-// Return compile time TensorRT library version information {Maj, Min, Patch}.
-void GetLinkedTensorRTVersion(int* major, int* minor, int* patch);
-
-// Return runtime time TensorRT library version information {Maj, Min, Patch}.
-void GetLoadedTensorRTVersion(int* major, int* minor, int* patch);
-
 }  // namespace tensorrt
 }  // namespace tensorflow
 

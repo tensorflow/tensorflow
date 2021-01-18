@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform_strings.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -112,10 +114,9 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
   OP_REQUIRES_OK(context, CheckOpDeprecation(*props_->op_def,
                                              context->graph_def_version()));
 
-  // Kernels executing on GPU/SYCL tie very few resources on the CPU where the
+  // Kernels executing on GPU tie very few resources on the CPU where the
   // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
-               context->device_type() != DeviceType(DEVICE_SYCL);
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU);
 }
 
 OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
@@ -139,10 +140,9 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
   OP_REQUIRES_OK(context, CheckOpDeprecation(*props_->op_def,
                                              context->graph_def_version()));
 
-  // Kernels executing on GPU/SYCL tie very few resources on the CPU where the
+  // Kernels executing on GPU tie very few resources on the CPU where the
   // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
-               context->device_type() != DeviceType(DEVICE_SYCL);
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU);
 }
 
 OpKernel::~OpKernel() {}
@@ -171,34 +171,38 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   }
 }
 
-string OpKernel::GetTraceArgument(OpKernelContext* ctx) {
-  int num_inputs = ctx->num_inputs();
+string OpKernel::ShapeTraceString(const OpKernelContext& ctx) const {
+  int num_inputs = ctx.num_inputs();
   if (num_inputs == 0) return "";
   std::vector<string> tensor_shapes;
   tensor_shapes.reserve(num_inputs);
   for (int i = 0; i < num_inputs; i++) {
-    if (!ctx->has_input(i)) {
+    if (!ctx.has_input(i)) {
       tensor_shapes.emplace_back();  // Placeholder
       continue;
     }
-    DataType input_dtype = ctx->input_dtype(i);
+    DataType input_dtype = ctx.input_dtype(i);
     if (input_dtype == DataType::DT_RESOURCE ||
         input_dtype == DataType::DT_VARIANT || IsRefType(input_dtype)) {
       tensor_shapes.emplace_back();  // Placeholder
       continue;
     }
     tensor_shapes.emplace_back(strings::StrCat(
-        DataTypeString(input_dtype), ctx->input(i).shape().DebugString()));
+        DataTypeString(input_dtype), ctx.input(i).shape().DebugString()));
   }
-  return strings::StrCat("shape=(", absl::StrJoin(tensor_shapes, ";"), ")");
+  return strings::StrCat("(", absl::StrJoin(tensor_shapes, ";"), ")");
 }
 
-string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
-  string trace_string = strings::StrCat(name_view(), ":", type_string_view());
-  if (!verbose) return trace_string;
-  string trace_args = GetTraceArgument(ctx);
-  if (trace_args.empty()) return trace_string;
-  return strings::StrCat(trace_string, "#", trace_args, "#");
+string OpKernel::TraceString(const OpKernelContext& ctx, bool verbose) const {
+  string trace_string = profiler::TraceMeOp(name_view(), type_string_view());
+  if (verbose) {
+    string shape = ShapeTraceString(ctx);
+    if (!shape.empty()) {
+      trace_string =
+          profiler::TraceMeEncode(std::move(trace_string), {{"shape", shape}});
+    }
+  }
+  return trace_string;
 }
 
 void AsyncOpKernel::Compute(OpKernelContext* context) {
@@ -412,7 +416,7 @@ Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
   return Status::OK();
 }
 
-const Tensor& OpKernelContext::input(int index) {
+const Tensor& OpKernelContext::input(int index) const {
   CHECK_GE(index, 0);
   CHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();
   CHECK(!input_is_ref(index));
@@ -703,12 +707,11 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  auto op_annotation =
-      ScopedMemoryDebugAnnotation(op_kernel().name_view().data(), step_id());
-  Tensor new_tensor(a, type, shape,
-                    AllocationAttributes(allocation_attr.no_retry_on_failure,
-                                         /* allocation_will_be_logged= */ true,
-                                         allocation_attr.freed_by_func));
+  Tensor new_tensor(
+      a, type, shape,
+      AllocationAttributes(
+          /*retry_on_failure=*/allocation_attr.retry_on_failure,
+          /*allocation_will_be_logged=*/true, allocation_attr.freed_by_func));
 
   if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted(
@@ -758,6 +761,8 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
           " more than once.  Try turning off the ScopedAllocator optimizer.");
     }
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "output", type, &shape);
   auto output_tensor = MakeUnique<Tensor>();
   Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
@@ -787,6 +792,8 @@ Status OpKernelContext::allocate_temp(
             << ".  Switch to allocate_output to avoid performance penalty.";
     allocator_attr.scope_id = -1;
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "temp", type, &shape);
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
@@ -815,6 +822,8 @@ Status OpKernelContext::allocate_persistent(DataType type,
     return errors::Internal(
         "Unexpected call to allocate_persistent with scope_id ", attr.scope_id);
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "persist", type, &shape);
   Tensor persistent;
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
@@ -921,6 +930,9 @@ bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
             << " params_->forward_from_array[index] "
             << params_->forward_from_array[index] << " alloc_attr.scope_id "
             << output_alloc_attr(index).scope_id;
+    ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                              step_id(), "output",
+                                              tensor.dtype(), &tensor.shape());
     auto new_tensor = MakeUnique<Tensor>();
     Status s = allocate_tensor(tensor.dtype(), tensor.shape(), new_tensor.get(),
                                output_alloc_attr(index));
@@ -1093,6 +1105,15 @@ void OpKernelContext::set_record_memory_consumption(bool v) {
   }
 }
 
+const string& OpKernelContext::executor_type() const {
+  if (params_->executor_type) {
+    return *params_->executor_type;
+  } else {
+    static const string& kEmptyString = *new string("");
+    return kEmptyString;
+  }
+}
+
 // OpKernel registration ------------------------------------------------------
 
 struct KernelRegistration {
@@ -1189,7 +1210,8 @@ void LoadDynamicKernelsInternal() {
         if (s.ok() || override_abi_check) {
           // TODO(gunan): Store the handles to the opened files.
           void* unused_filehandle;
-          TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));
+          TF_CHECK_OK(
+              env->LoadDynamicLibrary(fullpath.c_str(), &unused_filehandle));
         } else {
           LOG(WARNING) << "Not loading plugin library " << fullpath << ": "
                        << s.error_message();
@@ -1234,26 +1256,23 @@ namespace kernel_factory {
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
                                      std::unique_ptr<OpKernelFactory> factory) {
-  // See comments in register_kernel::Name in header for info on _no_register.
-  if (kernel_def->op() != "_no_register") {
-    const string key =
-        Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
-            kernel_def->label());
+  const string key =
+      Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
+          kernel_def->label());
 
-    // To avoid calling LoadDynamicKernels DO NOT CALL GlobalKernelRegistryTyped
-    // here.
-    // InitInternal gets called by static initializers, so it ends up executing
-    // before main. This causes LoadKernelLibraries function to get called
-    // before some file libraries can initialize, which in turn crashes the
-    // program flakily. Until we get rid of static initializers in kernel
-    // registration mechanism, we have this workaround here.
-    auto global_registry =
-        reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
-    mutex_lock l(global_registry->mu);
-    global_registry->registry.emplace(
-        key,
-        KernelRegistration(*kernel_def, kernel_class_name, std::move(factory)));
-  }
+  // To avoid calling LoadDynamicKernels DO NOT CALL GlobalKernelRegistryTyped
+  // here.
+  // InitInternal gets called by static initializers, so it ends up executing
+  // before main. This causes LoadKernelLibraries function to get called
+  // before some file libraries can initialize, which in turn crashes the
+  // program flakily. Until we get rid of static initializers in kernel
+  // registration mechanism, we have this workaround here.
+  auto global_registry =
+      reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
+  mutex_lock l(global_registry->mu);
+  global_registry->registry.emplace(
+      key,
+      KernelRegistration(*kernel_def, kernel_class_name, std::move(factory)));
   delete kernel_def;
 }
 
@@ -1266,7 +1285,21 @@ OpKernel* OpKernelRegistrar::PtrOpKernelFactory::Create(
 
 namespace {
 
-static const StringPiece kKernelAttr("_kernel");
+// Label defaults to empty if not found in NodeDef.
+const string& GetKernelLabelAttr(const AttrSlice& node_attrs) {
+  static const string& kKernelAttr = *new string("_kernel");
+  static const string& kEmptyString = *new string("");
+
+  // NOTE: We inline the implementation of `GetNodeAttrString()` here in order
+  // to use the `AttrSlice::FindByString()` overload, which does a more
+  // efficient map lookup (instead of a linear scan) when the attribute name is
+  // already a `const string&`.
+  const AttrValue* attr_value = node_attrs.FindByString(kKernelAttr);
+  if (attr_value == nullptr || attr_value->value_case() != AttrValue::kS)
+    return kEmptyString;
+  else
+    return attr_value->s();
+}
 
 // TODO(irving): Replace with const Node& version below.
 Status FindKernelRegistration(
@@ -1277,8 +1310,8 @@ Status FindKernelRegistration(
     bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
-  // Label defaults to empty if not found in NodeDef.
-  const string& label = GetNodeAttrString(node_attrs, kKernelAttr);
+
+  const string& label = GetKernelLabelAttr(node_attrs);
 
   const string key = Key(node_op, device_type, label);
   auto typed_registry = GlobalKernelRegistryTyped();
@@ -1382,10 +1415,10 @@ Status FindKernelDef(
       device_type, node_name, has_experimental_debug_info,
       experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch));
   if (reg == nullptr) {
-    std::string device_str = DeviceTypeString(device_type);
+    const std::string device_str = DeviceTypeString(device_type);
     Status s = errors::NotFound(
-        "No registered '", node_op, "' OpKernel for ",
-        DeviceTypeString(device_type), " devices compatible with node ",
+        "No registered '", node_op, "' OpKernel for ", device_str,
+        " devices compatible with node ",
         FormatNodeDefForError(node_name, has_experimental_debug_info,
                               experimental_debug_info));
     if (was_attr_mismatch) {
@@ -1466,6 +1499,13 @@ Status SupportedDeviceTypesForNode(
         }
       }
     }
+
+    // If we were unable to find any valid devices let's validate if the node is
+    // even valid.
+    if (prioritized_device_types->empty()) {
+      TF_RETURN_IF_ERROR(ValidateNodeDef(def, op_reg_data->op_def));
+    }
+
     std::sort(prioritized_device_types->begin(),
               prioritized_device_types->end(),
               [](const std::pair<DeviceType, int32>& a,
@@ -1677,12 +1717,6 @@ const Eigen::GpuDevice& OpKernelContext::eigen_device() const {
   return eigen_gpu_device();
 }
 
-#ifdef TENSORFLOW_USE_SYCL
-template <>
-const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
-  return eigen_sycl_device();
-}
-#endif
 
 void OpKernelConstruction::CtxFailure(const Status& s) {
   VLOG(1) << s;

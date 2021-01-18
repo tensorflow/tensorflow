@@ -41,7 +41,7 @@ std::string MakeUniqueFilename(string name) {
   static NameCounts& instance = *new NameCounts;
 
   // Remove illegal characters from `name`.
-  for (int i = 0; i < name.size(); ++i) {
+  for (int i = 0, e = name.size(); i < e; ++i) {
     char ch = name[i];
     if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?' ||
         ch == '\\') {
@@ -63,14 +63,14 @@ std::string MakeUniqueFilename(string name) {
   return filename;
 }
 
-// Simple raw_ostream that prints to LOG(INFO).
+// Simple raw_ostream that prints to stderr.
 struct LogInfoRawStream : public llvm::raw_ostream {
   LogInfoRawStream() { SetUnbuffered(); }
   ~LogInfoRawStream() override = default;
   uint64_t current_pos() const override { return 0; }
 
   void write_impl(const char* ptr, size_t size) override {
-    LOG(INFO) << absl::string_view(ptr, size);
+    fprintf(stderr, "%.*s", static_cast<int>(size), ptr);
   }
 };
 
@@ -112,7 +112,7 @@ Status CreateFileForDumping(llvm::StringRef name,
 
   if (dir == "-") {
     *os = std::make_unique<LogInfoRawStream>();
-    *filepath = "LOG(INFO)";
+    *filepath = "(stderr)";
     return Status();
   }
 
@@ -144,7 +144,7 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return result.error_message();
 
-  op->print(*os, mlir::OpPrintingFlags().useLocalScope());
+  op->print(*os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
   LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
             << "' to '" << filepath << "'";
   return filepath;
@@ -180,6 +180,57 @@ std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
   (*os) << content;
   LOG(INFO) << "Outputted requested string to '" << filepath << "'";
   return filepath;
+}
+
+void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
+  std::string path = dir_path.str();
+  if (path.empty()) {
+    if (getenv("MLIR_CRASH_REPRODUCER_DIRECTORY"))
+      path = getenv("MLIR_CRASH_REPRODUCER_DIRECTORY");
+    else if (getenv("TEST_UNDECLARED_OUTPUTS_DIR"))
+      path = "sponge";
+  }
+  if (path.empty()) {
+    LOG_FIRST_N(INFO, 1) << "disabling MLIR crash reproducer, set env var "
+                            "`MLIR_CRASH_REPRODUCER_DIRECTORY` to enable.";
+    return;
+  }
+
+  // Output dirs "sponge" (case-insensitive) have a special meaning: Dump into
+  // the directory specified by the environment variable
+  // TEST_UNDECLARED_OUTPUTS_DIR.
+  string lower_path = absl::AsciiStrToLower(path);
+  if (lower_path == "sponge") {
+    if (!tensorflow::io::GetTestUndeclaredOutputsDir(&path)) {
+      LOG(ERROR) << "MLIR crash reproducer is set to '" << dir_path.str()
+                 << "', but environment variable TEST_UNDECLARED_OUTPUTS_DIR "
+                    "is not set, so cannot dump anywhere.";
+      return;
+    }
+  }
+
+  auto* env = tensorflow::Env::Default();
+  auto status = env->RecursivelyCreateDir(path);
+  if (!status.ok()) {
+    LOG(WARNING) << "cannot create directory '" + path +
+                        "': " + status.error_message();
+    return;
+  }
+
+  path += "/mlir_reproducer_";
+
+  if (!tensorflow::Env::Default()->CreateUniqueFileName(&path, ".mlir")) {
+    LOG(WARNING)
+        << "cannot create unique filename, won't enable MLIR crash reproducer.";
+    return;
+  }
+  pm.enableCrashReproducerGeneration(path, /*genLocalReproducer=*/false);
+}
+
+void applyTensorflowAndCLOptions(mlir::PassManager& pm,
+                                 llvm::StringRef dir_path) {
+  mlir::applyPassManagerCLOptions(pm);
+  SetCrashReproducer(pm, dir_path);
 }
 
 }  // namespace tensorflow

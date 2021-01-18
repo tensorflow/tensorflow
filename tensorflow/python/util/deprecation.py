@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import inspect
 import re
 
 from tensorflow.python.platform import tf_logging as logging
@@ -28,7 +29,7 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util import tf_stack
+from tensorflow.tools.docs import doc_controls
 
 
 # Allow deprecation warnings to be silenced temporarily with a context manager.
@@ -99,15 +100,12 @@ def _validate_deprecation_args(date, instructions):
 
 def _call_location(outer=False):
   """Returns call location given level up from current call."""
-  stack = tf_stack.extract_stack(limit=4)
-  length = len(stack)
-  if length == 0:  # should never happen as we're in a function
-    return 'UNKNOWN'
-  index = length-4 if outer else length-3
-  if index < 0:
-    index = 0
-  frame = stack[index]
-  return '{}:{}'.format(frame.filename, frame.lineno)
+  # Two up: <_call_location>, <_call_location's caller>
+  f = inspect.currentframe().f_back.f_back
+  parent = f.f_back
+  if outer and parent is not None:
+    f = parent
+  return '{}:{}'.format(f.f_code.co_filename, f.f_lineno)
 
 
 def _wrap_decorator(wrapped_function):
@@ -305,8 +303,23 @@ def deprecated(date, instructions, warn_once=True):
   """
   _validate_deprecation_args(date, instructions)
 
-  def deprecated_wrapper(func):
+  def deprecated_wrapper(func_or_class):
     """Deprecation wrapper."""
+    if isinstance(func_or_class, type):
+      # If a class is deprecated, you actually want to wrap the constructor.
+      cls = func_or_class
+      if cls.__new__ is object.__new__:
+        func = cls.__init__
+        constructor_name = '__init__'
+      else:
+        func = cls.__new__
+        constructor_name = '__new__'
+
+    else:
+      cls = None
+      constructor_name = None
+      func = func_or_class
+
     decorator_utils.validate_callable(func, 'deprecated')
     @functools.wraps(func)
     def new_func(*args, **kwargs):  # pylint: disable=missing-docstring
@@ -322,10 +335,25 @@ def deprecated(date, instructions, warn_once=True):
               'in a future version' if date is None else ('after %s' % date),
               instructions)
       return func(*args, **kwargs)
-    return tf_decorator.make_decorator(
+
+    doc_controls.set_deprecated(new_func)
+    new_func = tf_decorator.make_decorator(
         func, new_func, 'deprecated',
         _add_deprecated_function_notice_to_docstring(func.__doc__, date,
                                                      instructions))
+
+    if cls is None:
+      return new_func
+    else:
+      # Insert the wrapped function as the constructor
+      setattr(cls, constructor_name, new_func)
+
+      # And update the docstring of the class.
+      cls.__doc__ = _add_deprecated_function_notice_to_docstring(
+          cls.__doc__, date, instructions)
+
+      return cls
+
   return deprecated_wrapper
 
 

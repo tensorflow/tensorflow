@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace toco {
 
-void LogDumpGraphDef(int log_level, const string& message,
+void LogDumpGraphDef(int log_level, const std::string& message,
                      const tensorflow::GraphDef& tf_graph);
 
 }  // namespace toco

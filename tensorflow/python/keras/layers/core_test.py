@@ -29,7 +29,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -274,6 +275,12 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     expected_out = ragged_factory_ops.constant([[2.0], [3.0, 4.0]])
     self.assertAllClose(out, expected_out)
 
+  def test_lambda_deserialization_does_not_pollute_core(self):
+    layer = keras.layers.Lambda(lambda x: x + 1)
+    config = layer.get_config()
+    keras.layers.Lambda.from_config(config)
+    self.assertNotIn(self.__class__.__name__, dir(core))
+
 
 class TestStatefulLambda(keras_parameterized.TestCase):
 
@@ -317,7 +324,7 @@ class TestStatefulLambda(keras_parameterized.TestCase):
     (    )?  <tf.Variable \'.*shift_and_scale/shift:0\'.+
     (    )?The layer cannot safely ensure proper Variable reuse.+''')
 
-    with self.assertRaisesRegexp(ValueError, expected_error):
+    with self.assertRaisesRegex(ValueError, expected_error):
       layer = keras.layers.Lambda(lambda_fn, name='shift_and_scale')
       model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
       model(array_ops.ones((4, 1)))
@@ -335,7 +342,7 @@ class TestStatefulLambda(keras_parameterized.TestCase):
     (    )?  <tf.Variable \'.*bias_dense/dense/kernel:0\'.+
     (    )?The layer cannot safely ensure proper Variable reuse.+''')
 
-    with self.assertRaisesRegexp(ValueError, expected_error):
+    with self.assertRaisesRegex(ValueError, expected_error):
       layer = keras.layers.Lambda(bad_lambda_fn, name='bias_dense')
       model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
       model(array_ops.ones((4, 1)))
@@ -358,7 +365,7 @@ class TestStatefulLambda(keras_parameterized.TestCase):
       raise ValueError(msg)
     layer._warn = patched_warn
 
-    with self.assertRaisesRegexp(ValueError, expected_warning):
+    with self.assertRaisesRegex(ValueError, expected_warning):
       model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
       model(array_ops.ones((4, 1)))
 
@@ -430,18 +437,24 @@ class CoreLayersTest(keras_parameterized.TestCase):
         kwargs={'target_shape': (-1, 1)},
         input_shape=(None, None, 2))
 
+  def test_reshape_set_static_shape(self):
+    input_layer = keras.Input(batch_shape=(1, None))
+    reshaped = keras.layers.Reshape((1, 100))(input_layer)
+    # Make sure the batch dim is not lost after array_ops.reshape.
+    self.assertEqual(reshaped.shape, [1, 1, 100])
+
   def test_permute(self):
     testing_utils.layer_test(
         keras.layers.Permute, kwargs={'dims': (2, 1)}, input_shape=(3, 2, 4))
 
   def test_permute_errors_on_invalid_starting_dims_index(self):
-    with self.assertRaisesRegexp(ValueError, r'Invalid permutation .*dims.*'):
+    with self.assertRaisesRegex(ValueError, r'Invalid permutation .*dims.*'):
       testing_utils.layer_test(
           keras.layers.Permute,
           kwargs={'dims': (0, 1, 2)}, input_shape=(3, 2, 4))
 
   def test_permute_errors_on_invalid_set_of_dims_indices(self):
-    with self.assertRaisesRegexp(ValueError, r'Invalid permutation .*dims.*'):
+    with self.assertRaisesRegex(ValueError, r'Invalid permutation .*dims.*'):
       testing_utils.layer_test(
           keras.layers.Permute,
           kwargs={'dims': (1, 4, 2)}, input_shape=(3, 2, 4))
@@ -491,14 +504,14 @@ class CoreLayersTest(keras_parameterized.TestCase):
         keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 4, 5, 2))
 
   def test_dense_dtype(self):
-    inputs = ops.convert_to_tensor_v2(
+    inputs = ops.convert_to_tensor_v2_with_dispatch(
         np.random.randint(low=0, high=7, size=(2, 2)))
     layer = keras.layers.Dense(5, dtype='float32')
     outputs = layer(inputs)
     self.assertEqual(outputs.dtype, 'float32')
 
   def test_dense_with_policy(self):
-    inputs = ops.convert_to_tensor_v2(
+    inputs = ops.convert_to_tensor_v2_with_dispatch(
         np.random.randint(low=0, high=7, size=(2, 2)))
     layer = keras.layers.Dense(5, dtype=policy.Policy('mixed_float16'))
     outputs = layer(inputs)
@@ -544,6 +557,21 @@ class CoreLayersTest(keras_parameterized.TestCase):
       layer = keras.layers.Concatenate()
       x, y = np.ones((10, 10)), np.ones((10, 10))
       self.assertAllEqual(np.ones((10, 20)), layer([x, y]))
+
+
+@keras_parameterized.run_all_keras_modes
+class TFOpLambdaTest(keras_parameterized.TestCase):
+
+  def test_non_tf_symbol(self):
+    def dummy_func(a, b):
+      return a + b
+
+    layer = core.TFOpLambda(dummy_func)
+    self.assertIsNone(layer.symbol)
+    self.assertEqual(layer.name, 'dummy_func')
+
+    with self.assertRaisesRegex(ValueError, 'was generated from .*dummy_func'):
+      layer.get_config()
 
 
 if __name__ == '__main__':

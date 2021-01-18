@@ -35,7 +35,11 @@ namespace tensorflow {
 // is not expected to be needed.
 class LocalRendezvous {
  public:
-  LocalRendezvous() = default;
+  // If the class wrapping LocalRendezvous is refcounted (i.e., extending
+  // Rendezvous), pass in its pointer in constructor so the LocalRendezvous
+  // can make sure it outlives the async recv requests.
+  // Pass in nullptr if the wrapping class is not refcounted.
+  explicit LocalRendezvous(Rendezvous* owner) : rc_owner_(owner) {}
   ~LocalRendezvous();
 
   Status Send(const Rendezvous::ParsedKey& key,
@@ -61,6 +65,9 @@ class LocalRendezvous {
   };
 
   typedef gtl::FlatMap<uint64, ItemQueue> Table;
+
+  // Pointer to the owner class of this LocalRendezvous if it is refcounted.
+  const Rendezvous* rc_owner_;
 
   // TODO(zhifengc): shard table_.
   mutex mu_;

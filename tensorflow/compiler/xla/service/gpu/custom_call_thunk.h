@@ -38,19 +38,18 @@ namespace gpu {
 // compiler is allowed to create.
 class CustomCallThunk : public Thunk {
  public:
-  CustomCallThunk(
-      void* call_target,
-      std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices,
-      ShapeTree<BufferAllocation::Slice> result_slices, std::string opaque,
-      const HloInstruction* instr);
+  CustomCallThunk(ThunkInfo thunk_info, void* call_target,
+                  std::vector<BufferAllocation::Slice> operands,
+                  std::vector<BufferAllocation::Slice> results,
+                  const std::string& opaque);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   void* call_target_;
-  std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices_;
-  ShapeTree<BufferAllocation::Slice> result_slices_;
-  std::string opaque_;
+  const std::vector<BufferAllocation::Slice> operands_;
+  const std::vector<BufferAllocation::Slice> results_;
+  const std::string opaque_;
 };
 
 }  // namespace gpu

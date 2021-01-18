@@ -1,10 +1,15 @@
 # Description:
 #   MLIR-GPU-specific components in XLA service implementation.
 
-load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
+load("//third_party/mlir:tblgen.bzl", "gentbl")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
     default_visibility = [":friends"],
@@ -25,118 +30,33 @@ filegroup(
     ]),
 )
 
-cc_library(
-    name = "failover_compiler",
-    srcs = ["failover_compiler.cc"],
-    hdrs = ["failover_compiler.h"],
-    deps = [
-        "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/core:lib",
-    ],
+gentbl(
+    name = "passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [("-gen-pass-decls -name XlaMlirGpu", "passes.h.inc")],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes.td",
+    td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
 cc_library(
-    name = "emission_context",
-    srcs = ["emission_context.cc"],
-    hdrs = ["emission_context.h"],
+    name = "passes",
+    srcs = ["passes.cc"],
+    hdrs = ["passes.h"],
     deps = [
-        "//tensorflow/compiler/xla/service:hlo",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "inject_errors_pass",
-    srcs = ["inject_errors_pass.cc"],
-    hdrs = ["inject_errors_pass.h"],
-    deps = [
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-    ],
-)
-
-cc_library(
-    name = "mlir_compiler",
-    srcs = if_cuda_is_configured(["mlir_compiler.cc"]),
-    hdrs = if_cuda_is_configured(["mlir_compiler.h"]),
-    deps = if_cuda_is_configured([
-        ":emission_context",
-        ":failover_compiler",
-        ":kernel_lowering",
-        ":lhlo_dialect_emitter",
-        "@com_google_absl//absl/container:flat_hash_map",
+        ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TargetNVVMIR",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/compiler/xla/service:dump",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/gpu:gpu_constants",
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
-        "//tensorflow/compiler/xla/service/gpu:gpu_hlo_schedule",
-        "//tensorflow/compiler/xla/service/gpu:gpu_types",
-        "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
-        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
-        "//tensorflow/compiler/xla/service/gpu:partition_assignment",
-        "//tensorflow/compiler/xla/service/gpu:stream_assignment",
-        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
-        "//tensorflow/compiler/xla/service/gpu:target_constants",
-        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
-        "//tensorflow/core:cuda_libdevice_path",
-        "//tensorflow/core:lib",
-        "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/stream_executor/gpu:asm_compiler",
-    ]),
-    alwayslink = True,  # Contains compiler registration
-)
-
-cc_library(
-    name = "hlo_dialect_emitter",
-    srcs = ["hlo_dialect_emitter.cc"],
-    hdrs = ["hlo_dialect_emitter.h"],
-    deps = [
-        ":emission_context",
-        "//tensorflow/compiler/mlir/xla:hlo",
-        "//tensorflow/compiler/mlir/xla:hlo_utils",
-        "//tensorflow/compiler/xla:comparison_util",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla/service:hlo",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:StandardOps",
-    ],
-)
-
-cc_library(
-    name = "lhlo_dialect_emitter",
-    srcs = ["lhlo_dialect_emitter.cc"],
-    hdrs = ["lhlo_dialect_emitter.h"],
-    deps = [
-        ":emission_context",
-        ":hlo_dialect_emitter",
-        "//tensorflow/compiler/mlir/xla:hlo_utils",
-        "//tensorflow/compiler/mlir/xla:lhlo",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/gpu:thunk",
-        "//tensorflow/compiler/xla/service/gpu:thunk_emitter",
-        "//tensorflow/core:lib",
-        "//tensorflow/stream_executor:stream_executor_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -145,63 +65,56 @@ cc_library(
     srcs = ["kernel_lowering.cc"],
     hdrs = ["kernel_lowering.h"],
     deps = [
-        "//tensorflow/compiler/mlir/xla:hlo",
-        "//tensorflow/compiler/mlir/xla:hlo_legalize_to_lhlo",
-        "//tensorflow/compiler/mlir/xla:lhlo",
-        "//tensorflow/compiler/mlir/xla:lhlo_copy_removal",
-        "//tensorflow/compiler/mlir/xla:lhlo_fuse_linalg",
-        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_affine",
-        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_gpu",
-        "//tensorflow/compiler/mlir/xla:xla_dialect_registration",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_to_linalg",
+        ":passes",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
+        "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
+        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
+        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
+        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@llvm-project//mlir:AffineToStandardTransforms",
         "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToNVVMTransforms",
+        "@llvm-project//mlir:GPUToROCDLTransforms",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
-        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgToLLVM",
         "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:LoopOps",
-        "@llvm-project//mlir:LoopsToGPUPass",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ROCDLDialect",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFToGPUPass",
+        "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
 )
 
-cc_library(
-    name = "mlir_irgen_test_base",
-    testonly = True,
-    srcs = if_cuda_is_configured(["mlir_irgen_test_base.cc"]),
-    hdrs = if_cuda_is_configured(["mlir_irgen_test_base.h"]),
+tf_cc_binary(
+    name = "xla-mlir-gpu-opt",
+    srcs = ["xla_mlir_gpu_opt.cc"],
+    visibility = ["//tensorflow/compiler/xla/service/mlir_gpu/tests:__subpackages__"],
     deps = [
-        ":emission_context",
-        ":failover_compiler",
-        ":inject_errors_pass",
-        ":mlir_compiler",
-        "//tensorflow/compiler/mlir/xla:hlo_utils",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/tests:codegen_test_base",
-        "//tensorflow/compiler/xla/tests:filecheck",
-        "//tensorflow/compiler/xla/tests:verified_hlo_module",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/platform:test",
-        "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:support",
+        ":passes",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:Support",
     ],
 )

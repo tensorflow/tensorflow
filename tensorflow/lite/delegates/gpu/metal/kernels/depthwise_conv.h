@@ -21,16 +21,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
-    int id, ValueId input_id, ValueId output_id,
-    const DepthwiseConvolution2DAttributes& attr,
-    const RuntimeOptions& options);
+ComputeTaskDescriptor DepthWiseConvolution(
+    const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr);
 
 // Depth Wise Convolution for kernel 3x3
 // require:
@@ -38,10 +36,9 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
 //   kernel_size = 3x3;
 //   dilation = 1x1;
 //   stride = 1x1;
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
-    int id, ValueId input_id, ValueId output_id,
-    const DepthwiseConvolution2DAttributes& attr,
-    const RuntimeOptions& options);
+ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
+    const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr);
 
 // TODO(impjdi): Move it inside module.
 bool CheckDepthWiseConv3x3Stride1x1Support(
@@ -53,10 +50,9 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
 //   kernel_size = 3x3;
 //   dilation.y = 1;
 //   stride.y = 2;
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
-    int id, ValueId input_id, ValueId output_id,
-    const DepthwiseConvolution2DAttributes& attr,
-    const RuntimeOptions& options);
+ComputeTaskDescriptor DepthWiseConv3x3Stride2(
+    const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr);
 
 // TODO(impjdi): Move it inside module.
 bool CheckDepthWiseConv3x3Stride2Support(

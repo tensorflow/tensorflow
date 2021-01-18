@@ -115,21 +115,30 @@ class BFCAllocator : public Allocator {
   bool MergeTimestampedChunks(size_t required_bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
+  // Return the largest free chunk bytes from the largest bin in constant time.
+  // The free chunks are sorted by size (and then address) in a bin.
+  int64 LargestFreeChunk() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
   // Add TraceMe (in memory allocation and deallocation) for memory stats
   // profiling. The chunk_ptr is passed to get information such as address,
   // chunk size and requested_size.
-  void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr)
+  void AddTraceMe(absl::string_view traceme_name, const void* ptr)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Overloaded AddTraceMe function with chunk information.
+  void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
+                  int64 req_bytes, int64 alloc_bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
   // kInvalidChunkHandle means an invalid chunk
   typedef size_t ChunkHandle;
-  static const int kInvalidChunkHandle = -1;
+  static constexpr ChunkHandle kInvalidChunkHandle = SIZE_MAX;
 
   typedef int BinNum;
-  static const int kInvalidBinNum = -1;
+  static constexpr int kInvalidBinNum = -1;
   // The following means that the largest bin'd chunk size is 256 << 21 = 512MB.
-  static const int kNumBins = 21;
+  static constexpr int kNumBins = 21;
 
   // A Chunk points to a piece of memory that's either entirely free or entirely
   // in use by one user memory allocation.
@@ -243,8 +252,8 @@ class BFCAllocator : public Allocator {
         : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
   };
 
-  static const size_t kMinAllocationBits = 8;
-  static const size_t kMinAllocationSize = 1 << kMinAllocationBits;
+  static constexpr size_t kMinAllocationBits = 8;
+  static constexpr size_t kMinAllocationSize = 1 << kMinAllocationBits;
 
   // BFCAllocator allocates memory into a collection of disjoint
   // AllocationRegions.  Each AllocationRegion corresponds to one call to
@@ -267,10 +276,7 @@ class BFCAllocator : public Allocator {
       DCHECK_EQ(0, memory_size % kMinAllocationSize);
       const size_t n_handles =
           (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
-      handles_.reset(new ChunkHandle[n_handles]);
-      for (size_t i = 0; i < n_handles; i++) {
-        handles_[i] = kInvalidChunkHandle;
-      }
+      handles_.resize(n_handles, kInvalidChunkHandle);
     }
 
     AllocationRegion() = default;
@@ -283,6 +289,15 @@ class BFCAllocator : public Allocator {
     void* ptr() const { return ptr_; }
     void* end_ptr() const { return end_ptr_; }
     size_t memory_size() const { return memory_size_; }
+    void extend(size_t size) {
+      memory_size_ += size;
+      DCHECK_EQ(0, memory_size_ % kMinAllocationSize);
+
+      end_ptr_ = static_cast<void*>(static_cast<char*>(end_ptr_) + size);
+      const size_t n_handles =
+          (memory_size_ + kMinAllocationSize - 1) / kMinAllocationSize;
+      handles_.resize(n_handles, kInvalidChunkHandle);
+    }
     ChunkHandle get_handle(const void* p) const {
       return handles_[IndexFor(p)];
     }
@@ -313,7 +328,7 @@ class BFCAllocator : public Allocator {
     // Array of size "memory_size / kMinAllocationSize".  It is
     // indexed by (p-base) / kMinAllocationSize, contains ChunkHandle
     // for the memory allocation represented by "p"
-    std::unique_ptr<ChunkHandle[]> handles_;
+    std::vector<ChunkHandle> handles_;
 
     TF_DISALLOW_COPY_AND_ASSIGN(AllocationRegion);
   };
@@ -329,10 +344,41 @@ class BFCAllocator : public Allocator {
     ~RegionManager() {}
 
     void AddAllocationRegion(void* ptr, size_t memory_size) {
-      // Insert sorted by end_ptr
+      // Insert sorted by end_ptr.
       auto entry =
           std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
       regions_.insert(entry, AllocationRegion(ptr, memory_size));
+    }
+
+    // Adds an alloation region for the given ptr and size, potentially
+    // extending a region if ptr matches the end_ptr of an existing region.
+    // If a region is extended, returns a pointer to the extended region so that
+    // the BFC allocator can reason about chunkification.
+    AllocationRegion* AddOrExtendAllocationRegion(void* ptr,
+                                                  size_t memory_size) {
+      // Insert sorted by end_ptr.
+      auto entry =
+          std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
+      // Check if can be coalesced with preceding region.
+      if (entry != regions_.begin()) {
+        auto preceding_region = entry - 1;
+        if (preceding_region->end_ptr() == ptr) {
+          if (VLOG_IS_ON(1)) {
+            LOG(INFO) << "Extending region " << preceding_region->ptr()
+                      << " of "
+                      << strings::HumanReadableNumBytes(
+                             preceding_region->memory_size())
+                      << "  by " << strings::HumanReadableNumBytes(memory_size)
+                      << " bytes";
+          }
+          preceding_region->extend(memory_size);
+          return &*preceding_region;
+        }
+      }
+      VLOG(1) << "Inserting new region " << ptr << " of "
+              << strings::HumanReadableNumBytes(memory_size);
+      regions_.insert(entry, AllocationRegion(ptr, memory_size));
+      return nullptr;
     }
 
     std::vector<AllocationRegion>::iterator RemoveAllocationRegion(
@@ -516,7 +562,14 @@ class BFCAllocator : public Allocator {
 
   // Whether the allocator will deallocate free regions to avoid OOM due to
   // memory fragmentation.
-  bool garbage_collection_;
+  const bool garbage_collection_;
+
+  // Whether the allocator will coalesce adjacent sub allocator provided
+  // AllocationRegions. This may be disabled if discrete sub allocator
+  // regions can't be treated as contiguous (e.g. if the allocation refers to
+  // device visible memory which is not adjacent to the other region in the
+  // device's address space).
+  const bool coalesce_regions_;
 
   std::unique_ptr<SubAllocator> sub_allocator_;
   string name_;

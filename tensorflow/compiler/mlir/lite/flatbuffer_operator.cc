@@ -23,9 +23,9 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
@@ -95,50 +95,44 @@ static tflite::MirrorPadMode ConvertTFL_MirrorPaddingAttrForOptionWriter(
 
 static tflite::TensorType ConvertDerivedTypeAttrForOptionWriter(
     mlir::Type type, flatbuffers::FlatBufferBuilder* builder) {
-  switch (type.getKind()) {
-    case mlir::StandardTypes::F16:
-      return tflite::TensorType_FLOAT16;
-    case mlir::StandardTypes::F32:
-      return tflite::TensorType_FLOAT32;
-    case mlir::TF::TensorFlowTypes::STRING:
-      return tflite::TensorType_STRING;
-    case mlir::StandardTypes::Complex: {
-      auto etype = type.cast<mlir::ComplexType>().getElementType();
-      if (etype.isF32()) {
-        return tflite::TensorType_COMPLEX64;
-      }
-      llvm_unreachable("invalid complex Type in conversion");
+  if (type.isF16()) {
+    return tflite::TensorType_FLOAT16;
+  } else if (type.isF32()) {
+    return tflite::TensorType_FLOAT32;
+  } else if (type.isa<mlir::TF::StringType>()) {
+    return tflite::TensorType_STRING;
+  } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+    if (complex_type.getElementType().isF32()) {
+      return tflite::TensorType_COMPLEX64;
     }
-    case mlir::StandardTypes::Integer: {
-      const auto& itype = type.cast<mlir::IntegerType>();
-      switch (itype.getWidth()) {
-        case 1:
-          return tflite::TensorType_BOOL;
-        case 8:
-          return tflite::TensorType_INT8;
-        case 16:
-          return tflite::TensorType_INT16;
-        case 32:
-          return tflite::TensorType_INT32;
-        case 64:
-          return tflite::TensorType_INT64;
-        default:
-          llvm_unreachable("invalid integer Type in conversion");
-      }
+    llvm_unreachable("invalid complex Type in conversion");
+  } else if (auto itype = type.dyn_cast<mlir::IntegerType>()) {
+    switch (itype.getWidth()) {
+      case 1:
+        return tflite::TensorType_BOOL;
+      case 8:
+        return tflite::TensorType_INT8;
+      case 16:
+        return tflite::TensorType_INT16;
+      case 32:
+        return tflite::TensorType_INT32;
+      case 64:
+        return tflite::TensorType_INT64;
+      default:
+        llvm_unreachable("invalid integer Type in conversion");
     }
-    default:
-      llvm_unreachable("invalid Type in conversion");
   }
+  llvm_unreachable("invalid Type in conversion");
 }
 
 // I32Attr already returns an int as required by flatbuffer builders.
 static int ConvertI32AttrForOptionWriter(
-    llvm::APInt i, flatbuffers::FlatBufferBuilder* builder) {
-  return i.getSExtValue();
+    int i, flatbuffers::FlatBufferBuilder* builder) {
+  return i;
 }
 
 static int ConvertPositiveI32AttrForOptionWriter(
-    llvm::APInt i, flatbuffers::FlatBufferBuilder* builder) {
+    int i, flatbuffers::FlatBufferBuilder* builder) {
   return ConvertI32AttrForOptionWriter(i, builder);
 }
 
@@ -243,42 +237,22 @@ static mlir::Attribute BuildTFL_PaddingAttr(tflite::Padding value,
 }
 
 Status mlir::CustomOptionsToAttributes(
-    const std::string& op_name, const std::vector<uint8_t>& custom_options,
+    const std::string& custom_code, const std::vector<uint8_t>& custom_options,
     mlir::Builder builder, mlir::Location loc,
     llvm::SmallVectorImpl<mlir::NamedAttribute>* attributes) {
-  if (op_name == "tfl.max_pooling_with_argmax_2d" ||
-      op_name == "tfl.max_unpooling_2d") {
-    auto* pool_params =
-        reinterpret_cast<const TfLitePoolParams*>(custom_options.data());
-    TF_ASSIGN_OR_RETURN(auto padding_attribute,
-                        GetPaddingAttr(pool_params->padding, builder, loc));
-    attributes->emplace_back(
-        builder.getNamedAttr("padding", padding_attribute));
-    attributes->emplace_back(builder.getNamedAttr(
-        "stride_h", builder.getI32IntegerAttr(pool_params->stride_height)));
-    attributes->emplace_back(builder.getNamedAttr(
-        "stride_w", builder.getI32IntegerAttr(pool_params->stride_width)));
-    attributes->emplace_back(builder.getNamedAttr(
-        "filter_h", builder.getI32IntegerAttr(pool_params->filter_height)));
-    attributes->emplace_back(builder.getNamedAttr(
-        "filter_w", builder.getI32IntegerAttr(pool_params->filter_width)));
-    return Status::OK();
+  attributes->emplace_back(
+      builder.getNamedAttr("custom_code", builder.getStringAttr(custom_code)));
+  std::string content;
+  content.assign(reinterpret_cast<const char*>(custom_options.data()),
+                 custom_options.size());
+  ShapedType type = RankedTensorType::get(
+      {static_cast<int64_t>(custom_options.size())}, builder.getIntegerType(8));
+  attributes->emplace_back(builder.getNamedAttr(
+      "custom_option",
+      OpaqueElementsAttr::get(builder.getContext()->getLoadedDialect("tfl"),
+                              type, content)));
 
-  } else if (op_name == "tfl.convolution_2d_transpose_bias") {
-    auto* conv_params = reinterpret_cast<const TfLiteTransposeConvParams*>(
-        custom_options.data());
-    TF_ASSIGN_OR_RETURN(auto padding_attribute,
-                        GetPaddingAttr(conv_params->padding, builder, loc));
-    attributes->emplace_back(
-        builder.getNamedAttr("padding", padding_attribute));
-    attributes->emplace_back(builder.getNamedAttr(
-        "stride_h", builder.getI32IntegerAttr(conv_params->stride_height)));
-    attributes->emplace_back(builder.getNamedAttr(
-        "stride_w", builder.getI32IntegerAttr(conv_params->stride_width)));
-    return Status::OK();
-  }
-
-  return InvalidArgument(absl::StrCat("invalid custom op type: ", op_name));
+  return Status::OK();
 }
 
 // Pull in FlatBuffer writers for TFLite generated using TableGen

@@ -28,6 +28,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@CsvDataset
 @@DatasetStructure
 @@DistributeOptions
+@@ExternalStatePolicy
 @@MapVectorizationOptions
 @@OptimizationOptions
 @@Optional
@@ -53,6 +54,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@copy_to_device
 @@dense_to_ragged_batch
 @@dense_to_sparse_batch
+@@distribute
 @@enumerate_dataset
 @@from_variant
 @@get_next_as_optional
@@ -62,6 +64,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@group_by_window
 @@ignore_errors
 @@latency_stats
+@@load
 @@make_batched_features_dataset
 @@make_csv_dataset
 @@make_saveable_from_iterator
@@ -72,8 +75,10 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@prefetch_to_device
 @@rejection_resample
 @@sample_from_datasets
+@@save
 @@scan
 @@shuffle_and_repeat
+@@snapshot
 @@take_while
 @@to_variant
 @@unbatch
@@ -89,6 +94,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
+from tensorflow.python.data.experimental import service
 from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
@@ -101,6 +107,7 @@ from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNO
 from tensorflow.python.data.experimental.ops.counter import Counter
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.ops.distribute_options import DistributeOptions
+from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
 from tensorflow.python.data.experimental.ops.get_single_element import get_single_element
@@ -111,6 +118,8 @@ from tensorflow.python.data.experimental.ops.grouping import Reducer
 from tensorflow.python.data.experimental.ops.interleave_ops import choose_from_datasets
 from tensorflow.python.data.experimental.ops.interleave_ops import parallel_interleave
 from tensorflow.python.data.experimental.ops.interleave_ops import sample_from_datasets
+from tensorflow.python.data.experimental.ops.io import load
+from tensorflow.python.data.experimental.ops.io import save
 from tensorflow.python.data.experimental.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
 from tensorflow.python.data.experimental.ops.optimization_options import MapVectorizationOptions
@@ -126,6 +135,7 @@ from tensorflow.python.data.experimental.ops.readers import SqlDataset
 from tensorflow.python.data.experimental.ops.resampling import rejection_resample
 from tensorflow.python.data.experimental.ops.scan_ops import scan
 from tensorflow.python.data.experimental.ops.shuffle_ops import shuffle_and_repeat
+from tensorflow.python.data.experimental.ops.snapshot import snapshot
 from tensorflow.python.data.experimental.ops.stats_aggregator import StatsAggregator
 from tensorflow.python.data.experimental.ops.stats_ops import bytes_produced_stats
 from tensorflow.python.data.experimental.ops.stats_ops import latency_stats
@@ -150,4 +160,9 @@ from tensorflow.python.framework.type_spec import TypeSpec as Structure
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
-remove_undocumented(__name__)
+
+_allowed_symbols = [
+    "service",
+]
+
+remove_undocumented(__name__, _allowed_symbols)

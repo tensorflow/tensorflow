@@ -374,8 +374,8 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
   const int64 stride_w = GetTensorDim(strides, data_format, 'W');
   TF_REQUIRES(
       stride_n == 1 && stride_c == 1,
-      errors::InvalidArgument("Current implementation does not yet support "
-                              "strides in the batch and depth dimensions."));
+      errors::Unimplemented("Current implementation does not yet support "
+                            "strides in the batch and depth dimensions."));
   TF_REQUIRES(stride_h > 0 && stride_w > 0,
               errors::InvalidArgument(
                   "Row and column strides should be larger than 0."));
@@ -386,8 +386,8 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
   const int64 dilation_w = GetTensorDim(dilations, data_format, 'W');
   TF_REQUIRES(
       dilation_n == 1 && dilation_c == 1,
-      errors::InvalidArgument("Current implementation does not yet support "
-                              "dilations in the batch and depth dimensions."));
+      errors::Unimplemented("Current implementation does not yet support "
+                            "dilations in the batch and depth dimensions."));
   TF_REQUIRES(
       dilation_h > 0 && dilation_w > 0,
       errors::InvalidArgument("Dilated rates should be larger than 0."));
@@ -512,7 +512,6 @@ class Conv2DOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, InitConv2DParameters(context, &params_));
 
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
-    use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
 
@@ -828,7 +827,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         {{static_cast<int>(input_pad_top), static_cast<int>(input_pad_left)}},
         {{static_cast<int>(input_pad_bottom),
           static_cast<int>(input_pad_right)}},
-        To32Bit(transformed_input.tensor<T, 4>()), data_format);
+        To32Bit(transformed_input.tensor<T, 4>()), data_format, T{});
 
     input = transformed_input;
     in_rows = new_in_rows;
@@ -1012,7 +1011,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
     std::vector<tensorflow::AutotuneResult> results;
-    for (auto profile_algorithm : algorithms) {
+    for (const auto& profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       se::RedzoneAllocator rz_scratch_allocator(
@@ -1025,14 +1024,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
               : static_cast<se::ScratchAllocator*>(&scratch_allocator);
 
       ProfileResult profile_result;
-      bool cudnn_launch_status =
-          stream
-              ->ThenConvolveWithAlgorithm(
-                  input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                  output_desc, &output_tensor, allocator_used,
-                  AlgorithmConfig(profile_algorithm), &profile_result)
-              .ok();
-      if (cudnn_launch_status && profile_result.is_valid()) {
+      auto cudnn_launch_status = stream->ConvolveWithAlgorithm(
+          input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+          output_desc, &output_tensor, allocator_used,
+          AlgorithmConfig(profile_algorithm), &profile_result);
+      if (cudnn_launch_status.ok() && profile_result.is_valid()) {
         results.emplace_back();
         auto& result = results.back();
         result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
@@ -1052,16 +1048,19 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     }
 
 #elif TENSORFLOW_USE_ROCM
+    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+
     std::vector<ProfileResult> algorithms;
-    OP_REQUIRES(ctx,
-                stream->parent()->GetMIOpenConvolveAlgorithms(
-                    se::dnn::ConvolutionKind::FORWARD, stream,
-                    se::dnn::ToDataType<T>::value, input_desc, filter_desc,
-                    conv_desc, output_desc, &algorithms),
-                errors::Unknown(
-                    "Failed to get convolution algorithm. This is probably "
-                    "because MIOpen failed to initialize, so try looking to "
-                    "see if a warning log message was printed above."));
+    OP_REQUIRES(
+        ctx,
+        stream->parent()->GetMIOpenConvolveAlgorithms(
+            se::dnn::ConvolutionKind::FORWARD, se::dnn::ToDataType<T>::value,
+            stream, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
+            output_ptr, conv_desc, &scratch_allocator, &algorithms),
+        errors::Unknown(
+            "Failed to get convolution algorithm. This is probably "
+            "because MIOpen failed to initialize, so try looking to "
+            "see if a warning log message was printed above."));
     se::DeviceMemory<T> output_tensor = output_ptr;
 
     std::vector<tensorflow::AutotuneResult> results;
@@ -1080,17 +1079,13 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     } else {
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
-        DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
         ProfileResult profile_result;
-        bool miopen_launch_status = false;
-        miopen_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-        if (miopen_launch_status && profile_result.is_valid()) {
+        auto miopen_launch_status = stream->ConvolveWithAlgorithm(
+            input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+            output_desc, &output_ptr, &scratch_allocator,
+            AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
+            &profile_result);
+        if (miopen_launch_status.ok() && profile_result.is_valid()) {
           results.emplace_back();
           auto& result = results.back();
           result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
@@ -1118,18 +1113,12 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
           << algorithm_config.algorithm()->tensor_ops_enabled();
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-  bool cudnn_launch_status =
-      stream
-          ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
-                                      filter_ptr, conv_desc, output_desc,
-                                      &output_ptr, &scratch_allocator,
-                                      algorithm_config, nullptr)
-          .ok();
+  auto cudnn_launch_status = stream->ConvolveWithAlgorithm(
+      input_desc, input_ptr, filter_desc, filter_ptr, conv_desc, output_desc,
+      &output_ptr, &scratch_allocator, algorithm_config, nullptr);
 
-  if (!cudnn_launch_status) {
-    ctx->SetStatus(errors::Internal(
-        "cuDNN launch failure : input shape(", input.shape().DebugString(),
-        ") filter shape(", filter.shape().DebugString(), ")"));
+  if (!cudnn_launch_status.ok()) {
+    ctx->SetStatus(cudnn_launch_status);
   }
 
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
@@ -1180,7 +1169,8 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
       const std::array<int, 2>& padding_left,                               \
       const std::array<int, 2>& padding_right,                              \
-      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format);    \
+      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format,     \
+      const T& padding_value);                                              \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
 DECLARE_GPU_SPEC(float);

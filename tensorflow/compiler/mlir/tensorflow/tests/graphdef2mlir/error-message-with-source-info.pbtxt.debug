@@ -4,6 +4,7 @@ traces: {
     value: {
       file_line_cols: {
         line      : 1
+        col       : 1
       }
     }
 }
@@ -12,9 +13,11 @@ traces: {
     value: {
       file_line_cols: {
         line      : 3
+        col       : 1
       }
       file_line_cols: {
         line      : 4
+        col       : 1
       }
     }
 }
@@ -23,6 +26,7 @@ traces: {
     value: {
       file_line_cols: {
         line      : 2
+        col       : 1
       }
     }
 }

@@ -12,7 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
+
 #include <stdlib.h>
+
 #include <string>
 #include <vector>
 
@@ -21,10 +24,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
-#include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
@@ -45,16 +48,16 @@ class RpcCollectiveExecutorMgrTest : public ::testing::Test {
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
     device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
-    std::unique_ptr<DeviceResolverDistributed> dr(new DeviceResolverDistributed(
-        device_mgr_.get(), worker_cache, task_name));
+    std::unique_ptr<DeviceResolverDistributed> dr(
+        new DeviceResolverDistributed(device_mgr_.get()));
     std::unique_ptr<CollectiveParamResolverDistributed> cpr(
         new CollectiveParamResolverDistributed(options.config,
                                                device_mgr_.get(), dr.get(),
                                                worker_cache, task_name));
     // This CME is the group leader.
-    cme_.reset(new RpcCollectiveExecutorMgr(options.config, device_mgr_.get(),
-                                            std::move(dr), std::move(cpr),
-                                            worker_cache, task_name));
+    cme_.reset(new RpcCollectiveExecutorMgr(
+        options.config, device_mgr_.get(), std::move(dr), std::move(cpr),
+        MaybeCreateNcclCommunicator(), worker_cache, task_name));
   }
 
   std::unique_ptr<RpcCollectiveExecutorMgr> cme_;

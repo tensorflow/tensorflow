@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_expression.h"
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -113,7 +116,10 @@ class XlaOpKernelContext {
   // returns a one-element list.
   Status InputList(absl::string_view name, std::vector<xla::XlaOp>* handles,
                    std::vector<TensorShape>* shapes);
-
+  // Evaluates input and returns their dynamism vector in a vector of
+  // predicates.
+  Status ResolveInputDynamismIntoPredVector(int index, std::vector<bool>* out);
+  Status ResolveInputDynamismIntoPred(int index, bool* out);
   // Helper methods for constant inputs.
 
   // Evaluates input `index` and stores it in `*constant_literal`. If the
@@ -217,6 +223,8 @@ class XlaOpKernelContext {
     return dynamic_dimension_is_minus_one_;
   }
 
+  bool is_dynamic_dimension(int64 dim_size) { return dim_size == -1; }
+
   // Reads the current value of the resource variable referred to by input
   // `index`. If `shape` is not nullptr, sets `*shape` to the shape of the
   // variable. Returns an error if the variable has not been initialized, or if
@@ -282,12 +290,9 @@ class XlaOpKernelContext {
   // separate specialization of the computation for each DataType.
   const xla::XlaComputation* GetOrCreateMul(const DataType type);
 
-  // Assigns an XlaExpression to a tensor on an XLA compilation device.
-  static void AssignExpressionToTensor(const XlaExpression& value,
-                                       Tensor* tensor);
-
-  // Retrieves an XlaExpression that was assigned to the specified tensor.
-  static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);
+  // Returns stack trace encoded as a string at a given module, or an empty
+  // string if none found.
+  std::string StackTrace() const;
 
  private:
   // Returns the tensor of input `name`.

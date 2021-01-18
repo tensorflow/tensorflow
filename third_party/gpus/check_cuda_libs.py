@@ -14,7 +14,7 @@
 # ==============================================================================
 """Verifies that a list of libraries is installed on the system.
 
-Takes a a list of arguments with every two subsequent arguments being a logical
+Takes a list of arguments with every two subsequent arguments being a logical
 tuple of (path, check_soname). The path to the library and either True or False
 to indicate whether to check the soname field on the shared library.
 
@@ -59,10 +59,10 @@ def check_cuda_lib(path, check_soname=True):
   objdump = which("objdump")
   if check_soname and objdump is not None and not _is_windows():
     # Decode is necessary as in py3 the return type changed from str to bytes
-    output = subprocess.check_output([objdump, "-p", path]).decode("ascii")
+    output = subprocess.check_output([objdump, "-p", path]).decode("utf-8")
     output = [line for line in output.splitlines() if "SONAME" in line]
     sonames = [line.strip().split(" ")[-1] for line in output]
-    if not any([soname == os.path.basename(path) for soname in sonames]):
+    if not any(soname == os.path.basename(path) for soname in sonames):
       raise ConfigError("None of the libraries match their SONAME: " + path)
 
 
@@ -86,4 +86,3 @@ def main():
 
 if __name__ == "__main__":
   main()
-

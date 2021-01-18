@@ -634,6 +634,40 @@ TEST(CAPI, Graph) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, UpdateEdge) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Make two scalar constants.
+  TF_Operation* one = ScalarConst(1, graph, s, "one");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* two = ScalarConst(2, graph, s, "two");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Add oper.
+  TF_Operation* add = Add(one, two, graph, s, "add");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Add another oper to the graph.
+  TF_Operation* neg = Neg(add, graph, s, "neg");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  NodeDef node_def_neg;
+  ASSERT_TRUE(GetNodeDef(neg, &node_def_neg));
+  EXPECT_EQ(string("add"), node_def_neg.input(0));
+
+  // update edge of neg
+  TF_UpdateEdge(graph, TF_Output{one, 0}, TF_Input{neg, 0}, s);
+
+  ASSERT_TRUE(GetNodeDef(neg, &node_def_neg));
+  EXPECT_EQ(string("one:0"), node_def_neg.input(0));
+
+  // Clean up
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 /*
 TODO(skyewm): this test currently DCHECKs, change to bad status
 
@@ -2286,14 +2320,15 @@ TEST_F(CApiAttributesTest, Tensor) {
 
 TEST_F(CApiAttributesTest, StringTensor) {
   // Create the string-Tensor "attribute" value.
-  char encoded[] = {
-      0,   0, 0, 0, 0, 0, 0, 0,  // array[uint64] offsets
-      1,                         // varint encoded string length
-      'A',
-  };
+  const char test_string[] =
+      "borkborkborkborkborkborkborkbork";  // >24bytes to force heap alloc
+  TF_TString tstr[1];
+  TF_TString_Init(&tstr[0]);
+  TF_TString_Copy(&tstr[0], test_string, sizeof(test_string) - 1);
+
   auto deallocator = [](void* data, size_t len, void* arg) {};
-  unique_tensor_ptr t_in(TF_NewTensor(TF_STRING, nullptr, 0, &encoded[0],
-                                      sizeof(encoded), deallocator, nullptr),
+  unique_tensor_ptr t_in(TF_NewTensor(TF_STRING, nullptr, 0, &tstr[0],
+                                      sizeof(tstr), deallocator, nullptr),
                          TF_DeleteTensor);
 
   // Create a TF_Operation with the attribute t_in
@@ -2312,9 +2347,17 @@ TEST_F(CApiAttributesTest, StringTensor) {
   EXPECT_EQ(TF_STRING, TF_TensorType(t_out));
   EXPECT_EQ(0, TF_NumDims(t_out));
   ASSERT_EQ(TF_TensorByteSize(t_in.get()), TF_TensorByteSize(t_out));
-  EXPECT_EQ(0, memcmp(TF_TensorData(t_in.get()), TF_TensorData(t_out),
-                      TF_TensorByteSize(t_out)));
+  TF_TString* t_in_tstr = static_cast<TF_TString*>(TF_TensorData(t_in.get()));
+  TF_TString* t_out_tstr = static_cast<TF_TString*>(TF_TensorData(t_out));
+  EXPECT_EQ(absl::string_view(test_string),
+            absl::string_view(TF_TString_GetDataPointer(t_out_tstr),
+                              TF_TString_GetSize(t_out_tstr)));
+  EXPECT_EQ(absl::string_view(TF_TString_GetDataPointer(t_in_tstr),
+                              TF_TString_GetSize(t_in_tstr)),
+            absl::string_view(TF_TString_GetDataPointer(t_out_tstr),
+                              TF_TString_GetSize(t_out_tstr)));
   TF_DeleteTensor(t_out);
+  TF_TString_Dealloc(&tstr[0]);
 }
 
 TEST_F(CApiAttributesTest, TensorList) {

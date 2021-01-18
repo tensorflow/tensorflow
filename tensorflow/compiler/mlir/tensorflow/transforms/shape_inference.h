@@ -18,38 +18,26 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
-
 namespace TF {
 
-// Performs shape inference on the provided op and return true if the type of
-// at least one result has been changed.
-// A tf.Cast() is inserted for any uses that isn't in the TensorFlow dialect.
-// `graph_version` indicates the current GraphDef compatibility versions
-// (the versions field in graph.proto).
-bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
-                                  int64_t graph_version);
-
-// Infers shape on the provided region, including nested ones, iterate until fix
-// point with a limit of max_iteration. Returns success if fix point is reached
-// before max_iteration.
-LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
-                                      int64_t max_iteration = 10);
+// Refines all the shapes in a module.
+LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations = 10);
 
 // Given a list of refined shapes matching the function arguments of func, runs
 // shape inference over the function to propagate this updated information.
+// If arg_shapes are empty, then argument shapes will be left unchanged.
+// Note: This affects the entire module, and changes are not just scoped to the
+// function being inferred.
 LogicalResult InferShapeForFunction(FuncOp func,
                                     ArrayRef<ArrayRef<int64_t>> arg_shapes,
-                                    int64_t graph_version);
-
-// Refines the return type of the given function by folding tf.Cast that
-// precedes the return instruction.
-LogicalResult InferShapeForFunctionType(FuncOp func);
+                                    int64_t graph_version,
+                                    int64_t max_iterations = 10);
 
 }  // namespace TF
 

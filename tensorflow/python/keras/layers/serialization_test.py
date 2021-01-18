@@ -53,7 +53,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
     new_layer = keras.layers.deserialize(config)
     self.assertEqual(new_layer.activation, keras.activations.relu)
     self.assertEqual(new_layer.bias_regularizer.__class__,
-                     keras.regularizers.L1L2)
+                     keras.regularizers.L2)
     if tf2.enabled():
       self.assertEqual(new_layer.kernel_initializer.__class__,
                        keras.initializers.OnesV2)
@@ -88,7 +88,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
         config, custom_objects={'SerializableInt': SerializableInt})
     self.assertEqual(new_layer.activation, keras.activations.relu)
     self.assertEqual(new_layer.bias_regularizer.__class__,
-                     keras.regularizers.L1L2)
+                     keras.regularizers.L2)
     if tf2.enabled():
       self.assertEqual(new_layer.kernel_initializer.__class__,
                        keras.initializers.OnesV2)
@@ -116,7 +116,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
       self.assertEqual(new_layer.beta_initializer.__class__,
                        keras.initializers.Zeros)
     self.assertEqual(new_layer.gamma_regularizer.__class__,
-                     keras.regularizers.L1L2)
+                     keras.regularizers.L2)
 
   @parameterized.parameters(
       [batchnorm_v1.BatchNormalization, batchnorm_v2.BatchNormalization])
@@ -135,7 +135,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
       self.assertEqual(new_layer.beta_initializer.__class__,
                        keras.initializers.Zeros)
     self.assertEqual(new_layer.gamma_regularizer.__class__,
-                     keras.regularizers.L1L2)
+                     keras.regularizers.L2)
 
   @parameterized.parameters([rnn_v1.LSTM, rnn_v2.LSTM])
   def test_serialize_deserialize_lstm(self, layer):
@@ -164,6 +164,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
     else:
       self.assertIsInstance(new_layer, rnn_v1.GRU)
       self.assertNotIsInstance(new_layer, rnn_v2.GRU)
+
 
 if __name__ == '__main__':
   test.main()

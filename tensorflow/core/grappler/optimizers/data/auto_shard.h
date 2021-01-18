@@ -48,6 +48,7 @@ class AutoShard : public TFDataOptimizerBase {
 
  private:
   int64 num_workers_;
+  int64 num_replicas_;
   int64 index_;
   AutoShardPolicy auto_shard_policy_;
 };

@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/c/eager/dlpack.h"
 
 #include "include/dlpack/dlpack.h"  // from @dlpack
-#include "tensorflow/c/eager/c_api_internal.h"
-#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
@@ -41,15 +43,15 @@ struct TfDlManagedTensorCtx {
 
 // Gets tensor from eager tensor handle.
 const Tensor* GetTensorFromHandle(TFE_TensorHandle* h, TF_Status* status) {
-  if (h == nullptr || h->handle == nullptr) {
+  if (h == nullptr) {
     status->status = tensorflow::errors::InvalidArgument("Invalid handle");
     return nullptr;
   }
   tensorflow::TensorHandle* handle =
-      tensorflow::TensorHandleFromInterface(h->handle);
-  if (handle->IsRemote()) {
+      tensorflow::TensorHandleFromInterface(tensorflow::unwrap(h));
+  if (handle->Type() != TensorHandle::LOCAL) {
     status->status = tensorflow::errors::InvalidArgument(
-        "DLPack doesn't support remote tensor");
+        "DLPack doesn't support ", handle->TypeString(), " tensor");
     return nullptr;
   }
   const tensorflow::Tensor* tensor;
@@ -107,7 +109,8 @@ DLDataType GetDlDataType(TF_DataType data_type, TF_Status* status) {
 // Gets DLPack's DLContext from eager tensor handle.
 DLContext GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
   DLContext ctx;
-  const char* device_name = h->handle->DeviceName(&status->status);
+  const char* device_name =
+      tensorflow::unwrap(h)->BackingDeviceName(&status->status);
   DeviceNameUtils::ParsedName parsed_name;
   tensorflow::DeviceNameUtils::ParseFullName(device_name, &parsed_name);
   std::string device_type = parsed_name.type;
@@ -219,8 +222,7 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
 // Wraps the deleter function of DLManagedTensor to match the function signature
 // TFE_NewTensorHandleFromDeviceMemory.
 void DeallocatorWrapperFunc(void* data, size_t len, void* dlmt_vptr) {
-  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(dlmt_vptr);
-  dlmt->deleter(const_cast<DLManagedTensor*>(dlmt));
+  TFE_CallDLManagedTensorDeleter(dlmt_vptr);
 }
 
 // Checks whether the stride array matches the layout of compact, row-majored
@@ -247,21 +249,36 @@ void TFE_CallDLManagedTensorDeleter(void* dlm_ptr) {
 }
 
 void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status) {
+  auto tf_dlm_context = GetDlContext(h, status);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+
+  auto* tf_dlm_data = TFE_TensorHandleDevicePointer(h, status);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+
   const Tensor* tensor = GetTensorFromHandle(h, status);
   TF_DataType data_type = static_cast<TF_DataType>(tensor->dtype());
-  TensorReference tensor_ref(*tensor);  // This will call buf_->Ref()
 
+  auto tf_dlm_type = GetDlDataType(data_type, status);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+
+  TensorReference tensor_ref(*tensor);  // This will call buf_->Ref()
   auto* tf_dlm_tensor_ctx = new TfDlManagedTensorCtx(tensor_ref);
   tf_dlm_tensor_ctx->reference = tensor_ref;
 
   DLManagedTensor* dlm_tensor = &tf_dlm_tensor_ctx->tensor;
   dlm_tensor->manager_ctx = tf_dlm_tensor_ctx;
   dlm_tensor->deleter = &DLManagedTensorDeleter;
-  dlm_tensor->dl_tensor.ctx = GetDlContext(h, status);
+  dlm_tensor->dl_tensor.ctx = tf_dlm_context;
   int ndim = tensor->dims();
   dlm_tensor->dl_tensor.ndim = ndim;
-  dlm_tensor->dl_tensor.data = TFE_TensorHandleDevicePointer(h, status);
-  dlm_tensor->dl_tensor.dtype = GetDlDataType(data_type, status);
+  dlm_tensor->dl_tensor.data = tf_dlm_data;
+  dlm_tensor->dl_tensor.dtype = tf_dlm_type;
 
   std::vector<int64_t>* shape_arr = &tf_dlm_tensor_ctx->shape;
   std::vector<int64_t>* stride_arr = &tf_dlm_tensor_ctx->strides;
@@ -274,13 +291,14 @@ void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status) {
     (*stride_arr)[i] = (*shape_arr)[i + 1] * (*stride_arr)[i + 1];
   }
 
-  dlm_tensor->dl_tensor.shape = &(*shape_arr)[0];
+  dlm_tensor->dl_tensor.shape = shape_arr->data();
   // There are two ways to represent compact row-major data
   // 1) nullptr indicates tensor is compact and row-majored.
   // 2) fill in the strides array as the real case for compact row-major data.
   // Here we choose option 2, since some frameworks didn't handle the strides
   // argument properly.
-  dlm_tensor->dl_tensor.strides = &(*stride_arr)[0];
+  dlm_tensor->dl_tensor.strides = stride_arr->data();
+
   dlm_tensor->dl_tensor.byte_offset =
       0;  // TF doesn't handle the strides and byte_offsets here
   return static_cast<void*>(dlm_tensor);
@@ -322,7 +340,7 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
 
   TFE_TensorHandle* handle = TFE_NewTensorHandleFromDeviceMemory(
       ctx, device_name.value().c_str(), dtype, dims, num_dims, data,
-      total_bytes, &DeallocatorWrapperFunc, &dlmt, status);
+      total_bytes, &DeallocatorWrapperFunc, dlmt, status);
 
   return handle;
 }

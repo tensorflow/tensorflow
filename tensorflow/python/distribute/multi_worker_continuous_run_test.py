@@ -33,9 +33,21 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
+
+
+# TODO(b/151232436): This test doesn't work with check health enabled because it
+# relies on barrier around creating strategies. Check health performs
+# communications inside strategy constructor, which makes the barrier
+# ineffective.
+CollectiveAllReduceExtended = (
+    collective_all_reduce_strategy.CollectiveAllReduceExtended)
+CollectiveAllReduceExtended._enable_check_health = False
+
 
 NUM_WORKERS = 5
 
@@ -62,7 +74,7 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
     def worker_step_fn(worker_id):
       strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
       # Make sure the processeses are in sync after updating the cluster
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
 
       @def_function.function
       def run_reduce():
@@ -84,9 +96,10 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
       for _ in range(20):
         worker_step_fn(worker_id)
 
-    multi_process_runner.run(
-        worker_fn,
-        cluster_spec=test_base.create_cluster_spec(num_workers=NUM_WORKERS))
+    with test_util.skip_if_error(self, errors_impl.UnavailableError):
+      multi_process_runner.run(
+          worker_fn,
+          cluster_spec=test_base.create_cluster_spec(num_workers=NUM_WORKERS))
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testVariableInitializationWithChangingShape(self, mode):
@@ -94,7 +107,7 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
     def worker_step_fn(worker_id, num_dims):
       strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
       # Make sure the processeses are in sync after updating the cluster
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
       tensor_shape = [2] * num_dims
 
       def variable_fn():
@@ -116,10 +129,11 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
       for i in range(20):
         worker_step_fn(worker_id, num_dims=(i + 1))
 
-    multi_process_runner.run(
-        worker_fn,
-        cluster_spec=test_base.create_cluster_spec(num_workers=NUM_WORKERS))
+    with test_util.skip_if_error(self, errors_impl.UnavailableError):
+      multi_process_runner.run(
+          worker_fn,
+          cluster_spec=test_base.create_cluster_spec(num_workers=NUM_WORKERS))
 
 
 if __name__ == '__main__':
-  multi_process_runner.test_main(barrier_parties=NUM_WORKERS)
+  multi_process_runner.test_main()

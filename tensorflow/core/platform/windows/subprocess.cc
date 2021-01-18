@@ -305,8 +305,6 @@ bool SubProcess::WaitInternal(int* status) {
     if (wait_status == WAIT_OBJECT_0) {
       DWORD process_exit_code = 0;
       if (GetExitCodeProcess(pi_.hProcess, &process_exit_code)) {
-        LOG(INFO) << "SubProcess ended with return code: " << process_exit_code
-                  << std::endl;
         *status = static_cast<int>(process_exit_code);
       } else {
         LOG(FATAL) << "Wait failed with code: " << GetLastError();
@@ -378,7 +376,7 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
       }
     } else {
       CloseHandle(parent_pipe_[CHAN_STDIN]);
-      parent_pipe_[CHAN_STDIN] == NULL;
+      parent_pipe_[CHAN_STDIN] = NULL;
     }
 
     if (parent_pipe_[CHAN_STDOUT] != nullptr) {

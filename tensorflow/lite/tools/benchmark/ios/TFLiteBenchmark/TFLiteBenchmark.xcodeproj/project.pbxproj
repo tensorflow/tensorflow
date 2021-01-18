@@ -17,6 +17,7 @@
 		6FE9400B20D592DA008C9FE4 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 6FE9400A20D592DA008C9FE4 /* main.m */; };
 		DC4D465D2373ECF400397CBD /* TensorFlowLiteBenchmarkC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC4D465C2373ECF300397CBD /* TensorFlowLiteBenchmarkC.framework */; };
 		DC4D465E2373ECF400397CBD /* TensorFlowLiteBenchmarkC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DC4D465C2373ECF300397CBD /* TensorFlowLiteBenchmarkC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		DCAFFD072457B5D100314DDA /* CoreML.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DCAFFD062457B5D100314DDA /* CoreML.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -48,6 +49,7 @@
 		6FE9400920D592DA008C9FE4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		6FE9400A20D592DA008C9FE4 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		DC4D465C2373ECF300397CBD /* TensorFlowLiteBenchmarkC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = TensorFlowLiteBenchmarkC.framework; path = TFLiteBenchmark/Frameworks/TensorFlowLiteBenchmarkC.framework; sourceTree = "<group>"; };
+		DCAFFD062457B5D100314DDA /* CoreML.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreML.framework; path = System/Library/Frameworks/CoreML.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,6 +59,7 @@
 			files = (
 				6FE7579F20D5A6A700F01636 /* Accelerate.framework in Frameworks */,
 				DC4D465D2373ECF400397CBD /* TensorFlowLiteBenchmarkC.framework in Frameworks */,
+				DCAFFD072457B5D100314DDA /* CoreML.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -75,6 +78,7 @@
 		6FE7579B20D5A5E000F01636 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				DCAFFD062457B5D100314DDA /* CoreML.framework */,
 				DC4D465C2373ECF300397CBD /* TensorFlowLiteBenchmarkC.framework */,
 				6FE7579E20D5A6A700F01636 /* Accelerate.framework */,
 				6FE7579C20D5A5E000F01636 /* benchmark-lib.a */,
@@ -343,7 +347,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				"LIBRARY_SEARCH_PATHS[arch=*]" = $SRCROOT/../../../../../../tensorflow/lite/tools/make/gen/lib;
+				"LIBRARY_SEARCH_PATHS[arch=*]" = "";
 				OTHER_LDFLAGS = "-all_load";
 				PRODUCT_BUNDLE_IDENTIFIER = example.TFLiteBenchmark;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -374,7 +378,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				"LIBRARY_SEARCH_PATHS[arch=*]" = $SRCROOT/../../../../../../tensorflow/lite/tools/make/gen/lib;
+				"LIBRARY_SEARCH_PATHS[arch=*]" = "";
 				OTHER_LDFLAGS = "-all_load";
 				PRODUCT_BUNDLE_IDENTIFIER = example.TFLiteBenchmark;
 				PRODUCT_NAME = "$(TARGET_NAME)";

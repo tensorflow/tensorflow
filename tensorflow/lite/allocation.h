@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Main abstraction controlling the tflite interpreter.
-// See context.h for the API for defining operations (TfLiteRegistration).
+/// \file
+/// Memory management for TF Lite.
 #ifndef TENSORFLOW_LITE_ALLOCATION_H_
 #define TENSORFLOW_LITE_ALLOCATION_H_
 

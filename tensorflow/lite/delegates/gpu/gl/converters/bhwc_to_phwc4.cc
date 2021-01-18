@@ -88,8 +88,8 @@ absl::Status ConverterBhwcToPhwc4::Convert(const BHWC& shape,
     return absl::UnimplementedError(
         "BhwcToPhwc4: Batch size is not equal to 1.");
   }
-  uint3 workload = uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4));
-  uint3 num_workgroups = IntegralDivideRoundUp(workload, workgroup_size_);
+  uint3 workload = uint3(shape.w, shape.h, DivideRoundUp(shape.c, 4));
+  uint3 num_workgroups = DivideRoundUp(workload, workgroup_size_);
 
   RETURN_IF_ERROR(program_.SetParameter(
       {"sizes_",

@@ -12,19 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <utility>
-#include <vector>
+#include <memory>
 
-#include "absl/strings/str_split.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/profiler/internal/profiler_factory.h"
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/profiler/lib/profiler_factory.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/python/profiler/internal/python_hooks.h"
 
 namespace tensorflow {
@@ -35,7 +33,8 @@ namespace {
 // the events to TraceMeRecorder.
 class PythonTracer : public ProfilerInterface {
  public:
-  explicit PythonTracer() = default;
+  explicit PythonTracer(const PythonHooksOptions& options)
+      : options_(options) {}
   ~PythonTracer() override;
 
   // Starts recording TraceMes.
@@ -50,17 +49,16 @@ class PythonTracer : public ProfilerInterface {
 
   Status CollectData(XSpace* space) override;
 
-  DeviceType GetDeviceType() override { return DeviceType::kCpu; }
-
  private:
   bool recording_ = false;
+  const PythonHooksOptions options_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PythonTracer);
 };
 
 PythonTracer::~PythonTracer() {
   Stop().IgnoreError();
-  PythonHooks::GetSingleton()->Finalize();
+  PythonHooks::GetSingleton()->Finalize(nullptr);
 }
 
 Status PythonTracer::Start() {
@@ -69,7 +67,7 @@ Status PythonTracer::Start() {
   }
   VLOG(1) << __FUNCTION__;
   recording_ = true;
-  PythonHooks::GetSingleton()->Start();
+  PythonHooks::GetSingleton()->Start(options_);
   return Status::OK();
 }
 
@@ -89,17 +87,14 @@ Status PythonTracer::CollectData(RunMetadata* run_metadata) {
   // in the wrong threads.
   // We had assumed HostTracer::Stop is called when ProfilerSession try to
   // serialize PythonTracer.
-  PythonHooks::GetSingleton()->Finalize();
+  VLOG(2) << "Collecting data to RunMetaData from PythonTracer.";
+  PythonHooks::GetSingleton()->Finalize(nullptr);
   return Status::OK();
 }
 
 Status PythonTracer::CollectData(XSpace* space) {
-  // This ProfilerInterface rely on HostTracer to serialize its trace.
-  // Make sure unpaired traceme don't get recorded, because it will end up
-  // in the wrong threads.
-  // We had assumed HostTracer::Stop is called when ProfilerSession try to
-  // serialize PythonTracer.
-  PythonHooks::GetSingleton()->Finalize();
+  VLOG(2) << "Collecting data to XSpace from PythonTracer.";
+  PythonHooks::GetSingleton()->Finalize(space);
   return Status::OK();
 }
 
@@ -107,19 +102,18 @@ Status PythonTracer::CollectData(XSpace* space) {
 
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<ProfilerInterface> CreatePythonTracer(
-    const profiler::ProfilerOptions& options) {
-  if (!options.enable_python_tracer) return nullptr;
-  // This ProfilerInterface rely on TraceMeRecorder to be active.
-  if (options.host_tracer_level == 0) return nullptr;
-  return absl::make_unique<PythonTracer>();
+    const ProfileOptions& options) {
+  if (options.python_tracer_level() == 0 && options.host_tracer_level() == 0) {
+    return nullptr;
+  }
+  PythonHooksOptions pyhooks_options;
+  pyhooks_options.enable_trace_python_function = options.python_tracer_level();
+  pyhooks_options.enable_python_traceme = options.host_tracer_level();
+  return absl::make_unique<PythonTracer>(pyhooks_options);
 }
 
 auto register_python_tracer_factory = [] {
-  bool enable;
-  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_PYTHON_TRACER", true, &enable));
-  if (enable) {
-    RegisterProfilerFactory(&CreatePythonTracer);
-  }
+  RegisterProfilerFactory(&CreatePythonTracer);
   return 0;
 }();
 

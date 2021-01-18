@@ -49,4 +49,13 @@ enum IODataType {
 
   // Half precision float, not quantized.
   FLOAT16 = 10;
+
+  // Double precision float, not quantized.
+  FLOAT64 = 11;
+
+  // Complex128, not quantized
+  COMPLEX128 = 12;
+
+  // Uint64, not quantized
+  UINT64 = 13;
 }

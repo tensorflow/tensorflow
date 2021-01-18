@@ -40,12 +40,11 @@ absl::Status CreatePHWC4BufferFromTensorRef(const TensorRef<BHWC>& tensor_ref,
 
 absl::Status CopyFromPHWC4Buffer(const GlBuffer& buffer,
                                  TensorFloat32* tensor) {
-  return buffer.MappedRead<float>(
-      [tensor, &buffer](absl::Span<const float> data) {
-        tensor->data.resize(tensor->shape.DimensionsProduct());
-        return ConvertFromPHWC4(absl::MakeConstSpan(data), tensor->shape,
-                                absl::MakeSpan(tensor->data));
-      });
+  return buffer.MappedRead<float>([tensor](absl::Span<const float> data) {
+    tensor->data.resize(tensor->shape.DimensionsProduct());
+    return ConvertFromPHWC4(absl::MakeConstSpan(data), tensor->shape,
+                            absl::MakeSpan(tensor->data));
+  });
 }
 
 absl::Status ObjectManager::RegisterBuffer(uint32_t id, GlBuffer buffer) {

@@ -19,7 +19,6 @@ limitations under the License.
 #define TFL_OP_INTERFACES
 
 include "mlir/IR/OpBase.td"
-include "tensorflow/compiler/mlir/lite/experimental/tfl_hardware_interfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TFL op interface for stateful operands.
@@ -41,22 +40,6 @@ def TFL_StatefulOp : OpInterface<"StatefulOpInterface"> {
 }
 
 //===----------------------------------------------------------------------===//
-// TFL op interface for output channel index.
-
-def TFL_ChannelDimIndexInterface : OpInterface<"ChannelDimIndexInterface"> {
-  let description = [{
-    Interface for defining the index of out channel index.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      [{Returns the dimension index of the output channels.}],
-      "int", "GetChannelDimIndex", (ins)
-    >,
-  ];
-}
-
-//===----------------------------------------------------------------------===//
 // TFL op interface for sparse operands.
 
 def TFL_SparseOp : OpInterface<"SparseOpInterface"> {
@@ -68,6 +51,14 @@ def TFL_SparseOp : OpInterface<"SparseOpInterface"> {
     InterfaceMethod<
       [{Returns the indices of sparse operands.}],
       "std::vector<int>", "GetSparseOperands", (ins)
+    >,
+    InterfaceMethod<
+      [{Returns the supported block size of float sparse operands.}],
+      "std::vector<std::vector<int>>", "GetFloatBlockSize", (ins)
+    >,
+    InterfaceMethod<
+      [{Returns the supported block size of quantized sparse operands.}],
+      "std::vector<std::vector<int>>", "GetQuantizedBlockSize", (ins)
     >,
   ];
 }
@@ -86,8 +77,7 @@ def TFL_RuntimeVerification : OpInterface<"TflRuntimeVerifyOpInterface"> {
   let methods = [
     StaticInterfaceMethod<
       [{Returns whether the op's operands/results are supported by runtime.}],
-      "LogicalResult", "VerifyTflRuntimeTypes",
-      (ins "Operation*":$op, "bool":$failure_on_operand_type_mismatch)
+      "LogicalResult", "VerifyTflRuntimeConstraints", (ins "Operation*":$op)
     >,
   ];
 }

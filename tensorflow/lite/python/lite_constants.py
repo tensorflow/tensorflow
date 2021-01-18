@@ -30,6 +30,7 @@ INT64 = dtypes.int64
 STRING = dtypes.string
 QUANTIZED_UINT8 = dtypes.uint8
 INT8 = dtypes.int8
+INT16 = dtypes.int16
 COMPLEX64 = dtypes.complex64
 TENSORFLOW_GRAPHDEF = _toco_flags_pb2.TENSORFLOW_GRAPHDEF
 TFLITE = _toco_flags_pb2.TFLITE
@@ -43,6 +44,7 @@ _tf_export(v1=["lite.constants.STRING"]).export_constant(__name__, "STRING")
 _tf_export(v1=["lite.constants.QUANTIZED_UINT8"]).export_constant(
     __name__, "QUANTIZED_UINT8")
 _tf_export(v1=["lite.constants.INT8"]).export_constant(__name__, "INT8")
+_tf_export(v1=["lite.constants.INT16"]).export_constant(__name__, "INT16")
 _tf_export(v1=["lite.constants.TFLITE"]).export_constant(__name__, "TFLITE")
 _tf_export(v1=["lite.constants.GRAPHVIZ_DOT"]).export_constant(
     __name__, "GRAPHVIZ_DOT")
@@ -62,6 +64,7 @@ _allowed_symbols = [
     "STRING",
     "QUANTIZED_UINT8",
     "INT8",
+    "INT16",
     "COMPLEX64",
     "TENSORFLOW_GRAPHDEF",
     "TFLITE",

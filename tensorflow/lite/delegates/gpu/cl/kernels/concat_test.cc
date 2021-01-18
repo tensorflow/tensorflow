@@ -18,10 +18,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/concat_xy.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
 
 using ::testing::FloatNear;
 using ::testing::Pointwise;
@@ -51,9 +51,11 @@ TEST_F(OpenCLOperationTest, ConcatWidth) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConcatXY operation = CreateConcatXY(op_def, attr, 2);
-      ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
-                                    BHWC(1, 2, 3, 2), &dst_tensor));
+      GPUOperation operation = CreateConcatXY(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 3, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(0.0f),
@@ -83,9 +85,11 @@ TEST_F(OpenCLOperationTest, ConcatHeight) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConcatXY operation = CreateConcatXY(op_def, attr, 2);
-      ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
-                                    BHWC(1, 3, 1, 2), &dst_tensor));
+      GPUOperation operation = CreateConcatXY(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(0.0f), {half(0.0f), half(-1.0f), half(-0.05f),
@@ -117,9 +121,12 @@ TEST_F(OpenCLOperationTest, ConcatChannels) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConcatZ operation = CreateConcatZ(op_def, {1, 2, 3});
-      ASSERT_OK(ExecuteGPUOperation({src0, src1, src2}, creation_context_,
-                                    &operation, BHWC(1, 2, 1, 6), &dst_tensor));
+      GPUOperation operation =
+          CreateConcatZ(op_def, {1, 2, 3}, env_.GetDevicePtr()->info_);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1, src2}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 6), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(0.0f),
                             {half(0.0f), half(1.0f), half(2.0f), half(5.0f),
@@ -150,9 +157,12 @@ TEST_F(OpenCLOperationTest, ConcatChannelsAlignedx4) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConcatZ operation = CreateConcatZ(op_def, {4, 4});
-      ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 8), &dst_tensor));
+      GPUOperation operation =
+          CreateConcatZ(op_def, {4, 4}, env_.GetDevicePtr()->info_);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 8), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(0.0f),

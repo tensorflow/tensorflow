@@ -38,10 +38,12 @@ Status ForceXlaConstantsOnHostPass::Run(
       std::vector<int> constant_arg_indices;
       std::vector<int> resource_arg_indices;
 
+      NameAttrList function;
+      TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node->def(), &function));
+
       // Force all constants to be on the host memory.
       TF_RETURN_IF_ERROR(GetBodyAndConstantsAndResources(
-          flr, node->def(), &fbody, &constant_arg_indices,
-          &resource_arg_indices));
+          flr, function, &fbody, &constant_arg_indices, &resource_arg_indices));
       VLOG(3) << "Found constant arg indices: "
               << absl::StrJoin(constant_arg_indices, ", ");
 

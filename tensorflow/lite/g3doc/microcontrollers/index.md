@@ -1,22 +1,24 @@
 # TensorFlow Lite for Microcontrollers
 
-TensorFlow Lite for Microcontrollers is an experimental port of TensorFlow Lite
-designed to run machine learning models on microcontrollers and other devices
-with only kilobytes of memory.
+TensorFlow Lite for Microcontrollers is designed to run machine learning models
+on microcontrollers and other devices with only few kilobytes of memory. The
+core runtime just fits in 16 KB on an Arm Cortex M3 and can run many basic
+models. It doesn't require operating system support, any standard C or C++
+libraries, or dynamic memory allocation.
 
-It doesn't require operating system support, any standard C or C++ libraries, or
-dynamic memory allocation. The core runtime fits in 16 KB on an Arm Cortex M3,
-and with enough operators to run a speech keyword detection model, takes up a
-total of 22 KB.
+## Why microcontrollers are important
 
-There are example applications demonstrating the use of microcontrollers for
-tasks including wake word detection, gesture classification from accelerometer
-data, and image classification using camera data.
-
-## Get started
-
-To try the example applications and learn how to use the API, read
-[Get started with microcontrollers](get_started.md).
+Microcontrollers are typically small, low-powered computing devices that are
+embedded within hardware that requires basic computation. By bringing machine
+learning to tiny microcontrollers, we can boost the intelligence of billions of
+devices that we use in our lives, including household appliances and Internet of
+Things devices, without relying on expensive hardware or reliable internet
+connections, which is often subject to bandwidth and power constraints and
+results in high latency. This can also help preserve privacy, since no data
+leaves the device. Imagine smart appliances that can adapt to your daily
+routine, intelligent industrial sensors that understand the difference between
+problems and normal operation, and magical toys that can help kids learn in fun
+and delightful ways.
 
 ## Supported platforms
 
@@ -24,13 +26,12 @@ TensorFlow Lite for Microcontrollers is written in C++ 11 and requires a 32-bit
 platform. It has been tested extensively with many processors based on the
 [Arm Cortex-M Series](https://developer.arm.com/ip-products/processors/cortex-m)
 architecture, and has been ported to other architectures including
-[ESP32](https://www.espressif.com/en/products/hardware/esp32/overview).
+[ESP32](https://www.espressif.com/en/products/hardware/esp32/overview). The
+framework is available as an Arduino library. It can also generate projects for
+development environments such as Mbed. It is open source and can be included in
+any C++ 11 project.
 
-The framework is available as an Arduino library. It can also generate projects
-for development environments such as Mbed. It is open source and can be included
-in any C++ 11 project.
-
-There are example applications available for the following development boards:
+The following development boards are supported:
 
 *   [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
 *   [SparkFun Edge](https://www.sparkfun.com/products/15170)
@@ -40,62 +41,47 @@ There are example applications available for the following development boards:
 *   [Adafruit Circuit Playground Bluefruit](https://learn.adafruit.com/tensorflow-lite-for-circuit-playground-bluefruit-quickstart?view=all)
 *   [Espressif ESP32-DevKitC](https://www.espressif.com/en/products/hardware/esp32-devkitc/overview)
 *   [Espressif ESP-EYE](https://www.espressif.com/en/products/hardware/esp-eye/overview)
+*   [Wio Terminal: ATSAMD51](https://www.seeedstudio.com/Wio-Terminal-p-4509.html)
+*   [Himax WE-I Plus EVB Endpoint AI Development Board](https://www.sparkfun.com/products/17256)
+*   [Synopsys DesignWare ARC EM Software Development Platform](https://www.synopsys.com/dw/ipdir.php?ds=arc-em-software-development-platform)
 
-To learn more about the libraries and examples, see
-[Get started with microcontrollers](get_started.md).
+## Explore the examples
 
-## Why microcontrollers are important
+Each example application is on
+[Github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples)
+and has a `README.md` file that explains how it can be deployed to its supported
+platforms. Some examples also have end-to-end tutorials using a specific
+platform, as given below:
 
-Microcontrollers are typically small, low-powered computing devices that are
-often embedded within hardware that requires basic computation, including
-household appliances and Internet of Things devices. Billions of
-microcontrollers are manufactured each year.
+*   [Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world) -
+    Demonstrates the absolute basics of using TensorFlow Lite for
+    Microcontrollers
+    *   [Tutorial using any supported device](get_started.md)
+*   [Micro speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech) -
+    Captures audio with a microphone to detect the words "yes" and "no"
+    *   [Tutorial using SparkFun Edge](https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0)
+*   [Magic wand](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/magic_wand) -
+    Captures accelerometer data to classify three different physical gestures
+    *   [Tutorial using Arduino Nano 33 BLE Sense](https://codelabs.developers.google.com/codelabs/ai-magicwand/#0)
+*   [Person detection](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection) -
+    Captures camera data with an image sensor to detect the presence or absence
+    of a person
 
-Microcontrollers are often optimized for low energy consumption and small size,
-at the cost of reduced processing power, memory, and storage. Some
-microcontrollers have features designed to optimize performance on machine
-learning tasks.
+## Workflow
 
-By running machine learning inference on microcontrollers, developers can add AI
-to a vast range of hardware devices without relying on network connectivity,
-which is often subject to bandwidth and power constraints and results in high
-latency. Running inference on-device can also help preserve privacy, since no
-data has to leave the device.
+The following steps are required to deploy and run a TensorFlow model on a
+microcontroller:
 
-## Developer workflow
-
-To deploy a TensorFlow model to a microcontroller, you will need to follow this
-process:
-
-1.  **Create or obtain a TensorFlow model**
-
-    The model must be small enough to fit on your target device after
-    conversion, and it can only use
-    [supported operations](build_convert.md#operation-support). If you want to
-    use operations that are not currently supported, you can provide your own
-    implementations.
-
-2.  **Convert the model to a TensorFlow Lite FlatBuffer**
-
-    You will convert your model into the standard TensorFlow Lite format using
-    the [TensorFlow Lite converter](build_convert.md#model-conversion). You may
-    wish to output a quantized model, since these are smaller in size and more
-    efficient to execute.
-
-3.  **Convert the FlatBuffer to a C byte array**
-
-    Models are kept in read-only program memory and provided in the form of a
-    simple C file. Standard tools can be used to
-    [convert the FlatBuffer into a C array](build_convert.md#convert-to-a-c-array).
-
-4.  **Integrate the TensorFlow Lite for Microcontrollers C++ library**
-
-    Write your microcontroller code to collect data, perform inference using the
-    [C++ library](library.md), and make use of the results.
-
-5.  **Deploy to your device**
-
-    Build and deploy the program to your device.
+1.  **Train a model**:
+    *   *Generate a small TensorFlow model* that can fit your target device and
+        contains [supported operations](build_convert.md#operation-support).
+    *   *Convert to a TensorFlow Lite model* using the
+        [TensorFlow Lite converter](build_convert.md#model-conversion).
+    *   *Convert to a C byte array* using
+        [standard tools](build_convert.md#convert-to-a-c-array) to store it in a
+        read-only program memory on device.
+2.  **Run inference** on device using the [C++ library](library.md) and process
+    the results.
 
 ## Limitations
 
@@ -110,9 +96,13 @@ The following limitations should be considered:
     TensorFlow operations
 *   Support for a limited set of devices
 *   Low-level C++ API requiring manual memory management
-*   Training is not supported
+*   On device training is not supported
 
 ## Next steps
 
-Read [Get started with microcontrollers](get_started.md) to try the example
-applications and learn how to use the API.
+*   [Get started with microcontrollers](get_started.md) to try the example
+    application and learn how to use the API.
+*   [Understand the C++ library](library.md) to learn how to use the library in
+    your own project.
+*   [Build and convert models](build_convert.md) to learn more about training
+    and converting models for deployment on microcontrollers.

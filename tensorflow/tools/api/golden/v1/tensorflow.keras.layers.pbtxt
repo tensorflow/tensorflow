@@ -73,6 +73,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Conv1DTranspose"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Conv2D"
     mtype: "<type \'type\'>"
   }
@@ -94,6 +98,10 @@ tf_module {
   }
   member {
     name: "Convolution1D"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Convolution1DTranspose"
     mtype: "<type \'type\'>"
   }
   member {
@@ -305,6 +313,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "MultiHeadAttention"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Multiply"
     mtype: "<type \'type\'>"
   }
@@ -422,7 +434,7 @@ tf_module {
   }
   member_method {
     name: "Input"
-    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\', \'ragged\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
+    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\', \'ragged\', \'type_spec\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add"
@@ -441,8 +453,16 @@ tf_module {
     argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "disable_v2_dtype_behavior"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "dot"
     argspec: "args=[\'inputs\', \'axes\', \'normalize\'], varargs=None, keywords=kwargs, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "enable_v2_dtype_behavior"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "maximum"

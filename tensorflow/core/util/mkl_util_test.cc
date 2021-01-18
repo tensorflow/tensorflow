@@ -68,9 +68,6 @@ TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   EXPECT_EQ(a_md1.data.ndims, 2);
   EXPECT_EQ(a_md1.data.dims[0], 3);
   EXPECT_EQ(a_md1.data.dims[1], 4);
-#ifndef ENABLE_MKLDNN_V1
-  EXPECT_EQ(a_md1.data.format, mkldnn_blocked);
-#endif  // !ENABLE_MKLDNN_V1
 
   // Setting for case 2
   MklDnnData<float> b(&cpu_engine);
@@ -82,9 +79,6 @@ TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   EXPECT_EQ(b_md2.data.ndims, 2);
   EXPECT_EQ(b_md2.data.dims[0], 3);
   EXPECT_EQ(b_md2.data.dims[1], 4);
-#ifndef ENABLE_MKLDNN_V1
-  EXPECT_EQ(b_md2.data.format, mkldnn_blocked);
-#endif  // !ENABLE_MKLDNN_V1
 }
 
 TEST(MklUtilTest, LRUCacheTest) {

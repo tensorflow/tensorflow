@@ -1,11 +1,12 @@
 # Description:
 #   OpKernels for boosted trees ops.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_kernel_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -18,6 +19,8 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["quantile_ops.cc"])
 
 tf_proto_library(
     name = "boosted_trees_proto",

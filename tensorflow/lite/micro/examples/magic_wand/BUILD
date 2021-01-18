@@ -6,9 +6,11 @@ load(
     "tflite_micro_cc_test",
 )
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "magic_wand_model_data",
@@ -40,10 +42,9 @@ tflite_micro_cc_test(
     deps = [
         ":magic_wand_model_data",
         ":sample_feature_data",
-        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:all_ops_resolver",
-        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -66,7 +67,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -78,7 +79,9 @@ tflite_micro_cc_test(
     deps = [
         ":accelerometer_handler",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -119,7 +122,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -154,9 +157,9 @@ cc_binary(
         ":gesture_predictor",
         ":magic_wand_model_data",
         ":output_handler",
-        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

@@ -22,9 +22,13 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
@@ -319,9 +323,9 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
       copy_model_weights(model_from=model_2, model_to=model_3)
 
       # Compare outputs at initialization.
-      out_1 = model_1.call(inputs)
-      out_2 = model_2.call(inputs)
-      out_3 = model_3.call(inputs)
+      out_1 = model_1(inputs)
+      out_2 = model_2(inputs)
+      out_3 = model_3(inputs)
 
       self.assertAllCloseAccordingToType(
           out_2, out_1, rtol=1e-5, atol=1e-5)
@@ -351,9 +355,9 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
           shuffle=False)
 
       # Compare outputs after a few training steps.
-      out_1 = model_1.call(inputs)
-      out_2 = model_2.call(inputs)
-      out_3 = model_3.call(inputs)
+      out_1 = model_1(inputs)
+      out_2 = model_2(inputs)
+      out_3 = model_3(inputs)
 
       self.assertAllCloseAccordingToType(
           out_2, out_1, atol=2e-4)
@@ -423,9 +427,9 @@ def get_inputs(data_format, filters, height, num_samples, width):
 def xent(y_true, y_pred):
   y_true = keras.backend.cast(
       keras.backend.reshape(y_true, (-1,)),
-      keras.backend.dtypes_module.int32)
+      dtypes.int32)
 
-  return keras.backend.nn.sparse_softmax_cross_entropy_with_logits(
+  return nn.sparse_softmax_cross_entropy_with_logits(
       labels=y_true,
       logits=y_pred)
 
@@ -496,9 +500,9 @@ def copy_lc_weights_2_to_1(lc_layer_2_from, lc_layer_1_to):
   lc_2_kernel_masked = keras.backend.permute_dimensions(
       lc_2_kernel_masked, permutation)
 
-  lc_2_kernel_mask = keras.backend.math_ops.not_equal(
+  lc_2_kernel_mask = math_ops.not_equal(
       lc_2_kernel_masked, 0)
-  lc_2_kernel_flat = keras.backend.array_ops.boolean_mask(
+  lc_2_kernel_flat = array_ops.boolean_mask(
       lc_2_kernel_masked, lc_2_kernel_mask)
   lc_2_kernel_reshaped = keras.backend.reshape(lc_2_kernel_flat,
                                                lc_layer_1_to.kernel.shape)
@@ -516,8 +520,8 @@ def copy_lc_weights_2_to_3(lc_layer_2_from, lc_layer_3_to):
   lc_2_kernel_masked = keras.layers.local.make_2d(
       lc_2_kernel_masked, split_dim=keras.backend.ndim(lc_2_kernel_masked) // 2)
   lc_2_kernel_masked = keras.backend.transpose(lc_2_kernel_masked)
-  lc_2_kernel_mask = keras.backend.math_ops.not_equal(lc_2_kernel_masked, 0)
-  lc_2_kernel_flat = keras.backend.array_ops.boolean_mask(
+  lc_2_kernel_mask = math_ops.not_equal(lc_2_kernel_masked, 0)
+  lc_2_kernel_flat = array_ops.boolean_mask(
       lc_2_kernel_masked, lc_2_kernel_mask)
 
   lc_2_kernel_flat = keras.backend.get_value(lc_2_kernel_flat)

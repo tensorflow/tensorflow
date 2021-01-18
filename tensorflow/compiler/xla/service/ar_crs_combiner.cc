@@ -101,7 +101,7 @@ bool HasCombinableReplicaGroup(HloInstruction* hlo, int64 num_replicas,
     if (replica_groups.size() != num_replicas) {
       return false;
     }
-    for (auto group : replica_groups) {
+    for (const auto& group : replica_groups) {
       if (group.replica_ids_size() != num_partitions) {
         return false;
       }
@@ -365,10 +365,13 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
   auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
     return *a == *b;
   };
+  // Two MPMD AllReduces are identical if they have the same channel_id. Their
+  // operands don't have to be identical.
+  auto eq_operands = [](const HloInstruction*, const HloInstruction*) {
+    return true;
+  };
   if (i1->IsCrossModuleAllReduce()) {
-    return i1->Identical(*i2,
-                         /*eq_operands=*/std::equal_to<const HloInstruction*>(),
-                         eq_computations,
+    return i1->Identical(*i2, eq_operands, eq_computations,
                          /*layout_sensitive=*/false);
   }
   visited_pairs->emplace(min_uid, max_uid);
@@ -534,7 +537,7 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
   if (all_reduce_map_.empty()) {
     return false;
   }
-  for (auto it : all_reduce_map_) {
+  for (const auto& it : all_reduce_map_) {
     auto pairs_vec = it.second;
     for (auto pair : pairs_vec) {
       auto all_reduce = pair.ar;

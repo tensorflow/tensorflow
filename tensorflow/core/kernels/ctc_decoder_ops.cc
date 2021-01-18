@@ -154,7 +154,14 @@ class CTCDecodeHelper {
         auto& p_batch = sequences[b][p];
         int64 num_decoded = p_batch.size();
         max_decoded = std::max(max_decoded, num_decoded);
-        std::copy_n(p_batch.begin(), num_decoded, &values_t(offset));
+        if (num_decoded > 0) {
+          DCHECK_NE(values_t.data(), nullptr)
+              << "values_t should not be nullptr: p_num=" << p_num
+              << " num_decoded=" << num_decoded;
+          DCHECK_LT(offset, values_t.size())
+              << "offset should be smaller than values_t.size()";
+          std::copy_n(p_batch.begin(), num_decoded, &values_t(offset));
+        }
         for (int64 t = 0; t < num_decoded; ++t, ++offset) {
           indices_t(offset, 0) = b;
           indices_t(offset, 1) = t;
@@ -203,6 +210,7 @@ class CTCGreedyDecoderOp : public OpKernel {
 
     auto inputs_t = inputs->tensor<T, 3>();
 
+    input_list_t.reserve(max_time);
     for (std::size_t t = 0; t < max_time; ++t) {
       input_list_t.emplace_back(inputs_t.data() + t * batch_size * num_classes,
                                 batch_size, num_classes);
@@ -305,6 +313,7 @@ class CTCBeamSearchDecoderOp : public OpKernel {
 
     std::vector<typename TTypes<T>::UnalignedConstMatrix> input_list_t;
 
+    input_list_t.reserve(max_time);
     for (std::size_t t = 0; t < max_time; ++t) {
       input_list_t.emplace_back(inputs_t.data() + t * batch_size * num_classes,
                                 batch_size, num_classes);

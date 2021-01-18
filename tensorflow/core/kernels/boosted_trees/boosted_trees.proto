@@ -164,7 +164,7 @@ message TreeEnsemble {
 // DebugOutput contains outputs useful for debugging/model interpretation, at
 // the individual example-level. Debug outputs that are available to the user
 // are: 1) Directional feature contributions (DFCs) 2) Node IDs for ensemble
-// prediction path 3) Leaf node IDs.
+// prediction paths 3) Leaf node IDs.
 message DebugOutput {
   // Return the logits and associated feature splits across prediction paths for
   // each tree, for every example, at predict time. We will use these values to
@@ -173,7 +173,7 @@ message DebugOutput {
   // id.
   repeated int32 feature_ids = 1;
   repeated float logits_path = 2;
-
-  // TODO(crawles): return 2) Node IDs for ensemble prediction path 3) Leaf node
-  // IDs.
+  // Return the node_id for each leaf node we reach in our prediction path.
+  repeated int32 leaf_node_ids = 3;
+  // TODO(crawles): return 4) Node IDs for ensemble prediction path
 }

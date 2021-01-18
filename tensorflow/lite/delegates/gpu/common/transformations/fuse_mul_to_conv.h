@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
@@ -38,49 +37,53 @@ std::unique_ptr<SequenceTransformation> NewMergeMulWithConvolution();
 // Modify Convolution2DAttributes so that after making convolution with
 // modified attributes we will have the same result as convolution
 // with old attributes and following multiply operation.
-void FuseConvolution2DWithMultiply(const MultiplyAttributes& mul_attr,
+void FuseConvolution2DWithMultiply(const ElementwiseAttributes& mul_attr,
                                    Convolution2DAttributes* attr);
 
 // Modify DepthwiseConvolution2DAttributes so that after making depth wise
 // convolution with modified attributes we will have the same result as depth
 // wise convolution with old attributes and following multiply operation.
 void FuseDepthwiseConvolution2DWithMultiply(
-    const MultiplyAttributes& mul_attr, DepthwiseConvolution2DAttributes* attr);
+    const ElementwiseAttributes& mul_attr,
+    DepthwiseConvolution2DAttributes* attr);
 
 // Modify ConvolutionTransposedAttributes so that after making convolution
 // transposed with modified attributes we will have the same result as
 // convolution transposed with old attributes and following multiply operation.
 void FuseConvolutionTransposedWithMultiply(
-    const MultiplyAttributes& mul_attr, ConvolutionTransposedAttributes* attr);
+    const ElementwiseAttributes& mul_attr,
+    ConvolutionTransposedAttributes* attr);
 
 // Modify FullyConnectedAttributes so that after making fully connected with
 // modified attributes we will have the same result as fully connected
 // with old attributes and following multiply operation.
-void FuseFullyConnectedWithMultiply(const MultiplyAttributes& mul_attr,
+void FuseFullyConnectedWithMultiply(const ElementwiseAttributes& mul_attr,
                                     FullyConnectedAttributes* attr);
 
 // Modify Convolution2DAttributes so that after making convolution with
 // modified attributes we will have the same result as multiply operation and
 // convolution with old attributes
-void FuseMultiplyWithConvolution2D(const MultiplyAttributes& mul_attr,
+void FuseMultiplyWithConvolution2D(const ElementwiseAttributes& mul_attr,
                                    Convolution2DAttributes* attr);
 
 // Modify DepthwiseConvolution2DAttributes so that after making depth wise
 // convolution with modified attributes we will have the same result as multiply
 // operation and depth wise convolution with old attributes
 void FuseMultiplyWithDepthwiseConvolution2D(
-    const MultiplyAttributes& mul_attr, DepthwiseConvolution2DAttributes* attr);
+    const ElementwiseAttributes& mul_attr,
+    DepthwiseConvolution2DAttributes* attr);
 
 // Modify ConvolutionTransposedAttributes so that after making convolution
 // transposed with modified attributes we will have the same result as multiply
 // operation and convolution transposed with old attributes
 void FuseMultiplyWithConvolutionTransposed(
-    const MultiplyAttributes& mul_attr, ConvolutionTransposedAttributes* attr);
+    const ElementwiseAttributes& mul_attr,
+    ConvolutionTransposedAttributes* attr);
 
 // Modify FullyConnectedAttributes so that after making fully connected
 // with modified attributes we will have the same result as multiply
 // operation and fully connected with old attributes
-void FuseMultiplyWithFullyConnected(const MultiplyAttributes& mul_attr,
+void FuseMultiplyWithFullyConnected(const ElementwiseAttributes& mul_attr,
                                     FullyConnectedAttributes* attr);
 
 }  // namespace gpu

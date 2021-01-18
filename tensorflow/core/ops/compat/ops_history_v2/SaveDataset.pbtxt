@@ -1,0 +1,77 @@
+op {
+  name: "SaveDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shard_func_other_args"
+    type_list_attr: "Tshard_func_args"
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shard_func"
+    type: "func"
+  }
+  attr {
+    name: "use_shard_func"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "Tshard_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+}
+op {
+  name: "SaveDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shard_func_other_args"
+    type_list_attr: "Tshard_func_args"
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shard_func"
+    type: "func"
+  }
+  attr {
+    name: "use_shard_func"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "Tshard_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  is_stateful: true
+}

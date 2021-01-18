@@ -111,6 +111,9 @@ class TestReporter {
   // Set property on Benchmark to the given value.
   Status SetProperty(const string& name, const string& value);
 
+  // Add the given value to the metrics on the Benchmark.
+  Status AddMetric(const string& name, double value);
+
   // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
   ~TestReporter() { Close().IgnoreError(); }  // Autoclose in destructor.
 

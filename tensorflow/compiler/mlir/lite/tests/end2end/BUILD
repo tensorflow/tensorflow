@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 licenses(["notice"])
@@ -12,7 +13,6 @@ glob_lit_tests(
         "add.pbtxt": ["no_rocm"],
         "conv_2d.pbtxt": ["no_rocm"],
         "fake_quant_per_channel.pbtxt": ["no_rocm"],
-        "ophint_lstm.pbtxt": ["no_rocm"],
     },
     test_file_exts = [
         "pbtxt",
@@ -27,6 +27,7 @@ filegroup(
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )
 

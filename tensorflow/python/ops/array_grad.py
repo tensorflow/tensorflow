@@ -314,6 +314,30 @@ def _StridedSliceGradGrad(op, grad):
       shrink_axis_mask=op.get_attr("shrink_axis_mask"))
 
 
+@ops.RegisterGradient("TensorStridedSliceUpdate")
+def _TensorStridedSliceUpdateGrad(op, grad):  # pylint:disable=missing-function-docstring
+  begin = op.inputs[1]
+  end = op.inputs[2]
+  strides = op.inputs[3]
+  begin_mask = op.get_attr("begin_mask")
+  end_mask = op.get_attr("end_mask")
+  ellipsis_mask = op.get_attr("ellipsis_mask")
+  new_axis_mask = op.get_attr("new_axis_mask")
+  shrink_axis_mask = op.get_attr("shrink_axis_mask")
+  def Apply(f, *args):
+    return f(*args,
+             begin_mask=begin_mask,
+             end_mask=end_mask,
+             shrink_axis_mask=shrink_axis_mask,
+             new_axis_mask=new_axis_mask,
+             ellipsis_mask=ellipsis_mask)
+  dy = Apply(array_ops.strided_slice,
+             grad, begin, end, strides)
+  dx = Apply(array_ops.tensor_strided_slice_update,
+             grad, begin, end, strides, array_ops.zeros_like(dy))
+  return dx, None, None, None, dy
+
+
 @ops.RegisterGradient("Split")
 def _SplitGrad(op, *grads):
   return None, array_ops.concat(list(grads), op.inputs[0])
@@ -544,15 +568,9 @@ def _IndexedSlicesToTensorNoWarning(indexed_slices):
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
   # params can be large, so colocate the shape calculation with it.
-  #
-  # params can be very large for sparse model, array_ops.shape raises
-  # exception on the Windows platform when any dimension is larger than
-  # int32. params_shape is not used in optimizer apply_sparse gradients,
-  # so it's fine to convert it back to int32 regardless of truncation.
   params = op.inputs[0]
   with ops.colocate_with(params):
-    params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.cast(params_shape, dtypes.int32)
+    params_shape = array_ops.shape(params)
 
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
@@ -641,7 +659,8 @@ def _GatherV2Grad(op, grad):
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
     if context.executing_eagerly():
-      params_tail_shape = params_shape.cpu()[1:]
+      with ops.device(indices_size.device):
+        params_tail_shape = array_ops.identity(params_shape)[1:]
     else:
       params_tail_shape = params_shape[1:]
     values_shape = array_ops.concat([indices_size, params_tail_shape], 0)
@@ -846,7 +865,7 @@ def _PadGrad(op, grad):
                                array_ops.stack([array_ops.rank(x), 1]))
   # Make it a 1-D tensor.
   begin = array_ops.reshape(pad_before, [-1])
-  sizes = array_ops.shape(x)
+  sizes = array_ops.shape(x, out_type=begin.dtype)
   x_grad = array_ops.slice(grad, begin, sizes)
   if len(op.inputs) == 3:
     return x_grad, None, None
@@ -1113,6 +1132,37 @@ def _TensorScatterAddGrad(op, grad):
   updates_grad = array_ops.gather_nd(grad, indices)
   tensor_grad = array_ops.identity(grad)
   return [tensor_grad, None, updates_grad]
+
+
+def _TensorScatterMinOrMaxGrad(op, grad):
+  """Gradient for TensorScatterMin and TensorScatterMax."""
+  indices = op.inputs[1]
+  x = op.inputs[0]
+  y = op.inputs[2]
+  output = op.outputs[0]
+  x_indicators = math_ops.cast(math_ops.equal(x, output), grad.dtype)
+  y_output = array_ops.gather_nd(output, indices)
+  y_indicators = math_ops.cast(math_ops.equal(y, y_output), grad.dtype)
+  ys_indicators = array_ops.scatter_nd(indices, y_indicators,
+                                       array_ops.shape(x))
+  indicators = x_indicators + ys_indicators  # All elements are >= 1.
+  # If there are multiple minimum or maximum elements then the gradient will be
+  # divided between them.
+  x_grad = grad * x_indicators / indicators
+  y_grad = array_ops.gather_nd(grad / indicators, indices) * y_indicators
+  return [x_grad, None, y_grad]
+
+
+@ops.RegisterGradient("TensorScatterMax")
+def _TensorScatterMaxGrad(op, grad):
+  """Gradient for TensorScatterMax op."""
+  return _TensorScatterMinOrMaxGrad(op, grad)
+
+
+@ops.RegisterGradient("TensorScatterMin")
+def _TensorScatterMinGrad(op, grad):
+  """Gradient for TensorScatterMin op."""
+  return _TensorScatterMinOrMaxGrad(op, grad)
 
 
 @ops.RegisterGradient("TensorScatterSub")

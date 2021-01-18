@@ -22,7 +22,10 @@ import itertools
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
+from tensorflow.python.ops import array_ops
 
 
 def convert_data_format(data_format, ndim):
@@ -51,7 +54,7 @@ def convert_data_format(data_format, ndim):
 def normalize_tuple(value, n, name):
   """Transforms a single integer or iterable of integers into an integer tuple.
 
-  Arguments:
+  Args:
     value: The value to validate and convert. Could an int, or any iterable of
       ints.
     n: The size of the tuple to be returned.
@@ -90,7 +93,7 @@ def normalize_tuple(value, n, name):
 def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
   """Determines output length of a convolution given input length.
 
-  Arguments:
+  Args:
       input_length: integer.
       filter_size: integer.
       padding: one of "same", "valid", "full", "causal"
@@ -116,7 +119,7 @@ def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
 def conv_input_length(output_length, filter_size, padding, stride):
   """Determines input length of a convolution given output length.
 
-  Arguments:
+  Args:
       output_length: integer.
       filter_size: integer.
       padding: one of "same", "valid", "full".
@@ -145,7 +148,7 @@ def deconv_output_length(input_length,
                          dilation=1):
   """Determines output length of a transposed convolution given input length.
 
-  Arguments:
+  Args:
       input_length: Integer.
       filter_size: Integer.
       padding: one of `"same"`, `"valid"`, `"full"`.
@@ -208,31 +211,6 @@ def normalize_padding(value):
   return padding
 
 
-def convert_kernel(kernel):
-  """Converts a Numpy kernel matrix from Theano format to TensorFlow format.
-
-  Also works reciprocally, since the transformation is its own inverse.
-
-  This is used for converting legacy Theano-saved model files.
-
-  Arguments:
-      kernel: Numpy array (3D, 4D or 5D).
-
-  Returns:
-      The converted kernel.
-
-  Raises:
-      ValueError: in case of invalid kernel shape or invalid data_format.
-  """
-  kernel = np.asarray(kernel)
-  if not 3 <= kernel.ndim <= 5:
-    raise ValueError('Invalid kernel shape:', kernel.shape)
-  slices = [slice(None, None, -1) for _ in range(kernel.ndim)]
-  no_flip = (slice(None, None), slice(None, None))
-  slices[-2:] = no_flip
-  return np.copy(kernel[slices])
-
-
 def conv_kernel_mask(input_shape, kernel_shape, strides, padding):
   """Compute a mask representing the connectivity of a convolution operation.
 
@@ -264,6 +242,9 @@ def conv_kernel_mask(input_shape, kernel_shape, strides, padding):
       receptive field.
     strides: tuple of size N, strides along each spatial dimension.
     padding: type of padding, string `"same"` or `"valid"`.
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
 
   Returns:
     A boolean 2N-D `np.ndarray` of shape
@@ -338,6 +319,9 @@ def conv_kernel_idxs(input_shape, kernel_shape, strides, padding, filters_in,
       receptive field.
     strides: tuple of size N, strides along each spatial dimension.
     padding: type of padding, string `"same"` or `"valid"`.
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     filters_in: `int`, number if filters in the input to the layer.
     filters_out: `int', number if filters in the output of the layer.
     data_format: string, "channels_first" or "channels_last".
@@ -430,6 +414,9 @@ def conv_connected_inputs(input_shape, kernel_shape, output_position, strides,
       in the output of the convolution.
     strides: tuple of size N, strides along each spatial dimension.
     padding: type of padding, string `"same"` or `"valid"`.
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
 
   Returns:
     N ranges `[[p_in_left1, ..., p_in_right1], ...,
@@ -468,6 +455,9 @@ def conv_output_shape(input_shape, kernel_shape, strides, padding):
       receptive field.
     strides: tuple of size N, strides along each spatial dimension.
     padding: type of padding, string `"same"` or `"valid"`.
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
 
   Returns:
     tuple of size N: `(d_out1, ..., d_outN)`, spatial shape of the output.
@@ -480,3 +470,50 @@ def conv_output_shape(input_shape, kernel_shape, strides, padding):
   output_shape = tuple(
       [0 if input_shape[d] == 0 else output_shape[d] for d in dims])
   return output_shape
+
+
+def squeeze_batch_dims(inp, op, inner_rank):
+  """Returns `unsqueeze_batch(op(squeeze_batch(inp)))`.
+
+  Where `squeeze_batch` reshapes `inp` to shape
+  `[prod(inp.shape[:-inner_rank])] + inp.shape[-inner_rank:]`
+  and `unsqueeze_batch` does the reverse reshape but on the output.
+
+  Args:
+    inp: A tensor with dims `batch_shape + inner_shape` where `inner_shape`
+      is length `inner_rank`.
+    op: A callable that takes a single input tensor and returns a single.
+      output tensor.
+    inner_rank: A python integer.
+
+  Returns:
+    `unsqueeze_batch_op(squeeze_batch(inp))`.
+  """
+  with ops.name_scope_v2('squeeze_batch_dims'):
+    shape = inp.shape
+
+    inner_shape = shape[-inner_rank:]
+    if not inner_shape.is_fully_defined():
+      inner_shape = array_ops.shape(inp)[-inner_rank:]
+
+    batch_shape = shape[:-inner_rank]
+    if not batch_shape.is_fully_defined():
+      batch_shape = array_ops.shape(inp)[:-inner_rank]
+
+    if isinstance(inner_shape, tensor_shape.TensorShape):
+      inp_reshaped = array_ops.reshape(inp, [-1] + inner_shape.as_list())
+    else:
+      inp_reshaped = array_ops.reshape(
+          inp, array_ops.concat(([-1], inner_shape), axis=-1))
+
+    out_reshaped = op(inp_reshaped)
+
+    out_inner_shape = out_reshaped.shape[-inner_rank:]
+    if not out_inner_shape.is_fully_defined():
+      out_inner_shape = array_ops.shape(out_reshaped)[-inner_rank:]
+
+    out = array_ops.reshape(
+        out_reshaped, array_ops.concat((batch_shape, out_inner_shape), axis=-1))
+
+    out.set_shape(inp.shape[:-inner_rank] + out.shape[-inner_rank:])
+    return out

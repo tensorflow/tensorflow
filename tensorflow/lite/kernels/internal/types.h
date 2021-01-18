@@ -24,24 +24,43 @@ limitations under the License.
 
 namespace tflite {
 
-enum class FusedActivationFunctionType : uint8 { kNone, kRelu6, kRelu1, kRelu };
-enum class PaddingType : uint8 { kNone, kSame, kValid };
+enum class FusedActivationFunctionType : uint8_t {
+  kNone,
+  kRelu6,
+  kRelu1,
+  kRelu
+};
+enum class PaddingType : uint8_t { kNone, kSame, kValid };
 
 struct PaddingValues {
-  int16 width;
-  int16 height;
+  int16_t width;
+  int16_t height;
   // offset is used for calculating "remaining" padding, for example, `width`
   // is 1 and `width_offset` is 1, so padding_left is 1 while padding_right is
   // 1 + 1 = 2.
-  int16 width_offset;
+  int16_t width_offset;
   // Same as width_offset except it's over the height dimension.
-  int16 height_offset;
+  int16_t height_offset;
+};
+
+struct Padding3DValues {
+  int16_t width;
+  int16_t height;
+  int16_t depth;
+  // offset is used for calculating "remaining" padding, for example, `width`
+  // is 1 and `width_offset` is 1, so padding_left is 1 while padding_right is
+  // 1 + 1 = 2.
+  int16_t width_offset;
+  // Same as width_offset except it's over the height dimension.
+  int16_t height_offset;
+  // Same as width_offset except it's over the depth dimension.
+  int16_t depth_offset;
 };
 
 // This enumeration allows for non-default formats for the weights array
 // of a fully-connected operator, allowing the use of special optimized
 // runtime paths.
-enum class FullyConnectedWeightsFormat : uint8 {
+enum class FullyConnectedWeightsFormat : uint8_t {
   // Default format (flat 2D layout, the inner contiguous dimension
   // is input_depth, the outer non-contiguous dimension is output_depth)
   kDefault,
@@ -88,11 +107,11 @@ enum class FullyConnectedWeightsFormat : uint8 {
   //     maximize arithmetic throughput.
   //
   // Finally, the 'Int8' part in the name refers to the fact that this
-  // weights format has each weights value encoded as a signed int8 value,
-  // even if the data type of the weights buffer is uint8.  This is intended
+  // weights format has each weights value encoded as a signed int8_t value,
+  // even if the data type of the weights buffer is uint8_t.  This is intended
   // to save runtime kernels the effort to have to XOR the top bit of these
   // bytes before using them in signed arithmetic, see this file for more
-  // explanations on the 'signed int8 trick' in matrix multiplication kernels:
+  // explanations on the 'signed int8_t trick' in matrix multiplication kernels:
   //
   //   tensorflow/lite/toco/graph_transformations/ensure_uint8_weights_safe_for_fast_int8_kernels.cc
   //
@@ -111,7 +130,7 @@ enum class FullyConnectedWeightsFormat : uint8 {
 // the real 0 value, and scale designates the difference between the real values
 // corresponding to consecutive quantized values differing by 1.
 struct QuantizationParams {
-  int32 zero_point = 0;
+  int32_t zero_point = 0;
   double scale = 0.0;
 };
 
@@ -140,20 +159,20 @@ class RuntimeShape {
     if (dimensions_count > kMaxSmallSize) {
 #ifdef TF_LITE_STATIC_MEMORY
       TFLITE_CHECK(false && "No shape resizing supported on this platform");
-#else   // TF_LITE_STATIC_MEMORY
-      dims_pointer_ = new int32[dimensions_count];
+#else  // TF_LITE_STATIC_MEMORY
+      dims_pointer_ = new int32_t[dimensions_count];
 #endif  // TF_LITE_STATIC_MEMORY
     }
   }
 
-  RuntimeShape(int shape_size, int32 value) : size_(0) {
+  RuntimeShape(int shape_size, int32_t value) : size_(0) {
     Resize(shape_size);
     for (int i = 0; i < shape_size; ++i) {
       SetDim(i, value);
     }
   }
 
-  RuntimeShape(int dimensions_count, const int32* dims_data) : size_(0) {
+  RuntimeShape(int dimensions_count, const int32_t* dims_data) : size_(0) {
     ReplaceWith(dimensions_count, dims_data);
   }
 
@@ -165,33 +184,34 @@ class RuntimeShape {
   // rolls out.
   RuntimeShape(RuntimeShape const& other) : size_(other.DimensionsCount()) {
     if (size_ > kMaxSmallSize) {
-      dims_pointer_ = new int32[size_];
+      dims_pointer_ = new int32_t[size_];
     }
-    std::memcpy(DimsData(), other.DimsData(), sizeof(int32) * size_);
+    std::memcpy(DimsData(), other.DimsData(), sizeof(int32_t) * size_);
   }
 
   bool operator==(const RuntimeShape& comp) const {
     return this->size_ == comp.size_ &&
-           std::memcmp(DimsData(), comp.DimsData(), size_ * sizeof(int32)) == 0;
+           std::memcmp(DimsData(), comp.DimsData(), size_ * sizeof(int32_t)) ==
+               0;
   }
 
   ~RuntimeShape() {
     if (size_ > kMaxSmallSize) {
 #ifdef TF_LITE_STATIC_MEMORY
       TFLITE_CHECK(false && "No shape resizing supported on this platform");
-#else   // TF_LITE_STATIC_MEMORY
+#else  // TF_LITE_STATIC_MEMORY
       delete[] dims_pointer_;
 #endif  // TF_LITE_STATIC_MEMORY
     }
   }
 
-  inline int32 DimensionsCount() const { return size_; }
-  inline int32 Dims(int i) const {
+  inline int32_t DimensionsCount() const { return size_; }
+  inline int32_t Dims(int i) const {
     TFLITE_DCHECK_GE(i, 0);
     TFLITE_DCHECK_LT(i, size_);
     return size_ > kMaxSmallSize ? dims_pointer_[i] : dims_[i];
   }
-  inline void SetDim(int i, int32 val) {
+  inline void SetDim(int i, int32_t val) {
     TFLITE_DCHECK_GE(i, 0);
     TFLITE_DCHECK_LT(i, size_);
     if (size_ > kMaxSmallSize) {
@@ -201,20 +221,20 @@ class RuntimeShape {
     }
   }
 
-  inline int32* DimsData() {
+  inline int32_t* DimsData() {
     return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
   }
-  inline const int32* DimsData() const {
+  inline const int32_t* DimsData() const {
     return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
   }
   // The caller must ensure that the shape is no bigger than 5-D.
-  inline const int32* DimsDataUpTo5D() const { return dims_; }
+  inline const int32_t* DimsDataUpTo5D() const { return dims_; }
 
   inline void Resize(int dimensions_count) {
     if (size_ > kMaxSmallSize) {
 #ifdef TF_LITE_STATIC_MEMORY
       TFLITE_CHECK(false && "No shape resizing supported on this platform");
-#else   // TF_LITE_STATIC_MEMORY
+#else  // TF_LITE_STATIC_MEMORY
       delete[] dims_pointer_;
 #endif  // TF_LITE_STATIC_MEMORY
     }
@@ -222,16 +242,16 @@ class RuntimeShape {
     if (dimensions_count > kMaxSmallSize) {
 #ifdef TF_LITE_STATIC_MEMORY
       TFLITE_CHECK(false && "No shape resizing supported on this platform");
-#else   // TF_LITE_STATIC_MEMORY
-      dims_pointer_ = new int32[dimensions_count];
+#else  // TF_LITE_STATIC_MEMORY
+      dims_pointer_ = new int32_t[dimensions_count];
 #endif  // TF_LITE_STATIC_MEMORY
     }
   }
 
-  inline void ReplaceWith(int dimensions_count, const int32* dims_data) {
+  inline void ReplaceWith(int dimensions_count, const int32_t* dims_data) {
     Resize(dimensions_count);
-    int32* dst_dims = DimsData();
-    std::memcpy(dst_dims, dims_data, dimensions_count * sizeof(int32));
+    int32_t* dst_dims = DimsData();
+    std::memcpy(dst_dims, dims_data, dimensions_count * sizeof(int32_t));
   }
 
   template <typename T>
@@ -239,7 +259,7 @@ class RuntimeShape {
     const int dimensions_count =
         std::distance(src_iterable.begin(), src_iterable.end());
     Resize(dimensions_count);
-    int32* data = DimsData();
+    int32_t* data = DimsData();
     for (auto it : src_iterable) {
       *data = it;
       ++data;
@@ -288,13 +308,13 @@ class RuntimeShape {
       SetDim(i, pad_value);
     }
     std::memcpy(DimsData() + size_increase, shape.DimsData(),
-                sizeof(int32) * shape.DimensionsCount());
+                sizeof(int32_t) * shape.DimensionsCount());
   }
 
-  int32 size_;
+  int32_t size_;
   union {
-    int32 dims_[kMaxSmallSize];
-    int32* dims_pointer_;
+    int32_t dims_[kMaxSmallSize];
+    int32_t* dims_pointer_;
   };
 };
 
@@ -386,6 +406,20 @@ inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
   return ((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3;
 }
 
+inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3,
+                  int i4) {
+  TFLITE_DCHECK_EQ(shape.DimensionsCount(), 5);
+  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
+  TFLITE_DCHECK(i0 >= 0 && i0 < dims_data[0]);
+  TFLITE_DCHECK(i1 >= 0 && i1 < dims_data[1]);
+  TFLITE_DCHECK(i2 >= 0 && i2 < dims_data[2]);
+  TFLITE_DCHECK(i3 >= 0 && i3 < dims_data[3]);
+  TFLITE_DCHECK(i4 >= 0 && i4 < dims_data[4]);
+  return (((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3) *
+             dims_data[4] +
+         i4;
+}
+
 inline int Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK(i0 >= 0 && i0 < dims.sizes[0]);
   TFLITE_DCHECK(i1 >= 0 && i1 < dims.sizes[1]);
@@ -432,7 +466,7 @@ int MatchingArraySize(const ArrayType1& array1, int index1,
 inline int MatchingDim(const RuntimeShape& shape1, int index1,
                        const RuntimeShape& shape2, int index2) {
   TFLITE_DCHECK_EQ(shape1.Dims(index1), shape2.Dims(index2));
-  return shape1.Dims(index1);
+  return std::min(shape1.Dims(index1), shape2.Dims(index2));
 }
 
 template <typename... Args>
@@ -713,7 +747,7 @@ void ComputeStrides(Dims<N>* dims) {
   }
 }
 
-enum class BroadcastableOpCategory : uint8 {
+enum class BroadcastableOpCategory : uint8_t {
   kNone,
   kNonBroadcast,               // Matching input shapes.
   kFirstInputBroadcastsFast,   // Fivefold nested loops.
@@ -729,21 +763,21 @@ static_assert(sizeof(MinMax) == 8, "");
 
 struct ActivationParams {
   FusedActivationFunctionType activation_type;
-  // uint8, etc, activation params.
-  int32 quantized_activation_min;
-  int32 quantized_activation_max;
+  // uint8_t, etc, activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
 };
 
 struct ReluParams : public ActivationParams {
-  int32 input_offset;
-  int32 output_offset;
-  int32 output_multiplier;
-  int32 output_shift;
+  int32_t input_offset;
+  int32_t output_offset;
+  int32_t output_multiplier;
+  int output_shift;
 };
 
 // Styles of resizing op usages. For example, kImageStyle can be used with a Pad
 // op for pattern-specific optimization.
-enum class ResizingCategory : uint8 {
+enum class ResizingCategory : uint8_t {
   kNone,
   kImageStyle,  // 4D, operating on inner dimensions, say {0, a, b, 0}.
   kGenericResize,
@@ -753,24 +787,29 @@ enum class ResizingCategory : uint8 {
 struct ArithmeticParams {
   // Shape dependent / common to data / op types.
   BroadcastableOpCategory broadcast_category;
-  // uint8 inference params.
-  int32 input1_offset;
-  int32 input2_offset;
-  int32 output_offset;
-  int32 output_multiplier;
+  // uint8_t inference params.
+  int32_t input1_offset;
+  int32_t input2_offset;
+  int32_t output_offset;
+  int32_t output_multiplier;
   int output_shift;
-  // Add / Sub, not Mul, uint8 inference params.
+  // Add / Sub, not Mul, uint8_t inference params.
   int left_shift;
-  int32 input1_multiplier;
+  int32_t input1_multiplier;
   int input1_shift;
-  int32 input2_multiplier;
+  int32_t input2_multiplier;
   int input2_shift;
-  // uint8, etc, activation params.
-  int32 quantized_activation_min;
-  int32 quantized_activation_max;
+
+  // TODO(b/158622529): Union the following activation params.
+  // uint8_t, etc, activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  // int64_t activation params.
+  int64_t int64_activation_min;
+  int64_t int64_activation_max;
 
   // Processed output dimensions.
   // Let input "a" be the one that broadcasts in the faster-changing dimension.
@@ -785,22 +824,22 @@ struct ArithmeticParams {
 };
 
 struct ConcatenationParams {
-  int8 axis;
-  const int32* input_zeropoint;
+  int8_t axis;
+  const int32_t* input_zeropoint;
   const float* input_scale;
-  uint16 inputs_count;
-  int32 output_zeropoint;
+  uint16_t inputs_count;
+  int32_t output_zeropoint;
   float output_scale;
 };
 
 struct ComparisonParams {
-  // uint8 inference params.
+  // uint8_t inference params.
   int left_shift;
-  int32 input1_offset;
-  int32 input1_multiplier;
+  int32_t input1_offset;
+  int32_t input1_multiplier;
   int input1_shift;
-  int32 input2_offset;
-  int32 input2_multiplier;
+  int32_t input2_offset;
+  int32_t input2_multiplier;
   int input2_shift;
   // Shape dependent / common to inference types.
   bool is_broadcast;
@@ -810,81 +849,94 @@ struct ConvParams {
   PaddingType padding_type;
   PaddingValues padding_values;
   // TODO(starka): This was just "stride", so check that width+height is OK.
-  int16 stride_width;
-  int16 stride_height;
-  int16 dilation_width_factor;
-  int16 dilation_height_factor;
-  // uint8 inference params.
+  int16_t stride_width;
+  int16_t stride_height;
+  int16_t dilation_width_factor;
+  int16_t dilation_height_factor;
+  // uint8_t inference params.
   // TODO(b/65838351): Use smaller types if appropriate.
-  int32 input_offset;
-  int32 weights_offset;
-  int32 output_offset;
-  int32 output_multiplier;
+  int32_t input_offset;
+  int32_t weights_offset;
+  int32_t output_offset;
+  int32_t output_multiplier;
   int output_shift;
-  // uint8, etc, activation params.
-  int32 quantized_activation_min;
-  int32 quantized_activation_max;
+  // uint8_t, etc, activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
+};
+
+struct Conv3DParams {
+  Padding3DValues padding_values;
+  int stride_width;
+  int stride_height;
+  int stride_depth;
+  int dilation_width;
+  int dilation_height;
+  int dilation_depth;
   // float activation params.
   float float_activation_min;
   float float_activation_max;
 };
 
 struct DepthToSpaceParams {
-  int32 block_size;
+  int32_t block_size;
 };
 
 struct DepthwiseParams {
   PaddingType padding_type;
   PaddingValues padding_values;
-  int16 stride_width;
-  int16 stride_height;
-  int16 dilation_width_factor;
-  int16 dilation_height_factor;
-  int16 depth_multiplier;
-  // uint8 inference params.
+  int16_t stride_width;
+  int16_t stride_height;
+  int16_t dilation_width_factor;
+  int16_t dilation_height_factor;
+  int16_t depth_multiplier;
+  // uint8_t inference params.
   // TODO(b/65838351): Use smaller types if appropriate.
-  int32 input_offset;
-  int32 weights_offset;
-  int32 output_offset;
-  int32 output_multiplier;
+  int32_t input_offset;
+  int32_t weights_offset;
+  int32_t output_offset;
+  int32_t output_multiplier;
   int output_shift;
-  // uint8, etc, activation params.
-  int32 quantized_activation_min;
-  int32 quantized_activation_max;
+  // uint8_t, etc, activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
   // float activation params.
   float float_activation_min;
   float float_activation_max;
-  const int32* output_multiplier_per_channel;
-  const int32* output_shift_per_channel;
+  const int32_t* output_multiplier_per_channel;
+  const int32_t* output_shift_per_channel;
 };
 
 struct DequantizationParams {
   double scale;
-  int32 zero_point;
+  int32_t zero_point;
 };
 
 struct PerChannelDequantizationParams {
   const float* scale;
-  const int32* zero_point;
-  int32 quantized_dimension;
+  const int32_t* zero_point;
+  int32_t quantized_dimension;
 };
 
 struct FakeQuantParams {
   MinMax minmax;
-  int32 num_bits;
+  int32_t num_bits;
 };
 
 struct FullyConnectedParams {
-  // uint8 inference params.
+  // uint8_t inference params.
   // TODO(b/65838351): Use smaller types if appropriate.
-  int32 input_offset;
-  int32 weights_offset;
-  int32 output_offset;
-  int32 output_multiplier;
+  int32_t input_offset;
+  int32_t weights_offset;
+  int32_t output_offset;
+  int32_t output_multiplier;
   int output_shift;
-  // uint8, etc, activation params.
-  int32 quantized_activation_min;
-  int32 quantized_activation_max;
+  // uint8_t, etc, activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
   // float activation params.
   float float_activation_min;
   float float_activation_max;
@@ -895,16 +947,16 @@ struct FullyConnectedParams {
 };
 
 struct GatherParams {
-  int16 axis;
+  int16_t axis;
 };
 
 struct L2NormalizationParams {
-  // uint8 inference params.
-  int32 input_zero_point;
+  // uint8_t inference params.
+  int32_t input_zero_point;
 };
 
 struct LocalResponseNormalizationParams {
-  int32 range;
+  int32_t range;
   double bias;
   double alpha;
   double beta;
@@ -932,48 +984,50 @@ struct HardSwishParams {
 };
 
 struct LogisticParams {
-  // uint8 inference params.
-  int32 input_zero_point;
-  int32 input_range_radius;
-  int32 input_multiplier;
+  // uint8_t inference params.
+  int32_t input_zero_point;
+  int32_t input_range_radius;
+  int32_t input_multiplier;
   int input_left_shift;
 };
 
 struct LstmCellParams {
-  int32 weights_zero_point;
-  int32 accum_multiplier;
+  int32_t weights_zero_point;
+  int32_t accum_multiplier;
   int accum_shift;
   int state_integer_bits;
 };
 
 struct MeanParams {
-  int8 axis_count;
-  int16 axis[4];
+  int8_t axis_count;
+  int16_t axis[4];
 };
 
 struct PackParams {
-  int8 axis;
-  const int32* input_zeropoint;
+  int8_t axis;
+  const int32_t* input_zeropoint;
   const float* input_scale;
-  uint16 inputs_count;
-  int32 output_zeropoint;
+  uint16_t inputs_count;
+  int32_t output_zeropoint;
   float output_scale;
 };
 
 struct PadParams {
-  int8 left_padding_count;
-  int32 left_padding[4];
-  int8 right_padding_count;
-  int32 right_padding[4];
+  int8_t left_padding_count;
+  int32_t left_padding[4];
+  int8_t right_padding_count;
+  int32_t right_padding[4];
   ResizingCategory resizing_category;
 };
 
 struct PreluParams {
-  int32 input_offset;
-  int32 alpha_offset;
-  int32 output_offset;
-  int32 output_multiplier;
-  int output_shift;
+  int32_t input_offset;
+  int32_t alpha_offset;
+  int32_t output_offset;
+  int32_t output_multiplier_1;
+  int output_shift_1;
+  int32_t output_multiplier_2;
+  int output_shift_2;
 };
 
 struct PoolParams {
@@ -984,17 +1038,17 @@ struct PoolParams {
   int stride_width;
   int filter_height;
   int filter_width;
-  // uint8, etc, activation params.
-  int32 quantized_activation_min;
-  int32 quantized_activation_max;
+  // uint8_t, etc, activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
   // float activation params.
   float float_activation_min;
   float float_activation_max;
 };
 
 struct ReshapeParams {
-  int8 shape_count;
-  int32 shape[4];
+  int8_t shape_count;
+  int32_t shape[4];
 };
 
 struct ResizeBilinearParams {
@@ -1007,92 +1061,99 @@ struct ResizeBilinearParams {
 
 struct ResizeNearestNeighborParams {
   bool align_corners;
+  bool half_pixel_centers;
 };
 
 struct SliceParams {
-  int8 begin_count;
-  int32 begin[4];
-  int8 size_count;
-  int32 size[4];
+  int8_t begin_count;
+  int32_t begin[5];
+  int8_t size_count;
+  int32_t size[5];
 };
 
 struct SoftmaxParams {
   // beta is not really used (not a Tensorflow parameter) and not implemented
   // for LogSoftmax.
   double beta;
-  // uint8 inference params.  Used even when beta defaults to 1.0.
-  int32 input_multiplier;
-  int32 input_left_shift;
+  // uint8_t inference params.  Used even when beta defaults to 1.0.
+  int32_t input_multiplier;
+  int32_t input_left_shift;
   // Reverse scaling is only used by LogSoftmax.
-  int32 reverse_scaling_divisor;
-  int32 reverse_scaling_right_shift;
+  int32_t reverse_scaling_divisor;
+  int32_t reverse_scaling_right_shift;
   int diff_min;
   int32_t zero_point;
   float scale;
   float* table;
+  // int16 LUT for exp(x), where x uniform distributed between [-10.0 , 0.0]
+  int16_t* exp_lut;
+  // int16 LUT for 1 / (1 + x), where x uniform distributed between [0.0 , 1.0]
+  int16_t* one_over_one_plus_x_lut;
+  uint8_t* uint8_table1;
+  uint8_t* uint8_table2;
 };
 
 struct SpaceToBatchParams {
-  // "Zero" padding for uint8 means padding with the output offset.
-  int32 output_offset;
+  // "Zero" padding for uint8_t means padding with the output offset.
+  int32_t output_offset;
 };
 
 struct SpaceToDepthParams {
-  int32 block_size;
+  int32_t block_size;
 };
 
 struct SplitParams {
   // Graphs that split into, say, 2000 nodes are encountered.  The indices in
-  // OperatorEdges are of type uint16.
-  uint16 num_split;
-  int16 axis;
+  // OperatorEdges are of type uint16_t.
+  uint16_t num_split;
+  int16_t axis;
 };
 
 struct SqueezeParams {
-  int8 squeeze_dims_count;
-  int32 squeeze_dims[4];
+  int8_t squeeze_dims_count;
+  int32_t squeeze_dims[4];
 };
 
 struct StridedSliceParams {
-  int8 start_indices_count;
-  int32 start_indices[5];
-  int8 stop_indices_count;
-  int32 stop_indices[5];
-  int8 strides_count;
-  int32 strides[5];
+  int8_t start_indices_count;
+  int32_t start_indices[5];
+  int8_t stop_indices_count;
+  int32_t stop_indices[5];
+  int8_t strides_count;
+  int32_t strides[5];
 
-  int16 begin_mask;
-  int16 ellipsis_mask;
-  int16 end_mask;
-  int16 new_axis_mask;
-  int16 shrink_axis_mask;
+  int16_t begin_mask;
+  int16_t ellipsis_mask;
+  int16_t end_mask;
+  int16_t new_axis_mask;
+  int16_t shrink_axis_mask;
 };
 
 struct TanhParams {
-  int32 input_zero_point;
-  int32 input_range_radius;
-  int32 input_multiplier;
+  int32_t input_zero_point;
+  int32_t input_range_radius;
+  int32_t input_multiplier;
   int input_left_shift;
 };
 
 struct TransposeParams {
-  int8 perm_count;
-  int32 perm[5];
+  int8_t perm_count;
+  int32_t perm[5];
 };
 
 struct UnpackParams {
-  uint16 num_split;
-  int16 axis;
+  uint16_t num_split;
+  int16_t axis;
 };
 
 struct LeakyReluParams {
   float alpha;
-  int32 input_offset;
-  int32 output_offset;
-  int32 output_multiplier_alpha;
-  int32 output_shift_alpha;
-  int32 output_multiplier_identity;
-  int32 output_shift_identity;
+  int32_t input_offset;
+  int32_t output_offset;
+  int32_t output_multiplier_alpha;
+  int32_t output_shift_alpha;
+  int32_t output_multiplier_identity;
+  int32_t output_shift_identity;
 };
 
 template <typename P>
@@ -1102,13 +1163,19 @@ inline void SetActivationParams(float min, float max, P* params) {
 }
 
 template <typename P>
-inline void SetActivationParams(int32 min, int32 max, P* params) {
+inline void SetActivationParams(int32_t min, int32_t max, P* params) {
   params->quantized_activation_min = min;
   params->quantized_activation_max = max;
 }
 
 template <typename P>
-inline void GetActivationParams(const P& params, int32* min, int32* max) {
+inline void SetActivationParams(int64_t min, int64_t max, P* params) {
+  params->int64_activation_min = min;
+  params->int64_activation_max = max;
+}
+
+template <typename P>
+inline void GetActivationParams(const P& params, int32_t* min, int32_t* max) {
   *min = params.quantized_activation_min;
   *max = params.quantized_activation_max;
 }
@@ -1119,6 +1186,11 @@ inline void GetActivationParams(const P& params, float* min, float* max) {
   *max = params.float_activation_max;
 }
 
+template <typename P>
+inline void GetActivationParams(const P& params, int64_t* min, int64_t* max) {
+  *min = params.int64_activation_min;
+  *max = params.int64_activation_max;
+}
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_

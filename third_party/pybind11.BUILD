@@ -18,6 +18,7 @@ cc_library(
         "-Wno-pragma-once-outside-header",
     ],
     includes = ["include"],
+    strip_include_prefix = "include",
     deps = [
         "@org_tensorflow//third_party/python_runtime:headers",
     ],

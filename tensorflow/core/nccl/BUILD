@@ -2,22 +2,28 @@
 #   Wrap NVIDIA (https://github.com/NVIDIA/nccl) NCCL with tensorflow ops.
 #   APIs are meant to change over time.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm", "tf_copts")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "if_nccl")
+
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 cc_library(
     name = "nccl_lib",
@@ -37,13 +43,14 @@ cc_library(
     ]) + if_cuda_or_rocm([
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
     ]),
     alwayslink = 1,
 )
@@ -53,7 +60,7 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = ["nccl_manager_test.cc"],
     tags = tf_cuda_tests_tags() + [
-        "guitar",
+        "noguitar",  # TODO(b/176867216): Flaky.
         "manual",
         "multi_gpu",
         "no_oss",
@@ -74,4 +81,29 @@ tf_cuda_cc_test(
         "@local_config_rocm//rocm:rccl",
         "//tensorflow/core/common_runtime/gpu:rocm",
     ]),
+)
+
+cc_library(
+    name = "collective_communicator",
+    srcs = ["collective_communicator.cc"],
+    hdrs = ["collective_communicator.h"],
+    copts = tf_copts() + if_nccl(["-DTENSORFLOW_USE_NCCL=1"]),
+    visibility = [
+        "//learning/brain/runtime:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    deps =
+        ["//tensorflow/core:framework"] + if_nccl([
+            ":nccl_lib",
+            "@com_google_absl//absl/memory",
+            "//tensorflow/core/profiler/lib:traceme",
+        ]),
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        "collective_communicator.cc",
+        "collective_communicator.h",
+    ],
 )

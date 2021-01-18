@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -35,14 +36,16 @@ void TrtShapeOptimizationProfile::InitProfiles() {
             << "for each input (min=opt=max).";
   }
   for (auto& shape_vec : input_shapes_) {
-    std::vector<nvinfer1::Dims> dimvec;
-    for (auto& shape : shape_vec) {
-      dimvec.push_back(TensorShapeToTrtDims(shape, false));
+    if (!shape_vec.empty()) {
+      std::vector<nvinfer1::Dims> dimvec(shape_vec.size());
+      absl::c_transform(shape_vec, dimvec.begin(), [](TensorShape shape) {
+        return TensorShapeToTrtDims(shape, false);
+      });
+      // Set min=opt=max.
+      OptimizationProfileConfig profConfig{dimvec, dimvec, dimvec};
+      profiles_.push_back(std::move(profConfig));
+      VLOG(1) << "Created profile " << profiles_.back().DebugString();
     }
-    // We set min=opt=max.
-    OptimizationProfileConfig profConfig{dimvec, dimvec, dimvec};
-    profiles_.push_back(std::move(profConfig));
-    VLOG(1) << "Created profile " << profiles_.back().DebugString();
   }
 }
 
@@ -106,16 +109,17 @@ int TrtShapeOptimizationProfile::GetProfileNumber(
 }
 
 Status TrtShapeOptimizationProfile::CreateExecutionContexts(
-    nvinfer1::ICudaEngine* engine,
-    std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context) {
+    nvinfer1::ICudaEngine* engine, std::vector<ExecutionContext>& exec_context,
+    TRTBaseAllocator* memory_allocator) {
   int i = 0;
   // The following loop runs once if we have static shapes, to create a single
   // execution context without profiles. In dynamic mode we create one context
   // for each profile and set the corresponding optimization profile.
   do {
     VLOG(1) << "Creating execution context " << i;
-    nvinfer1::IExecutionContext* ctx = engine->createExecutionContext();
-    if (ctx == nullptr) {
+    auto exec_context_status =
+        ExecutionContext::Create(engine, memory_allocator);
+    if (!exec_context_status.ok()) {
       return errors::Internal("Failed to create execution context");
     }
     if (i > 0) {
@@ -125,14 +129,15 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
       // - The 0th profile is set implicitly for the first execution context
       //   therefore we do not need to set.
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-      bool stat = ctx->setOptimizationProfile(i);
+      bool stat = exec_context_status.ValueOrDie()
+                      .GetIExecutionContext()
+                      ->setOptimizationProfile(i);
       if (!stat) {
-        ctx->destroy();
         return errors::Internal("Could not set TRT optimization profile.");
       }
 #endif
     }
-    exec_context.push_back(TrtUniquePtrType<nvinfer1::IExecutionContext>(ctx));
+    exec_context.push_back(std::move(exec_context_status.ValueOrDie()));
     i++;
   } while (i < profiles_.size());
 

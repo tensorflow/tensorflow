@@ -485,6 +485,30 @@ TEST_F(ShapeTreeTest, ReverseIterateOrder) {
                }));
 }
 
+// Ensures that we can find an element at an index that we know ahead of time to
+// be occupied in a 'ShapeTree' via the 'find' API.
+TEST_F(ShapeTreeTest, Find) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  auto found = t.find({1, 0});
+  EXPECT_NE(found, t.end());
+  // The found key must be the same key we searched for.
+  EXPECT_EQ(found->first, ShapeIndex({1, 0}));
+  // The 'ShapeTree' has 42 at every position.
+  EXPECT_EQ(found->second, 42);
+}
+
+// Ensures that we can find an element at an index that we know ahead of time to
+// be occupied in a 'const ShapeTree' via the 'find' API.
+TEST_F(ShapeTreeTest, ConstFind) {
+  const ShapeTree<int> t(nested_tuple_shape_, 42);
+  auto found = t.find({1, 0});
+  EXPECT_NE(found, t.end());
+  // The found key must be the same key we searched for.
+  EXPECT_EQ(found->first, ShapeIndex({1, 0}));
+  // The 'ShapeTree' has 42 at every position.
+  EXPECT_EQ(found->second, 42);
+}
+
 TEST_F(ShapeTreeTest, IterateOrderLeaves) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   std::vector<ShapeIndex> v;
@@ -511,94 +535,100 @@ TEST_F(ShapeTreeTest, ReverseIterateOrderLeaves) {
                }));
 }
 
-void BM_Construct(int iters, int depth, int fan_out) {
-  tensorflow::testing::StopTiming();
+void BM_Construct(::testing::benchmark::State& state) {
+  const int depth = state.range(0);
+  const int fan_out = state.range(1);
+
   Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
     shape = ShapeUtil::MakeTupleShape(shapes);
   }
-  tensorflow::testing::StartTiming();
 
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     ShapeTree<int> shape_tree(shape);
   }
 }
 
-void BM_ConstructUnowned(int iters, int depth, int fan_out) {
-  tensorflow::testing::StopTiming();
+void BM_ConstructUnowned(::testing::benchmark::State& state) {
+  const int depth = state.range(0);
+  const int fan_out = state.range(1);
+
   Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
     shape = ShapeUtil::MakeTupleShape(shapes);
   }
-  tensorflow::testing::StartTiming();
 
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     ShapeTree<int> shape_tree(&shape);
   }
 }
 
-void BM_Copy(int iters, int depth, int fan_out) {
-  tensorflow::testing::StopTiming();
+void BM_Copy(::testing::benchmark::State& state) {
+  const int depth = state.range(0);
+  const int fan_out = state.range(1);
+
   Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
     shape = ShapeUtil::MakeTupleShape(shapes);
   }
-  tensorflow::testing::StartTiming();
 
   ShapeTree<int> shape_tree(shape);
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     ShapeTree<int> copy = shape_tree;
     tensorflow::testing::DoNotOptimize(copy);
   }
 }
 
-void BM_Move(int iters, int depth, int fan_out) {
-  tensorflow::testing::StopTiming();
+void BM_Move(::testing::benchmark::State& state) {
+  const int depth = state.range(0);
+  const int fan_out = state.range(1);
+
   Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
     shape = ShapeUtil::MakeTupleShape(shapes);
   }
-  tensorflow::testing::StartTiming();
 
   ShapeTree<int> shape_tree(shape);
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     ShapeTree<int> copy = std::move(shape_tree);
     shape_tree = std::move(copy);
   }
 }
 
-void BM_ForEach(int iters, int depth, int fan_out) {
-  tensorflow::testing::StopTiming();
+void BM_ForEach(::testing::benchmark::State& state) {
+  const int depth = state.range(0);
+  const int fan_out = state.range(1);
+
   Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
     shape = ShapeUtil::MakeTupleShape(shapes);
   }
-  tensorflow::testing::StartTiming();
 
   ShapeTree<int> shape_tree(shape);
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     shape_tree.ForEachMutableElement([](const ShapeIndex& index, int* data) {
       tensorflow::testing::DoNotOptimize(index);
     });
   }
 }
 
-void BM_Iterate(int iters, int depth, int fan_out) {
-  tensorflow::testing::StopTiming();
+void BM_Iterate(::testing::benchmark::State& state) {
+  const int depth = state.range(0);
+  const int fan_out = state.range(1);
+
   Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
     shape = ShapeUtil::MakeTupleShape(shapes);
   }
-  tensorflow::testing::StartTiming();
 
   ShapeTree<int> shape_tree(shape);
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     for (auto& iter : shape_tree) {
       tensorflow::testing::DoNotOptimize(iter.second);
     }

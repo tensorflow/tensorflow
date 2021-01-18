@@ -26,6 +26,7 @@ from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.feature_column import dense_features as df
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
 
@@ -34,7 +35,7 @@ class TestDNNModel(keras.models.Model):
 
   def __init__(self, feature_columns, units, name=None, **kwargs):
     super(TestDNNModel, self).__init__(name=name, **kwargs)
-    self._input_layer = fc.DenseFeatures(feature_columns, name='input_layer')
+    self._input_layer = df.DenseFeatures(feature_columns, name='input_layer')
     self._dense_layer = keras.layers.Dense(units, name='dense_layer')
 
   def call(self, features):
@@ -52,7 +53,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
   def test_sequential_model(self):
     columns = [fc.numeric_column('a')]
     model = keras.models.Sequential([
-        fc.DenseFeatures(columns),
+        df.DenseFeatures(columns),
         keras.layers.Dense(64, activation='relu'),
         keras.layers.Dense(20, activation='softmax')
     ])
@@ -74,7 +75,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
   def test_sequential_model_with_ds_input(self):
     columns = [fc.numeric_column('a')]
     model = keras.models.Sequential([
-        fc.DenseFeatures(columns),
+        df.DenseFeatures(columns),
         keras.layers.Dense(64, activation='relu'),
         keras.layers.Dense(20, activation='softmax')
     ])
@@ -112,7 +113,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
     crossed_feature = fc.indicator_column(crossed_feature)
     feature_columns.append(crossed_feature)
 
-    feature_layer = fc.DenseFeatures(feature_columns)
+    feature_layer = df.DenseFeatures(feature_columns)
 
     model = keras.models.Sequential([
         feature_layer,
@@ -185,7 +186,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
     col_a = fc.numeric_column('a')
     col_b = fc.numeric_column('b')
 
-    feature_layer = fc.DenseFeatures([col_a, col_b], name='fc')
+    feature_layer = df.DenseFeatures([col_a, col_b], name='fc')
     dense = keras.layers.Dense(4)
 
     # This seems problematic.... We probably need something for DenseFeatures
@@ -204,7 +205,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         loss_weights=loss_weights)
 
     data = ({'a': np.arange(10), 'b': np.arange(10)}, np.arange(10, 20))
-    print(model.fit(*data, epochs=1))
+    model.fit(*data, epochs=1)
 
   # TODO(kaftan) seems to throw an error when enabled.
   @keras_parameterized.run_all_keras_modes
@@ -213,8 +214,8 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
     col_b = fc.numeric_column('b')
     col_c = fc.numeric_column('c')
 
-    fc1 = fc.DenseFeatures([col_a, col_b], name='fc1')
-    fc2 = fc.DenseFeatures([col_b, col_c], name='fc2')
+    fc1 = df.DenseFeatures([col_a, col_b], name='fc1')
+    fc2 = df.DenseFeatures([col_b, col_c], name='fc2')
     dense = keras.layers.Dense(4)
 
     # This seems problematic.... We probably need something for DenseFeatures
@@ -239,7 +240,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         'b': np.arange(10),
         'c': np.arange(10)
     }], np.arange(10, 100))
-    print(model.fit(*data_list, epochs=1))
+    model.fit(*data_list, epochs=1)
 
     data_bloated_list = ([{
         'a': np.arange(10),
@@ -250,7 +251,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         'b': np.arange(10),
         'c': np.arange(10)
     }], np.arange(10, 100))
-    print(model.fit(*data_bloated_list, epochs=1))
+    model.fit(*data_bloated_list, epochs=1)
 
     data_dict = ({
         'fc1': {
@@ -262,7 +263,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
             'c': np.arange(10)
         }
     }, np.arange(10, 100))
-    print(model.fit(*data_dict, epochs=1))
+    model.fit(*data_dict, epochs=1)
 
     data_bloated_dict = ({
         'fc1': {
@@ -276,7 +277,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
             'c': np.arange(10)
         }
     }, np.arange(10, 100))
-    print(model.fit(*data_bloated_dict, epochs=1))
+    model.fit(*data_bloated_dict, epochs=1)
 
   @keras_parameterized.run_all_keras_modes
   def test_string_input(self):
@@ -289,7 +290,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
     categorical_cols = [fc.categorical_column_with_hash_bucket('cabin', 10)]
     feature_cols = ([fc.numeric_column('age')]
                     + [fc.indicator_column(cc) for cc in categorical_cols])
-    layers = [fc.DenseFeatures(feature_cols),
+    layers = [df.DenseFeatures(feature_cols),
               keras.layers.Dense(128),
               keras.layers.Dense(1)]
 

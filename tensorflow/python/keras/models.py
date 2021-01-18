@@ -22,8 +22,8 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.engine import network
+from tensorflow.python.keras import optimizer_v1
+from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_v1
@@ -31,7 +31,6 @@ from tensorflow.python.keras.engine.base_layer import AddMetric
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
-from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
@@ -45,6 +44,7 @@ from tensorflow.python.util.tf_export import keras_export
 # API entries importable from `keras.models`:
 Model = training.Model  # pylint: disable=invalid-name
 Sequential = sequential.Sequential  # pylint: disable=invalid-name
+Functional = functional.Functional  # pylint: disable=invalid-name
 save_model = save.save_model
 load_model = save.load_model
 model_from_config = model_config.model_from_config
@@ -112,11 +112,12 @@ def _make_new_nodes(nodes_by_depth, layer_fn, layer_map, tensor_map):
       # then call node.inbound_layer on them.
       if all(
           tensor in tensor_map for tensor in nest.flatten(node.input_tensors)):
-        computed_tensors = nest.map_structure(lambda t: tensor_map[t],
-                                              node.input_tensors)
         # Call layer.
-        kwargs = node.arguments or {}
-        output_tensors = layer(computed_tensors, **kwargs)
+        args = nest.map_structure(lambda t: tensor_map.get(t, t),
+                                  node.call_args)
+        kwargs = nest.map_structure(lambda t: tensor_map.get(t, t),
+                                    node.call_kwargs)
+        output_tensors = layer(*args, **kwargs)
 
         # Thread-safe way to keep track of what node was created.
         first_output_tensor = nest.flatten(output_tensors)[0]
@@ -138,7 +139,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
   Input layers are always cloned.
 
-  Arguments:
+  Args:
       model: Instance of `Model`.
       input_tensors: optional list of input tensors
           to build the model upon. If not provided,
@@ -192,12 +193,12 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
   if not callable(layer_fn):
     raise ValueError('Expected `layer_fn` argument to be a callable.')
 
-  model_config, created_layers = _clone_layers_and_model_config(
+  model_configs, created_layers = _clone_layers_and_model_config(
       model, new_input_layers, layer_fn)
   # Reconstruct model from the config, using the cloned layers.
   input_tensors, output_tensors, created_layers = (
-      network.reconstruct_from_config(model_config,
-                                      created_layers=created_layers))
+      functional.reconstruct_from_config(model_configs,
+                                         created_layers=created_layers))
   metrics_names = model.metrics_names
   model = Model(input_tensors, output_tensors, name=model.name)
   # Layers not directly tied to outputs of the Model, such as loss layers
@@ -205,11 +206,13 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
   ancillary_layers = [
       layer for layer in created_layers.values() if layer not in model.layers
   ]
+  # TODO(b/162887610): This may need to adjust the inbound node index if the
+  # created layers had already been used to define other models.
   if ancillary_layers:
     new_nodes = nest.flatten([
         layer.inbound_nodes[1:]
-        if network._should_skip_first_node(layer) else layer.inbound_nodes
-        for layer in created_layers.values()
+        if functional._should_skip_first_node(layer)
+        else layer.inbound_nodes for layer in created_layers.values()
     ])
     _insert_ancillary_layers(model, ancillary_layers, metrics_names, new_nodes)
   return model
@@ -243,7 +246,8 @@ def _clone_layers_and_model_config(model, input_layers, layer_fn):
       created_layers[layer.name] = layer_fn(layer)
     return {}
 
-  config = network.get_network_config(model, serialize_layer_fn=_copy_layer)
+  config = functional.get_network_config(
+      model, serialize_layer_fn=_copy_layer)
   return config, created_layers
 
 
@@ -283,7 +287,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
   except that it creates new layers (and thus new weights) instead
   of sharing the weights of the existing layers.
 
-  Arguments:
+  Args:
       model: Instance of `Sequential`.
       input_tensors: optional list of input tensors
           to build the model upon. If not provided,
@@ -314,10 +318,10 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
 
   layers = []  # Layers needed to compute the model's outputs.
   layer_map = {}
-  # Use model._layers to ensure that all layers are cloned. The model's layers
+  # Ensure that all layers are cloned. The model's layers
   # property will exclude the initial InputLayer (if it exists) in the model,
   # resulting in a different Sequential model structure.
-  for layer in model._layers:
+  for layer in model._flatten_layers(include_self=False, recursive=False):
     if isinstance(layer, InputLayer) and input_tensors is not None:
       # If input tensors are provided, the original model's InputLayer is
       # overwritten with a different InputLayer.
@@ -389,7 +393,7 @@ def clone_model(model, input_tensors=None, clone_function=None):
   except that it creates new layers (and thus new weights) instead
   of sharing the weights of the existing layers.
 
-  Arguments:
+  Args:
       model: Instance of `Model`
           (could be a functional model or a Sequential model).
       input_tensors: optional list of input tensors or InputLayer objects
@@ -456,9 +460,8 @@ def _in_place_subclassed_model_reset(model):
   # Retrieve all layers tracked by the model as well as their attribute names
   attributes_cache = {}
   for name in dir(model):
-    # Skip the check of methods in tf.Module since they basically
-    # recursively query all the other attributes within same module.
-    if name == 'submodules':
+    # Skip attrs that track other trackables.
+    if name == 'submodules' or name == '_self_tracked_trackables':
       continue
 
     try:
@@ -485,28 +488,24 @@ def _in_place_subclassed_model_reset(model):
 
   # Replace layers on the model with fresh layers
   layers_to_names = {value: key for key, value in attributes_cache.items()}
-  original_layers = model._layers[:]
+  original_layers = list(
+      model._flatten_layers(include_self=False, recursive=False))
   setattr_tracking = model._setattr_tracking
   model._setattr_tracking = False
-  model._layers = []
+  model._self_tracked_trackables = []
   for layer in original_layers:  # We preserve layer order.
     config = layer.get_config()
     # This will not work for nested subclassed models used as layers.
     # This would be theoretically possible to support, but would add complexity.
     # Only do it if users complain.
-    if isinstance(layer, Network) and not layer._is_graph_network:
+    if isinstance(layer, training.Model) and not layer._is_graph_network:
       raise ValueError('We do not support the use of nested subclassed models '
                        'in `model_to_estimator` at this time. Found nested '
                        'model: %s' % layer)
     fresh_layer = layer.__class__.from_config(config)
     name = layers_to_names[layer]
     setattr(model, name, fresh_layer)
-    model._layers.append(fresh_layer)
-
-    # The base Layer __setattr__ will invalidate its attribute cache when
-    # `._layers` is assigned, but it has no way to know when the underlying list
-    # is mutated so we must explicitly signal the append.
-    model._attribute_sentinel.invalidate_all()
+    model._self_tracked_trackables.append(fresh_layer)
 
   # Cache original model build attributes (in addition to layers)
   if (not hasattr(model, '_original_attributes_cache') or
@@ -577,11 +576,11 @@ def in_place_subclassed_model_state_restoration(model):
     # when they're constructed.
     setattr_tracking = model._setattr_tracking
     model._setattr_tracking = False
-    model._layers = []
+    model._self_tracked_trackables = []
     for name, value in model._original_attributes_cache.items():
       setattr(model, name, value)
       if isinstance(value, Layer):
-        model._layers.append(value)
+        model._self_tracked_trackables.append(value)
     model._original_attributes_cache = None
     model._setattr_tracking = setattr_tracking
   else:
@@ -595,7 +594,7 @@ def clone_and_build_model(
     optimizer_config=None):
   """Clone a `Model` and build/compile it with the same settings used before.
 
-  This function can be be run in the same graph or in a separate graph from the
+  This function can be run in the same graph or in a separate graph from the
   model. When using a separate graph, `in_place_reset` must be `False`.
 
   Note that, currently, the clone produced from this function may not work with
@@ -660,7 +659,7 @@ def clone_and_build_model(
                   model._build_input_shape, dtype=model.inputs[0].dtype))
     else:
       try:
-        # Prefer clonining the model if serial/deserial logic is implemented for
+        # Prefer cloning the model if serial/deserial logic is implemented for
         # subclassed model.
         clone = model.__class__.from_config(model.get_config())
       except NotImplementedError:
@@ -683,8 +682,8 @@ def clone_and_build_model(
         clone._set_inputs(input_tensors)
 
   if compile_clone:
-    if isinstance(orig_optimizer, optimizers.TFOptimizer):
-      optimizer = optimizers.TFOptimizer(
+    if isinstance(orig_optimizer, optimizer_v1.TFOptimizer):
+      optimizer = optimizer_v1.TFOptimizer(
           orig_optimizer.optimizer, optimizer_iterations)
       K.track_tf_optimizer(optimizer)
     else:

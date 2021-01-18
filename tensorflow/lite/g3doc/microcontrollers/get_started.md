@@ -1,14 +1,29 @@
 # Get started with microcontrollers
 
-This document will help you get started using TensorFlow Lite for
-Microcontrollers. It explains how to run the framework's example applications,
-then walks through the code for a simple application that runs inference on a
+This document explains how to train a model and run inference using a
 microcontroller.
+
+## The Hello World example
+
+The
+[Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world)
+example is designed to demonstrate the absolute basics of using TensorFlow Lite
+for Microcontrollers. We train and run a model that replicates a sine function,
+i.e, it takes a single number as its input, and outputs the number's
+[sine](https://en.wikipedia.org/wiki/Sine) value. When deployed to the
+microcontroller, its predictions are used to either blink LEDs or control an
+animation.
+
+The end-to-end workflow involves the following steps:
+
+1.  [Train a model](#train-a-model) (in Python): A jupyter notebook to train,
+    convert and optimize a model for on-device use.
+2.  [Run inference](#run-inference) (in C++ 11): An end-to-end unit test that
+    runs inference on the model using the [C++ library](library.md).
 
 ## Get a supported device
 
-To follow this guide, you'll need a supported hardware device. The example
-application we'll be using has been tested on the following devices:
+The example application we'll be using has been tested on the following devices:
 
 *   [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
     (using Arduino IDE)
@@ -30,81 +45,45 @@ application we'll be using has been tested on the following devices:
 Learn more about supported platforms in
 [TensorFlow Lite for Microcontrollers](index.md).
 
-## Explore the examples
+## Train a model
 
-TensorFlow Lite for Microcontrollers comes with several example applications
-that demonstrate its use for various tasks. At the time of writing, the
-following are available:
+Note: You can skip this section and use the trained model included in the
+example code.
 
-*   [Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world) -
-    Demonstrates the absolute basics of using TensorFlow Lite for
-    Microcontrollers
-*   [Micro speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech) -
-    Captures audio with a microphone in order to detect the words "yes" and "no"
-*   [Person detection](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection) -
-    Captures camera data with an image sensor in order to detect the presence or
-    absence of a person
-*   [Magic wand](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/magic_wand) -
-    Captures accelerometer data in order to classify three different physical
-    gestures
+Use Google colaboratory to
+[train your own model](https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb).
+For more details, refer to the `README.md`:
 
-Each example application has a `README.md` file that explains how it can be
-deployed to its supported platforms.
+<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world/train/README.md">Hello
+World Training README.md</a>
 
-The rest of this guide walks through the
-[Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world)
-example application.
+## Run inference
 
-## The Hello World example
-
-This example is designed to demonstrate the absolute basics of using TensorFlow
-Lite for Microcontrollers. It includes the full end-to-end workflow of training
-a model, converting it for use with TensorFlow Lite, and running inference on a
-microcontroller.
-
-In the example, a model is trained to replicate a sine function. It takes a
-single number as its input, and outputs the number's
-[sine](https://en.wikipedia.org/wiki/Sine). When deployed to a microcontroller,
-its predictions are used to either blink LEDs or control an animation.
-
-The example includes the following:
-
-*   A Jupyter notebook that demonstrates how the model is trained and converted
-*   A C++ 11 application that runs inference using the model, tested to work
-    with Arduino, SparkFun Edge, STM32F746G discovery kit, and macOS
-*   A unit test that demonstrates the process of running inference
-
-### Run the example
-
-To run the example on your device, walk through the instructions in the
+To run the model on your device, we will walk through the instructions in the
 `README.md`:
 
 <a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world/README.md">Hello
 World README.md</a>
 
-## How to run inference
-
-The following section walks through the *Hello World* example's
+The following sections walk through the example's
 [`hello_world_test.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/hello_world_test.cc),
-which demonstrates how to run inference using TensorFlow Lite for
-Microcontrollers.
+unit test which demonstrates how to run inference using TensorFlow Lite for
+Microcontrollers. It loads the model and runs inference several times.
 
-The test loads the model and then uses it to run inference several times.
-
-### Include the library headers
+### 1. Include the library headers
 
 To use the TensorFlow Lite for Microcontrollers library, we must include the
 following header files:
 
 ```C++
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 ```
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/all_ops_resolver.h)
+-   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.h)
     provides the operations used by the interpreter to run the model.
 -   [`micro_error_reporter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_error_reporter.h)
     outputs debug information.
@@ -116,22 +95,20 @@ following header files:
 -   [`version.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/version.h)
     provides versioning information for the TensorFlow Lite schema.
 
-### Include the model
+### 2. Include the model header
 
 The TensorFlow Lite for Microcontrollers interpreter expects the model to be
-provided as a C++ array. In the *Hello World* example, the model is defined in
-`sine_model_data.h` and `sine_model_data.cc`. The header is included with the
-following line:
+provided as a C++ array. The model is defined in `model.h` and `model.cc` files.
+The header is included with the following line:
 
 ```C++
-#include "tensorflow/lite/micro/examples/hello_world/sine_model_data.h"
+#include "tensorflow/lite/micro/examples/hello_world/model.h"
 ```
 
-### Set up the unit test
+### 3. Include the unit test framework header
 
-The code we are walking through is a unit test that uses the TensorFlow Lite for
-Microcontrollers unit test framework. To load the framework, we include the
-following file:
+In order to create a unit test, we include the TensorFlow Lite for
+Microcontrollers unit test framework by including the following line:
 
 ```C++
 #include "tensorflow/lite/micro/testing/micro_test.h"
@@ -143,11 +120,16 @@ The test is defined using the following macros:
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
+  . // add code here
+  .
+}
+
+TF_LITE_MICRO_TESTS_END
 ```
 
-The remainder of the code demonstrates how to load the model and run inference.
+We now discuss the code included in the macro above.
 
-### Set up logging
+### 4. Set up logging
 
 To set up logging, a `tflite::ErrorReporter` pointer is created using a pointer
 to a `tflite::MicroErrorReporter` instance:
@@ -162,14 +144,14 @@ logs. Since microcontrollers often have a variety of mechanisms for logging, the
 implementation of `tflite::MicroErrorReporter` is designed to be customized for
 your particular device.
 
-### Load a model
+### 5. Load a model
 
 In the following code, the model is instantiated using data from a `char` array,
-`g_sine_model_data`, which is declared in `sine_model_data.h`. We then check the
-model to ensure its schema version is compatible with the version we are using:
+`g_model`, which is declared in `model.h`. We then check the model to ensure its
+schema version is compatible with the version we are using:
 
 ```C++
-const tflite::Model* model = ::tflite::GetModel(g_sine_model_data);
+const tflite::Model* model = ::tflite::GetModel(g_model);
 if (model->version() != TFLITE_SCHEMA_VERSION) {
   TF_LITE_REPORT_ERROR(error_reporter,
       "Model provided is schema version %d not equal "
@@ -178,15 +160,15 @@ if (model->version() != TFLITE_SCHEMA_VERSION) {
 }
 ```
 
-### Instantiate operations resolver
+### 6. Instantiate operations resolver
 
 An
-[`AllOpsResolver`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/all_ops_resolver.h)
+[`AllOpsResolver`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.h)
 instance is declared. This will be used by the interpreter to access the
 operations that are used by the model:
 
 ```C++
-tflite::ops::micro::AllOpsResolver resolver;
+tflite::AllOpsResolver resolver;
 ```
 
 The `AllOpsResolver` loads all of the operations available in TensorFlow Lite
@@ -198,7 +180,7 @@ This is done using a different class, `MicroMutableOpResolver`. You can see how
 to use it in the *Micro speech* example's
 [`micro_speech_test.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/micro_speech/micro_speech_test.cc).
 
-### Allocate memory
+### 7. Allocate memory
 
 We need to preallocate a certain amount of memory for input, output, and
 intermediate arrays. This is provided as a `uint8_t` array of size
@@ -212,7 +194,7 @@ uint8_t tensor_arena[tensor_arena_size];
 The size required will depend on the model you are using, and may need to be
 determined by experimentation.
 
-### Instantiate interpreter
+### 8. Instantiate interpreter
 
 We create a `tflite::MicroInterpreter` instance, passing in the variables
 created earlier:
@@ -222,7 +204,7 @@ tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
                                      tensor_arena_size, error_reporter);
 ```
 
-### Allocate tensors
+### 9. Allocate tensors
 
 We tell the interpreter to allocate memory from the `tensor_arena` for the
 model's tensors:
@@ -231,7 +213,7 @@ model's tensors:
 interpreter.AllocateTensors();
 ```
 
-### Validate input shape
+### 10. Validate input shape
 
 The `MicroInterpreter` instance can provide us with a pointer to the model's
 input tensor by calling `.input(0)`, where `0` represents the first (and only)
@@ -265,7 +247,7 @@ The enum value `kTfLiteFloat32` is a reference to one of the TensorFlow Lite
 data types, and is defined in
 [`common.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h).
 
-### Provide an input value
+### 11. Provide an input value
 
 To provide an input to the model, we set the contents of the input tensor, as
 follows:
@@ -276,7 +258,7 @@ input->data.f[0] = 0.;
 
 In this case, we input a floating point value representing `0`.
 
-### Run the model
+### 12. Run the model
 
 To run the model, we can call `Invoke()` on our `tflite::MicroInterpreter`
 instance:
@@ -300,7 +282,7 @@ successfully run.
 TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 ```
 
-### Obtain the output
+### 13. Obtain the output
 
 The model's output tensor can be obtained by calling `output(0)` on the
 `tflite::MicroInterpreter`, where `0` represents the first (and only) output
@@ -327,7 +309,7 @@ float value = output->data.f[0];
 TF_LITE_MICRO_EXPECT_NEAR(0., value, 0.05);
 ```
 
-### Run inference again
+### 14. Run inference again
 
 The remainder of the code runs inference several more times. In each instance,
 we assign a value to the input tensor, invoke the interpreter, and read the
@@ -350,7 +332,7 @@ value = output->data.f[0];
 TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.05);
 ```
 
-### Read the application code
+### 15. Read the application code
 
 Once you have walked through this unit test, you should be able to understand
 the example's application code, located in
@@ -358,18 +340,3 @@ the example's application code, located in
 It follows a similar process, but generates an input value based on how many
 inferences have been run, and calls a device-specific function that displays the
 model's output to the user.
-
-## Next steps
-
-To understand how the library can be used with a variety of models and
-applications, we recommend deploying the other examples and walking through
-their code.
-
-<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples">Example
-applications on GitHub</a>
-
-To learn how to use the library in your own project, read
-[Understand the C++ library](library.md).
-
-For information about training and convert models for deployment on
-microcontrollers, read [Build and convert models](build_convert.md).

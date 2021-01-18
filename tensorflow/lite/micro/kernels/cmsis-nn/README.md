@@ -48,7 +48,17 @@ cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/DSP/Include/\
 arm_math.h mbed-os/cmsis/TARGET_CORTEX_M/arm_math.h
 ```
 
-This issue will be resolved soon. Now type
+There's also a dependency to an old cmsis_gcc.h, which you can fix with the
+following:
+
+```
+tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/Core/Include/\
+cmsis_gcc.h mbed-os/cmsis/TARGET_CORTEX_M/cmsis_gcc.h
+```
+
+This issue will be resolved soon.
+
+Now type:
 
 ```
 mbed compile -m DISCO_F746NG -t GCC_ARM

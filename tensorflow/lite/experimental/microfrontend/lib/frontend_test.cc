@@ -123,7 +123,7 @@ TF_LITE_MICRO_TEST(FrontendTest_CheckNotEnoughSamples) {
       &num_samples_read);
 
   TF_LITE_MICRO_EXPECT_EQ(output.size, 0);
-  TF_LITE_MICRO_EXPECT_EQ(output.values, nullptr);
+  TF_LITE_MICRO_EXPECT(output.values == nullptr);
 
   FrontendFreeStateContents(&state);
 }

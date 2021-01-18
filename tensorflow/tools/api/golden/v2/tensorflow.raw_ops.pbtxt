@@ -150,11 +150,11 @@ tf_module {
   }
   member_method {
     name: "ApplyFtrl"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ApplyFtrlV2"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ApplyGradientDescent"
@@ -266,7 +266,7 @@ tf_module {
   }
   member_method {
     name: "AutoShardDataset"
-    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'auto_shard_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'auto_shard_policy\', \'num_replicas\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
   }
   member_method {
     name: "AvgPool"
@@ -283,6 +283,10 @@ tf_module {
   member_method {
     name: "AvgPoolGrad"
     argspec: "args=[\'orig_input_shape\', \'grad\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
+  }
+  member_method {
+    name: "BandedTriangularSolve"
+    argspec: "args=[\'matrix\', \'rhs\', \'lower\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
   }
   member_method {
     name: "Barrier"
@@ -342,7 +346,7 @@ tf_module {
   }
   member_method {
     name: "BatchFunction"
-    argspec: "args=[\'in_tensors\', \'captured_tensors\', \'f\', \'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'Tout\', \'max_enqueued_batches\', \'allowed_batch_sizes\', \'container\', \'shared_name\', \'batching_queue\', \'name\'], varargs=None, keywords=None, defaults=[\'10\', \'[]\', \'\', \'\', \'\', \'None\'], "
+    argspec: "args=[\'in_tensors\', \'captured_tensors\', \'f\', \'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'Tout\', \'max_enqueued_batches\', \'allowed_batch_sizes\', \'container\', \'shared_name\', \'batching_queue\', \'enable_large_batch_splitting\', \'name\'], varargs=None, keywords=None, defaults=[\'10\', \'[]\', \'\', \'\', \'\', \'False\', \'None\'], "
   }
   member_method {
     name: "BatchIFFT"
@@ -429,15 +433,51 @@ tf_module {
     argspec: "args=[\'input\', \'block_shape\', \'crops\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "BeginEpoch"
-    argspec: "args=[\'dataset_id\', \'address\', \'protocol\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    name: "BesselI0"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "BesselI0e"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "BesselI1"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "BesselI1e"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "BesselJ0"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "BesselJ1"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "BesselK0"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "BesselK0e"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "BesselK1"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "BesselK1e"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "BesselY0"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "BesselY1"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
@@ -637,6 +677,10 @@ tf_module {
     argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'header\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'select_cols\', \'record_defaults\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "CSVDatasetV2"
+    argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'header\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'select_cols\', \'record_defaults\', \'exclude_cols\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "CTCBeamSearchDecoder"
     argspec: "args=[\'inputs\', \'sequence_length\', \'beam_width\', \'top_paths\', \'merge_repeated\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
@@ -706,15 +750,27 @@ tf_module {
   }
   member_method {
     name: "CollectiveBcastRecv"
-    argspec: "args=[\'T\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'None\'], "
+    argspec: "args=[\'T\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "CollectiveBcastRecvV2"
+    argspec: "args=[\'group_size\', \'group_key\', \'instance_key\', \'shape\', \'T\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
   member_method {
     name: "CollectiveBcastSend"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "CollectiveBcastSendV2"
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
   member_method {
     name: "CollectiveGather"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "CollectiveGatherV2"
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
   member_method {
     name: "CollectivePermute"
@@ -722,7 +778,11 @@ tf_module {
   }
   member_method {
     name: "CollectiveReduce"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'merge_op\', \'final_op\', \'subdiv_offsets\', \'wait_for\', \'communication_hint\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'auto\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'merge_op\', \'final_op\', \'subdiv_offsets\', \'wait_for\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'auto\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "CollectiveReduceV2"
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
   member_method {
     name: "CombinedNonMaxSuppression"
@@ -741,8 +801,16 @@ tf_module {
     argspec: "args=[\'x\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
+    name: "CompressElement"
+    argspec: "args=[\'components\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "ComputeAccidentalHits"
     argspec: "args=[\'true_classes\', \'sampled_candidates\', \'num_true\', \'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "ComputeBatchSize"
+    argspec: "args=[\'input_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Concat"
@@ -938,7 +1006,11 @@ tf_module {
   }
   member_method {
     name: "DataServiceDataset"
-    argspec: "args=[\'address\', \'protocol\', \'max_outstanding_requests\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "DataServiceDatasetV2"
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "DatasetCardinality"
@@ -982,7 +1054,7 @@ tf_module {
   }
   member_method {
     name: "DebugIdentityV2"
-    argspec: "args=[\'input\', \'tfdbg_context_id\', \'op_name\', \'output_slot\', \'tensor_debug_mode\', \'debug_urls\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'-1\', \'-1\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'tfdbg_context_id\', \'op_name\', \'output_slot\', \'tensor_debug_mode\', \'debug_urls\', \'circular_buffer_size\', \'tfdbg_run_id\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'-1\', \'-1\', \'[]\', \'1000\', \'\', \'None\'], "
   }
   member_method {
     name: "DebugNanCount"
@@ -1019,6 +1091,10 @@ tf_module {
   member_method {
     name: "DecodeGif"
     argspec: "args=[\'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DecodeImage"
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'expand_animations\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'True\', \'None\'], "
   }
   member_method {
     name: "DecodeJSONExample"
@@ -1077,6 +1153,14 @@ tf_module {
     argspec: "args=[\'handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "DenseBincount"
+    argspec: "args=[\'input\', \'size\', \'weights\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "DenseCountSparseOutput"
+    argspec: "args=[\'values\', \'weights\', \'binary_output\', \'minlength\', \'maxlength\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
+  }
+  member_method {
     name: "DenseToCSRSparseMatrix"
     argspec: "args=[\'dense_input\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1133,6 +1217,10 @@ tf_module {
     argspec: "args=[\'ref\', \'var_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "DeviceIndex"
+    argspec: "args=[\'device_names\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Diag"
     argspec: "args=[\'diagonal\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1175,6 +1263,18 @@ tf_module {
   member_method {
     name: "DrawBoundingBoxesV2"
     argspec: "args=[\'images\', \'boxes\', \'colors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DummyIterationCounter"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DummyMemoryCache"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DummySeedGenerator"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DynamicPartition"
@@ -1342,7 +1442,7 @@ tf_module {
   }
   member_method {
     name: "ExperimentalIgnoreErrorsDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'log_warning\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "ExperimentalIteratorGetDevice"
@@ -1454,6 +1554,10 @@ tf_module {
   }
   member_method {
     name: "ExtractGlimpse"
+    argspec: "args=[\'input\', \'size\', \'offsets\', \'centered\', \'normalized\', \'uniform_noise\', \'noise\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'True\', \'uniform\', \'None\'], "
+  }
+  member_method {
+    name: "ExtractGlimpseV2"
     argspec: "args=[\'input\', \'size\', \'offsets\', \'centered\', \'normalized\', \'uniform_noise\', \'noise\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'True\', \'uniform\', \'None\'], "
   }
   member_method {
@@ -1782,7 +1886,7 @@ tf_module {
   }
   member_method {
     name: "IgnoreErrorsDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'log_warning\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "Imag"
@@ -1791,6 +1895,10 @@ tf_module {
   member_method {
     name: "ImageProjectiveTransformV2"
     argspec: "args=[\'images\', \'transforms\', \'output_shape\', \'interpolation\', \'fill_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'None\'], "
+  }
+  member_method {
+    name: "ImageProjectiveTransformV3"
+    argspec: "args=[\'images\', \'transforms\', \'output_shape\', \'fill_value\', \'interpolation\', \'fill_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'None\'], "
   }
   member_method {
     name: "ImageSummary"
@@ -1909,6 +2017,10 @@ tf_module {
     argspec: "args=[\'ref\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "IsotonicRegression"
+    argspec: "args=[\'input\', \'output_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
     name: "Iterator"
     argspec: "args=[\'shared_name\', \'container\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2021,6 +2133,10 @@ tf_module {
     argspec: "args=[\'ckpt_path\', \'old_tensor_name\', \'row_remapping\', \'col_remapping\', \'initializing_values\', \'num_rows\', \'num_cols\', \'max_rows_in_memory\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
+    name: "LoadDataset"
+    argspec: "args=[\'path\', \'reader_func_other_args\', \'output_types\', \'output_shapes\', \'reader_func\', \'compression\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
     name: "LoadTPUEmbeddingADAMParameters"
     argspec: "args=[\'parameters\', \'momenta\', \'velocities\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
@@ -2055,6 +2171,14 @@ tf_module {
   member_method {
     name: "LoadTPUEmbeddingFTRLParametersGradAccumDebug"
     argspec: "args=[\'parameters\', \'accumulators\', \'linears\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "LoadTPUEmbeddingFrequencyEstimatorParameters"
+    argspec: "args=[\'parameters\', \'last_hit_step\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'last_hit_step\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingMDLAdagradLightParameters"
@@ -2187,10 +2311,6 @@ tf_module {
   member_method {
     name: "Lu"
     argspec: "args=[\'input\', \'output_idx_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
-  }
-  member_method {
-    name: "MakeDataServiceIterator"
-    argspec: "args=[\'dataset\', \'epoch_id\', \'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "MakeIterator"
@@ -2330,7 +2450,7 @@ tf_module {
   }
   member_method {
     name: "MaxPool"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'explicit_paddings\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'NHWC\', \'None\'], "
   }
   member_method {
     name: "MaxPool3D"
@@ -2346,7 +2466,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolGrad"
-    argspec: "args=[\'orig_input\', \'orig_output\', \'grad\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
+    argspec: "args=[\'orig_input\', \'orig_output\', \'grad\', \'ksize\', \'strides\', \'padding\', \'explicit_paddings\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'NHWC\', \'None\'], "
   }
   member_method {
     name: "MaxPoolGradGrad"
@@ -2422,7 +2542,7 @@ tf_module {
   }
   member_method {
     name: "ModelDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'algorithm\', \'cpu_budget\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'algorithm\', \'cpu_budget\', \'ram_budget\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'None\'], "
   }
   member_method {
     name: "Mul"
@@ -2577,6 +2697,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'optimizations\', \'output_types\', \'output_shapes\', \'optimization_configs\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
+    name: "OptimizeDatasetV2"
+    argspec: "args=[\'input_dataset\', \'optimizations_enabled\', \'optimizations_disabled\', \'optimizations_default\', \'output_types\', \'output_shapes\', \'optimization_configs\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
+  }
+  member_method {
     name: "OptionalFromValue"
     argspec: "args=[\'components\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2627,6 +2751,14 @@ tf_module {
   member_method {
     name: "OutfeedDequeueTuple"
     argspec: "args=[\'dtypes\', \'shapes\', \'device_ordinal\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "OutfeedDequeueTupleV2"
+    argspec: "args=[\'device_ordinal\', \'dtypes\', \'shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "OutfeedDequeueV2"
+    argspec: "args=[\'device_ordinal\', \'dtype\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "OutfeedEnqueue"
@@ -2766,7 +2898,7 @@ tf_module {
   }
   member_method {
     name: "PrefetchDataset"
-    argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\', \'slack_period\', \'legacy_autotune\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\', \'slack_period\', \'legacy_autotune\', \'buffer_size_min\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'0\', \'None\'], "
   }
   member_method {
     name: "Prelinearize"
@@ -2827,6 +2959,14 @@ tf_module {
   member_method {
     name: "QuantizeAndDequantizeV3"
     argspec: "args=[\'input\', \'input_min\', \'input_max\', \'num_bits\', \'signed_input\', \'range_given\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'False\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "QuantizeAndDequantizeV4"
+    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'False\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "QuantizeAndDequantizeV4Grad"
+    argspec: "args=[\'gradients\', \'input\', \'input_min\', \'input_max\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "QuantizeDownAndShrinkRange"
@@ -3057,6 +3197,14 @@ tf_module {
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "RaggedBincount"
+    argspec: "args=[\'splits\', \'values\', \'size\', \'weights\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "RaggedCountSparseOutput"
+    argspec: "args=[\'splits\', \'values\', \'weights\', \'binary_output\', \'minlength\', \'maxlength\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
+  }
+  member_method {
     name: "RaggedCross"
     argspec: "args=[\'ragged_values\', \'ragged_row_splits\', \'sparse_indices\', \'sparse_values\', \'sparse_shape\', \'dense_inputs\', \'input_order\', \'hashed_output\', \'num_buckets\', \'hash_key\', \'out_values_type\', \'out_row_splits_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -3083,6 +3231,10 @@ tf_module {
   member_method {
     name: "RaggedTensorToVariant"
     argspec: "args=[\'rt_nested_splits\', \'rt_dense_values\', \'batched_input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "RaggedTensorToVariantGradient"
+    argspec: "args=[\'encoded_ragged_grad\', \'row_splits\', \'dense_values_shape\', \'Tvalues\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "RandomCrop"
@@ -3219,6 +3371,10 @@ tf_module {
   member_method {
     name: "RebatchDataset"
     argspec: "args=[\'input_dataset\', \'num_replicas\', \'output_types\', \'output_shapes\', \'use_fallback\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "RebatchDatasetV2"
+    argspec: "args=[\'input_dataset\', \'batch_sizes\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Reciprocal"
@@ -3414,11 +3570,11 @@ tf_module {
   }
   member_method {
     name: "ResourceApplyFtrl"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ResourceApplyFtrlV2"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ResourceApplyGradientDescent"
@@ -3489,6 +3645,14 @@ tf_module {
     argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
+    name: "ResourceScatterNdMax"
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "ResourceScatterNdMin"
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
     name: "ResourceScatterNdSub"
     argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
@@ -3526,11 +3690,11 @@ tf_module {
   }
   member_method {
     name: "ResourceSparseApplyFtrl"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ResourceSparseApplyFtrlV2"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ResourceSparseApplyKerasMomentum"
@@ -3605,6 +3769,14 @@ tf_module {
     argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
+    name: "RetrieveTPUEmbeddingFrequencyEstimatorParameters"
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug"
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
     name: "RetrieveTPUEmbeddingMDLAdagradLightParameters"
     argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
@@ -3669,6 +3841,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "RngReadAndSkip"
+    argspec: "args=[\'resource\', \'alg\', \'delta\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "RngSkip"
     argspec: "args=[\'resource\', \'algorithm\', \'delta\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -3703,6 +3879,10 @@ tf_module {
   member_method {
     name: "Save"
     argspec: "args=[\'filename\', \'tensor_names\', \'data\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SaveDataset"
+    argspec: "args=[\'input_dataset\', \'path\', \'shard_func_other_args\', \'shard_func\', \'compression\', \'use_shard_func\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\'], "
   }
   member_method {
     name: "SaveSlices"
@@ -3754,6 +3934,14 @@ tf_module {
   }
   member_method {
     name: "ScatterNdAdd"
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "ScatterNdMax"
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "ScatterNdMin"
     argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
@@ -3890,7 +4078,11 @@ tf_module {
   }
   member_method {
     name: "ShuffleAndRepeatDataset"
-    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'count\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'count\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "ShuffleAndRepeatDatasetV2"
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'count\', \'seed_generator\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "ShuffleDataset"
@@ -3899,6 +4091,10 @@ tf_module {
   member_method {
     name: "ShuffleDatasetV2"
     argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed_generator\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ShuffleDatasetV3"
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'seed_generator\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "ShutdownDistributedTPU"
@@ -3951,6 +4147,10 @@ tf_module {
   member_method {
     name: "SnapshotDataset"
     argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'compression\', \'reader_path_prefix\', \'writer_path_prefix\', \'shard_size_bytes\', \'pending_snapshot_expiry_seconds\', \'num_reader_threads\', \'reader_buffer_size\', \'num_writer_threads\', \'writer_buffer_size\', \'shuffle_on_read\', \'seed\', \'seed2\', \'mode\', \'snapshot_name\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'10737418240\', \'86400\', \'1\', \'1\', \'1\', \'1\', \'False\', \'0\', \'0\', \'auto\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "SnapshotDatasetV2"
+    argspec: "args=[\'input_dataset\', \'path\', \'reader_func_other_args\', \'shard_func_other_args\', \'output_types\', \'output_shapes\', \'reader_func\', \'shard_func\', \'compression\', \'reader_prefix\', \'writer_prefix\', \'hash_valid\', \'hash\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'False\', \'0\', \'None\'], "
   }
   member_method {
     name: "SobolSample"
@@ -4030,11 +4230,11 @@ tf_module {
   }
   member_method {
     name: "SparseApplyFtrl"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "SparseApplyFtrlV2"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "SparseApplyMomentum"
@@ -4053,6 +4253,10 @@ tf_module {
     argspec: "args=[\'var\', \'ms\', \'mom\', \'lr\', \'rho\', \'momentum\', \'epsilon\', \'grad\', \'indices\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "SparseBincount"
+    argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'size\', \'weights\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "SparseConcat"
     argspec: "args=[\'indices\', \'values\', \'shapes\', \'concat_dim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -4061,8 +4265,20 @@ tf_module {
     argspec: "args=[\'dtype\', \'shape\', \'container\', \'shared_name\', \'reduction_type\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'MEAN\', \'None\'], "
   }
   member_method {
+    name: "SparseCountSparseOutput"
+    argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'weights\', \'binary_output\', \'minlength\', \'maxlength\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
+  }
+  member_method {
     name: "SparseCross"
     argspec: "args=[\'indices\', \'values\', \'shapes\', \'dense_inputs\', \'hashed_output\', \'num_buckets\', \'hash_key\', \'out_type\', \'internal_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseCrossHashed"
+    argspec: "args=[\'indices\', \'values\', \'shapes\', \'dense_inputs\', \'num_buckets\', \'strong_hash\', \'salt\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseCrossV2"
+    argspec: "args=[\'indices\', \'values\', \'shapes\', \'dense_inputs\', \'sep\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "SparseDenseCwiseAdd"
@@ -4357,12 +4573,20 @@ tf_module {
     argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'minval\', \'maxval\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "StatelessCase"
+    argspec: "args=[\'branch_index\', \'input\', \'Tout\', \'branches\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
+  }
+  member_method {
     name: "StatelessIf"
     argspec: "args=[\'cond\', \'input\', \'Tout\', \'then_branch\', \'else_branch\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
     name: "StatelessMultinomial"
     argspec: "args=[\'logits\', \'num_samples\', \'seed\', \'output_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
+  }
+  member_method {
+    name: "StatelessParameterizedTruncatedNormal"
+    argspec: "args=[\'shape\', \'seed\', \'means\', \'stddevs\', \'minvals\', \'maxvals\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "StatelessRandomBinomial"
@@ -4373,8 +4597,24 @@ tf_module {
     argspec: "args=[\'shape\', \'seed\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "StatelessRandomGetAlg"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomGetKeyCounter"
+    argspec: "args=[\'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomGetKeyCounterAlg"
+    argspec: "args=[\'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "StatelessRandomNormal"
     argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomNormalV2"
+    argspec: "args=[\'shape\', \'key\', \'counter\', \'alg\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "StatelessRandomPoisson"
@@ -4389,12 +4629,32 @@ tf_module {
     argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'uint64\'>\", \'None\'], "
   }
   member_method {
+    name: "StatelessRandomUniformFullIntV2"
+    argspec: "args=[\'shape\', \'key\', \'counter\', \'alg\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'uint64\'>\", \'None\'], "
+  }
+  member_method {
     name: "StatelessRandomUniformInt"
     argspec: "args=[\'shape\', \'seed\', \'minval\', \'maxval\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "StatelessRandomUniformIntV2"
+    argspec: "args=[\'shape\', \'key\', \'counter\', \'alg\', \'minval\', \'maxval\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomUniformV2"
+    argspec: "args=[\'shape\', \'key\', \'counter\', \'alg\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "StatelessSampleDistortedBoundingBox"
+    argspec: "args=[\'image_size\', \'bounding_boxes\', \'min_object_covered\', \'seed\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'[0.75, 1.33]\', \'[0.05, 1]\', \'100\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "StatelessTruncatedNormal"
     argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "StatelessTruncatedNormalV2"
+    argspec: "args=[\'shape\', \'key\', \'counter\', \'alg\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "StatelessWhile"
@@ -4550,11 +4810,11 @@ tf_module {
   }
   member_method {
     name: "TPUReplicateMetadata"
-    argspec: "args=[\'num_replicas\', \'num_cores_per_replica\', \'topology\', \'use_tpu\', \'device_assignment\', \'computation_shape\', \'host_compute_core\', \'padding_map\', \'step_marker_location\', \'allow_soft_placement\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'\', \'True\', \'[]\', \'[]\', \'[]\', \'[]\', \'STEP_MARK_AT_ENTRY\', \'False\', \'None\'], "
+    argspec: "args=[\'num_replicas\', \'num_cores_per_replica\', \'topology\', \'use_tpu\', \'device_assignment\', \'computation_shape\', \'host_compute_core\', \'padding_map\', \'step_marker_location\', \'allow_soft_placement\', \'use_spmd_for_xla_partitioning\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'\', \'True\', \'[]\', \'[]\', \'[]\', \'[]\', \'STEP_MARK_AT_ENTRY\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "TPUReplicatedInput"
-    argspec: "args=[\'inputs\', \'is_mirrored_variable\', \'index\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\', \'None\'], "
+    argspec: "args=[\'inputs\', \'is_mirrored_variable\', \'index\', \'is_packed\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\', \'False\', \'None\'], "
   }
   member_method {
     name: "TPUReplicatedOutput"
@@ -4805,6 +5065,14 @@ tf_module {
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "TensorScatterMax"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorScatterMin"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "TensorScatterSub"
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -4911,6 +5179,10 @@ tf_module {
   member_method {
     name: "UnbatchGrad"
     argspec: "args=[\'original_input\', \'batch_index\', \'grad\', \'id\', \'container\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "UncompressElement"
+    argspec: "args=[\'compressed\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "UnicodeDecode"

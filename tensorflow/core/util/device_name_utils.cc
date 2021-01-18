@@ -174,6 +174,11 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
   return true;
 }
 
+bool DeviceNameUtils::ParseFullOrLocalName(StringPiece fullname,
+                                           ParsedName* p) {
+  return ParseFullName(fullname, p) || ParseLocalName(fullname, p);
+}
+
 namespace {
 
 void CompleteName(const DeviceNameUtils::ParsedName& parsed_basename,

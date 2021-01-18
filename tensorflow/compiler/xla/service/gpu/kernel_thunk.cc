@@ -33,14 +33,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-KernelThunk::KernelThunk(absl::Span<const BufferAllocation* const> args,
-                         const string& kernel_name,
-                         const HloInstruction* hlo_instruction,
-                         int unroll_factor)
-    : Thunk(Kind::kKernel, hlo_instruction),
+KernelThunk::KernelThunk(ThunkInfo thunk_info,
+                         absl::Span<const BufferAllocation* const> args,
+                         const string& kernel_name)
+    : Thunk(Kind::kKernel, thunk_info),
       args_(args.begin(), args.end()),
-      kernel_name_(kernel_name),
-      unroll_factor_(unroll_factor) {}
+      kernel_name_(kernel_name) {}
 
 Status KernelThunk::Initialize(const GpuExecutable& executable,
                                se::StreamExecutor* executor) {
@@ -69,6 +67,23 @@ void KernelThunk::SetLaunchDimensions(const LaunchDimensions& launch_dims) {
   launch_dimensions_ = launch_dims;
 }
 
+static void PrintBufferContents(
+    se::Stream* stream, absl::Span<const se::DeviceMemoryBase> buffer_args) {
+  int input_idx = 0;
+  for (const se::DeviceMemoryBase& buf : buffer_args) {
+    auto host_buffer = absl::make_unique<char[]>(buf.size());
+    CHECK(stream->ThenMemcpy(host_buffer.get(), buf, buf.size()).ok());
+    CHECK(stream->BlockHostUntilDone().ok());
+
+    std::string buffer_contents;
+    for (int i = 0; i < buf.size(); i++) {
+      absl::StrAppendFormat(&buffer_contents, "%x ",
+                            static_cast<unsigned>(host_buffer[i]));
+    }
+    VLOG(100) << "BUF(" << input_idx++ << ") = " << buffer_contents;
+  }
+}
+
 Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Load the kernel.
   se::StreamExecutor* executor = params.stream->parent();
@@ -93,11 +108,15 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
             << buf.size() << "B)";
     buffer_args.push_back(buf);
   }
+
+  if (VLOG_IS_ON(100)) {
+    PrintBufferContents(params.stream, buffer_args);
+  }
+
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  return ExecuteKernelOnStream(*kernel, buffer_args,
-                               launch_dimensions.threads_per_block(),
-                               launch_dimensions.block_count(), params.stream);
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
+  return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
+                               params.stream);
 }
 
 }  // namespace gpu

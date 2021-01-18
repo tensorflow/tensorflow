@@ -26,9 +26,10 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -39,6 +40,12 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+
+const char* const kTPUReplicatedHost = "TPU_REPLICATED_HOST";
+const char* const kNumCoresPerReplicaAttr = "num_cores_per_replica";
+const char* const kTopologyAttr = "topology";
+const char* const kDeviceAssignmentAttr = "device_assignment";
+
 // Device coordinates are defined as (x, y, z, core), thus resulting in a rank 4
 // topology.
 constexpr int kTPUTopologyRank = 4;
@@ -46,8 +53,8 @@ constexpr int kTPUTopologyRank = 4;
 constexpr char kDeviceTPUSystem[] = "TPU_SYSTEM";
 constexpr char kDeviceTPU[] = "TPU";
 constexpr char kTPUReplicatedCore[] = "TPU_REPLICATED_CORE";
-constexpr char kTopologyAttr[] = "topology";
-constexpr char kDeviceAssignmentAttr[] = "device_assignment";
+constexpr char kBadIntArrayElementMsg[] =
+    "bad '{0}' attribute at index {1}, not an int";
 
 using Device = DeviceNameUtils::ParsedName;
 using Devices = llvm::ArrayRef<DeviceNameUtils::ParsedName>;
@@ -143,7 +150,8 @@ Status GetTPUDevices(
            std::next(system_devices.begin()), system_devices.end())) {
     auto host_tpu_devices = lookup(device_spec);
     // Check number of TPU devices per host all match.
-    if (num_tpus_per_host != host_tpu_devices.size())
+    const int64 host_tpu_devices_size = host_tpu_devices.size();
+    if (num_tpus_per_host != host_tpu_devices_size)
       return errors::InvalidArgument(
           "expected the number of TPU devices per host to be ",
           num_tpus_per_host, ", got ", host_tpu_devices.size());
@@ -164,12 +172,19 @@ std::string GetTPUCompilationDevice(Device system_device) {
   return DeviceNameUtils::ParsedNameToString(system_device);
 }
 
+// Finds the host CPU device for a given TPU device.
+std::string GetCPUHostDeviceForTPUDevice(Device tpu_device) {
+  tpu_device.type = DEVICE_CPU;
+  tpu_device.id = 0;
+  return DeviceNameUtils::ParsedNameToString(tpu_device);
+}
+
 // Determines execution devices when topology and device assignment are not
 // defined. This is a special case where a single core computation is replicated
 // to every core in the mesh. TPU devices are simply added to
 // `execution_devices` of one replica. `num_replicas` must be 1 or the total
 // number of TPU devices available, and `num_cores_per_replica` must be 1.
-StatusOr<ExecutionDevices> GetFullMeshTPUExecutionDeviceAssignment(
+StatusOr<TPUDevicesAndHosts> GetFullMeshTPUExecutionDeviceAssignment(
     int num_replicas, int num_cores_per_replica,
     llvm::ArrayRef<llvm::SmallVector<Device, 8>> tpu_devices) {
   const int num_tasks = tpu_devices.size();
@@ -185,17 +200,18 @@ StatusOr<ExecutionDevices> GetFullMeshTPUExecutionDeviceAssignment(
         "'num_cores_per_replica' must be equal to 1, got ",
         num_cores_per_replica);
 
-  ExecutionDevices execution_devices;
-  execution_devices.reserve(num_replicas);
+  TPUDevicesAndHosts devices_and_hosts;
+  devices_and_hosts.reserve(num_replicas);
   for (int i = 0; i < num_replicas; ++i) {
     const int task = i / num_tpus_per_task;
     const int device = i % num_tpus_per_task;
-    execution_devices.push_back(
-        {tensorflow::DeviceNameUtils::ParsedNameToString(
-            tpu_devices[task][device])});
+    const auto& tpu_device = tpu_devices[task][device];
+    devices_and_hosts.push_back({TPUDeviceAndHost(
+        /*device=*/tensorflow::DeviceNameUtils::ParsedNameToString(tpu_device),
+        /*host=*/GetCPUHostDeviceForTPUDevice(tpu_device))});
   }
 
-  return execution_devices;
+  return devices_and_hosts;
 }
 
 // Helper struct for keeping track of task and device for an associated TPU
@@ -326,7 +342,7 @@ StatusOr<xla::Array4D<TaskAndDevice>> ParseTopologyAttr(
 //  - number of device coordinates (in tuple 3) match number 'num_replicas' *
 //    'num_cores_per_replica'
 //  - a TPU device associated with each device coordinate
-StatusOr<std::pair<ExecutionDevices, xla::DeviceAssignmentProto>>
+StatusOr<std::pair<TPUDevicesAndHosts, xla::DeviceAssignmentProto>>
 GetGeneralTPUExecutionDeviceAssignment(
     int num_replicas, int num_cores_per_replica,
     llvm::ArrayRef<llvm::SmallVector<Device, 8>> tpu_devices,
@@ -340,7 +356,8 @@ GetGeneralTPUExecutionDeviceAssignment(
 
   const int expected_device_assignment_size =
       num_replicas * num_cores_per_replica * kTPUTopologyRank;
-  if (device_assignment_attr.size() != expected_device_assignment_size)
+  const int device_assignment_attr_size = device_assignment_attr.size();
+  if (device_assignment_attr_size != expected_device_assignment_size)
     return errors::InvalidArgument(
         "length of '", kDeviceAssignmentAttr,
         "' must be 'num_replicas' * 'num_cores_per_replica' * ",
@@ -358,12 +375,11 @@ GetGeneralTPUExecutionDeviceAssignment(
     return (x + bound_x * (y + bound_y * z)) * bound_core + core;
   };
 
-  std::vector<bool> used_device_ids(
-      location_to_id(bound_x - 1, bound_y - 1, bound_z - 1, bound_core - 1),
-      false);
-  ExecutionDevices execution_devices(
-      num_replicas,
-      llvm::SmallVector<std::string, 8>(num_cores_per_replica, ""));
+  std::vector<bool> used_device_ids(bound_x * bound_y * bound_z * bound_core,
+                                    false);
+  TPUDevicesAndHosts devices_and_hosts(
+      num_replicas, llvm::SmallVector<TPUDeviceAndHost, 8>(
+                        num_cores_per_replica, TPUDeviceAndHost()));
   xla::DeviceAssignment device_assignment(num_replicas, num_cores_per_replica);
   int pos = 0;
   for (int replica = 0; replica < num_replicas; ++replica) {
@@ -393,19 +409,42 @@ GetGeneralTPUExecutionDeviceAssignment(
 
       used_device_ids[device_id] = true;
       device_assignment(replica, logical_core) = device_id;
-      execution_devices[replica][logical_core] =
-          DeviceNameUtils::ParsedNameToString(tpu_devices[task][device]);
+      auto& device_and_host = devices_and_hosts[replica][logical_core];
+      const auto& tpu_device = tpu_devices[task][device];
+      device_and_host.device = DeviceNameUtils::ParsedNameToString(tpu_device);
+      device_and_host.host = GetCPUHostDeviceForTPUDevice(tpu_device);
     }
   }
 
   xla::DeviceAssignmentProto device_assignment_proto;
   TF_RETURN_IF_ERROR(device_assignment.Serialize(&device_assignment_proto));
 
-  return std::pair<ExecutionDevices, xla::DeviceAssignmentProto>(
-      std::move(execution_devices), std::move(device_assignment_proto));
+  return std::pair<TPUDevicesAndHosts, xla::DeviceAssignmentProto>(
+      std::move(devices_and_hosts), std::move(device_assignment_proto));
 }
 
 }  // anonymous namespace
+
+StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
+    mlir::ArrayAttr device_assignment_attr) {
+  llvm::SmallVector<int64_t, 8> device_coordinates;
+  device_coordinates.reserve(device_assignment_attr.size());
+
+  for (auto device_coordinate_and_idx :
+       llvm::enumerate(device_assignment_attr)) {
+    auto device_coordinate =
+        device_coordinate_and_idx.value().dyn_cast<mlir::IntegerAttr>();
+    if (!device_coordinate)
+      return errors::InvalidArgument(
+          llvm::formatv(kBadIntArrayElementMsg, kDeviceAssignmentAttr,
+                        device_coordinate_and_idx.index())
+              .str());
+
+    device_coordinates.push_back(device_coordinate.getInt());
+  }
+
+  return device_coordinates;
+}
 
 StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
     Devices devices, int num_replicas, int num_cores_per_replica,
@@ -445,6 +484,69 @@ StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
 
 std::string GetDeviceAliasForLogicalCore(int core_index) {
   return llvm::formatv("{0}_{1}", kTPUReplicatedCore, core_index).str();
+}
+
+mlir::LogicalResult GetHostDeviceOutsideComputation(
+    mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
+    std::string* host_device) {
+  auto replicate = cluster->getParentOfType<mlir::tf_device::ReplicateOp>();
+  if (replicate) {
+    *host_device = tensorflow::kTPUReplicatedHost;
+    return mlir::success();
+  }
+
+  auto num_cores_per_replica_attr = cluster->getAttrOfType<mlir::IntegerAttr>(
+      tensorflow::kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica_attr)
+    return cluster.emitOpError(
+        "cluster op missing `num_cores_per_replica` attribute");
+
+  if (num_cores_per_replica_attr.getInt() != 1)
+    return cluster.emitOpError(
+        "outside compilation is not supported with model parallelism.");
+
+  auto topology_attr =
+      cluster->getAttrOfType<mlir::StringAttr>(tensorflow::kTopologyAttr);
+  if (!topology_attr)
+    return cluster.emitOpError("cluster op missing `topology` attribute");
+
+  auto device_assignment_attr = cluster->getAttrOfType<mlir::ArrayAttr>(
+      tensorflow::kDeviceAssignmentAttr);
+  if (!device_assignment_attr)
+    return cluster.emitOpError(llvm::formatv("requires attribute '{0}'",
+                                             tensorflow::kDeviceAssignmentAttr)
+                                   .str());
+
+  auto status_or_device_coodinates =
+      tensorflow::GetDeviceCoordinates(device_assignment_attr);
+
+  if (!status_or_device_coodinates.ok())
+    return cluster.emitError()
+           << "error in fetching tpu device coordinates: "
+           << status_or_device_coodinates.status().error_message();
+
+  // Determine compilation and execution devices.
+  auto status_or_tpu_device_assignment =
+      tensorflow::GetTPUCompilationAndExecutionDevices(
+          devices.device_names(), /*num_replicas=*/1,
+          /*num_cores_per_replica=*/1, topology_attr.getValue(),
+          status_or_device_coodinates.ConsumeValueOrDie());
+  if (!status_or_tpu_device_assignment.ok())
+    return cluster.emitError()
+           << "error in fetching TPU compilation/execution devices: "
+           << status_or_tpu_device_assignment.status().error_message();
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
+
+  *host_device = tpu_device_assignment.tpu_devices[0][0].host;
+  return mlir::success();
+}
+
+bool IsTPUDevice(llvm::StringRef device) {
+  Device parsed_device;
+  if (!DeviceNameUtils::ParseFullName(mlir::StringRefToView(device),
+                                      &parsed_device))
+    return false;
+  return parsed_device.has_type && parsed_device.type == kDeviceTPU;
 }
 
 }  // namespace tensorflow

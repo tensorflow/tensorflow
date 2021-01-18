@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"  // NOLINT
 
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+#include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope_internal.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
@@ -53,7 +55,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -213,7 +214,6 @@ void TF_Reset(const TF_SessionOptions* opt, const char** containers,
 
 namespace tensorflow {
 
-
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out) {
   if (out->data != nullptr) {
@@ -306,8 +306,8 @@ void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
 }
 
 // Helpers for loading a TensorFlow plugin (a .so file).
-Status LoadLibrary(const char* library_filename, void** result,
-                   const void** buf, size_t* len);
+Status LoadDynamicLibrary(const char* library_filename, void** result,
+                          const void** buf, size_t* len);
 
 // TODO(josh11b,mrry): Change Session to be able to use a Graph*
 // directly, instead of requiring us to serialize to a GraphDef and
@@ -552,7 +552,7 @@ void TF_PRun(TF_DeprecatedSession* s, const char* handle,
 
 TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
   TF_Library* lib_handle = new TF_Library;
-  status->status = tensorflow::LoadLibrary(
+  status->status = tensorflow::LoadDynamicLibrary(
       library_filename, &lib_handle->lib_handle, &lib_handle->op_list.data,
       &lib_handle->op_list.length);
   if (!status->status.ok()) {
@@ -589,14 +589,16 @@ void TF_DeleteDeviceList(TF_DeviceList* list) { delete list; }
 
 TF_DeviceList* TF_SessionListDevices(TF_Session* session, TF_Status* status) {
   TF_DeviceList* response = new TF_DeviceList;
-  status->status = session->session->ListDevices(&response->response);
+  if (session && session->session)
+    status->status = session->session->ListDevices(&response->response);
   return response;
 }
 
 TF_DeviceList* TF_DeprecatedSessionListDevices(TF_DeprecatedSession* session,
                                                TF_Status* status) {
   TF_DeviceList* response = new TF_DeviceList;
-  status->status = session->session->ListDevices(&response->response);
+  if (session && session->session)
+    status->status = session->session->ListDevices(&response->response);
   return response;
 }
 
@@ -1384,6 +1386,7 @@ void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
     cpp_type v;                                                              \
     status->status =                                                         \
         tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &v);          \
+    if (!status->status.ok()) return;                                        \
     *value = static_cast<c_type>(v);                                         \
   }                                                                          \
   void func##List(TF_Operation* oper, const char* attr_name, c_type* values, \
@@ -2178,6 +2181,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     }
     return new_session;
   } else {
+    LOG(ERROR) << status->status;
     DCHECK_EQ(nullptr, session);
     return nullptr;
   }
@@ -2485,6 +2489,48 @@ TF_Buffer* TF_GetRegisteredKernelsForOp(const char* name, TF_Status* status) {
   return ret;
 }
 
+void TF_UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
+                   TF_Status* status) {
+  using tensorflow::RecordMutation;
+  mutex_lock l(graph->mu);
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(&new_src.oper->node);
+
+  if (ic->num_outputs() <= new_src.index) {
+    status->status = tensorflow::errors::OutOfRange(
+        "Cannot update edge. Output index [", new_src.index,
+        "] is greater than the number of total outputs [", ic->num_outputs(),
+        "].");
+    return;
+  }
+  tensorflow::shape_inference::ShapeHandle shape = ic->output(new_src.index);
+
+  tensorflow::shape_inference::InferenceContext* ic_dst =
+      graph->refiner.GetContext(&dst.oper->node);
+  if (ic_dst->num_inputs() <= dst.index) {
+    status->status = tensorflow::errors::OutOfRange(
+        "Cannot update edge. Input index [", dst.index,
+        "] is greater than the number of total inputs [", ic_dst->num_inputs(),
+        "].");
+    return;
+  }
+  if (!ic_dst->MergeInput(dst.index, shape)) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Cannot update edge, incompatible shapes: ", ic_dst->DebugString(shape),
+        " and ", ic_dst->DebugString(ic_dst->input(dst.index)), ".");
+    return;
+  }
+  status->status = graph->graph.UpdateEdge(&new_src.oper->node, new_src.index,
+                                           &dst.oper->node, dst.index);
+
+  if (TF_GetCode(status) == TF_OK) {
+    // This modification only updates the destination node for
+    // the purposes of running this graph in a session. Thus, we don't
+    // record the source node as being modified.
+    RecordMutation(graph, *dst.oper, "updating input tensor");
+  }
+}
+
 // TF_Server functions ----------------------------------------------
 
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
@@ -2559,6 +2605,16 @@ void TF_RegisterLogListener(void (*listener)(const char*)) {
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
   tensorflow::logging::RegisterListener(listener);
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+}
+
+void TF_RegisterFilesystemPlugin(const char* plugin_filename,
+                                 TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+  status->status = tensorflow::errors::Unimplemented(
+      "FileSystem plugin functionality is not supported on mobile");
+#else
+  status->status = tensorflow::RegisterFilesystemPlugin(plugin_filename);
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 }  // end extern "C"

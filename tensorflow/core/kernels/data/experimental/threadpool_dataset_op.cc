@@ -111,7 +111,7 @@ class ThreadPoolHandleOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, MakeResourceHandleToOutput(
                             ctx, 0, cinfo_.container(), cinfo_.name(),
-                            MakeTypeIndex<ThreadPoolResource>()));
+                            TypeIndex::Make<ThreadPoolResource>()));
   }
 
  private:
@@ -172,6 +172,12 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
 
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
@@ -301,6 +307,13 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->clear();
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
     }
@@ -422,6 +435,13 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->clear();
+      inputs->push_back(input_);
+      return Status::OK();
+    }
 
     Status CheckExternalState() const override {
       return input_->CheckExternalState();

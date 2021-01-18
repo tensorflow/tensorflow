@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -42,12 +42,15 @@ namespace {
 // support resources/variables . Further, this contract also ensures that this
 // pass lowers from saved model to pure TF. Hence it fails, if it cannot lower.
 struct FreezeGlobalTensorsPass
-    : public OperationPass<FreezeGlobalTensorsPass, ModuleOp> {
+    : public PassWrapper<FreezeGlobalTensorsPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
 void FreezeGlobalTensorsPass::runOnOperation() {
   auto module = getOperation();
+  if (!tf_saved_model::HasTfSavedModelSemantics(module)) {
+    return;
+  }
   SymbolTable symbol_table(module);
   DenseSet<Operation*> frozen_global_tensors;
 
@@ -57,7 +60,8 @@ void FreezeGlobalTensorsPass::runOnOperation() {
 
     for (int i = 0, e = func.getNumArguments(); i < e; ++i) {
       SmallVector<TF::ReadVariableOp, 4> read_variable_ops_to_erase;
-      auto global_tensor = LookupBoundInput(func, i, symbol_table);
+      auto global_tensor =
+          LookupBoundInputOfType<GlobalTensorOp>(func, i, symbol_table);
 
       if (!global_tensor) continue;
       frozen_global_tensors.insert(global_tensor);
@@ -66,7 +70,10 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       // previous optimize global tensors pass). If not, this pass has to fail
       // since it cannot perform one of its goals.
       if (global_tensor.is_mutable()) {
-        global_tensor.emitError() << "is not immutable";
+        global_tensor.emitError()
+            << "is not immutable, try removing mutable variables in your model "
+               "since mutable variables are currently not supported through "
+               "this converter";
         return signalPassFailure();
       }
 
@@ -85,6 +92,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       }
 
       // Replace the arg with a tf.Const op in the function body.
+      builder.setInsertionPointToStart(&func.getBody().front());
       auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
                                                   global_tensor.value());
       args_to_erase.push_back(i);
@@ -113,7 +121,7 @@ static PassRegistration<FreezeGlobalTensorsPass> pass(
     "tf-saved-model-freeze-global-tensors",
     "Freeze tf_saved_model.global_tensor's in func bodies.");
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateFreezeGlobalTensorsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass() {
   return std::make_unique<FreezeGlobalTensorsPass>();
 }
 

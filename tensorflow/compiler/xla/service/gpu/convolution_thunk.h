@@ -39,15 +39,13 @@ namespace gpu {
 // This is thread-compatible.
 class ConvolutionThunk : public Thunk {
  public:
-  // Constructs a thunk for launching a DNN convolution.  When run, it will
-  // write a tuple (result, scratch_memory) into `tuple_result_buffer`.
+  // Constructs a thunk for launching a DNN convolution.
   //
   // operand_slices should be in the same order as cudnn_call->operands().
-  ConvolutionThunk(const HloCustomCallInstruction* cudnn_call,
+  ConvolutionThunk(ThunkInfo thunk_info, GpuConvConfig config,
                    std::vector<BufferAllocation::Slice> operand_slices,
                    BufferAllocation::Slice result_slice,
-                   BufferAllocation::Slice scratch_slice,
-                   BufferAllocation::Slice tuple_result_slice);
+                   BufferAllocation::Slice scratch_slice);
 
   ConvolutionThunk(const ConvolutionThunk&) = delete;
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
@@ -55,11 +53,12 @@ class ConvolutionThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  const HloCustomCallInstruction* cudnn_call_;
   std::vector<BufferAllocation::Slice> operand_buffers_;
   BufferAllocation::Slice result_buffer_;
   BufferAllocation::Slice scratch_buffer_;
-  BufferAllocation::Slice tuple_result_buffer_;
+
+  // Convolution config
+  const GpuConvConfig config_;
 };
 
 }  // namespace gpu

@@ -39,6 +39,13 @@ class TupleUtil {
   static HloInstruction* AppendSuffix(
       HloInstruction* input_tuple,
       absl::Span<HloInstruction* const> trailing_values);
+
+  // Generates HLO instructions that duplicates the tuple by inserting
+  // get-tuple-elements and a new tuple instruction. Returns the root of the
+  // graph of instructions generated.
+  static HloInstruction* Duplicate(HloInstruction* input_tuple) {
+    return ExtractPrefix(input_tuple, input_tuple->shape().tuple_shapes_size());
+  }
 };
 }  // namespace xla
 

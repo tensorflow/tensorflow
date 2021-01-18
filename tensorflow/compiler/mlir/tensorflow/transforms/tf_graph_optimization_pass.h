@@ -24,7 +24,7 @@ namespace tensorflow {
 // Create a module pass that will execute the given TF GraphOptimization passes
 // in sequence.
 // Pass requires that the module ran on is convertible to TF Graph.
-std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateTensorFlowGraphOptimizationPass(
     std::vector<tensorflow::GraphOptimizationPass*> tf_passes);
 
@@ -32,7 +32,7 @@ CreateTensorFlowGraphOptimizationPass(
 // passes are queried, if a TF graph optimization pass is not found in registry
 // then the pass fails.
 // Pass requires that the module ran on is convertible to TF Graph.
-std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateTensorFlowGraphOptimizationPass(
     const std::vector<std::string>& pass_names);
 

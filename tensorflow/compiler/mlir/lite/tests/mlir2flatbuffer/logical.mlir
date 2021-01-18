@@ -1,15 +1,17 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 func @main(tensor<4xi1>) -> tensor<4xi1> {
 ^bb0(%arg0: tensor<4xi1>):
   // CHECK:      {
   // CHECK-NEXT:   version: 3,
   // CHECK-NEXT:   operator_codes: [ {
-  // CHECK-NEXT:     builtin_code: LOGICAL_OR,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 84,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: LOGICAL_OR
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: LOGICAL_AND,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 86,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: LOGICAL_AND
   // CHECK-NEXT:   } ],
   // CHECK-NEXT:   subgraphs: [ {
   // CHECK-NEXT:     tensors: [ {
@@ -85,6 +87,7 @@ func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK-NEXT:   name: "min_runtime_version",
   // CHECK-NEXT:   buffer: 6
   // CHECK-NEXT:   } ]
+  // CHECK-NEXT:   signature_defs: [ ]
   // CHECK-NEXT: }
   // CHECK-EMPTY:
 

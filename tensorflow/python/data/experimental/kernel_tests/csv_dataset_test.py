@@ -41,9 +41,9 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _setup_files(self, inputs, linebreak='\n', compression_type=None):
     filenames = []
-    for i, ip in enumerate(inputs):
+    for i, file_rows in enumerate(inputs):
       fn = os.path.join(self.get_temp_dir(), 'temp_%d.csv' % i)
-      contents = linebreak.join(ip).encode('utf-8')
+      contents = linebreak.join(file_rows).encode('utf-8')
       if compression_type is None:
         with open(fn, 'wb') as f:
           f.write(contents)
@@ -74,29 +74,6 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         inputs, **kwargs)
     self.assertDatasetsEqual(dataset_actual, dataset_expected)
 
-  def _verify_output_or_err(self,
-                            dataset,
-                            expected_output=None,
-                            expected_err_re=None):
-    if expected_err_re is None:
-      # Verify that output is expected, without errors
-      nxt = self.getNext(dataset)
-      expected_output = [[
-          v.encode('utf-8') if isinstance(v, str) else v for v in op
-      ] for op in expected_output]
-      for value in expected_output:
-        op = self.evaluate(nxt())
-        self.assertAllEqual(op, value)
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(nxt())
-    else:
-      nxt = self.getNext(dataset)
-      while True:
-        try:
-          self.evaluate(nxt())
-        except errors.OutOfRangeError:
-          break
-
   def _test_dataset(
       self,
       inputs,
@@ -113,10 +90,15 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       # Verify that OpError is produced as expected
       with self.assertRaisesOpError(expected_err_re):
         dataset = readers.CsvDataset(filenames, **kwargs)
-        self._verify_output_or_err(dataset, expected_output, expected_err_re)
+        self.getDatasetOutput(dataset)
     else:
       dataset = readers.CsvDataset(filenames, **kwargs)
-      self._verify_output_or_err(dataset, expected_output, expected_err_re)
+      expected_output = [
+          tuple(v.encode('utf-8') if isinstance(v, str) else v
+                for v in op)
+          for op in expected_output
+      ]
+      self.assertDatasetProduces(dataset, expected_output)
 
   @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_requiredFields(self):
@@ -176,7 +158,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     filenames = self._setup_files(inputs)
     dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
     dataset = dataset.apply(error_ops.ignore_errors())
-    self._verify_output_or_err(dataset, [['e', 'f', 'g']])
+    self.assertDatasetProduces(dataset, [(b'e', b'f', b'g')])
 
   @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_ignoreErrWithUnquotedQuotes(self):
@@ -185,7 +167,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     filenames = self._setup_files(inputs)
     dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
     dataset = dataset.apply(error_ops.ignore_errors())
-    self._verify_output_or_err(dataset, [['e', 'f', 'g']])
+    self.assertDatasetProduces(dataset, [(b'e', b'f', b'g')])
 
   @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_withNoQuoteDelimAndUnquotedQuotes(self):
@@ -414,6 +396,47 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults,
         select_cols=[0])
 
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withExcludeCol(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_output=[['1'], ['5']],
+        record_defaults=record_defaults,
+        exclude_cols=[1, 2])
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withSelectandExcludeCol(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Either select_cols or exclude_cols should be empty',
+        record_defaults=record_defaults,
+        select_cols=[0],
+        exclude_cols=[1, 2])
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withExcludeColandRecordDefaultsTooLow(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Expect 1 fields but have more in record',
+        record_defaults=record_defaults,
+        exclude_cols=[0])
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withExcludeColandRecordDefaultsTooHigh(self):
+    record_defaults = [['']] * 3
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Expect 3 fields but have 2 in record',
+        record_defaults=record_defaults,
+        exclude_cols=[0])
+
   @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_withMultipleNewLines(self):
     # In this case, we expect it to behave differently from
@@ -580,6 +603,13 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           inputs, [[0, 0, 0, 0], [1, 1, 1, 0], [0, 2, 2, 2]],
           record_defaults=record_defaults)
 
+  def testCsvDataset_immutableParams(self):
+    inputs = [['a,b,c', '1,2,3', '4,5,6']]
+    filenames = self._setup_files(inputs)
+    select_cols = ['a', 'c']
+    _ = readers.make_csv_dataset(
+        filenames, batch_size=1, select_columns=select_cols)
+    self.assertAllEqual(select_cols, ['a', 'c'])
 
 if __name__ == '__main__':
   test.main()

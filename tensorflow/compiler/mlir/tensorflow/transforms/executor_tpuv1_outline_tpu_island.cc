@@ -44,9 +44,20 @@ constexpr llvm::StringRef kOutlinedFuncPrefix = "_tpu_v1_compat_outlined_func";
 // This is only intended for V1 compatibility mode where the bridge runs without
 // feed/fetches on session create/extend.
 struct TPUBridgeExecutorIslandOutlining
-    : public OperationPass<TPUBridgeExecutorIslandOutlining, ModuleOp> {
+    : public PassWrapper<TPUBridgeExecutorIslandOutlining,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
+
+// Move FuncOp referenced by `symbol_ref` from one symbol table to another.
+void MoveFuncOp(FlatSymbolRefAttr &symbol_ref, SymbolTable &from,
+                SymbolTable &to) {
+  if (to.lookup<FuncOp>(symbol_ref.getValue())) return;
+  FuncOp callee = from.lookup<FuncOp>(symbol_ref.getValue());
+  callee.getOperation()->getBlock()->getOperations().remove(
+      callee.getOperation());
+  to.insert(callee);
+}
 
 void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   MLIRContext *ctx = &getContext();
@@ -57,9 +68,9 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     return signalPassFailure();
   }
   ModuleOp outlined_module = ModuleOp::create(getOperation().getLoc());
-  outlined_module.setAttrs(getOperation().getAttrs());
-  outlined_module.setAttr(SymbolTable::getSymbolAttrName(),
-                          StringAttr::get(kNestedModule, ctx));
+  outlined_module->setAttrs(getOperation()->getAttrDictionary());
+  outlined_module->setAttr(SymbolTable::getSymbolAttrName(),
+                           StringAttr::get(kNestedModule, ctx));
   symbol_table.insert(outlined_module);
   SymbolTable outlined_symbol_table(outlined_module);
 
@@ -67,7 +78,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   // in a new module to run the V1 bridge there.
   SmallVector<IslandOp, 8> islands_to_outline;
   getOperation().walk([&](TF::TPUReplicateMetadataOp replicate_op) {
-    auto island_op = cast<IslandOp>(replicate_op.getParentOp());
+    auto island_op = cast<IslandOp>(replicate_op->getParentOp());
     if (!island_op || island_op.WrapsSingleOp()) return;
     islands_to_outline.push_back(island_op);
   });
@@ -89,14 +100,15 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     for (Value operand : island_op.GetYield().getOperands())
       func_result_types.push_back(operand.getType());
     FunctionType func_type =
-        FunctionType::get(func_operand_types, func_result_types, ctx);
+        FunctionType::get(ctx, func_operand_types, func_result_types);
 
     // Create the outlined function
     SmallString<32> name = kOutlinedFuncPrefix;
     name += llvm::Twine(prefix_id++).str();
-    auto outlined_func = OpBuilder(ctx).create<FuncOp>(
-        island_op.getLoc(), name, func_type, ArrayRef<NamedAttribute>());
+    auto outlined_func =
+        OpBuilder(ctx).create<FuncOp>(island_op.getLoc(), name, func_type);
     outlined_symbol_table.insert(outlined_func);
+    outlined_func.setNested();
 
     // We will "steal" the body of the island and replace it with a call to the
     // new function later.
@@ -140,14 +152,17 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   for (FuncOp func : outlined_module.getOps<FuncOp>()) {
     func.walk([&](Operation *op) {
       for (NamedAttribute attr : op->getAttrs()) {
-        auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>();
-        if (!symbol_ref) continue;
-        if (outlined_symbol_table.lookup<FuncOp>(symbol_ref.getValue()))
+        if (auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>()) {
+          MoveFuncOp(symbol_ref, symbol_table, outlined_symbol_table);
           continue;
-        FuncOp callee = symbol_table.lookup<FuncOp>(symbol_ref.getValue());
-        callee.getOperation()->getBlock()->getOperations().remove(
-            callee.getOperation());
-        outlined_symbol_table.insert(callee);
+        }
+        if (auto array_attr = attr.second.dyn_cast<ArrayAttr>()) {
+          for (const Attribute &attribute : array_attr) {
+            auto symbol_ref = attribute.dyn_cast<FlatSymbolRefAttr>();
+            if (!symbol_ref) continue;
+            MoveFuncOp(symbol_ref, symbol_table, outlined_symbol_table);
+          }
+        }
       }
     });
   }
@@ -160,7 +175,7 @@ PassRegistration<TPUBridgeExecutorIslandOutlining> tpu_pass(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandOutliningPass() {
   return std::make_unique<TPUBridgeExecutorIslandOutlining>();
 }

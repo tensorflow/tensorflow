@@ -19,13 +19,22 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import enum
 
 import gast
 
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import loader
+from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import templates
+
+
+class AnalysisLevel(enum.IntEnum):
+
+  NONE = 0
+  ACTIVITY = 1
+  DEFINEDNESS = 2
+  LIVENESS = 3
 
 
 # TODO(znado): Use namedtuple.
@@ -36,20 +45,26 @@ class Context(object):
 
   Attributes:
     info: EntityInfo, immutable.
+    namer: naming.Namer.
     current_origin: origin_info.OriginInfo, holds the OriginInfo of the last
       AST node to be processed successfully. Useful for error handling.
+    user: An user-supplied context object. The object is opaque to the
+      infrastructure, but will pe passed through to all custom transformations.
   """
 
-  def __init__(self, info):
+  def __init__(self, info, namer, user_context):
     self.info = info
+    self.namer = namer
     self.current_origin = None
+    self.user = user_context
 
 
 # TODO(mdan): Move to a standalone file.
 class EntityInfo(
     collections.namedtuple(
         'EntityInfo',
-        ('source_code', 'source_file', 'future_features', 'namespace'))):
+        ('name', 'source_code', 'source_file', 'future_features', 'namespace'))
+):
   """Contains information about a Python entity.
 
   Immutable.
@@ -57,6 +72,7 @@ class EntityInfo(
   Examples of entities include functions and classes.
 
   Attributes:
+    name: The name that identifies this entity.
     source_code: The entity's source code.
     source_file: The entity's source file.
     future_features: Tuple[Text], the future features that this entity was
@@ -260,7 +276,7 @@ class NodeStateTracker(object):
   def debug_print_src(self, node):
     """Helper method useful for debugging. Prints the AST as code."""
     if __debug__:
-      print(loader.load_ast(node))
+      print(parser.unparse(node))
     return node
 
   def visit_block(self, nodes, before_visit=None, after_visit=None):
@@ -339,17 +355,6 @@ class NodeStateTracker(object):
         node_destination = new_destination
     return results
 
-  def _get_source(self, node):
-    try:
-      source, _ = loader.load_ast(node)
-      return source
-    # pylint: disable=broad-except
-    # This function is used for error reporting.  If an exception occurs here,
-    # it should be suppressed, in favor of emitting as informative a message
-    # about the original error as possible.
-    except Exception:
-      return '<could not convert AST to source>'
-
 
 # TODO(mdan): Rename to PythonCodeTransformer.
 class Base(NodeStateTracker, gast.NodeTransformer):
@@ -407,7 +412,7 @@ class Base(NodeStateTracker, gast.NodeTransformer):
           if isinstance(values, (gast.Tuple, gast.List)):
             value_el = values.elts[i]
           else:
-            value_el = gast.Subscript(values, gast.Index(i), ctx=gast.Store())
+            value_el = gast.Subscript(values, i, ctx=gast.Store())
           self.apply_to_single_assignments(target_el, value_el, apply_fn)
       else:
         # TODO(mdan): Look into allowing to rewrite the AST here.
@@ -522,7 +527,7 @@ class CodeGenerator(NodeStateTracker, gast.NodeVisitor):
       self.ctx.current_origin = anno.getanno(node, anno.Basic.ORIGIN)
 
     try:
-      super(CodeGenerator, self).visit(node)
+      ret = super(CodeGenerator, self).visit(node)
 
       # By default, all replacements receive the origin info of the replaced
       # node.
@@ -532,5 +537,6 @@ class CodeGenerator(NodeStateTracker, gast.NodeVisitor):
             node, anno.Basic.ORIGIN, default=parent_origin)
         if inherited_origin is not None:
           self.source_map[(eof_before, eof_after)] = inherited_origin
+      return ret
     finally:
       self.ctx.current_origin = parent_origin

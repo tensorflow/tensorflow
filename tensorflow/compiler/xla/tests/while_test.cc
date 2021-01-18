@@ -863,7 +863,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
     // Starts = iteration * 2;
     auto starts = Mul(iteration, ConstantR0<int32>(&builder, 2));
     // UpdateSlice.
-    auto out1 = DynamicUpdateSlice(input, update, starts);
+    auto out1 = DynamicUpdateSlice(input, update, {starts});
 
     Tuple(&builder, {out0, out1});
     body = builder.Build().ConsumeValueOrDie();
@@ -1259,9 +1259,8 @@ XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileInfeedCondition)) {
   ComputeAndCompareR0<int32>(&builder, 2, {});
 }
 
-void BM_WhileLoop(int num_iters) {
+void BM_WhileLoop(::testing::benchmark::State& state) {
   // Benchmark a simple kernel to measure while loop overheads.
-  tensorflow::testing::StopTiming();
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
@@ -1324,14 +1323,15 @@ void BM_WhileLoop(int num_iters) {
   options.set_allocator(&allocator);
   const int kWarmups = 2;
   for (int i = 0; i < kWarmups; ++i) {
-    auto result = executable->Run({}, options);
+    auto result =
+        executable->Run(absl::Span<const ShapedBuffer* const>(), options);
     ASSERT_TRUE(result.ok());
   }
 
   // Run benchmark.
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < num_iters; ++i) {
-    auto result = executable->Run({}, options);
+  for (auto s : state) {
+    auto result =
+        executable->Run(absl::Span<const ShapedBuffer* const>(), options);
     ASSERT_TRUE(result.ok());
   }
 }

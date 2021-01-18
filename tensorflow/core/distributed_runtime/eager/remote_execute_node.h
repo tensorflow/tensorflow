@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/shape_inference.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -39,6 +40,7 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
   RemoteExecuteNode(EagerContext* eager_context,
                     std::unique_ptr<EnqueueRequest> request, Device* device,
                     uint64 context_view_id, EagerClient* eager_client,
+                    CancellationManager* cancellation_manager,
                     const NodeDef& ndef, FunctionLibraryDefinition* lib_def,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     absl::Span<TensorHandle*> retvals)
@@ -48,6 +50,7 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
         device_(device),
         context_view_id_(context_view_id),
         eager_client_(eager_client),
+        cancellation_manager_(cancellation_manager),
         ndef_(ndef),
         lib_def_(lib_def),
         inputs_(inputs) {
@@ -125,6 +128,7 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
   uint64 context_view_id_;
   bool needs_remote_inputs_;
   EagerClient* eager_client_;  // Not owned, and must outlive this node.
+  CancellationManager* cancellation_manager_;
   const NodeDef ndef_;
   const FunctionLibraryDefinition* lib_def_;
   gtl::InlinedVector<TensorHandle*, 4> inputs_;

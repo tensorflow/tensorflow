@@ -1,0 +1,13 @@
+path: "tensorflow.train.CheckpointOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.saving.checkpoint_options.CheckpointOptions\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "experimental_io_device"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'experimental_io_device\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

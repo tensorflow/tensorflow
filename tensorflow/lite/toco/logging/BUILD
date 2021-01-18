@@ -1,7 +1,6 @@
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
-    "tf_proto_library_py",
+    "tf_proto_library",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -13,16 +12,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "toco_conversion_log_proto",
     srcs = ["toco_conversion_log.proto"],
     cc_api_version = 2,
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library_py(
-    name = "toco_conversion_log_proto",
-    srcs = ["toco_conversion_log.proto"],
     visibility = ["//visibility:public"],
 )
 
@@ -73,7 +66,7 @@ py_library(
     data = [
         "html_template",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 

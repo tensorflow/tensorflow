@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
@@ -36,12 +37,21 @@ class EagerClient : public core::RefCounted {
 
   CLIENT_METHOD(CreateContext);
   CLIENT_METHOD(UpdateContext);
-  CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
 
 #undef CLIENT_METHOD
+
+#define CLIENT_CANCELABLE_METHOD(method)                      \
+  virtual void method##Async(                                 \
+      CallOptions* call_opts, const method##Request* request, \
+      method##Response* response, StatusCallback done) = 0;
+
+  CLIENT_CANCELABLE_METHOD(Enqueue);
+  CLIENT_CANCELABLE_METHOD(RunComponentFunction);
+
+#undef CLIENT_CANCELABLE_METHOD
 
   // Feeds `request` into the request stream of EagerService::StreamingEnqueue.
   // `response` will be filled with the response for this `request`. The
@@ -54,7 +64,8 @@ class EagerClient : public core::RefCounted {
   // is invoked and keeps it open until some error condition.
   // Similarly to the methods above, the request can be deleted as soon as
   // StreamingEnqueueAsync returns.
-  virtual void StreamingEnqueueAsync(const EnqueueRequest* request,
+  virtual void StreamingEnqueueAsync(CallOptions* call_opts,
+                                     const EnqueueRequest* request,
                                      EnqueueResponse* response,
                                      StatusCallback done) = 0;
 

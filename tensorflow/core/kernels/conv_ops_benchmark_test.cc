@@ -309,107 +309,133 @@ static Graph* FusedConv2DWithBatchNorm(
 // The following benchmarks are always using 'float' data type with NHWC layout.
 // -------------------------------------------------------------------------- //
 
-#define BM_SETUP(N, H, W, C, type, LABEL, NAME)                               \
-  testing::ItemsProcessed(static_cast<int64>(iters) * (N) * (H) * (W) * (C)); \
-  testing::SetLabel(LABEL);
+#define BM_SET_INFO(N, H, W, C, type, LABEL, NAME)                             \
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * (N) * (H) * \
+                          (W) * (C));                                          \
+  state.SetLabel(LABEL);
 
 #define BM_NAME(name, type, N, H, W, C, FW, FH, FC) \
   name##_##type##_##N##_##H##_##W##_##C##_##FW##_##FH##_##FC
 
-#define BM_Conv2D(N, H, W, C, FW, FH, FC, type, LABEL)                      \
-  static void BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH, FC)(int iters) { \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                              \
-    test::Benchmark(#type, Conv2D<float>(N, H, W, C, FW, FH, FC).graph)     \
-        .Run(iters);                                                        \
-  }                                                                         \
-  BENCHMARK(BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH, FC));
+#define BM_Conv2D(N, H, W, C, FW, FH, FC, type, LABEL)                  \
+  static void BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH,              \
+                      FC)(::testing::benchmark::State & state) {        \
+    test::Benchmark(#type, Conv2D<float>(N, H, W, C, FW, FH, FC).graph, \
+                    /*old_benchmark_api=*/false)                        \
+        .Run(state);                                                    \
+    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                       \
+  }                                                                     \
+  BENCHMARK(BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH, FC))           \
+      ->Arg(/*unused arg*/ 1);
 
 #define BM_Conv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)           \
   static void BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH,       \
-                      FC)(int iters) {                                   \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                           \
+                      FC)(::testing::benchmark::State & state) {         \
     test::Benchmark(#type,                                               \
-                    Conv2DWithBias<float>(N, H, W, C, FW, FH, FC).graph) \
-        .Run(iters);                                                     \
+                    Conv2DWithBias<float>(N, H, W, C, FW, FH, FC).graph, \
+                    /*old_benchmark_api=*/false)                         \
+        .Run(state);                                                     \
+    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                        \
   }                                                                      \
-  BENCHMARK(BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH, FC));
+  BENCHMARK(BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH, FC))    \
+      ->Arg(/*unused arg*/ 1);
 
-#define BM_Conv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)         \
-  static void BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH,     \
-                      FC)(int iters) {                                        \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
-    test::Benchmark(#type, Conv2DWithBiasAndActivation<float>(N, H, W, C, FW, \
-                                                              FH, FC, "Relu") \
-                               .graph)                                        \
-        .Run(iters);                                                          \
-  }                                                                           \
-  BENCHMARK(BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC));
+#define BM_Conv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)        \
+  static void BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH,    \
+                      FC)(::testing::benchmark::State & state) {             \
+    test::Benchmark(                                                         \
+        #type,                                                               \
+        Conv2DWithBiasAndActivation<float>(N, H, W, C, FW, FH, FC, "Relu")   \
+            .graph,                                                          \
+        /*old_benchmark_api=*/false)                                         \
+        .Run(state);                                                         \
+    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                            \
+  }                                                                          \
+  BENCHMARK(BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC)) \
+      ->Arg(/*unused arg*/ 1);
 
-#define BM_FusedConv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)           \
-  static void BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH,       \
-                      FC)(int iters) {                                        \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
-    test::Benchmark(#type, FusedConv2DWithBias<float>(N, H, W, C, FW, FH, FC, \
-                                                      {"BiasAdd"}))           \
-        .Run(iters);                                                          \
-  }                                                                           \
-  BENCHMARK(BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH, FC));
+#define BM_FusedConv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)        \
+  static void BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH,    \
+                      FC)(::testing::benchmark::State & state) {           \
+    test::Benchmark(                                                       \
+        #type,                                                             \
+        FusedConv2DWithBias<float>(N, H, W, C, FW, FH, FC, {"BiasAdd"}),   \
+        /*old_benchmark_api=*/false)                                       \
+        .Run(state);                                                       \
+    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                          \
+  }                                                                        \
+  BENCHMARK(BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH, FC)) \
+      ->Arg(/*unused arg*/ 1);
 
 #define BM_FusedConv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)     \
   static void BM_NAME(BM_FusedConv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, \
-                      FC)(int iters) {                                         \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                 \
-    test::Benchmark(#type, FusedConv2DWithBias<float>(N, H, W, C, FW, FH, FC,  \
-                                                      {"BiasAdd", "Relu"}))    \
-        .Run(iters);                                                           \
+                      FC)(::testing::benchmark::State & state) {               \
+    test::Benchmark(#type,                                                     \
+                    FusedConv2DWithBias<float>(N, H, W, C, FW, FH, FC,         \
+                                               {"BiasAdd", "Relu"}),           \
+                    /*old_benchmark_api=*/false)                               \
+        .Run(state);                                                           \
+    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                              \
   }                                                                            \
   BENCHMARK(                                                                   \
-      BM_NAME(BM_FusedConv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC));
+      BM_NAME(BM_FusedConv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC))    \
+      ->Arg(/*unused arg*/ 1);
 
 #define BM_Conv2DWithBatchNorm(N, H, W, C, FW, FH, FC, type, LABEL)           \
   static void BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH,       \
-                      FC)(int iters) {                                        \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
+                      FC)(::testing::benchmark::State & state) {              \
     test::Benchmark(#type,                                                    \
-                    Conv2DWithBatchNorm<float>(N, H, W, C, FW, FH, FC).graph) \
-        .Run(iters);                                                          \
+                    Conv2DWithBatchNorm<float>(N, H, W, C, FW, FH, FC).graph, \
+                    /*old_benchmark_api=*/false)                              \
+        .Run(state);                                                          \
+    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                             \
   }                                                                           \
-  BENCHMARK(BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC));
+  BENCHMARK(BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC))    \
+      ->Arg(/*unused arg*/ 1);
 
 #define BM_Conv2DWithBatchNormAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)     \
   static void BM_NAME(BM_Conv2DWithBatchNormAndRelu, type, N, H, W, C, FW, FH, \
-                      FC)(int iters) {                                         \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                 \
-    test::Benchmark(#type, Conv2DWithBatchNormAndActivation<float>(            \
-                               N, H, W, C, FW, FH, FC, "Relu")                 \
-                               .graph)                                         \
-        .Run(iters);                                                           \
+                      FC)(::testing::benchmark::State & state) {               \
+    test::Benchmark(#type,                                                     \
+                    Conv2DWithBatchNormAndActivation<float>(N, H, W, C, FW,    \
+                                                            FH, FC, "Relu")    \
+                        .graph,                                                \
+                    /*old_benchmark_api=*/false)                               \
+        .Run(state);                                                           \
+    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                              \
   }                                                                            \
   BENCHMARK(                                                                   \
-      BM_NAME(BM_Conv2DWithBatchNormAndRelu, type, N, H, W, C, FW, FH, FC));
+      BM_NAME(BM_Conv2DWithBatchNormAndRelu, type, N, H, W, C, FW, FH, FC))    \
+      ->Arg(/*unused arg*/ 1);
 
 #define BM_FusedConv2DWithBatchNorm(N, H, W, C, FW, FH, FC, type, LABEL)     \
   static void BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, \
-                      FC)(int iters) {                                       \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                               \
-    test::Benchmark(#type, FusedConv2DWithBatchNorm<float>(                  \
-                               N, H, W, C, FW, FH, FC, {"FusedBatchNorm"}))  \
-        .Run(iters);                                                         \
+                      FC)(::testing::benchmark::State & state) {             \
+    test::Benchmark(#type,                                                   \
+                    FusedConv2DWithBatchNorm<float>(N, H, W, C, FW, FH, FC,  \
+                                                    {"FusedBatchNorm"}),     \
+                    /*old_benchmark_api=*/false)                             \
+        .Run(state);                                                         \
+    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                            \
   }                                                                          \
-  BENCHMARK(BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC));
+  BENCHMARK(                                                                 \
+      BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC))    \
+      ->Arg(/*unused arg*/ 1);
 
 #define BM_FusedConv2DWithBatchNormAndRelu(N, H, W, C, FW, FH, FC, type,      \
                                            LABEL)                             \
   static void BM_NAME(BM_FusedConv2DWithBatchNormAndRelu, type, N, H, W, C,   \
-                      FW, FH, FC)(int iters) {                                \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
-    test::Benchmark(                                                          \
-        #type, FusedConv2DWithBatchNorm<float>(N, H, W, C, FW, FH, FC,        \
-                                               {"FusedBatchNorm", "Relu"}))   \
-        .Run(iters);                                                          \
+                      FW, FH, FC)(::testing::benchmark::State & state) {      \
+    test::Benchmark(#type,                                                    \
+                    FusedConv2DWithBatchNorm<float>(                          \
+                        N, H, W, C, FW, FH, FC, {"FusedBatchNorm", "Relu"}),  \
+                    /*old_benchmark_api=*/false)                              \
+        .Run(state);                                                          \
+    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                             \
   }                                                                           \
   BENCHMARK(BM_NAME(BM_FusedConv2DWithBatchNormAndRelu, type, N, H, W, C, FW, \
-                    FH, FC));
+                    FH, FC))                                                  \
+      ->Arg(/*unused arg*/ 1);
 
 // -------------------------------------------------------------------------- //
 // Pixel CNN convolutions.
@@ -561,13 +587,15 @@ BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
 
 #define BM_Conv2DFmt(T, FORMAT, N, H, W, C, FW, FH, FC, type)                 \
   static void BM_LONG_NAME(BM_Conv2D, type, T, FORMAT, N, H, W, C, FW, FH,    \
-                           FC)(int iters) {                                   \
-    BM_SETUP(N, H, W, C, type, "", Conv2D);                                   \
+                           FC)(::testing::benchmark::State & state) {         \
     test::Benchmark(#type,                                                    \
-                    Conv2D<T>(N, H, W, C, FW, FH, FC, FORMAT_##FORMAT).graph) \
-        .Run(iters);                                                          \
+                    Conv2D<T>(N, H, W, C, FW, FH, FC, FORMAT_##FORMAT).graph, \
+                    /*old_benchmark_api=*/false)                              \
+        .Run(state);                                                          \
+    BM_SET_INFO(N, H, W, C, type, "", Conv2D);                                \
   }                                                                           \
-  BENCHMARK(BM_LONG_NAME(BM_Conv2D, type, T, FORMAT, N, H, W, C, FW, FH, FC));
+  BENCHMARK(BM_LONG_NAME(BM_Conv2D, type, T, FORMAT, N, H, W, C, FW, FH, FC)) \
+      ->Arg(/*unused arg*/ 1);
 
 #if GOOGLE_CUDA
 using fp32 = float;

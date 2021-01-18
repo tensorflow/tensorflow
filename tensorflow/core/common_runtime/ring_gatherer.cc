@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -72,9 +71,9 @@ void RingGatherer::Run(StatusCallback done) {
 
   if (VLOG_IS_ON(1)) {
     string buf;
-    for (int r = 0; r < col_params_->instance.device_names.size(); ++r) {
+    for (int r = 0; r < col_params_->group.device_names.size(); ++r) {
       strings::StrAppend(&buf, "dev ", r, " : ",
-                         col_params_->instance.device_names[r], "\n");
+                         col_params_->group.device_names[r], "\n");
     }
     for (int sd = 0;
          sd < col_params_->instance.impl_details.subdiv_permutations.size();
@@ -273,6 +272,8 @@ bool RingGatherer::RunAsyncParts() {
   return !aborted;
 }
 
+namespace {
 REGISTER_COLLECTIVE(RingGather, RingGatherer);
+}  // namespace
 
 }  // namespace tensorflow

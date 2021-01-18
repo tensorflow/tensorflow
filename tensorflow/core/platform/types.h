@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/tstring.h"
 
@@ -37,18 +38,18 @@ namespace tensorflow {
 // Alias tensorflow::string to std::string.
 using std::string;
 
-static const uint8 kuint8max = ((uint8)0xFF);
-static const uint16 kuint16max = ((uint16)0xFFFF);
-static const uint32 kuint32max = ((uint32)0xFFFFFFFF);
-static const uint64 kuint64max = ((uint64)0xFFFFFFFFFFFFFFFFull);
-static const int8 kint8min = ((int8)~0x7F);
-static const int8 kint8max = ((int8)0x7F);
-static const int16 kint16min = ((int16)~0x7FFF);
-static const int16 kint16max = ((int16)0x7FFF);
-static const int32 kint32min = ((int32)~0x7FFFFFFF);
-static const int32 kint32max = ((int32)0x7FFFFFFF);
-static const int64 kint64min = ((int64)~0x7FFFFFFFFFFFFFFFll);
-static const int64 kint64max = ((int64)0x7FFFFFFFFFFFFFFFll);
+static const uint8 kuint8max = static_cast<uint8>(0xFF);
+static const uint16 kuint16max = static_cast<uint16>(0xFFFF);
+static const uint32 kuint32max = static_cast<uint32>(0xFFFFFFFF);
+static const uint64 kuint64max = static_cast<uint64>(0xFFFFFFFFFFFFFFFFull);
+static const int8 kint8min = static_cast<int8>(~0x7F);
+static const int8 kint8max = static_cast<int8>(0x7F);
+static const int16 kint16min = static_cast<int16>(~0x7FFF);
+static const int16 kint16max = static_cast<int16>(0x7FFF);
+static const int32 kint32min = static_cast<int32>(~0x7FFFFFFF);
+static const int32 kint32max = static_cast<int32>(0x7FFFFFFF);
+static const int64 kint64min = static_cast<int64>(~0x7FFFFFFFFFFFFFFFll);
+static const int64 kint64max = static_cast<int64>(0x7FFFFFFFFFFFFFFFll);
 
 // A typedef for a uint64 used as a short fingerprint.
 typedef uint64 Fprint;

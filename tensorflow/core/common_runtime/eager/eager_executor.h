@@ -153,6 +153,13 @@ class EagerExecutor {
 
   bool ok() const TF_NO_THREAD_SAFETY_ANALYSIS { return ok_; }
 
+  // On destruction, runs `callback`. Used by the EagerContext for clearing
+  // thread-local executors.
+  void AddCleanup(intptr_t key, std::function<void()> callback);
+  // If `key` (e.g. a context) is destroyed before the executor, the associated
+  // callbacks are no longer safe to run.
+  void RemoveCleanups(intptr_t key);
+
  private:
   // Possible states for this executor.
   // Executor starts in kActive state. When Shutdown() is called, Executor
@@ -250,6 +257,9 @@ class EagerExecutor {
   const eager::EagerClient* last_eager_client_;
 
   const bool enable_async_wait_for_remote_function_;
+
+  // Callbacks to run on destruction.
+  std::unordered_map<intptr_t, std::vector<std::function<void()>>> cleanups_;
 };
 
 inline bool EagerExecutor::Async() const { return thread_ != nullptr; }

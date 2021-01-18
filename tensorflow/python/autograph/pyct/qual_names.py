@@ -41,21 +41,13 @@ class Symbol(collections.namedtuple('Symbol', ['name'])):
   """Represents a Python symbol."""
 
 
-class StringLiteral(collections.namedtuple('StringLiteral', ['value'])):
-  """Represents a Python string literal."""
-
-  def __str__(self):
-    return '\'%s\'' % self.value
-
-  def __repr__(self):
-    return str(self)
-
-
-class NumberLiteral(collections.namedtuple('NumberLiteral', ['value'])):
+class Literal(collections.namedtuple('Literal', ['value'])):
   """Represents a Python numeric literal."""
 
   def __str__(self):
-    return '%s' % self.value
+    if isinstance(self.value, str):
+      return "'{}'".format(self.value)
+    return str(self.value)
 
   def __repr__(self):
     return str(self)
@@ -91,7 +83,7 @@ class QN(object):
       self._has_subscript = True
 
     else:
-      if not isinstance(base, (str, StringLiteral, NumberLiteral)):
+      if not isinstance(base, (str, Literal)):
         # TODO(mdan): Require Symbol instead of string.
         raise ValueError(
             'for simple QNs, base must be a string or a Literal object;'
@@ -114,6 +106,12 @@ class QN(object):
 
   def has_attr(self):
     return self._has_attr
+
+  @property
+  def attr(self):
+    if not self._has_attr:
+      raise ValueError('Cannot get attr of non-attribute "%s".' % self)
+    return self.qn[1]
 
   @property
   def parent(self):
@@ -168,13 +166,26 @@ class QN(object):
             self.has_subscript() == other.has_subscript() and
             self.has_attr() == other.has_attr())
 
+  def __lt__(self, other):
+    if isinstance(other, QN):
+      return self.qn < other.qn
+    else:
+      return str(self) < str(other)
+
+  def __gt__(self, other):
+    if isinstance(other, QN):
+      return self.qn > other.qn
+    else:
+      return str(self) > str(other)
+
   def __str__(self):
+    root = self.qn[0]
     if self.has_subscript():
-      return str(self.qn[0]) + '[' + str(self.qn[1]) + ']'
+      return '{}[{}]'.format(root, self.qn[1])
     if self.has_attr():
       return '.'.join(map(str, self.qn))
     else:
-      return str(self.qn[0])
+      return str(root)
 
   def __repr__(self):
     return str(self)
@@ -197,7 +208,7 @@ class QN(object):
     if self.has_subscript():
       return gast.Subscript(
           value=self.parent.ast(),
-          slice=gast.Index(self.qn[-1].ast()),
+          slice=self.qn[-1].ast(),
           ctx=CallerMustSetThis)
     if self.has_attr():
       return gast.Attribute(
@@ -207,13 +218,11 @@ class QN(object):
     if isinstance(base, str):
       return gast.Name(
           base, ctx=CallerMustSetThis, annotation=None, type_comment=None)
-    elif isinstance(base, StringLiteral):
-      return gast.Constant(base.value, kind=None)
-    elif isinstance(base, NumberLiteral):
+    elif isinstance(base, Literal):
       return gast.Constant(base.value, kind=None)
     else:
       assert False, ('the constructor should prevent types other than '
-                     'str, StringLiteral and NumberLiteral')
+                     'str and Literal')
 
 
 class QnResolver(gast.NodeTransformer):
@@ -238,16 +247,16 @@ class QnResolver(gast.NodeTransformer):
     # TODO(mdan): This may no longer apply if we overload getitem.
     node = self.generic_visit(node)
     s = node.slice
-    if not isinstance(s, gast.Index):
+    if isinstance(s, (gast.Tuple, gast.Slice)):
       # TODO(mdan): Support range and multi-dimensional indices.
       # Continuing silently because some demos use these.
       return node
-    if isinstance(s.value, gast.Constant):
-      subscript = QN(NumberLiteral(s.value.value))
+    if isinstance(s, gast.Constant) and s.value != Ellipsis:
+      subscript = QN(Literal(s.value))
     else:
       # The index may be an expression, case in which a name doesn't make sense.
-      if anno.hasanno(node.slice.value, anno.Basic.QN):
-        subscript = anno.getanno(node.slice.value, anno.Basic.QN)
+      if anno.hasanno(s, anno.Basic.QN):
+        subscript = anno.getanno(s, anno.Basic.QN)
       else:
         return node
     if anno.hasanno(node.value, anno.Basic.QN):

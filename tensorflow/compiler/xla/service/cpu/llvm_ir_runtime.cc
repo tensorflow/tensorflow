@@ -115,13 +115,14 @@ void RewriteCalls(
 
   // Upcast to vector type if input is a scalar.
   if (vector_width == 1) {
-    llvm::Type* v1_type = llvm::VectorType::get(input->getType(), 1);
+    llvm::Type* v1_type = llvm::VectorType::get(input->getType(), 1, false);
     input = b.CreateInsertElement(llvm::UndefValue::get(v1_type), input,
                                   uint64_t{0});
   }
 
   // Generate the vectorized code.
-  CHECK_EQ(vector_width, input->getType()->getVectorNumElements());
+  CHECK_EQ(vector_width,
+           llvm::cast<llvm::VectorType>(input->getType())->getNumElements());
   llvm::Value* result = fn_body_generator(&b, input, vector_width);
 
   // Downcast result to scalar type if necessary.
@@ -142,8 +143,8 @@ void RewriteCalls(
   }
   for (auto* call_to_inline : calls_to_inline) {
     llvm::InlineFunctionInfo inline_function_info;
-    CHECK(
-        llvm::InlineFunction(call_to_inline, inline_function_info).isSuccess());
+    CHECK(llvm::InlineFunction(*call_to_inline, inline_function_info)
+              .isSuccess());
   }
   // LLVM's InjectTLIMappings adds functions that might be used for
   // vectorization to 'llvm.compiler.used'. Remove it before deleting the
@@ -263,8 +264,8 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   z = vsl.Add(one, z);
 
   // Convert n' to an i32.  This is safe because we clamped it above.
-  llvm::Value* n_i32 =
-      b->CreateFPToSI(n, llvm::VectorType::get(b->getInt32Ty(), vector_width));
+  llvm::Value* n_i32 = b->CreateFPToSI(
+      n, llvm::VectorType::get(b->getInt32Ty(), vector_width, false));
 
   auto splat_i32 = [&](int32 v) {
     return b->CreateVectorSplat(vector_width, b->getInt32(v));
@@ -317,7 +318,9 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
   llvm::Value* is_pos_inf_mask = vsl.FCmpEQMask(input, pos_inf);
 
   // Cut off denormalized stuff.
-  llvm::Value* tmp0 = vsl.Max(min_norm_pos, input);
+  // Always allow fast max because we are checking for the nan above.
+  llvm::Value* tmp0 =
+      vsl.Max(min_norm_pos, input, /*enable_fast_min_max=*/true);
 
   // VectorSupportLibrary (intentionally) can't juggle more than one type at a
   // time so drop down to IRBuilder for this bit.
@@ -326,7 +329,7 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
   llvm::Value* vector_constant_23 =
       b->CreateVectorSplat(vector_width, b->getInt32(23));
   llvm::Type* i32_vector_type =
-      llvm::VectorType::get(b->getInt32Ty(), vector_width);
+      llvm::VectorType::get(b->getInt32Ty(), vector_width, false);
 
   llvm::Value* emm0 = b->CreateLShr(b->CreateBitCast(tmp0, i32_vector_type),
                                     vector_constant_23);

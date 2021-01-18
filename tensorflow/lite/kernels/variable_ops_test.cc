@@ -12,13 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <vector>
+#include <stdint.h>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 
 namespace tflite {
 
@@ -46,7 +44,7 @@ class VariableOpsTest : public ::testing::Test {
   }
 
   void ConstructGraph() {
-    // Construct a graph like ths:
+    // Construct a graph like this:
     //   Input: %0, %1, %2
     //   Output: %3
     //   variable_assign(%0, %2)

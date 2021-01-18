@@ -22,14 +22,14 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -55,6 +55,13 @@ static llvm::cl::opt<bool> enable_single_layer_verify(
                    "`-tfl-numeric-verify` is set."),
     llvm::cl::init(true));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> enable_log_if_failed(
+    "tfl-log-if-failed", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Whether verify numericals with thresholding "
+                   "tolerance. Valid when `-tfl-numeric-verify` is set."),
+    llvm::cl::init(false));
+
 namespace mlir {
 namespace TFL {
 
@@ -67,16 +74,26 @@ namespace {
 struct TFLFullQuantization
     : public quant::QuantizationPattern<TFLFullQuantization, QuantizeOp,
                                         DequantizeOp, NumericVerifyOp> {
-  explicit TFLFullQuantization(MLIRContext* ctx, bool verify_numeric,
-                               float tolerance, bool verify_single_layer)
-      : BaseType(ctx, verify_numeric, tolerance, verify_single_layer) {}
+  explicit TFLFullQuantization(MLIRContext* ctx, bool verify_numeric_flag,
+                               float tolerance, bool verify_single_layer,
+                               bool log_if_failed_flag = false)
+      : BaseType(ctx, verify_numeric_flag, tolerance, verify_single_layer,
+                 log_if_failed_flag) {}
   static bool AllowHybridOperand() { return false; }
   static bool AllowHybridResult() { return false; }
 };
 
 // Applies quantization on the model in TFL dialect.
-struct QuantizePass : public FunctionPass<QuantizePass> {
+struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
+ public:
+  // Constructor used by manually creating the pass.
+  explicit QuantizePass(bool verify_numeric_flag = false)
+      : verify_numeric(verify_numeric_flag) {}
+
   void runOnFunction() override;
+
+ private:
+  bool verify_numeric;
 };
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
@@ -85,16 +102,17 @@ void QuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto* ctx = func.getContext();
-  TFL::populateWithGenerated(ctx, &patterns);
+  TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<TFLFullQuantization>(
-      ctx, enable_numeric_verify, error_tolerance, enable_single_layer_verify);
-  applyPatternsGreedily(func, patterns);
+      ctx, enable_numeric_verify || verify_numeric, error_tolerance,
+      enable_single_layer_verify, enable_log_if_failed);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateQuantizePass() {
-  return std::make_unique<QuantizePass>();
+std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(bool verify_numeric) {
+  return std::make_unique<QuantizePass>(verify_numeric);
 }
 
 static PassRegistration<QuantizePass> pass(

@@ -87,7 +87,7 @@ string DumpModuleToString(const llvm::Module& module);
 //   - joining all of the nonempty inputs by '.', and then
 //   - removing all '%'s.
 //
-string IrName(string a);
+string IrName(absl::string_view a);
 string IrName(absl::string_view a, absl::string_view b);
 string IrName(const HloInstruction* a, absl::string_view b = "");
 
@@ -108,12 +108,12 @@ llvm::CallInst* EmitCallToIntrinsic(
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b);
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max);
 
 // Emit float min. Emit minnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b);
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max);
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
 // (1-dimensional array), equivalent to array[index]. The type is automatically
@@ -272,7 +272,8 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 // If `optimized` is true then a suffix of "-with-opt.ll" is used, else a suffix
 // of "-no-opt.ll" is used.
 void DumpIrIfEnabled(const HloModule& hlo_module,
-                     const llvm::Module& llvm_module, bool optimized);
+                     const llvm::Module& llvm_module, bool optimized,
+                     absl::string_view filename_suffix = "");
 
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
                                   llvm::GlobalValue::LinkageTypes linkage,

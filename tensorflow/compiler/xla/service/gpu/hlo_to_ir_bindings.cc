@@ -38,13 +38,15 @@ using absl::StrCat;
 void HloToIrBindings::EmitBasePointersForHlos(
     absl::Span<const HloInstruction* const> io_hlos,
     absl::Span<const HloInstruction* const> non_io_hlos) {
+  CHECK(is_nested_);
+
   // I/O HLOs are bound to the arguments of the current IR function,
   // *excluding* the output argument, which is added to non-I/O HLOs.
   // I.e.,
   //
-  // void IrFunction(io_0, io_1, ..., io_{m-1}, output_arg, temp_buffer_base) {
+  // void IrFunction(io_0, io_1, ..., io_{m-1}, output_arg);
   llvm::Function* function = b_->GetInsertBlock()->getParent();
-  CHECK_EQ(io_hlos.size() + 2, function->arg_size());
+  CHECK_EQ(io_hlos.size() + 1, function->arg_size());
 
   // An HLO can have duplicated operands. This data structure remembers which
   // operand HLOs are already bound to avoid rebinding the same HLO.
@@ -55,11 +57,7 @@ void HloToIrBindings::EmitBasePointersForHlos(
           !absl::c_count(non_io_hlos, io_hlo))
         << "IO HLOs and non-IO HLOs should be disjoint";
     if (!already_bound_for_this_function.contains(io_hlo)) {
-      if (!is_nested_ && io_hlo->opcode() == HloOpcode::kGetTupleElement) {
-        BindHloToIrValue(*io_hlo, EmitGetTupleElement(io_hlo, &*arg_iter));
-      } else {
-        BindHloToIrValue(*io_hlo, &*arg_iter);
-      }
+      BindHloToIrValue(*io_hlo, &*arg_iter);
       already_bound_for_this_function.insert(io_hlo);
     }
     ++arg_iter;
@@ -69,9 +67,6 @@ void HloToIrBindings::EmitBasePointersForHlos(
   arg_iter->setName("output_arg");
   ++arg_iter;
 
-  temp_buffer_base_ = &*arg_iter;
-  temp_buffer_base_->setName("temp_buffer");
-
   for (const HloInstruction* non_io_hlo : non_io_hlos) {
     if (already_bound_for_this_function.contains(non_io_hlo)) {
       continue;
@@ -79,60 +74,25 @@ void HloToIrBindings::EmitBasePointersForHlos(
     already_bound_for_this_function.insert(non_io_hlo);
 
     if (non_io_hlo->opcode() == HloOpcode::kGetTupleElement) {
-      if (!is_nested_) {
-        // Lookup allocation GetTupleElement operand.
-        const BufferAllocation::Slice slice =
-            buffer_assignment_
-                ->GetUniqueTopLevelSlice(non_io_hlo->LatestNonGteAncestor())
-                .ConsumeValueOrDie();
-        // We are not in a nested context, so check non-thread-local allocation.
-        CHECK(!slice.allocation()->is_thread_local());
-        const int64 offset = slice.offset();
-        CHECK_NE(nullptr, temp_buffer_base_);
-        // Emit IR for GetTupleElement instruction and bind to emitted value.
-        llvm::Value* base_ptr =
-            b_->CreateInBoundsGEP(temp_buffer_base_, b_->getInt64(offset));
-        BindHloToIrValue(*non_io_hlo,
-                         EmitGetTupleElement(non_io_hlo, base_ptr));
-      }
-      continue;
-    }
-
-    if (!buffer_assignment_->HasTopLevelAllocation(non_io_hlo)) {
       continue;
     }
 
     ShapeUtil::ForEachSubshape(
         non_io_hlo->shape(),
         [&](const Shape& /*subshape*/, const ShapeIndex& index) {
-          // A non-IO HLO with a buffer is bound to
-          // (1) an alloca if it is thread-local, or
-          // (2) an internal pointer in temp_buffer_base according to its
-          // offset.
-          auto slice_result =
-              buffer_assignment_->GetUniqueSlice(non_io_hlo, index);
-          if (!slice_result.ok()) {
-            return;
-          }
-          const BufferAllocation::Slice slice =
-              slice_result.ConsumeValueOrDie();
-          if (slice.allocation()->is_thread_local()) {
-            llvm::Type* pointee_type =
-                llvm_ir::ShapeToIrType(non_io_hlo->shape(), module_);
-            BindHloToIrValue(*non_io_hlo, b_->CreateAlloca(pointee_type),
-                             index);
-          } else if (slice.allocation()->is_constant()) {
+          if (non_io_hlo->opcode() == HloOpcode::kConstant) {
             llvm::Value* global_for_constant = module_->getGlobalVariable(
-                llvm_ir::ConstantBufferAllocationToGlobalName(
-                    *slice.allocation()));
+                llvm_ir::ConstantHloToGlobalName(*non_io_hlo));
+            CHECK(global_for_constant)
+                << llvm_ir::ConstantHloToGlobalName(*non_io_hlo);
             BindHloToIrValue(*non_io_hlo, global_for_constant);
           } else {
-            const int64 offset = slice.offset();
-            CHECK_NE(nullptr, temp_buffer_base_);
-            BindHloToIrValue(
-                *non_io_hlo,
-                b_->CreateInBoundsGEP(temp_buffer_base_, b_->getInt64(offset)),
-                index);
+            llvm::Type* pointee_type =
+                llvm_ir::ShapeToIrType(non_io_hlo->shape(), module_);
+            BindHloToIrValue(*non_io_hlo,
+                             llvm_ir::EmitAllocaAtFunctionEntry(
+                                 pointee_type, /*name=*/"", b_),
+                             index);
           }
         });
   }
@@ -159,11 +119,11 @@ static bool HasMeaningfulName(llvm::Value* value) {
   return false;
 }
 
-llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
-                                              ShapeIndexView shape_index,
-                                              llvm::Value* ir_value) {
-  llvm::Type* pointee_type = llvm_ir::ShapeToIrType(
-      ShapeUtil::GetSubshape(hlo.shape(), shape_index), module_);
+llvm::Value* CastToTypedValue(const Shape& shape, llvm::Value* ir_value,
+                              llvm::IRBuilder<>* b) {
+  llvm::Type* pointee_type =
+      llvm_ir::ShapeToIrType(shape, b->GetInsertBlock()->getModule());
+
   llvm::Type* dest_type = pointee_type->getPointerTo();
 
   llvm::Value* typed_ir_value;
@@ -171,9 +131,17 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
     typed_ir_value = llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
         llvm::cast<llvm::GlobalVariable>(ir_value), dest_type);
   } else {
-    typed_ir_value = b_->CreatePointerBitCastOrAddrSpaceCast(
+    typed_ir_value = b->CreatePointerBitCastOrAddrSpaceCast(
         ir_value, pointee_type->getPointerTo());
   }
+  return typed_ir_value;
+}
+
+llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
+                                              ShapeIndexView shape_index,
+                                              llvm::Value* ir_value) {
+  auto typed_ir_value = CastToTypedValue(
+      ShapeUtil::GetSubshape(hlo.shape(), shape_index), ir_value, b_);
   if (!HasMeaningfulName(ir_value)) {
     ir_value->setName(llvm_ir::IrName(&hlo, "raw"));
   }
@@ -229,14 +197,14 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
       << " of " << hlo.ToString();
   llvm_ir::IrArray ir_array(base_ptr,
                             ShapeUtil::GetSubshape(hlo.shape(), shape_index));
-  alias_analysis_.AddAliasingInformationToIrArray(hlo, &ir_array, shape_index);
 
   // The GPU backend emits one kernel per top-level HLO, and LLVM views
   // execution of one kernel as the "whole program" executed on the GPU.
   // Therefore if hlo's output buffer is not modified within consumer, and if
   // consumer runs hlo only once (so that it doesn't create two different
   // outputs), then we can mark ir_array as invariant over the whole program.
-  if (BuffersInvariantWithinConsumer(hlo, consumer, buffer_assignment_)) {
+  if (!is_nested_ &&
+      BuffersInvariantWithinConsumer(hlo, consumer, buffer_assignment_)) {
     VLOG(2) << "Marking " << hlo.name() << " as invariant within "
             << consumer.name();
     ir_array.MarkInvariantOverWholeProgram(&module_->getContext());

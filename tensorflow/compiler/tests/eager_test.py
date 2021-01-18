@@ -311,7 +311,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
     if 'GPU' in self.device:
       # TODO(b/32333178)
       self.skipTest('Current implementation of RandomStandardNormal kernel '
-                    'is very slow on GPU, and has been blacklisted.')
+                    'is very slow on GPU, and has been denylisted.')
     with self.test_scope():
       data_format = 'channels_last'
       conv = convolutional.Conv2D(
@@ -693,7 +693,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
         return x, y
 
       wholly_compiled_f = def_function.function(f)
-      op_by_op_f = def_function.function(f, experimental_compile=False)
+      op_by_op_f = def_function.function(f, jit_compile=False)
 
       x = array_ops.identity([0.0, 2.0], name='data')
 
@@ -704,8 +704,8 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertAllEqual([0.0, 4.0], r_y)
       if context.executing_eagerly():
         # backing_device is only available for eager tensors.
-        self.assertRegexpMatches(r_x.backing_device, self.device)
-        self.assertRegexpMatches(r_y.backing_device, self.device)
+        self.assertRegex(r_x.backing_device, self.device)
+        self.assertRegex(r_y.backing_device, self.device)
 
       # When function is executed op-by-op, requested devices will be
       # respected.
@@ -714,8 +714,8 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertAllEqual([0.0, 4.0], r_y)
       if context.executing_eagerly():
         # backing_device is only available for eager tensors.
-        self.assertRegexpMatches(r_x.backing_device, self.device)
-        self.assertRegexpMatches(r_y.backing_device, 'device:CPU:0')
+        self.assertRegex(r_x.backing_device, self.device)
+        self.assertRegex(r_y.backing_device, 'device:CPU:0')
 
 
 class ExcessivePaddingTest(xla_test.XLATestCase):

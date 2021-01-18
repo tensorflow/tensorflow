@@ -22,10 +22,10 @@ import tempfile
 
 import numpy as np
 
-from tensorflow.python.debug.cli import cli_config
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import ui_factory
@@ -36,9 +36,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.keras import backend
-from tensorflow.python.keras.engine import sequential
-from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -194,7 +191,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     os.mkdir(dir_path)
     self.assertTrue(os.path.isdir(dir_path))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "dump_root path points to a non-empty directory"):
       local_cli_wrapper.LocalCLIDebugWrapperSession(
           session.Session(), dump_root=self._tmp_dir, log_usage=False)
@@ -204,7 +201,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     file_path = os.path.join(self._tmp_dir, "foo")
     open(file_path, "a").close()  # Create the file
     self.assertTrue(os.path.isfile(file_path))
-    with self.assertRaisesRegexp(ValueError, "dump_root path points to a file"):
+    with self.assertRaisesRegex(ValueError, "dump_root path points to a file"):
       local_cli_wrapper.LocalCLIDebugWrapperSession(
           session.Session(), dump_root=file_path, log_usage=False)
 
@@ -543,7 +540,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"]], self.sess, dump_root=self._tmp_dir)
-    with self.assertRaisesRegexp(errors.OpError, r".*[Dd]evice.*1337.*"):
+    with self.assertRaisesRegex(errors.OpError, r".*[Dd]evice.*1337.*"):
       wrapped_sess.run(w)
 
   def testRunTillFilterPassesShouldLaunchCLIAtCorrectRun(self):
@@ -814,7 +811,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testCallingShouldStopMethodOnNonWrappedNonMonitoredSessionErrors(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], self.sess)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r"The wrapped session .* does not have a method .*should_stop.*"):
       wrapped_sess.should_stop()
@@ -831,40 +828,6 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     run_output = wrapped_sess.run([])
     self.assertEqual([], run_output)
-
-  def testDebuggingKerasFitWithSkippedRunsWorks(self):
-    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
-        [["run"], ["run"], ["run", "-t", "10"]], self.sess)
-
-    backend.set_session(wrapped_sess)
-
-    model = sequential.Sequential()
-    model.add(core.Dense(4, input_shape=[2], activation="relu"))
-    model.add(core.Dense(1))
-    model.compile(loss="mse", optimizer="sgd")
-
-    x = np.zeros([8, 2])
-    y = np.zeros([8, 1])
-    model.fit(x, y, epochs=2)
-
-    self.assertEqual(2, len(wrapped_sess.observers["debug_dumps"]))
-
-  def testDebuggingKerasFitWithProfilingWorks(self):
-    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
-        [["run", "-p"]] * 10, self.sess)
-
-    backend.set_session(wrapped_sess)
-
-    model = sequential.Sequential()
-    model.add(core.Dense(4, input_shape=[2], activation="relu"))
-    model.add(core.Dense(1))
-    model.compile(loss="mse", optimizer="sgd")
-
-    x = np.zeros([8, 2])
-    y = np.zeros([8, 1])
-    model.fit(x, y, epochs=2)
-
-    self.assertEqual(0, len(wrapped_sess.observers["debug_dumps"]))
 
   def testRunsWithEmptyNestedFetchWorks(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(

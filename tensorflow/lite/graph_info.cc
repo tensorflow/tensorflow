@@ -29,6 +29,10 @@ namespace {
 // PartitionGraphIntoIndependentNodeSubsetsImpl partitioner(
 //     info, nodes_to_part, node_subsets);
 // partitioner.Partition();
+//
+// NOTE: Changing the partitioning logic would require a change to
+// FP16GraphPartitionHelper.
+// LINT.IfChange
 class PartitionGraphIntoIndependentNodeSubsetsImpl {
  public:
   PartitionGraphIntoIndependentNodeSubsetsImpl(
@@ -36,7 +40,7 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
       std::vector<NodeSubset>* node_subsets)
       : info_(info),
         node_subsets_(node_subsets),
-        node_type_(info->num_nodes(), NodeSubset::kTfNonPartition) {
+        node_type_(info_->num_total_nodes(), NodeSubset::kTfNonPartition) {
     // Populate the node_type_ map.
     for (auto node_index : TfLiteIntArrayView(nodes_to_partition)) {
       node_type_[node_index] = NodeSubset::kTfPartition;
@@ -50,10 +54,11 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
     tensor_epochs_.clear();
     tensor_epochs_.resize(info_->num_tensors(), kEpochAlwaysReady);
     node_epochs_.clear();
-    node_epochs_.resize(info_->num_nodes(), kEpochNotReady);
+    node_epochs_.resize(info_->num_execution_nodes(), kEpochNotReady);
     // Set computed tensors to be kEpochNotReady (initializer set everything to
     // AlwaysReady).
-    for (int node_index = 0; node_index < info_->num_nodes(); node_index++) {
+    for (int node_index = 0; node_index < info_->num_execution_nodes();
+         node_index++) {
       const TfLiteNode& node = info_->node(node_index);
       for (int output_tensor_index : TfLiteIntArrayView(node.outputs)) {
         tensor_epochs_[output_tensor_index] = kEpochNotReady;
@@ -108,10 +113,10 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
     kEpochAlwaysReady = -2
   };
 
-  // Updates the  node `node_index` and returns true if it is assigned to an
-  // epoch. False is returned if the node is already set to an epoch, its inputs
-  // are not all assigned to epochs, or if it cannot be assigned to the current
-  // epoch since the epoch's node_type doesn't match.
+  // Updates the node at `node_index` in the execution plan and returns true if
+  // it is assigned to an epoch. False is returned if the node is already set to
+  // an epoch, its inputs are not all assigned to epochs, or if it cannot be
+  // assigned to the current epoch since the epoch's node_type doesn't match.
   bool UpdateNode(int node_index) {
     const TfLiteNode& node = info_->node(node_index);
     NodeSubset& current_subset = node_subsets_->back();
@@ -128,18 +133,20 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
         return false;
       }
     }
+
+    int original_node_idx = info_->node_index(node_index);
     // When we are starting a new epoch, the first ready node defines
     // the type of that epoch.
     if (current_subset.type == NodeSubset::kTfUnexplored) {
-      current_subset.type = node_type_[node_index];
+      current_subset.type = node_type_[original_node_idx];
     }
     // The node gets assigned to this epoch if it is the same type as
     // the epoch's assigned type. Note, if this is the current ready
     // node encountered during this epoch, this condition will be
     // automatically true.
-    if (current_subset.type == node_type_[node_index]) {
+    if (current_subset.type == node_type_[original_node_idx]) {
       node_epochs_[node_index] = current_epoch;
-      current_subset.nodes.push_back(info_->node_index(node_index));
+      current_subset.nodes.push_back(original_node_idx);
       // All outputs of this node now are assigned to this epoch as
       // well.
       for (int output_tensor_index : TfLiteIntArrayView(node.outputs)) {
@@ -176,7 +183,8 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
     // loop until no more nodes can be updated.
     while (true) {
       bool did_something = false;
-      for (int node_index = 0; node_index < info_->num_nodes(); node_index++) {
+      for (int node_index = 0; node_index < info_->num_execution_nodes();
+           node_index++) {
         if (UpdateNode(node_index)) {
           did_something = true;
         }
@@ -189,15 +197,19 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
   const GraphInfo* info_;
   // List of node_subsets to populate
   std::vector<NodeSubset>* node_subsets_;
+  // NOTE: This vector contains a place-holder for *all* nodes in the graph, not
+  // just ones in the execution plan. This is because nodes_to_partition is
+  // passed in as a list of original node indices & not execution plan indices.
   std::vector<NodeSubset::Type> node_type_;
   // Maps from tensor index to the epoch in which it is assigned. Also special
-  // negative values of kEpochNotAssigned if not assigned, kEpochNotReady if it
-  // is an input or constant.
+  // negative values of kEpochNotReady if not assigned, kEpochAlwaysReady if it
+  // is an input to the whole model or a constant that has no dependencies.
   std::vector<int> tensor_epochs_;
   // Maps from tensor index to the epoch in which it is assigned. Also special
-  // negative values of kEpochNotAssigned if not assigned.
+  // negative values of kEpochNotReady if not assigned.
   std::vector<int> node_epochs_;
 };
+// LINT.ThenChange(//tensorflow/lite/delegates/utils.h)
 
 }  // namespace
 

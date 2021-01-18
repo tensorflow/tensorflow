@@ -1,24 +1,3 @@
-/******************************************************************************
- * Copyright (C) 2019 Cadence Design Systems, Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to use this Software with Cadence processor cores only and
- * not with any other processors and platforms, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- ******************************************************************************/
-
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-#include "xtensa_tf_micro_common.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifi/xtensa_tf_micro_common.h"
 
 namespace tflite {
 namespace ops {
@@ -55,7 +34,6 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 256;
 
 // Conv is quantized along dimension 0:
 // https://www.tensorflow.org/lite/performance/quantization_spec
@@ -71,9 +49,8 @@ struct OpData {
   int output_shift;
 
   // Per channel output multiplier and shift.
-  // (b/141139247): Allocate these dynamically when possible.
-  int32_t per_channel_output_multiplier[kMaxChannels];
-  int32_t per_channel_output_shift[kMaxChannels];
+  int32_t* per_channel_output_multiplier;
+  int32_t* per_channel_output_shift;
 
   // The range of the fused activation layer. For example for kNone and
   // uint8_t these would be 0 and 255.
@@ -94,10 +71,10 @@ inline PaddingType RuntimePaddingType(TfLitePadding padding) {
 }
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
-                             TfLiteConvParams* params, int width, int height,
-                             int filter_width, int filter_height, int out_width,
-                             int out_height, const TfLiteType data_type,
-                             OpData* data) {
+                             const TfLiteConvParams* params, int width,
+                             int height, int filter_width, int filter_height,
+                             int out_width, int out_height,
+                             const TfLiteType data_type, OpData* data) {
   bool has_bias = node->inputs->size == 3;
   // Check number of inputs/outputs
   TF_LITE_ENSURE(context, has_bias || node->inputs->size == 2);
@@ -131,8 +108,69 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  void* data = nullptr;
+  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
+      kTfLiteError) {
+    return nullptr;
+  }
+  return data;
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  TFLITE_DCHECK(node->builtin_data != nullptr);
+
+  OpData* data = static_cast<OpData*>(node->user_data);
+  const auto params = static_cast<const TfLiteConvParams*>(node->builtin_data);
+
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+
+  int input_width = input->dims->data[2];
+  int input_height = input->dims->data[1];
+  int filter_width = filter->dims->data[2];
+  int filter_height = filter->dims->data[1];
+  int output_width = output->dims->data[2];
+  int output_height = output->dims->data[1];
+
+  // Dynamically allocate per-channel quantization parameters.
+  const int num_channels = filter->dims->data[kConvQuantizedDimension];
+  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
+      context, num_channels * sizeof(int32_t),
+      reinterpret_cast<void**>(&data->per_channel_output_multiplier)));
+  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
+      context, num_channels * sizeof(int32_t),
+      reinterpret_cast<void**>(&data->per_channel_output_shift)));
+
+  // All per-channel quantized tensors need valid zero point and scale arrays.
+  if (input->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_EQ(context, filter->quantization.type,
+                      kTfLiteAffineQuantization);
+
+    const auto* affine_quantization =
+        static_cast<TfLiteAffineQuantization*>(filter->quantization.params);
+    TF_LITE_ENSURE(context, affine_quantization);
+    TF_LITE_ENSURE(context, affine_quantization->scale);
+    TF_LITE_ENSURE(context, affine_quantization->zero_point);
+
+    TF_LITE_ENSURE(context,
+                   affine_quantization->scale->size == 1 ||
+                       affine_quantization->scale->size ==
+                           filter->dims->data[kConvQuantizedDimension]);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
+                      affine_quantization->zero_point->size);
+  }
+
+  return CalculateOpData(context, node, params, input_width, input_height,
+                         filter_width, filter_height, output_width,
+                         output_height, input->type, data);
+}  // namespace conv
+
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                           TfLiteConvParams* params, OpData* data,
+                           TfLiteConvParams* params, const OpData& data,
                            const TfLiteTensor* input,
                            const TfLiteTensor* filter, const TfLiteTensor* bias,
                            TfLiteTensor* im2col, TfLiteTensor* hwcn_weights,
@@ -143,9 +181,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
   if ((params->dilation_width_factor == 1) &&
       (params->dilation_height_factor == 1)) {
-    const uint8 *input_data, *filter_data;
+    const uint8_t *input_data, *filter_data;
     const int32_t* bias_data;
-    uint8* output_data;
+    uint8_t* output_data;
     const RuntimeShape& input_shape = GetTensorShape(input);
     const RuntimeShape& filter_shape = GetTensorShape(filter);
     const RuntimeShape& output_shape = GetTensorShape(output);
@@ -158,14 +196,12 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
     const int stride_width = params->stride_width;
     const int stride_height = params->stride_height;
-    const int dilation_width_factor = 1;
-    const int dilation_height_factor = 1;
-    const int pad_width = data->padding.width;
-    const int pad_height = data->padding.height;
-    const int32 output_activation_min = data->output_activation_min;
-    const int32 output_activation_max = data->output_activation_max;
-    const int32 output_multiplier = data->output_multiplier;
-    const int output_shift = -data->output_shift;
+    const int pad_width = data.padding.width;
+    const int pad_height = data.padding.height;
+    const int32_t output_activation_min = data.output_activation_min;
+    const int32_t output_activation_max = data.output_activation_max;
+    const int32_t output_multiplier = data.output_multiplier;
+    const int output_shift = -data.output_shift;
     TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
     TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
     TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
@@ -186,13 +222,14 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     const int filter_depth = filter_shape.Dims(3);
 
     int err, output_data_format = 0;
-    void* p_scratch;
-    uint8 *p_filter, *p_out_scratch;
+    uint8_t* p_scratch;
+    uint8_t* p_filter;
     // Calculate filter_depth_padded as next near multiple of 4
     int filter_depth_padded = (filter_depth + 3) & (~3);
     int out_length = output_height * output_width * output_depth;
+    int filter_size_padded = filter_height * filter_width * filter_depth_padded;
     int required_scratch, input_precision = PREC_ASYM8;
-    int h, w, c;
+    int h, c;
 
     required_scratch = xa_nn_conv2d_std_getsize(
         input_height, input_depth, filter_height, filter_width, stride_height,
@@ -207,19 +244,11 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     ALLOCATE_XTENSA_NNLIB_SCRATCH_MEM;
     p_scratch = xtensa_nnlib_scratch_buf;
 
-    p_filter = (uint8*)p_scratch;
-    p_out_scratch =
-        (p_filter +
-         ALIGNED_SIZE((sizeof(uint8_t) * filter_height * filter_width *
-                       filter_depth_padded * output_depth),
-                      8));
+    p_filter = p_scratch;
     required_scratch +=
-        ALIGNED_SIZE((sizeof(uint8_t) * filter_height * filter_width *
-                      filter_depth_padded * output_depth),
-                     8);
-    p_scratch =
-        (uint8*)(p_out_scratch + ALIGNED_SIZE(sizeof(uint8_t) * out_length, 8));
-    required_scratch += ALIGNED_SIZE(sizeof(uint8_t) * out_length, 8);
+        ALIGNED_SIZE((sizeof(uint8_t) * filter_size_padded * output_depth), 8);
+    p_scratch +=
+        ALIGNED_SIZE(sizeof(uint8_t) * filter_size_padded * output_depth, 8);
 
     if (required_scratch > (int)XTENSA_NNLIB_MAX_SCRATCH_SIZE) {
       TF_LITE_KERNEL_LOG(context,
@@ -240,9 +269,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     }
 
     for (int batch = 0; batch < batches; ++batch) {
-      uint8* p_out_temp;
-      p_out_temp = (uint8*)&p_out_scratch[0];
-      p_out_temp = (uint8*)ALIGN_PTR(p_out_temp, 8);
+      uint8_t* p_out_temp;
+      p_out_temp = &output_data[batch * out_length];
 
       err = xa_nn_conv2d_std_asym8xasym8(
           p_out_temp,
@@ -252,24 +280,24 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           filter_width, output_depth, stride_width, stride_height, pad_width,
           pad_height, output_height, output_width, input_offset, filter_offset,
           output_multiplier, output_shift, output_offset, output_data_format,
-          p_scratch);
+          static_cast<void*>(p_scratch));
 
       CHECK_ERR_HIFI_NNLIB_KER(
           err, "conv2d_std_asym8: xa_nn_conv2d_std_asym8xasym8 failed");
 
-      for (int i = 0; i < out_length; i++) {
-        uint8* p_temp;
-        p_temp = &output_data[batch * out_length];
+      err = xa_nn_vec_activation_min_max_asym8_asym8(
+          p_out_temp, p_out_temp, output_activation_min, output_activation_max,
+          out_length);
 
-        ACTIVATION_MIN_MAX_ASYM8(p_temp[i], p_out_temp[i],
-                                 output_activation_min, output_activation_max)
-      }
+      CHECK_ERR_HIFI_NNLIB_KER(
+          err, "xa_nn_vec_activation_min_max_asym8_asym8 failed");
     }
   } else {
+    // TODO(b/154032858): Investigate removing extra copies.
     ConvParams op_params;
     op_params.padding_type = RuntimePaddingType(params->padding);
-    op_params.padding_values.width = data->padding.width;
-    op_params.padding_values.height = data->padding.height;
+    op_params.padding_values.width = data.padding.width;
+    op_params.padding_values.height = data.padding.height;
     op_params.stride_width = params->stride_width;
     op_params.stride_height = params->stride_height;
     op_params.dilation_width_factor = params->dilation_width_factor;
@@ -277,10 +305,10 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     op_params.input_offset = input_offset;
     op_params.weights_offset = filter_offset;
     op_params.output_offset = output_offset;
-    op_params.output_multiplier = data->output_multiplier;
-    op_params.output_shift = -data->output_shift;
-    op_params.quantized_activation_min = data->output_activation_min;
-    op_params.quantized_activation_max = data->output_activation_max;
+    op_params.output_multiplier = data.output_multiplier;
+    op_params.output_shift = -data.output_shift;
+    op_params.quantized_activation_min = data.output_activation_min;
+    op_params.quantized_activation_max = data.output_activation_max;
     reference_ops::Conv(op_params, GetTensorShape(input),
                         GetTensorData<uint8_t>(input), GetTensorShape(filter),
                         GetTensorData<uint8_t>(filter), GetTensorShape(bias),
@@ -292,11 +320,12 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 }
 
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
-                             TfLiteConvParams* params, OpData* data,
+                             TfLiteConvParams* params, const OpData& data,
                              const TfLiteTensor* input,
                              const TfLiteTensor* filter,
                              const TfLiteTensor* bias, TfLiteTensor* output,
                              TfLiteTensor* im2col) {
+  // TODO(b/154032858): Investigate removing extra copies.
   ConvParams op_params;
   op_params.input_offset = -input->params.zero_point;
   op_params.output_offset = output->params.zero_point;
@@ -304,22 +333,22 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.stride_width = params->stride_width;
   op_params.dilation_height_factor = params->dilation_height_factor;
   op_params.dilation_width_factor = params->dilation_width_factor;
-  op_params.padding_values.height = data->padding.height;
-  op_params.padding_values.width = data->padding.width;
-  op_params.quantized_activation_min = data->output_activation_min;
-  op_params.quantized_activation_max = data->output_activation_max;
+  op_params.padding_values.height = data.padding.height;
+  op_params.padding_values.width = data.padding.width;
+  op_params.quantized_activation_min = data.output_activation_min;
+  op_params.quantized_activation_max = data.output_activation_max;
 
   reference_integer_ops::ConvPerChannel(
-      op_params, data->per_channel_output_multiplier,
-      data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
+      op_params, data.per_channel_output_multiplier,
+      data.per_channel_output_shift, GetTensorShape(input),
+      GetTensorData<int8_t>(input), GetTensorShape(filter),
+      GetTensorData<int8_t>(filter), GetTensorShape(bias),
+      GetTensorData<int32_t>(bias), GetTensorShape(output),
+      GetTensorData<int8_t>(output));
 }
 
 TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
-                       TfLiteConvParams* params, OpData* data,
+                       TfLiteConvParams* params, const OpData& data,
                        const TfLiteTensor* input, const TfLiteTensor* filter,
                        const TfLiteTensor* bias, TfLiteTensor* im2col,
                        TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
@@ -327,6 +356,7 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
 
+#if HIFI_VFPU
   if ((params->dilation_width_factor == 1) &&
       (params->dilation_height_factor == 1)) {
     const float *input_data, *filter_data;
@@ -344,10 +374,8 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
 
     const int stride_width = params->stride_width;
     const int stride_height = params->stride_height;
-    const int dilation_width_factor = 1;
-    const int dilation_height_factor = 1;
-    const int pad_width = data->padding.width;
-    const int pad_height = data->padding.height;
+    const int pad_width = data.padding.width;
+    const int pad_height = data.padding.height;
     TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
     TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
     TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
@@ -366,13 +394,14 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
     const int output_width = output_shape.Dims(2);
     const int filter_depth = filter_shape.Dims(3);
     int err, output_data_format = 0;
-    void* p_scratch;
-    float *p_filter, *p_out_scratch;
+    uint8_t* p_scratch;
+    float* p_filter;
     // Calculate filter_depth_padded as next near multiple of 2
     int filter_depth_padded = (filter_depth + 1) & (~1);
     int out_length = output_height * output_width * output_depth;
+    int filter_size_padded = filter_height * filter_width * filter_depth_padded;
     int required_scratch, input_precision = PREC_F32;
-    int h, w, c;
+    int h, c;
 
     required_scratch = xa_nn_conv2d_std_getsize(
         input_height, input_depth, filter_height, filter_width, stride_height,
@@ -387,19 +416,11 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
     ALLOCATE_XTENSA_NNLIB_SCRATCH_MEM;
     p_scratch = xtensa_nnlib_scratch_buf;
 
-    p_filter = (float*)p_scratch;
-    p_out_scratch =
-        (float*)((uint8_t*)p_filter +
-                 ALIGNED_SIZE((sizeof(float) * filter_height * filter_width *
-                               filter_depth_padded * output_depth),
-                              8));
+    p_filter = reinterpret_cast<float*>(p_scratch);
+    p_scratch +=
+        ALIGNED_SIZE((sizeof(float) * filter_size_padded * output_depth), 8);
     required_scratch +=
-        ALIGNED_SIZE((sizeof(float) * filter_height * filter_width *
-                      filter_depth_padded * output_depth),
-                     8);
-    p_scratch = (float*)((uint8_t*)p_out_scratch +
-                         ALIGNED_SIZE(sizeof(float) * out_length, 8));
-    required_scratch += ALIGNED_SIZE(sizeof(float) * out_length, 8);
+        ALIGNED_SIZE((sizeof(float) * filter_size_padded * output_depth), 8);
 
     if (required_scratch > (int)XTENSA_NNLIB_MAX_SCRATCH_SIZE) {
       TF_LITE_KERNEL_LOG(context,
@@ -420,8 +441,7 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
 
     for (int batch = 0; batch < batches; ++batch) {
       float* p_out_temp;
-      p_out_temp = (float*)&p_out_scratch[0];
-      p_out_temp = (float*)ALIGN_PTR(p_out_temp, 8);
+      p_out_temp = &output_data[batch * out_length];
 
       err = xa_nn_conv2d_std_f32(
           p_out_temp,
@@ -429,23 +449,26 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
           p_filter, bias_data, input_height, input_width, input_depth,
           filter_height, filter_width, output_depth, stride_width,
           stride_height, pad_width, pad_height, output_height, output_width,
-          output_data_format, p_scratch);
+          output_data_format, static_cast<void*>(p_scratch));
 
       CHECK_ERR_HIFI_NNLIB_KER(
           err, "conv2d_std_f32: xa_nn_conv2d_std_f32xf32 failed");
 
-      for (int i = 0; i < out_length; i++) {
-        float* p_temp;
-        p_temp = &output_data[batch * out_length];
-        ACTIVATION_MIN_MAX(float, p_temp[i], p_out_temp[i],
-                           output_activation_min, output_activation_max)
-      }
+      err = xa_nn_vec_activation_min_max_f32_f32(
+          p_out_temp, p_out_temp, output_activation_min, output_activation_max,
+          out_length);
+
+      CHECK_ERR_HIFI_NNLIB_KER(err,
+                               "xa_nn_vec_activation_min_max_f32_f32 failed");
     }
-  } else {
+  } else
+#endif /* HIFI_VFPU */
+  {
+    // TODO(b/154032858): Investigate removing extra copies.
     ConvParams op_params;
     op_params.padding_type = RuntimePaddingType(params->padding);
-    op_params.padding_values.width = data->padding.width;
-    op_params.padding_values.height = data->padding.height;
+    op_params.padding_values.width = data.padding.width;
+    op_params.padding_values.height = data.padding.height;
     op_params.stride_width = params->stride_width;
     op_params.stride_height = params->stride_height;
     op_params.dilation_width_factor = params->dilation_width_factor;
@@ -471,50 +494,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
-  int input_width = input->dims->data[2];
-  int input_height = input->dims->data[1];
-  int filter_width = filter->dims->data[2];
-  int filter_height = filter->dims->data[1];
-  int output_width = output->dims->data[2];
-  int output_height = output->dims->data[1];
-
-  OpData data;
-
-  // All per-channel quantized tensors need valid zero point and scale arrays.
-  if (input->type == kTfLiteInt8) {
-    TF_LITE_ENSURE_EQ(context, filter->quantization.type,
-                      kTfLiteAffineQuantization);
-
-    const auto* affine_quantization =
-        reinterpret_cast<TfLiteAffineQuantization*>(
-            filter->quantization.params);
-    TF_LITE_ENSURE(context, affine_quantization);
-    TF_LITE_ENSURE(context, affine_quantization->scale);
-    TF_LITE_ENSURE(context, affine_quantization->zero_point);
-
-    TF_LITE_ENSURE(context,
-                   affine_quantization->scale->size == 1 ||
-                       affine_quantization->scale->size ==
-                           filter->dims->data[kConvQuantizedDimension]);
-    TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
-                      affine_quantization->zero_point->size);
-  }
-
-  TF_LITE_ENSURE_STATUS(CalculateOpData(
-      context, node, params, input_width, input_height, filter_width,
-      filter_height, output_width, output_height, input->type, &data));
+  TFLITE_DCHECK(node->user_data != nullptr);
+  const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
-      EvalFloat(context, node, params, &data, input, filter, bias, nullptr,
+      EvalFloat(context, node, params, data, input, filter, bias, nullptr,
                 nullptr, output);
       break;
     case kTfLiteInt8:
-      EvalQuantizedPerChannel(context, node, params, &data, input, filter, bias,
+      EvalQuantizedPerChannel(context, node, params, data, input, filter, bias,
                               output, nullptr);
       break;
     case kTfLiteUInt8:
-      EvalQuantized(context, node, params, &data, input, filter, bias, nullptr,
+      EvalQuantized(context, node, params, data, input, filter, bias, nullptr,
                     nullptr, output);
       break;
     default:
@@ -527,16 +520,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace conv
 
-TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/conv::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_CONV_2D() {
+  return {/*init=*/conv::Init,
+          /*free=*/nullptr,
+          /*prepare=*/conv::Prepare,
+          /*invoke=*/conv::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

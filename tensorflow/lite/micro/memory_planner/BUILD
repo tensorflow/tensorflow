@@ -4,12 +4,12 @@ load(
 )
 load(
     "//tensorflow/lite/micro:build_def.bzl",
-    "cc_library",
     "micro_copts",
 )
 
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -18,7 +18,6 @@ cc_library(
     hdrs = [
         "memory_planner.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -50,7 +49,6 @@ cc_library(
     hdrs = [
         "greedy_memory_planner.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":memory_planner",

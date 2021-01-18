@@ -68,27 +68,44 @@ void CompareGraphNodes(protobuf::RepeatedPtrField<NodeDef>* want,
     }
   }
 }
+
+void SetAllOptimizers(RewriterConfig* cfg, RewriterConfig::Toggle value) {
+  cfg->set_arithmetic_optimization(value);
+  cfg->set_auto_mixed_precision(value);
+  cfg->set_auto_mixed_precision_mkl(value);
+  cfg->set_common_subgraph_elimination(value);
+  cfg->set_constant_folding(value);
+  cfg->set_debug_stripper(value);
+  cfg->set_dependency_optimization(value);
+  cfg->set_function_optimization(value);
+  cfg->set_implementation_selector(value);
+  cfg->set_layout_optimizer(value);
+  cfg->set_loop_optimization(value);
+  cfg->set_pin_to_host_optimization(value);
+  cfg->set_remapping(value);
+  cfg->set_scoped_allocator_optimization(value);
+  cfg->set_shape_optimization(value);
+}
 }  // namespace
 
 GrapplerTest::GrapplerTest() {
   // Turn off all the automatic optimizations to ensure that we run the graph
-  // exactly as it is given to us. This ensures that we can compare the results
-  // before and after manual optimization, without any of the automatic
-  // optimizations interfering in the comparison.
-  RewriterConfig* cfg =
-      options_.config.mutable_graph_options()->mutable_rewrite_options();
-  // TODO(rmlarsen): Add utility to generate config w/ all optimizers turned
-  // off.
-  cfg->set_arithmetic_optimization(RewriterConfig::OFF);
-  cfg->set_constant_folding(RewriterConfig::OFF);
-  cfg->set_debug_stripper(RewriterConfig::OFF);
-  cfg->set_dependency_optimization(RewriterConfig::OFF);
-  cfg->set_function_optimization(RewriterConfig::OFF);
-  cfg->set_implementation_selector(RewriterConfig::OFF);
-  cfg->set_layout_optimizer(RewriterConfig::OFF);
-  cfg->set_loop_optimization(RewriterConfig::OFF);
-  cfg->set_pin_to_host_optimization(RewriterConfig::OFF);
-  cfg->set_remapping(RewriterConfig::OFF);
+  // exactly as it is given to us. This ensures that we can compare the
+  // results before and after manual optimization, without any of the
+  // automatic optimizations interfering in the comparison.
+  DisableAllOptimizers();
+}
+
+void GrapplerTest::DisableAllOptimizers() {
+  SetAllOptimizers(
+      options_.config.mutable_graph_options()->mutable_rewrite_options(),
+      RewriterConfig::OFF);
+}
+
+void GrapplerTest::EnableAllOptimizers() {
+  SetAllOptimizers(
+      options_.config.mutable_graph_options()->mutable_rewrite_options(),
+      RewriterConfig::ON);
 }
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(

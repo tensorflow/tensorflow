@@ -16,65 +16,41 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_SIDE_EFFECT_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_SIDE_EFFECT_ANALYSIS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 
 namespace mlir {
 namespace TF {
+namespace detail {
 
-// An analysis that runs on a function and maps each resource-type value to a
-// set of unique int64_t IDs representing the possible resources it could alias.
-//
-// If there are nested regions, each region is handled separately. This means
-// cross-region aliasing cannot be checked by this analysis.
-class ResourceAliasAnalysis {
+// Side effect analysis info for a single function.
+class SideEffectAnalysisInfo {
  public:
-  explicit ResourceAliasAnalysis(Operation* op);
-  ~ResourceAliasAnalysis() = default;
-  ResourceAliasAnalysis(ResourceAliasAnalysis&&) = default;
+  SideEffectAnalysisInfo() = default;
 
-  // Returns if the analysis fails to resolve a resource-type value.
-  bool IsUnknownResource(const Value resource) const;
+  // Constructs analysis info by analyzing the given function.
+  SideEffectAnalysisInfo(
+      FuncOp func_op, const TF::ResourceAliasAnalysis::Info& alias_analysis) {
+    AnalyzeFunction(func_op, alias_analysis);
+  }
 
-  // Returns the set unique IDs which `resource` could alias. Requires that
-  // IsUnknownResource(resource) == true.
-  const llvm::SmallSet<int64_t, 8>& GetResourceUniqueIds(
-      const Value resource) const;
+  // Constructs analysis info by analyzing the given region.
+  SideEffectAnalysisInfo(
+      Region* region, const TF::ResourceAliasAnalysis::Info& alias_analysis) {
+    AnalyzeRegion(region, alias_analysis);
+  }
 
- private:
-  ResourceAliasAnalysis() = default;
-
-  // Runs the analysis on `func_op` and populates resource_value_to_ids_.
-  void AnalyzeFunction(FuncOp func_op);
-
-  // Maps each resource-type value to a set of unique IDs that it could alias.
-  llvm::SmallDenseMap<Value, llvm::SmallSet<int64_t, 8>, 8>
-      resource_value_to_ids_;
-};
-
-// An analysis that runs on a function and infers the control predecessors and
-// successors for each op, based on side-effects on known and unknown resources.
-// Side-effecting ops on unknown resources are conservatively treated as
-// interfering with all known resource op accesses. It distinguishes accesses
-// based on whether they are read-only, and read-only ops do not interfere with
-// each other.
-//
-// If there are nested regions, each region is handled separately, and control
-// dependencies are only tracked for ops under the same parent op.
-class SideEffectAnalysis {
- public:
-  explicit SideEffectAnalysis() = default;
-  explicit SideEffectAnalysis(Operation* op);
-  SideEffectAnalysis(SideEffectAnalysis&& other) = default;
-  ~SideEffectAnalysis() = default;
+  SideEffectAnalysisInfo(SideEffectAnalysisInfo&&) = default;
 
   // Returns a vector of ops that are direct control predecessors of `op`,
   // sorted in program order. If `filter` is provided, only predecessors that
@@ -83,9 +59,9 @@ class SideEffectAnalysis {
       Operation* op,
       llvm::function_ref<bool(Operation*)> filter = nullptr) const;
 
-  // Returns a vector of ops that are direct control successors of `op`, sorted
-  // in program order. If `filter` is provided, only successors that pass the
-  // filter (returning true) will be included.
+  // Returns a vector of ops that are direct control successors of `op`,
+  // sorted in program order. If `filter` is provided, only successors that
+  // pass the filter (returning true) will be included.
   llvm::SmallVector<Operation*, 4> DirectControlSuccessors(
       Operation* op,
       llvm::function_ref<bool(Operation*)> filter = nullptr) const;
@@ -94,16 +70,11 @@ class SideEffectAnalysis {
   // Runs the analysis on `func_op` and populates sorted_control_predecessors_
   // and sorted_control_successors_.
   void AnalyzeFunction(FuncOp func_op,
-                       const ResourceAliasAnalysis& alias_analysis);
+                       const TF::ResourceAliasAnalysis::Info& alias_analysis);
 
   // Runs the analysis on `region` and populates control_predecessors_.
   void AnalyzeRegion(Region* region,
-                     const ResourceAliasAnalysis& alias_analysis);
-
-  // Moves the control_predecessors_ fields in `children` analyses to this
-  // current analysis.
-  void ConsumeChildAnalyses(
-      llvm::SmallVector<SideEffectAnalysis, 4>&& children);
+                     const TF::ResourceAliasAnalysis::Info& alias_analysis);
 
   // Updates control_predecessors_ for `op` that is being visited, on the given
   // `resource_id`.
@@ -139,8 +110,27 @@ class SideEffectAnalysis {
     // write for a the current write being analyzed.
     bool tracked_last_unknown_write_for_write = false;
   };
+
   llvm::SmallDenseMap<int64_t, PerResourceAccessInfo, 8>
       per_resource_access_info_;
+};
+
+}  // namespace detail
+
+// An analysis that runs on a function and infers the control predecessors and
+// successors for each op, based on side-effects on known and unknown resources.
+// Side-effecting ops on unknown resources are conservatively treated as
+// interfering with all known resource op accesses. It distinguishes accesses
+// based on whether they are read-only, and read-only ops do not interfere with
+// each other.
+//
+// If there are nested regions, each region is handled separately, and control
+// dependencies are only tracked for ops under the same parent op.
+class SideEffectAnalysis : public detail::PerFunctionAggregateAnalysis<
+                               detail::SideEffectAnalysisInfo> {
+ public:
+  // Constructs analysis by analyzing the given module operation.
+  explicit SideEffectAnalysis(ModuleOp module);
 };
 
 }  // namespace TF

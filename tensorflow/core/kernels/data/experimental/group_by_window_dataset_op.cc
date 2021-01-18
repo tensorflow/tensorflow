@@ -107,6 +107,20 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return "GroupByWindowDatasetOp::Dataset";
     }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality) {
+        return n;
+      }
+      return kUnknownCardinality;
+    }
+
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override {
       TF_RETURN_IF_ERROR(captured_key_func_->CheckExternalState());
       TF_RETURN_IF_ERROR(captured_reduce_func_->CheckExternalState());
@@ -225,7 +239,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               // group.
               std::vector<Tensor> key_func_output;
               TF_RETURN_IF_ERROR(instantiated_key_func_->RunWithBorrowedArgs(
-                  ctx, next_input_element, &key_func_output));
+                  ctx, next_input_element, &key_func_output, model_node()));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
@@ -241,7 +255,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 // window size.
                 std::vector<Tensor> window_size_func_output;
                 TF_RETURN_IF_ERROR(instantiated_window_size_func_->Run(
-                    ctx, std::move(key_func_output), &window_size_func_output));
+                    ctx, std::move(key_func_output), &window_size_func_output,
+                    model_node()));
 
                 if (window_size_func_output.size() != 1 ||
                     window_size_func_output[0].dtype() != DT_INT64 ||
@@ -353,7 +368,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name("current_iterator_not_initialized"), ""));
         }
-
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("group_counter"),
+                                               group_counter_ - 1));
         return Status::OK();
       }
 
@@ -364,7 +380,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
         if (reader->Contains(full_name("end_of_input"))) end_of_input_ = true;
 
-        // Restoring groups
+        // Restoring groups_
         if (reader->Contains(full_name("groups_size"))) {
           int64 size;
           TF_RETURN_IF_ERROR(
@@ -381,7 +397,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        // Restoring Windows
+        // Restoring window_sizes_
         if (reader->Contains(full_name("window_sizes_size"))) {
           int64 size;
           TF_RETURN_IF_ERROR(
@@ -396,6 +412,10 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 &window_sizes_[key]));
           }
         }
+
+        // Group counter needs to be restored before current group iterator.
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name("group_counter"), &group_counter_));
 
         if (reader->Contains(full_name("current_iterator_not_initialized"))) {
           current_group_iterator_.reset();
@@ -467,8 +487,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> args(
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
-        TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(ctx, std::move(args),
-                                                          &return_values));
+        TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(
+            ctx, std::move(args), &return_values, model_node()));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_VARIANT &&
@@ -486,11 +506,12 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
         // Create an iterator for the dataset that was returned by `f`.
         return returned_dataset->MakeIterator(
-            ctx, this, strings::StrCat(prefix(), "::Reduce"),
+            ctx, this, strings::StrCat(prefix(), "[", group_counter_++, "]"),
             &current_group_iterator_);
       }
 
       mutex mu_;
+      int64 group_counter_ TF_GUARDED_BY(mu_) = 0;
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       // TODO(mrry): Optimize for dense key space if appropriate.
       bool end_of_input_ TF_GUARDED_BY(mu_) = false;

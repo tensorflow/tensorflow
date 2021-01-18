@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decompose_resource_ops.h"
 
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
@@ -50,12 +50,30 @@ static Type GetResourceSubtypeOrDefault(Value resource, Type element_type) {
   return UnrankedTensorType::get(element_type);
 }
 
+static bool HasResourceSubtype(Value resource) {
+  return resource.getType()
+             .cast<TensorType>()
+             .getElementType()
+             .cast<ResourceType>()
+             .getSubtypes()
+             .size() == 1;
+}
+
+static Type GetResourceSubtype(Value resource) {
+  return resource.getType()
+      .cast<TensorType>()
+      .getElementType()
+      .cast<ResourceType>()
+      .getSubtypes()
+      .front();
+}
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_decompose_resource_ops.inc"
 }  // namespace
 
 void PopulateDecomposeResourceOpsPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
 }
 
 }  // namespace TF

@@ -53,10 +53,12 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       for idx, (shape_signature, final_shape) in enumerate(input_shapes):
         self.assertTrue(
             (input_details[idx]['shape_signature'] == shape_signature).all())
-        interpreter.resize_tensor_input(idx, final_shape)
+        index = input_details[idx]['index']
+        interpreter.resize_tensor_input(index, final_shape, strict=True)
     interpreter.allocate_tensors()
 
     output_details = interpreter.get_output_details()
+    input_details = interpreter.get_input_details()
 
     for input_tensor, tensor_data in zip(input_details, input_data):
       interpreter.set_tensor(input_tensor['index'], tensor_data.numpy())
@@ -64,6 +66,24 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     return [
         interpreter.get_tensor(details['index']) for details in output_details
     ]
+
+  def _evaluateTFLiteModelUsingSignatureDef(self, tflite_model, method_name,
+                                            inputs):
+    """Evaluates the model on the `inputs`.
+
+    Args:
+      tflite_model: TensorFlow Lite model.
+      method_name: Exported Method name of the SavedModel.
+      inputs: Map from input tensor names in the SignatureDef to tensor value.
+
+    Returns:
+      Dictionary of outputs.
+      Key is the output name in the SignatureDef 'method_name'
+      Value is the output value
+    """
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_runner = interpreter.get_signature_runner(method_name)
+    return signature_runner(**inputs)
 
   def _getSimpleVariableModel(self):
     root = tracking.AutoTrackable()
@@ -75,6 +95,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def _getMultiFunctionModel(self):
 
     class BasicModel(tracking.AutoTrackable):
+      """Basic model with multiple functions."""
 
       def __init__(self):
         self.y = None
@@ -91,6 +112,12 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         if self.z is None:
           self.z = variables.Variable(3.)
         return x - self.z
+
+      @def_function.function
+      def mul_add(self, x, y):
+        if self.z is None:
+          self.z = variables.Variable(3.)
+        return x * self.z + y
 
     return BasicModel()
 

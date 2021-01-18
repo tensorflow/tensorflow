@@ -27,7 +27,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.profiler import profiler_v2 as profiler
-from tensorflow.python.profiler import traceme
+from tensorflow.python.profiler import trace
 
 
 class ProfilerTest(test_util.TensorFlowTestCase):
@@ -55,7 +55,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
   def test_save_profile(self):
     logdir = self.get_temp_dir()
     profiler.start(logdir)
-    with traceme.TraceMe('three_times_five'):
+    with trace.Trace('three_times_five'):
       three = constant_op.constant(3)
       five = constant_op.constant(5)
       product = three * five
@@ -91,7 +91,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     options = profiler.ProfilerOptions(
         host_tracer_level=3, python_tracer_level=1)
     profiler.start(logdir, options)
-    with traceme.TraceMe('three_times_five'):
+    with trace.Trace('three_times_five'):
       three = constant_op.constant(3)
       five = constant_op.constant(5)
       product = three * five
@@ -106,7 +106,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     options = profiler.ProfilerOptions(
         host_tracer_level=3, python_tracer_level=1)
     with profiler.Profile(logdir, options):
-      with traceme.TraceMe('three_times_five'):
+      with trace.Trace('three_times_five'):
         three = constant_op.constant(3)
         five = constant_op.constant(5)
         product = three * five

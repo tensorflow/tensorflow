@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_WINOGRAD_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_WINOGRAD_UTIL_H_
 
+#include <vector>
+
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
@@ -35,6 +38,8 @@ std::vector<float> BtMatrixForWinograd4x4To6x6();
 void RearrangeWeightsToWinograd4x4To6x6Weights(
     const Tensor<OHWI, DataType::FLOAT32>& src_weights,
     Tensor<OHWI, DataType::FLOAT32>* dst_weights);
+
+bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr);
 
 }  // namespace gpu
 }  // namespace tflite

@@ -20,10 +20,17 @@ limitations under the License.
 
 namespace xla {
 
+// Legalizes scatters on the GPU.
 class GpuScatterExpander : public ScatterExpander {
  public:
+  // Although we pass kEliminateAllScatters, we override this behavior in
+  // InstruuctionMatchesPattern and select only some scatters to expand.
+  GpuScatterExpander() : ScatterExpander(kEliminateAllScatters) {}
+
   absl::string_view name() const override { return "gpu_scatter_expander"; }
-  StatusOr<bool> Run(HloModule* module) override;
+
+ protected:
+  bool InstructionMatchesPattern(HloInstruction* inst) override;
 };
 
 }  // namespace xla

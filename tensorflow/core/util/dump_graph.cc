@@ -22,19 +22,22 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 
 namespace {
+using strings::StrCat;
 
 struct NameCounts {
   mutex counts_mutex;
   std::unordered_map<string, int> counts;
 };
 
-string MakeUniqueFilename(string name) {
+string MakeUniqueFilename(string name, const string& suffix = ".pbtxt") {
   static NameCounts& instance = *new NameCounts;
 
   // Remove illegal characters from `name`.
@@ -56,30 +59,67 @@ string MakeUniqueFilename(string name) {
   if (count > 0) {
     absl::StrAppend(&filename, "_", count);
   }
-  absl::StrAppend(&filename, ".pbtxt");
+  absl::StrAppend(&filename, suffix);
   return filename;
 }
 
-#if defined(TENSORFLOW_LITE_PROTOS)
-Status WriteToFile(const string& filepath,
-                   const ::tensorflow::protobuf::MessageLite& proto) {
-  string s;
-  if (!SerializeToStringDeterministic(proto, &s)) {
-    return errors::Internal("Failed to serialize proto to string.");
-  }
-  return WriteStringToFile(Env::Default(), filepath, s);
-}
-#else
-Status WriteToFile(const string& filepath,
-                   const ::tensorflow::protobuf::Message& proto) {
-  return WriteTextProto(Env::Default(), filepath, proto);
-}
-#endif
+struct GraphDumperConfig {
+  mutex mu;
 
-template <class T>
-string WriteTextProtoToUniqueFile(Env* env, const string& name,
-                                  const char* proto_type, T& proto,
-                                  const string& dirname) {
+  // The dumper and suffix configured.
+  struct Config {
+    bool IsSet() const { return dumper != nullptr; }
+    std::function<Status(const Graph& graph,
+                         const FunctionLibraryDefinition* flib_def,
+                         WritableFile*)>
+        dumper = nullptr;
+    string suffix = ".pbtxt";
+  } config TF_GUARDED_BY(mu);
+
+  // Returns whether a custom dumper is set.
+  bool IsSet() TF_LOCKS_EXCLUDED(mu) {
+    mutex_lock lock(mu);
+    return config.IsSet();
+  }
+};
+
+GraphDumperConfig& GetGraphDumperConfig() {
+  static GraphDumperConfig config;
+  return config;
+}
+
+// WritableFile that simply prints to stderr.
+class StderrWritableFile : public WritableFile {
+ public:
+  StderrWritableFile() {}
+
+  Status Append(StringPiece data) override {
+    fprintf(stderr, "%.*s", static_cast<int>(data.size()), data.data());
+    return Status::OK();
+  }
+
+  Status Close() override { return Status::OK(); }
+
+  Status Flush() override {
+    fflush(stderr);
+    return Status::OK();
+  }
+
+  Status Name(StringPiece* result) const override {
+    *result = "stderr";
+    return Status::OK();
+  }
+
+  Status Sync() override { return Status::OK(); }
+
+  Status Tell(int64* position) override {
+    return errors::Unimplemented("Stream not seekable");
+  }
+};
+
+Status CreateWritableFile(Env* env, const string& dirname, const string& name,
+                          const string& suffix, string* filepath,
+                          std::unique_ptr<WritableFile>* file) {
   string dir;
   if (!dirname.empty()) {
     dir = dirname;
@@ -92,7 +132,7 @@ string WriteTextProtoToUniqueFile(Env* env, const string& name,
         << "Failed to dump " << name << " because dump location is not "
         << " specified through either TF_DUMP_GRAPH_PREFIX environment "
         << "variable or function argument.";
-    return "(TF_DUMP_GRAPH_PREFIX not specified)";
+    return errors::InvalidArgument("TF_DUMP_GRAPH_PREFIX not specified");
   }
 
   if (absl::EqualsIgnoreCase(dir, "sponge") ||
@@ -104,40 +144,100 @@ string WriteTextProtoToUniqueFile(Env* env, const string& name,
     }
   }
 
-  string filepath = "NULL";
+  *filepath = "NULL";
   if (dir == "-") {
-    LOG(INFO) << proto.DebugString();
-    filepath = "LOG(INFO)";
-  } else {
-    Status status = env->RecursivelyCreateDir(dir);
-    if (!status.ok()) {
-      LOG(WARNING) << "Failed to create " << dir << " for dumping "
-                   << proto_type << ": " << status;
-      return "(unavailable)";
-    }
-    filepath = io::JoinPath(dir, MakeUniqueFilename(name));
-    status = WriteToFile(filepath, proto);
-    if (!status.ok()) {
-      LOG(WARNING) << "Failed to dump " << proto_type
-                   << " to file: " << filepath << " : " << status;
-      return "(unavailable)";
-    }
+    *file = std::make_unique<StderrWritableFile>();
+    *filepath = "(stderr)";
+    return Status::OK();
   }
-  LOG(INFO) << "Dumped " << proto_type << " to " << filepath;
-  return filepath;
+
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
+  *filepath = io::JoinPath(dir, MakeUniqueFilename(name, suffix));
+  return env->NewWritableFile(*filepath, file);
+}
+
+Status WriteTextProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
+                                  WritableFile* file) {
+  string s;
+  if (!::tensorflow::protobuf::TextFormat::PrintToString(proto, &s)) {
+    return errors::FailedPrecondition("Unable to convert proto to text.");
+  }
+  TF_RETURN_IF_ERROR(file->Append(s));
+  return file->Close();
+}
+
+Status WriteTextProtoToUniqueFile(
+    const tensorflow::protobuf::MessageLite& proto, WritableFile* file) {
+  string s;
+  if (!SerializeToStringDeterministic(proto, &s)) {
+    return errors::Internal("Failed to serialize proto to string.");
+  }
+  TF_RETURN_IF_ERROR(file->Append(s));
+  return file->Close();
 }
 
 }  // anonymous namespace
 
+void SetGraphDumper(
+    std::function<Status(const Graph& graph,
+                         const FunctionLibraryDefinition* flib_def,
+                         WritableFile*)>
+        dumper,
+    string suffix) {
+  GraphDumperConfig& dumper_config = GetGraphDumperConfig();
+  mutex_lock lock(dumper_config.mu);
+  dumper_config.config.dumper = dumper;
+  dumper_config.config.suffix = suffix;
+}
+
 string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
                           const string& dirname) {
-  return WriteTextProtoToUniqueFile(Env::Default(), name, "GraphDef", graph_def,
-                                    dirname);
+  string filepath;
+  std::unique_ptr<WritableFile> file;
+  Status status = CreateWritableFile(Env::Default(), dirname, name, ".pbtxt",
+                                     &filepath, &file);
+  if (!status.ok()) {
+    return StrCat("(failed to create writable file: ", status.ToString(), ")");
+  }
+
+  status = WriteTextProtoToUniqueFile(graph_def, file.get());
+  if (!status.ok()) {
+    return StrCat("(failed to dump Graph to '", filepath,
+                  "': ", status.ToString(), ")");
+  }
+  LOG(INFO) << "Dumped Graph to " << filepath;
+  return filepath;
 }
 
 string DumpGraphToFile(const string& name, Graph const& graph,
                        const FunctionLibraryDefinition* flib_def,
                        const string& dirname) {
+  auto& dumper_config = GetGraphDumperConfig();
+  if (dumper_config.IsSet()) {
+    GraphDumperConfig::Config config;
+    {
+      mutex_lock lock(dumper_config.mu);
+      config = dumper_config.config;
+    }
+    if (config.IsSet()) {
+      string filepath;
+      std::unique_ptr<WritableFile> file;
+      Status status = CreateWritableFile(Env::Default(), dirname, name,
+                                         config.suffix, &filepath, &file);
+      if (!status.ok()) {
+        return StrCat("(failed to create writable file: ", status.ToString(),
+                      ")");
+      }
+      status = config.dumper(graph, flib_def, file.get());
+      if (!status.ok()) {
+        return StrCat("(failed to dump Graph to '", filepath,
+                      "': ", status.ToString(), ")");
+      }
+      LOG(INFO) << "Dumped Graph to " << filepath;
+      return filepath;
+    }
+  }
+
   GraphDef graph_def;
   graph.ToGraphDef(&graph_def);
   if (flib_def) {
@@ -148,8 +248,21 @@ string DumpGraphToFile(const string& name, Graph const& graph,
 
 string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
                              const string& dirname) {
-  return WriteTextProtoToUniqueFile(Env::Default(), name, "FunctionDef", fdef,
-                                    dirname);
+  string filepath;
+  std::unique_ptr<WritableFile> file;
+  Status status = CreateWritableFile(Env::Default(), dirname, name, ".pbtxt",
+                                     &filepath, &file);
+  if (!status.ok()) {
+    return StrCat("(failed to create writable file: ", status.ToString(), ")");
+  }
+
+  status = WriteTextProtoToUniqueFile(fdef, file.get());
+  if (!status.ok()) {
+    return StrCat("(failed to dump FunctionDef to '", filepath,
+                  "': ", status.ToString(), ")");
+  }
+  LOG(INFO) << "Dumped FunctionDef to " << filepath;
+  return filepath;
 }
 
 }  // namespace tensorflow

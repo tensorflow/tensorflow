@@ -1,0 +1,11 @@
+path: "tensorflow.__internal__.distribute"
+tf_module {
+  member {
+    name: "combinations"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "multi_process_runner"
+    mtype: "<type \'module\'>"
+  }
+}

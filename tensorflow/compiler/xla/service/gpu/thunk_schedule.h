@@ -46,9 +46,17 @@ namespace gpu {
 // "depends" on A.
 class ThunkSchedule {
  public:
-  ThunkSchedule(std::unique_ptr<ThunkSequence> thunks,
-                std::unique_ptr<StreamAssignment> stream_assignment,
-                const std::vector<HloInstruction*>& hlo_total_order);
+  // `thunk_to_hlo` is an one-to-one map. Every thunk in this container maps to
+  // an HLO, but not every HLO ever exists produces a Thunk.
+  //
+  // thunk_to_hlo.keys() == set(thunks).
+  ThunkSchedule(
+      std::unique_ptr<ThunkSequence> thunks,
+      std::unique_ptr<StreamAssignment> stream_assignment,
+      absl::flat_hash_map<const Thunk*, const HloInstruction*> thunk_to_hlo);
+
+  // Single stream, trivial schedule in the ThunkSequence order.
+  explicit ThunkSchedule(std::unique_ptr<ThunkSequence> thunks);
 
   // Returns the total order of executing all the thunks.
   const std::vector<Thunk*>& TotalOrder() const { return thunk_total_order_; }
@@ -61,9 +69,17 @@ class ThunkSchedule {
   }
 
   // Delegates to StreamAssignment.
-  int StreamCount() const { return stream_assignment_->StreamCount(); }
-  int StreamNumberForHlo(const HloInstruction& hlo) const {
-    return stream_assignment_->StreamNumberForHlo(hlo);
+  int StreamCount() const {
+    if (stream_assignment_) {
+      return stream_assignment_->StreamCount();
+    }
+    return 1;
+  }
+  int StreamNumberForThunk(const Thunk* thunk) const {
+    if (stream_assignment_) {
+      return stream_assignment_->StreamNumberForHlo(*thunk_to_hlo_.at(thunk));
+    }
+    return 0;
   }
 
   string ToString() const;
@@ -75,8 +91,8 @@ class ThunkSchedule {
   // `thunk`.
   //
   // Precondition: `operand` is a non-trivial (i.e. excluding
-  // thunk.hlo_instruction() itself) transitive operand of
-  // thunk.hlo_instruction().
+  // thunk.hlo_instruction_ itself) transitive operand of
+  // thunk.hlo_instruction_.
   void AddDependenciesOnTransitiveOperands(
       const Thunk& thunk, const HloInstruction& operand,
       const absl::flat_hash_map<const HloInstruction*, Thunk*>& hlo_to_thunk);
@@ -89,6 +105,8 @@ class ThunkSchedule {
   std::list<const Thunk*> empty_thunk_list_;
 
   std::unique_ptr<StreamAssignment> stream_assignment_;
+
+  absl::flat_hash_map<const Thunk*, const HloInstruction*> thunk_to_hlo_;
 };
 
 }  // namespace gpu

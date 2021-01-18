@@ -556,18 +556,6 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapStage")
                         MapStageOp<true>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapStage")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_SYCL),
-                        MapStageOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapStage")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_SYCL),
-                        MapStageOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapUnstageOp : public OpKernel {
@@ -617,18 +605,6 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage")
                             .Device(DEVICE_GPU),
                         MapUnstageOp<true>);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapUnstage")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_SYCL),
-                        MapUnstageOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_SYCL),
-                        MapUnstageOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapPeekOp : public OpKernel {
@@ -676,16 +652,6 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek")
                         MapPeekOp<true>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("MapPeek").HostMemory("key").HostMemory("indices").Device(DEVICE_SYCL),
-    MapPeekOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_SYCL),
-                        MapPeekOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapUnstageNoKeyOp : public OpKernel {
@@ -741,18 +707,6 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey")
                         MapUnstageNoKeyOp<true>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_SYCL),
-                        MapUnstageNoKeyOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_SYCL),
-                        MapUnstageNoKeyOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapSizeOp : public OpKernel {
@@ -784,13 +738,6 @@ REGISTER_KERNEL_BUILDER(
     Name("OrderedMapSize").Device(DEVICE_GPU).HostMemory("size"),
     MapSizeOp<true>);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapSize").Device(DEVICE_SYCL).HostMemory("size"),
-                        MapSizeOp<false>);
-REGISTER_KERNEL_BUILDER(
-    Name("OrderedMapSize").Device(DEVICE_SYCL).HostMemory("size"),
-    MapSizeOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapIncompleteSizeOp : public OpKernel {
@@ -824,14 +771,6 @@ REGISTER_KERNEL_BUILDER(
     Name("OrderedMapIncompleteSize").Device(DEVICE_GPU).HostMemory("size"),
     MapIncompleteSizeOp<true>);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("MapIncompleteSize").Device(DEVICE_SYCL).HostMemory("size"),
-    MapIncompleteSizeOp<false>);
-REGISTER_KERNEL_BUILDER(
-    Name("OrderedMapIncompleteSize").Device(DEVICE_SYCL).HostMemory("size"),
-    MapIncompleteSizeOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapClearOp : public OpKernel {
@@ -856,12 +795,6 @@ REGISTER_KERNEL_BUILDER(Name("MapClear").Device(DEVICE_GPU), MapClearOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapClear").Device(DEVICE_GPU),
                         MapClearOp<true>);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapClear").Device(DEVICE_SYCL),
-                        MapClearOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapClear").Device(DEVICE_SYCL),
-                        MapClearOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace
 }  // namespace tensorflow

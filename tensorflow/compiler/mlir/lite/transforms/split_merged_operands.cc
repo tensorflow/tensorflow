@@ -22,13 +22,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -66,7 +65,8 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-struct SplitMergedOperandsPass : public FunctionPass<SplitMergedOperandsPass> {
+struct SplitMergedOperandsPass
+    : public PassWrapper<SplitMergedOperandsPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -119,7 +119,7 @@ void SplitMergedOperandsPass::runOnFunction() {
 
 /// Creates an instance of the TensorFlow Lite dialect SplitMergedOperands
 /// pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateSplitMergedOperandsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateSplitMergedOperandsPass() {
   return std::make_unique<SplitMergedOperandsPass>();
 }
 

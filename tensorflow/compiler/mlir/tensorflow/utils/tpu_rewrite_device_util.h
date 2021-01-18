@@ -22,6 +22,10 @@ limitations under the License.
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -30,31 +34,51 @@ limitations under the License.
 namespace tensorflow {
 using stream_executor::port::StatusOr;
 
-// TPU devices to be used for execution (e.g. devices for TPUExecute ops). They
-// are ordered by `num_replicas` followed by `num_cores_per_replica`.
-using ExecutionDevices =
-    llvm::SmallVector<llvm::SmallVector<std::string, 8>, 8>;
+extern const char* const kTPUReplicatedHost;
+extern const char* const kNumCoresPerReplicaAttr;
+extern const char* const kTopologyAttr;
+extern const char* const kDeviceAssignmentAttr;
 
-// TPU compilation device, execution devices, and optionally execution device
-// IDs. Execution device IDs are populated if `topology` and `device_assignment`
-// are provided.
+// A TPU device for execution alongside its associated host CPU device.
+struct TPUDeviceAndHost {
+  TPUDeviceAndHost() {}
+  TPUDeviceAndHost(llvm::StringRef device, llvm::StringRef host)
+      : device(device), host(host) {}
+
+  std::string device;
+  std::string host;
+};
+
+// TPU devices to be used for execution (e.g. devices for TPUExecute ops) and
+// their associated host CPU devices (for outside compilation). They are ordered
+// by `num_replicas` followed by `num_cores_per_replica`.
+using TPUDevicesAndHosts =
+    llvm::SmallVector<llvm::SmallVector<TPUDeviceAndHost, 8>, 8>;
+
+// TPU compilation device, execution and associated host devices, and optionally
+// execution device IDs. Execution device IDs are populated if `topology` and
+// `device_assignment` are provided.
 struct TPUDeviceAssignment {
   TPUDeviceAssignment(llvm::StringRef compilation_device,
-                      ExecutionDevices&& execution_devices)
+                      TPUDevicesAndHosts&& tpu_devices)
       : compilation_device(compilation_device),
-        execution_devices(std::move(execution_devices)) {}
+        tpu_devices(std::move(tpu_devices)) {}
 
   TPUDeviceAssignment(llvm::StringRef compilation_device,
-                      ExecutionDevices&& execution_devices,
+                      TPUDevicesAndHosts&& tpu_devices,
                       xla::DeviceAssignmentProto&& xla_device_assignment)
       : compilation_device(compilation_device),
-        execution_devices(std::move(execution_devices)),
+        tpu_devices(std::move(tpu_devices)),
         xla_device_assignment(std::move(xla_device_assignment)) {}
 
   std::string compilation_device;
-  ExecutionDevices execution_devices;
+  TPUDevicesAndHosts tpu_devices;
   llvm::Optional<xla::DeviceAssignmentProto> xla_device_assignment;
 };
+
+// Extracts device coordinates from a device assignment attribute on an op.
+StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
+    mlir::ArrayAttr device_assignment_attr);
 
 // Finds the TPU compilation device and execution devices from `devices` for a
 // TPU computation subgraph. Compilation device is determined from looking up
@@ -215,6 +239,16 @@ StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
 // Virtual device is used for evice assignment for executing ops on a specified
 // logical core.
 std::string GetDeviceAliasForLogicalCore(int core_index);
+
+// Parses TPU compilation and execution devices from a TPU cluster and returns
+// the host device for the head and tail computations. If the TPU computation is
+// replicated, kTPUReplicatedHost is returned instead.
+mlir::LogicalResult GetHostDeviceOutsideComputation(
+    mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
+    std::string* host_device);
+
+// Checks if a device string is a TPU device.
+bool IsTPUDevice(llvm::StringRef device);
 
 }  // namespace tensorflow
 

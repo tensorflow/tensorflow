@@ -47,7 +47,7 @@ namespace tensorflow {
 class SimplePropagatorState {
  public:
   SimplePropagatorState(const ImmutableExecutorState& immutable_state,
-                        int64 step_id);
+                        int64 step_id, bool vlog);
   ~SimplePropagatorState();
 
   // A `TaggedNode` corresponds to a single invocation of a node's kernel,
@@ -117,12 +117,15 @@ class SimplePropagatorState {
 
   // Returns an array of `Entry` objects corresponding to the inputs of
   // `tagged_node`.
-  //
-  // NOTE: Thread safety analysis is disabled on this method, because the
-  // underlying `IterationState` and its array of `input_tensors` retain the
-  // same address while the iteration is live.
-  Entry* GetInputTensors(const TaggedNode& tagged_node)
-      TF_NO_THREAD_SAFETY_ANALYSIS {
+  Entry* GetInputTensors(const TaggedNode& tagged_node) {
+#if defined(THREAD_SANITIZER) || defined(DEBUG)
+    // NOTE: This read of `pending_[...]` works around a limitation in TSAN.
+    // To avoid false positive data race reports, we need to perform an atomic
+    // object access that will establish the happens-before relation between
+    // the write to input_tensors_ in `PropagateOutputs()` and the read in
+    // `PrepareInputs()`.
+    CHECK_EQ(pending_[tagged_node.node_item->node_id], 0);
+#endif  // defined(THREAD_SANITIZER) || defined(DEBUG)
     return input_tensors_.data() + tagged_node.node_item->input_start;
   }
 
@@ -139,8 +142,7 @@ class SimplePropagatorState {
     // optional debugging support.
     if (TF_PREDICT_FALSE(vlog_) && VLOG_IS_ON(1)) {
       mutex_lock l(mu_);
-      counts_.mark_started(
-          immutable_state_.pending_ids()[tagged_node.node_item->node_id]);
+      (*active_)[tagged_node.node_item->node_id] = true;
     }
   }
   void MaybeMarkCompleted(const TaggedNode& tagged_node) {
@@ -148,24 +150,22 @@ class SimplePropagatorState {
     // optional debugging support.
     if (TF_PREDICT_FALSE(vlog_) && VLOG_IS_ON(1)) {
       mutex_lock l(mu_);
-      counts_.mark_completed(
-          immutable_state_.pending_ids()[tagged_node.node_item->node_id]);
+      (*active_)[tagged_node.node_item->node_id] = false;
     }
   }
 
  private:
   SimplePropagatorState(const ImmutableExecutorState& immutable_state_,
                         int64 step_id,
-                        const ImmutableExecutorState::FrameInfo& finfo);
+                        const ImmutableExecutorState::FrameInfo& finfo,
+                        bool vlog);
 
   const ImmutableExecutorState& immutable_state_;
   const int64 step_id_;
   const bool vlog_;
 
-  mutex mu_;
-
   // The i-th node's j-th input is stored at
-  // `input_tensors_[impl_->nodes[i].input_start + j]`.
+  // `input_tensors[impl_->nodes[i].input_start + j]`.
   //
   // NOTE: No need to protect input_tensors[i] by any locks because it
   // is resized once. Each element of input_tensors is written once by the
@@ -174,11 +174,14 @@ class SimplePropagatorState {
   // is never concurrent access to the same entry.
   std::vector<Entry> input_tensors_;
 
-  PendingCounts counts_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<std::atomic<int32>[]> pending_;
+
+  // If `vlog_` is true, this stores a bit vector of active nodes, indexed by
+  // node ID.
+  mutex mu_;
+  std::unique_ptr<std::vector<bool>> active_ TF_GUARDED_BY(mu_);
 
   const std::vector<const NodeItem*>* const nodes_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(SimplePropagatorState);
 };
 
 }  // namespace tensorflow

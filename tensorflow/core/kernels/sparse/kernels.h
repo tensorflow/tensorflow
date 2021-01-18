@@ -167,13 +167,18 @@ struct CSRStructureModifyingFunctor {
 
   virtual Status Initialize() = 0;
 
+  virtual Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
+                                  const ConstCSRComponent<T>& b,
+                                  size_t* bufferSize) = 0;
+
   virtual Status GetOutputStructure(const ConstCSRComponent<T>& a,
                                     const ConstCSRComponent<T>& b,
                                     TTypes<int32>::UnalignedVec c_row_ptr,
-                                    int* output_nnz) = 0;
+                                    int* output_nnz, void* workspace) = 0;
 
   virtual Status Compute(const ConstCSRComponent<T>& a,
-                         const ConstCSRComponent<T>& b, CSRComponent<T>* c) = 0;
+                         const ConstCSRComponent<T>& b, CSRComponent<T>* c,
+                         void* workspace) = 0;
 };
 
 // Calculates C = alpha * A + beta * B, where A and B are in CSR

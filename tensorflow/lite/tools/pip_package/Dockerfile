@@ -15,6 +15,7 @@ RUN apt-get update && \
       python-wheel \
       python-numpy \
       python-pip \
+      pybind11-dev \
       libpython-dev \
       libpython-dev:armhf \
       libpython-dev:arm64 \

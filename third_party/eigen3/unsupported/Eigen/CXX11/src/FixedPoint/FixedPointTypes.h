@@ -49,7 +49,7 @@ struct scalar_product_traits<QInt32, double> {
 // the compiler from silently type cast the mantissa into a bigger or a smaller
 // representation.
 struct QInt8 {
-  QInt8() {}
+  QInt8() : value(0) {}
   QInt8(const int8_t v) : value(v) {}
   QInt8(const QInt32 v);
 
@@ -59,7 +59,7 @@ struct QInt8 {
 };
 
 struct QUInt8 {
-  QUInt8() {}
+  QUInt8() : value(0) {}
   QUInt8(const uint8_t v) : value(v) {}
   QUInt8(const QInt32 v);
 
@@ -69,7 +69,7 @@ struct QUInt8 {
 };
 
 struct QInt16 {
-  QInt16() {}
+  QInt16() : value(0) {}
   QInt16(const int16_t v) : value(v) {}
   QInt16(const QInt32 v);
   operator int() const { return static_cast<int>(value); }
@@ -78,7 +78,7 @@ struct QInt16 {
 };
 
 struct QUInt16 {
-  QUInt16() {}
+  QUInt16() : value(0) {}
   QUInt16(const uint16_t v) : value(v) {}
   QUInt16(const QInt32 v);
   operator int() const { return static_cast<int>(value); }
@@ -87,7 +87,7 @@ struct QUInt16 {
 };
 
 struct QInt32 {
-  QInt32() {}
+  QInt32() : value(0) {}
   QInt32(const int8_t v) : value(v) {}
   QInt32(const int32_t v) : value(v) {}
   QInt32(const uint32_t v) : value(static_cast<int32_t>(v)) {}

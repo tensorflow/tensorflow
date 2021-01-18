@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_FUNCTION_CALL_OP_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_FUNCTION_CALL_OP_H_
 
-#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+class FunctionLibraryDefinition;
+class Graph;
+class Node;
 
 // Replaces function call node `n` with its function body. Uses
 // InlineFunctionBody from `common_runtime/function.{h,cc}`. If function

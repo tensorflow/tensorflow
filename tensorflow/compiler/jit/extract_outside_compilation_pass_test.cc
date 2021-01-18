@@ -422,19 +422,6 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
   EXPECT_EQ(fld.Find("host_graph"), nullptr);
 }
 
-REGISTER_OP("XlaSendToHost")
-    .Input("input: Tinput")
-    .Attr("Tinput: type")
-    .Attr("key: string")
-    .SetIsStateful();
-
-REGISTER_OP("XlaRecvFromHost")
-    .Output("output: Toutput")
-    .Attr("Toutput: type")
-    .Attr("shape: shape")
-    .Attr("key: string")
-    .SetIsStateful();
-
 TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
   // Build the XLA computation func.
   // "const0" (bool)

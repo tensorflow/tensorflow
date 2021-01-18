@@ -1,3 +1,9 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -10,8 +16,6 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 cc_library(
     name = "remote_tensor_handle",
@@ -42,7 +46,9 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:worker_session",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
     ],
@@ -53,11 +59,11 @@ cc_library(
     hdrs = ["destroy_tensor_handle_node.h"],
     deps = [
         ":eager_client",
-        "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_executor",
+        "//tensorflow/core/protobuf:eager_service_proto_cc",
     ],
 )
 
@@ -65,9 +71,10 @@ cc_library(
     name = "eager_client",
     hdrs = ["eager_client.h"],
     deps = [
-        "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/distributed_runtime:call_options",
+        "//tensorflow/core/protobuf:eager_service_proto_cc",
     ],
 )
 
@@ -78,13 +85,13 @@ cc_library(
     deps = [
         ":eager_client",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:shape_inference",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/protobuf:eager_service_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -103,7 +110,6 @@ cc_library(
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -112,7 +118,6 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:execute",
-        "//tensorflow/core/common_runtime/eager:process_function_library_runtime",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:message_wrappers",
         "//tensorflow/core/distributed_runtime:server_lib",
@@ -122,6 +127,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/protobuf:eager_service_proto_cc",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
@@ -138,7 +144,6 @@ tf_cc_test(
         ":remote_mgr",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
-        "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -146,12 +151,12 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
-        "//tensorflow/core/common_runtime/eager:process_function_library_runtime",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "//tensorflow/core/protobuf:eager_service_proto_cc",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
     ],

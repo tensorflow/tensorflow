@@ -15,15 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV_H_
 
-#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/internal/common.h"
-
-
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 
 namespace reference_ops {
-
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const float* input_data, const RuntimeShape& filter_shape,
@@ -59,28 +56,31 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   const int output_width = output_shape.Dims(2);
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
+      const int in_y_origin = (out_y * stride_height) - pad_height;
       for (int out_x = 0; out_x < output_width; ++out_x) {
+        const int in_x_origin = (out_x * stride_width) - pad_width;
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
           float total = 0.f;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+            const int in_y = in_y_origin + dilation_height_factor * filter_y;
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              const int in_x = in_x_origin + dilation_width_factor * filter_x;
+
+              // Zero padding by omitting the areas outside the image.
+              const bool is_point_inside_image =
+                  (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
+                  (in_y < input_height);
+
+              if (!is_point_inside_image) {
+                continue;
+              }
+
               for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + dilation_width_factor * filter_x;
-                const int in_y =
-                    in_y_origin + dilation_height_factor * filter_y;
-                // If the location is outside the bounds of the input image,
-                // use zero as a default value.
-                if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                    (in_y < input_height)) {
-                  float input_value = input_data[Offset(
-                      input_shape, batch, in_y, in_x, in_channel)];
-                  float filter_value =
-                      filter_data[Offset(filter_shape, out_channel, filter_y,
-                                         filter_x, in_channel)];
-                  total += (input_value * filter_value);
-                }
+                float input_value = input_data[Offset(input_shape, batch, in_y,
+                                                      in_x, in_channel)];
+                float filter_value = filter_data[Offset(
+                    filter_shape, out_channel, filter_y, filter_x, in_channel)];
+                total += (input_value * filter_value);
               }
             }
           }
@@ -99,27 +99,27 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
-                 const uint8* input_data, const RuntimeShape& filter_shape,
-                 const uint8* filter_data, const RuntimeShape& bias_shape,
-                 const int32* bias_data, const RuntimeShape& output_shape,
-                 uint8* output_data, const RuntimeShape& im2col_shape,
-                 uint8* im2col_data, void* cpu_backend_context) {
+                 const uint8_t* input_data, const RuntimeShape& filter_shape,
+                 const uint8_t* filter_data, const RuntimeShape& bias_shape,
+                 const int32_t* bias_data, const RuntimeShape& output_shape,
+                 uint8_t* output_data, const RuntimeShape& im2col_shape,
+                 uint8_t* im2col_data, void* cpu_backend_context) {
   (void)cpu_backend_context;  // only used in optimized code.
-  (void)im2col_data;   // only used in optimized code.
-  (void)im2col_shape;  // only used in optimized code.
+  (void)im2col_data;          // only used in optimized code.
+  (void)im2col_shape;         // only used in optimized code.
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
   const int dilation_height_factor = params.dilation_height_factor;
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
+  const int32_t input_offset = params.input_offset;
+  const int32_t filter_offset = params.weights_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -139,29 +139,32 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   const int output_width = output_shape.Dims(2);
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
+      const int in_y_origin = (out_y * stride_height) - pad_height;
       for (int out_x = 0; out_x < output_width; ++out_x) {
+        const int in_x_origin = (out_x * stride_width) - pad_width;
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
-          int32 acc = 0;
+          int32_t acc = 0;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+            const int in_y = in_y_origin + dilation_height_factor * filter_y;
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              const int in_x = in_x_origin + dilation_width_factor * filter_x;
+
+              // Zero padding by omitting the areas outside the image.
+              const bool is_point_inside_image =
+                  (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
+                  (in_y < input_height);
+
+              if (!is_point_inside_image) {
+                continue;
+              }
+
               for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + dilation_width_factor * filter_x;
-                const int in_y =
-                    in_y_origin + dilation_height_factor * filter_y;
-                // If the location is outside the bounds of the input image,
-                // use zero as a default value.
-                if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                    (in_y < input_height)) {
-                  int32 input_val = input_data[Offset(input_shape, batch, in_y,
+                int32_t input_val = input_data[Offset(input_shape, batch, in_y,
                                                       in_x, in_channel)];
-                  int32 filter_val =
-                      filter_data[Offset(filter_shape, out_channel, filter_y,
-                                         filter_x, in_channel)];
-                  acc +=
-                      (filter_val + filter_offset) * (input_val + input_offset);
-                }
+                int32_t filter_val = filter_data[Offset(
+                    filter_shape, out_channel, filter_y, filter_x, in_channel)];
+                acc +=
+                    (filter_val + filter_offset) * (input_val + input_offset);
               }
             }
           }
@@ -174,7 +177,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
-              static_cast<uint8>(acc);
+              static_cast<uint8_t>(acc);
         }
       }
     }
@@ -220,7 +223,7 @@ inline void HybridConvPerChannel(
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
           const int in_x_origin = (out_x * stride_width) - pad_width;
           const int in_y_origin = (out_y * stride_height) - pad_height;
-          int32 acc = 0;
+          int32_t acc = 0;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
               for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
@@ -231,9 +234,9 @@ inline void HybridConvPerChannel(
                 // use zero as a default value.
                 if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
                     (in_y < input_height)) {
-                  int32 input_val = input_data[Offset(input_shape, batch, in_y,
-                                                      in_x, in_channel)];
-                  int32 filter_val =
+                  int32_t input_val = input_data[Offset(
+                      input_shape, batch, in_y, in_x, in_channel)];
+                  int32_t filter_val =
                       filter_data[Offset(filter_shape, out_channel, filter_y,
                                          filter_x, in_channel)];
                   acc += filter_val * (input_val - input_offset[batch]);
@@ -257,6 +260,5 @@ inline void HybridConvPerChannel(
 
 }  // namespace reference_ops
 }  // namespace tflite
-
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV_H_

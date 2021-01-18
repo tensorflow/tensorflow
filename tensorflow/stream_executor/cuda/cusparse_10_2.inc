@@ -8225,6 +8225,6 @@ cusparseStatus_t CUSPARSEAPI cusparseConstrainedGeMM_bufferSize(
                   bufferSize);
 }
 
-#endif // _WIN32
+#endif  // _WIN32
 
 }  // extern "C"

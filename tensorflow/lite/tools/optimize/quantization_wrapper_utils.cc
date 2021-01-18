@@ -24,6 +24,12 @@ namespace tflite {
 namespace optimize {
 namespace {
 
+#ifdef TFLITE_CUSTOM_LSTM
+constexpr bool kUseCustomLSTM = true;
+#else
+constexpr bool kUseCustomLSTM = false;
+#endif
+
 void MakeTensor(const string& name, std::unique_ptr<TensorT>* tensor) {
   TensorT* tensor_raw = new TensorT;
   tensor_raw->name = name;
@@ -66,8 +72,12 @@ TfLiteStatus LoadModel(const string& path, ModelT* model) {
   return kTfLiteOk;
 }
 
-TfLiteStatus AddIntemediateTensorsToFusedOp(
+TfLiteStatus AddIntermediateTensorsToFusedOp(
     flatbuffers::FlatBufferBuilder* builder, ModelT* model) {
+  // Return early when the model has no operator.
+  if (model->subgraphs.size() == 1 && model->subgraphs[0]->operators.empty()) {
+    return kTfLiteOk;
+  }
   // Return early if the model already has intermediate tensors.
   if (IntermediateTensorExists(model)) {
     return kTfLiteOk;
@@ -86,7 +96,10 @@ TfLiteStatus AddIntemediateTensorsToFusedOp(
       }
       // Add tensors.
       const int next_tensor_index = subgraph->tensors.size();
-      const int num_intermediates = property.intermediates.size();
+      int num_intermediates = property.intermediates.size();
+      if (kUseCustomLSTM) {
+        num_intermediates = 12;
+      }
       for (int i = 0; i < num_intermediates; ++i) {
         std::unique_ptr<TensorT> intermediate_tensor;
         auto name = CreateTensorName(op_idx, i);

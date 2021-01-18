@@ -24,10 +24,11 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.types import core
+from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -113,9 +114,9 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       dtypes.quint8.as_numpy_dtype:
           fast_tensor_util.AppendUInt8ArrayToTensorProto,
       dtypes.qint16.as_numpy_dtype:
-          fast_tensor_util.AppendInt8ArrayToTensorProto,
+          fast_tensor_util.AppendInt16ArrayToTensorProto,
       dtypes.quint16.as_numpy_dtype:
-          fast_tensor_util.AppendUInt8ArrayToTensorProto,
+          fast_tensor_util.AppendUInt16ArrayToTensorProto,
       dtypes.qint32.as_numpy_dtype:
           fast_tensor_util.AppendInt32ArrayToTensorProto,
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
@@ -236,9 +237,9 @@ def _FlattenToStrings(nested_strings):
 
 
 _TENSOR_CONTENT_TYPES = frozenset([
-    dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
-    dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint16,
-    dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
+    dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8,
+    dtypes.int16, dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8,
+    dtypes.qint16, dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
 ])
 
 
@@ -261,8 +262,12 @@ def _check_quantized(values):
 
 def _generate_isinstance_check(expected_types):
   def inner(values):
-    _ = [_check_failed(v) for v in nest.flatten(values)
-         if not isinstance(v, expected_types)]
+    for v in nest.flatten(values):
+      if not (isinstance(v, expected_types) or
+              (isinstance(v, np.ndarray) and
+               issubclass(v.dtype.type, expected_types))):
+        _check_failed(v)
+
   return inner
 
 _check_int = _generate_isinstance_check(
@@ -521,7 +526,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
     if nparray.size * nparray.itemsize >= (1 << 31):
       raise ValueError(
           "Cannot create a tensor proto whose content is larger than 2GB.")
-    tensor_proto.tensor_content = nparray.tostring()
+    tensor_proto.tensor_content = nparray.tobytes()
     return tensor_proto
 
   # If we were not given values as a numpy array, compute the proto_values
@@ -791,6 +796,8 @@ def _ConstantValue(tensor, partial):
     return np.not_equal(value1, value2)
   elif tensor.op.type == "StopGradient":
     return constant_value(tensor.op.inputs[0], partial)
+  elif tensor.op.type in ("CheckNumericsV2", "DebugIdentityV2", "Identity"):
+    return constant_value(tensor.op.inputs[0], partial)
   else:
     return None
 
@@ -801,6 +808,41 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
 
   This function attempts to partially evaluate the given tensor, and
   returns its value as a numpy ndarray if this succeeds.
+
+  Example usage:
+
+  >>> a = tf.constant(10)
+  >>> tf.get_static_value(a)
+  10
+  >>> b = tf.constant(20)
+  >>> tf.get_static_value(tf.add(a, b))
+  30
+
+  >>> # `tf.Variable` is not supported.
+  >>> c = tf.Variable(30)
+  >>> print(tf.get_static_value(c))
+  None
+
+  Using `partial` option is most relevant when calling `get_static_value` inside
+  a `tf.function`. Setting it to `True` will return the results but for the
+  values that cannot be evaluated will be `None`. For example:
+
+  ```python
+  class Foo(object):
+    def __init__(self):
+      self.a = tf.Variable(1)
+      self.b = tf.constant(2)
+
+    @tf.function
+    def bar(self, partial):
+      packed = tf.raw_ops.Pack(values=[self.a, self.b])
+      static_val = tf.get_static_value(packed, partial=partial)
+      tf.print(static_val)
+
+  f = Foo()
+  f.bar(partial=True)  # `array([None, array(2, dtype=int32)], dtype=object)`
+  f.bar(partial=False)  # `None`
+  ```
 
   Compatibility(V1): If `constant_value(tensor)` returns a non-`None` result, it
   will no longer be possible to feed a different value for `tensor`. This allows
@@ -820,7 +862,12 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
     TypeError: if tensor is not an ops.Tensor.
   """
   if isinstance(tensor, ops.EagerTensor):
-    return tensor.numpy()
+    try:
+      return tensor.numpy()
+    except errors_impl.UnimplementedError:
+      # Some EagerTensors may not implement .numpy/resolve, e.g. parallel
+      # tensors with multiple components on different devices.
+      return None
   if not is_tensor(tensor):
     return tensor
   if not isinstance(tensor, ops.Tensor):
@@ -853,7 +900,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     ValueError: If the shape is rank-0 and is not statically known to be -1.
   """
   if isinstance(tensor, ops.EagerTensor):
-    return tensor_shape.as_shape(
+    return tensor_shape.TensorShape(
         [dim if dim != -1 else None for dim in tensor.numpy()])
 
   if tensor.get_shape().ndims == 0:
@@ -976,11 +1023,12 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   return ret
 
 
+# TODO(mdan): Deprecate in favor of more static-friendly types.
 @tf_export("is_tensor")
-def is_tensor(x):  # pylint: disable=invalid-name
+def is_tf_type(x):  # pylint: disable=invalid-name
   """Checks whether `x` is a TF-native type that can be passed to many TF ops.
 
-  Use is_tensor to differentiate types that can ingested by TensorFlow ops
+  Use `is_tensor` to differentiate types that can ingested by TensorFlow ops
   without any conversion (e.g., `tf.Tensor`, `tf.SparseTensor`, and
   `tf.RaggedTensor`) from types that need to be converted into tensors before
   they are ingested (e.g., numpy `ndarray` and Python scalars).
@@ -990,21 +1038,27 @@ def is_tensor(x):  # pylint: disable=invalid-name
   ```python
   if not tf.is_tensor(t):
     t = tf.convert_to_tensor(t)
-  return t.dtype
+  return t.shape, t.dtype
   ```
 
   we check to make sure that `t` is a tensor (and convert it if not) before
-  accessing its `shape` and `dtype`.
+  accessing its `shape` and `dtype`.  (But note that not all TensorFlow native
+  types have shapes or dtypes; `tf.data.Dataset` is an example of a TensorFlow
+  native type that has neither shape nor dtype.)
 
   Args:
     x: A python object to check.
 
   Returns:
-    `True` if `x` is a tensor or "tensor-like", `False` if not.
+    `True` if `x` is a TensorFlow-native type.
   """
-  return (isinstance(x, (tensor_like.TensorLike, core.Tensor)) or
-          ops.is_dense_tensor_like(x) or
+  return (isinstance(x, internal.NativeObject) or
+          isinstance(x, core.Tensor) or
           getattr(x, "is_tensor_like", False))
+
+
+# Deprecated alias for tensor_util.is_tf_type.
+is_tensor = is_tf_type
 
 
 def shape_tensor(shape):  # pylint: disable=invalid-name

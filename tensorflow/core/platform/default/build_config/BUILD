@@ -1,10 +1,9 @@
 # Description:
 # Platform-specific build configurations.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_cuda_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
-load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
 
 package(default_visibility = ["//tensorflow:internal"])
 
@@ -218,18 +217,4 @@ cc_library(
         ],
     }),
     deps = [],
-)
-
-cc_library(
-    name = "sycl",
-    data = if_ccpp([
-        "@local_config_sycl//sycl:{}".format(sycl_library_path("ComputeCpp")),
-    ]),
-    linkopts = if_ccpp([
-        "-Wl,-rpath,../local_config_sycl/sycl/lib",
-    ]),
-    deps = if_ccpp(
-        ["@local_config_sycl//sycl:syclrt"],
-        ["@local_config_sycl//sycl:sycl_headers"],
-    ),
 )

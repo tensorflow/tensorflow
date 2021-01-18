@@ -1,4 +1,4 @@
-# Text Classification
+# Text classification
 
 Use a pre-trained model to category a paragraph into predefined groups.
 
@@ -7,7 +7,17 @@ Use a pre-trained model to category a paragraph into predefined groups.
 <img src="images/screenshot.gif" class="attempt-right" style="max-width: 300px">
 
 If you are new to TensorFlow Lite and are working with Android, we recommend
-exploring the following example applications that can help you get started.
+exploring the guide of
+[TensorFLow Lite Task Library](../../inference_with_metadata/task_library/nl_classifier)
+to integrate text classification models within just a few lines of code. You can
+also integrate the model using the
+[TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).
+
+The Android example below demonstrates the implementation for both methods as
+[lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/text_classification/android/lib_task_api)
+and
+[lib_interpreter](https://github.com/tensorflow/examples/tree/master/lite/examples/text_classification/android/lib_interpreter),
+respectively.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/text_classification/android">Android
 example</a>
@@ -16,7 +26,7 @@ If you are using a platform other than Android, or you are already familiar with
 the TensorFlow Lite APIs, you can download our starter text classification
 model.
 
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/text_classification/text_classification.tflite">Download
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/text_classification/text_classification_v2.tflite">Download
 starter model</a>
 
 ## How it works
@@ -44,7 +54,7 @@ Here are the steps to classify a paragraph with the model:
 *   This model was trained on movie reviews dataset so you may experience
     reduced accuracy when classifying text of other domains.
 
-## Performance Benchmarks
+## Performance benchmarks
 
 Performance benchmark numbers are generated with the tool
 [described here](https://www.tensorflow.org/lite/performance/benchmarks).
@@ -60,7 +70,7 @@ Performance benchmark numbers are generated with the tool
   </thead>
   <tr>
     <td rowspan = 3>
-      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/text_classification/text_classification.tflite">Text Classification</a>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/text_classification/text_classification_v2.tflite">Text Classification</a>
     </td>
     <td rowspan = 3>
       0.6 Mb

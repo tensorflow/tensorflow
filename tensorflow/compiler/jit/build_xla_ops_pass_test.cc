@@ -130,17 +130,6 @@ FunctionDefLibrary CreateFunctionDefLibWithConstFunction(const string& name) {
   return fdef_lib;
 }
 
-FunctionDefLibrary CreateFunctionDefLibWithInt32Input(const string& name) {
-  FunctionDefLibrary fdef_lib;
-  FunctionDef func = FunctionDefHelper::Create(
-      /*function_name=*/name, /*in_def=*/{"in: int32"},
-      /*out_def=*/{"out: int32"},
-      /*attr_def=*/{}, /*node_def=*/{{{"out"}, "Identity", {"in"}}},
-      /*ret_def=*/{{"out", "out:output:0"}});
-  *fdef_lib.add_function() = std::move(func);
-  return fdef_lib;
-}
-
 TEST_F(BuildXlaOpsTest, ControlDepsPreserved) {
   const char* kXlaDeviceName = "/job:worker/replica:0/task:0/device:XLA_CPU:0";
   Scope root = Scope::NewRootScope().WithDevice(kXlaDeviceName).ExitOnError();
@@ -269,6 +258,17 @@ TEST_F(BuildXlaOpsTest, NoExtraMergeForEdgeToSink) {
 }
 
 #ifdef GOOGLE_CUDA
+FunctionDefLibrary CreateFunctionDefLibWithInt32Input(const string& name) {
+  FunctionDefLibrary fdef_lib;
+  FunctionDef func = FunctionDefHelper::Create(
+      /*function_name=*/name, /*in_def=*/{"in: int32"},
+      /*out_def=*/{"out: int32"},
+      /*attr_def=*/{}, /*node_def=*/{{{"out"}, "Identity", {"in"}}},
+      /*ret_def=*/{{"out", "out:output:0"}});
+  *fdef_lib.add_function() = std::move(func);
+  return fdef_lib;
+}
+
 // This tests a rewrite that only makes sense and is active in a CUDA-enabled
 // build.  Specifically we check that we insert an IdentityN op to avoid extra
 // device-to-host copies.

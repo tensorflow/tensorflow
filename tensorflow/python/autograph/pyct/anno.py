@@ -35,9 +35,19 @@ import gast
 
 
 class NoValue(enum.Enum):
+  """Base class for different types of AST annotations."""
+
+  def of(self, node, default=None):
+    return getanno(node, self, default=default)
+
+  def add_to(self, node, value):
+    setanno(node, self, value)
+
+  def exists(self, node):
+    return hasanno(node, self)
 
   def __repr__(self):
-    return self.name
+    return str(self.name)
 
 
 class Basic(NoValue):
@@ -93,10 +103,16 @@ class Static(NoValue):
   ORIG_DEFINITIONS = (
       'The value of DEFINITIONS that applied to the original code before any'
       ' conversion.')
+  DEFINED_FNS_IN = (
+      'Local function definitions that may exist when exiting the node. See'
+      ' reaching_fndefs.py')
   DEFINED_VARS_IN = (
       'Symbols defined when entering the node. See reaching_definitions.py.')
   LIVE_VARS_OUT = ('Symbols live when exiting the node. See liveness.py.')
   LIVE_VARS_IN = ('Symbols live when entering the node. See liveness.py.')
+  TYPES = 'Static type information. See type_inference.py.'
+  CLOSURE_TYPES = 'Types of closure symbols at each detected call site.'
+  VALUE = 'Static value information. See type_inference.py.'
 
 
 FAIL = object()
@@ -112,8 +128,7 @@ def getanno(node, key, default=FAIL, field_name='___pyct_anno'):
   if (default is FAIL or (hasattr(node, field_name) and
                           (key in getattr(node, field_name)))):
     return getattr(node, field_name)[key]
-  else:
-    return default
+  return default
 
 
 def hasanno(node, key, field_name='___pyct_anno'):

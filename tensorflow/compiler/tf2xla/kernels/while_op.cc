@@ -309,7 +309,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   // 2. The op inputs at these indices are compile time constants.
   //
   // These compile time consts do not appear as _Args in the cond/body functions
-  // and are replaced by kConstant nodes instead. As as result, the compiled
+  // and are replaced by kConstant nodes instead. As a result, the compiled
   // body function does not have matching input and output shape. We fix this
   // by rewriting the body computation (see body_wrapper below) to output
   // just the non compile-time-const values and later pad up the while output
@@ -510,8 +510,41 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       // first compilation and the body/cond was recompiled with the updated
       // shape/datatype of the list.
       if (input_shape != list_shape) {
-        OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
-                                ctx->builder(), list_shape, &inputs[i]));
+        // Prepare dynamic dimensions for element shapes.
+        std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
+        for (int64 i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+          std::vector<xla::XlaOp> dynamic_dims;
+
+          const xla::Shape& shape = list_shape.tuple_shapes(i);
+
+          // We already have the dynamic size of leading dimension outside of
+          // the while loop without initializing the TensorList inside the while
+          // loop.
+          if (shape.is_dynamic_dimension(0)) {
+            xla::XlaOp leading_dim_size = xla::GetDimensionSize(input, 0);
+            dynamic_dims.push_back(leading_dim_size);
+          } else {
+            int32 dim_size = shape.dimensions(0);
+            dynamic_dims.push_back(
+                xla::ConstantR0<int32>(ctx->builder(), dim_size));
+          }
+
+          // Set dynamic dimension size to 0 for element value. Inside the while
+          // loop, TensorlistSetItem will properly set the element shape's
+          // dynamic dimension.
+          for (int64 dim = 1; dim < shape.dimensions_size(); ++dim) {
+            int32 dim_size = shape.dimensions(dim);
+            if (shape.is_dynamic_dimension(dim)) {
+              dim_size = 0;
+            }
+            dynamic_dims.push_back(
+                xla::ConstantR0<int32>(ctx->builder(), dim_size));
+          }
+          list_dynamic_dims.push_back(dynamic_dims);
+        }
+        OP_REQUIRES_OK(
+            ctx, CreateZerosTensorListWithShape(ctx->builder(), list_shape,
+                                                list_dynamic_dims, &inputs[i]));
       } else {
         inputs[i] = ctx->Input(input_num);
       }

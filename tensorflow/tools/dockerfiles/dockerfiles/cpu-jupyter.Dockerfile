@@ -29,11 +29,11 @@ RUN apt-get update && apt-get install -y curl
 ENV LANG C.UTF-8
 
 RUN apt-get update && apt-get install -y \
-    python3
+    python3 \
     python3-pip
 
 RUN python3 -m pip --no-cache-dir install --upgrade \
-    pip \
+    "pip<20.3" \
     setuptools
 
 # Some TF tools expect a "python" binary
@@ -48,21 +48,19 @@ RUN ln -s $(which python3) /usr/local/bin/python
 # Installs the latest version by default.
 ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
-RUN ${PIP} install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
+RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
-RUN python3 -m pip install jupyter matplotlib
+RUN python3 -m pip install --no-cache-dir jupyter matplotlib
 # Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN python3 -m pip install jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
+RUN python3 -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local
-RUN apt-get install -y --no-install-recommends wget
-# some examples require git to fetch dependencies
-RUN apt-get install -y --no-install-recommends git
+RUN apt-get update && apt-get install -y --no-install-recommends wget git
 WORKDIR /tf/tensorflow-tutorials
 RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/classification.ipynb
 RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/overfit_and_underfit.ipynb

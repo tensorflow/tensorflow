@@ -148,8 +148,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
     HloModule test_module
 
     ENTRY SineFunc {
-      p0 = f32[160000]{0} parameter(0)
-      ROOT s = f32[160000]{0} sine(p0)
+      p0 = f32[1600000]{0} parameter(0)
+      ROOT s = f32[1600000]{0} sine(p0)
     })";
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
@@ -182,8 +182,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
     HloModule test_module
 
     ENTRY SineFunc {
-      p0 = f32[160000]{0} parameter(0)
-      ROOT s = f32[160000]{0} cosine(p0)
+      p0 = f32[1600000]{0} parameter(0)
+      ROOT s = f32[1600000]{0} cosine(p0)
     })";
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
@@ -216,8 +216,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
     HloModule test_module
 
     ENTRY SineFunc {
-      p0 = f32[160000]{0} parameter(0)
-      ROOT s = f32[160000]{0} power(p0, p0)
+      p0 = f32[1600000]{0} parameter(0)
+      ROOT s = f32[1600000]{0} power(p0, p0)
     })";
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
@@ -241,8 +241,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
     HloModule test_module
 
     ENTRY SineFunc {
-      p0 = f32[160000]{0} parameter(0)
-      ROOT s = f32[160000]{0} atan2(p0, p0)
+      p0 = f32[16000000]{0} parameter(0)
+      ROOT s = f32[16000000]{0} atan2(p0, p0)
     })";
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();

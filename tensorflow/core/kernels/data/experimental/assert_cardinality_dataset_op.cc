@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <map>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
@@ -67,6 +68,11 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return cardinality_; }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
@@ -108,7 +114,8 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
             ElementString(dataset()->cardinality_), " but contained only ",
             ElementString(num_elements_), ".");
       }
-      if (num_elements_ > dataset()->cardinality_) {
+      if (dataset()->cardinality_ != kInfiniteCardinality &&
+          num_elements_ > dataset()->cardinality_) {
         return errors::FailedPrecondition(
             "Input dataset was expected to contain ",
             ElementString(dataset()->cardinality_), " but contained at least ",
@@ -142,6 +149,9 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
 
    private:
     static string ElementString(int64 n) {
+      if (n == kInfiniteCardinality) {
+        return strings::StrCat("an infinite number of elements");
+      }
       return strings::StrCat(n, " element", n != 1 ? "s" : "");
     }
 

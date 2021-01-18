@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.keras.backend import dtypes_module
+from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -48,7 +48,7 @@ class NoiseLayersTest(keras_parameterized.TestCase):
 
   @staticmethod
   def _make_model(dtype, class_type):
-    assert dtype in (dtypes_module.float32, dtypes_module.float64)
+    assert dtype in (dtypes.float32, dtypes.float64)
     assert class_type in ('gaussian_noise', 'gaussian_dropout', 'alpha_noise')
     model = keras.Sequential()
     model.add(keras.layers.Dense(8, input_shape=(32,), dtype=dtype))
@@ -70,22 +70,22 @@ class NoiseLayersTest(keras_parameterized.TestCase):
     model.train_on_batch(np.zeros((8, 32)), np.zeros((8, 8)))
 
   def test_noise_float32(self):
-    self._train_model(dtypes_module.float32, 'gaussian_noise')
+    self._train_model(dtypes.float32, 'gaussian_noise')
 
   def test_noise_float64(self):
-    self._train_model(dtypes_module.float64, 'gaussian_noise')
+    self._train_model(dtypes.float64, 'gaussian_noise')
 
   def test_dropout_float32(self):
-    self._train_model(dtypes_module.float32, 'gaussian_dropout')
+    self._train_model(dtypes.float32, 'gaussian_dropout')
 
   def test_dropout_float64(self):
-    self._train_model(dtypes_module.float64, 'gaussian_dropout')
+    self._train_model(dtypes.float64, 'gaussian_dropout')
 
   def test_alpha_dropout_float32(self):
-    self._train_model(dtypes_module.float32, 'alpha_noise')
+    self._train_model(dtypes.float32, 'alpha_noise')
 
   def test_alpha_dropout_float64(self):
-    self._train_model(dtypes_module.float64, 'alpha_noise')
+    self._train_model(dtypes.float64, 'alpha_noise')
 
 
 if __name__ == '__main__':

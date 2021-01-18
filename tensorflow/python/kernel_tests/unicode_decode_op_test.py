@@ -386,7 +386,7 @@ class UnicodeDecodeTest(test_util.TensorFlowTestCase,
            exception=(ValueError, errors.InvalidArgumentError)),
   ])  # pyformat: disable
   def testExceptions(self, exception=None, message=None, **args):
-    with self.assertRaisesRegexp(exception, message):
+    with self.assertRaisesRegex(exception, message):
       self.evaluate(ragged_string_ops.unicode_decode(**args))
 
   def testUnknownRankError(self):
@@ -394,7 +394,7 @@ class UnicodeDecodeTest(test_util.TensorFlowTestCase,
       return
     s = array_ops.placeholder(dtypes.string)
     message = "Rank of `input` must be statically known."
-    with self.assertRaisesRegexp(ValueError, message):
+    with self.assertRaisesRegex(ValueError, message):
       self.evaluate(ragged_string_ops.unicode_decode(s, input_encoding="UTF-8"))
 
   @parameterized.parameters([
@@ -710,7 +710,7 @@ class UnicodeSplitTest(test_util.TensorFlowTestCase,
            exception=(ValueError, errors.InvalidArgumentError)),
   ])  # pyformat: disable
   def testExceptions(self, exception=None, message=None, **args):
-    with self.assertRaisesRegexp(exception, message):
+    with self.assertRaisesRegex(exception, message):
       self.evaluate(ragged_string_ops.unicode_split(**args))
 
   def testUnknownRankError(self):
@@ -718,7 +718,7 @@ class UnicodeSplitTest(test_util.TensorFlowTestCase,
       return
     s = array_ops.placeholder(dtypes.string)
     message = "Rank of `input` must be statically known."
-    with self.assertRaisesRegexp(ValueError, message):
+    with self.assertRaisesRegex(ValueError, message):
       self.evaluate(ragged_string_ops.unicode_decode(s, input_encoding="UTF-8"))
 
 

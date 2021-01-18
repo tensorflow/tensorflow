@@ -793,7 +793,7 @@ struct base {
   // operation. Each functor for which this is enabled increases the
   // code size, so by default this is disabled for binary functors and
   // is enabled on a per-op basis as needed.
-  static const bool use_bcast_optimization = false;
+  static constexpr bool use_bcast_optimization = false;
 
   // operator() has the signature:
   //  out_type operator()(in_type in0, in_type in1 ...)
@@ -811,24 +811,24 @@ struct base {
 
   // Whether the functor can error out.  Currently applies only to integer
   // div and mod.
-  static const bool has_errors = false;
+  static constexpr bool has_errors = false;
 };
 
 // For now, we only apply certain speed optimization for
 // float/double's broadcast binary op.
 template <typename T>
 struct use_bcast_optimization {
-  static const bool value = false;
+  static constexpr bool value = false;
 };
 
 template <>
 struct use_bcast_optimization<float> {
-  static const bool value = true;
+  static constexpr bool value = true;
 };
 
 template <>
 struct use_bcast_optimization<double> {
-  static const bool value = true;
+  static constexpr bool value = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -943,12 +943,6 @@ struct acos : base<T, Eigen::internal::scalar_acos_op<T>> {};
 template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
 
-template <typename T>
-struct bessel_i0e : base<T, Eigen::internal::scalar_bessel_i0e_op<T>> {};
-
-template <typename T>
-struct bessel_i1e : base<T, Eigen::internal::scalar_bessel_i1e_op<T>> {};
-
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
 };
 
@@ -1007,17 +1001,17 @@ struct rint : base<T, Eigen::internal::scalar_rint_op<T>> {};
 
 template <typename T>
 struct add : base<T, Eigen::internal::scalar_sum_op<T>> {
-  static const bool use_bcast_optimization = true;
+  static constexpr bool use_bcast_optimization = true;
 };
 
 template <typename T>
 struct sub : base<T, Eigen::internal::scalar_difference_op<T>> {
-  static const bool use_bcast_optimization = true;
+  static constexpr bool use_bcast_optimization = true;
 };
 
 template <typename T>
 struct mul : base<T, Eigen::internal::scalar_product_op<T>> {
-  static const bool use_bcast_optimization = true;
+  static constexpr bool use_bcast_optimization = true;
 };
 
 template <typename T>
@@ -1029,7 +1023,7 @@ struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};
 template <typename T>
 struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
                               T, Eigen::internal::scalar_quotient_op<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1044,7 +1038,7 @@ struct mod : base<T, Eigen::internal::scalar_mod2_op<T>> {};
 template <typename T>
 struct safe_mod : base<T, Eigen::internal::safe_div_or_mod_op<
                               T, Eigen::internal::scalar_mod2_op<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1053,7 +1047,7 @@ struct floor_fmod : base<T, Eigen::internal::google_floor_fmod<T>> {};
 template <typename T>
 struct safe_floor_mod : base<T, Eigen::internal::safe_div_or_mod_op<
                                     T, Eigen::internal::google_floor_mod<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1062,7 +1056,7 @@ struct floor_div : base<T, Eigen::internal::google_floor_div<T>> {};
 template <typename T>
 struct safe_floor_div : base<T, Eigen::internal::safe_div_or_mod_op<
                                     T, Eigen::internal::google_floor_div<T>>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
 };
 
 template <typename T>
@@ -1073,14 +1067,38 @@ struct pow : base<T, Eigen::internal::scalar_pow_op<T, T>> {};
 
 template <typename T>
 struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
-  static const bool has_errors = true;
+  static constexpr bool has_errors = true;
+};
+
+// Version of safe_pow for integers which returns 0 if RHS is negative and LHS
+// is not 1 or -1. For use on GPUs, where we cannot raise an error.
+template <typename T>
+struct safe_pow_ignore_error_op {
+  static_assert(std::is_integral<T>::value, "Integer type expected");
+  EIGEN_EMPTY_STRUCT_CTOR(safe_pow_ignore_error_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
+                                                     const T& y) const {
+    if (TF_PREDICT_FALSE(y < 0)) {
+      if (x == T(-1)) {
+        T trunc_mod = Eigen::internal::scalar_mod2_op<T>()(y, T(2));
+        return trunc_mod == T(-1) ? T(-1) : T(1);
+      }
+      return x == T(1) ? T(1) : T(0);
+    }
+    return Eigen::internal::scalar_pow_op<T, T>{}(x, y);
+  }
 };
 
 template <typename T>
-struct maximum : base<T, Eigen::internal::scalar_max_op<T>> {};
+struct safe_pow_ignore_error : base<T, safe_pow_ignore_error_op<T>> {};
 
 template <typename T>
-struct minimum : base<T, Eigen::internal::scalar_min_op<T>> {};
+struct maximum
+    : base<T, Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNaN>> {};
+
+template <typename T>
+struct minimum
+    : base<T, Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNaN>> {};
 
 template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
@@ -1103,9 +1121,7 @@ struct scalar_atan2_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_atan2_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& y, const Scalar& x) const {
-#if GOOGLE_CUDA
-    return std::atan2(y, x);
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     return ::atan2(y, x);
 #else
     return std::atan2(y, x);

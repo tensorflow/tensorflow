@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -302,11 +300,11 @@ class CorrectnessTest(keras_parameterized.TestCase):
     self.assertAlmostEqual(history.history['loss'][-1], 0.5836, 4)
 
   @parameterized.named_parameters([
-      ('_None', contextlib.contextmanager(lambda: iter([None])), 0., 4.),
-      ('_0', lambda: keras.backend.learning_phase_scope(0), 4., 4.),
-      ('_1', lambda: keras.backend.learning_phase_scope(1), 0., 0.),
+      ('_None', None, 0., 4.),
+      ('_False', False, 4., 4.),
+      ('_True', True, 0., 0.),
   ])
-  def test_nested_model_learning_phase(self, nested_scope_fn,
+  def test_nested_model_learning_phase(self, training,
                                        expected_training_loss,
                                        expected_validation_loss):
     """Tests that learning phase is correctly set in an intermediate layer."""
@@ -326,18 +324,17 @@ class CorrectnessTest(keras_parameterized.TestCase):
       return keras.Model(inputs, outputs)
 
     def _regularize_model(unregularized_model):
-      inputs = keras.Input(unregularized_model.inputs[0].shape[1:])
-      with nested_scope_fn():
-        logits = unregularized_model(inputs)
-      outputs = keras.activations.softmax(logits)
-      model = keras.Model(inputs, outputs)
       # Regularize the most recent activations of a post-dropout layer.
       sample_activations = unregularized_model.get_layer(
           index=-2).get_output_at(-1)
       regularization_loss = keras.backend.mean(sample_activations)
-      model.add_loss(regularization_loss)
-      model.add_metric(
+      unregularized_model.add_loss(regularization_loss)
+      unregularized_model.add_metric(
           regularization_loss, aggregation='mean', name='regularization_loss')
+      inputs = keras.Input(unregularized_model.inputs[0].shape[1:])
+      logits = unregularized_model(inputs, training=training)
+      outputs = keras.activations.softmax(logits)
+      model = keras.Model(inputs, outputs)
       return model
 
     # Make and compile models.

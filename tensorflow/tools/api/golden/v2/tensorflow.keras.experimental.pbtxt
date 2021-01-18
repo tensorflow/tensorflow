@@ -9,15 +9,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LinearCosineDecay"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "LinearModel"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "NoisyLinearCosineDecay"
     mtype: "<type \'type\'>"
   }
   member {
@@ -31,9 +23,5 @@ tf_module {
   member {
     name: "WideDeepModel"
     mtype: "<type \'type\'>"
-  }
-  member_method {
-    name: "terminate_keras_multiprocessing_pools"
-    argspec: "args=[\'grace_period\', \'use_sigkill\'], varargs=None, keywords=None, defaults=[\'0.1\', \'False\'], "
   }
 }

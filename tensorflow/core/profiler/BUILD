@@ -1,4 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
 package(
@@ -25,7 +27,22 @@ tf_proto_library(
     name = "profiler_service_monitor_result_proto",
     srcs = ["profiler_service_monitor_result.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
     visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "profiler_options_proto",
+    srcs = ["profiler_options.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
+)
+
+# This is needed because of how tf_android_core_proto_sources parses proto paths.
+exports_files(
+    srcs = ["profiler_options.proto"],
+    visibility = ["//tensorflow/core:__pkg__"],
 )
 
 tf_proto_library(
@@ -34,7 +51,9 @@ tf_proto_library(
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
+    make_default_target_header_only = True,
     protodeps = [
+        ":profiler_options_proto",
         ":profiler_service_monitor_result_proto",
     ],
     use_grpc_namespace = True,
@@ -47,6 +66,7 @@ tf_proto_library(
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
+    make_default_target_header_only = True,
     protodeps = [":profiler_service_proto"],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
@@ -69,10 +89,11 @@ cc_library(
     name = "profiler_impl",
     visibility = ["//tensorflow:__pkg__"],
     deps = [
-        "//tensorflow/core/profiler/internal:annotation_stack_impl",
-        "//tensorflow/core/profiler/internal:profiler_factory_impl",
-        "//tensorflow/core/profiler/internal:traceme_recorder_impl",
+        "//tensorflow/core/profiler/internal/cpu:annotation_stack_impl",
+        "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",
+        "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
+        "//tensorflow/core/profiler/utils:time_utils_impl",
     ],
     alwayslink = True,
 )
@@ -115,7 +136,6 @@ cc_library(
 filegroup(
     name = "mobile_srcs",
     srcs = [
-        "//tensorflow/core/profiler/internal:mobile_srcs",
         "//tensorflow/core/profiler/lib:mobile_srcs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

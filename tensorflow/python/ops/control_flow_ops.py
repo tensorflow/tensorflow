@@ -43,6 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -54,6 +55,7 @@ from tensorflow.python.ops.gen_control_flow_ops import *
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -69,6 +71,12 @@ cond_v2 = LazyLoader("cond_v2", globals(),
 # while_v2 -> gradients_util -> control_flow_ops
 while_v2 = LazyLoader("while_v2", globals(),
                       "tensorflow.python.ops.while_v2")
+
+# def_function also uses cond
+def_function = LazyLoader(
+    "def_function", globals(),
+    "tensorflow.python.eager.def_function")
+
 
 # We override the 'tuple' for a control flow op, so we keep python's
 # existing 'tuple' for later use in this module.
@@ -110,6 +118,7 @@ def _summarize_eager(tensor, summarize=None):
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
 @tf_export("debugging.Assert", "Assert")
+@dispatch.add_dispatch_support
 @tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
@@ -1092,9 +1101,53 @@ def _UnpackIfSingleton(res):
     return res
 
 
+def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
+  """Special cases for `cond` when executing eagerly."""
+  pred = ops.convert_to_tensor(pred)
+  pred_constant_value = tensor_util.constant_value(pred)
+  if pred_constant_value is None:
+    # Eager tensors from a parallel device may not have a constant
+    # value. Running the cond op itself would work, but we don't have logic to
+    # build cond ops without wrapping in a function first.
+    if (not isinstance(true_fn, def_function.Function)
+        or not isinstance(false_fn, def_function.Function)):
+      raise TypeError("When running tf.cond on a parallel device, `true_fn` "
+                      "and `false_fn` must be decorated with `tf.function`.")
+    @def_function.function
+    def _parallel_device_cond_wrapper():
+      return cond_v2.cond_v2(pred, true_fn, false_fn, name)
+    functions_run_eagerly = def_function.functions_run_eagerly()
+    if functions_run_eagerly:
+      # We need to use tf.function to deal with variable creation inside the
+      # cond, and skipping it because of run_functions_eagerly would just
+      # crash immediately.
+      logging.warning(
+          "It looks like tf.function behavior was disabled, perhaps using "
+          "tf.config.run_functions_eagerly. Parallelized tf.cond requires "
+          "tf.function to work. This primitive will override the disable.")
+    def_function.run_functions_eagerly(False)
+    try:
+      return _parallel_device_cond_wrapper()
+    finally:
+      if functions_run_eagerly is not None:
+        def_function.run_functions_eagerly(functions_run_eagerly)
+  else:
+    # For conditions which are eager tensors with a constant value (most of
+    # them), we only call the relevant branch function and execute it eagerly.
+    with ops.name_scope(name, "cond", [pred]):
+      if pred_constant_value:
+        result = true_fn()
+      else:
+        result = false_fn()
+      if not strict:
+        result = _UnpackIfSingleton(result)
+      return result
+
+
 # pylint: disable=redefined-outer-name
 # pylint: disable=g-doc-args
 @tf_export(v1=["cond"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(
     None, "fn1/fn2 are deprecated in favor of the true_fn/false_fn arguments.",
     "fn1", "fn2")
@@ -1170,11 +1223,6 @@ def cond(pred,
   ```
 
   """
-  # Always enable control flow v2 if building a function, regardless of toggle.
-  if (util.EnableControlFlowV2(ops.get_default_graph()) and
-      not context.executing_eagerly()):
-    return cond_v2.cond_v2(pred, true_fn, false_fn, name)
-
   # We needed to make true_fn/false_fn keyword arguments for
   # backwards-compatibility. This check exists so that we can convert back to
   # having them be positional arguments.
@@ -1198,16 +1246,14 @@ def cond(pred,
   if not callable(false_fn):
     raise TypeError("false_fn must be callable.")
 
-  with ops.name_scope(name, "cond", [pred]):
-    if context.executing_eagerly():
-      if pred:
-        result = true_fn()
-      else:
-        result = false_fn()
-      if not strict:
-        result = _UnpackIfSingleton(result)
-      return result
+  if context.executing_eagerly():
+    return _eager_cond_implementation(pred, true_fn, false_fn, strict, name)
 
+  # Always enable control flow v2 if building a function, regardless of toggle.
+  if util.EnableControlFlowV2(ops.get_default_graph()):
+    return cond_v2.cond_v2(pred, true_fn, false_fn, name)
+
+  with ops.name_scope(name, "cond", [pred]):
     # Add the Switch to the graph.
     if isinstance(pred, bool):
       raise TypeError("pred must not be a Python bool")
@@ -1318,6 +1364,7 @@ def _cast_indexed_slice_indices(a, b):
 
 
 @tf_export("cond", v1=[])
+@dispatch.add_dispatch_support
 def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   """Return `true_fn()` if the predicate `pred` is true else `false_fn()`.
 
@@ -2870,6 +2917,24 @@ def group(*inputs, **kwargs):
   When this op finishes, all ops in `inputs` have finished. This op has no
   output.
 
+  Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
+  this method, as ops execute in the expected order thanks to automatic control
+  dependencies.* Only use `tf.group` when working with v1
+  `tf.Graph` code.
+
+  When operating in a v1-style graph context, ops are not executed in the same
+  order as specified in the code; TensorFlow will attempt to execute ops in
+  parallel or in an order convenient to the result it is computing.  `tf.group`
+  allows you to request that one or more results finish before execution
+  continues.
+
+  `tf.group` creates a single op (of type `NoOp`), and then adds appropriate
+  control dependencies.  Thus, `c = tf.group(a, b)` will compute the same graph
+  as this:
+
+      with tf.control_dependencies([a, b]):
+          c = tf.no_op()
+
   See also `tf.tuple` and
   `tf.control_dependencies`.
 
@@ -2925,23 +2990,18 @@ def group(*inputs, **kwargs):
 
 
 @tf_export("tuple", v1=[])
+@dispatch.add_dispatch_support
 def tuple_v2(tensors, control_inputs=None, name=None):
-  """Group tensors together.
+  """Groups tensors together.
 
-  This creates a tuple of tensors with the same values as the `tensors`
-  argument, except that the value of each tensor is only returned after the
-  values of all tensors have been computed.
+  The returned tensors have the same value as the input tensors, but they
+  are computed only after all the input tensors have been computed.
 
-  `control_inputs` contains additional ops that have to finish before this op
-  finishes, but whose outputs are not returned.
+  Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
+  this method, as ops execute in the expected order thanks to automatic control
+  dependencies.* Only use `tf.tuple` when working with v1 `tf.Graph` code.
 
-  This can be used as a "join" mechanism for parallel computations: all the
-  argument tensors can be computed in parallel, but the values of any tensor
-  returned by `tuple` are only available after all the parallel computations
-  are done.
-
-  See also `tf.group` and
-  `tf.control_dependencies`.
+  See also `tf.group` and `tf.control_dependencies`.
 
   Args:
     tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.
@@ -2961,6 +3021,7 @@ def tuple_v2(tensors, control_inputs=None, name=None):
 
 
 @tf_export(v1=["tuple"])
+@dispatch.add_dispatch_support
 def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined-builtin
   """Group tensors together.
 
@@ -2997,7 +3058,7 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
     tensors = [
-        t if (isinstance(t, ops.Operation) or tensor_util.is_tensor(t) or
+        t if (isinstance(t, ops.Operation) or tensor_util.is_tf_type(t) or
               t is None) else ops.convert_to_tensor(t) for t in tensors
     ]
     gating_ops = [
@@ -3020,7 +3081,7 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     gate = group(*gating_ops)
     tpl = []
     for t in tensors:
-      if tensor_util.is_tensor(t):
+      if tensor_util.is_tf_type(t):
         tpl.append(with_dependencies([gate], t))
       elif isinstance(t, ops.Operation):
         with ops.control_dependencies([gate]):
@@ -3260,7 +3321,11 @@ def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
   return actions
 
 
-def _indexed_case_helper(branch_fns, default, branch_index, name):
+def _indexed_case_helper(branch_fns,
+                         default,
+                         branch_index,
+                         name,
+                         lower_using_switch_merge=None):
   """Implementation of case that emits the n-way indexed Case op.
 
   Args:
@@ -3270,6 +3335,7 @@ def _indexed_case_helper(branch_fns, default, branch_index, name):
     branch_index: Optional int `Tensor`, which selects for the corresponding
       pred_fn_pair.
     name: A name for this operation (optional).
+    lower_using_switch_merge: Lower this op using switch merge ops (optional).
 
   Returns:
     The tensors returned by the pair whose key matched branch_index, or
@@ -3291,10 +3357,14 @@ def _indexed_case_helper(branch_fns, default, branch_index, name):
           | math_ops.greater_equal(branch_index, len(branch_fns)),
           len(branch_fns) - 1, branch_index)
       return branch_fns[int(branch_index)]()
-    return cond_v2.indexed_case(branch_index, branch_fns)
+    return cond_v2.indexed_case(
+        branch_index,
+        branch_fns,
+        lower_using_switch_merge=lower_using_switch_merge)
 
 
 @tf_export("case", v1=[])
+@dispatch.add_dispatch_support
 def case_v2(pred_fn_pairs,
             default=None,
             exclusive=False,
@@ -3399,6 +3469,7 @@ def case_v2(pred_fn_pairs,
 
 
 @tf_export(v1=["case"])
+@dispatch.add_dispatch_support
 def case(pred_fn_pairs,
          default=None,
          exclusive=False,
@@ -3582,6 +3653,55 @@ def switch_case(branch_index,
   return _indexed_case_helper(branch_fns, default, branch_index, name)
 
 
+@tf_export("__internal__.execute_fn_for_device", v1=[])
+def execute_fn_for_device(device_branch_fns, default_fn, name="execute_fn"):
+  """Executes one of the provided callables based on the device placement.
+
+  This API is used when the implementations for high level function depend on
+  the underlying device placement. It takes a dictionary of device type to
+  callables. The device type includes "CPU", "GPU", "TPU", etc. When the type of
+  the device where to run this op matches the key in 'device_branch_fns',
+  the corresponding callable is executed, falling back to 'default_fn' if none
+  matches.
+
+  **Example:**
+  ```python
+  def f1(): return tf.constant(1)
+  def f2(): return tf.constant(2)
+  r = tf.execute_fn_for_device({"CPU": f1, "GPU": f2}, default_fn=f1)
+  ```
+  'r' is evaluated as 1 when it runs on CPU, 2 running on GPU, 1 running on
+  any other device types.
+
+
+  Args:
+    device_branch_fns: a dictionary of device types to the callables. Each
+      callable must return a matching structure of tensors.
+    default_fn: fallback callable when the underlying device does not match any
+      key in the 'device_branch_fns'.
+    name: A name for this operation (optional).
+
+  Returns:
+    The tensors returned by the callable identified by device type during
+    execution, or those returned by 'default_fn' if no key matches.
+  """
+  # Always execute the default fn for XLA to avoid complicated graph by case op.
+  # see more discussions in b/167276293.
+  is_in_xla = util.GraphOrParentsInXlaContext(ops.get_default_graph())
+  if is_in_xla:
+    return default_fn()
+  device_branch_fns_upper = {k.upper(): v for k, v in device_branch_fns.items()}
+  branch_fns = list(device_branch_fns_upper.values())
+  devices = list(device_branch_fns_upper.keys())
+  device_index = gen_functional_ops.device_index(device_names=devices)
+  return _indexed_case_helper(
+      branch_fns,
+      default_fn,
+      device_index,
+      name,
+      lower_using_switch_merge=False)
+
+
 class XLAControlFlowContext(ControlFlowContext):
   """Base class for XLA and TPU control flow contexts."""
 
@@ -3603,6 +3723,29 @@ class XLAControlFlowContext(ControlFlowContext):
 
   def AddValue(self, x):
     return x
+
+  def RequiresUniqueFunctionRetracing(self):
+    """Returns whether the tf.function should be retraced if the context changes.
+    """
+    return False
+
+
+@tf_export("__internal__.get_enclosing_xla_context", v1=[])
+def get_enclosing_xla_context():
+  """Recursively find and return the XLAControlFlowContext."""
+  graph = ops.get_default_graph()
+  while graph is not None:
+    # pylint: disable=protected-access
+    context_ = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+    while context_ is not None:
+      if isinstance(context_, XLAControlFlowContext):
+        return context_
+      context_ = context_.outer_context
+    # This may be a FuncGraph due to defuns or v2 control flow. We need to
+    # find the original graph with the XLAControlFlowContext.
+    graph = getattr(graph, "outer_graph", None)
+  return None
 
 
 def from_control_flow_context_def(context_def, import_scope=None):

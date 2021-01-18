@@ -130,7 +130,8 @@ NodeDef MakeZipNode(const NodeDef& first_node, const NodeDef& second_node,
 
 // We need to insert our argument before the placeholders, which are the last
 // arguments.
-OpDef_ArgDef* InsertSeedArgument(OpDef* signature, int num_placeholders) {
+OpDef_ArgDef* InsertSeedArgument(FunctionDef* function, int num_placeholders) {
+  OpDef* signature = function->mutable_signature();
   int new_argument_idx = signature->input_arg_size() - num_placeholders;
   signature->add_input_arg();
   for (int i = signature->input_arg_size() - 1; i > new_argument_idx; i--) {
@@ -139,6 +140,16 @@ OpDef_ArgDef* InsertSeedArgument(OpDef* signature, int num_placeholders) {
   auto* seed_arg = signature->mutable_input_arg(new_argument_idx);
   seed_arg->set_name(strings::StrCat("seed_arg", new_argument_idx));
   seed_arg->set_type(DT_INT64);
+
+  // Update arg_attr, any arg_attrs for the placeholders how have index one
+  // higher.
+  for (int i = signature->input_arg_size() - 1; i > new_argument_idx; i--) {
+    if (function->arg_attr().contains(i - 1)) {
+      (*function->mutable_arg_attr())[i] =
+          (*function->mutable_arg_attr())[i - 1];
+      function->mutable_arg_attr()->erase(i - 1);
+    }
+  }
 
   return seed_arg;
 }
@@ -157,8 +168,7 @@ const FunctionDef* MakeLessStatefulFunction(const FunctionDef& map_function,
   graph_utils::SetUniqueGraphFunctionName("stateless_function", library,
                                           stateless_function);
 
-  auto* seed_arg = InsertSeedArgument(stateless_function->mutable_signature(),
-                                      num_placeholders);
+  auto* seed_arg = InsertSeedArgument(stateless_function, num_placeholders);
 
   auto* const random_uniform = stateless_function->mutable_node_def(
       function_utils::FindFunctionNodeWithOp("RandomUniform",

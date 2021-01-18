@@ -8,12 +8,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "public_api",
     srcs = ["public_api.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "@six_archive//:six",
@@ -34,7 +32,7 @@ py_test(
 py_library(
     name = "traverse",
     srcs = ["traverse.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "@six_archive//:six",
@@ -50,14 +48,14 @@ py_test(
         ":test_module1",
         ":test_module2",
         ":traverse",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 
 py_library(
     name = "test_module1",
     srcs = ["test_module1.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":test_module2",
     ],
@@ -66,5 +64,5 @@ py_library(
 py_library(
     name = "test_module2",
     srcs = ["test_module2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )

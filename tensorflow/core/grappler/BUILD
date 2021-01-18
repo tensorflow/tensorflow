@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 
 package(
@@ -58,10 +60,10 @@ tf_cc_test(
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:tensor_testutil",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -72,7 +74,7 @@ tf_cuda_library(
     hdrs = ["devices.h"],
     cuda_deps = [
         "//tensorflow/core/common_runtime/gpu:gpu_init",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ],
     visibility = ["//visibility:public"],
     deps = [

@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "TensorMapStackKeys"
+  summary: "Returns a Tensor stack of all keys in a tensor map."
+  description: <<END
+input_handle: the input map
+keys: the returned Tensor of all keys in the map
+END
+}

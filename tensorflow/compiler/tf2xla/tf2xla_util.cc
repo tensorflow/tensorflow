@@ -143,7 +143,7 @@ Status ReplaceArgUsageWithConstNode(
       usages.push_back({e->dst()->id(), e->dst_input()});
     }
 
-    for (int i = 0; i < usages.size(); i++) {
+    for (int i = 0, end = usages.size(); i < end; i++) {
       // Make a copy of `usage_node`, and change its input to const node.
       Node* usage_node = g->FindNodeId(usages[i].dst_node_id);
       NodeDef replace_def = usage_node->def();
@@ -158,7 +158,7 @@ Status ReplaceArgUsageWithConstNode(
 
       // Later entries in `usages` might have `usage_node` as dst node, but
       // `usage_node` is removed. Replace such entries with `replace_node`.
-      for (int j = i + 1; j < usages.size(); j++) {
+      for (int j = i + 1, end = usages.size(); j < end; j++) {
         if (usages[j].dst_node_id == usages[i].dst_node_id) {
           usages[j].dst_node_id = replace_node->id();
         }
@@ -205,6 +205,9 @@ Status PropagateConstIntoFuncAttr(
   func_attr.set_name(new_func_name);
   n->ClearAttr(attr_name);
   n->AddAttr(attr_name, func_attr);
+
+  TF_RETURN_IF_ERROR(fld->AddFunctionDef(
+      replace_fdef, lookup_fld->GetStackTraces(func_attr.name())));
 
   // Copy associated functions.
   TF_RETURN_IF_ERROR(CopyAssociatedFunctions(func_graph, lookup_fld, fld));
@@ -302,6 +305,7 @@ Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
 
 }  // namespace
 
+const char kTpuReplicateAttrName[] = "_tpu_replicate";
 const char kXlaOutsideCompilationAttrName[] = "_xla_outside_compilation";
 
 Status ValidateConfig(const tf2xla::Config& config) {
@@ -621,7 +625,7 @@ Status RewriteAssociatedFunction(
       NodeDebugInfo debug_info(*node);
       NodeDefBuilder builder(node->name(), rewritten_function_name, fld,
                              &debug_info);
-      for (auto attr : node->attrs()) {
+      for (const auto& attr : node->attrs()) {
         builder.Attr(attr.first, attr.second);
       }
       for (int i = 0; i < node->num_inputs(); i++) {
@@ -695,7 +699,7 @@ Status CachedFunctionHandles::GetOrInstantiate(
 
 Status CachedFunctionHandles::ReleaseAllHandles() {
   Status result;
-  for (auto iter : handles_) {
+  for (const auto& iter : handles_) {
     result.Update(flr_->ReleaseHandle(iter.second));
   }
   handles_.clear();

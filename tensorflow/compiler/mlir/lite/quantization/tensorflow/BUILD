@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     default_visibility = [
         ":friends",
@@ -23,14 +25,12 @@ cc_library(
         "passes.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )

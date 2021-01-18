@@ -18,13 +18,14 @@ limitations under the License.
 #include <stddef.h>
 
 #include <atomic>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/internal/annotation_stack.h"
+#include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
 #endif
 
 namespace tensorflow {

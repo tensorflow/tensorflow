@@ -8,7 +8,7 @@ package(
 py_library(
     name = "profiler",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":profiler_analysis_pb2_grpc",
         "//tensorflow/core/profiler:profiler_analysis_proto_py",
@@ -20,7 +20,7 @@ py_library(
 py_library(
     name = "profiler_analysis_pb2_grpc",
     srcs = ["profiler_analysis_pb2_grpc.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/profiler:profiler_analysis_proto_py"],
 )
@@ -31,14 +31,15 @@ py_library(
         "capture_tpu_profile.py",
         "version.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
         "//tensorflow/python:versions",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/eager:profiler_client",
+        "//tensorflow/python/profiler:profiler_client",
+        "//tensorflow/python/profiler:profiler_v2",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],

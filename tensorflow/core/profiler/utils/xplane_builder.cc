@@ -14,22 +14,36 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
+#include <algorithm>
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
 XPlaneBuilder::XPlaneBuilder(XPlane* plane)
-    : XStatsBuilder<XPlane>(plane), plane_(plane) {
-  for (auto& iter : *plane->mutable_event_metadata()) {
+    : XStatsBuilder<XPlane>(plane, this), plane_(plane) {
+  for (auto& id_and_metadata : *plane->mutable_event_metadata()) {
+    auto& metadata = id_and_metadata.second;
     last_event_metadata_id_ =
-        std::max<int64>(last_event_metadata_id_, iter.second.id());
-    event_metadata_by_name_.try_emplace(iter.second.name(), &iter.second);
+        std::max<int64>(last_event_metadata_id_, metadata.id());
+    if (!metadata.name().empty()) {
+      event_metadata_by_name_.try_emplace(metadata.name(), &metadata);
+    }
   }
-  for (auto& iter : *plane->mutable_stat_metadata()) {
+  for (auto& id_and_metadata : *plane->mutable_stat_metadata()) {
+    auto& metadata = id_and_metadata.second;
     last_stat_metadata_id_ =
-        std::max<int64>(last_stat_metadata_id_, iter.second.id());
-    stat_metadata_by_name_.try_emplace(iter.second.name(), &iter.second);
+        std::max<int64>(last_stat_metadata_id_, metadata.id());
+    if (!metadata.name().empty()) {
+      stat_metadata_by_name_.try_emplace(metadata.name(), &metadata);
+    }
   }
   for (XLine& line : *plane->mutable_lines()) {
     lines_by_id_.try_emplace(line.id(), &line);
@@ -42,23 +56,24 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(int64 metadata_id) {
   return &metadata;
 }
 
-// Returns XEventMetadata for the given event name.
+XEventMetadata* XPlaneBuilder::CreateEventMetadata() {
+  return GetOrCreateEventMetadata(++last_event_metadata_id_);
+}
+
 XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(
     absl::string_view name) {
   XEventMetadata*& metadata = event_metadata_by_name_[name];
   if (metadata == nullptr) {
-    metadata =
-        XPlaneBuilder::GetOrCreateEventMetadata(++last_event_metadata_id_);
+    metadata = CreateEventMetadata();
     metadata->set_name(std::string(name));
   }
   return metadata;
 }
 
-XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(string&& name) {
+XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(std::string&& name) {
   XEventMetadata*& metadata = event_metadata_by_name_[name];
   if (metadata == nullptr) {
-    metadata =
-        XPlaneBuilder::GetOrCreateEventMetadata(++last_event_metadata_id_);
+    metadata = CreateEventMetadata();
     metadata->set_name(std::move(name));
   }
   return metadata;
@@ -70,41 +85,47 @@ XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(int64 metadata_id) {
   return &metadata;
 }
 
-// Returns XStatMetadata for the given stat name.
+XStatMetadata* XPlaneBuilder::CreateStatMetadata() {
+  return GetOrCreateStatMetadata(++last_stat_metadata_id_);
+}
+
 XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(absl::string_view name) {
   XStatMetadata*& metadata = stat_metadata_by_name_[name];
   if (metadata == nullptr) {
-    metadata = XPlaneBuilder::GetOrCreateStatMetadata(++last_stat_metadata_id_);
+    metadata = CreateStatMetadata();
     metadata->set_name(std::string(name));
   }
   return metadata;
 }
 
-XLine* XPlaneBuilder::AddLine(int64 line_id) {
-  XLine*& line = lines_by_id_[line_id];
-  if (line == nullptr) {
-    line = RawPlane()->add_lines();
-    line->set_id(line_id);
+XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(std::string&& name) {
+  XStatMetadata*& metadata = stat_metadata_by_name_[name];
+  if (metadata == nullptr) {
+    metadata = CreateStatMetadata();
+    metadata->set_name(std::move(name));
   }
-  return line;
+  return metadata;
 }
 
-// Returns a builder for the line with the given id. Creates a new line if the
-// id was unused, otherwise the builder will add events to an existing line.
 XLineBuilder XPlaneBuilder::GetOrCreateLine(int64 line_id) {
-  return XLineBuilder(AddLine(line_id));
+  XLine*& line = lines_by_id_[line_id];
+  if (line == nullptr) {
+    line = plane_->add_lines();
+    line->set_id(line_id);
+  }
+  return XLineBuilder(line, this);
 }
 
 XEventBuilder XLineBuilder::AddEvent(const XEventMetadata& metadata) {
   XEvent* event = line_->add_events();
   event->set_metadata_id(metadata.id());
-  return XEventBuilder(line_, event);
+  return XEventBuilder(line_, plane_, event);
 }
 
 XEventBuilder XLineBuilder::AddEvent(const XEvent& event) {
   XEvent* new_event = line_->add_events();
   *new_event = event;
-  return XEventBuilder(line_, new_event);
+  return XEventBuilder(line_, plane_, new_event);
 }
 
 void XLineBuilder::SetTimestampNsAndAdjustEventOffsets(int64 timestamp_ns) {

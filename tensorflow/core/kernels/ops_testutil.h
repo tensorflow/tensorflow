@@ -126,7 +126,7 @@ class OpsTestBase : public ::testing::Test {
     std::string container_name =
         container.empty() ? rm->default_container() : container;
     EXPECT_TRUE(rm->Create(container_name, name, resource).ok());
-    AddResourceInputInternal(container_name, name, MakeTypeIndex<T>());
+    AddResourceInputInternal(container_name, name, TypeIndex::Make<T>());
   }
 
   // Runs an operation producing 'num_outputs' outputs.

@@ -18,14 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
-from tensorflow.python.keras.layers.preprocessing import categorical_encoding_v1
-from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
+from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
+from tensorflow.python.keras.layers.preprocessing import string_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
-from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -80,18 +77,23 @@ class TextVectorization(text_vectorization.TextVectorization,
       vocabulary is less than max_tokens.
   """
 
+  def __init__(self,
+               max_tokens=None,
+               standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
+               split=text_vectorization.SPLIT_ON_WHITESPACE,
+               ngrams=None,
+               output_mode=text_vectorization.INT,
+               output_sequence_length=None,
+               pad_to_max_tokens=True,
+               **kwargs):
+    super(TextVectorization,
+          self).__init__(max_tokens, standardize, split, ngrams, output_mode,
+                         output_sequence_length, pad_to_max_tokens, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "TextVectorization_V1").set(True)
+
   def _get_vectorization_class(self):
-    return categorical_encoding_v1.CategoricalEncoding
+    return category_encoding_v1.CategoryEncoding
 
   def _get_index_lookup_class(self):
-    return index_lookup_v1.IndexLookup
-
-  def _to_numpy(self, data):
-    """Converts preprocessed inputs into numpy arrays."""
-    if isinstance(data, np.ndarray):
-      return data
-    session = K.get_session()
-    data = session.run(data)
-    if isinstance(data, ragged_tensor_value.RaggedTensorValue):
-      data = np.array(data.to_list())
-    return data
+    return string_lookup_v1.StringLookup

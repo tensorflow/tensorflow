@@ -22,16 +22,25 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-// Convert data types to float16 where appropriate to improve performance on
-// GPUs.
+enum class AutoMixedPrecisionMode { CUDA, MKL };
+
+// Convert data types to float16 or bfloat16 where appropriate to improve
+// performance on GPUs or CPUs.
 class AutoMixedPrecision : public GraphOptimizer {
  public:
+  // If 'mode' is CUDA, converts nodes to float16 on Nvidia GPUs. If MKL,
+  // converts nodes to bfloat16 on CPUs in order to take advantage of MKL
+  // performance improvements with bfloat16.
   explicit AutoMixedPrecision(
-      RewriterConfig::Toggle opt_level = RewriterConfig::ON) {}
+      AutoMixedPrecisionMode mode = AutoMixedPrecisionMode::CUDA)
+      : mode_(mode) {}
 
   ~AutoMixedPrecision() override {}
 
-  string name() const override { return "auto_mixed_precision"; };
+  string name() const override {
+    return mode_ == AutoMixedPrecisionMode::CUDA ? "auto_mixed_precision_cuda"
+                                                 : "auto_mixed_precision_mkl";
+  };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -40,6 +49,9 @@ class AutoMixedPrecision : public GraphOptimizer {
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
+
+ private:
+  const AutoMixedPrecisionMode mode_;
 };
 
 }  // end namespace grappler

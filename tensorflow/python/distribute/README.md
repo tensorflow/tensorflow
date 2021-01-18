@@ -49,7 +49,7 @@ model.evaluate(dataset)
 
 ```python
 # Create the strategy instance.
-tpu_strategy = tf.distribute.experimental.TPUStrategy(resolver)
+tpu_strategy = tf.distribute.TPUStrategy(resolver)
 
 
 # Create the keras model under strategy.scope()

@@ -48,6 +48,7 @@ namespace xla {
   V(kAdd, "add", 2)                                                    \
   V(kAddDependency, "add-dependency", 2)                               \
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)                      \
+  V(kAllGather, "all-gather", 1)                                       \
   V(kAllReduce, "all-reduce", kHloOpcodeIsVariadic)                    \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                     \
   V(kAtan2, "atan2", 2)                                                \
@@ -62,6 +63,8 @@ namespace xla {
   V(kCholesky, "cholesky", 1)                                          \
   V(kClamp, "clamp", 3)                                                \
   V(kCollectivePermute, "collective-permute", 1)                       \
+  V(kCollectivePermuteStart, "collective-permute-start", 1)            \
+  V(kCollectivePermuteDone, "collective-permute-done", 1)              \
   V(kClz, "count-leading-zeros", 1)                                    \
   V(kCompare, "compare", 2)                                            \
   V(kComplex, "complex", 2)                                            \
@@ -95,6 +98,7 @@ namespace xla {
   V(kIsFinite, "is-finite", 1)                                         \
   V(kLog, "log", 1)                                                    \
   V(kLog1p, "log-plus-one", 1)                                         \
+  V(kLogistic, "logistic", 1)                                          \
   V(kAnd, "and", 2)                                                    \
   V(kNot, "not", 1)                                                    \
   V(kOr, "or", 2)                                                      \
@@ -115,10 +119,11 @@ namespace xla {
   V(kRecvDone, "recv-done", 1)                                         \
   V(kReduce, "reduce", kHloOpcodeIsVariadic)                           \
   V(kReducePrecision, "reduce-precision", 1)                           \
-  V(kReduceWindow, "reduce-window", 2)                                 \
+  V(kReduceWindow, "reduce-window", kHloOpcodeIsVariadic)              \
   V(kRemainder, "remainder", 2)                                        \
   V(kReplicaId, "replica-id", 0)                                       \
   V(kReshape, "reshape", 1)                                            \
+  V(kDynamicReshape, "dynamic-reshape", kHloOpcodeIsVariadic)          \
   V(kReverse, "reverse", 1)                                            \
   V(kRng, "rng", kHloOpcodeIsVariadic)                                 \
   V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)              \
@@ -138,6 +143,7 @@ namespace xla {
   V(kSlice, "slice", 1)                                                \
   V(kSort, "sort", kHloOpcodeIsVariadic)                               \
   V(kSqrt, "sqrt", 1)                                                  \
+  V(kCbrt, "cbrt", 1)                                                  \
   V(kSubtract, "subtract", 2)                                          \
   V(kTanh, "tanh", 1)                                                  \
   V(kTrace, "trace", 1)                                                \

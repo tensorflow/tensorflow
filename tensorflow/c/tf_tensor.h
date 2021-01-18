@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 
@@ -44,6 +45,16 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Allocator Attributes used for tensor allocation.
+typedef struct TF_AllocatorAttributes {
+  size_t struct_size;
+  // Set boolean to 1 for CPU allocation, else 0.
+  TF_Bool on_host;
+} TF_AllocatorAttributes;
+
+#define TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE \
+  TF_OFFSET_OF_END(TF_AllocatorAttributes, on_host)
 
 // --------------------------------------------------------------------------
 // TF_Tensor holds a multi-dimensional array of elements of a single data type.
@@ -147,34 +158,6 @@ TF_CAPI_EXPORT extern void TF_TensorBitcastFrom(const TF_Tensor* from,
                                                 const int64_t* new_dims,
                                                 int num_new_dims,
                                                 TF_Status* status);
-
-// --------------------------------------------------------------------------
-// Encode the string `src` (`src_len` bytes long) into `dst` in the format
-// required by TF_STRING tensors. Does not write to memory more than `dst_len`
-// bytes beyond `*dst`. `dst_len` should be at least
-// TF_StringEncodedSize(src_len).
-//
-// On success returns the size in bytes of the encoded string.
-// Returns an error into `status` otherwise.
-TF_CAPI_EXPORT extern size_t TF_StringEncode(const char* src, size_t src_len,
-                                             char* dst, size_t dst_len,
-                                             TF_Status* status);
-
-// Decode a string encoded using TF_StringEncode.
-//
-// On success, sets `*dst` to the start of the decoded string and `*dst_len` to
-// its length. Returns the number of bytes starting at `src` consumed while
-// decoding. `*dst` points to memory within the encoded buffer.  On failure,
-// `*dst` and `*dst_len` are undefined and an error is set in `status`.
-//
-// Does not read memory more than `src_len` bytes beyond `src`.
-TF_CAPI_EXPORT extern size_t TF_StringDecode(const char* src, size_t src_len,
-                                             const char** dst, size_t* dst_len,
-                                             TF_Status* status);
-
-// Return the size in bytes required to encode a string `len` bytes long into a
-// TF_STRING tensor.
-TF_CAPI_EXPORT extern size_t TF_StringEncodedSize(size_t len);
 
 // Returns bool iff this tensor is aligned.
 TF_CAPI_EXPORT extern bool TF_TensorIsAligned(const TF_Tensor*);

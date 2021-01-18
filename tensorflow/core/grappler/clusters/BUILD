@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load(
@@ -11,10 +13,8 @@ package(
 
 config_setting(
     name = "xsmm",
+    define_values = {"tensorflow_xsmm": "1"},
     licenses = ["notice"],
-    values = {
-        "define": "tensorflow_xsmm=1",
-    },
 )
 
 tf_cuda_library(
@@ -147,6 +147,7 @@ tf_cc_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_gpu",
+        "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
     ],
     deps = [
         ":single_machine",

@@ -28,7 +28,12 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -227,21 +232,22 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, expected_output=[b"foo", b"bar", b"baz"])
 
   @combinations.generate(test_base.default_test_combinations())
-  def testFromGeneratorDict(self):
+  def testFromGeneratorDatastructures(self):
+    # Tests multiple datastructures.
     def generator():
-      yield {"a": "foo", "b": [1, 2]}
-      yield {"a": "bar", "b": [3, 4]}
-      yield {"a": "baz", "b": [5, 6]}
+      yield {"a": "foo", "b": [1, 2], "c": (9,)}
+      yield {"a": "bar", "b": [3], "c": (7, 6)}
+      yield {"a": "baz", "b": [5, 6], "c": (5, 4)}
 
     dataset = dataset_ops.Dataset.from_generator(
         generator,
-        output_types={"a": dtypes.string, "b": dtypes.int32},
-        output_shapes={"a": [], "b": [None]})
+        output_types={"a": dtypes.string, "b": dtypes.int32, "c": dtypes.int32},
+        output_shapes={"a": [], "b": [None], "c": [None]})
     self.assertDatasetProduces(
         dataset,
-        expected_output=[{"a": b"foo", "b": [1, 2]},
-                         {"a": b"bar", "b": [3, 4]},
-                         {"a": b"baz", "b": [5, 6]}])
+        expected_output=[{"a": b"foo", "b": [1, 2], "c": [9]},
+                         {"a": b"bar", "b": [3], "c": [7, 6]},
+                         {"a": b"baz", "b": [5, 6], "c": [5, 4]}])
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorTypeError(self):
@@ -258,7 +264,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertAllEqual([1, 2, 3], self.evaluate(get_next()))
     self.assertAllEqual([4, 5, 6], self.evaluate(get_next()))
-    with self.assertRaisesOpError("The expected type was int64"):
+    with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
     self.assertAllEqual([7, 8, 9], self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
@@ -278,7 +284,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertAllEqual([1, 2, 3], self.evaluate(get_next()))
     self.assertAllEqual([4, 5, 6], self.evaluate(get_next()))
-    with self.assertRaisesOpError(r"element of shape \(3,\) was expected"):
+    with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
     self.assertAllEqual([11, 12, 13], self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
@@ -299,11 +305,9 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertEqual((1, 2), self.evaluate(get_next()))
     self.assertEqual((3, 4), self.evaluate(get_next()))
-    with self.assertRaisesOpError(
-        r"The expected structure was \(tf\.int64, tf\.int64\)"):
+    with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
-    with self.assertRaisesOpError(
-        r"The expected structure was \(tf\.int64, tf\.int64\)"):
+    with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
     self.assertEqual((9, 10), self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
@@ -422,8 +426,12 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
                                 stateful=True)
 
     dummy = constant_op.constant(37)
-    dataset = dataset_ops._GeneratorDataset(dummy, lambda x: x, lambda x: x,
-                                            finalize_fn).take(2)
+
+    dataset = dataset_ops._GeneratorDataset(
+        dummy, lambda x: x, lambda x: x, finalize_fn,
+        tensor_spec.TensorSpec((), dtypes.int32))
+
+    dataset = dataset.take(2)
     get_next = self.getNext(dataset)
 
     self.assertAllEqual(37, self.evaluate(get_next()))
@@ -444,6 +452,68 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, requires_initialization=True, shared_name="shared_dataset")
 
     self.assertAllEqual([20], self.evaluate(get_next()))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromGeneratorRaggedTensor(self):
+
+    def generator():
+      yield ragged_factory_ops.constant([[1, 2], [3]])
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator,
+        output_signature=ragged_tensor.RaggedTensorSpec(
+            shape=(2, None), dtype=dtypes.int32))
+    get_next = self.getNext(dataset)
+
+    ret = get_next()
+
+    self.assertIsInstance(ret, ragged_tensor.RaggedTensor)
+    self.assertAllEqual([[1, 2], [3]], ret)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromGeneratorSparseTensor(self):
+
+    def generator():
+      yield sparse_tensor.SparseTensor(
+          indices=[[0, 0], [1, 2]],
+          values=constant_op.constant([1, 2], dtype=dtypes.int64),
+          dense_shape=[3, 4])
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator,
+        output_signature=sparse_tensor.SparseTensorSpec([3, 4], dtypes.int64))
+
+    get_next = self.getNext(dataset)
+
+    ret = get_next()
+
+    self.assertIsInstance(ret, sparse_tensor.SparseTensor)
+    self.assertAllEqual([[1, 0, 0, 0], [0, 0, 2, 0], [0, 0, 0, 0]],
+                        sparse_ops.sparse_tensor_to_dense(ret))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTypeIsListError(self):
+
+    def generator():
+      for _ in range(10):
+        yield [20]
+
+    with self.assertRaisesRegex(
+        TypeError, r"Cannot convert value \[tf.int64\] to a TensorFlow DType"):
+      dataset_ops.Dataset.from_generator(
+          generator, output_types=[dtypes.int64])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDimensionIsListError(self):
+
+    def generator():
+      for _ in range(10):
+        yield [20]
+
+    with self.assertRaisesRegex(TypeError,
+                                r"Dimension value must be integer or None"):
+      dataset_ops.Dataset.from_generator(
+          generator, output_types=(dtypes.int64), output_shapes=[[1]])
 
 
 if __name__ == "__main__":

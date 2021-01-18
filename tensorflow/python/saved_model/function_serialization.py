@@ -46,6 +46,14 @@ def _serialize_function_spec(function_spec, coder):
   proto.is_method = function_spec.is_method
   proto.input_signature.CopyFrom(
       coder.encode_structure(function_spec.input_signature))
+
+  # See `tf.function` and the JitCompile proto for details.
+  proto.jit_compile = {
+      None: saved_object_graph_pb2.FunctionSpec.JitCompile.DEFAULT,
+      True: saved_object_graph_pb2.FunctionSpec.JitCompile.ON,
+      False: saved_object_graph_pb2.FunctionSpec.JitCompile.OFF,
+  }.get(function_spec.jit_compile)
+
   return proto
 
 
@@ -80,10 +88,16 @@ def serialize_bare_concrete_function(concrete_function, name_map):
   # pylint: disable=protected-access
   name = name_map.get(compat.as_text(concrete_function.name),
                       concrete_function.name)
-  return saved_object_graph_pb2.SavedBareConcreteFunction(
+  proto = saved_object_graph_pb2.SavedBareConcreteFunction(
       concrete_function_name=name,
       allowed_positional_arguments=concrete_function._num_positional_args,
       argument_keywords=concrete_function._arg_keywords)
+  if concrete_function._pre_initialized_function_spec is not None:
+    coder = nested_structure_coder.StructureCoder()
+    proto.function_spec.CopyFrom(
+        _serialize_function_spec(
+            concrete_function._pre_initialized_function_spec, coder))
+  return proto
   # pylint: enable=protected-access
 
 
@@ -151,7 +165,8 @@ def wrap_cached_variables(concrete_function):
   func_graph_module.func_graph_from_py_func(
       None, wrap_function, args=tuple(args), kwargs={},
       func_graph=outer_graph)
-  fn = defun.ConcreteFunction(outer_graph)
+  fn = defun.ConcreteFunction(
+      outer_graph, function_spec=concrete_function._function_spec)  # pylint: disable=protected-access
   fn._arg_keywords = concrete_function._arg_keywords  # pylint: disable=protected-access
   fn._num_positional_args = concrete_function._num_positional_args  # pylint: disable=protected-access
 

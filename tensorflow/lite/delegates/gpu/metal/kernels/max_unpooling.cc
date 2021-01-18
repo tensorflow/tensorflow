@@ -34,110 +34,67 @@ namespace gpu {
 namespace metal {
 namespace {
 
-std::string GetMaxUnpoolingCode(const HW& kernel_size) {
+std::string GetMaxUnpoolingCode() {
   std::string shader_source = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    constant int window_w = $0;
-    struct uniforms {
-      int2 src_size;
-      int2 dst_size;
-      int2 stride;
-      int2 offset;
-    };
+kernel void ComputeFunction($0
+                            uint3 gid[[thread_position_in_grid]]) {
+  int X = static_cast<int>(gid.x);
+  int Y = static_cast<int>(gid.y);
+  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) {
+    return;
+  }
 
-    $$0
-    kernel void ComputeFunction(
-                                $$1
-                                uint3 gid[[thread_position_in_grid]]) {
-      int X = static_cast<int>(gid.x);
-      int Y = static_cast<int>(gid.y);
-      if (X >= params.dst_size.x || Y >= params.dst_size.y) {
-        return;
-      }
+  int src_x = (X + args.offset_x) / args.stride_x;
+  int src_y = (Y + args.offset_y) / args.stride_y;
 
-      int src_x = (X + params.offset.x) / params.stride.x;
-      int src_y = (Y + params.offset.y) / params.stride.y;
+  bool outside = src_x < 0 || src_y < 0 ||
+    src_x >= args.src_tensor.Width() || src_y >= args.src_tensor.Height();
 
-      bool outside = src_x < 0 || src_y < 0 ||
-        src_x >= params.src_size.x || src_y >= params.src_size.y;
+  int4 indexes = outside ? int4(0) : int4(args.src_indices.Read(src_x, src_y, gid.z));
+  FLT4 src_color = outside ? FLT4(0.0f) : args.src_tensor.Read(src_x, src_y, gid.z);
 
-      int src_index = (gid.z * params.src_size.y + src_y) * params.src_size.x + src_x;
-      int linear_index = (gid.z * params.dst_size.y + Y) * params.dst_size.x + X;
+  int t_x = X - (src_x * args.stride_x - args.offset_x);
+  int t_y = Y - (src_y * args.stride_y - args.offset_y);
+  int t_index = t_y * args.kernel_size_x + t_x;
 
-      int4 indexes = outside ? int4(0) : int4(src_indices_buffer[src_index]);
-      FLT4 src_color = outside ? FLT4(0.0f) : src_buffer[src_index];
+  FLT4 value;
+  value.x = t_index == indexes.x ? src_color.x : 0.0;
+  value.y = t_index == indexes.y ? src_color.y : 0.0;
+  value.z = t_index == indexes.z ? src_color.z : 0.0;
+  value.w = t_index == indexes.w ? src_color.w : 0.0;
 
-      int t_x = X - (src_x * params.stride.x - params.offset.x);
-      int t_y = Y - (src_y * params.stride.y - params.offset.y);
-      int t_index = t_y * window_w + t_x;
-
-      FLT4 value;
-      value.x = t_index == indexes.x ? src_color.x : 0.0;
-      value.y = t_index == indexes.y ? src_color.y : 0.0;
-      value.z = t_index == indexes.z ? src_color.z : 0.0;
-      value.w = t_index == indexes.w ? src_color.w : 0.0;
-
-      $$2
-      output_buffer[linear_index] = value;
-    }
+  args.dst_tensor.Write(value, X, Y, gid.z);
+}
   )";
-  return absl::Substitute(shader_source, kernel_size.w);
+  return shader_source;
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
-    int id, ValueId input_id, ValueId input_indices_id, ValueId output_id,
-    const MaxUnpooling2DAttributes& params) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetMaxUnpoolingCode(params.kernel);
+ComputeTaskDescriptor MaxUnpooling(const OperationDef& definition,
+                                   const MaxUnpooling2DAttributes& attr) {
+  ComputeTaskDescriptor desc(definition);
+  desc.shader_source = GetMaxUnpoolingCode();
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-      {input_indices_id, "device FLT4* const src_indices_buffer"},
-  };
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddSrcTensor("src_indices", definition.src_tensors[1]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer",
-                         [input_id, input_indices_id,
-                          params](const std::map<ValueId, BHWC>& buffers) {
-                           return CalculateOutputShape(
-                               buffers.find(input_id)->second, params);
-                         }};
+  desc.args.AddInt("kernel_size_x", attr.kernel.w);
+  desc.args.AddInt("stride_x", attr.strides.w);
+  desc.args.AddInt("stride_y", attr.strides.h);
+  desc.args.AddInt("offset_x", attr.padding.prepended.w);
+  desc.args.AddInt("offset_y", attr.padding.prepended.h);
 
-  desc->uniform_buffers = {
-      {"constant uniforms& params",
-       [input_id, input_indices_id, output_id,
-        params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         const auto& output_dimension = buffers.find(output_id)->second;
-         std::vector<int> uniform_params{
-             dimension.w,
-             dimension.h,
-             output_dimension.w,
-             output_dimension.h,
-             params.strides.w,
-             params.strides.h,
-             params.padding.prepended.w,
-             params.padding.prepended.h,
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
-
-  desc->resize_function = [input_id, input_indices_id,
-                           params](const std::map<ValueId, BHWC>& buffers) {
-    const auto& src_shape = buffers.find(input_id)->second;
-    BHWC dst_shape = CalculateOutputShape(src_shape, params);
-    const uint3 groups_size{16, 16, 1};
-    int groups_x = IntegralDivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(dst_shape.h, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(dst_shape.c, 4);
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
+    const uint3 groups_size{8, 4, 1};
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
+    int groups_z = DivideRoundUp(dst_shapes[0].c, 4);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

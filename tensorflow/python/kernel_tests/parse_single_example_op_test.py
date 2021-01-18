@@ -856,6 +856,7 @@ class ParseSingleExampleTest(test.TestCase):
                                                  expected_err[1]):
           out = parsing_ops.parse_single_example(**kwargs)
           sess.run(flatten_values_tensors_or_sparse(out.values()))
+        return
       else:
         # Returns dict w/ Tensors and SparseTensors.
         out = parsing_ops.parse_single_example(**kwargs)
@@ -938,6 +939,20 @@ class ParseSingleExampleTest(test.TestCase):
             }
         },
         expected_output)
+
+  def testExampleLongerThanSpec(self):
+    serialized = example(
+        features=features({
+            "a": bytes_feature([b"a", b"b"]),
+        })).SerializeToString()
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                "a": parsing_ops.FixedLenFeature(1, dtypes.string)
+            }
+        },
+        expected_err=(errors_impl.OpError, "Can't parse serialized Example"))
 
 
 if __name__ == "__main__":

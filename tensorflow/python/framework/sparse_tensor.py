@@ -23,18 +23,18 @@ import collections
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-from tensorflow.python import _pywrap_utils
 from tensorflow.python import tf2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.types import internal
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
@@ -44,7 +44,7 @@ _override_helper = ops._override_helper
 
 
 @tf_export("sparse.SparseTensor", "SparseTensor")
-class SparseTensor(tensor_like.TensorLike, composite_tensor.CompositeTensor):
+class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
   """Represents a sparse tensor.
 
   TensorFlow represents a sparse tensor as three separate dense tensors:
@@ -132,38 +132,9 @@ class SparseTensor(tensor_like.TensorLike, composite_tensor.CompositeTensor):
       # is a VariableOp and updating users of SparseTensor.
       values = ops.convert_to_tensor(values, name="values")
 
-      # Can't check `if context.executing_eagerly()` here because sparse
-      # placeholders can still be used in eager context, when building a
-      # functional model.
-      if isinstance(indices, ops.EagerTensor):
-        try:
-          dense_shape = ops.convert_to_tensor(
-              dense_shape, name="dense_shape", dtype=dtypes.int64)
-          dense_shape_default = tensor_shape.TensorShape(dense_shape)
-        except ValueError:
-          raise ValueError("Unable to create eager SparseTensor. Check that "
-                           "your shape is correctly defined. Eager "
-                           "SparseTensors don't support unknown dimesions.\n"
-                           "got shape:\n    {}".format(dense_shape))
-      else:
-        if isinstance(dense_shape, ops.Tensor):
-          dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
-        else:
-          dense_shape_default = []
-          for dim in dense_shape:
-            if isinstance(dim, ops.Tensor):
-              # There is code passing lists of constant tensors.
-              dim = tensor_util.constant_value(dim)
-            if dim == -1:
-              # -1 may be passed for unknown shapes.
-              dim = None
-
-            dense_shape_default.append(dim)
-
-        dense_shape_default = tensor_shape.TensorShape(dense_shape_default)
-
-        dense_shape = ops.convert_to_tensor(
-            dense_shape, name="dense_shape", dtype=dtypes.int64)
+      dense_shape = ops.convert_to_tensor(
+          dense_shape, name="dense_shape", dtype=dtypes.int64)
+      dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
 
     self._indices = indices
     self._values = values
@@ -175,10 +146,10 @@ class SparseTensor(tensor_like.TensorLike, composite_tensor.CompositeTensor):
     dense_shape_shape = dense_shape.shape.with_rank(1)
 
     # Assert number of rows in indices match the number of elements in values.
-    indices_shape.dims[0].merge_with(values_shape.dims[0])
+    indices_shape.dims[0].assert_is_compatible_with(values_shape.dims[0])
     # Assert number of columns in indices matches the number of elements in
     # dense_shape.
-    indices_shape.dims[1].merge_with(dense_shape_shape.dims[0])
+    indices_shape.dims[1].assert_is_compatible_with(dense_shape_shape.dims[0])
 
   def get_shape(self):
     """Get the `TensorShape` representing the shape of the dense tensor.
@@ -206,6 +177,31 @@ class SparseTensor(tensor_like.TensorLike, composite_tensor.CompositeTensor):
       A 1-D Tensor of any data type.
     """
     return self._values
+
+  def with_values(self, new_values):
+    """Returns a copy of `self` with `values` replaced by `new_values`.
+
+    This method produces a new `SparseTensor` that has the same nonzero
+    `indices` and same `dense_shape`, but updated values.
+
+    Args:
+      new_values: The values of the new `SparseTensor`. Needs to have the same
+        shape as the current `.values` `Tensor`. May have a different type than
+        the current `values`.
+
+    Returns:
+      A `SparseTensor` with identical indices and shape but updated values.
+
+    Example usage:
+
+    >>> st = tf.sparse.from_dense([[1, 0, 2, 0], [3, 0, 0, 4]])
+    >>> tf.sparse.to_dense(st.with_values([10, 20, 30, 40]))  # 4 nonzero values
+    <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+    array([[10,  0, 20,  0],
+           [30,  0,  0, 40]], dtype=int32)>
+
+    """
+    return SparseTensor(self._indices, new_values, self._dense_shape)
 
   @property
   def op(self):
@@ -296,6 +292,7 @@ _pywrap_utils.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
 @tf_export("SparseTensorSpec")
+@type_spec.register("tf.SparseTensorSpec")
 class SparseTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for a `tf.sparse.SparseTensor`."""
 

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 import numpy as np
 import six
@@ -25,70 +26,19 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.utils import object_identity
+from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_contextlib
-
-
-def smart_cond(pred, true_fn=None, false_fn=None, name=None):
-  """Return either `true_fn()` if predicate `pred` is true else `false_fn()`.
-
-  If `pred` is a bool or has a constant value, we return either `true_fn()`
-  or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
-
-  Arguments:
-    pred: A scalar determining whether to return the result of `true_fn` or
-      `false_fn`.
-    true_fn: The callable to be performed if pred is true.
-    false_fn: The callable to be performed if pred is false.
-    name: Optional name prefix when using `tf.cond`.
-
-  Returns:
-    Tensors returned by the call to either `true_fn` or `false_fn`.
-
-  Raises:
-    TypeError: If `true_fn` or `false_fn` is not callable.
-  """
-  if isinstance(pred, variables.Variable):
-    return control_flow_ops.cond(
-        pred, true_fn=true_fn, false_fn=false_fn, name=name)
-  return smart_module.smart_cond(
-      pred, true_fn=true_fn, false_fn=false_fn, name=name)
-
-
-def constant_value(pred):
-  """Return the bool value for `pred`, or None if `pred` had a dynamic value.
-
-  Arguments:
-    pred: A scalar, either a Python bool or a TensorFlow boolean variable
-      or tensor, or the Python integer 1 or 0.
-
-  Returns:
-    True or False if `pred` has a constant boolean value, None otherwise.
-
-  Raises:
-    TypeError: If `pred` is not a Variable, Tensor or bool, or Python
-      integer 1 or 0.
-  """
-  # Allow integer booleans.
-  if isinstance(pred, int):
-    if pred == 1:
-      pred = True
-    elif pred == 0:
-      pred = False
-
-  if isinstance(pred, variables.Variable):
-    return None
-  return smart_module.smart_constant_value(pred)
 
 
 def is_tensor_or_tensor_list(v):
@@ -117,7 +67,7 @@ def get_reachable_from_inputs(inputs, targets=None):
   reachable = object_identity.ObjectIdentitySet(inputs)
   if targets:
     remaining_targets = object_identity.ObjectIdentitySet(nest.flatten(targets))
-  queue = inputs[:]
+  queue = collections.deque(inputs)
 
   while queue:
     x = queue.pop()
@@ -134,7 +84,7 @@ def get_reachable_from_inputs(inputs, targets=None):
       except AttributeError:
         # Variables can be created in an Eager context.
         outputs = []
-    elif tensor_util.is_tensor(x):
+    elif tensor_util.is_tf_type(x):
       outputs = x.consumers()
     else:
       raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
@@ -144,7 +94,7 @@ def get_reachable_from_inputs(inputs, targets=None):
         reachable.add(y)
         if targets:
           remaining_targets.discard(y)
-        queue.insert(0, y)
+        queue.appendleft(y)
 
     if targets and not remaining_targets:
       return reachable
@@ -157,7 +107,7 @@ def get_reachable_from_inputs(inputs, targets=None):
 def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
   """Maps the atomic elements of a nested structure.
 
-  Arguments:
+  Args:
     is_atomic_fn: A function that determines if an element of `nested` is
       atomic.
     map_fn: The function to apply to atomic elements of `nested`.
@@ -174,17 +124,24 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
     return map_fn(nested)
 
   # Recursively convert.
-  if not nest.is_sequence(nested):
+  if not nest.is_nested(nested):
     raise ValueError(
         'Received non-atomic and non-sequence element: {}'.format(nested))
-  if nest._is_mapping(nested):
-    values = [nested[k] for k in nest._sorted(nested)]
+  if nest.is_mapping(nested):
+    values = [nested[k] for k in sorted(nested.keys())]
+  elif nest.is_attrs(nested):
+    values = _astuple(nested)
   else:
     values = nested
   mapped_values = [
       map_structure_with_atomic(is_atomic_fn, map_fn, ele) for ele in values
   ]
   return nest._sequence_like(nested, mapped_values)
+
+
+def get_shapes(tensors):
+  """Gets shapes from tensors."""
+  return nest.map_structure(lambda x: x.shape, tensors)
 
 
 #  pylint: enable=protected-access
@@ -204,7 +161,7 @@ def convert_shapes(input_shape, to_tuples=True):
   - ints
   - None
 
-  Arguments:
+  Args:
     input_shape: A nested structure of objects to be converted to TensorShapes.
     to_tuples: If `True`, converts all TensorShape to tuples. Otherwise converts
       all tuples representing shapes to TensorShapes.
@@ -254,7 +211,7 @@ class ListWrapper(object):
 def convert_inner_node_data(nested, wrap=False):
   """Either wraps or unwraps innermost node data lists in `ListWrapper` objects.
 
-  Arguments:
+  Args:
     nested: A nested data structure.
     wrap: If `True`, wrap innermost lists in `ListWrapper` objects. If `False`,
       unwraps `ListWrapper` objects into lists.
@@ -277,7 +234,7 @@ def convert_inner_node_data(nested, wrap=False):
       return True
     if _is_serialized_node_data(nested):
       return True
-    return not nest.is_sequence(nested)
+    return not nest.is_nested(nested)
 
   def _convert_object_or_list(nested):
     """Convert b/t `ListWrapper` object and list representations."""
@@ -301,7 +258,7 @@ def shape_type_conversion(fn):
 
   Used in `compute_output_shape` and `build`.
 
-  Arguments:
+  Args:
     fn: function to wrap.
 
   Returns:
@@ -323,10 +280,27 @@ def shape_type_conversion(fn):
 
 
 def are_all_symbolic_tensors(tensors):
-  return all(is_symbolic_tensor(tensor) for tensor in tensors)
+  return all(map(is_symbolic_tensor, tensors))
 
 
 _user_convertible_tensor_types = set()
+
+
+def is_extension_type(tensor):
+  """Returns whether a tensor is of an ExtensionType.
+
+  github.com/tensorflow/community/pull/269
+  Currently it works by checking if `tensor` is a `CompositeTensor` instance,
+  but this will be changed to use an appropriate extensiontype protocol
+  check once ExtensionType is made public.
+
+  Args:
+    tensor: An object to test
+
+  Returns:
+    True if the tensor is an extension type object, false if not.
+  """
+  return isinstance(tensor, composite_tensor.CompositeTensor)
 
 
 def is_symbolic_tensor(tensor):
@@ -335,15 +309,18 @@ def is_symbolic_tensor(tensor):
   A Variable can be seen as either: it is considered symbolic
   when we are in a graph scope, and eager when we are in an eager scope.
 
-  Arguments:
+  Args:
     tensor: A tensor instance to test.
 
   Returns:
     True for symbolic tensors, False for eager tensors.
   """
-  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
-    tensor = ops.convert_to_tensor_or_composite(tensor)
-  if isinstance(tensor, variables.Variable):
+  if isinstance(tensor, ops.Tensor):
+    return hasattr(tensor, 'graph')
+  elif is_extension_type(tensor):
+    component_tensors = nest.flatten(tensor, expand_composites=True)
+    return any(hasattr(t, 'graph') for t in component_tensors)
+  elif isinstance(tensor, variables.Variable):
     # Variables that are output of a Keras Layer in Functional API mode
     # should be considered symbolic.
     # TODO(omalleyt): We need a better way to check this in order to
@@ -351,12 +328,11 @@ def is_symbolic_tensor(tensor):
     # return Variables as outputs.
     return (getattr(tensor, '_keras_history', False) or
             not context.executing_eagerly())
-  if isinstance(tensor, composite_tensor.CompositeTensor):
-    component_tensors = nest.flatten(tensor, expand_composites=True)
-    return any(hasattr(t, 'graph') for t in component_tensors)
-  if isinstance(tensor, ops.Tensor):
-    return hasattr(tensor, 'graph')
-  return False
+  elif isinstance(tensor, tuple(_user_convertible_tensor_types)):
+    tensor = ops.convert_to_tensor_or_composite(tensor)
+    return is_symbolic_tensor(tensor)
+  else:
+    return False
 
 
 def register_symbolic_tensor_type(cls):
@@ -385,16 +361,19 @@ def register_symbolic_tensor_type(cls):
   layer = tf.keras.layers.Lambda(lambda input_: Foo(input_))
   ```
 
-  Arguments:
+  Args:
     cls: A `class` type which shall be regarded as a symbolic `Tensor`.
   """
   global _user_convertible_tensor_types
+  if cls not in _user_convertible_tensor_types:
+    keras_tensor.register_keras_tensor_specialization(
+        cls, keras_tensor.UserRegisteredTypeKerasTensor)
   _user_convertible_tensor_types.add(cls)
 
 
 def type_spec_from_value(value):
   """Grab type_spec without converting array-likes to tensors."""
-  if isinstance(value, composite_tensor.CompositeTensor):
+  if is_extension_type(value):
     return value._type_spec  # pylint: disable=protected-access
   # Get a TensorSpec for array-like data without
   # converting the data to a Tensor
@@ -404,8 +383,15 @@ def type_spec_from_value(value):
     return type_spec.type_spec_from_value(value)
 
 
+def is_ragged(tensor):
+  """Returns true if `tensor` is a ragged tensor or ragged tensor value."""
+  return isinstance(
+      tensor,
+      (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue))
+
+
 def is_tensor_or_variable(x):
-  return tensor_util.is_tensor(x) or isinstance(x, variables.Variable)
+  return tensor_util.is_tf_type(x) or isinstance(x, variables.Variable)
 
 
 def assert_no_legacy_layers(layers):
@@ -437,7 +423,7 @@ def assert_no_legacy_layers(layers):
 def maybe_init_scope(layer):
   """Open an `init_scope` if in V2 mode and using the keras graph.
 
-  Arguments:
+  Args:
     layer: The Layer/Model that is currently active.
 
   Yields:
@@ -474,11 +460,15 @@ def dataset_is_infinite(dataset):
 
 def get_tensor_spec(t, dynamic_batch=False, name=None):
   """Returns a `TensorSpec` given a single `Tensor` or `TensorSpec`."""
+  # pylint: disable=protected-access
   if isinstance(t, type_spec.TypeSpec):
     spec = t
-  elif isinstance(t, composite_tensor.CompositeTensor):
+  elif is_extension_type(t):
     # TODO(b/148821952): Should these specs have a name attr?
-    spec = t._type_spec  # pylint: disable=protected-access
+    spec = t._type_spec
+  elif (hasattr(t, '_keras_history') and
+        hasattr(t._keras_history[0], '_type_spec')):
+    return t._keras_history[0]._type_spec
   elif hasattr(t, 'shape') and hasattr(t, 'dtype'):
     spec = tensor_spec.TensorSpec(shape=t.shape, dtype=t.dtype, name=name)
   else:
@@ -489,11 +479,13 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
 
   dynamic_batch_spec = copy.deepcopy(spec)
   # RaggedTensorSpec only has a private _shape.
-  shape = dynamic_batch_spec._shape.as_list()  # pylint: disable=protected-access
-  if shape:
-    shape[0] = None
-    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)  # pylint: disable=protected-access
+  shape = dynamic_batch_spec._shape
+  if shape.rank is not None and shape.rank > 0:
+    shape_list = shape.as_list()
+    shape_list[0] = None
+    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape_list)
   return dynamic_batch_spec
+  # pylint: enable=protected-access
 
 
 def to_numpy_or_python_type(tensors):
@@ -522,3 +514,14 @@ def to_numpy_or_python_type(tensors):
 
   return nest.map_structure(_to_single_numpy_or_python_type, tensors)
 
+
+def _astuple(attrs):
+  """Converts the given attrs to tuple non-recursively."""
+  cls = type(attrs)
+  fields = getattr(cls, '__attrs_attrs__', None)
+  if fields is None:
+    raise ValueError('%r is not an attrs-decorated class.' % cls)
+  values = []
+  for field in fields:
+    values.append(getattr(attrs, field.name))
+  return tuple(values)

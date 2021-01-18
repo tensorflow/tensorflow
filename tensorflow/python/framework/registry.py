@@ -23,9 +23,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import traceback
+
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
-from tensorflow.python.util import tf_stack
 
 
 # Registry mechanism below is based on mapreduce.python.mrpython.Register.
@@ -35,6 +36,8 @@ _TYPE_TAG = "type"
 
 class Registry(object):
   """Provides a registry for saving objects."""
+
+  __slots__ = ["_name", "_registry"]
 
   def __init__(self, name):
     """Creates a new registry."""
@@ -63,8 +66,8 @@ class Registry(object):
     logging.vlog(1, "Registering %s (%s) in %s.", name, candidate, self._name)
     # stack trace is [this_function, Register(), user_function,...]
     # so the user function is #2.
-    stack = tf_stack.extract_stack(limit=3)
-    stack_index = min(2, len(stack)-1)
+    stack = traceback.extract_stack(limit=3)
+    stack_index = min(2, len(stack) - 1)
     if stack_index >= 0:
       location_tag = stack[stack_index]
     else:

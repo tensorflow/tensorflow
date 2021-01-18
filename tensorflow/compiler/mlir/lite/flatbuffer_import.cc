@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
@@ -49,21 +50,20 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 using llvm::ArrayRef;
 using mlir::Builder;
@@ -91,6 +92,7 @@ using mlir::UnrankedTensorType;
 using mlir::Value;
 using mlir::quant::QuantizedType;
 using tflite::TensorT;
+using xla::Status;
 using xla::StatusOr;
 
 namespace errors = tensorflow::errors;
@@ -147,11 +149,19 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
 
   int64_t storage_min = QuantizedType::getDefaultMinimumForInteger(
                             is_signed, storage_type.getWidth()) +
-                        is_weight_buffer;
+                        static_cast<int>(is_weight_buffer);
   int64_t storage_max = QuantizedType::getDefaultMaximumForInteger(
       is_signed, storage_type.getWidth());
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
+
+  // Rejects if quantized tensors have zero scales.
+  for (float scale : quant_params.scale) {
+    if (scale == 0) {
+      return errors::InvalidArgument(
+          "Quantized tensors must have non-zero scales");
+    }
+  }
 
   // Scale size can't be zero as it is checked before.
   if (quant_params.scale.size() != 1) {
@@ -167,12 +177,25 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
       quant_params.zero_point.at(0), storage_min, storage_max);
 }
 
+// import float tensor with calibration value into calibrated quantized type.
+StatusOr<QuantizedType> GetCalibratedQuantizedType(const TensorT& tensor,
+                                                   Builder builder) {
+  if (tensor.quantization == nullptr) {
+    return errors::InvalidArgument("The tensor is not quantized.");
+  }
+  auto raw_elem_type = ConvertElementType(tensor.type, builder);
+  float min = tensor.quantization->min[0];
+  float max = tensor.quantization->max[0];
+  return mlir::quant::CalibratedQuantizedType::get(raw_elem_type, min, max);
+}
+
 // TODO(b/138222071) Remove shapeless_are_scalars once we can reliably
 // make that distinction and don't have to rely on context
 // (input to main and constants must have static shape)
 StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool shapeless_are_scalars = false,
-                                         bool is_constant = false) {
+                                         bool is_constant = false,
+                                         bool is_intermediate = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
   // TODO(b/139554398) Store min/max (even for non-quantized tensors) somewhere
   // if it's set
@@ -181,8 +204,21 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                         GetQuantizedType(tensor, builder, is_constant));
   }
 
+  // Intermediate tensors with calibration value (but not scale and zero points)
+  // should return calibrated quantized type.
+  if (is_intermediate && tensor.quantization != nullptr &&
+      !IsQuantized(tensor)) {
+    TF_ASSIGN_OR_RETURN(elem_type, GetCalibratedQuantizedType(tensor, builder));
+  }
+
   if (IsScalar(tensor) || (shapeless_are_scalars && tensor.shape.empty())) {
     return RankedTensorType::get({}, elem_type);
+  }
+
+  if (!tensor.shape_signature.empty()) {
+    llvm::SmallVector<int64_t, 4> shape(tensor.shape_signature.begin(),
+                                        tensor.shape_signature.end());
+    return RankedTensorType::get(shape, elem_type);
   }
 
   if (!tensor.shape.empty()) {
@@ -216,7 +252,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
 
   llvm::SmallVector<llvm::APFloat, 4> min_maxs;
   min_maxs.reserve(mins.size() * 2);
-  for (int i = 0; i < mins.size(); ++i) {
+  for (int i = 0, end = mins.size(); i < end; ++i) {
     llvm::APFloat min(mins[i]);
     llvm::APFloat max(maxs[i]);
     min_maxs.push_back(min);
@@ -241,35 +277,35 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
                                              layer_stats, axis_stats, axis);
 }
 
-StatusOr<std::string> OpNameForOpCode(const tflite::OperatorCodeT opcode) {
-  // TODO(b/143872630): Support custom ops
-  if (opcode.builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    // Adding some custom op supported on GPU.
-    const absl::string_view custom_name = opcode.custom_code;
-    if (custom_name == "MaxPoolingWithArgmax2D") {
-      return std::string("tfl.max_pooling_with_argmax_2d");
-    }
-    if (custom_name == "Convolution2DTransposeBias") {
-      return std::string("tfl.convolution_2d_transpose_bias");
-    }
-    if (custom_name == "MaxUnpooling2D") {
-      return std::string("tfl.max_unpooling_2d");
-    }
-    // Use an unsupported op name instead of throwing an error here in case the
-    // op is pruned during the import.
-    return std::string(
-        llvm::Twine("tfl.UNSUPPORTED_custom_", opcode.custom_code).str());
+// Returns true if this is a basic LSTM op.
+bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
+  if (const auto* op = op_union.AsLSTMOptions()) {
+    return op->kernel_type == tflite::LSTMKernelType_BASIC;
+  } else {
+    return false;
   }
-  if (opcode.builtin_code == tflite::BuiltinOperator_IF) {
-    return std::string("tf.If");
-  }
-  if (opcode.builtin_code == tflite::BuiltinOperator_WHILE) {
-    return std::string("tf.While");
+}
+
+// Gets the MLIR op name with the dialect name for the flatbuffer operator.
+StatusOr<std::string> GetMlirOpName(const tflite::OperatorT& op,
+                                    const tflite::OperatorCodeT& op_code) {
+  if (IsBasicLSTMOp(op.builtin_options)) {
+    return std::string("tfl.basic_lstm");
   }
 
-  const char* op_name = tflite::EnumNameBuiltinOperator(opcode.builtin_code);
-  std::string lowered_name = llvm::StringRef(op_name).lower();
-  return llvm::Twine("tfl.", lowered_name).str();
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
+    return std::string("tfl.custom");
+  }
+  if (builtin_code == tflite::BuiltinOperator_IF) {
+    return std::string("tf.If");
+  }
+  if (builtin_code == tflite::BuiltinOperator_WHILE) {
+    return std::string("tfl.while");
+  }
+
+  llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
+  return llvm::Twine("tfl.", op_name.lower()).str();
 }
 
 // The buffers in TFLite flatbuffers have their contents stored as a vector of
@@ -283,7 +319,7 @@ std::vector<T> ReadAsLittleEndian(ArrayRef<uint8_t> bytes) {
   int bytes_len = bytes.size();
   assert(bytes_len % read_size == 0);
 
-  size_t elem_count = bytes_len / read_size;
+  int elem_count = bytes_len / read_size;
   ret.reserve(elem_count);
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
@@ -320,7 +356,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
   switch (elem_type.getWidth()) {
     case 16: {
       assert(bytes_len % 2 == 0);
-      size_t elem_count = bytes_len / 2;
+      int elem_count = bytes_len / 2;
       std::vector<llvm::APFloat> values;
       values.reserve(elem_count);
 
@@ -339,7 +375,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
     }
     case 32: {
       assert(bytes_len % 4 == 0);
-      size_t elem_count = bytes_len / 4;
+      int elem_count = bytes_len / 4;
       std::vector<float> values;
       values.reserve(elem_count);
 
@@ -352,6 +388,22 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
         values.push_back(absl::bit_cast<float>(bit_repr));
       }
       return DenseElementsAttr::get(shaped_type, ArrayRef<float>(values));
+    }
+    case 64: {
+      assert(bytes_len % 8 == 0);
+      int elem_count = bytes_len / 8;
+      std::vector<double> values;
+      values.reserve(elem_count);
+
+      const char* data = reinterpret_cast<const char*>(buffer.data());
+
+      for (int i = 0; i < elem_count; i++) {
+        uint64_t bit_repr =
+            llvm::support::endian::readNext<uint64_t, llvm::support::little,
+                                            llvm::support::unaligned>(data);
+        values.push_back(absl::bit_cast<double>(bit_repr));
+      }
+      return DenseElementsAttr::get(shaped_type, ArrayRef<double>(values));
     }
   }
   return errors::InvalidArgument("unsupported bit width", elem_type.getWidth());
@@ -416,9 +468,60 @@ StatusOr<Operation*> BuildExternalConstOp(const tflite::TensorT& tensor,
   return op.getOperation();
 }
 
+// Gets a constant splat for the given value of type. Requires value to be of
+// type static shaped RankedTensorType. `unique_index` is used to get the unique
+// value for the attribute.
+static mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
+                                   OpBuilder builder) {
+  mlir::Type element_ty = getElementTypeOrSelf(type);
+
+  if (element_ty.isSignlessInteger())
+    return DenseElementsAttr::get(
+        type, builder.getIntegerAttr(element_ty, unique_index));
+
+  if (element_ty.isa<mlir::FloatType>())
+    return DenseElementsAttr::get(
+        type, builder.getFloatAttr(element_ty, unique_index));
+
+  if (auto qtype = element_ty.dyn_cast<QuantizedType>()) {
+    mlir::RankedTensorType new_type =
+        RankedTensorType::get(type.getShape(), qtype.getStorageType());
+    return DenseElementsAttr::get(
+        new_type, builder.getIntegerAttr(qtype.getStorageType(), unique_index));
+  }
+  llvm_unreachable("unhandled element type");
+}
+
+// TODO(b/172664358): Creates a new op instead of reusing constant op.
+// Creates a constant op to represent stateful variable. The function static
+// variable `stateful_variable_idx` is used as a unique value for each constant
+// to avoid CSEed. `tensor` is the data structure of flatbuffer. `shaped_type`
+// is the ShapedType for the const op.
+Operation* BuildVariableOp(const tflite::TensorT& tensor,
+                           mlir::RankedTensorType shaped_type,
+                           OpBuilder builder, Location loc) {
+  static int stateful_variable_idx = 0;
+  mlir::ElementsAttr value =
+      GetSplat(shaped_type, stateful_variable_idx++, builder);
+  if (IsQuantized(tensor)) {
+    auto op = builder.create<tfl::QConstOp>(
+        loc, mlir::TypeAttr::get(shaped_type), value);
+    return op.getOperation();
+  }
+  auto op = builder.create<tfl::ConstOp>(loc, value);
+  if (tensor.quantization && !tensor.quantization->min.empty()) {
+    if (auto stats_op =
+            ConvertMinMaxToStatsOp(tensor, builder, op.getResult())) {
+      return stats_op;
+    }
+  }
+  return op.getOperation();
+}
+
 StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                   const std::vector<uint8_t>& buffer,
-                                  OpBuilder builder, Location loc) {
+                                  bool is_variable, OpBuilder builder,
+                                  Location loc) {
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
                                                /*shapeless_are_scalars=*/true,
                                                /*is_constant=*/true));
@@ -430,16 +533,25 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   auto elem_type = shaped_type.getElementType();
 
   mlir::ElementsAttr value;
-  if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
+  if (is_variable) {
+    return BuildVariableOp(tensor, shaped_type, builder, loc);
+  } else if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertFloatBuffer(shaped_type, float_type, buffer));
-  } else if (elem_type.isa<mlir::IntegerType>() ||
-             elem_type.isa<QuantizedType>()) {
+  } else if (elem_type.isa<mlir::IntegerType, QuantizedType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertIntBuffer(shaped_type, elem_type, buffer));
-  } else if (elem_type.isa<mlir::ComplexType>() ||
-             elem_type.isa<mlir::TF::TensorFlowType>()) {
-    auto dialect = elem_type.getContext()->getRegisteredDialect("tf");
+  } else if (elem_type.isa<mlir::TF::StringType>()) {
+    tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
+    std::vector<llvm::StringRef> refs;
+    refs.reserve(repr.string_val_size());
+
+    for (const auto& ref : repr.string_val())
+      refs.push_back({ref.data(), ref.size()});
+
+    value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
+  } else if (elem_type.isa<mlir::ComplexType, mlir::TF::TensorFlowType>()) {
+    auto dialect = elem_type.getContext()->getLoadedDialect("tf");
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
@@ -478,34 +590,46 @@ llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
     auto body_attr = builder.getSymbolRefAttr(func_names.at(body_idx));
 
     return {builder.getNamedAttr("cond", cond_attr),
-            builder.getNamedAttr("body", body_attr),
-            // TODO(b/139667752): Analyze statelessness correctly
-            builder.getNamedAttr("is_stateless", builder.getBoolAttr(false))};
+            builder.getNamedAttr("body", body_attr)};
   }
   return {};
 }
 
-// Returns true if this is a basic LSTM op.
-bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
-  if (const auto* op = op_union.AsLSTMOptions()) {
-    return op->kernel_type == tflite::LSTMKernelType_BASIC;
-  } else {
-    return false;
-  }
-}
+Status AddOpIntermediatesForLstm(
+    const tflite::OperatorT& op,
+    const std::vector<mlir::TensorType>& intermediate_types,
+    OperationState& op_state, Location loc, OpBuilder& builder) {
+  if (!op.intermediates.empty()) {
+    if (op.intermediates.size() != 5) {
+      auto err = errors::InvalidArgument(
+          "operator has intermediate tensors but the number of them is not "
+          "five.");
+      return emitError(loc, err.ToString()), err;
+    }
+    // Create intermediate value
 
-// Returns true if this is a custom op.
-bool IsCustomOp(const std::string& op_name) {
-  return op_name == "tfl.max_pooling_with_argmax_2d" ||
-         op_name == "tfl.max_unpooling_2d" ||
-         op_name == "tfl.convolution_2d_transpose_bias";
+    const llvm::SmallVector<llvm::StringRef, 5> kIntermediateNames = {
+        "input_to_input_intermediate", "input_to_forget_intermediate",
+        "input_to_cell_intermediate", "input_to_output_intermediate",
+        "effective_hidden_scale_intermediate"};
+    for (auto type_and_name :
+         llvm::zip(intermediate_types, kIntermediateNames)) {
+      mlir::TypeAttr type_attr =
+          mlir::TypeAttr::get(std::get<0>(type_and_name));
+      auto named_attr =
+          builder.getNamedAttr(std::get<1>(type_and_name), type_attr);
+      op_state.addAttribute(named_attr.first, named_attr.second);
+    }
+  }
+  return Status::OK();
 }
 
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
     const tflite::OperatorT& op, const std::vector<Value>& vals_map,
     const std::vector<mlir::TensorType>& intermediate_types,
-    Value optional_arg_marker, const std::vector<std::string>& op_names,
+    Value optional_arg_marker,
+    const std::vector<std::unique_ptr<tflite::OperatorCodeT>>& op_codes,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
     OpBuilder builder) {
@@ -517,9 +641,10 @@ StatusOr<Operation*> ConvertOp(
     return emitError(loc, err.ToString()), err;
   }
 
-  const bool is_basic_lstm = IsBasicLSTMOp(op.builtin_options);
-  const std::string& op_name =
-      is_basic_lstm ? "tfl.basic_lstm" : op_names.at(op.opcode_index);
+  const tflite::OperatorCodeT& op_code = *op_codes.at(op.opcode_index);
+
+  TF_ASSIGN_OR_RETURN(const std::string op_name, GetMlirOpName(op, op_code));
+
   OperationState op_state(loc, op_name);
 
   for (auto input_num : op.inputs) {
@@ -543,16 +668,16 @@ StatusOr<Operation*> ConvertOp(
     if (op_name == "tfl.quantize") {
       // Special case for quantize: return type must also be in qtype attribute
       op_state.addAttribute("qtype", mlir::TypeAttr::get(type));
-    } else if (op_name == "tfl.reshape" && type.hasStaticShape() &&
-               op_state.operands.size() == 1) {
+    } else if (op_name == "tfl.reshape" && op_state.operands.size() == 1) {
       // Special case for reshape: the second op is optional in the old
       // converter and kernel, so we create the second operand, which is
-      // required by the new converter, from the result shape.
-      auto shape_type =
-          RankedTensorType::get({type.getRank()}, builder.getIntegerType(32));
+      // required by the new converter, from the reshape op's option.
+      auto new_shape = op.builtin_options.AsReshapeOptions()->new_shape;
+      auto shape_type = RankedTensorType::get(
+          {static_cast<int64_t>(new_shape.size())}, builder.getIntegerType(32));
+
       mlir::SmallVector<mlir::Attribute, 4> shape;
-      shape.reserve(type.getRank());
-      for (auto s : type.getShape()) {
+      for (auto s : new_shape) {
         shape.push_back(builder.getI32IntegerAttr(static_cast<int32_t>(s)));
       }
       auto output_shape = DenseElementsAttr::get(shape_type, shape);
@@ -563,37 +688,71 @@ StatusOr<Operation*> ConvertOp(
     op_state.addTypes({type});
   }
 
+  // While the last several tensors could be optional tensors for an tfl op, the
+  // number of input operands could vary. Gets the min/max number of
+  // operands from tflite op name.
+  // Also, since the above code special-handles the `tfl.reshape` op and add an
+  // additional input, we put these function block here.
+  llvm::MinMax input_min_max = mlir::OperandNumbersMinMax(op_name);
+  int input_max_num = input_min_max.Max;
+  int op_input_num = op_state.operands.size();
+  if (input_max_num != 0 && input_max_num > op_input_num) {
+    // If the number of current inputs is less than the op definition, fill in
+    // with `none` value,
+    llvm::SmallVector<Value, 4> none_operands(
+        input_max_num - op_input_num,
+        builder.create<mlir::ConstantOp>(loc, builder.getNoneType(),
+                                         builder.getUnitAttr()));
+    op_state.addOperands(ArrayRef<Value>(none_operands));
+  }
+
   if (op_name == "tfl.lstm") {
     // TODO(b/147587779): add the right region if region is empty.
     op_state.addRegion();
-    if (!op.intermediates.empty()) {
-      if (op.intermediates.size() != 5) {
-        auto err = errors::InvalidArgument(
-            "operator has intermediate tensors but the number of them is not "
-            "five.");
-        return emitError(loc, err.ToString()), err;
-      }
-      // Create intermediate value
-
-      const llvm::SmallVector<llvm::StringRef, 5> kIntermediateNames = {
-          "input_to_input_intermediate", "input_to_forget_intermediate",
-          "input_to_cell_intermediate", "input_to_output_intermediate",
-          "effective_hidden_scale_intermediate"};
-      for (auto type_and_name :
-           llvm::zip(intermediate_types, kIntermediateNames)) {
-        mlir::TypeAttr type_attr =
-            mlir::TypeAttr::get(std::get<0>(type_and_name));
-        auto named_attr =
-            builder.getNamedAttr(std::get<1>(type_and_name), type_attr);
-        op_state.addAttribute(named_attr.first, named_attr.second);
+    TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
+                                          builder));
+  }
+  if (op_name == "tfl.while") {
+    // Adds two empty regions for "tfl.while". We will fill the regions after
+    // creating the callee functions because the "tfl.while" input/output types
+    // may be different with the callee functions, and the call ops need to sync
+    // with callee function types.
+    op_state.addRegion();
+    op_state.addRegion();
+  }
+  if (op_name == "tfl.unidirectional_sequence_lstm") {
+    TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
+                                          builder));
+  }
+  if (op_name == "tfl.reshape") {
+    // Flattern reshape ops when more than one dimension shape operand is given.
+    mlir::DenseIntElementsAttr shape_attr;
+    if (matchPattern(op_state.operands[1], m_Constant(&shape_attr))) {
+      auto shape_ty =
+          op_state.operands[1].getType().dyn_cast<RankedTensorType>();
+      if (shape_ty != nullptr && shape_ty.hasRank() && shape_ty.getRank() > 1) {
+        llvm::SmallVector<mlir::Attribute, 4> shape;
+        int32_t dim_size = 0;
+        for (const auto& dim : llvm::enumerate(shape_attr.getIntValues())) {
+          const int64_t size = dim.value().getSExtValue();
+          shape.push_back(
+              builder.getI32IntegerAttr(static_cast<int32_t>(size)));
+          ++dim_size;
+        }
+        auto shape_type = RankedTensorType::get(
+            {static_cast<int32_t>(dim_size)}, builder.getIntegerType(32));
+        auto output_shape = mlir::DenseElementsAttr::get(shape_type, shape);
+        auto shape_op = builder.create<tfl::ConstOp>(loc, output_shape);
+        op_state.operands[1] = shape_op;
       }
     }
   }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
-  if (IsCustomOp(op_name)) {
-    auto status = mlir::CustomOptionsToAttributes(op_name, op.custom_options,
-                                                  builder, loc, &attrs);
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
+    auto status = mlir::CustomOptionsToAttributes(
+        op_code.custom_code, op.custom_options, builder, loc, &attrs);
     if (!status.ok()) {
       return emitError(loc, status.ToString()), status;
     }
@@ -602,7 +761,8 @@ StatusOr<Operation*> ConvertOp(
   }
   op_state.addAttributes(attrs);
 
-  // Handle the conversion from subgraph index to functions for If and While
+  // Handle the conversion from subgraph index to functions for If and While. We
+  // will add CallOps in the region to call the functions later for While.
   auto function_ref_attrs = ConvertSubgraphIdxsToFunctionAttrs(
       op.builtin_options, func_names, builder);
   op_state.addAttributes(function_ref_attrs);
@@ -642,8 +802,8 @@ template <typename ContainerType>
 mlir::NamedAttribute BuildTFEntryFunctionAttribute(
     const tflite::SubGraphT& subgraph, Builder* builder, const std::string name,
     const ContainerType indices) {
-  llvm::SmallVector<std::string, 8> tensor_names = mlir::functional::map(
-      [&](int i) { return subgraph.tensors.at(i)->name; }, indices);
+  auto tensor_names = llvm::map_range(
+      indices, [&](int i) { return subgraph.tensors.at(i)->name; });
   return builder->getNamedAttr(
       name, builder->getStringAttr(llvm::join(tensor_names, ",")));
 }
@@ -667,8 +827,6 @@ StatusOr<absl::flat_hash_set<const tflite::OperatorT*>> PruneSubgraph(
   for (int32_t output : output_indices) {
     if (auto& op = defining_op[output]) {
       queue.push_back(op);
-    } else {
-      return errors::InvalidArgument("Output tensor doesn't have defining op");
     }
   }
 
@@ -694,9 +852,67 @@ StatusOr<absl::flat_hash_set<const tflite::OperatorT*>> PruneSubgraph(
   return visited;
 }
 
+// We want to adjust the func op according to some cross ops information.
+static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
+  OpBuilder builder(func);
+  // When a quantized constant is imported, its quantization parameter is set
+  // to be narrow range. Here revert to be the fully range if the user doesn't
+  // require narrow range.
+  func.walk([&](tfl::QConstOp cst) {
+    Value value = cst.getResult();
+    Value full_range_const = value;
+    for (auto& use : value.getUses()) {
+      Operation* user = use.getOwner();
+      if (user->isKnownTerminator()) return;
+      auto qtype = mlir::quant::UniformQuantizedType::getQuantizedElementType(
+          value.getType());
+      // Only the 8-bit constants are imported with narrow range.
+      if (!qtype || qtype.getStorageTypeIntegralWidth() != 8) return;
+
+      auto affine_user = llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
+      if (affine_user &&
+          affine_user.GetAffineOperandIndex() == use.getOperandNumber() &&
+          affine_user.RequiredNarrowRangeAffineOperand())
+        return;
+
+      // Create a fully range quantized constant.
+      if (full_range_const == value) {
+        mlir::quant::QuantizedType new_qtype;
+        if (auto per_axis =
+                qtype.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+          new_qtype = mlir::quant::UniformQuantizedPerAxisType::get(
+              per_axis.getFlags(), per_axis.getStorageType(),
+              per_axis.getExpressedType(), per_axis.getScales(),
+              per_axis.getZeroPoints(), per_axis.getQuantizedDimension(),
+              per_axis.getStorageTypeMin() - 1, per_axis.getStorageTypeMax());
+        } else if (auto per_tensor =
+                       qtype.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+          new_qtype = mlir::quant::UniformQuantizedType::get(
+              per_tensor.getFlags(), per_tensor.getStorageType(),
+              per_tensor.getExpressedType(), per_tensor.getScale(),
+              per_tensor.getZeroPoint(), per_tensor.getStorageTypeMin() - 1,
+              per_tensor.getStorageTypeMax());
+        } else {
+          return;
+        }
+        auto new_output_type = new_qtype.castFromExpressedType(
+            mlir::quant::UniformQuantizedType::castToExpressedType(
+                value.getType()));
+        builder.setInsertionPointAfter(cst.getOperation());
+        auto new_op = builder.create<tfl::QConstOp>(
+            cst.getLoc(), new_output_type, mlir::TypeAttr::get(new_output_type),
+            cst.valueAttr());
+        full_range_const = new_op.output();
+      }
+      use.set(full_range_const);
+    }
+    if (cst.use_empty()) cst.erase();
+  });
+  return func;
+}
+
 // Build a FuncOp from a tflite SubGraph
-// The op_names are a mapping from indexes into the TFLite operators array to
-// the operator name MLIR expects (tfl.foo_op). The buffers are directly taken
+// The buffers are directly taken
 // from the deserialized flatbuffer as we do not have the type information to
 // interpret them until this point. The base_loc parameter is the location of
 // the flatbuffer as a whole (usually a file). The is_entry_point flag
@@ -705,7 +921,7 @@ StatusOr<absl::flat_hash_set<const tflite::OperatorT*>> PruneSubgraph(
 // return nodes in ordered_output_arrays in the same order.
 StatusOr<FuncOp> ConvertSubgraph(
     const tflite::SubGraphT& subgraph, llvm::StringRef name,
-    const std::vector<std::string>& op_names,
+    const std::vector<std::unique_ptr<tflite::OperatorCodeT>>& op_codes,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::BufferT>>& buffers,
     Location base_loc, Builder builder, bool is_entry_point,
@@ -729,19 +945,8 @@ StatusOr<FuncOp> ConvertSubgraph(
                         GetTensorIndices(subgraph, ordered_input_arrays));
   }
 
-  // Add state variables to inputs.
-  absl::flat_hash_set<int32_t> input_index_set(func_inputs.begin(),
-                                               func_inputs.end());
-  for (int i = 0; i < subgraph.tensors.size(); i++) {
-    auto& tensor = *subgraph.tensors.at(i);
-    if (tensor.is_variable && !input_index_set.contains(i)) {
-      func_inputs.emplace_back(i);
-      input_index_set.insert(i);
-    }
-  }
-
-  for (auto input_or_variable : func_inputs) {
-    auto& tensor = *subgraph.tensors.at(input_or_variable);
+  for (int input : func_inputs) {
+    auto& tensor = *subgraph.tensors.at(input);
     // TODO(b/138222071) Graph inputs must have static shape per the exporter,
     // but we cannot differentiate scalars from unranked tensors.
     // Here we reverse the default assumption that shape = [] means unranked.
@@ -772,9 +977,18 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   for (auto output : func_outputs) {
-    bool is_constant = !is_op_output[output];
+    const bool is_func_input = std::find(func_inputs.begin(), func_inputs.end(),
+                                         output) != func_inputs.end();
+    bool is_constant = !is_op_output[output] && !is_func_input;
+    // There are 2 cases tensor is scalar when it doesn't have a shape in
+    // flatbuffer:
+    // 1. `is_constant` = true, means this tensor is created from a constant op.
+    // 2. `is_func_input` = true and `is_entry_point` = true, which means this
+    // tensor is function input and function input type is a scalar tensor.
+    const bool shapeless_is_scalar =
+        is_constant || (is_func_input && is_entry_point);
     auto type_or_err = GetTensorType(*subgraph.tensors.at(output), builder,
-                                     /*shapeless_are_scalars=*/is_constant,
+                                     shapeless_is_scalar,
                                      /*is_constant=*/is_constant);
     if (!type_or_err.ok()) {
       emitError(func_loc, "error reading return types")
@@ -828,7 +1042,9 @@ StatusOr<FuncOp> ConvertSubgraph(
       attributes.push_back(BuildTFEntryFunctionAttribute(
           subgraph, &builder, "outputs", func_outputs));
     }
-    func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
+    func->setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
+  } else {
+    func.setPrivate();
   }
 
   absl::flat_hash_set<const tflite::OperatorT*> pruned_subgraph_ops;
@@ -864,7 +1080,7 @@ StatusOr<FuncOp> ConvertSubgraph(
                 ? BuildExternalConstOp(const_tensor, const_tensor.buffer,
                                        op_builder, const_loc)
                 : BuildConstOp(const_tensor, buffers[const_tensor.buffer]->data,
-                               op_builder, const_loc);
+                               const_tensor.is_variable, op_builder, const_loc);
         if (!op_or_err.ok()) {
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
@@ -873,7 +1089,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       }
     }
 
-    // Intermediate tensors for tfl.lstm are used to carry quantization range
+    // Intermediate tensors for LSTMs are used to carry quantization range
     // in their types, so we only need and extract their types.
     std::vector<mlir::TensorType> intermediate_types;
     intermediate_types.reserve(5);
@@ -881,7 +1097,8 @@ StatusOr<FuncOp> ConvertSubgraph(
       TF_ASSIGN_OR_RETURN(
           auto type, GetTensorType(*subgraph.tensors[intermediate], builder,
                                    /*shapeless_are_scalars=*/true,
-                                   /*is_constant=*/true));
+                                   /*is_constant=*/false,
+                                   /*is_intermediate=*/true));
       intermediate_types.emplace_back(type);
     }
 
@@ -895,7 +1112,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     TF_ASSIGN_OR_RETURN(
         auto* mlir_op,
         ConvertOp(*op, vals_map, intermediate_types, maybe_optional_arg_marker,
-                  op_names, func_names, subgraph.tensors, op_loc, op_builder));
+                  op_codes, func_names, subgraph.tensors, op_loc, op_builder));
 
     // Add the results to the value maps. There are two cases: 1. the result
     // tensor does not have min/max values, the original op result is used
@@ -924,7 +1141,7 @@ StatusOr<FuncOp> ConvertSubgraph(
               ? BuildExternalConstOp(const_tensor, const_tensor.buffer,
                                      op_builder, const_loc)
               : BuildConstOp(const_tensor, buffers[const_tensor.buffer]->data,
-                             op_builder, const_loc);
+                             const_tensor.is_variable, op_builder, const_loc);
       if (!op_or_err.ok()) {
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
@@ -936,7 +1153,7 @@ StatusOr<FuncOp> ConvertSubgraph(
 
   op_builder.create<mlir::ReturnOp>(base_loc, return_operands);
 
-  return func;
+  return PostProcessFuncOp(func);
 }
 
 // TFLite subgraphs do not necessarily have names, though MLIR functions must
@@ -953,6 +1170,35 @@ std::string SubgraphName(unsigned index, const tflite::SubGraphT& subgraph) {
   }
   return subgraph.name;
 }
+
+// Adds a CallOp in `region` to call the `func` and returns the results of
+// CallOp.
+void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
+  OpBuilder op_builder{region};
+  region.push_back(new mlir::Block());
+  region.addArguments(func.getType().getInputs());
+  op_builder.setInsertionPointToStart(&region.front());
+  auto call_op = op_builder.create<mlir::CallOp>(
+      region.getLoc(), func.getType().getResults(), func.sym_name(),
+      region.getArguments());
+  op_builder.create<mlir::TFL::YieldOp>(region.getLoc(), call_op.getResults());
+}
+
+// TFL::WhileOp has regions, so we add CallOp to call the FuncOp in the regions
+// if we have while ops.
+void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
+  mlir::SymbolTable symbol_table(module);
+  module.walk([&](mlir::TFL::WhileOp while_op) {
+    auto cond = symbol_table.lookup<mlir::FuncOp>(
+        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
+    AddCallOpInWhileOpRegion(while_op.cond(), cond);
+    while_op.removeAttr("cond");
+    auto body = symbol_table.lookup<mlir::FuncOp>(
+        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+    AddCallOpInWhileOpRegion(while_op.body(), body);
+    while_op.removeAttr("body");
+  });
+}
 }  // namespace
 
 OwningModuleRef tflite::FlatBufferToMlir(
@@ -961,6 +1207,10 @@ OwningModuleRef tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
+  context->loadDialect<
+      mlir::StandardOpsDialect, mlir::quant::QuantizationDialect,
+      mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect>();
+
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
   if (nullptr == model_ptr) {
@@ -971,18 +1221,6 @@ OwningModuleRef tflite::FlatBufferToMlir(
 
   auto builder = Builder(context);
 
-  std::vector<std::string> operator_names;
-  operator_names.reserve(model->operator_codes.size());
-
-  for (auto& opcode : model->operator_codes) {
-    auto operator_name_or_error = OpNameForOpCode(*opcode);
-    if (!operator_name_or_error.ok()) {
-      return emitError(base_loc, operator_name_or_error.status().ToString()),
-             nullptr;
-    }
-    operator_names.push_back(operator_name_or_error.ConsumeValueOrDie());
-  }
-
   std::vector<std::string> func_names;
   for (auto& subgraph : model->subgraphs) {
     func_names.push_back(subgraph->name);
@@ -991,19 +1229,19 @@ OwningModuleRef tflite::FlatBufferToMlir(
   auto module = mlir::ModuleOp::create(base_loc);
   // We currently don't use this to make decisions, but we could
   // use it in exports or if there are breaking changes
-  module.setAttr("tfl.schema_version",
-                 builder.getI32IntegerAttr(model->version));
+  module->setAttr("tfl.schema_version",
+                  builder.getI32IntegerAttr(model->version));
   if (!model->description.empty()) {
-    module.setAttr("tfl.description",
-                   builder.getStringAttr(model->description));
+    module->setAttr("tfl.description",
+                    builder.getStringAttr(model->description));
   }
 
   for (auto e : llvm::enumerate(model->subgraphs)) {
     auto& subgraph = e.value();
     std::string name = SubgraphName(e.index(), *subgraph);
     auto func_or_error = ConvertSubgraph(
-        *subgraph, name, operator_names, func_names, model->buffers, base_loc,
-        builder,
+        *subgraph, name, model->operator_codes, func_names, model->buffers,
+        base_loc, builder,
         // TODO(b/131175224,b/132239787) Support multiple entry points
         /*is_entry_point=*/e.index() == 0,
         /*use_external_constant=*/use_external_constant, ordered_input_arrays,
@@ -1017,6 +1255,6 @@ OwningModuleRef tflite::FlatBufferToMlir(
     }
     module.push_back(func_or_error.ConsumeValueOrDie());
   }
-
+  AddRegionsForTflWhileOp(module);
   return OwningModuleRef(module);
 }

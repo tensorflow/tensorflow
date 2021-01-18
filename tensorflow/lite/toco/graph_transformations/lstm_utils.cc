@@ -16,8 +16,8 @@ limitations under the License.
 
 namespace toco {
 
-void CreateOptionalArray(Model* model, string* input_array_buffer,
-                         const string& array_name) {
+void CreateOptionalArray(Model* model, std::string* input_array_buffer,
+                         const std::string& array_name) {
   *input_array_buffer = array_name;
   model->CreateOptionalArray(array_name);
 }
@@ -39,7 +39,7 @@ void CopyArrayData(const Buffer<ArrayDataType::kFloat>& src_buffer,
 }
 
 Buffer<ArrayDataType::kFloat>* CreateFloatArrayBuffer(Model* model,
-                                                      string* array_name,
+                                                      std::string* array_name,
                                                       const Shape& shape) {
   *array_name = AvailableArrayName(*model, *array_name);
   auto& array = model->GetOrCreateArray(*array_name);
@@ -51,8 +51,8 @@ Buffer<ArrayDataType::kFloat>* CreateFloatArrayBuffer(Model* model,
   return buffer;
 }
 
-void CopySubArrayToArray(Model* model, string* array_name,
-                         const string& tensor_name, int dim1_size,
+void CopySubArrayToArray(Model* model, std::string* array_name,
+                         const std::string& tensor_name, int dim1_size,
                          int dim2_size, const Array& original_array,
                          int start_idx1, int start_idx2) {
   // Determine whether it's bias or not, create shape, buffer.
@@ -83,8 +83,9 @@ void CopyArrayToSubArray(Buffer<ArrayDataType::kFloat>& tensor_buffer,
                 dim1_copy_size, dim2_copy_size);
 }
 
-bool GetMatchingRnnArray(Model* model, const string& back_edge_source_array,
-                         string* rnn_array) {
+bool GetMatchingRnnArray(Model* model,
+                         const std::string& back_edge_source_array,
+                         std::string* rnn_array) {
   for (const auto& rnn_state : model->flags.rnn_states()) {
     if (rnn_state.back_edge_source_array() == back_edge_source_array) {
       *rnn_array = rnn_state.state_array();

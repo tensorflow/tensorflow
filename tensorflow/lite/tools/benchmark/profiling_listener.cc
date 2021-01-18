@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <fstream>
 
+#include "tensorflow/lite/tools/logging.h"
+
 namespace tflite {
 namespace benchmark {
 
@@ -29,7 +31,7 @@ ProfilingListener::ProfilingListener(
       csv_file_path_(csv_file_path),
       interpreter_(interpreter),
       profiler_(max_num_entries) {
-  TFLITE_BENCHMARK_CHECK(interpreter);
+  TFLITE_TOOLS_CHECK(interpreter);
   interpreter_->SetProfiler(&profiler_);
 
   // We start profiling here in order to catch events that are recorded during

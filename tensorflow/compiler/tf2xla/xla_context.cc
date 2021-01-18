@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -58,13 +57,21 @@ void XlaContext::set_args(std::vector<XlaExpression> args) {
   args_ = std::move(args);
 }
 
-XlaContext::XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder)
-    : compiler_(compiler), builder_(builder) {}
+XlaContext::XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
+                       const Graph* graph)
+    : compiler_(compiler), builder_(builder) {
+  if (graph) {
+    for (const Node* node : graph->nodes()) {
+      stack_traces_[node->name()] = node->GetStackTrace();
+    }
+  }
+}
 
 string XlaContext::DebugString() const { return "XLA JIT context"; }
 
 void XlaContext::SetRetval(int index, const XlaExpression& expression) {
-  if (retvals_.size() <= index) {
+  const int64 retvals_size = retvals_.size();
+  if (retvals_size <= index) {
     retvals_.resize(index + 1);
   }
   retvals_[index] = expression;

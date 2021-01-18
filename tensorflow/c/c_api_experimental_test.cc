@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
@@ -218,7 +219,7 @@ TEST_F(ShapeInferenceTest, InfersShapesFromInputTensors) {
   TFE_OpSetAttrType(fill_op, "Tshape", TF_INT32);
 
   float five = 5.0;
-  TFE_TensorHandle* scalar = TestScalarTensorHandle(five);
+  TFE_TensorHandle* scalar = TestScalarTensorHandle(tfe_context_, five);
   TF_Tensor* scalarTensor = TFE_TensorHandleResolve(scalar, status_);
   CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
   CheckOutputShapes(fill_op,
@@ -232,6 +233,23 @@ TEST_F(ShapeInferenceTest, InfersShapesFromInputTensors) {
   TF_DeleteTensor(scalarTensor);
   TF_DeleteTensor(tensor_1X1X6);
   TF_DeleteTensor(tensor_1X6);
+}
+
+TEST(CAPI_EXPERIMENTAL, LibraryPluggableDeviceLoadFunctions) {
+#if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+  // Load the library.
+  TF_Status* status = TF_NewStatus();
+  string lib_path =
+      tensorflow::GetDataDependencyFilepath(tensorflow::io::JoinPath(
+          "tensorflow", "c", "experimental", "stream_executor", "test",
+          "test_pluggable_device.so"));
+  TF_Library* lib = TF_LoadPluggableDeviceLibrary(lib_path.c_str(), status);
+  TF_Code code = TF_GetCode(status);
+  string status_msg(TF_Message(status));
+  TF_DeleteStatus(status);
+  ASSERT_EQ(TF_OK, code) << status_msg;
+  TF_DeletePluggableDeviceLibraryHandle(lib);
+#endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
 }
 
 }  // namespace

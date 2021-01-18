@@ -26,7 +26,13 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+        "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
+        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "//tensorflow/lite/experimental/acceleration/compatibility:gpu_compatibility",
         "//tensorflow/lite/java/jni",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )

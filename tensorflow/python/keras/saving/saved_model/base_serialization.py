@@ -22,6 +22,7 @@ import abc
 import six
 
 from tensorflow.python.keras.saving.saved_model import json_utils
+from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.training.tracking import tracking
 
 
@@ -71,6 +72,9 @@ class SavedModelSaver(object):
       A dictionary mapping attribute names to trackable objects. The entire list
       of attributes are listed in the `saved_model._LayerAttributes` class.
     """
+    if not utils.should_save_traces():
+      return {}
+
     return self.objects_to_serialize(serialization_cache)
 
   def list_functions_for_serialization(self, serialization_cache):
@@ -84,6 +88,9 @@ class SavedModelSaver(object):
         A dictionary mapping attribute names to `Function` or
         `ConcreteFunction`.
     """
+    if not utils.should_save_traces():
+      return {}
+
     fns = self.functions_to_serialize(serialization_cache)
 
     # The parent AutoTrackable class saves all user-defined tf.functions, and

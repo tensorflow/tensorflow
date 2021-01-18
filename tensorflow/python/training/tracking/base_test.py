@@ -54,8 +54,8 @@ class InterfaceTests(test.TestCase):
           getter=variable_scope.get_variable)
       self.assertEqual([root, b], util.list_objects(root))
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
-          ValueError, "already declared as a dependency"):
+      with self.assertRaisesRegex(ValueError,
+                                  "already declared as a dependency"):
         root._add_variable_with_custom_getter(
             name="v", shape=[], overwrite=False,
             getter=variable_scope.get_variable)
@@ -80,7 +80,7 @@ class InterfaceTests(test.TestCase):
     save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
     restored = util.Checkpoint(obj=base.Trackable())
     status = restored.restore(save_path)
-    with self.assertRaisesRegexp(AssertionError, "foo_attr"):
+    with self.assertRaisesRegex(AssertionError, "foo_attr"):
       status.assert_consumed()
 
   def testBuggyGetConfig(self):

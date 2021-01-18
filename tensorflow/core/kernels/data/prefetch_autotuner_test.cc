@@ -23,7 +23,7 @@ namespace data {
 namespace {
 
 TEST(PrefetchAutotuner, Disabled) {
-  PrefetchAutotuner t(2);
+  PrefetchAutotuner t(2, 0);
   EXPECT_EQ(2, t.buffer_limit());
   t.RecordConsumption(0);
   t.RecordConsumption(2);
@@ -33,7 +33,7 @@ TEST(PrefetchAutotuner, Disabled) {
 }
 
 TEST(PrefetchAutotuner, Enabled) {
-  PrefetchAutotuner t(model::kAutotune);
+  PrefetchAutotuner t(model::kAutotune, 0);
   EXPECT_EQ(1, t.buffer_limit());
   t.RecordConsumption(0);  // Expect buffer limit to stay the same.
   EXPECT_EQ(1, t.buffer_limit());
@@ -58,9 +58,9 @@ TEST(PrefetchAutotuner, Enabled) {
 }
 
 TEST(PrefetchAutotuner, EnabledSteady) {
-  PrefetchAutotuner t(model::kAutotune);
+  PrefetchAutotuner t(model::kAutotune, 0);
   EXPECT_EQ(1, t.buffer_limit());
-  t.RecordConsumption(0);  // Expect buffer limit to increase.
+  t.RecordConsumption(0);  // Expect buffer limit to stay the same!
   EXPECT_EQ(1, t.buffer_limit());
   t.RecordConsumption(1);
   EXPECT_EQ(1, t.buffer_limit());
@@ -76,6 +76,29 @@ TEST(PrefetchAutotuner, EnabledSteady) {
   for (int i = 0; i < consumption_values.size(); ++i) {
     t.RecordConsumption(consumption_values[i]);
     EXPECT_EQ(4, t.buffer_limit())
+        << "Failed at index " << i << " with value: " << consumption_values[i];
+  }
+}
+
+TEST(PrefetchAutotuner, StartWithMin) {
+  PrefetchAutotuner t(model::kAutotune, 2);
+  EXPECT_EQ(2, t.buffer_limit());
+  t.RecordConsumption(0);  // Expect buffer limit to stay the same!
+  EXPECT_EQ(2, t.buffer_limit());
+  t.RecordConsumption(2);  // Expect buffer limit to stay the same!
+  EXPECT_EQ(2, t.buffer_limit());
+  t.RecordConsumption(0);  // Expect buffer limit to increase.
+  EXPECT_EQ(4, t.buffer_limit());
+  t.RecordConsumption(4);  // Expect buffer limit to stay the same!
+  EXPECT_EQ(4, t.buffer_limit());
+  t.RecordConsumption(0);  // Expect buffer limit to increase.
+  EXPECT_EQ(8, t.buffer_limit());
+
+  // Never reach zero again.
+  std::vector<size_t> consumption_values = {3, 5, 7, 1, 4, 6, 8, 3, 5, 1, 2, 4};
+  for (int i = 0; i < consumption_values.size(); ++i) {
+    t.RecordConsumption(consumption_values[i]);
+    EXPECT_EQ(8, t.buffer_limit())
         << "Failed at index " << i << " with value: " << consumption_values[i];
   }
 }

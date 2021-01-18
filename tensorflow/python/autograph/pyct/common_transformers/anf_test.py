@@ -50,8 +50,12 @@ class AnfTestBase(test.TestCase):
 
   def _simple_context(self):
     entity_info = transformer.EntityInfo(
-        source_code=None, source_file=None, future_features=(), namespace=None)
-    return transformer.Context(entity_info)
+        name='test_fn',
+        source_code=None,
+        source_file=None,
+        future_features=(),
+        namespace=None)
+    return transformer.Context(entity_info, None, None)
 
   def assert_same_ast(self, expected_node, node, msg=None):
     expected_source = parser.unparse(expected_node, indentation='  ')
@@ -473,12 +477,14 @@ class AnfConfiguredTest(AnfTestBase):
   def test_anf_some_function_calls(self):
     # Another example specific configuration that differs from the default:
     # Moving all arguments out of some function calls but leaving others be.
-    whitelist = ['foo']
+    allowlist = ['foo']
+
     def transform(parent, field, child):
       del field
       del child
       func_name = parent.func.id
-      return str(func_name) in whitelist
+      return str(func_name) in allowlist
+
     config = [(anf.ASTEdgePattern(gast.Call, anf.ANY, anf.ANY), transform)]
 
     def test_function(x, foo, bar):

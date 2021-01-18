@@ -12,16 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+#include <algorithm>
+#include <initializer_list>
 #include <limits>
+#include <map>
+#include <memory>
 #include <random>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -37,6 +49,10 @@ TfLiteRegistration* Register_TANH_FIXED_POINT_OPT();
 TfLiteRegistration* Register_LOGISTIC_REF();
 TfLiteRegistration* Register_LOGISTIC_GENERIC_OPT();
 TfLiteRegistration* Register_LOGISTIC_FIXED_POINT_OPT();
+
+// PRelu kernel registrations.
+TfLiteRegistration* Register_PRELU_REF();
+TfLiteRegistration* Register_PRELU();
 
 }  // namespace builtin
 }  // namespace ops
@@ -85,7 +101,16 @@ class BaseActivationsOpModel : public SingleOpModel {
       output_ = AddOutput({TensorType_UINT8, {}, 0, 0, 1. / 256});
     } else if (output_type == TensorType_INT8) {
       output_ = AddOutput({TensorType_INT8, {}, 0, 0, 1. / 256, -128});
-    } else if (output_type == TensorType_INT16) {
+    } else if (input.type == TensorType_INT16 &&
+               output_type == TensorType_INT16) {
+      output_ = AddOutput({TensorType_INT16,
+                           {},
+                           0,
+                           0,
+                           1.0f / (std::numeric_limits<int16_t>::max() + 1),
+                           0});
+    } else if (input.type != TensorType_INT16 &&
+               output_type == TensorType_INT16) {
       output_ = AddOutput({TensorType_INT16, {}, 0, 0, 1. / 32768, -16384});
     } else {
       output_ = AddOutput({output_type, {}});
@@ -99,10 +124,20 @@ class BaseActivationsOpModel : public SingleOpModel {
   BaseActivationsOpModel(TensorData input, float alpha) {
     input_ = AddInput(input);
     // The output scale and input scale might be different.
-    if (input.type == TensorType_UINT8 || input.type == TensorType_INT8) {
+    if (input.type == TensorType_UINT8 || input.type == TensorType_INT8 ||
+        input.type == TensorType_INT16) {
       auto output_min = (input.min >= 0) ? input.min : input.min * alpha;
       auto output_max = (input.max >= 0) ? input.max : input.max * alpha;
-      output_ = AddOutput({input.type, {}, output_min, output_max});
+      if (input.type == TensorType_INT16) {
+        output_ = AddOutput({TensorType_INT16,
+                             {},
+                             0,
+                             0,
+                             output_max / (std::numeric_limits<int16_t>::max()),
+                             0});
+      } else {
+        output_ = AddOutput({input.type, {}, output_min, output_max});
+      }
     } else {
       output_ = AddOutput({input.type, {}});
     }
@@ -220,6 +255,29 @@ TEST(FloatActivationsOpTest, Elu) {
                                  0.0, -0.997521, 2.0, -0.981684,    //
                                  3.0, -0.864665, 10.0, -0.0951626,  //
                              })));
+}
+
+TEST(QuantizedActivationsOpTest, EluInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel model(
+      BuiltinOperator_ELU,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+
+  model.SetInput<int8_t>({
+      0, -6, 2, -4,    //
+      3, -2, 6, -0.1,  //
+  });
+
+  model.Invoke();
+  EXPECT_THAT(model.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, -1.0, 2.0, -1,          //
+                      3.0, -0.875, 6.0, -0.125,  //
+                  },
+                  kQuantizedTolerance)));
 }
 
 TEST(FloatActivationsOpTest, Relu) {
@@ -495,14 +553,17 @@ TEST(QuantizedActivationsOpTest, LeakyReluUint8) {
                   kQuantizedTolerance * 8)));
 }
 
-TEST(QuantizedActivationsOpTest, LeakyReluInt8) {
+template <TensorType tensor_type, typename integer_dtype>
+void QuantizedActivationsOpTestLeakyRelu() {
   const float kMin = -1;
-  const float kMax = 127.f / 128.f;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
 
   QuantizedActivationsOpModel m(
-      /*input=*/{TensorType_INT8, {5, 5}, 5 * kMin, 5 * kMax}, 0.1);
+      /*input=*/{tensor_type, {5, 5}, 5 * kMin, 5 * kMax}, 0.1);
 
-  m.SetInput<int8_t>({
+  m.SetInput<integer_dtype>({
       -5.0f, -4.6f, -4.2f, -3.8f, -3.4f,  // Row 1
       -3.0f, -2.6f, -2.2f, -1.8f, -1.4f,  // Row 2
       -1.0f, -0.6f, -0.2f, 0.2f,  0.6f,   // Row 3
@@ -510,7 +571,12 @@ TEST(QuantizedActivationsOpTest, LeakyReluInt8) {
       3.0f,  3.4f,  3.8f,  4.2f,  4.6f,   // Row 5
   });
   m.Invoke();
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+
+  float kTestQuantizedTolerance = tensor_type == TensorType_INT16
+                                      ? kQuantizedToleranceInt16
+                                      : kQuantizedTolerance * 5;
+
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       -0.50f, -0.46f, -0.42f, -0.38f, -0.34f,  // Row 1
@@ -519,7 +585,15 @@ TEST(QuantizedActivationsOpTest, LeakyReluInt8) {
                       1.00f,  1.40f,  1.80f,  2.20f,  2.60f,   // Row 4
                       3.00f,  3.40f,  3.80f,  4.20f,  4.60f,   // Row 5
                   },
-                  kQuantizedTolerance * 5)));
+                  kTestQuantizedTolerance)));
+}
+
+TEST(QuantizedActivationsOpTest, LeakyReluInt8) {
+  QuantizedActivationsOpTestLeakyRelu<TensorType_INT8, int8_t>();
+}
+
+TEST(QuantizedActivationsOpTest, LeakyReluInt16) {
+  QuantizedActivationsOpTestLeakyRelu<TensorType_INT16, int16_t>();
 }
 
 TEST(QuantizedActivationsOpTest, Relu1Int8) {
@@ -590,6 +664,29 @@ TEST(QuantizedActivationsOpTest, Relu6Int8) {
               ElementsAreArray({0, 0, 32, 64, 48, 0, 96, 16}));
 }
 
+TEST(QuantizedActivationsOpTest, Relu6Int16) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU6,
+      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<int16_t>({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, 0, 2, 4,  //
+                      3, 0, 6, 1,  //
+                  },
+                  kQuantizedToleranceInt16)));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 0, 8192, 16384, 12288, 0, 24576, 4096}));
+}
+
 TEST(QuantizedActivationsOpTest, ReluUint8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
@@ -633,6 +730,29 @@ TEST(QuantizedActivationsOpTest, ReluInt8) {
                                                     kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({0, 0, 32, 64, 48, 0, 112, 16}));
+}
+
+TEST(QuantizedActivationsOpTest, ReluInt16) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU,
+      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<int16_t>({
+      0, -6, 2, 4,  //
+      3, -2, 7, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, 0, 2, 4,  //
+                      3, 0, 7, 1,  //
+                  },
+                  kQuantizedToleranceInt16)));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 0, 8192, 16384, 12288, 0, 28672, 4096}));
 }
 
 TEST_P(TanhOpTest, TanhUint8) {
@@ -764,19 +884,117 @@ TEST_P(TanhOpTest, TanhInt16) {
   const float kMax = 32767.f / 32768.f;
   QuantizedActivationsOpModel m(
       GetRegistration(), BuiltinOperator_TANH,
-      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
-      /*output=*/{TensorType_INT16, {1, 2, 4, 1}, kMin, kMax});
-  m.SetInput<int16_t>({
-      0, -6, 2, 4,   //
-      -4, -2, 8, 1,  //
-  });
+      /*input=*/{TensorType_INT16, {177}, 16 * kMin, 16 * kMax},
+      /*output=*/{TensorType_INT16, {177}, kMin, kMax});
+  m.SetInput<int16_t>(
+      {-20.0000000000, -19.7727272727, -19.5454545455, -19.3181818182,
+       -19.0909090909, -18.8636363636, -18.6363636364, -18.4090909091,
+       -18.1818181818, -17.9545454545, -17.7272727273, -17.5000000000,
+       -17.2727272727, -17.0454545455, -16.8181818182, -16.5909090909,
+       -16.3636363636, -16.1363636364, -15.9090909091, -15.6818181818,
+       -15.4545454545, -15.2272727273, -15.0000000000, -14.7727272727,
+       -14.5454545455, -14.3181818182, -14.0909090909, -13.8636363636,
+       -13.6363636364, -13.4090909091, -13.1818181818, -12.9545454545,
+       -12.7272727273, -12.5000000000, -12.2727272727, -12.0454545455,
+       -11.8181818182, -11.5909090909, -11.3636363636, -11.1363636364,
+       -10.9090909091, -10.6818181818, -10.4545454545, -10.2272727273,
+       -10.0000000000, -9.7727272727,  -9.5454545455,  -9.3181818182,
+       -9.0909090909,  -8.8636363636,  -8.6363636364,  -8.4090909091,
+       -8.1818181818,  -7.9545454545,  -7.7272727273,  -7.5000000000,
+       -7.2727272727,  -7.0454545455,  -6.8181818182,  -6.5909090909,
+       -6.3636363636,  -6.1363636364,  -5.9090909091,  -5.6818181818,
+       -5.4545454545,  -5.2272727273,  -5.0000000000,  -4.7727272727,
+       -4.5454545455,  -4.3181818182,  -4.0909090909,  -3.8636363636,
+       -3.6363636364,  -3.4090909091,  -3.1818181818,  -2.9545454545,
+       -2.7272727273,  -2.5000000000,  -2.2727272727,  -2.0454545455,
+       -1.8181818182,  -1.5909090909,  -1.3636363636,  -1.1363636364,
+       -0.9090909091,  -0.6818181818,  -0.4545454545,  -0.2272727273,
+       0.0000000000,   0.2272727273,   0.4545454545,   0.6818181818,
+       0.9090909091,   1.1363636364,   1.3636363636,   1.5909090909,
+       1.8181818182,   2.0454545455,   2.2727272727,   2.5000000000,
+       2.7272727273,   2.9545454545,   3.1818181818,   3.4090909091,
+       3.6363636364,   3.8636363636,   4.0909090909,   4.3181818182,
+       4.5454545455,   4.7727272727,   5.0000000000,   5.2272727273,
+       5.4545454545,   5.6818181818,   5.9090909091,   6.1363636364,
+       6.3636363636,   6.5909090909,   6.8181818182,   7.0454545455,
+       7.2727272727,   7.5000000000,   7.7272727273,   7.9545454545,
+       8.1818181818,   8.4090909091,   8.6363636364,   8.8636363636,
+       9.0909090909,   9.3181818182,   9.5454545455,   9.7727272727,
+       10.0000000000,  10.2272727273,  10.4545454545,  10.6818181818,
+       10.9090909091,  11.1363636364,  11.3636363636,  11.5909090909,
+       11.8181818182,  12.0454545455,  12.2727272727,  12.5000000000,
+       12.7272727273,  12.9545454545,  13.1818181818,  13.4090909091,
+       13.6363636364,  13.8636363636,  14.0909090909,  14.3181818182,
+       14.5454545455,  14.7727272727,  15.0000000000,  15.2272727273,
+       15.4545454545,  15.6818181818,  15.9090909091,  16.1363636364,
+       16.3636363636,  16.5909090909,  16.8181818182,  17.0454545455,
+       17.2727272727,  17.5000000000,  17.7272727273,  17.9545454545,
+       18.1818181818,  18.4090909091,  18.6363636364,  18.8636363636,
+       19.0909090909,  19.3181818182,  19.5454545455,  19.7727272727,
+       20.0000000000});
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
-                  {
-                      0.0, -0.999987, 0.964027, 0.999329,     //
-                      -0.999329, -0.96402, 0.99999, 0.76159,  //
-                  },
+                  {-1.0000000000, -1.0000000000, -1.0000000000, -1.0000000000,
+                   -1.0000000000, -1.0000000000, -1.0000000000, -1.0000000000,
+                   -1.0000000000, -1.0000000000, -1.0000000000, -1.0000000000,
+                   -1.0000000000, -1.0000000000, -1.0000000000, -1.0000000000,
+                   -1.0000000000, -1.0000000000, -1.0000000000, -1.0000000000,
+                   -1.0000000000, -1.0000000000, -1.0000000000, -1.0000000000,
+                   -1.0000000000, -1.0000000000, -1.0000000000, -1.0000000000,
+                   -1.0000000000, -1.0000000000, -1.0000000000, -1.0000000000,
+                   -1.0000000000, -1.0000000000, -1.0000000000, -0.9999999999,
+                   -0.9999999999, -0.9999999998, -0.9999999997, -0.9999999996,
+                   -0.9999999993, -0.9999999989, -0.9999999983, -0.9999999974,
+                   -0.9999999959, -0.9999999935, -0.9999999898, -0.9999999839,
+                   -0.9999999746, -0.9999999600, -0.9999999370, -0.9999999007,
+                   -0.9999998435, -0.9999997535, -0.9999996117, -0.9999993882,
+                   -0.9999990361, -0.9999984815, -0.9999976076, -0.9999962309,
+                   -0.9999940619, -0.9999906449, -0.9999852614, -0.9999767801,
+                   -0.9999634183, -0.9999423677, -0.9999092043, -0.9998569589,
+                   -0.9997746542, -0.9996450004, -0.9994407705, -0.9991190997,
+                   -0.9986125310, -0.9978149744, -0.9965597488, -0.9945853915,
+                   -0.9914827859, -0.9866142982, -0.9789923110, -0.9671021386,
+                   -0.9486568273, -0.9202886021, -0.8772337852, -0.8131859906,
+                   -0.7206956332, -0.5927001330, -0.4256281972, -0.2234388228,
+                   0.0000000000,  0.2234388228,  0.4256281972,  0.5927001330,
+                   0.7206956332,  0.8131859906,  0.8772337852,  0.9202886021,
+                   0.9486568273,  0.9671021386,  0.9789923110,  0.9866142982,
+                   0.9914827859,  0.9945853915,  0.9965597488,  0.9978149744,
+                   0.9986125310,  0.9991190997,  0.9994407705,  0.9996450004,
+                   0.9997746542,  0.9998569589,  0.9999092043,  0.9999423677,
+                   0.9999634183,  0.9999767801,  0.9999852614,  0.9999906449,
+                   0.9999940619,  0.9999962309,  0.9999976076,  0.9999984815,
+                   0.9999990361,  0.9999993882,  0.9999996117,  0.9999997535,
+                   0.9999998435,  0.9999999007,  0.9999999370,  0.9999999600,
+                   0.9999999746,  0.9999999839,  0.9999999898,  0.9999999935,
+                   0.9999999959,  0.9999999974,  0.9999999983,  0.9999999989,
+                   0.9999999993,  0.9999999996,  0.9999999997,  0.9999999998,
+                   0.9999999999,  0.9999999999,  1.0000000000,  1.0000000000,
+                   1.0000000000,  1.0000000000,  1.0000000000,  1.0000000000,
+                   1.0000000000,  1.0000000000,  1.0000000000,  1.0000000000,
+                   1.0000000000,  1.0000000000,  1.0000000000,  1.0000000000,
+                   1.0000000000,  1.0000000000,  1.0000000000,  1.0000000000,
+                   1.0000000000,  1.0000000000,  1.0000000000,  1.0000000000,
+                   1.0000000000,  1.0000000000,  1.0000000000,  1.0000000000,
+                   1.0000000000,  1.0000000000,  1.0000000000,  1.0000000000,
+                   1.0000000000,  1.0000000000,  1.0000000000,  1.0000000000,
+                   1.0000000000},
+                  kQuantizedToleranceInt16)));
+}
+
+TEST_P(TanhOpTest, TanhInt16General) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      GetRegistration(), BuiltinOperator_TANH,
+      /*input=*/{TensorType_INT16, {6}, 11 * kMin, 11 * kMax},
+      /*output=*/{TensorType_INT16, {5}, kMin, kMax});
+  m.SetInput<int16_t>({-10, -4, 0, 6, 7.0909090909, 8});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {-0.999969, -0.99408, 0, 0.999664, 0.999939, 0.999969},
                   kQuantizedToleranceInt16)));
 }
 
@@ -905,20 +1123,114 @@ TEST_P(LogisticOpTest, SigmoidInt16) {
   const float kMax = 32767.f / 32768.f;
   QuantizedActivationsOpModel m(
       GetRegistration(), BuiltinOperator_LOGISTIC,
-      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
-      /*output=*/{TensorType_INT16, {1, 2, 4, 1}, kMin, kMax});
+      /*input=*/{TensorType_INT16, {177}, 16 * kMin, 16 * kMax},
+      /*output=*/{TensorType_INT16, {177}, kMin, kMax});
+  m.SetInput<int16_t>(
+      {-20.0000000000, -19.7727272727, -19.5454545455, -19.3181818182,
+       -19.0909090909, -18.8636363636, -18.6363636364, -18.4090909091,
+       -18.1818181818, -17.9545454545, -17.7272727273, -17.5000000000,
+       -17.2727272727, -17.0454545455, -16.8181818182, -16.5909090909,
+       -16.3636363636, -16.1363636364, -15.9090909091, -15.6818181818,
+       -15.4545454545, -15.2272727273, -15.0000000000, -14.7727272727,
+       -14.5454545455, -14.3181818182, -14.0909090909, -13.8636363636,
+       -13.6363636364, -13.4090909091, -13.1818181818, -12.9545454545,
+       -12.7272727273, -12.5000000000, -12.2727272727, -12.0454545455,
+       -11.8181818182, -11.5909090909, -11.3636363636, -11.1363636364,
+       -10.9090909091, -10.6818181818, -10.4545454545, -10.2272727273,
+       -10.0000000000, -9.7727272727,  -9.5454545455,  -9.3181818182,
+       -9.0909090909,  -8.8636363636,  -8.6363636364,  -8.4090909091,
+       -8.1818181818,  -7.9545454545,  -7.7272727273,  -7.5000000000,
+       -7.2727272727,  -7.0454545455,  -6.8181818182,  -6.5909090909,
+       -6.3636363636,  -6.1363636364,  -5.9090909091,  -5.6818181818,
+       -5.4545454545,  -5.2272727273,  -5.0000000000,  -4.7727272727,
+       -4.5454545455,  -4.3181818182,  -4.0909090909,  -3.8636363636,
+       -3.6363636364,  -3.4090909091,  -3.1818181818,  -2.9545454545,
+       -2.7272727273,  -2.5000000000,  -2.2727272727,  -2.0454545455,
+       -1.8181818182,  -1.5909090909,  -1.3636363636,  -1.1363636364,
+       -0.9090909091,  -0.6818181818,  -0.4545454545,  -0.2272727273,
+       0.0000000000,   0.2272727273,   0.4545454545,   0.6818181818,
+       0.9090909091,   1.1363636364,   1.3636363636,   1.5909090909,
+       1.8181818182,   2.0454545455,   2.2727272727,   2.5000000000,
+       2.7272727273,   2.9545454545,   3.1818181818,   3.4090909091,
+       3.6363636364,   3.8636363636,   4.0909090909,   4.3181818182,
+       4.5454545455,   4.7727272727,   5.0000000000,   5.2272727273,
+       5.4545454545,   5.6818181818,   5.9090909091,   6.1363636364,
+       6.3636363636,   6.5909090909,   6.8181818182,   7.0454545455,
+       7.2727272727,   7.5000000000,   7.7272727273,   7.9545454545,
+       8.1818181818,   8.4090909091,   8.6363636364,   8.8636363636,
+       9.0909090909,   9.3181818182,   9.5454545455,   9.7727272727,
+       10.0000000000,  10.2272727273,  10.4545454545,  10.6818181818,
+       10.9090909091,  11.1363636364,  11.3636363636,  11.5909090909,
+       11.8181818182,  12.0454545455,  12.2727272727,  12.5000000000,
+       12.7272727273,  12.9545454545,  13.1818181818,  13.4090909091,
+       13.6363636364,  13.8636363636,  14.0909090909,  14.3181818182,
+       14.5454545455,  14.7727272727,  15.0000000000,  15.2272727273,
+       15.4545454545,  15.6818181818,  15.9090909091,  16.1363636364,
+       16.3636363636,  16.5909090909,  16.8181818182,  17.0454545455,
+       17.2727272727,  17.5000000000,  17.7272727273,  17.9545454545,
+       18.1818181818,  18.4090909091,  18.6363636364,  18.8636363636,
+       19.0909090909,  19.3181818182,  19.5454545455,  19.7727272727,
+       20.0000000000});
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int16_t>(),
+      ElementsAreArray(ArrayFloatNear(
+          {0.0000000021, 0.0000000026, 0.0000000032, 0.0000000041, 0.0000000051,
+           0.0000000064, 0.0000000081, 0.0000000101, 0.0000000127, 0.0000000159,
+           0.0000000200, 0.0000000251, 0.0000000315, 0.0000000396, 0.0000000497,
+           0.0000000623, 0.0000000782, 0.0000000982, 0.0000001232, 0.0000001547,
+           0.0000001942, 0.0000002437, 0.0000003059, 0.0000003840, 0.0000004819,
+           0.0000006049, 0.0000007593, 0.0000009530, 0.0000011962, 0.0000015014,
+           0.0000018846, 0.0000023654, 0.0000029690, 0.0000037266, 0.0000046776,
+           0.0000058711, 0.0000073693, 0.0000092497, 0.0000116100, 0.0000145724,
+           0.0000182909, 0.0000229581, 0.0000288162, 0.0000361690, 0.0000453979,
+           0.0000569815, 0.0000715205, 0.0000897689, 0.0001126729, 0.0001414198,
+           0.0001774998, 0.0002227827, 0.0002796147, 0.0003509396, 0.0004404502,
+           0.0005527786, 0.0006937345, 0.0008706021, 0.0010925128, 0.0013709094,
+           0.0017201256, 0.0021581065, 0.0027073042, 0.0033957870, 0.0042586071,
+           0.0053394826, 0.0066928509, 0.0083863576, 0.0105038445, 0.0131488902,
+           0.0164489307, 0.0205599431, 0.0256715863, 0.0320125562, 0.0398556989,
+           0.0495221198, 0.0613831074, 0.0758581800, 0.0934070047, 0.1145124805,
+           0.1396521834, 0.1692560327, 0.2036499335, 0.2429886272, 0.2871859014,
+           0.3358556241, 0.3882805886, 0.4434251301, 0.5000000000, 0.5565748699,
+           0.6117194114, 0.6641443759, 0.7128140986, 0.7570113728, 0.7963500665,
+           0.8307439673, 0.8603478166, 0.8854875195, 0.9065929953, 0.9241418200,
+           0.9386168926, 0.9504778802, 0.9601443011, 0.9679874438, 0.9743284137,
+           0.9794400569, 0.9835510693, 0.9868511098, 0.9894961555, 0.9916136424,
+           0.9933071491, 0.9946605174, 0.9957413929, 0.9966042130, 0.9972926958,
+           0.9978418935, 0.9982798744, 0.9986290906, 0.9989074872, 0.9991293979,
+           0.9993062655, 0.9994472214, 0.9995595498, 0.9996490604, 0.9997203853,
+           0.9997772173, 0.9998225002, 0.9998585802, 0.9998873271, 0.9999102311,
+           0.9999284795, 0.9999430185, 0.9999546021, 0.9999638310, 0.9999711838,
+           0.9999770419, 0.9999817091, 0.9999854276, 0.9999883900, 0.9999907503,
+           0.9999926307, 0.9999941289, 0.9999953224, 0.9999962734, 0.9999970310,
+           0.9999976346, 0.9999981154, 0.9999984986, 0.9999988038, 0.9999990470,
+           0.9999992407, 0.9999993951, 0.9999995181, 0.9999996160, 0.9999996941,
+           0.9999997563, 0.9999998058, 0.9999998453, 0.9999998768, 0.9999999018,
+           0.9999999218, 0.9999999377, 0.9999999503, 0.9999999604, 0.9999999685,
+           0.9999999749, 0.9999999800, 0.9999999841, 0.9999999873, 0.9999999899,
+           0.9999999919, 0.9999999936, 0.9999999949, 0.9999999959, 0.9999999968,
+           0.9999999974, 0.9999999979},
+          kQuantizedToleranceInt16)));
+}
+
+TEST_P(LogisticOpTest, SigmoidInt16General) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      GetRegistration(), BuiltinOperator_LOGISTIC,
+      /*input=*/{TensorType_INT16, {8}, 10 * kMin, 10 * kMax},
+      /*output=*/{TensorType_INT16, {8}, kMin, kMax});
   m.SetInput<int16_t>({
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
   m.Invoke();
-  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {
-                      0.5, 0.002473, 0.880797, 0.982014,       //
-                      0.952574, 0.119203, 0.999955, 0.731059,  //
-                  },
-                  kQuantizedToleranceInt16)));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int16_t>(),
+      ElementsAreArray(ArrayFloatNear({0.5, 0.00814819, 0.832031, 0.960846,  //
+                                       0.916809, 0.167969, 0.999664, 0.689972},
+                                      kQuantizedToleranceInt16)));
 }
 
 TEST(FloatActivationsOpTest, Softmax4D) {
@@ -1038,6 +1350,166 @@ TEST(QuantizedActivationsOpTest, Softmax1DInt8) {
       ElementsAreArray(ArrayFloatNear({0.09766, 0.05469, 0.12109, 0.14453,
                                        0.13281, 0.07813, 0.26563, 0.10938},
                                       kQuantizedTolerance)));
+}
+
+// Test quantized softmax with int16 input and output. With the same input as in
+// QuantizedActivationsOpTest.Softmax2D, the dequantized output is identical.
+TEST(QuantizedActivationsOpTest, Softmax1DInt16) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      1,
+      /*input=*/{TensorType_INT16, {3}, 3 * kMin, 3 * kMax},
+      /*output_type-*/ TensorType_INT16);
+  m.SetInput<int16_t>({1, 2, 3});
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int16_t>(),
+      ElementsAreArray(ArrayFloatNear({0.0900269, 0.2447285, 0.66524096},
+                                      kQuantizedToleranceInt16)));
+}
+
+TEST(QuantizedActivationsOpTest, Softmax1DInt16ZeroElement) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      0.1,
+      /*input=*/{TensorType_INT16, {1}, 1 * kMin, 1 * kMax}, TensorType_INT16);
+  m.SetInput<int16_t>({0});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({1}, kQuantizedToleranceInt16)));
+}
+
+TEST(QuantizedActivationsOpTest, Softmax2DInt16) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      0.1,
+      /*input=*/{TensorType_INT16, {2, 4}, 10 * kMin, 10 * kMax},
+      TensorType_INT16);
+  m.SetInput<int16_t>({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .23463, .12877, .28658, .35003,  //
+                      .22528, .13664, .45365, .18443,  //
+                  },
+                  kQuantizedToleranceInt16)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(
+      0.1,
+      /*input=*/{TensorType_INT16, {4, 2}, 10 * kMin, 10 * kMax},
+      TensorType_INT16);
+  m2.SetInput<int16_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.645656, 0.354344,  //
+                      0.450166, 0.549834,  //
+                      0.622459, 0.377541,  //
+                      0.710949, 0.28905,   //
+                  },
+                  kQuantizedToleranceInt16)));
+}
+
+TEST(QuantizedActivationsOpTest, Softmax3DInt16) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      1,
+      /*input=*/{TensorType_INT16, {1, 2, 4}, 10 * kMin, 10 * kMax},
+      TensorType_INT16);
+  m.SetInput<int16_t>({
+      0, -6, 2, 4,   // depth = 0
+      3, -2, 10, 1,  // depth = 1
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .0158756, .000039, .1173, .866779,   //
+                      .00091, .0000061, .998959, .000123,  //
+                  },
+                  kQuantizedTolerance)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(
+      1,
+      /*input=*/{TensorType_INT16, {4, 1, 2}, 10 * kMin, 10 * kMax},
+      TensorType_INT16);
+  m2.SetInput<int16_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.997527, 0.0024726,       //
+                      0.11920292, 0.88079707,    //
+                      0.99330715, 0.00669285,    //
+                      0.999876605, 0.000123395,  //
+                  },
+                  kQuantizedTolerance)));
+}
+
+// Test quantized softmax with int16 input and output. With the same input as in
+// QuantizedActivationsOpTest.Softmax4D, the dequantized output is identical.
+TEST(QuantizedActivationsOpTest, Softmax4DInt16) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      0.1,
+      /*input=*/{TensorType_INT16, {1, 2, 1, 4}, 10 * kMin, 10 * kMax},
+      TensorType_INT16);
+  m.SetInput<int16_t>({
+      0, -6, 2, 4,   // depth = 0
+      3, -2, 10, 1,  // depth = 1
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .23463, .12877, .28658, .35003,  //
+                      .22528, .13664, .45365, .18443,  //
+                  },
+                  kQuantizedToleranceInt16)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(
+      0.1,
+      /*input=*/{TensorType_INT16, {4, 1, 1, 2}, 10 * kMin, 10 * kMax},
+      TensorType_INT16);
+  m2.SetInput<int16_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.645656, 0.354344,  //
+                      0.450166, 0.549834,  //
+                      0.622459, 0.377541,  //
+                      0.710949, 0.28905,   //
+                  },
+                  kQuantizedToleranceInt16)));
 }
 
 // Test quantized softmax with int8 input and int16 output. With the same input
@@ -1712,6 +2184,11 @@ TEST(QuantizedActivationsOpTest, LogSoftmaxInt8) {
                                      }));
 }
 
+const auto kPReluKernelMap = new std::map<string, TfLiteRegistration*>({
+    {"Reference", ops::builtin::Register_PRELU_REF()},
+    {"GenericOptimized", ops::builtin::Register_PRELU()},
+});
+
 // A base class of PRelu op model. It provides the constructor for
 // FloatPReluOpModel and QuantizedPReluOpModel.
 class BasePReluOpModel : public SingleOpModel {
@@ -1768,7 +2245,14 @@ class QuantizedPReluOpModel : public BasePReluOpModel {
   }
 };
 
-TEST(FloatActivationsOpTest, PRelu) {
+class PReluOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kPReluKernelMap;
+  }
+};
+
+TEST_P(PReluOpTest, PReluFloat32) {
   FloatPReluOpModel m({TensorType_FLOAT32, {1, 2, 2, 3}},
                       {TensorType_FLOAT32, {1, 1, 3}});
 
@@ -1776,7 +2260,7 @@ TEST(FloatActivationsOpTest, PRelu) {
       0.0f, 0.0f, 0.0f,     // Row 1, Column 1
       1.0f, 1.0f, 1.0f,     // Row 1, Column 2
       -1.0f, -1.0f, -1.0f,  // Row 2, Column 1
-      -2.0f, -2.0f, -2.0f,  // Row 1, Column 2
+      -2.0f, -2.0f, -2.0f,  // Row 2, Column 2
   });
   m.SetAlpha({0.0f, 1.0f, 2.0f});
   m.Invoke();
@@ -1784,11 +2268,36 @@ TEST(FloatActivationsOpTest, PRelu) {
                                  0.0f, 0.0f, 0.0f,    // Row 1, Column 1
                                  1.0f, 1.0f, 1.0f,    // Row 1, Column 2
                                  0.0f, -1.0f, -2.0f,  // Row 2, Column 1
-                                 0.0f, -2.0f, -4.0f,  // Row 1, Column 2
+                                 0.0f, -2.0f, -4.0f,  // Row 2, Column 2
                              }));
 }
 
-TEST(QuantizedActivationsOpTest, PRelu) {
+TEST_P(PReluOpTest, PReluFloat32SameShapes) {
+  FloatPReluOpModel m({TensorType_FLOAT32, {1, 2, 2, 3}},
+                      {TensorType_FLOAT32, {1, 2, 2, 3}});
+
+  m.SetInput({
+      0.0f, 0.0f, 0.0f,     // Row 1, Column 1
+      1.0f, 1.0f, 1.0f,     // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,  // Row 2, Column 1
+      -2.0f, -2.0f, -2.0f,  // Row 2, Column 2
+  });
+  m.SetAlpha({
+      0.0f, 1.0f, 2.0f,  // Row 1, Column 1
+      0.0f, 1.0f, 2.0f,  // Row 1, Column 2
+      0.0f, 1.0f, 2.0f,  // Row 2, Column 1
+      0.0f, 1.0f, 2.0f,  // Row 2, Column 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 0.0f, 0.0f, 0.0f,    // Row 1, Column 1
+                                 1.0f, 1.0f, 1.0f,    // Row 1, Column 2
+                                 0.0f, -1.0f, -2.0f,  // Row 2, Column 1
+                                 0.0f, -2.0f, -4.0f,  // Row 2, Column 2
+                             }));
+}
+
+TEST_P(PReluOpTest, PReluUInt8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
   QuantizedPReluOpModel m({TensorType_UINT8, {1, 2, 2, 3}, kMin, kMax},
@@ -1797,7 +2306,7 @@ TEST(QuantizedActivationsOpTest, PRelu) {
       0.0f, 0.0f, 0.0f,        // Row 1, Column 1
       0.5f, 0.5f, 0.5f,        // Row 1, Column 2
       -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
-      -0.25f, -0.25f, -0.25f,  // Row 1, Column 2
+      -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
   });
   m.SetAlpha<uint8_t>({0.0f, 0.5f, -0.5f});
   m.Invoke();
@@ -1807,15 +2316,115 @@ TEST(QuantizedActivationsOpTest, PRelu) {
                       0.0f, 0.0f, 0.0f,       // Row 1, Column 1
                       0.5f, 0.5f, 0.5f,       // Row 1, Column 2
                       0.0f, -0.5f, 0.5f,      // Row 2, Column 1
-                      0.0f, -0.125f, 0.125f,  // Row 1, Column 2
+                      0.0f, -0.125f, 0.125f,  // Row 2, Column 2
                   },
                   kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({
                                           128, 128, 128,  // Row 1, Column 1
                                           192, 192, 192,  // Row 1, Column 2
                                           128, 64, 192,   // Row 2, Column 1
-                                          128, 112, 144,  // Row 1, Column 2
+                                          128, 112, 144,  // Row 2, Column 2
                                       }));
+}
+
+TEST_P(PReluOpTest, PReluUInt8SameShapes) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedPReluOpModel m({TensorType_UINT8, {1, 2, 2, 3}, kMin, kMax},
+                          {TensorType_UINT8, {1, 2, 2, 3}, kMin, kMax});
+  m.SetInput<uint8_t>({
+      0.0f, 0.0f, 0.0f,        // Row 1, Column 1
+      0.5f, 0.5f, 0.5f,        // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
+      -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
+  });
+  m.SetAlpha<uint8_t>({
+      0.0f, 0.5f, -0.5f,  // Row 1, Column 1
+      0.0f, 0.5f, -0.5f,  // Row 1, Column 2
+      0.0f, 0.5f, -0.5f,  // Row 2, Column 1
+      0.0f, 0.5f, -0.5f,  // Row 2, Column 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 0.0f, 0.0f,       // Row 1, Column 1
+                      0.5f, 0.5f, 0.5f,       // Row 1, Column 2
+                      0.0f, -0.5f, 0.5f,      // Row 2, Column 1
+                      0.0f, -0.125f, 0.125f,  // Row 2, Column 2
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({
+                                          128, 128, 128,  // Row 1, Column 1
+                                          192, 192, 192,  // Row 1, Column 2
+                                          128, 64, 192,   // Row 2, Column 1
+                                          128, 112, 144,  // Row 2, Column 2
+                                      }));
+}
+
+TEST_P(PReluOpTest, PReluInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedPReluOpModel m({TensorType_INT8, {1, 2, 2, 3}, kMin, kMax},
+                          {TensorType_INT8, {1, 1, 3}, kMin, kMax});
+  m.SetInput<int8_t>({
+      0.0f, 0.0f, 0.0f,        // Row 1, Column 1
+      0.5f, 0.5f, 0.5f,        // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
+      -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
+  });
+  m.SetAlpha<int8_t>({0.0f, 0.5f, -0.5f});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 0.0f, 0.0f,       // Row 1, Column 1
+                      0.5f, 0.5f, 0.5f,       // Row 1, Column 2
+                      0.0f, -0.5f, 0.5f,      // Row 2, Column 1
+                      0.0f, -0.125f, 0.125f,  // Row 2, Column 2
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         0, 0, 0,     // Row 1, Column 1
+                                         64, 64, 64,  // Row 1, Column 2
+                                         0, -64, 64,  // Row 2, Column 1
+                                         0, -16, 16,  // Row 2, Column 2
+                                     }));
+}
+
+TEST_P(PReluOpTest, PReluInt8SameShapes) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedPReluOpModel m({TensorType_INT8, {1, 2, 2, 3}, kMin, kMax},
+                          {TensorType_INT8, {1, 1, 3}, kMin, kMax});
+  m.SetInput<int8_t>({
+      0.0f, 0.0f, 0.0f,        // Row 1, Column 1
+      0.5f, 0.5f, 0.5f,        // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
+      -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
+  });
+  m.SetAlpha<int8_t>({
+      0.0f, 0.5f, -0.5f,  // Row 1, Column 1
+      0.0f, 0.5f, -0.5f,  // Row 1, Column 2
+      0.0f, 0.5f, -0.5f,  // Row 2, Column 1
+      0.0f, 0.5f, -0.5f,  // Row 2, Column 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 0.0f, 0.0f,       // Row 1, Column 1
+                      0.5f, 0.5f, 0.5f,       // Row 1, Column 2
+                      0.0f, -0.5f, 0.5f,      // Row 2, Column 1
+                      0.0f, -0.125f, 0.125f,  // Row 2, Column 2
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         0, 0, 0,     // Row 1, Column 1
+                                         64, 64, 64,  // Row 1, Column 2
+                                         0, -64, 64,  // Row 2, Column 1
+                                         0, -16, 16,  // Row 2, Column 2
+                                     }));
 }
 
 class LeakyReluOpModel : public SingleOpModel {
@@ -1858,6 +2467,10 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     LogisticOpTest, LogisticOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kLogisticKernelMap)));
+
+INSTANTIATE_TEST_SUITE_P(
+    PReluOpTest, PReluOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kPReluKernelMap)));
 
 }  // namespace
 }  // namespace tflite

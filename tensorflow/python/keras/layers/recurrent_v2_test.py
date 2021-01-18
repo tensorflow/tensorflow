@@ -27,10 +27,11 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -51,7 +52,7 @@ class RNNV2Test(keras_parameterized.TestCase):
 
     # Test when GPU is available but not used, the graph should be properly
     # created with CPU ops.
-    with test_util.device(use_gpu=False):
+    with testing_utils.device(should_use_gpu=False):
       model = keras.Sequential([
           keras.layers.Embedding(vocab_size, embedding_dim,
                                  batch_input_shape=[batch_size, timestep]),
@@ -112,6 +113,16 @@ class RNNV2Test(keras_parameterized.TestCase):
             x)
     model = keras.Model(inputs=inputs, outputs=outputs, name='3_layer')
     model.save(os.path.join(self.get_temp_dir(), 'model'), save_format='tf')
+
+  @parameterized.parameters([rnn_v2.LSTM, rnn_v2.GRU])
+  def test_ragged(self, layer):
+    vocab_size = 100
+    inputs = ragged_factory_ops.constant(
+        np.random.RandomState(0).randint(0, vocab_size, [128, 25]))
+    embedder = embeddings.Embedding(input_dim=vocab_size, output_dim=16)
+    embedded_inputs = embedder(inputs)
+    lstm = layer(32)
+    lstm(embedded_inputs)
 
 
 if __name__ == '__main__':

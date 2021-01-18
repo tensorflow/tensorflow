@@ -25,7 +25,7 @@ namespace data {
 
 // Registers a dataset with the tf.data service.
 //
-// The address and protocol inputs are used to connect to the tf.data master.
+// The address and protocol inputs are used to connect to the dispatcher.
 // The external state policy attribute determines whether to ignore, warn, or
 // error out when the dataset contains external state.
 // The op produces a dataset id for identifying the registered dataset.
@@ -35,6 +35,7 @@ class RegisterDatasetOp : public OpKernel {
   static constexpr const char* const kProtocol = "protocol";
   static constexpr const char* const kExternalStatePolicy =
       "external_state_policy";
+  static constexpr const char* const kTimeoutMs = "timeout_ms";
 
   explicit RegisterDatasetOp(OpKernelConstruction* ctx);
 
@@ -42,39 +43,6 @@ class RegisterDatasetOp : public OpKernel {
 
  private:
   SerializationContext::ExternalStatePolicy external_state_policy_;
-};
-
-// Begins a new epoch for a tf.data service dataset.
-//
-// The dataset_id input identifies which dataset to start a new epoch for.
-// The address and protocol inputs are used to connect to the tf.data service
-// master.
-// The op produces an epoch id to identify the newly created epoch.
-class BeginEpochOp : public OpKernel {
- public:
-  static constexpr const char* const kDatasetId = "dataset_id";
-  static constexpr const char* const kAddress = "address";
-  static constexpr const char* const kProtocol = "protocol";
-
-  explicit BeginEpochOp(OpKernelConstruction* ctx);
-
-  void Compute(OpKernelContext* ctx) override;
-};
-
-// Creates a new iterator for iterating over a tf.data service dataset.
-//
-// The epoch_id input identifies which epoch to read from. Multiple iterators
-// may read from the same epoch, causing the elements of the epoch to be split
-// across all iterators.
-class MakeDataServiceIteratorOp : public MakeIteratorOp {
- public:
-  static constexpr const char* const kEpochId = "epoch_id";
-
-  explicit MakeDataServiceIteratorOp(OpKernelConstruction* ctx)
-      : MakeIteratorOp(ctx) {}
-
- protected:
-  Status DoCompute(OpKernelContext* ctx) override;
 };
 
 }  // namespace data

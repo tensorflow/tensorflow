@@ -1,10 +1,18 @@
 path: "tensorflow.distribute.cluster_resolver.TPUClusterResolver"
 tf_class {
-  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver.TPUClusterResolver\'>"
+  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.tpu.tpu_cluster_resolver.TPUClusterResolver\'>"
   is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.cluster_resolver.ClusterResolver\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "environment"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "task_id"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "task_type"
     mtype: "<type \'property\'>"
   }
   member_method {
@@ -14,6 +22,10 @@ tf_class {
   member_method {
     name: "cluster_spec"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "connect"
+    argspec: "args=[\'tpu\', \'zone\', \'project\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_job_name"

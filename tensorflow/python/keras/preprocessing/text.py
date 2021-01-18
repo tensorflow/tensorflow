@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from keras_preprocessing import text
 
+from tensorflow.python.keras.preprocessing.text_dataset import text_dataset_from_directory  # pylint: disable=unused-import
 from tensorflow.python.util.tf_export import keras_export
 
 hashing_trick = text.hashing_trick
@@ -41,10 +42,10 @@ def text_to_word_sequence(input_text,
   >>> tf.keras.preprocessing.text.text_to_word_sequence(sample_text)
   ['this', 'is', 'a', 'sample', 'sentence']
 
-  Arguments:
+  Args:
       input_text: Input text (string).
       filters: list (or concatenation) of characters to filter out, such as
-          punctuation. Default: `'!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n'`,
+          punctuation. Default: ``'!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n'``,
             includes basic punctuation, tabs, and newlines.
       lower: boolean. Whether to convert the input to lowercase.
       split: str. Separator for word splitting.
@@ -62,18 +63,21 @@ def one_hot(input_text,
             filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
             lower=True,
             split=' '):
-  """One-hot encodes a text into a list of word indexes of size `n`.
+  r"""One-hot encodes a text into a list of word indexes of size `n`.
 
   This function receives as input a string of text and returns a
   list of encoded integers each corresponding to a word (or token)
   in the given input string.
 
-  Arguments:
+  Args:
       input_text: Input text (string).
       n: int. Size of vocabulary.
       filters: list (or concatenation) of characters to filter out, such as
-          punctuation. Default: ``!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n``,
-            includes basic punctuation, tabs, and newlines.
+        punctuation. Default:
+        ```
+        '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\t\n
+        ```,
+        includes basic punctuation, tabs, and newlines.
       lower: boolean. Whether to set the text to lowercase.
       split: str. Separator for word splitting.
 

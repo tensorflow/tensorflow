@@ -27,8 +27,8 @@ from tensorflow.python.util.tf_export import tf_export
 class AutoShardPolicy(enum.IntEnum):
   """Represents the type of auto-sharding we enable.
 
-  Please see the DistributeOptions.auto_shard_policy documentation for more
-  information on each type of autosharding.
+  See the `tf.data.experimental.DistributeOptions.auto_shard_policy`
+  documentation for more information.
   """
   OFF = -1
   AUTO = 0
@@ -36,7 +36,13 @@ class AutoShardPolicy(enum.IntEnum):
   DATA = 2
 
 
+@tf_export("data.experimental.ExternalStatePolicy")
 class ExternalStatePolicy(enum.Enum):
+  """Represents how to handle external state during serialization.
+
+  See the `tf.data.Options.experimental_external_state_policy` documentation
+  for more information.
+  """
   WARN = 0
   IGNORE = 1
   FAIL = 2
@@ -76,14 +82,6 @@ class DistributeOptions(options.OptionsBase):
       "by FILE, and fall back to sharding by DATA if we cannot find a set of "
       "files to shard.",
       default_factory=lambda: AutoShardPolicy.AUTO)
-
-  _make_stateless = options.create_option(
-      name="_make_stateless",
-      ty=bool,
-      docstring=
-      "Determines whether the input pipeline should be rewritten to not "
-      "contain stateful transformations (so that its graph can be moved "
-      "between devices).")
 
   num_devices = options.create_option(
       name="num_devices",

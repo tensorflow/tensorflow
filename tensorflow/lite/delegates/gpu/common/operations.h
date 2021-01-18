@@ -17,14 +17,15 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_OPERATIONS_H_
 
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -36,29 +37,44 @@ enum class OperationType {
   ADD,
   BATCH_TO_SPACE,
   BATCH_NORMALIZATION,
+  BATCHED_MATMUL,
   CONCAT,
-  CONST,
+  CONSTANT,
   CONVOLUTION_2D,
   CONVOLUTION_TRANSPOSED,
+  COPY,
   COS,
   DEPTHWISE_CONVOLUTION,
   DIV,
+  ELU,
+  EQUAL,
   EXP,
   FULLY_CONNECTED,
+  GREATER,
+  GREATER_EQUAL,
   HARD_SWISH,
+  LESS,
+  LESS_EQUAL,
   LOG,
   LSTM,
   MAXIMUM,
   MAX_UNPOOLING_2D,
   MEAN,
+  MEAN_STDDEV_NORMALIZATION,
   MINIMUM,
   MUL,
+  NEG,
+  NOT_EQUAL,
   PAD,
   POOLING_2D,
   POW,
   PRELU,
   // Used to accurately run inference on quantized models.
   QUANTIZE_AND_DEQUANTIZE,
+  REDUCE_MAXIMUM,
+  REDUCE_MINIMUM,
+  REDUCE_PRODUCT,
+  REDUCE_SUM,
   RELU,
   RESHAPE,
   RESIZE,
@@ -81,7 +97,8 @@ std::string ToString(enum OperationType op);
 
 OperationType OperationTypeFromString(const std::string& name);
 
-typedef absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
+typedef absl::variant<absl::monostate, Tensor<HWC, DataType::FLOAT32>,
+                      Tensor<Linear, DataType::FLOAT32>, float>
     TensorOrScalar;
 
 struct Padding2D {
@@ -205,6 +222,12 @@ BHWDC CalculateOutputShape(const BHWDC& input, const Pooling3DAttributes& attr);
 absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
                                   const ConcatAttributes& attr,
                                   BHWC* output_shape);
+
+// @return shape of a tensor after Concat operation is applied to the given
+//         input.
+absl::Status CalculateOutputShape(const std::vector<BHWDC>& input,
+                                  const ConcatAttributes& attr,
+                                  BHWDC* output_shape);
 
 // @return padding for pooling operation to make sure output keep the same shape
 // as the given input.
@@ -348,6 +371,10 @@ struct PReLUAttributes {
       alpha;
 };
 
+struct ReduceAttributes {
+  std::set<Axis> dims;
+};
+
 struct SoftmaxAttributes {
   Axis axis = Axis::UNKNOWN;
 };
@@ -359,10 +386,6 @@ enum LstmKernelType {
 
 struct LstmAttributes {
   LstmKernelType kernel_type = LstmKernelType::BASIC;
-};
-
-struct MultiplyAttributes {
-  TensorOrScalar param;
 };
 
 enum class SamplingType {
@@ -379,8 +402,7 @@ struct Resize2DAttributes {
   // If true, the centers of the 4 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
-  // half_pixel_centers assumes pixels are of half the actual dimensions, and
-  // yields more accurate resizes. Only applicable to BILINEAR sampling.
+
   bool half_pixel_centers = false;
 };
 
@@ -393,6 +415,8 @@ struct Resize3DAttributes {
   // If true, the centers of the 8 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
+
+  bool half_pixel_centers = false;
 };
 
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
@@ -425,6 +449,17 @@ struct PadAttributes {
 // @return shape of a tensor after Pad operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr);
 
+struct Pad3DAttributes {
+  PaddingContentType type = PaddingContentType::ZEROS;
+
+  BHWDC prepended;
+  BHWDC appended;
+};
+
+// @return shape of a tensor after Pad3D operation is applied to the given
+// input.
+BHWDC CalculateOutputShape(const BHWDC& input, const Pad3DAttributes& attr);
+
 struct ConstTensorAttributes {
   Tensor<BHWC, DataType::FLOAT32> tensor;
 };
@@ -443,9 +478,19 @@ struct SliceAttributes {
 //         input.
 BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr);
 
-struct AddAttributes {
-  TensorOrScalar param;
+// Simple slicing without advanced support for shrinking, reverse slicing etc.
+struct Slice3DAttributes {
+  // Specifies start and end dimensions for slicing.
+  BHWDC starts;
+  BHWDC ends;
+
+  // Stride should be >= 1.
+  BHWDC strides;
 };
+
+// @return shape of a tensor after Slice3D operation is applied to the given
+//         input.
+BHWDC CalculateOutputShape(const BHWDC& input, const Slice3DAttributes& attr);
 
 struct FullyConnectedAttributes {
   Tensor<OHWI, DataType::FLOAT32> weights;
@@ -460,12 +505,23 @@ BHWC CalculateOutputShape(const BHWC& input,
 // @return shape of a tensor after Mean operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
 
+// @return shape of a tensor after Mean operation is applied to the given input.
+BHWDC CalculateOutputShape(const BHWDC& input, const MeanAttributes& attr);
+
 struct ElementwiseAttributes {
   TensorOrScalar param;
+  // For elementwise operation with 2 inputs op(A, B), runtime_tensor_is_second
+  // true when runtime tensor is B(on second position). this is important for
+  // ops that non commutative, for example substract.
+  bool runtime_tensor_is_second = false;
 };
 
 struct ReshapeAttributes {
   BHWC new_shape;
+};
+
+struct Reshape3DAttributes {
+  BHWDC new_shape;
 };
 
 struct TransposeAttributes {
@@ -476,6 +532,16 @@ struct TransposeAttributes {
 // @return shape of a tensor after Transpose operation is applied to
 // the given input.
 BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr);
+
+struct Transpose3DAttributes {
+  // A permutation of the dimensions of input tensor
+  BHWDC perm;
+};
+
+// @return shape of a tensor after Transpose3D operation is applied to
+// the given input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const Transpose3DAttributes& attr);
 
 struct SpaceToDepthAttributes {
   int block_size;

@@ -42,7 +42,7 @@ def move_person_data(library_dir):
   """Moves the downloaded person model into the examples folder."""
   old_person_data_path = os.path.join(
       library_dir, 'src/tensorflow/lite/micro/tools/make/downloads/' +
-      'person_model_grayscale/person_detect_model_data.cpp')
+      'person_model_int8/person_detect_model_data.cpp')
   new_person_data_path = os.path.join(
       library_dir, 'examples/person_detection/person_detect_model_data.cpp')
   if os.path.exists(old_person_data_path):
@@ -58,25 +58,24 @@ def move_person_data(library_dir):
       source_file.write(file_contents)
 
 
-def move_person_data_experimental(library_dir):
-  """Moves the downloaded person model into the examples folder."""
-  old_person_data_path = os.path.join(
+def move_image_data_experimental(library_dir):
+  """Moves the downloaded image detection model into the examples folder."""
+  old_image_data_path = os.path.join(
       library_dir, 'src/tensorflow/lite/micro/tools/make/downloads/' +
-      'person_model_int8/person_detect_model_data.cpp')
-  new_person_data_path = os.path.join(
+      'image_recognition_model/image_recognition_model.cpp')
+  new_image_data_path = os.path.join(
       library_dir,
-      'examples/person_detection_experimental/person_detect_model_data.cpp')
-  if os.path.exists(old_person_data_path):
-    os.rename(old_person_data_path, new_person_data_path)
+      'examples/image_recognition_experimental/image_recognition_model.cpp')
+  if os.path.exists(old_image_data_path):
+    os.rename(old_image_data_path, new_image_data_path)
     # Update include.
-    with open(new_person_data_path, 'r') as source_file:
+    with open(new_image_data_path, 'r') as source_file:
       file_contents = source_file.read()
     file_contents = file_contents.replace(
-        six.ensure_str(
-            '#include "tensorflow/lite/micro/examples/' +
-            'person_detection_experimental/person_detect_model_data.h"'),
-        '#include "person_detect_model_data.h"')
-    with open(new_person_data_path, 'w') as source_file:
+        six.ensure_str('#include "tensorflow/lite/micro/examples/' +
+                       'image_recognition_example/image_recognition_model.h"'),
+        '#include "image_recognition_model.h"')
+    with open(new_image_data_path, 'w') as source_file:
       source_file.write(file_contents)
 
 
@@ -96,7 +95,7 @@ def main(unparsed_args):
   rename_example_subfolder_files(library_dir)
   rename_example_main_inos(library_dir)
   move_person_data(library_dir)
-  move_person_data_experimental(library_dir)
+  move_image_data_experimental(library_dir)
 
 
 def parse_args():

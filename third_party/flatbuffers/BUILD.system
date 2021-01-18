@@ -36,3 +36,8 @@ cc_library(
     name = "runtime_cc",
     visibility = ["//visibility:public"],
 )
+
+py_library(
+    name = "runtime_py",
+    visibility = ["//visibility:public"],
+)

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_DEBUG_INFO_MANAGER_H_
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -56,14 +56,14 @@ class GpuDebugInfoManager {
   // Modules with same module id can be registered and tracked separately.
   void RegisterModule(
       const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
-      std::shared_ptr<const BufferAssignment> buffer_assignment);
+      std::shared_ptr<const BufferAssignmentProto> buffer_assignment);
 
   // Unregister an active module. When the last active module of the same
   // module id is out of scope, we remove it from our database.
   // However during tracing, we will defer the cleanup after serialization.
   void UnregisterModule(
       const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
-      std::shared_ptr<const BufferAssignment> buffer_assignment);
+      std::shared_ptr<const BufferAssignmentProto> buffer_assignment);
 
   // Register when the module start execution on certain device.
   // TODO(jiesun): Do we need to track which device this is?
@@ -90,7 +90,7 @@ class GpuDebugInfoManager {
   std::set<ModuleIdentifier> GetRunningModules() {
     tensorflow::mutex_lock lock(mutex_);
     std::set<ModuleIdentifier> running;
-    for (const auto id : running_module_ids_) {
+    for (const auto& id : running_module_ids_) {
       running.insert(id.first);
     }
     return running;
@@ -98,7 +98,7 @@ class GpuDebugInfoManager {
   std::set<ModuleIdentifier> GetActiveModules() {
     tensorflow::mutex_lock lock(mutex_);
     std::set<ModuleIdentifier> active;
-    for (const auto id : active_modules_) {
+    for (const auto& id : active_modules_) {
       active.insert(id.first);
     }
     return active;
@@ -110,10 +110,10 @@ class GpuDebugInfoManager {
   // tracking, they need to be tracked separately.
   struct GpuModuleInstance {
     GpuModuleInstance(std::shared_ptr<HloModule> m,
-                      std::shared_ptr<const BufferAssignment> b)
+                      std::shared_ptr<const BufferAssignmentProto> b)
         : hlo_module(std::move(m)), buffer_assignment(std::move(b)) {}
     std::shared_ptr<HloModule> hlo_module;
-    std::shared_ptr<const BufferAssignment> buffer_assignment;
+    std::shared_ptr<const BufferAssignmentProto> buffer_assignment;
     bool active = true;
   };
 

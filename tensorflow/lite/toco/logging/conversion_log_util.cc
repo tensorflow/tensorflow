@@ -34,8 +34,8 @@ namespace toco {
 
 namespace {
 
-string TryGetOperatorName(const Operator& op) {
-  string op_name;
+std::string TryGetOperatorName(const Operator& op) {
+  std::string op_name;
   if (!op.tensorflow_node_def.empty()) {
     // Parse op name from serialized NodeDef.
     tensorflow::NodeDef node_def;
@@ -63,8 +63,8 @@ string TryGetOperatorName(const Operator& op) {
   return op_name;
 }
 
-string GetOSVersion() {
-  string os_info;
+std::string GetOSVersion() {
+  std::string os_info;
 #ifdef __linux__
   utsname info;
   if (uname(&info)) {
@@ -72,12 +72,13 @@ string GetOSVersion() {
     LOG(ERROR) << "Cannot get OS info.";
     return "";
   }
-  os_info = string(info.sysname) + ";OSVer=" + string(info.release) + ";";
+  os_info =
+      std::string(info.sysname) + ";OSVer=" + std::string(info.release) + ";";
 #endif
   return os_info;
 }
 
-string ShapeToStringNoSpace(const Shape& shape) {
+std::string ShapeToStringNoSpace(const Shape& shape) {
   if (shape.dimensions_count() == 0) {
     return "[]";
   }
@@ -85,13 +86,13 @@ string ShapeToStringNoSpace(const Shape& shape) {
   return absl::StrCat("[", absl::StrJoin(shape.dims(), ","), "]");
 }
 
-string GetOperatorSignature(
+std::string GetOperatorSignature(
     const Model& model, const Operator& op,
     const std::map<OperatorType, std::unique_ptr<tflite::BaseOperator>>&
         op_types_map) {
   // The signature of an op has the following schema:
   // INPUT:SHAPE::TYPE::OUTPUT:SHAPE::TYPE::NAME:VERSION:
-  string op_signature;
+  std::string op_signature;
   constexpr char delimiter[] = "::";
 
   // Get input shapes and types.
@@ -137,8 +138,8 @@ string GetOperatorSignature(
 
 }  // namespace
 
-std::vector<string> GetOperatorNames(const Model& model) {
-  std::vector<string> op_names;
+std::vector<std::string> GetOperatorNames(const Model& model) {
+  std::vector<std::string> op_names;
   for (const auto& op : model.operators) {
     op_names.push_back(TryGetOperatorName(*op));
   }
@@ -146,9 +147,9 @@ std::vector<string> GetOperatorNames(const Model& model) {
 }
 
 void CountOperatorsByType(const Model& model,
-                          std::map<string, int>* built_in_ops,
-                          std::map<string, int>* custom_ops,
-                          std::map<string, int>* select_ops) {
+                          std::map<std::string, int>* built_in_ops,
+                          std::map<std::string, int>* custom_ops,
+                          std::map<std::string, int>* select_ops) {
   for (const auto& op : model.operators) {
     OperatorSignature op_signature = {op.get(), &model};
     const auto ops_by_type =
@@ -156,7 +157,7 @@ void CountOperatorsByType(const Model& model,
     tflite::details::OperatorKey op_key(op_signature, ops_by_type,
                                         true /*enable_select_tf_ops*/);
 
-    const string op_name = TryGetOperatorName(*op);
+    const std::string op_name = TryGetOperatorName(*op);
     if (op_key.is_custom_op()) {
       (*custom_ops)[op_name]++;
     } else if (op_key.is_flex_op()) {
@@ -168,8 +169,9 @@ void CountOperatorsByType(const Model& model,
 }
 
 void GetInputAndOutputTypes(
-    const Model& model, TFLITE_PROTO_NS::RepeatedPtrField<string>* input_types,
-    TFLITE_PROTO_NS::RepeatedPtrField<string>* output_types) {
+    const Model& model,
+    TFLITE_PROTO_NS::RepeatedPtrField<std::string>* input_types,
+    TFLITE_PROTO_NS::RepeatedPtrField<std::string>* output_types) {
   for (const auto& input_array : model.flags.input_arrays()) {
     const Array& array = model.GetArray(input_array.name());
     input_types->Add(ArrayDataTypeName(array.data_type));
@@ -180,15 +182,16 @@ void GetInputAndOutputTypes(
   }
 }
 
-string GetTfLiteVersion() { return TFLITE_VERSION_STRING; }
+std::string GetTfLiteVersion() { return TFLITE_VERSION_STRING; }
 
-string GetCachedOSVersion() {
-  static string* version = new string(GetOSVersion());
+std::string GetCachedOSVersion() {
+  static std::string* version = new std::string(GetOSVersion());
   return *version;
 }
 
-void GetOpSignatures(const Model& model,
-                     TFLITE_PROTO_NS::RepeatedPtrField<string>* op_signatures) {
+void GetOpSignatures(
+    const Model& model,
+    TFLITE_PROTO_NS::RepeatedPtrField<std::string>* op_signatures) {
   const auto& op_types_map =
       tflite::BuildOperatorByTypeMap(true /*enable_select_tf_ops*/);
   for (const auto& op : model.operators) {
@@ -196,7 +199,7 @@ void GetOpSignatures(const Model& model,
   }
 }
 
-string GetModelHash(const Model& model) {
+std::string GetModelHash(const Model& model) {
   // TODO(b/123519920): Implement the hash function for Model.
   // Need to consider different implementations for public/private models.
   return "";
@@ -204,20 +207,20 @@ string GetModelHash(const Model& model) {
 
 // This function scans through the error message string, extracts the part about
 // missing ops and prunes away all other information in the error info.
-string SanitizeErrorMessage(const string& error_message) {
-  const string s1 = "Ops that can be supported by the flex runtime";
-  const string s2 = "Ops that need custom implementation";
-  string pruned_message;
+std::string SanitizeErrorMessage(const std::string& error_message) {
+  const std::string s1 = "Ops that can be supported by the flex runtime";
+  const std::string s2 = "Ops that need custom implementation";
+  std::string pruned_message;
   size_t pos = error_message.find(s1);
-  if (pos != string::npos) {
+  if (pos != std::string::npos) {
     // Find the terminate point for flex op list.
-    auto end = error_message.find(".", pos);
+    auto end = error_message.find('.', pos);
     pruned_message.append(error_message.substr(pos, end - pos + 1));
   }
   pos = error_message.find(s2);
-  if (pos != string::npos) {
+  if (pos != std::string::npos) {
     // Find the terminate point for custom op list.
-    auto end = error_message.find(".", pos);
+    auto end = error_message.find('.', pos);
     pruned_message.append(error_message.substr(pos, end - pos + 1));
   }
   return pruned_message;
@@ -225,18 +228,18 @@ string SanitizeErrorMessage(const string& error_message) {
 
 void PopulateConversionLog(const Model& model, TocoConversionLog* log) {
   // Get the list of ops after conversion.
-  const std::vector<string> op_names = GetOperatorNames(model);
+  const std::vector<std::string> op_names = GetOperatorNames(model);
   for (const auto& op_name : op_names) {
     log->add_op_list(op_name);
   }
 
   // Get op signatures.
-  TFLITE_PROTO_NS::RepeatedPtrField<string> op_signatures;
+  TFLITE_PROTO_NS::RepeatedPtrField<std::string> op_signatures;
   GetOpSignatures(model, &op_signatures);
   log->mutable_op_signatures()->CopyFrom(op_signatures);
 
   // Get op counts by category: custom, built-in or select.
-  std::map<string, int> custom_ops, select_ops, built_in_ops;
+  std::map<std::string, int> custom_ops, select_ops, built_in_ops;
   CountOperatorsByType(model, &built_in_ops, &custom_ops, &select_ops);
   log->mutable_custom_ops()->insert(custom_ops.cbegin(), custom_ops.cend());
   log->mutable_built_in_ops()->insert(built_in_ops.cbegin(),
@@ -244,7 +247,7 @@ void PopulateConversionLog(const Model& model, TocoConversionLog* log) {
   log->mutable_select_ops()->insert(select_ops.cbegin(), select_ops.cend());
 
   // Get the model's input and output types.
-  TFLITE_PROTO_NS::RepeatedPtrField<string> input_types, output_types;
+  TFLITE_PROTO_NS::RepeatedPtrField<std::string> input_types, output_types;
   GetInputAndOutputTypes(model, &input_types, &output_types);
   log->mutable_input_tensor_types()->CopyFrom(input_types);
   log->mutable_output_tensor_types()->CopyFrom(output_types);

@@ -36,6 +36,7 @@ from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import liveness
+from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 
@@ -126,21 +127,20 @@ class _SubscriptUseTracker(transformer.Base):
 
   def visit_Subscript(self, node):
     """Visits nodes with subscript in the AST."""
+    s = node.slice
     if anno.hasanno(node, anno.Basic.QN):
       qn = anno.getanno(node, anno.Basic.QN)
       if isinstance(node.ctx, gast.Load):
         self.reads.add(qn)
-    elif not isinstance(node.slice, gast.Index):
-      if anno.hasanno(node, anno.Basic.QN):
-        self.complex_reads.add(anno.getanno(node, anno.Basic.QN))
-      elif anno.hasanno(node.value, anno.Basic.QN):
+    elif isinstance(s, (gast.Tuple, gast.Slice)):
+      if anno.hasanno(node.value, anno.Basic.QN):
         self.complex_reads.add(anno.getanno(node.value, anno.Basic.QN))
     value_qn = anno.getanno(node.value, anno.Basic.QN, None)
     if value_qn in self.exclude:
       node.value = self.generic_visit(node.value)
     else:
       node.value = self.visit(node.value)
-    node.slice = self.visit(node.slice)
+    node.slice = self.visit(s)
     return node
 
 
@@ -198,15 +198,17 @@ def _live_tensors(f, attr_name="inputs"):
   """
   node, _ = parser.parse_entity(f, ())
   entity_info = transformer.EntityInfo(
+      name=f.__name__,
       source_code=None,
       source_file=None,
       future_features=(),
       namespace=sys.modules[f.__module__].__dict__)
-  ctx = transformer.Context(entity_info)
+  ctx = transformer.Context(entity_info, None, None)
 
   graphs = cfg.build(node)
   node = qual_names.resolve(node)
   node = activity.resolve(node, ctx, None)
+  node = reaching_fndefs.resolve(node, ctx, graphs)
   node = liveness.resolve(node, ctx, graphs)
 
   op_arg_name = anno.getanno(node.args.args[0], anno.Basic.QN)
@@ -250,7 +252,8 @@ def _live_tensors(f, attr_name="inputs"):
       # Not a number, assuming it can be anything.
       return _ALL
     subscript_val, = subscript.qn
-    if not isinstance(subscript_val, qual_names.NumberLiteral):
+    if (not isinstance(subscript_val, qual_names.Literal) and
+        not isinstance(subscript_val.value, int)):
       # Not a number, assuming it can be anything.
       return _ALL
     input_output_indices.add(subscript_val.value)

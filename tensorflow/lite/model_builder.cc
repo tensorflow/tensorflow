@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
-#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
-#include "tensorflow/lite/profiling/platform_profiler.h"
-#endif
-
 namespace tflite {
 
 namespace {

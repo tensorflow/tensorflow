@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving.saved_model import base_serialization
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import save_impl
@@ -33,7 +33,7 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_layer'
+    return constants.LAYER_IDENTIFIER
 
   @property
   def python_properties(self):
@@ -46,13 +46,15 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
     # TODO(kathywu): Synchronize with the keras spec (go/keras-json-spec) once
     # the python config serialization has caught up.
     metadata = dict(
-        class_name=type(self.obj).__name__,
+        class_name=generic_utils.get_registered_name(type(self.obj)),
         name=self.obj.name,
         trainable=self.obj.trainable,
         expects_training_arg=self.obj._expects_training_arg,  # pylint: disable=protected-access
         dtype=policy.serialize(self.obj._dtype_policy),  # pylint: disable=protected-access
         batch_input_shape=getattr(self.obj, '_batch_input_shape', None),
-        stateful=self.obj.stateful)
+        stateful=self.obj.stateful,
+        must_restore_from_config=self.obj._must_restore_from_config,  # pylint: disable=protected-access
+    )
 
     metadata.update(get_config(self.obj))
     if self.obj.input_spec is not None:
@@ -85,7 +87,8 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
     serialized_attr = keras_cache[self.obj] = (
         serialized_attributes.SerializedAttributes.new(self.obj))
 
-    if save_impl.should_skip_serialization(self.obj):
+    if (save_impl.should_skip_serialization(self.obj) or
+        self.obj._must_restore_from_config):  # pylint: disable=protected-access
       return serialized_attr
 
     object_dict, function_dict = self._get_serialized_attributes_internal(
@@ -124,10 +127,11 @@ class InputLayerSavedModelSaver(base_serialization.SavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_input_layer'
+    return constants.INPUT_LAYER_IDENTIFIER
 
   @property
   def python_properties(self):
+
     return dict(
         class_name=type(self.obj).__name__,
         name=self.obj.name,
@@ -149,12 +153,18 @@ class RNNSavedModelSaver(LayerSavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_rnn_layer'
+    return constants.RNN_LAYER_IDENTIFIER
 
   def _get_serialized_attributes_internal(self, serialization_cache):
     objects, functions = (
         super(RNNSavedModelSaver, self)._get_serialized_attributes_internal(
             serialization_cache))
-
-    objects['states'] = data_structures.wrap_or_unwrap(self.obj.states)
+    states = data_structures.wrap_or_unwrap(self.obj.states)
+    # Force the tuple into TupleWrapper which is a trackable object. The
+    # save/load code requires all the objects to be trackable.
+    # Tuple is not converted to TupleWrapper by data_structures.wrap_or_unwrap()
+    # if it doesn't contains any trackable objects.
+    if isinstance(states, tuple):
+      states = data_structures._TupleWrapper(states)  # pylint: disable=protected-access
+    objects['states'] = states
     return objects, functions

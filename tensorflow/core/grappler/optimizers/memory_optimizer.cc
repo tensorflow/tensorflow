@@ -468,7 +468,8 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
         // with "gradients/" or contains "/gradients/".
         return absl::StartsWith(node.name(),
                                 recomputation_targets_name_scope) ||
-               node.name().find("/" + recomputation_targets_name_scope) != -1;
+               static_cast<int>(node.name().find(
+                   "/" + recomputation_targets_name_scope)) != -1;
       };
 
   if (optimization_level == RewriterConfig::RECOMPUTATION_HEURISTICS ||
@@ -722,7 +723,7 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
     // Rewrite the AddN node as a DestroyTemporaryVariable ops
     node->set_op("DestroyTemporaryVariable");
     node->clear_input();
-    node->clear_attr();
+    EraseRegularNodeAttributes(node);
     (*node->mutable_attr())["T"].set_type(dtype);
     (*node->mutable_attr())["var_name"].set_s(tmp_var->name());
     *node->add_input() = initialize->name();

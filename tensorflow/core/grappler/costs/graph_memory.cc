@@ -255,7 +255,8 @@ void GraphMemory::InferFromTrace(const StepStats& timeline) {
     std::unordered_set<const LiveTensor*> live_at_peak;
     size_t current = 0;
     std::unordered_set<const LiveTensor*> currently_live;
-    for (int i = 0; i < events.size(); ++i) {
+    int events_size = events.size();
+    for (int i = 0; i < events_size; ++i) {
       const auto& event = events[i];
 
       if (event.allocated) {
@@ -271,8 +272,7 @@ void GraphMemory::InferFromTrace(const StepStats& timeline) {
         current -= event.tensor->memory_used;
         currently_live.erase(event.tensor);
       }
-      if (i + 1 == events.size() ||
-          event.timestamp != events[i + 1].timestamp) {
+      if (i + 1 == events_size || event.timestamp != events[i + 1].timestamp) {
         if (current > peak) {
           peak = current;
           live_at_peak = currently_live;

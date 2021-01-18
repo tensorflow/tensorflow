@@ -11,7 +11,7 @@ import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/protobuf/remote_tensor_handle.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // A proto representation of an eager operation.
 message Operation {
@@ -69,6 +69,7 @@ message QueueItem {
     // enqueued in streaming call. Request with this item type waits for pending
     // nodes to finish on the remote executor and report status.
     SyncRemoteExecutorForStream sync_remote_executor_for_stream = 6;
+    SendPackedHandleOp send_packed_handle = 7;
   }
 }
 
@@ -76,6 +77,8 @@ message QueueResponse {
   // `shape` and `tensor` cannot be set in the same response.
   // Shapes of output tensors for creating remote TensorHandles.
   repeated TensorShapeProto shape = 1;
+  // Optional. If set, represents the output devices of a function.
+  repeated string device = 3;
 
   // Output tensors of a remote function. Set when Operation.id is invalid.
   repeated TensorProto tensor = 2;
@@ -173,6 +176,21 @@ message WaitQueueDoneResponse {
   // propagate some stats.
 }
 
+message RunComponentFunctionRequest {
+  fixed64 context_id = 1;
+
+  Operation operation = 2;
+
+  // The output indices of its parent function.
+  repeated int32 output_num = 3;
+}
+
+message RunComponentFunctionResponse {
+  repeated TensorShapeProto shape = 1;
+
+  repeated TensorProto tensor = 2;
+}
+
 message KeepAliveRequest {
   fixed64 context_id = 1;
 }
@@ -226,6 +244,29 @@ message SendTensorOp {
   string device_name = 3;
 }
 
+// Send a packed TensorHandle to a remote worker.
+message SendPackedHandleOp {
+  // Op id of the remote packed TensorHandle.
+  int64 op_id = 1;
+
+  message LocalTensorHandle {
+    TensorProto tensor = 1;
+    // Device where the tensor is produced.
+    string device = 2;
+  }
+
+  message Handle {
+    oneof item {
+      LocalTensorHandle local_handle = 1;
+      RemoteTensorHandle remote_handle = 2;
+    }
+  }
+
+  repeated Handle handles = 2;
+
+  string device_name = 3;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Eager Service defines a TensorFlow service that executes operations eagerly
@@ -271,6 +312,22 @@ service EagerService {
   // Takes a set of op IDs and waits until those ops are done. Returns any error
   // in the stream so far.
   rpc WaitQueueDone(WaitQueueDoneRequest) returns (WaitQueueDoneResponse);
+
+  // This takes an Eager operation and executes it in async mode on the remote
+  // server. Different from EnqueueRequest, ops/functions sent through this
+  // type of requests are allowed to execute in parallel and no ordering is
+  // preserved by RPC stream or executor.
+  // This request type should only be used for executing component functions.
+  // Ordering of component functions should be enforced by their corresponding
+  // main functions. The runtime ensures the following invarients for component
+  // functions (CFs) and their main functions (MFs):
+  // (1) MF1 -> MF2 ==> CF1 -> CF2 ("->" indicates order of execution);
+  // (2) MF1 || MF2 ==> CF1 || CF2 ("||" indicates possible parallel execution);
+  // (3) For CF1 and CF2 that come from the same MF, CF1 || CF2
+  // For executing ops/main functions, use Enqueue or StreamingEnqueue instead
+  // for correct ordering.
+  rpc RunComponentFunction(RunComponentFunctionRequest)
+      returns (RunComponentFunctionResponse);
 
   // Contexts are always created with a deadline and no RPCs within a deadline
   // will trigger a context garbage collection. KeepAlive calls can be used to

@@ -444,6 +444,47 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
 }
 
+// Check that we can remove unused loop operands even if the loop contains a
+// side-effecting instruction.
+TEST_F(WhileLoopSimplifierTest,
+       RemoveUnusedLoopOperandsDespiteSideEffectingOps) {
+  const string hlo_string = R"(
+  HloModule RemoveUnusedOperands
+  body {
+    loop_var = (s32[]) parameter(0)
+    gte0 = s32[] get-tuple-element(loop_var), index=0
+    token0 = token[] after-all()
+    unused = ((s32[], pred[]), token[]) infeed(token0)
+    ROOT tuple = (s32[]) tuple(gte0)
+  }
+  cond {
+    loop_var = (s32[]) parameter(0)
+    ROOT constant = pred[] constant(true)
+  }
+  ENTRY RemoveUnusedOperands {
+    x = s32[] parameter(0)
+    tuple.1 = (s32[]) tuple(s32[] x)
+    ROOT while = (s32[]) while((s32[]) tuple.1),
+      condition=cond, body=body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+
+  // The original while instruction is still left in the module as a dead
+  // instruction, find a while instruction with a different name as the new
+  // while instruction.
+  const auto& instrs = m->entry_computation()->instructions();
+  HloInstruction* new_while_op =
+      *absl::c_find_if(instrs, [&](const HloInstruction* instr) {
+        return (instr->opcode() == HloOpcode::kWhile &&
+                instr->name() != "while");
+      });
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(new_while_op->shape()))
+      << new_while_op->shape().ToString();
+}
+
 TEST_F(WhileLoopSimplifierTest, LoopWithNonTupleBodyShapeNotSimplified) {
   const string hlo_string = R"(
   HloModule BodyHasNonTupleRoot
@@ -751,6 +792,52 @@ TEST_F(WhileLoopSimplifierTest, MergeInductionVariables_SkipS16) {
       WhileLoopSimplifier()
           .Run(ParseAndReturnVerifiedModule(hlo_string).ValueOrDie().get())
           .ValueOrDie());
+}
+
+TEST_F(WhileLoopSimplifierTest, RemoveRepeatedParams) {
+  const string hlo_string = R"(
+  HloModule SwappingTupleElements
+
+  SwappingTupleElements.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element(loop_var), index=0
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var), index=1
+    get-tuple-element.2 = s32[] get-tuple-element(loop_var), index=2
+    y = s32[] add(get-tuple-element.1, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[], s32[]) tuple(s32[] get-tuple-element, y,
+      s32[] get-tuple-element.2)
+  }
+
+  SwappingTupleElements.always_true {
+   param = (s32[], s32[], s32[]) parameter(0)
+   get-tuple-element = s32[] get-tuple-element(param), index=0
+   get-tuple-element.1 = s32[] get-tuple-element(param), index=1
+   ROOT less-than = pred[] compare(get-tuple-element, get-tuple-element.1), direction=LT
+  }
+
+  ENTRY SwappingTupleElements {
+   x = s32[] parameter(0)
+   y = s32[] parameter(1)
+   tuple.1 = (s32[], s32[], s32[]) tuple(s32[] x, s32[] y, s32[] x)
+   ROOT while = (s32[], s32[], s32[]) while(tuple.1),
+     condition=SwappingTupleElements.always_true,
+     body=SwappingTupleElements.body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+  HloInstruction* new_while = FindFirstWhile(m.get());
+  Shape new_while_shape = ParseShape("(s32[], s32[])").ValueOrDie();
+  EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->root_instruction()->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->parameter_instruction(0)->shape(),
+      new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_condition()->parameter_instruction(0)->shape(),
+      new_while_shape));
 }
 
 }  // namespace

@@ -1,10 +1,9 @@
-/* Copyright 2020 Google Inc. All Rights Reserved.
-
-Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
@@ -14,26 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/* Copied and modified from: tensorflow/lite/micro/tools/make/targets/bluepill/bluepill.lds
-
-*/
-
-/*
- * 0x00000000 - 0x07ffffff - aliased to flash or sys memory depending on BOOT jumpers.
- * 0x08000000 - 0x0801ffff - Flash.
- * 0x1ffff000 - 0x1ffff7ff - Boot firmware in system memory.
- * 0x1ffff800 - 0x1fffffff - Option bytes.
- * 0x20000000 - 0x20004fff - SRAM.
- * 0x40000000 - 0x40023400 - Peripherals
- */
-
 /* Define main entry point */
 ENTRY(_main)
 
-/* 32K of RAM and 256K of FLASH */
+/* 256K of RAM and 2048K of FLASH. Source: */
+/* https://github.com/renode/renode/blob/master/platforms/cpus/stm32f4.repl*/
 MEMORY {
-RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 32K
-FLASH (rx) : ORIGIN = 0x8000000, LENGTH = 256K
+ RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 256K
+ FLASH (rx) : ORIGIN = 0x8000000, LENGTH =  2048K
 }
 
 /* Compute where the stack ends rather than hard coding it */

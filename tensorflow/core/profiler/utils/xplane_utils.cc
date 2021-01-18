@@ -14,10 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
+#include <algorithm>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
-#include "tensorflow/core/platform/env_time.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -26,60 +36,97 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-// Creates a Timespan from an XEvent.
-// WARNING: This should only be used when comparing events from the same XLine.
-Timespan XEventTimespan(const XEvent& event) {
-  return Timespan(event.offset_ps(), event.duration_ps());
+// Returns the index of the first element in array for which pred is true.
+// Returns -1 if no such element is found.
+template <typename T, typename Pred>
+int Find(const protobuf::RepeatedPtrField<T>& array, const Pred& pred) {
+  for (int i = 0; i < array.size(); ++i) {
+    if (pred(&array.Get(i))) return i;
+  }
+  return -1;
 }
 
-// Creates a Timespan from a non-empty XLine.
-Timespan XLineTimespan(const XLine& line) {
-  uint64 begin_ps = kuint64max, end_ps = 0;
-  for (const XEvent& event : line.events()) {
-    // Don't use XEventTimespan. We need the absolute event start time as lines
-    // might have different timestamps.
-    Timespan span(line.timestamp_ns() * 1000 + event.offset_ps(),
-                  event.duration_ps());
-    begin_ps = std::min(span.begin_ps(), begin_ps);
-    end_ps = std::max(span.end_ps(), end_ps);
+// Returns the indices of all elements in array for which pred is true.
+template <typename T, typename Pred>
+std::vector<int> FindAll(const protobuf::RepeatedPtrField<T>& array,
+                         const Pred& pred) {
+  std::vector<int> indices;
+  for (int i = 0; i < array.size(); ++i) {
+    if (pred(&array.Get(i))) indices.push_back(i);
   }
-  return Timespan::FromEndPoints(begin_ps, end_ps);
+  return indices;
 }
 
-// Functor that compares XEvents of the same XLine for sorting by timespan.
-struct XEventsComparator {
-  bool operator()(const XEvent* a, const XEvent* b) const {
-    return XEventTimespan(*a) < XEventTimespan(*b);
+template <typename T>
+void RemoveAt(protobuf::RepeatedPtrField<T>* array,
+              const std::vector<int>& indices) {
+  if (indices.empty()) return;
+  if (array->size() == indices.size()) {
+    // Assumes that 'indices' consists of [0 ... N-1].
+    array->Clear();
+    return;
   }
-};
-
-// Functor that compares XLines of the same XPlane for sorting by timespan.
-class XLinesComparator {
- public:
-  bool operator()(const XLine* a, const XLine* b) const {
-    return CachedXLineTimespan(a) < CachedXLineTimespan(b);
-  }
-
- private:
-  Timespan CachedXLineTimespan(const XLine* line) const {
-    DCHECK_GT(line->events_size(), 0);
-    Timespan& line_timespan = line_timespan_[line];
-    if (line_timespan.Instant()) {
-      line_timespan = XLineTimespan(*line);
+  auto remove_iter = indices.begin();
+  int i = *(remove_iter++);
+  for (int j = i + 1; j < array->size(); ++j) {
+    if (remove_iter != indices.end() && *remove_iter == j) {
+      ++remove_iter;
+    } else {
+      array->SwapElements(j, i++);
     }
-    return line_timespan;
   }
+  array->DeleteSubrange(i, array->size() - i);
+}
 
-  mutable absl::flat_hash_map<const XLine*, Timespan> line_timespan_;
-};
+// Removes the given element from array.
+template <typename T>
+void Remove(protobuf::RepeatedPtrField<T>* array, const T* elem) {
+  int i = Find(*array, [elem](const T* e) { return elem == e; });
+  RemoveAt(array, {i});
+}
+
+template <typename T, typename Pred>
+void RemoveIf(protobuf::RepeatedPtrField<T>* array, Pred&& pred) {
+  std::vector<int> indices = FindAll(*array, pred);
+  RemoveAt(array, indices);
+}
 
 }  // namespace
 
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name) {
-  for (const XPlane& plane : space.planes()) {
-    if (plane.name() == name) return &plane;
+  int i = Find(space.planes(),
+               [name](const XPlane* plane) { return plane->name() == name; });
+  return (i != -1) ? &space.planes(i) : nullptr;
+}
+
+std::vector<const XPlane*> FindPlanesWithNames(
+    const XSpace& space, const std::vector<absl::string_view>& names) {
+  absl::flat_hash_set<absl::string_view> names_set(names.begin(), names.end());
+  std::vector<int> indices =
+      FindAll(space.planes(), [&names_set](const XPlane* plane) {
+        return names_set.contains(plane->name());
+      });
+  std::vector<const XPlane*> planes;
+  planes.reserve(indices.size());
+  for (int i : indices) {
+    planes.push_back(&space.planes(i));
   }
-  return nullptr;
+  return planes;
+}
+
+XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name) {
+  int i = Find(space->planes(),
+               [name](const XPlane* plane) { return plane->name() == name; });
+  return (i != -1) ? space->mutable_planes(i) : nullptr;
+}
+
+XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name) {
+  XPlane* plane = FindMutablePlaneWithName(space, name);
+  if (plane == nullptr) {
+    plane = space->add_planes();
+    plane->set_name(name.data(), name.size());
+  }
+  return plane;
 }
 
 std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
@@ -91,108 +138,67 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
   return result;
 }
 
-XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name) {
+std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
+                                                 absl::string_view prefix) {
+  std::vector<XPlane*> result;
   for (XPlane& plane : *space->mutable_planes()) {
-    if (plane.name() == name) return &plane;
+    if (absl::StartsWith(plane.name(), prefix)) result.push_back(&plane);
   }
-  XPlane* plane = space->add_planes();
-  plane->set_name(std::string(name));
-  return plane;
+  return result;
 }
 
-bool IsNested(const XEvent& event, const XEvent& parent) {
-  return XEventTimespan(parent).Includes(XEventTimespan(event));
+const XLine* FindLineWithId(const XPlane& plane, int64 id) {
+  int i =
+      Find(plane.lines(), [id](const XLine* line) { return line->id() == id; });
+  return (i != -1) ? &plane.lines(i) : nullptr;
 }
 
-void AddOrUpdateIntStat(int64 metadata_id, int64 value, XEvent* event) {
+XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event) {
   for (auto& stat : *event->mutable_stats()) {
-    if (stat.metadata_id() == metadata_id) {
-      stat.set_int64_value(value);
-      return;
+    if (stat.metadata_id() == stat_metadata.id()) {
+      return &stat;
     }
   }
   XStat* stat = event->add_stats();
-  stat->set_metadata_id(metadata_id);
-  stat->set_int64_value(value);
+  stat->set_metadata_id(stat_metadata.id());
+  return stat;
 }
 
-void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
-                        XEvent* event) {
-  for (auto& stat : *event->mutable_stats()) {
-    if (stat.metadata_id() == metadata_id) {
-      stat.set_str_value(std::string(value));
-      return;
-    }
-  }
-  XStat* stat = event->add_stats();
-  stat->set_metadata_id(metadata_id);
-  stat->set_str_value(std::string(value));
+void RemovePlane(XSpace* space, const XPlane* plane) {
+  DCHECK(plane != nullptr);
+  Remove(space->mutable_planes(), plane);
 }
 
-XEventBuilder CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
-  auto event_builder = line_builder->AddEvent(
-      *plane_builder->GetOrCreateEventMetadata(event_name));
-  event_builder.SetOffsetPs(offset_ps);
-  event_builder.SetDurationPs(duration_ps);
-  for (const auto& stat_type_and_value : stats) {
-    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
-                                   GetStatTypeStr(stat_type_and_value.first)),
-                               stat_type_and_value.second);
-  }
-  return event_builder;
+void RemovePlanes(XSpace* space, const std::vector<const XPlane*>& planes) {
+  absl::flat_hash_set<const XPlane*> planes_set(planes.begin(), planes.end());
+  RemoveIf(space->mutable_planes(), [&planes_set](const XPlane* plane) {
+    return planes_set.contains(plane);
+  });
 }
 
-XEventBuilder CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    HostEventType event_type, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
-  return CreateXEvent(plane_builder, line_builder,
-                      GetHostEventTypeStr(event_type), offset_ps, duration_ps,
-                      stats);
+void RemoveLine(XPlane* plane, const XLine* line) {
+  DCHECK(line != nullptr);
+  Remove(plane->mutable_lines(), line);
 }
 
-void RemovePlaneWithName(XSpace* space, absl::string_view name) {
-  auto* planes = space->mutable_planes();
-  planes->erase(
-      std::remove_if(planes->begin(), planes->end(),
-                     [&](const XPlane& plane) { return plane.name() == name; }),
-      planes->end());
+void RemoveEvents(XLine* line,
+                  const absl::flat_hash_set<const XEvent*>& events) {
+  RemoveIf(line->mutable_events(),
+           [&](const XEvent* event) { return events.contains(event); });
 }
 
 void RemoveEmptyPlanes(XSpace* space) {
-  auto* planes = space->mutable_planes();
-  planes->erase(std::remove_if(planes->begin(), planes->end(),
-                               [&](const XPlane& plane) {
-                                 return plane.lines_size() == 0;
-                               }),
-                planes->end());
+  RemoveIf(space->mutable_planes(),
+           [&](const XPlane* plane) { return plane->lines().empty(); });
 }
 
 void RemoveEmptyLines(XPlane* plane) {
-  auto* lines = plane->mutable_lines();
-  lines->erase(std::remove_if(
-                   lines->begin(), lines->end(),
-                   [&](const XLine& line) { return line.events_size() == 0; }),
-               lines->end());
+  RemoveIf(plane->mutable_lines(),
+           [&](const XLine* line) { return line->events().empty(); });
 }
 
-XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name) {
-  for (XPlane& plane : *space->mutable_planes()) {
-    if (plane.name() == name) return &plane;
-  }
-  return nullptr;
-}
-
-XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name) {
-  XPlane* plane = FindMutablePlaneWithName(space, name);
-  if (plane == nullptr) {
-    plane = space->add_planes();
-    plane->set_name(std::string(name));
-  }
-  return plane;
+bool XEventsComparator::operator()(const XEvent* a, const XEvent* b) const {
+  return XEventTimespan(*a) < XEventTimespan(*b);
 }
 
 void SortXPlane(XPlane* plane) {
@@ -201,20 +207,29 @@ void SortXPlane(XPlane* plane) {
     std::sort(events.pointer_begin(), events.pointer_end(),
               XEventsComparator());
   }
-  std::sort(plane->mutable_lines()->pointer_begin(),
-            plane->mutable_lines()->pointer_end(), XLinesComparator());
 }
 
 void SortXSpace(XSpace* space) {
   for (XPlane& plane : *space->mutable_planes()) SortXPlane(&plane);
 }
 
-void NormalizeTimeLine(XSpace* space, uint64 start_time_ns) {
-  for (XPlane& plane : *space->mutable_planes()) {
-    for (XLine& line : *plane.mutable_lines()) {
-      DCHECK_GE(line.timestamp_ns(), start_time_ns);
+// Normalize the line's timestamp in this XPlane.
+// NOTE: This can be called multiple times on the same plane. Only the first
+// call will do the normalization, subsequent calls will do nothing.
+// The assumption is that both line's timestamp_ns and start_time_ns are
+// nano-seconds from epoch time, the different of these values is much
+// smaller than these value.
+void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
+  for (XLine& line : *plane->mutable_lines()) {
+    if (line.timestamp_ns() >= static_cast<int64>(start_time_ns)) {
       line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
     }
+  }
+}
+
+void NormalizeTimestamps(XSpace* space, uint64 start_time_ns) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    NormalizeTimestamps(&plane, start_time_ns);
   }
 }
 
@@ -224,10 +239,8 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
   XPlaneBuilder dst(dst_plane);
   src.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
     XStatMetadata* stat_metadata = dst.GetOrCreateStatMetadata(stat.Name());
-    XStat* new_stat = dst.FindOrAddMutableStat(stat_metadata->id());
-    // Add or override the existing stat value except the metadata id.
-    *new_stat = stat.RawStat();
-    new_stat->set_metadata_id(stat_metadata->id());
+    // Use SetOrAddStat to avoid duplicating stats in dst_plane.
+    dst.SetOrAddStat(*stat_metadata, stat.RawStat(), src_plane);
   });
   src.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
     XLineBuilder dst_line = dst.GetOrCreateLine(line.Id());
@@ -242,13 +255,12 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
       if (line.TimestampNs() <= dst_line.TimestampNs()) {
         dst_line.SetTimestampNsAndAdjustEventOffsets(line.TimestampNs());
       } else {
-        time_offset_ps = (line.TimestampNs() - dst_line.TimestampNs()) *
-                         EnvTime::kNanosToPicos;
+        time_offset_ps =
+            NanosToPicos(line.TimestampNs() - dst_line.TimestampNs());
       }
       dst_line.SetNameIfEmpty(line.Name());
-      if (!line.DisplayName().empty()) {
-        dst_line.SetDisplayNameIfEmpty(line.DisplayName());
-      }
+      // Don't override dst_line's display name because if both lines have name,
+      // but no display name, line's name will became display name of dst_line.
     }
 
     line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
@@ -271,11 +283,20 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
         dst_event.SetNumOccurrences(event.NumOccurrences());
       }
       event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+        // Here we can call AddStat instead of SetOrAddStat because dst_event
+        // was just added.
         dst_event.AddStat(*dst.GetOrCreateStatMetadata(stat.Name()),
-                          stat.RawStat());
+                          stat.RawStat(), src_plane);
       });
     });
   });
+}
+
+void MergePlanes(const std::vector<const XPlane*>& src_planes,
+                 XPlane* dst_plane) {
+  for (const XPlane* src_plane : src_planes) {
+    MergePlanes(*src_plane, dst_plane);
+  }
 }
 
 uint64 GetStartTimestampNs(const XPlane& plane) {
@@ -284,6 +305,17 @@ uint64 GetStartTimestampNs(const XPlane& plane) {
     plane_timestamp = std::min<int64>(plane_timestamp, line.timestamp_ns());
   }
   return plane_timestamp;
+}
+
+bool IsEmpty(const XSpace& space) {
+  for (const auto& plane : space.planes()) {
+    for (const auto& line : plane.lines()) {
+      if (!line.events().empty()) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 }  // namespace profiler

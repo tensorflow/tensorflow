@@ -71,6 +71,10 @@ int main(int argc, char** argv) {
     triple_string = "aarch64-none-linux-gnu";
   } else if (target_cpu == "x64_windows") {
     triple_string = "x86_64-pc-windows-msvc19";
+  } else if (target_cpu == "ppc") {
+    triple_string = "ppc64le-ibm-linux-gnu";
+  } else if (target_cpu == "s390x") {
+    triple_string = "systemz-none-linux-gnu";
   } else if (target_cpu == "local") {
     triple_string = llvm::sys::getDefaultTargetTriple();
   } else {

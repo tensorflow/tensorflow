@@ -431,7 +431,8 @@ RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
   if (data_types.empty()) {
     return false;
   }
-  CHECK(data_types.size() > port);
+  int data_types_size = data_types.size();
+  CHECK(data_types_size > port);
   *data_type = data_types.at(port);
   *shape = shapes.at(port);
   return true;
@@ -788,7 +789,8 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
           ++input_count;
         }
       }
-      CHECK(input_count == 0 || input_count == node->in_edges().size())
+      int node_in_edges_size = node->in_edges().size();
+      CHECK(input_count == 0 || input_count == node_in_edges_size)
           << "Invalid input_count(" << input_count << ", "
           << node->in_edges().size() << ") " << node_name;
 
@@ -968,10 +970,10 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       border_inputs, border_outputs, require_shape_type, &graph, &fused_node));
 
   for (const Node* node : graph.nodes()) {
-    for (int i = 0; i < node->num_inputs(); ++i) {
+    for (int i = 0, end = node->num_inputs(); i < end; ++i) {
       const Edge* edge = nullptr;
       TF_RETURN_IF_ERROR(node->input_edge(i, &edge));
-      for (int j = 0; j < border_outputs.size(); ++j) {
+      for (int j = 0, second_end = border_outputs.size(); j < second_end; ++j) {
         const string& output = border_outputs.at(j);
         const TensorId tid = ParseTensorName(output);
         const string output_name(tid.first);
@@ -1333,8 +1335,8 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
 
 /* static */ Status RemoteFusedGraphExecuteUtils::CopyByteArrayToTensor(
     const void* src_ptr, const int src_size, Tensor* tensor) {
-  CHECK(tensor->TotalBytes() >= src_size)
-      << tensor->TotalBytes() << ", " << src_size;
+  int tensor_TotalBytes = tensor->TotalBytes();
+  CHECK(tensor_TotalBytes >= src_size) << tensor_TotalBytes << ", " << src_size;
   void* dst_ptr;
   switch (tensor->dtype()) {
     case DT_FLOAT:

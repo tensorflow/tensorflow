@@ -1,7 +1,9 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library", "micro_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -30,6 +32,10 @@ NEON_FLAGS_IF_APPLICABLE = select({
         "-O3",
         "-mfpu=neon",
     ],
+    ":armhf": [
+        "-O3",
+        "-mfpu=neon",
+    ],
     ":armv7a": [
         "-O3",
         "-mfpu=neon",
@@ -42,7 +48,7 @@ NEON_FLAGS_IF_APPLICABLE = select({
 cc_library(
     name = "compatibility",
     hdrs = ["compatibility.h"],
-    build_for_embedded = True,
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels:op_macros",
@@ -52,7 +58,7 @@ cc_library(
 cc_library(
     name = "types",
     hdrs = ["types.h"],
-    build_for_embedded = True,
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":compatibility",
@@ -86,6 +92,13 @@ config_setting(
     name = "arm64-v8a",
     values = {
         "cpu": "arm64-v8a",
+    },
+)
+
+config_setting(
+    name = "armhf",
+    values = {
+        "cpu": "armhf",
     },
 )
 
@@ -174,6 +187,13 @@ config_setting(
 )
 
 config_setting(
+    name = "darwin_arm64",
+    values = {
+        "cpu": "darwin_arm64",
+    },
+)
+
+config_setting(
     name = "freebsd",
     values = {
         "cpu": "freebsd",
@@ -201,8 +221,10 @@ cc_library(
     name = "common",
     srcs = [],
     hdrs = ["common.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        ":cppmath",
         ":cpu_check",
         ":types",
         "@gemmlowp//:fixedpoint",
@@ -234,6 +256,7 @@ cc_library(
         "optimized/optimized_ops.h",
         "optimized/sparse_ops/fully_connected.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
@@ -292,7 +315,6 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
-        ":legacy_types",
         ":legacy_reference_base",
         ":cppmath",
         "//third_party/eigen3",
@@ -317,20 +339,19 @@ cc_library(
 )
 
 cc_library(
-    name = "optimized",
+    name = "optimized_eigen",
     hdrs = [
         "optimized/eigen_spatial_convolutions.h",
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
         ":optimized_base",
-        ":tensor",
         ":types",
         "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
-        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//third_party/eigen3",
     ],
@@ -348,8 +369,12 @@ cc_test(
 cc_library(
     name = "cppmath",
     srcs = [],
-    hdrs = ["cppmath.h"],
-    build_for_embedded = True,
+    hdrs = [
+        "cppmath.h",
+        "max.h",
+        "min.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
 )
 
@@ -357,12 +382,16 @@ cc_library(
     name = "quantization_util",
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":compatibility",
         ":cppmath",
         ":types",
-        "//tensorflow/lite/kernels:op_macros",
     ],
 )
 
@@ -384,6 +413,7 @@ cc_library(
     hdrs = [
         "transpose_utils.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -405,6 +435,7 @@ cc_library(
     hdrs = [
         "strided_slice_logic.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":compatibility",
@@ -417,32 +448,44 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/add.h",
+        "reference/add_n.h",
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
+        "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
+        "reference/broadcast_to.h",
+        "reference/cast.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
         "reference/conv.h",
+        "reference/conv3d.h",
         "reference/densify.h",
+        "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
+        "reference/exp.h",
+        "reference/fill.h",
         "reference/floor.h",
+        "reference/floor_div.h",
+        "reference/floor_mod.h",
         "reference/fully_connected.h",
+        "reference/hard_swish.h",
         "reference/integer_ops/add.h",
         "reference/integer_ops/conv.h",
         "reference/integer_ops/depthwise_conv.h",
-        "reference/integer_ops/dequantize.h",
         "reference/integer_ops/fully_connected.h",
         "reference/integer_ops/l2normalization.h",
-        "reference/integer_ops/log_softmax.h",
         "reference/integer_ops/logistic.h",
         "reference/integer_ops/mean.h",
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/tanh.h",
         "reference/integer_ops/transpose_conv.h",
+        "reference/l2normalization.h",
+        "reference/leaky_relu.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -454,30 +497,54 @@ cc_library(
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
         "reference/reduce.h",
-        "reference/reference_ops.h",
         "reference/requantize.h",
+        "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
-        "reference/sparse_ops/fully_connected.h",
+        "reference/space_to_depth.h",
+        "reference/space_to_batch_nd.h",
         "reference/strided_slice.h",
         "reference/sub.h",
         "reference/svdf.h",
-    ],
+        "reference/tanh.h",
+        "reference/transpose_conv.h",
+    ] + select({
+        "//tensorflow/lite:tf_lite_static_memory": [],
+        "//conditions:default": [
+            "reference/integer_ops/dequantize.h",
+            "reference/integer_ops/log_softmax.h",
+            "reference/reference_ops.h",
+            "reference/string_comparisons.h",
+            "reference/sparse_ops/fully_connected.h",
+        ],
+    }),
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    # We are disabling parse_headers for this header-only target so that the
+    # external and internal builds are consistent. The primary issue here is
+    # that parse_headers is not supported with bazel and the TFLM team would
+    # really like to have all build errors in shared Micro/Lite code be
+    # reproducible from the OSS build as well.
+    #
+    # See b/175817116 for more details.
+    features = ["-parse_headers"],
     deps = [
         ":common",
         ":compatibility",
-        ":quantization_util",
         ":cppmath",
+        ":portable_tensor_utils",
+        ":quantization_util",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
         ":types",
-        "@gemmlowp//:fixedpoint",
         "//third_party/eigen3",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:op_macros",
+        "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -498,18 +565,31 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/add.h",
+        "reference/add_n.h",
         "reference/arg_min_max.h",
+        "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
+        "reference/cast.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
         "reference/conv.h",
+        "reference/conv3d.h",
         "reference/densify.h",
+        "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
+        "reference/exp.h",
+        "reference/fill.h",
         "reference/floor.h",
+        "reference/floor_div.h",
+        "reference/floor_mod.h",
         "reference/fully_connected.h",
+        "reference/hard_swish.h",
+        "reference/l2normalization.h",
+        "reference/leaky_relu.h",
         "reference/legacy_reference_ops.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
@@ -523,12 +603,26 @@ cc_library(
         "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/requantize.h",
+        "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/space_to_batch_nd.h",
+        "reference/space_to_depth.h",
         "reference/strided_slice.h",
+        "reference/string_comparisons.h",
         "reference/sub.h",
+        "reference/tanh.h",
+        "reference/transpose_conv.h",
     ],
     copts = tflite_copts(),
+    # We are disabling parse_headers for this header-only target so that the
+    # external and internal builds are consistent. The primary issue here is
+    # that parse_headers is not supported with bazel and the TFLM team would
+    # really like to have all build errors in shared Micro/Lite code be
+    # reproducible from the OSS build as well.
+    #
+    # See b/175817116 for more details.
+    features = ["-parse_headers"],
     deps = [
         ":common",
         ":compatibility",
@@ -544,6 +638,7 @@ cc_library(
         "//tensorflow/lite/kernels:op_macros",
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite:string_util",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -561,10 +656,15 @@ cc_library(
 cc_library(
     name = "tensor",
     hdrs = [
-        "tensor.h",
+        "portable_tensor.h",
         "tensor_ctypes.h",
-    ],
-    build_for_embedded = True,
+    ] + select({
+        "//tensorflow/lite:tf_lite_static_memory": [],
+        "//conditions:default": [
+            "tensor.h",
+        ],
+    }),
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -577,9 +677,14 @@ cc_library(
 cc_library(
     name = "reference",
     hdrs = [
-        "tensor.h",
+        "portable_tensor.h",
         "tensor_ctypes.h",
-    ],
+    ] + select({
+        "//tensorflow/lite:tf_lite_static_memory": [],
+        "//conditions:default": [
+            "tensor.h",
+        ],
+    }),
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -597,14 +702,12 @@ cc_library(
         "reference/portable_tensor_utils.h",
         "reference/portable_tensor_utils_impl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
         ":compatibility",
         ":cppmath",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:cpu_backend_context",
         "@gemmlowp",
     ],
 )
@@ -618,6 +721,7 @@ cc_library(
         "optimized/neon_tensor_utils.h",
         "optimized/neon_tensor_utils_impl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
     deps = [
         ":common",
@@ -625,11 +729,9 @@ cc_library(
         ":cppmath",
         ":cpu_check",
         ":portable_tensor_utils",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "@ruy//ruy",
-        "@ruy//ruy:detect_arm",
     ],
 )
 
@@ -643,6 +745,7 @@ cc_library(
         "optimized/sse_tensor_utils.h",
         "optimized/sse_tensor_utils_impl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":cpu_check",
@@ -650,7 +753,9 @@ cc_library(
         ":portable_tensor_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
+        "@ruy//ruy/profiler:instrumentation",
     ],
 )
 
@@ -658,6 +763,7 @@ cc_library(
     name = "kernel_utils",
     srcs = ["kernel_utils.cc"],
     hdrs = ["kernel_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
     deps = [
         ":tensor_utils",
@@ -680,6 +786,7 @@ cc_library(
         "mfcc_mel_filterbank.h",
         "spectrogram.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//third_party/fft2d:fft2d_headers",
@@ -695,68 +802,43 @@ cc_library(
     hdrs = [
         "tensor_utils.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
         ":cpu_check",
         "//third_party/eigen3",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:cpu_backend_context",
-    ] + select({
-        ":aarch64": [
-            ":neon_tensor_utils",
-        ],
-        ":arm": [
-            ":neon_tensor_utils",
-        ],
-        ":arm64-v8a": [
-            ":neon_tensor_utils",
-        ],
-        ":armeabi-v7a": [
-            ":neon_tensor_utils",
-        ],
-        ":armv7a": [
-            ":neon_tensor_utils",
-        ],
-        ":haswell": [
+    ] + selects.with_or({
+        (
+            ":aarch64",
+            ":arm",
+            ":arm64-v8a",
+            ":armeabi-v7a",
+            ":armhf",
+            ":armv7a",
+            ":ios_armv7",
+            ":ios_arm64",
+            ":ios_arm64e",
+            ":darwin_arm64",
+            ":raspberry_pi_with_neon",
+        ): [":neon_tensor_utils"],
+        (
+            ":darwin",
+            ":darwin_x86_64",
+            ":freebsd",
+            ":haswell",
+            ":ios_x86_64",
+            ":x86_64",
+            ":x86",
+            ":k8",
+            ":windows",
+        ): [
             ":sse_tensor_utils",
         ],
-        ":ios_armv7": [
-            ":neon_tensor_utils",
-        ],
-        ":ios_arm64": [
-            ":neon_tensor_utils",
-        ],
-        ":ios_arm64e": [
-            ":neon_tensor_utils",
-        ],
-        ":raspberry_pi_with_neon": [
-            ":neon_tensor_utils",
-        ],
-        ":ios_x86_64": [
-            ":sse_tensor_utils",
-        ],
-        ":x86_64": [
-            ":sse_tensor_utils",
-        ],
-        ":x86": [
-            ":sse_tensor_utils",
-        ],
-        ":k8": [
-            ":sse_tensor_utils",
-        ],
-        ":darwin": [
-            ":sse_tensor_utils",
-        ],
-        ":darwin_x86_64": [
-            ":sse_tensor_utils",
-        ],
-        ":freebsd": [
-            ":sse_tensor_utils",
-        ],
-        ":windows": [":sse_tensor_utils"],
-        "//conditions:default": [
-            ":portable_tensor_utils",
-        ],
+        (
+            "//tensorflow/lite:tf_lite_static_memory",
+            "//conditions:default",
+        ): [":portable_tensor_utils"],
     }),
 )
 
@@ -785,9 +867,11 @@ cc_test(
     }),
     linkstatic = 1,
     deps = [
+        ":common",
         ":quantization_util",
         ":tensor_utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -854,7 +938,22 @@ cc_test(
     shard_count = 2,
     deps = [
         ":common",
-        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "conv_per_channel_quantized_16x8_test",
+    srcs = [
+        "conv_per_channel_quantized_16x8_test.cc",
+    ],
+    shard_count = 2,
+    deps = [
+        ":common",
         ":quantization_util",
         ":reference_base",
         ":test_util",
@@ -948,10 +1047,8 @@ cc_test(
     shard_count = 1,
     deps = [
         ":optimized_base",
-        ":quantization_util",
         ":reference_base",
         ":test_util",
-        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -965,10 +1062,8 @@ cc_test(
     shard_count = 1,
     deps = [
         ":optimized_base",
-        ":quantization_util",
         ":reference_base",
         ":test_util",
-        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -990,15 +1085,15 @@ cc_test(
 
 cc_library(
     name = "cpu_check",
+    srcs = ["optimized/cpu_check.cc"],
     hdrs = [
         "optimized/cpu_check.h",
         "optimized/neon_check.h",
         "optimized/sse_check.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite/kernels:cpu_backend_context",
-    ] + select({
+    deps = select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
         ":k8": tflite_deps_intel,

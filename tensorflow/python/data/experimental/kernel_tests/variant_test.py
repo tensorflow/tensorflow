@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -35,16 +34,17 @@ class VariantTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.from_variant(variant,
                                        dataset_ops.get_structure(dataset))
     self.assertDatasetProduces(dataset, range(10))
-    self.assertEqual(self.evaluate(cardinality.cardinality(dataset)), 10)
+    self.assertEqual(self.evaluate(dataset.cardinality()), 10)
 
-  @combinations.generate(test_base.default_test_combinations())
+  @combinations.generate(
+      combinations.combine(tf_api_version=[2], mode=["eager", "graph"]))
   def testRoundtripMap(self):
-    dataset = dataset_ops.Dataset.range(10).map(lambda x: x*x)
+    dataset = dataset_ops.Dataset.range(10).map(lambda x: x * x)
     variant = dataset_ops.to_variant(dataset)
     dataset = dataset_ops.from_variant(variant,
                                        dataset_ops.get_structure(dataset))
     self.assertDatasetProduces(dataset, [x * x for x in range(10)])
-    self.assertEqual(self.evaluate(cardinality.cardinality(dataset)), 10)
+    self.assertEqual(self.evaluate(dataset.cardinality()), 10)
 
 
 if __name__ == "__main__":

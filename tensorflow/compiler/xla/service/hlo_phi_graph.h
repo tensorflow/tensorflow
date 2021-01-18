@@ -78,7 +78,7 @@ class PhiGraph {
 
   Node* CreateOrReuseNode(const HloValue& value);
 
-  // Relace `node` with `replace`. Redirect all users to the `replace` and
+  // Replace `node` with `replace`. Redirect all users to the `replace` and
   // all HloValues pointing to the `node` to `replace`. Also mark `node` as
   // dead.
   //
@@ -90,7 +90,7 @@ class PhiGraph {
   // to that phi.
   absl::flat_hash_map<Node*, std::vector<HloValue::Id>> node_to_value_id_;
 
-  // A mapping between a HloValue and node in the phi graph.
+  // A mapping from a HloValue to node in the phi graph.
   absl::flat_hash_map<HloValue::Id, Node*> value_id_to_node_;
   std::vector<std::unique_ptr<Node>> node_storage_;
 };

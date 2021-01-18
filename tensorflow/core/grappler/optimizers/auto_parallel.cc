@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
@@ -147,7 +148,8 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
   }
   LOG(INFO) << "Graph size after adding div nodes: " << all_nodes_.size();
 
-  auto train_nodes = ComputeTransitiveFanin(graph_, item.fetch);
+  std::vector<const NodeDef*> train_nodes;
+  TF_RETURN_IF_ERROR(ComputeTransitiveFanin(graph_, item.fetch, &train_nodes));
   LOG(INFO) << "Number of training nodes: " << train_nodes.size();
 
   const NodeDef* dequeue_node;
@@ -161,7 +163,8 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
   std::vector<const NodeDef*> input_nodes;
   if (dequeue_node) {
     LOG(INFO) << "Dequeue node: " << dequeue_node->name();
-    input_nodes = ComputeTransitiveFanin(graph_, {dequeue_node->name()});
+    TF_RETURN_IF_ERROR(ComputeTransitiveFanin(graph_, {dequeue_node->name()},
+                                              {}, &input_nodes));
   }
   LOG(INFO) << "Number of input nodes: " << input_nodes.size();
 

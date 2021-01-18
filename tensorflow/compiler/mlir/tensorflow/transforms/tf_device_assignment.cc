@@ -24,7 +24,7 @@ namespace TF {
 namespace {
 
 class SimpleTFDeviceAssignmentPass
-    : public FunctionPass<SimpleTFDeviceAssignmentPass> {
+    : public PassWrapper<SimpleTFDeviceAssignmentPass, FunctionPass> {
  public:
   SimpleTFDeviceAssignmentPass() = default;
   SimpleTFDeviceAssignmentPass(const SimpleTFDeviceAssignmentPass&) {}
@@ -34,7 +34,7 @@ class SimpleTFDeviceAssignmentPass
 
   void runOnFunction() override {
     Builder builder(&getContext());
-    Dialect* tf = getContext().getRegisteredDialect<TensorFlowDialect>();
+    Dialect* tf = getContext().getLoadedDialect<TensorFlowDialect>();
     getFunction().walk([&](Operation* op) {
       if (auto device_attr = op->getAttrOfType<StringAttr>("device")) {
         // We assign default device to ops with device attribute that is empty.
@@ -57,7 +57,7 @@ class SimpleTFDeviceAssignmentPass
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
+std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device) {
   return std::make_unique<SimpleTFDeviceAssignmentPass>(default_device);
 }

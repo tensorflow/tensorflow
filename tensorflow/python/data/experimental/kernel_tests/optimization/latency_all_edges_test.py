@@ -33,12 +33,41 @@ class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase,
 
   # TODO(jsimsa): Investigate why are graph-mode tests failing.
   @combinations.generate(test_base.eager_only_combinations())
-  def testLatencyStatsOptimization(self):
+  def testLatencyStatsOptimizationAutotuneOff(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.from_tensors(1).apply(
-        testing.assert_next(
-            ["LatencyStats", "Map", "LatencyStats", "Prefetch",
-             "LatencyStats"])).map(lambda x: x * x).prefetch(1)
+        testing.assert_next([
+            "LatencyStats", "Map", "LatencyStats", "Prefetch", "LatencyStats",
+            "MaxIntraOpParallelism", "LatencyStats", "SetStatsAggregator"
+        ])).map(lambda x: x * x).prefetch(1)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.autotune = False
+    options.experimental_stats.latency_all_edges = True
+    options.experimental_stats.aggregator = aggregator
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[1],
+        requires_initialization=True,
+        num_test_iterations=1)
+    handle = self.getHandle(aggregator)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::TensorDataset"), 1)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::MapDataset"), 1)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::PrefetchDataset"), 1)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testLatencyStatsOptimizationAutotuneOn(self):
+    aggregator = stats_aggregator.StatsAggregator()
+    dataset = dataset_ops.Dataset.from_tensors(1).apply(
+        testing.assert_next([
+            "LatencyStats", "Map", "LatencyStats", "Prefetch", "LatencyStats",
+            "MaxIntraOpParallelism", "LatencyStats", "Model",
+            "SetStatsAggregator"
+        ])).map(lambda x: x * x).prefetch(1)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_stats.latency_all_edges = True

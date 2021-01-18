@@ -1,0 +1,15 @@
+op {
+  name: "EncodeWav"
+  input_arg {
+    name: "audio"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sample_rate"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "contents"
+    type: DT_STRING
+  }
+}

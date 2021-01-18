@@ -69,8 +69,8 @@ class TestEnv {
   Device* cpu_device_;
 };
 
-void BM_CreateGraph(int iters) {
-  for (int i = 0; i < iters; ++i) {
+void BM_CreateGraph(::testing::benchmark::State& state) {
+  for (auto s : state) {
     Scope root = Scope::NewRootScope();
     auto C = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}});
     auto M = ops::MatMul(root, C, C);
@@ -79,8 +79,7 @@ void BM_CreateGraph(int iters) {
 }
 BENCHMARK(BM_CreateGraph);
 
-void BM_RunGraph(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_RunGraph(::testing::benchmark::State& state) {
   Scope root = Scope::NewRootScope();
   auto C = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}});
   auto M = ops::MatMul(root, C, C);
@@ -89,28 +88,24 @@ void BM_RunGraph(int iters) {
   opts.config.set_intra_op_parallelism_threads(1);
   ClientSession sess(root, opts);
   std::vector<Tensor> outputs;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     outputs.clear();
     TF_CHECK_OK(sess.Run({M}, &outputs));
   }
 }
 BENCHMARK(BM_RunGraph);
 
-void BM_CreateAndDestroySession(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_CreateAndDestroySession(::testing::benchmark::State& state) {
   Scope root = Scope::NewRootScope();
   auto C = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}});
   auto M = ops::MatMul(root, C, C);
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     ClientSession sess(root);
   }
 }
 BENCHMARK(BM_CreateAndDestroySession);
 
-void BM_KernelAndDeviceInit(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_KernelAndDeviceInit(::testing::benchmark::State& state) {
   NodeDef ndef(AttrBuilder("MatMul")
                    .Set("T", DT_FLOAT)
                    .Set("transpose_a", false)
@@ -120,20 +115,18 @@ void BM_KernelAndDeviceInit(int iters) {
   TestEnv env;
   KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
                       nullptr, env.cpu_device());
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(k.Init(ndef, nullptr));
+  for (auto s : state) {
+    TF_CHECK_OK(k.Init({}, ndef, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceInit);
 
-void BM_KernelAndDeviceRun(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_KernelAndDeviceRun(::testing::benchmark::State& state) {
   Tensor t(Input({{1.0f, 2.0f}, {3.0f, 4.0f}}).tensor());
   gtl::InlinedVector<TensorValue, 4> inputs;
   inputs.push_back(TensorValue(&t));
   inputs.push_back(TensorValue(&t));
-  std::vector<Tensor> outputs;
+  std::vector<EagerKernelRet> outputs;
   NodeDef ndef(AttrBuilder("MatMul")
                    .Set("T", DT_FLOAT)
                    .Set("transpose_a", false)
@@ -143,11 +136,10 @@ void BM_KernelAndDeviceRun(int iters) {
   TestEnv env;
   KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
                       nullptr, env.cpu_device());
-  TF_CHECK_OK(k.Init(ndef, nullptr));
+  TF_CHECK_OK(k.Init({}, ndef, nullptr));
   const EagerKernelArgs args(std::move(inputs));
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(k.Run(args, &outputs, nullptr, absl::nullopt));
+  for (auto s : state) {
+    TF_CHECK_OK(k.Run(nullptr, args, &outputs, nullptr, absl::nullopt));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

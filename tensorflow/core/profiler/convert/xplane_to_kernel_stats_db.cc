@@ -15,25 +15,30 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 
+#include <functional>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
-#include "tensorflow/core/profiler/utils/event_span.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
-KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
+void ConvertDeviceTraceXPlaneToKernelReports(
     const XPlane& device_trace,
     const std::function<void(const XEventVisitor&, KernelReport*)>&
-        on_kernel_fn) {
-  KernelStatsDb result;
+        on_kernel_fn,
+    KernelReportMap* reports) {
   XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) {
@@ -45,18 +50,26 @@ KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
 
       absl::string_view equation;
       event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
-        if (stat.Type() == StatType::kLevel0) {
-          tf_op_fullname = stat.StrValue();
-        } else if (stat.Type() == StatType::kKernelDetails) {
-          kernel.set_name(event.Name().data(), event.Name().size());
-          bool using_tensor_cores = IsKernelUsingTensorCore(event.Name());
-          kernel.set_is_kernel_using_tensor_core(using_tensor_cores);
-          kernel.set_total_duration_ns(event.DurationNs());
-          kernel.set_min_duration_ns(event.DurationNs());
-          kernel.set_max_duration_ns(event.DurationNs());
-          ParseKernelLaunchParams(stat.StrValue(), &kernel);
-        } else if (stat.Type() == StatType::kEquation) {
-          equation = stat.StrValue();
+        if (!stat.Type().has_value()) return;
+        switch (stat.Type().value()) {
+          case StatType::kTfOp:
+          case StatType::kLevel0:  // old way to deliver tf_op info.
+            tf_op_fullname = stat.StrOrRefValue();
+            break;
+          case StatType::kKernelDetails: {
+            kernel.set_name(event.Name().data(), event.Name().size());
+            kernel.set_is_kernel_using_tensor_core(
+                IsKernelUsingTensorCore(event.Name()));
+            kernel.set_total_duration_ns(event.DurationNs());
+            kernel.set_min_duration_ns(event.DurationNs());
+            kernel.set_max_duration_ns(event.DurationNs());
+            absl::string_view launch_params = stat.StrOrRefValue();
+            ParseKernelLaunchParams(launch_params, &kernel);
+            break;
+          }
+          case StatType::kEquation:
+            equation = stat.StrOrRefValue();
+            break;
         }
       });
 
@@ -83,12 +96,15 @@ KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
       }
 
       if (kernel.total_duration_ns()) {
-        *result.add_reports() = kernel;
+        KernelReportValue value;
+        value.total_duration_ns = event.DurationNs();
+        value.min_duration_ns = event.DurationNs();
+        value.max_duration_ns = event.DurationNs();
+        value.occurrences = 1;
+        InsertOrUpdateKernelReport(kernel, value, reports);
       }
     });
   });
-
-  return result;
 }
 
 }  // namespace profiler

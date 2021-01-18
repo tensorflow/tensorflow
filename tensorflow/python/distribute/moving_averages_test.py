@@ -20,14 +20,14 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
 
@@ -38,6 +38,10 @@ all_distributions = [
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
     strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
     strategy_combinations.tpu_strategy,
+    strategy_combinations.multi_worker_mirrored_2x1_cpu,
+    strategy_combinations.multi_worker_mirrored_2x1_gpu,
+    strategy_combinations.multi_worker_mirrored_2x2_gpu,
+    strategy_combinations.multi_worker_mirrored_4x1_cpu,
 ]
 
 all_combinations = combinations.combine(
@@ -62,11 +66,11 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
           var, val, decay, zero_debias=False)
       return var, assign
 
-    with distribution.scope(), self.cached_session() as sess:
+    with distribution.scope():
       var, assign = distribution.extended.call_for_each_replica(replica_fn)
-      variables.global_variables_initializer().run()
-      self.assertAllClose([10.0, 11.0], var.eval())
-      sess.run(distribution.experimental_local_results(assign))
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose([10.0, 11.0], self.evaluate(var))
+      self.evaluate(distribution.experimental_local_results(assign))
       # Mean of val across calls to replica_fn().
       average_val = [1.0 + 0.5 * (replica_id[0] - 1),
                      2.0 - 0.5 * (replica_id[0] - 1)]
@@ -74,7 +78,7 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(
           [10.0 * 0.25 + average_val[0] * val_weight,
            11.0 * 0.25 + average_val[1] * val_weight],
-          var.eval())
+          self.evaluate(var))
 
   @combinations.generate(all_combinations)
   def testReplicaMode(self, distribution):
@@ -88,19 +92,19 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       assign = moving_averages.assign_moving_average(var, val, decay)
       return var, assign.op
 
-    with distribution.scope(), self.cached_session() as sess:
+    with distribution.scope():
       var, assign_op = distribution.extended.call_for_each_replica(replica_fn)
-      variables.global_variables_initializer().run()
-      self.assertAllClose([0.0, 0.0], var.eval())
-      sess.run(distribution.experimental_local_results(assign_op))
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose([0.0, 0.0], self.evaluate(var))
+      self.evaluate(distribution.experimental_local_results(assign_op))
       # Mean of val across calls to replica_fn().
       average_val = [1.0 + 0.5 * (replica_id[0] - 1),
                      2.0 - 0.5 * (replica_id[0] - 1)]
-      self.assertAllClose(average_val, var.eval())
+      self.assertAllClose(average_val, self.evaluate(var))
 
   @combinations.generate(all_combinations)
   def testCrossDeviceWithoutZeroDebias(self, distribution):
-    with distribution.scope(), self.cached_session() as sess:
+    with distribution.scope():
       var = variables.Variable([10.0, 11.0])
       val = constant_op.constant([1.0, 2.0])
       decay = 0.25
@@ -109,45 +113,56 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       assign = moving_averages.assign_moving_average(
           var, val, decay, zero_debias=False)
 
-      variables.global_variables_initializer().run()
-      self.assertAllClose([10.0, 11.0], var.eval())
-      sess.run(assign)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose([10.0, 11.0], self.evaluate(var))
+      self.evaluate(assign)
       average_val = [1.0, 2.0]
       val_weight = 1.0 - 0.25
       self.assertAllClose(
           [10.0 * 0.25 + average_val[0] * val_weight,
            11.0 * 0.25 + average_val[1] * val_weight],
-          var.eval())
+          self.evaluate(var))
       # Also try assign.op.
-      sess.run(assign.op)
+      self.evaluate(assign.op)
       orig_weight = 0.25 * 0.25
       val_weight = 1.0 - orig_weight
       self.assertAllClose(
           [10.0 * orig_weight + average_val[0] * val_weight,
            11.0 * orig_weight + average_val[1] * val_weight],
-          var.eval())
+          self.evaluate(var))
 
   @combinations.generate(all_combinations)
   def testCrossDevice(self, distribution):
-    with distribution.scope(), self.cached_session() as sess:
+    with distribution.scope():
       var = variables.Variable([0.0, 0.0])
-      val = array_ops.placeholder(dtypes.float32)
+      val = variables.Variable([1.0, 2.0])
       decay = 0.25
       # NOTE(josh11b): We currently generate an error if val is a PerReplica
       # value.
       assign = moving_averages.assign_moving_average(var, val, decay)
 
-      variables.global_variables_initializer().run()
-      self.assertAllClose([0.0, 0.0], var.eval())
-      sess.run(assign, feed_dict={val: [1.0, 2.0]})
-      self.assertAllClose([1.0, 2.0], var.eval())
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose([0.0, 0.0], self.evaluate(var))
+      self.evaluate(assign)
+      self.assertAllClose([1.0, 2.0], self.evaluate(var))
 
-      # Also try assign.op.
-      sess.run(assign.op, feed_dict={val: [10.0, 0.0]})
-      self.assertAllClose(
-          [(1.0 * 0.25 + 10.0) / (1.0 * 0.25 + 1.0),
-           (2.0 * 0.25 + 0.0) / (1.0 * 0.25 + 1.0)],
-          var.eval())
+  @combinations.generate(all_combinations_eager)
+  def testUpdateContext(self, distribution, use_function):
+    with distribution.scope():
+      var1 = variables.Variable([0.0, 0.0])
+      var2 = variables.Variable([0.0, 0.0])
+      var3 = variables.Variable([0.0, 0.0])
+
+      def update_fn(v, value):
+        v.assign_add(value)
+        moving_averages.assign_moving_average(var2, [2.0, 4.0], decay=0.25)
+        moving_averages.assign_moving_average(
+            var3, [2.0, 4.0], decay=0.25, zero_debias=False)
+
+      distribution.extended.update(var1, update_fn, ([1.0, 1.0],))
+
+      self.assertAllClose([2.0, 4.0], var2.read_value())
+      self.assertAllClose([1.5, 3.0], var3.read_value())
 
   @combinations.generate(all_combinations)
   def testAssignVariable(self, distribution):
@@ -161,14 +176,14 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
           var, val, decay, zero_debias=False)
       return var, assign
 
-    with distribution.scope(), self.cached_session() as sess:
+    with distribution.scope():
       var, assign = distribution.extended.call_for_each_replica(replica_fn)
-      variables.global_variables_initializer().run()
-      self.assertAllClose([10.0, 11.0], var.eval())
-      sess.run(distribution.experimental_local_results(assign))
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose([10.0, 11.0], self.evaluate(var))
+      self.evaluate(distribution.experimental_local_results(assign))
       self.assertAllClose(
           [10 * 0.25 + 1. * (1 - 0.25), 11 * 0.25 + 2. * (1 - 0.25)],
-          var.eval())
+          self.evaluate(var))
 
 
 class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
@@ -178,6 +193,10 @@ class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
     if not use_function and isinstance(
         distribution, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
       self.skipTest("TPUStrategy doesn't support pure eager execution.")
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest("b/160194267: Cannot do variable.assign([0.5]) in replica "
+                    "context with MultiWorkerMirroredStrategy.")
     with distribution.scope():
       w = variables.Variable([1.0],
                              name="w",
@@ -237,33 +256,36 @@ class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
       self.skipTest("b/139550827: Cannot do variable.assign in replica context "
                     "of TPUStrategy")
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest("b/160194267: Cannot do variable.assign([0.5]) in replica "
+                    "context with MultiWorkerMirroredStrategy.")
     with distribution.scope():
       w_assign, w_apply, ema_w = distribution.run(
           self._ema_replica_fn_graph)
     self.assertEqual(ema_w.name, "w/ExponentialMovingAverage:0")
-    with self.cached_session():
-      variables.global_variables_initializer().run()
-      self.evaluate(distribution.experimental_local_results(w_apply))
-      self.evaluate(distribution.experimental_local_results(w_assign))
-      self.evaluate(distribution.experimental_local_results(w_apply))
-      self.assertAllClose(
-          self.evaluate(distribution.experimental_local_results(ema_w))[0],
-          [0.89999998])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(distribution.experimental_local_results(w_apply))
+    self.evaluate(distribution.experimental_local_results(w_assign))
+    self.evaluate(distribution.experimental_local_results(w_apply))
+    self.assertAllClose(
+        self.evaluate(distribution.experimental_local_results(ema_w))[0],
+        [0.89999998])
 
   @combinations.generate(all_combinations)
   def testCrossReplicaContextGraph(self, distribution):
     with distribution.scope():
       w_assign, w_apply, ema_w = self._ema_replica_fn_graph()
     self.assertEqual(ema_w.name, "w/ExponentialMovingAverage:0")
-    with self.cached_session():
-      variables.global_variables_initializer().run()
-      self.evaluate(distribution.experimental_local_results(w_apply))
-      self.evaluate(distribution.experimental_local_results(w_assign))
-      self.evaluate(distribution.experimental_local_results(w_apply))
-      self.assertAllClose(
-          self.evaluate(distribution.experimental_local_results(ema_w))[0],
-          [0.89999998])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(distribution.experimental_local_results(w_apply))
+    self.evaluate(distribution.experimental_local_results(w_assign))
+    self.evaluate(distribution.experimental_local_results(w_apply))
+    self.assertAllClose(
+        self.evaluate(distribution.experimental_local_results(ema_w))[0],
+        [0.89999998])
 
 
 if __name__ == "__main__":
-  test.main()
+  # TODO(b/172304955): enable logical devices.
+  test_util.main(config_logical_devices=False)

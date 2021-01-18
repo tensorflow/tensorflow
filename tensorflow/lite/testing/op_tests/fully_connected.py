@@ -35,6 +35,7 @@ def make_fully_connected_tests(options):
       "transpose_b": [True, False],
       "constant_filter": [True, False],
       "fully_quantize": [False],
+      "quant_16x8": [False]
   }, {
       "shape1": [[4, 4], [1, 4], [4]],
       "shape2": [[4, 4], [4, 1], [4]],
@@ -42,6 +43,7 @@ def make_fully_connected_tests(options):
       "transpose_b": [False],
       "constant_filter": [True, False],
       "fully_quantize": [False],
+      "quant_16x8": [False]
   }, {
       "shape1": [[40, 37]],
       "shape2": [[37, 40]],
@@ -49,6 +51,7 @@ def make_fully_connected_tests(options):
       "transpose_b": [False],
       "constant_filter": [True, False],
       "fully_quantize": [False],
+      "quant_16x8": [False]
   }, {
       "shape1": [[40, 37]],
       "shape2": [[40, 37]],
@@ -56,6 +59,7 @@ def make_fully_connected_tests(options):
       "transpose_b": [True],
       "constant_filter": [True, False],
       "fully_quantize": [False],
+      "quant_16x8": [False]
   }, {
       "shape1": [[5, 3]],
       "shape2": [[5, 3]],
@@ -63,6 +67,7 @@ def make_fully_connected_tests(options):
       "transpose_b": [False],
       "constant_filter": [True, False],
       "fully_quantize": [False],
+      "quant_16x8": [False]
   }, {
       "shape1": [[1, 3]],
       "shape2": [[3, 3]],
@@ -70,6 +75,7 @@ def make_fully_connected_tests(options):
       "transpose_b": [False],
       "constant_filter": [True],
       "fully_quantize": [True],
+      "quant_16x8": [False]
   }, {
       "shape1": [[1, 4], [4]],
       "shape2": [[4, 4], [4, 1], [4]],
@@ -77,6 +83,7 @@ def make_fully_connected_tests(options):
       "transpose_b": [False],
       "constant_filter": [True],
       "fully_quantize": [True],
+      "quant_16x8": [False]
   }, {
       "shape1": [[1, 37], [2, 37]],
       "shape2": [[37, 40]],
@@ -84,6 +91,7 @@ def make_fully_connected_tests(options):
       "transpose_b": [False],
       "constant_filter": [True],
       "fully_quantize": [True],
+      "quant_16x8": [False]
   }, {
       "shape1": [[1, 3], [2, 3]],
       "shape2": [[3, 5], [3, 1]],
@@ -91,6 +99,15 @@ def make_fully_connected_tests(options):
       "transpose_b": [False],
       "constant_filter": [True],
       "fully_quantize": [True],
+      "quant_16x8": [False]
+  }, {
+      "shape1": [[2, 3]],
+      "shape2": [[3, 5]],
+      "transpose_a": [False],
+      "transpose_b": [False],
+      "constant_filter": [True],
+      "fully_quantize": [True],
+      "quant_16x8": [True]
   }]
 
   def build_graph(parameters):

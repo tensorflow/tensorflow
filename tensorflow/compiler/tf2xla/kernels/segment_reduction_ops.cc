@@ -74,11 +74,43 @@ class UnsortedSegmentReduce : public XlaOpKernel {
                                   " vs. ", indices_shape.dim_size(d)));
     }
     xla::XlaBuilder* builder = ctx->builder();
+    // data shape = [indices_shape, segment_shape]
+    // buffer shape = [num_segment, segment_shape]
+    // We now create the buffer shape by reverse enginerring data shape into
+    // indices shape and segment shape.
     TensorShape buffer_shape = data_shape;
     buffer_shape.RemoveDimRange(0, indices_shape.dims());
     buffer_shape.InsertDim(0, num_segments);
+
     auto buffer =
         xla::Broadcast(InitialValue(builder), buffer_shape.dim_sizes());
+
+    // Build dynamic dim sizes for buffer, as well as whether each dimension
+    // size is dynamic or static. We build two parts: num_sgement part and
+    // segment_shape part.
+    std::vector<xla::XlaOp> buffer_dims;
+    std::vector<bool> buffer_dims_are_dynamic;
+    // Build the "num_segment" part.
+    bool num_segments_is_dynamic;
+    OP_REQUIRES_OK(
+        ctx, ctx->ResolveInputDynamismIntoPred(2, &num_segments_is_dynamic));
+
+    buffer_dims.insert(buffer_dims.begin(), ctx->Input(2));
+    buffer_dims_are_dynamic.insert(buffer_dims_are_dynamic.begin(),
+                                   num_segments_is_dynamic);
+    // Build the segment shape part.
+    for (int64 i = indices_shape.dims(); i < data_shape.dims(); ++i) {
+      buffer_dims.push_back(xla::GetDimensionSize(data, i));
+      buffer_dims_are_dynamic.push_back(
+          ctx->InputXlaShape(0)->is_dynamic_dimension(i));
+    }
+
+    for (int64 i = 0; i < buffer_dims.size(); ++i) {
+      if (buffer_dims_are_dynamic[i]) {
+        // For each dynamic dimension, call set-dimension-size on it.
+        buffer = xla::SetDimensionSize(buffer, buffer_dims[i], i);
+      }
+    }
 
     auto combiner = [this](xla::XlaOp a, xla::XlaOp b,
                            xla::XlaBuilder* builder) { return Combine(a, b); };

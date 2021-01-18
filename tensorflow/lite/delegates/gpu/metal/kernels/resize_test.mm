@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
@@ -193,6 +192,58 @@ using ::tflite::gpu::metal::SingleOpModel;
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1.0, 1.0, 2.0, 2.0, 1.0, 1.0, 2.0, 2.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testResizeNearestAlignCorners {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 3, 3, 1);
+
+  Resize2DAttributes attr;
+  attr.align_corners = true;
+  attr.half_pixel_centers = false;
+  attr.new_shape = HW(3, 3);
+  attr.type = SamplingType::NEAREST;
+
+  SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {3.0f, 6.0f, 9.0f, 12.0f}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({3.0f, 6.0f, 6.0f, 9.0f, 12.0f, 12.0f, 9.0f, 12.0f, 12.0f},
+                          model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testResizeNearestHalfPixelCenters {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 3, 3, 1);
+
+  Resize2DAttributes attr;
+  attr.align_corners = false;
+  attr.half_pixel_centers = true;
+  attr.new_shape = HW(3, 3);
+  attr.type = SamplingType::NEAREST;
+
+  SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {3.0f, 6.0f, 9.0f, 12.0f}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({3.0f, 6.0f, 6.0f, 9.0f, 12.0f, 12.0f, 9.0f, 12.0f, 12.0f},
+                          model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

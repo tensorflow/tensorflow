@@ -1,0 +1,11 @@
+path: "tensorflow.__internal__.tracking"
+tf_module {
+  member {
+    name: "AutoTrackable"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Trackable"
+    mtype: "<type \'type\'>"
+  }
+}

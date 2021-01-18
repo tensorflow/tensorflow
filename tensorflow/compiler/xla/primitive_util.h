@@ -33,12 +33,13 @@ namespace primitive_util {
 // For non-float datatypes, results in a LOG(FATAL).
 int SignificandWidth(PrimitiveType type);
 
-// The number of exponent bits in a BF16 value.
-const int kBFloat16ExponentBits = 8;
+// Returns the count of exponent bits for float datatypes.
+// For non-float datatypes, results in a LOG(FATAL).
+int ExponentWidth(PrimitiveType type);
 
-// The number of mantissa bits in a BF16 value. There is an implicit leading
-// 1, so there is an implicit additional bit of precision.
-const int kBFloat16MantissaBits = 7;
+// Returns the exponent of the smallest number which cannot be represented.
+// For non-float datatypes, results in a LOG(FATAL).
+int OverflowExponent(PrimitiveType type);
 
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float).
@@ -152,6 +153,8 @@ bool IsArrayType(PrimitiveType primitive_type);
 int BitWidth(PrimitiveType type);
 
 PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth);
+
+PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth);
 
 // Returns the real, imag component type underlying the given complex type.
 // LOG(FATAL)'s if complex_type is not complex.

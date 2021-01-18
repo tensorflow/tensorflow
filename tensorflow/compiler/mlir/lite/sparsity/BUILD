@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     default_visibility = [
         ":friends",
@@ -25,14 +27,14 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate_lib",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_d2s",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],

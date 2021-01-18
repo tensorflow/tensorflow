@@ -17,17 +17,16 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
-
 using namespace tflite;
+
+extern "C" {
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jint preference, jstring accelerator_name,
     jstring cache_dir, jstring model_token, jint max_delegated_partitions,
-    jboolean override_disallow_cpu, jboolean disallow_cpu_value) {
+    jboolean override_disallow_cpu, jboolean disallow_cpu_value,
+    jboolean allow_fp16) {
   StatefulNnApiDelegate::Options options = StatefulNnApiDelegate::Options();
   options.execution_preference =
       (StatefulNnApiDelegate::Options::ExecutionPreference)preference;
@@ -47,6 +46,10 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
 
   if (override_disallow_cpu) {
     options.disallow_nnapi_cpu = disallow_cpu_value;
+  }
+
+  if (allow_fp16) {
+    options.allow_fp16 = allow_fp16;
   }
 
   auto delegate = new StatefulNnApiDelegate(options);
@@ -79,9 +82,7 @@ JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_nnapi_NnApiDelegate_deleteDelegate(JNIEnv* env,
                                                             jclass clazz,
                                                             jlong delegate) {
-  delete reinterpret_cast<TfLiteDelegate*>(delegate);
+  delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus

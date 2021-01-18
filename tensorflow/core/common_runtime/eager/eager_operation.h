@@ -19,6 +19,8 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
@@ -28,14 +30,16 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
 
-class EagerOperation : public AbstractOperationInterface {
+class EagerOperation : public ImmediateExecutionOperation {
  public:
-  explicit EagerOperation(tensorflow::EagerContext* ctx) : ctx_(*ctx) {}
+  explicit EagerOperation(tensorflow::EagerContext* ctx)
+      : ImmediateExecutionOperation(kEager), ctx_(*ctx) {}
   ~EagerOperation() override {
-    for (TensorHandle* h : inputs_) {
+    for (ImmediateExecutionTensorHandle* h : inputs_) {
       h->Unref();
     }
   }
@@ -48,13 +52,39 @@ class EagerOperation : public AbstractOperationInterface {
   }
 
   const string& Name() const override { return attrs_.op_name(); }
-  const string& DeviceName() const override;
+
+  const string& DeviceName() const override { return device_name_; }
+
+  const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
+    return device_parsed_name_;
+  }
+
+  // Replaces the previous device name with the given one (see
+  // AbstractOperation::SetDeviceName for more details).
+  //
+  // This also resets the internal device pointer, unless the given name refers
+  // to a known custom device, in which case the internal device pointer is
+  // updated to that device.
   Status SetDeviceName(const char* name) override;
 
-  Status AddInput(AbstractTensorHandleInterface* input) override;
-  Status AddInputList(
-      absl::Span<AbstractTensorHandleInterface*> inputs) override;
-  Status Execute(absl::Span<AbstractTensorHandleInterface*> retvals,
+  void SetDevice(VariantDevice device) {
+    device_ = device;
+    device_name_ = absl::visit(
+        [](auto* device) { return device == nullptr ? "" : device->name(); },
+        device);
+    DeviceNameUtils::ParseFullName(device_name_, &device_parsed_name_);
+    // TODO(b/154133594): Due to intricacies of external logic, we can not
+    // set this do device_name_ as it would be natural, because we need the
+    // next call to SetDeviceName to reset the device pointer.
+    last_set_device_name_ = "\177";  // DEL (an invalid value)
+  }
+
+  Status SetAttrValue(const char* attr_name, const AttrValue& value);
+
+  Status AddInput(AbstractTensorHandle* input) override;
+  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override;
+  absl::Span<ImmediateExecutionTensorHandle* const> GetInputs() const override;
+  Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override;
   const tensorflow::OpDef* OpDef() const override { return op_def_; };
 
@@ -67,7 +97,7 @@ class EagerOperation : public AbstractOperationInterface {
   Status SetAttrShape(const char* attr_name, const int64_t* dims,
                       const int num_dims) override;
   Status SetAttrFunction(const char* attr_name,
-                         const AbstractOperationInterface* value) override;
+                         const AbstractOperation* value) override;
   Status SetAttrFunctionName(const char* attr_name, const char* data,
                              size_t length) override;
   Status SetAttrTensor(const char* attr_name,
@@ -86,14 +116,20 @@ class EagerOperation : public AbstractOperationInterface {
                           const int* num_dims, int num_values) override;
   Status SetAttrFunctionList(
       const char* attr_name,
-      absl::Span<const AbstractOperationInterface*> values) override;
+      absl::Span<const AbstractOperation*> values) override;
 
   Status InputLength(const char* input_name, int* length) override;
   Status OutputLength(const char* output_name, int* length) override;
 
-  Status SetUseXla(bool enable) override;
+  void SetStackTrace(ManagedStackTrace stack_trace) override {
+    stack_trace_ = stack_trace;
+  }
 
-  Status Reset(const char* op, const char* raw_device_name, bool remote,
+  absl::optional<ManagedStackTrace> GetStackTrace() override {
+    return stack_trace_;
+  }
+
+  Status Reset(const char* op, const char* device_name, bool remote,
                EagerExecutor* executor,
                const absl::optional<EagerRemoteFunctionParams>
                    remote_func_params = absl::nullopt);
@@ -101,46 +137,29 @@ class EagerOperation : public AbstractOperationInterface {
   bool is_function() const { return is_function_; }
   bool colocation_exempt() const { return colocation_exempt_; }
 
-  tensorflow::EagerContext& EagerContext() { return ctx_; }
-  const tensorflow::EagerContext& EagerContext() const { return ctx_; }
+  tensorflow::EagerContext& EagerContext() const { return ctx_; }
 
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }
 
-  const absl::InlinedVector<TensorHandle*, 4>& Inputs() const {
+  // TensorHandleInputs and MutableTensorHandleInputs first check that all
+  // inputs are TensorHandles, i.e. that there are no custom device inputs. They
+  // return a bad status otherwise.
+  Status TensorHandleInputs(
+      const absl::InlinedVector<TensorHandle*, 4>** inputs) const;
+  Status MutableTensorHandleInputs(
+      absl::InlinedVector<TensorHandle*, 4>** inputs);
+
+  const absl::InlinedVector<ImmediateExecutionTensorHandle*, 4>& Inputs()
+      const {
     return inputs_;
   }
-  absl::InlinedVector<TensorHandle*, 4>* MutableInputs() { return &inputs_; }
 
-  void AddInput(TensorHandle* h);
   void UpdateInput(int i, TensorHandle* h);
-
-  const AttrTypeMap* AttrTypes() const { return attr_types_; }
 
   // Like TensorHandles, EagerOperations may be placed either on a virtual
   // CustomDevice or on a physical Device.
-  absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> Device() const {
-    return device_;
-  }
-
-  void SetDevice(tensorflow::Device* device) {
-    device_ = device;
-    raw_device_name_.clear();
-    device_name_ = device->name();
-    device_parsed_name_ = device->parsed_name();
-  }
-
-  void SetDevice(tensorflow::CustomDevice* device) {
-    device_ = device;
-    raw_device_name_.clear();
-    device_name_ = device->name();
-    DeviceNameUtils::ParseFullName(device_name_, &device_parsed_name_);
-  }
-
-  const string& GetDeviceName() const { return device_name_; }
-  const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
-    return device_parsed_name_;
-  }
+  VariantDevice Device() const { return device_; }
 
   // Indicates whether the op is assigned to a device that is local to the
   // current host.
@@ -163,12 +182,15 @@ class EagerOperation : public AbstractOperationInterface {
 
   // Op name recorded for memory debugging purpose.
   const char* op_name() const { return op_name_; }
-  const char* op_name_ = nullptr;
 
-  Status MaybeInferSingleInputAttrs(TensorHandle* handle);
-  Status InferInputListAttrs(int num_inputs);
+  // For LLVM style RTTI.
+  static bool classof(const AbstractOperation* ptr) {
+    return ptr->getKind() == kEager;
+  }
 
  private:
+  void AddTensorHandle(ImmediateExecutionTensorHandle* h);
+
   const tensorflow::OpDef* GetOpDef(Status* status);
 
   void ClearInferenceState() {
@@ -176,20 +198,53 @@ class EagerOperation : public AbstractOperationInterface {
     inference_arg_idx_ = 0;
     inference_attrs_.clear_no_resize();
   }
+
+  Status MaybeInferSingleInputAttrs(ImmediateExecutionTensorHandle* handle);
+  Status InferInputListAttrs(int num_inputs);
+
   void InferSingleTypeInputListAttrs(const OpDef::ArgDef& input_def,
                                      const DataType dtype, int num_inputs);
   void InferMixedTypeInputListAttrs(const OpDef::ArgDef& input_def,
                                     const std::vector<DataType>& dtypes);
 
+  // Replaces input tensors placed on custom devices with physical device
+  // equivalents. Used if an op is placed on a physical device but may have
+  // custom device inputs.
+  Status CopyOffCustomDeviceInputs();
+
   tensorflow::EagerContext& ctx_;
+  const char* op_name_ = nullptr;
   AttrBuilder attrs_;
   const AttrTypeMap* attr_types_;
-  absl::InlinedVector<TensorHandle*, 4> inputs_;
-  absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> device_;
-  string raw_device_name_;
+
+  // Toggled to indicate whether all inputs are known to be TensorHandles and
+  // not another type (e.g. custom device tensor handles). Explicitly set to
+  // false when custom device TensorHandles are added.
+  bool inputs_are_tensor_handles_ = true;
+  absl::InlinedVector<ImmediateExecutionTensorHandle*, 4> inputs_;
+
+  // The last device name given to SetDeviceName.
+  // This is used to avoid having to re-process the same device in repeated
+  // calls to SetDeviceName.
+  string last_set_device_name_;
+
+  // The operation's device name.
+  // This contains the named passed to SetDeviceName until device_ is set,
+  // at which point it contains the device_ name.
   string device_name_;
+
+  // The parsed device name.
+  // This will always contain the result of
+  // DeviceNameUtils::ParseFullName(device_name_).
   DeviceNameUtils::ParsedName device_parsed_name_;
-  bool use_xla_ = false;
+
+  // The operation's device.
+  // This is set by the execution device placement logic, and should conform
+  // with the contents of device_name_. Once it is set, the device_name_ is
+  // updated accordingly.
+  VariantDevice device_;
+
+  absl::optional<ManagedStackTrace> stack_trace_;
   bool is_function_;  // Conceptually const, but can't be because of Reset
   bool colocation_exempt_;
   CancellationManager* cancellation_manager_ = nullptr;  // Not owned.
@@ -203,15 +258,9 @@ class EagerOperation : public AbstractOperationInterface {
   gtl::FlatSet<std::string> inference_attrs_;  // attributes inferred so far
 };
 
-inline void EagerOperation::AddInput(TensorHandle* h) {
-  h->Ref();
-  inputs_.push_back(h);
-  attrs_.NumInputs(static_cast<int>(inputs_.size()));
-}
-
 inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
-  TensorHandle** slot = &inputs_[i];
-  TensorHandle* existing = *slot;
+  ImmediateExecutionTensorHandle** slot = &inputs_[i];
+  ImmediateExecutionTensorHandle* existing = *slot;
   if (existing != h) {
     h->Ref();
     existing->Unref();
@@ -220,8 +269,13 @@ inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
 }
 
 inline EagerOperation* OperationFromInterface(
-    AbstractOperationInterface* operation) {
+    ImmediateExecutionOperation* operation) {
   return down_cast<EagerOperation*>(operation);
+}
+
+inline const EagerOperation* OperationFromInterface(
+    const ImmediateExecutionOperation* operation) {
+  return down_cast<const EagerOperation*>(operation);
 }
 
 }  // namespace tensorflow

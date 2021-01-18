@@ -51,7 +51,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "non_trainable_variables"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "operators"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "parameters"
     mtype: "<type \'property\'>"
   }
   member {

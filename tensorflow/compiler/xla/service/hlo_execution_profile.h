@@ -114,9 +114,16 @@ class HloExecutionProfile {
   // Record how many cycles this HLO took to execute.
   void SetCyclesTakenBy(const HloInstruction* hlo, uint64 cycles_taken);
 
+  // Record how many cycles this HLO took to execute.
+  void SetCyclesTakenBy(size_t index, uint64 cycles_taken);
+
   // Returns how many cycles this HLO took to execute.  Profiling information
   // may not be available for some instructions in which case zero is returned.
   uint64 GetCyclesTakenBy(const HloInstruction& hlo) const;
+
+  // Returns how many cycles this HLO took to execute.  Profiling information
+  // may not be available for some instructions in which case zero is returned.
+  uint64 GetCyclesTakenBy(size_t index) const;
 
   // Return the number of cycles this computation took to execute.
   uint64 total_cycles_executed(const HloComputation& computation) const {

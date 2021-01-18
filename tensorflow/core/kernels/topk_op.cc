@@ -136,7 +136,7 @@ struct TopKFunctor<CPUDevice, T> {
       return Status::OK();
     }
 
-    auto SortIndices = [&](int start_batch, int limit_batch) {
+    auto SortIndices = [&](int64 start_batch, int64 limit_batch) {
       for (int32 b = start_batch; b < limit_batch; ++b) {
         const T* input_data = &input(b, 0);
         const auto stable_comp = [input_data](const int32 a, const int32 b) {
@@ -244,7 +244,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS_NAME
 #undef REGISTER_KERNELS
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                  \
@@ -258,7 +258,6 @@ namespace functor {
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
-TF_CALL_uint32(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
 
@@ -276,9 +275,8 @@ TF_CALL_uint32(DECLARE_GPU_SPEC);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
-TF_CALL_uint32(REGISTER_KERNELS)
 #undef REGISTER_KERNELS
 
-#endif  // end GOOGLE_CUDA
+#endif  // end GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

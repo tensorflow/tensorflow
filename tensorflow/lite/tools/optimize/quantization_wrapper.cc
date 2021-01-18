@@ -27,7 +27,7 @@ bool CreateModelForCalibration(const std::string& input_path,
     return false;
   }
   flatbuffers::FlatBufferBuilder builder;
-  if (AddIntemediateTensorsToFusedOp(&builder, &model) != kTfLiteOk) {
+  if (AddIntermediateTensorsToFusedOp(&builder, &model) != kTfLiteOk) {
     return false;
   }
   return WriteFile(output_path, builder.GetBufferPointer(), builder.GetSize());
@@ -42,7 +42,9 @@ bool CreateQuantizedModel(const std::string& path) {
   tflite::StderrReporter error_reporter;
   if (tflite::optimize::QuantizeModel(
           &builder, &model, tflite::TensorType_FLOAT32,
-          tflite::TensorType_FLOAT32, &error_reporter) != kTfLiteOk) {
+          tflite::TensorType_FLOAT32,
+          // TODO(b/159351372): Pass required activation type if needed
+          tflite::TensorType_INT8, &error_reporter) != kTfLiteOk) {
     return false;
   }
   return WriteFile(path, builder.GetBufferPointer(), builder.GetSize());

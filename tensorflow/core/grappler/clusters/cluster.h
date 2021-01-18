@@ -103,9 +103,9 @@ class Cluster {
   // superset of the devices listed in GetDevices/GetDeviceNames().
   virtual const DeviceSet* GetDeviceSet() const { return nullptr; }
 
-  // Enables collecting the allocator stats. Call with enable=true must be made
-  // before Provision().
-  virtual Status EnablePeakMemoryStats(bool enable) {
+  // Enables collecting the allocator stats. If called, must be called before
+  // Provision().
+  virtual Status EnablePeakMemoryStats() {
     return errors::Unimplemented(strings ::StrCat(
         "Peak Memory Stats are not supported on ", type(), " clusters"));
   }

@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+
 namespace mlir {
 namespace TFL {
 namespace {
 
-struct IdentifyDilatedConvPass : public FunctionPass<IdentifyDilatedConvPass> {
+struct IdentifyDilatedConvPass
+    : public PassWrapper<IdentifyDilatedConvPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -29,7 +32,7 @@ void IdentifyDilatedConvPass::runOnFunction() {
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(
       &getContext());
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
 

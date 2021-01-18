@@ -17,12 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_TRIANGULAR_SOLVE_EXPANDER_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/op_expander_pass.h"
 
 namespace xla {
 
 class TriangularSolveExpander : public OpExpanderPass {
  public:
+  explicit TriangularSolveExpander(int64 block_size = 128);
+
   absl::string_view name() const override {
     return "triangular_solve_expander";
   }
@@ -33,7 +36,31 @@ class TriangularSolveExpander : public OpExpanderPass {
   StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
+  // Performs a triangular solve using an algorithm from MAGMA, which inverts
+  // diagonal blocks and multiplies them using matrix multiplications.
+  XlaOp SolveByInvertingDiagonalBlocks(XlaOp a, XlaOp b, bool left_side,
+                                       bool lower, bool transpose_a,
+                                       bool conjugate_a, bool unit_diagonal,
+                                       PrecisionConfig::Precision precision);
+
+  // Helper function used by SolveByInvertingDiagonalBlocks
+  virtual XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower_triangular,
+                                     PrecisionConfig::Precision precision);
+
+  // Performs a direct triangular solve, suitable for case with small matrices
+  // or with large batch.
+  XlaOp SolveDirectly(XlaOp a, XlaOp b, bool left_side, bool lower,
+                      bool transpose_a, bool conjugate_a, bool unit_diagonal,
+                      PrecisionConfig::Precision precision);
+
+  XlaOp BuildTriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
+                             bool transpose_a, bool conjugate_a,
+                             bool unit_diagonal, int64 block_size,
+                             PrecisionConfig::Precision precision);
+
  private:
+  // Block size for BuildTriangularSolve
+  const int64 block_size_;
   // Mapping from op signatures to existing computations.
   absl::flat_hash_map<string, HloComputation*> computation_cache_;
 };

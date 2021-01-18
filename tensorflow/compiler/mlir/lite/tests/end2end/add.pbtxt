@@ -1,4 +1,4 @@
-# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 -tf-input-shapes=4:4 -tf-input-data-types=DT_INT32,DT_INT32 -tf-output-arrays=Add %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 -tf-input-shapes=4:4 -tf-input-data-types=DT_INT32,DT_INT32 -tf-output-arrays=Add %s -o - | flatbuffer_to_string - | FileCheck %s
 
 # Add two tensor<4xi32> inputs and return the result
 
@@ -96,5 +96,6 @@ versions {
 # CHECK-NEXT:   metadata: [ {
 # CHECK-NEXT:   name: "min_runtime_version",
 # CHECK-NEXT:   buffer: 4
-# CHECK-NEXT:   } ]
+# CHECK-NEXT:   } ],
+# CHECK-NEXT:   signature_defs: [ ]
 # CHECK-NEXT: }

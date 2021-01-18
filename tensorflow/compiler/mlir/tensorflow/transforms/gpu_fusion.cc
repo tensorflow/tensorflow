@@ -16,11 +16,12 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -35,7 +36,7 @@ namespace {
 // GpuOpFusionPass is a pass performing fusion specific to GPU targets.
 // This is an ad-hoc pass for now, but should be integrated with some notion
 // of "target" in the MLIR pipeline in the future.
-class GpuOpFusionPass : public FunctionPass<GpuOpFusionPass> {
+class GpuOpFusionPass : public PassWrapper<GpuOpFusionPass, FunctionPass> {
  public:
   void runOnFunction() final;
 };
@@ -91,7 +92,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
 
     // Build the newly fused operation to replace the batch norm
     OperationState state(batch_norm.getLoc(),
-                         FusedBatchNormExOp::getOperationName());
+                         _FusedBatchNormExOp::getOperationName());
     state.addOperands(batch_norm.getOperands());
     if (side_input) state.operands.push_back(side_input);
     state.addTypes(batch_norm.getResultTypes());
@@ -118,12 +119,12 @@ void GpuOpFusionPass::runOnFunction() {
   FuncOp func = getFunction();
   OwningRewritePatternList patterns;
   patterns.insert<ReluToFusedBatchNorm>(&getContext());
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateGpuOpFusionPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass() {
   return std::make_unique<GpuOpFusionPass>();
 }
 

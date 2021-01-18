@@ -30,6 +30,7 @@ from tensorflow.python.ops import parsing_config
 from tensorflow.python.ops.gen_parsing_ops import *
 # pylint: enable=wildcard-import,undefined-variable
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -77,6 +78,7 @@ def _prepend_none_dimension(features):
 
 
 @tf_export("io.parse_example", v1=[])
+@dispatch.add_dispatch_support
 def parse_example_v2(serialized, features, example_names=None, name=None):
   # pylint: disable=line-too-long
   """Parses `Example` protos into a `dict` of tensors.
@@ -314,6 +316,7 @@ def parse_example_v2(serialized, features, example_names=None, name=None):
 
 
 @tf_export(v1=["io.parse_example", "parse_example"])
+@dispatch.add_dispatch_support
 def parse_example(serialized, features, name=None, example_names=None):
   return parse_example_v2(serialized, features, example_names, name)
 
@@ -373,6 +376,7 @@ def _parse_example_raw(serialized, names, params, name):
 
 
 @tf_export(v1=["io.parse_single_example", "parse_single_example"])
+@dispatch.add_dispatch_support
 def parse_single_example(serialized, features, name=None, example_names=None):
   """Parses a single `Example` proto.
 
@@ -407,6 +411,7 @@ def parse_single_example(serialized, features, name=None, example_names=None):
 
 
 @tf_export("io.parse_single_example", v1=[])
+@dispatch.add_dispatch_support
 def parse_single_example_v2(
     serialized, features, example_names=None, name=None
     ):
@@ -448,6 +453,7 @@ def parse_single_example_v2(
 
 
 @tf_export("io.parse_sequence_example")
+@dispatch.add_dispatch_support
 def parse_sequence_example(serialized,
                            context_features=None,
                            sequence_features=None,
@@ -692,6 +698,7 @@ def _parse_sequence_example_raw(serialized,
 @tf_export("io.parse_single_sequence_example",
            v1=["io.parse_single_sequence_example",
                "parse_single_sequence_example"])
+@dispatch.add_dispatch_support
 def parse_single_sequence_example(
     serialized, context_features=None, sequence_features=None,
     example_name=None, name=None):
@@ -835,6 +842,7 @@ def _parse_single_sequence_example_raw(serialized,
 
 
 @tf_export("io.decode_raw", v1=[])
+@dispatch.add_dispatch_support
 def decode_raw(input_bytes,
                out_type,
                little_endian=True,
@@ -877,6 +885,7 @@ def decode_raw(input_bytes,
 
 
 @tf_export(v1=["decode_raw", "io.decode_raw"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "bytes is deprecated, use input_bytes instead",
                              "bytes")
@@ -921,6 +930,7 @@ def decode_raw_v1(
 
 # Swap `name` and `na_value` for backward compatibility.
 @tf_export(v1=["io.decode_csv", "decode_csv"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("decode_csv")
 def decode_csv(records,
                record_defaults,
@@ -970,6 +980,7 @@ def decode_csv(records,
 
 
 @tf_export("io.decode_csv", v1=[])
+@dispatch.add_dispatch_support
 def decode_csv_v2(records,
                   record_defaults,
                   field_delim=",",
@@ -1045,3 +1056,88 @@ def _assert_scalar(value, name):
     return value
   else:
     raise ValueError("Input %s must be a scalar" % name)
+
+
+@tf_export("io.decode_json_example",
+           v1=["decode_json_example", "io.decode_json_example"])
+def decode_json_example(json_examples, name=None):
+  r"""Convert JSON-encoded Example records to binary protocol buffer strings.
+
+  Note: This is **not** a general purpose JSON parsing op.
+
+  This op converts JSON-serialized `tf.train.Example` (maybe created with
+  `json_format.MessageToJson`, following the
+  [standard JSON mapping](
+  https://developers.google.com/protocol-buffers/docs/proto3#json))
+  to a binary-serialized `tf.train.Example` (equivalent to
+  `Example.SerializeToString()`) suitable for conversion to tensors with
+  `tf.io.parse_example`.
+
+  Here is a `tf.train.Example` proto:
+
+  >>> example = tf.train.Example(
+  ...   features=tf.train.Features(
+  ...       feature={
+  ...           "a": tf.train.Feature(
+  ...               int64_list=tf.train.Int64List(
+  ...                   value=[1, 1, 3]))}))
+
+  Here it is converted to JSON:
+
+  >>> from google.protobuf import json_format
+  >>> example_json = json_format.MessageToJson(example)
+  >>> print(example_json)
+  {
+    "features": {
+      "feature": {
+        "a": {
+          "int64List": {
+            "value": [
+              "1",
+              "1",
+              "3"
+            ]
+          }
+        }
+      }
+    }
+  }
+
+  This op converts the above json string to a binary proto:
+
+  >>> example_binary = tf.io.decode_json_example(example_json)
+  >>> example_binary.numpy()
+  b'\n\x0f\n\r\n\x01a\x12\x08\x1a\x06\x08\x01\x08\x01\x08\x03'
+
+  The OP works on string tensors of andy shape:
+
+  >>> tf.io.decode_json_example([
+  ...     [example_json, example_json],
+  ...     [example_json, example_json]]).shape.as_list()
+  [2, 2]
+
+  This resulting binary-string is equivalent to `Example.SerializeToString()`,
+  and can be converted to Tensors using `tf.io.parse_example` and related
+  functions:
+
+  >>> tf.io.parse_example(
+  ...   serialized=[example_binary.numpy(),
+  ...              example.SerializeToString()],
+  ...   features = {'a': tf.io.FixedLenFeature(shape=[3], dtype=tf.int64)})
+  {'a': <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+   array([[1, 1, 3],
+          [1, 1, 3]])>}
+
+  Args:
+    json_examples: A string tensor containing json-serialized `tf.Example`
+      protos.
+    name: A name for the op.
+
+  Returns:
+    A string Tensor containing the binary-serialized `tf.Example` protos.
+
+  Raises:
+     `tf.errors.InvalidArgumentError`: If the JSON could not be converted to a
+     `tf.Example`
+  """
+  return gen_parsing_ops.decode_json_example(json_examples, name=name)

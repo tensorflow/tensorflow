@@ -56,13 +56,14 @@ struct GlimpseExtractionOp {
   GlimpseExtractionOp(const Index width, const Index height,
                       const std::vector<IndexPair<float> >& offsets,
                       const bool normalized, const bool centered,
-                      const ExtractGlimpsesNoiseMode noise)
+                      const ExtractGlimpsesNoiseMode noise, const int version)
       : width_(width),
         height_(height),
         offsets_(offsets),
         normalized_(normalized),
         centered_(centered),
-        noise_(noise) {}
+        noise_(noise),
+        version_(version) {}
 
   template <typename Input>
   DSizes<Index, 4> dimensions(const Input& input) const {
@@ -101,21 +102,44 @@ struct GlimpseExtractionOp {
     for (Index i = 0; i < batch_size; ++i) {
       float x = offsets_[i].first, y = offsets_[i].second;
 
-      // Un-normalize coordinates back to pixel space if normalized.
-      if (normalized_) {
-        x *= input_width;
-        y *= input_height;
+      if (version_ == 1) {
+        // Un-normalize coordinates back to pixel space if normalized.
+        if (normalized_) {
+          x *= input_width;
+          y *= input_height;
+        }
+        // Un-center if coordinates are centered on the image center.
+        if (centered_) {
+          x /= 2.0f;
+          y /= 2.0f;
+          x += input_width / 2.0f;
+          y += input_height / 2.0f;
+        }
+        // Remove half of the glimpse window.
+        x -= width_ / 2.0f;
+        y -= height_ / 2.0f;
+      } else {
+        if (normalized_) {
+          // Un-normalize coordinates back to pixel space if normalized.
+          x *= input_width;
+          y *= input_height;
+          if (centered_) {
+            // Un-center if coordinates are centered on the image center.
+            x /= 2.0f;
+            y /= 2.0f;
+            x += input_width / 2.0f;
+            y += input_height / 2.0f;
+            // Remove half of the glimpse window.
+            x -= width_ / 2.0f;
+            y -= height_ / 2.0f;
+          }
+        } else {
+          if (centered_) {
+            x += input_width / 2.0f;
+            y += input_height / 2.0f;
+          }
+        }
       }
-      // Un-center if coordinates are centered on the image center.
-      if (centered_) {
-        x /= 2.0f;
-        y /= 2.0f;
-        x += input_width / 2.0f;
-        y += input_height / 2.0f;
-      }
-      // Remove half of the glimpse window.
-      x -= width_ / 2.0f;
-      y -= height_ / 2.0f;
 
       const Index offset_x = (Index)x;
       const Index offset_y = (Index)y;
@@ -243,6 +267,7 @@ struct GlimpseExtractionOp {
   const bool normalized_;
   const bool centered_;
   const ExtractGlimpsesNoiseMode noise_;
+  const int version_;
 };
 }  // namespace
 
@@ -255,7 +280,8 @@ ExtractGlimpses(
     const typename internal::traits<Input>::Index height,
     const std::vector<IndexPair<float> >& offsets, const bool normalized = true,
     const bool centered = true,
-    const ExtractGlimpsesNoiseMode noise = ExtractGlimpsesNoiseMode::UNIFORM) {
+    const ExtractGlimpsesNoiseMode noise = ExtractGlimpsesNoiseMode::UNIFORM,
+    const int version = 2) {
   EIGEN_STATIC_ASSERT(internal::traits<Input>::Layout == ColMajor,
                       YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(internal::traits<Input>::NumDimensions == 4,
@@ -263,7 +289,7 @@ ExtractGlimpses(
 
   typedef typename internal::traits<Input>::Index Index;
   const GlimpseExtractionOp<Index> op(width, height, offsets, normalized,
-                                      centered, noise);
+                                      centered, noise, version);
   return input.customOp(op);
 }
 

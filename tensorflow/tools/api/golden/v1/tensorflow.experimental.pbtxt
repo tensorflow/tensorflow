@@ -1,5 +1,9 @@
 path: "tensorflow.experimental"
 tf_module {
+  member {
+    name: "Optional"
+    mtype: "<type \'type\'>"
+  }
   member_method {
     name: "async_clear_error"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
@@ -15,5 +19,9 @@ tf_module {
   member_method {
     name: "output_all_intermediates"
     argspec: "args=[\'state\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_filesystem_plugin"
+    argspec: "args=[\'plugin_location\'], varargs=None, keywords=None, defaults=None"
   }
 }

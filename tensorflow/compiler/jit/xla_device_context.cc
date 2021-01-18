@@ -69,6 +69,7 @@ absl::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
   tf_stats.bytes_reserved = se_stats->bytes_reserved;
   tf_stats.peak_bytes_reserved = se_stats->peak_bytes_reserved;
   tf_stats.bytes_reservable_limit = se_stats->bytes_reservable_limit;
+  tf_stats.largest_free_block_bytes = se_stats->largest_free_block_bytes;
   return tf_stats;
 }
 
@@ -291,6 +292,14 @@ se::Stream* XlaDeviceContext::GetDeviceToDeviceStream() {
   int stream = next_stream_;
   next_stream_ = (next_stream_ + 1) % device_to_device_streams_.size();
   return device_to_device_stream(stream);
+}
+
+Status XlaDeviceContext::ThenExecute(Device* device,
+                                     stream_executor::Stream* stream,
+                                     std::function<void()> func) {
+  VLOG(2) << "XlaDeviceContext::ThenExecute";
+  stream->ThenDoHostCallback(std::move(func));
+  return Status::OK();
 }
 
 }  // namespace tensorflow

@@ -21,10 +21,15 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_stateless_random_ops_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -39,11 +44,67 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
       allowed_types.update({dtypes.int32, dtypes.int64})
     return self.all_tf_types & allowed_types
 
+  @test_util.run_v2_only
+  def testForcedCompile(self):
+    """Tests whole-function forced-compilation.
+
+    This test checks that stateless_random_* can be used in forced-compilation
+    scenarios (e.g. TPU). The new version of stateless_random_* requires the
+    intermediate tensor `alg` to be compile-time constant, so we need to check
+    that this requirement won't prevent `seed` from depending on variables.
+    """
+    if config.list_logical_devices('TPU'):
+      self.skipTest('To accommodate OSS, experimental_compile support for TPU '
+                    'is not linked in.')
+    # GPU doesn't support int32 variables, so we use int64.
+    v = variables.Variable([1, 2], dtype=dtypes.int64)
+
+    @def_function.function(experimental_compile=True)
+    def f():
+      key, counter = (
+          gen_stateless_random_ops_v2.stateless_random_get_key_counter(
+              seed=math_ops.cast(v.read_value(), dtypes.int32)))
+      alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
+      return gen_stateless_random_ops_v2.stateless_random_normal_v2(
+          shape=[], key=key, counter=counter, alg=alg)
+
+    f()
+
+  @test_util.run_v2_only
+  def testGetKeyCounterAlg(self):
+    seed = [1, 2]
+    key, counter = gen_stateless_random_ops_v2.stateless_random_get_key_counter(
+        seed)
+    self.assertAllEqual(key.shape, [1])
+    self.assertAllEqual(counter.shape, [2])
+    alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
+    self.assertAllEqual(alg.shape, [])
+
+  def testLargeNormal(self):
+    """Tests an OOM bug of StatelessRandomNormalV2 on TPU."""
+    with self.session() as sess, self.test_scope():
+      seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+      key, counter, alg = (gen_stateless_random_ops_v2.
+                           stateless_random_get_key_counter_alg(seed_t))
+      x = gen_stateless_random_ops_v2.stateless_random_normal_v2(
+          shape=[1024, 32000], key=key, counter=counter, dtype=dtypes.float32,
+          alg=alg)
+      y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
+      self.assertAllEqual([1024, 32000], y.shape)
+      key, counter = (gen_stateless_random_ops_v2.
+                      stateless_random_get_key_counter(seed_t))
+      alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
+      x = gen_stateless_random_ops_v2.stateless_random_normal_v2(
+          shape=[1024, 32000], key=key, counter=counter, dtype=dtypes.float32,
+          alg=alg)
+      y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
+      self.assertAllEqual([1024, 32000], y.shape)
+
   def testDeterminism(self):
     # Stateless values should be equal iff the seeds are equal (roughly)
     with self.session(), self.test_scope():
       seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
-      seeds = [(x, y) for x in range(5) for y in range(5)] * 3  # pylint: disable=g-complex-comprehension
+      seeds = [(x, y) for x in range(-2, 3) for y in range(-2, 3)] * 3  # pylint: disable=g-complex-comprehension
       for stateless_op in [
           stateless.stateless_random_uniform, stateless.stateless_random_normal
       ]:
@@ -138,7 +199,7 @@ class StatelessRandomOpsBenchmark(test.Benchmark):
 
   def _benchmarkUniform(self, name, dtype, use_xla_jit):
 
-    def BuilderFn():
+    def builder_fn():
       shape = (10, 1000, 1000)
       seed_var = variables.Variable((312, 456),
                                     dtype=dtypes.int32,
@@ -147,7 +208,7 @@ class StatelessRandomOpsBenchmark(test.Benchmark):
           shape, seed=seed_var, dtype=dtype)
       return '%s.shape%s' % (name, shape), [random_t]
 
-    xla_test.Benchmark(self, BuilderFn, use_xla_jit=use_xla_jit, device='cpu')
+    xla_test.Benchmark(self, builder_fn, use_xla_jit=use_xla_jit, device='cpu')
 
   def benchmarkUniformF32(self):
     self._benchmarkUniform(
@@ -167,4 +228,5 @@ class StatelessRandomOpsBenchmark(test.Benchmark):
 
 
 if __name__ == '__main__':
+  config.set_soft_device_placement(False)
   test.main()

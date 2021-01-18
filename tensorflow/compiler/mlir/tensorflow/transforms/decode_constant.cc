@@ -52,7 +52,7 @@ bool DecodeOpaqueValueInConstantOp(Operation *op) {
 }
 
 // A pass to decode opaque constant values into readable ones.
-struct DecodeConstant : public FunctionPass<DecodeConstant> {
+struct DecodeConstant : public PassWrapper<DecodeConstant, FunctionPass> {
   void runOnFunction() override {
     auto walk_result = getFunction().walk([](Operation *op) {
       return DecodeOpaqueValueInConstantOp(op) ? WalkResult::advance()
@@ -64,7 +64,7 @@ struct DecodeConstant : public FunctionPass<DecodeConstant> {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateDecodeConstantPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateDecodeConstantPass() {
   return std::make_unique<DecodeConstant>();
 }
 

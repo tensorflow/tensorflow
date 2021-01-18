@@ -1,0 +1,101 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+// CHECK-LABEL: entry:
+// CHECK:         %[[VAL_0:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_1:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_3:.*]], i64 0
+// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_2]] to [100 x [200 x float]]*
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_6:.*]], i64 0
+// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_5]] to [200 x [100 x float]]*
+// CHECK:         %[[VAL_8:.*]] = bitcast [100 x [200 x float]]* %[[VAL_4]] to [1 x [100 x [200 x float]]]*
+// CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
+// CHECK:         %[[VAL_10:.*]] = urem i32 %[[VAL_9]], 32
+// CHECK:         %[[VAL_11:.*]] = udiv i32 %[[VAL_9]], 32
+// CHECK:         %[[VAL_12:.*]] = urem i32 %[[VAL_9]], 32
+// CHECK:         %[[VAL_13:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !3
+// CHECK:         %[[VAL_14:.*]] = udiv i32 %[[VAL_13]], 1
+// CHECK:         %[[VAL_15:.*]] = urem i32 %[[VAL_14]], 4
+// CHECK:         %[[VAL_16:.*]] = udiv i32 %[[VAL_13]], 4
+// CHECK:         %[[VAL_17:.*]] = urem i32 %[[VAL_16]], 7
+// CHECK:         %[[VAL_18:.*]] = udiv i32 %[[VAL_13]], 28
+// CHECK:         %[[VAL_19:.*]] = mul i32 %[[VAL_18]], 1
+// CHECK:         %[[VAL_20:.*]] = icmp eq i32 %[[VAL_17]], 6
+// CHECK:         %[[VAL_21:.*]] = select i1 %[[VAL_20]], i32 8, i32 32
+// CHECK:         %[[VAL_22:.*]] = icmp eq i32 %[[VAL_15]], 3
+// CHECK:         %[[VAL_23:.*]] = select i1 %[[VAL_22]], i32 4, i32 32
+// CHECK:         %[[VAL_24:.*]] = mul i32 %[[VAL_17]], 32
+// CHECK:         %[[VAL_25:.*]] = mul i32 %[[VAL_15]], 32
+// CHECK:         %[[VAL_26:.*]] = mul i32 %[[VAL_10]], 1
+// CHECK:         %[[VAL_27:.*]] = add i32 %[[VAL_24]], %[[VAL_26]]
+// CHECK:         %[[VAL_28:.*]] = sub i32 %[[VAL_23]], %[[VAL_11]]
+// CHECK:         %[[VAL_29:.*]] = add i32 %[[VAL_28]], 4
+// CHECK:         %[[VAL_30:.*]] = add i32 %[[VAL_29]], -1
+// CHECK:         %[[VAL_31:.*]] = udiv i32 %[[VAL_30]], 4
+// CHECK:         store i32 0, i32* %[[VAL_1]], align 4
+// CHECK:         br label %[[VAL_32:.*]]
+// CHECK:       input_y_in_tile.loop_header:                      ; preds = %[[VAL_33:.*]], %[[VAL_34:.*]]
+// CHECK:         %[[VAL_35:.*]] = load i32, i32* %[[VAL_1]], align 4
+// CHECK:         %[[VAL_36:.*]] = icmp uge i32 %[[VAL_35]], %[[VAL_31]]
+// CHECK:         br i1 %[[VAL_36]], label %[[VAL_37:.*]], label %[[VAL_38:.*]]
+// CHECK:       input_y_in_tile.loop_body:                        ; preds = %[[VAL_32]]
+// CHECK:         %[[VAL_39:.*]] = add nuw nsw i32 %[[VAL_35]], 1
+// CHECK:         store i32 %[[VAL_39]], i32* %[[VAL_1]], align 4
+// CHECK:         %[[VAL_40:.*]] = icmp eq i32 %[[VAL_35]], 0
+// CHECK:         %[[VAL_41:.*]] = mul i32 %[[VAL_35]], 4
+// CHECK:         %[[VAL_42:.*]] = add i32 %[[VAL_11]], %[[VAL_41]]
+// CHECK:         %[[VAL_43:.*]] = add i32 %[[VAL_25]], %[[VAL_42]]
+// CHECK:         %[[VAL_44:.*]] = add i32 0, %[[VAL_26]]
+// CHECK:         %[[VAL_45:.*]] = add i32 %[[VAL_27]], 0
+// CHECK:         %[[VAL_46:.*]] = icmp ult i32 %[[VAL_44]], %[[VAL_21]]
+// CHECK:         br i1 %[[VAL_46]], label %[[VAL_47:.*]], label %[[VAL_33]]
+// CHECK:       input_x_in_tile-after:                            ; preds = %[[VAL_47]], %[[VAL_38]]
+// CHECK:         br label %[[VAL_32]], !llvm.loop !4
+// CHECK:       input_y_in_tile.loop_exit:                        ; preds = %[[VAL_32]]
+// CHECK:         call void @llvm.nvvm.barrier0()
+// CHECK:         %[[VAL_48:.*]] = mul i32 %[[VAL_10]], 1
+// CHECK:         %[[VAL_49:.*]] = add i32 %[[VAL_25]], %[[VAL_48]]
+// CHECK:         %[[VAL_50:.*]] = sub i32 %[[VAL_21]], %[[VAL_11]]
+// CHECK:         %[[VAL_51:.*]] = add i32 %[[VAL_50]], 4
+// CHECK:         %[[VAL_52:.*]] = add i32 %[[VAL_51]], -1
+// CHECK:         %[[VAL_53:.*]] = udiv i32 %[[VAL_52]], 4
+// CHECK:         store i32 0, i32* %[[VAL_0]], align 4
+// CHECK:         br label %[[VAL_54:.*]]
+// CHECK:       output_y_in_tile.loop_header:                     ; preds = %[[VAL_55:.*]], %[[VAL_37]]
+// CHECK:         %[[VAL_56:.*]] = load i32, i32* %[[VAL_0]], align 4
+// CHECK:         %[[VAL_57:.*]] = icmp uge i32 %[[VAL_56]], %[[VAL_53]]
+// CHECK:         br i1 %[[VAL_57]], label %[[VAL_58:.*]], label %[[VAL_59:.*]]
+// CHECK:       output_y_in_tile.loop_body:                       ; preds = %[[VAL_54]]
+// CHECK:         %[[VAL_60:.*]] = add nuw nsw i32 %[[VAL_56]], 1
+// CHECK:         store i32 %[[VAL_60]], i32* %[[VAL_0]], align 4
+// CHECK:         %[[VAL_61:.*]] = icmp eq i32 %[[VAL_56]], 0
+// CHECK:         %[[VAL_62:.*]] = mul i32 %[[VAL_56]], 4
+// CHECK:         %[[VAL_63:.*]] = add i32 %[[VAL_11]], %[[VAL_62]]
+// CHECK:         %[[VAL_64:.*]] = add i32 %[[VAL_24]], %[[VAL_63]]
+// CHECK:         %[[VAL_65:.*]] = add i32 0, %[[VAL_48]]
+// CHECK:         %[[VAL_66:.*]] = add i32 %[[VAL_49]], 0
+// CHECK:         %[[VAL_67:.*]] = icmp ult i32 %[[VAL_65]], %[[VAL_23]]
+// CHECK:         br i1 %[[VAL_67]], label %[[VAL_68:.*]], label %[[VAL_55]]
+// CHECK:       output_x_in_tile-after:                           ; preds = %[[VAL_68]], %[[VAL_59]]
+// CHECK:         br label %[[VAL_54]], !llvm.loop !6
+// CHECK:       output_y_in_tile.loop_exit:                       ; preds = %[[VAL_54]]
+// CHECK:         ret void
+// CHECK:       input_x_in_tile-true:                             ; preds = %[[VAL_38]]
+// CHECK:         %[[VAL_69:.*]] = getelementptr inbounds [1 x [100 x [200 x float]]], [1 x [100 x [200 x float]]]* %[[VAL_8]], i32 0, i32 0, i32 %[[VAL_43]], i32 %[[VAL_45]]
+// CHECK:         %[[VAL_70:.*]] = load float, float* %[[VAL_69]], align 4, !invariant.load !7
+// CHECK:         %[[VAL_71:.*]] = getelementptr [32 x [33 x float]], [32 x [33 x float]] addrspace(3)* @b.tile0, i32 0, i32 %[[VAL_42]], i32 %[[VAL_44]]
+// CHECK:         store float %[[VAL_70]], float addrspace(3)* %[[VAL_71]], align 4
+// CHECK:         br label %[[VAL_33]]
+// CHECK:       output_x_in_tile-true:                            ; preds = %[[VAL_59]]
+// CHECK:         %[[VAL_72:.*]] = getelementptr [32 x [33 x float]], [32 x [33 x float]] addrspace(3)* @b.tile0, i64 0, i32 %[[VAL_65]], i32 %[[VAL_63]]
+// CHECK:         %[[VAL_73:.*]] = load float, float addrspace(3)* %[[VAL_72]], align 4
+// CHECK:         %[[VAL_74:.*]] = bitcast [200 x [100 x float]]* %[[VAL_7]] to [1 x [200 x [100 x float]]]*
+// CHECK:         %[[VAL_75:.*]] = getelementptr inbounds [1 x [200 x [100 x float]]], [1 x [200 x [100 x float]]]* %[[VAL_74]], i32 0, i32 0, i32 %[[VAL_64]], i32 %[[VAL_66]]
+// CHECK:         store float %[[VAL_73]], float* %[[VAL_75]], align 4
+// CHECK:         br label %[[VAL_55]]
+
+HloModule Test
+
+ENTRY main {
+  a = f32[100, 200]{1,0} parameter(0)
+  ROOT b = f32[100, 200]{0,1} copy(a)
+}

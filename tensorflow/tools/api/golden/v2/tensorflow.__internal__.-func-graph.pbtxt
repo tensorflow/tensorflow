@@ -1,0 +1,242 @@
+path: "tensorflow.__internal__.FuncGraph"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.func_graph.FuncGraph\'>"
+  is_instance: "<class \'tensorflow.python.framework.ops.Graph\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "building_function"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "collections"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "deferred_external_captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "deferred_internal_captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "external_captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "finalized"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "graph_def_versions"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "internal_captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "outer_graph"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output_shapes"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output_types"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "saveable"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "saving_errors"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "seed"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable_variables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variable_captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "version"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'name\', \'collections\', \'capture_by_value\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "add_capture"
+    argspec: "args=[\'self\', \'tensor\', \'placeholder\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "add_to_collection"
+    argspec: "args=[\'self\', \'name\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "add_to_collections"
+    argspec: "args=[\'self\', \'names\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_default"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_graph_def"
+    argspec: "args=[\'self\', \'from_version\', \'add_shapes\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "as_graph_element"
+    argspec: "args=[\'self\', \'obj\', \'allow_tensor\', \'allow_operation\'], varargs=None, keywords=None, defaults=[\'True\', \'True\'], "
+  }
+  member_method {
+    name: "capture"
+    argspec: "args=[\'self\', \'tensor\', \'name\', \'shape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "capture_call_time_value"
+    argspec: "args=[\'self\', \'closure\', \'spec\', \'key\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "capture_distributed_variable"
+    argspec: "args=[\'self\', \'variable\', \'placeholder\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "capture_eager_tensor"
+    argspec: "args=[\'self\', \'tensor\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "captured"
+    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "clear_captures"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "clear_collection"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "colocate_with"
+    argspec: "args=[\'self\', \'op\', \'ignore_existing\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "container"
+    argspec: "args=[\'self\', \'container_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "control_dependencies"
+    argspec: "args=[\'self\', \'control_inputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "create_op"
+    argspec: "args=[\'self\', \'op_type\', \'inputs\', \'dtypes\', \'input_types\', \'name\', \'attrs\', \'op_def\', \'compute_shapes\', \'compute_device\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'True\', \'True\'], "
+  }
+  member_method {
+    name: "device"
+    argspec: "args=[\'self\', \'device_name_or_function\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "finalize"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_all_collection_keys"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_collection"
+    argspec: "args=[\'self\', \'name\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get_collection_ref"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_name_scope"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_operation_by_name"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_operations"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_tensor_by_name"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "gradient_override_map"
+    argspec: "args=[\'self\', \'op_type_map\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_feedable"
+    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_fetchable"
+    argspec: "args=[\'self\', \'tensor_or_op\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mark_as_unsaveable"
+    argspec: "args=[\'self\', \'error_message\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "name_scope"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "pop_capture"
+    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "prevent_feeding"
+    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "prevent_fetching"
+    argspec: "args=[\'self\', \'op\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "replace_capture"
+    argspec: "args=[\'self\', \'tensor\', \'placeholder\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_captures"
+    argspec: "args=[\'self\', \'capture_list\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "switch_to_thread_local"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unique_name"
+    argspec: "args=[\'self\', \'name\', \'mark_as_used\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+  member_method {
+    name: "watch_variable"
+    argspec: "args=[\'self\', \'v\'], varargs=None, keywords=None, defaults=None"
+  }
+}

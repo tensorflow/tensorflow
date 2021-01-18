@@ -1,4 +1,4 @@
-// RUN: tf-opt -loop-invariant-code-motion %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -loop-invariant-code-motion %s -o - | FileCheck %s
 
 // CHECK: while_1([[ARG0:%[^ :]*]]: tensor<i32>, [[ARG1:%[^ :]*]]: tensor<1xf32>)
 func @while_1(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {

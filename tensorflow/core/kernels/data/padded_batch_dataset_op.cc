@@ -76,7 +76,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     const auto& input_shapes = input_->output_shapes();
     output_shapes_.reserve(input_shapes.size());
     for (size_t i = 0; i < input_shapes.size(); ++i) {
-      if (drop_remainder_) {
+      if (drop_remainder_ || input_->Cardinality() == kInfiniteCardinality) {
         output_shapes_.push_back(
             PartialTensorShape({batch_size_}).Concatenate(padded_shapes_[i]));
       } else {
@@ -117,6 +117,11 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       return n;
     }
     return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {

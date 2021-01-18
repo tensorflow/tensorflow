@@ -993,6 +993,31 @@ class AttrKeyAndValue {
 };
 }  // namespace
 
+string GetFunctionResourceInputDevice(
+    const Tensor& input, const int arg_index, const FunctionDef& function_def,
+    absl::flat_hash_map<string, std::vector<string>>* composite_devices) {
+  const auto& handles = input.flat<ResourceHandle>();
+  const ResourceHandle& handle0 = handles(0);
+  string composite_device;
+  auto iter = function_def.arg_attr().find(arg_index);
+  if (iter != function_def.arg_attr().end()) {
+    auto arg_attr = iter->second.attr().find("_composite_device");
+    if (arg_attr != iter->second.attr().end()) {
+      composite_device = arg_attr->second.s();
+    }
+  }
+  if (!composite_device.empty()) {
+    if (composite_devices->find(composite_device) == composite_devices->end()) {
+      for (int i = 0; i < handles.size(); ++i) {
+        (*composite_devices)[composite_device].push_back(handles(i).device());
+      }
+    }
+    return composite_device;
+  } else {
+    return handle0.device();
+  }
+}
+
 string Canonicalize(const string& funcname, AttrSlice attrs,
                     const FunctionLibraryRuntime::InstantiateOptions& options) {
   absl::InlinedVector<AttrKeyAndValue, 8> entries;
@@ -1118,12 +1143,12 @@ Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets,
   return Status::OK();
 }
 
-Status FunctionCallFrame::GetArg(int index, Tensor* val) const {
+Status FunctionCallFrame::GetArg(int index, const Tensor** val) {
   if (index < 0 || static_cast<size_t>(index) >= args_.size()) {
     return errors::InvalidArgument("GetArg ", index, " is not within [0, ",
                                    args_.size(), ")");
   }
-  *val = args_[index];
+  *val = &args_[index];
   return Status::OK();
 }
 
@@ -1148,12 +1173,14 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 }
 
 FunctionLibraryDefinition::FunctionDefAndOpRegistration::
-    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in,
+                                 const StackTracesMap& stack_traces)
     : fdef(fdef_in),
       // Exact shape inference for functions is handled by ShapeRefiner.
       // Here we pass a dummy shape inference function for legacy code paths.
       op_registration_data(fdef.signature(), shape_inference::UnknownShape,
-                           true /* is_function */) {}
+                           true /* is_function */),
+      stack_traces(stack_traces) {}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
@@ -1205,14 +1232,15 @@ FunctionLibraryDefinition::FindHelper(const string& func) const {
   }
 }
 
-Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
+Status FunctionLibraryDefinition::AddFunctionDef(
+    const FunctionDef& fdef, const StackTracesMap& stack_traces) {
   mutex_lock l(mu_);
   bool added;
-  return AddFunctionDefHelper(fdef, &added);
+  return AddFunctionDefHelper(fdef, stack_traces, &added);
 }
 
-Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
-                                                       bool* added) {
+Status FunctionLibraryDefinition::AddFunctionDefHelper(
+    const FunctionDef& fdef, const StackTracesMap& stack_traces, bool* added) {
   *added = false;
   std::shared_ptr<FunctionDefAndOpRegistration>& entry =
       function_defs_[fdef.signature().name()];
@@ -1232,7 +1260,7 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
         "Cannot add function '", fdef.signature().name(),
         "' because an op with the same name already exists.");
   }
-  entry = std::make_shared<FunctionDefAndOpRegistration>(fdef);
+  entry = std::make_shared<FunctionDefAndOpRegistration>(fdef, stack_traces);
   *added = true;
   return Status::OK();
 }
@@ -1374,7 +1402,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   Status s;
   bool added;
   for (const FunctionDef& fdef : lib_def.function()) {
-    s = AddFunctionDefHelper(fdef, &added);
+    s = AddFunctionDefHelper(fdef, /*stack_traces=*/{}, &added);
     if (!s.ok()) {
       Remove(funcs, funcs_with_grads);
       return s;
@@ -1401,7 +1429,7 @@ Status FunctionLibraryDefinition::ReplaceFunction(const string& func,
   mutex_lock l(mu_);
   bool added;
   TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
-  TF_RETURN_IF_ERROR(AddFunctionDefHelper(fdef, &added));
+  TF_RETURN_IF_ERROR(AddFunctionDefHelper(fdef, /*stack_traces=*/{}, &added));
   return Status::OK();
 }
 
@@ -1427,6 +1455,12 @@ Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
   }
   function_defs_.erase(i);
   return Status::OK();
+}
+
+void FunctionLibraryDefinition::Clear() {
+  mutex_lock l(mu_);
+  function_defs_.clear();
+  func_grad_.clear();
 }
 
 Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
@@ -1505,9 +1539,17 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
     // function's attrs to see if noinline is specified. Otherwise,
     // uses func's attrs.
     if (!grad_name.empty()) {
-      return &(FindHelper(grad_name)->fdef);
+      if (const auto helper = FindHelper(grad_name)) {
+        return &(helper->fdef);
+      } else {
+        return nullptr;
+      }
     }
-    return &(FindHelper(func_name)->fdef);
+    if (const auto helper = FindHelper(func_name)) {
+      return &(helper->fdef);
+    } else {
+      return nullptr;
+    }
   }
 }
 

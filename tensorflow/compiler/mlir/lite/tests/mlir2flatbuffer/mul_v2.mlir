@@ -1,12 +1,13 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 func @main(tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.uniform<i8:f32, 0.1>> {
 ^bb0(%arg0: tensor<3x!quant.uniform<i8:f32, 0.1>>):
   // CHECK:      {
   // CHECK-NEXT:  version: 3,
   // CHECK-NEXT:  operator_codes: [ {
-  // CHECK-NEXT:    builtin_code: MUL,
-  // CHECK-NEXT:    version: 2
+  // CHECK-NEXT:    deprecated_builtin_code: 18,
+  // CHECK-NEXT:    version: 2,
+  // CHECK-NEXT:    builtin_code: MUL
   // CHECK-NEXT:  } ],
   // CHECK-NEXT:  subgraphs: [ {
   // CHECK-NEXT:    tensors: [ {
@@ -65,6 +66,7 @@ func @main(tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.uniform<i8:
   // CHECK-NEXT:  name: "min_runtime_version",
   // CHECK-NEXT:  buffer: 4
   // CHECK-NEXT:  } ]
+  // CHECK-NEXT:  signature_defs: [ ]
   // CHECK-NEXT:}
 
   %0 = "tfl.pseudo_qconst"() { qtype = tensor<3x!quant.uniform<i8:f32, 0.1>>, value = dense<2> : tensor<3xi8>} : () -> tensor<3x!quant.uniform<i8:f32, 0.1>>

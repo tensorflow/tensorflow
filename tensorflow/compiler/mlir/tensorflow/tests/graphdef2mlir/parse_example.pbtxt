@@ -1,73 +1,12 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0 -tf-input-data-types=DT_STRING -tf-input-shapes=32 -tf-output-arrays=ParseExample/ParseExampleV2:0,ParseExample/ParseExampleV2:7 -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -tf-output-arrays=result %s | FileCheck %s
 
-# CHECK: %[[parse_example:.*]]:8, %[[parse_example_control:.*]] = tf_executor.island wraps "tf.ParseExampleV2"(%arg0,
-# CHECK: result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>
-# CHECK: tf_executor.fetch %[[parse_example]]#0, %[[parse_example]]#7 : tensor<?x2xi64>, tensor<32xf32>
+# CHECK: %[[output:.*]], %[[control:.*]]tf_executor.island wraps "tf.ParseExample"
+# CHECK: operand_segment_sizes = dense<[1, 1, 0, 1, 1]> : vector<5xi32>
+# CHECK: result_segment_sizes = dense<[0, 0, 0, 1]> : vector<4xi32>
+# CHECK: tf_executor.fetch %[[output]] : tensor<*xi64>
 
 node {
-  name: "input0"
-  op: "Placeholder"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_STRING
-    }
-  }
-  attr {
-    key: "shape"
-    value {
-      shape {
-        unknown_rank: true
-      }
-    }
-  }
-}
-node {
-  name: "ParseExample/Const"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_FLOAT
-        tensor_shape {
-          dim {
-          }
-        }
-      }
-    }
-  }
-}
-node {
-  name: "ParseExample/Const_1"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_FLOAT
-        tensor_shape {
-          dim {
-          }
-        }
-      }
-    }
-  }
-}
-node {
-  name: "ParseExample/ParseExampleV2/names"
+  name: "serilaized"
   op: "Const"
   attr {
     key: "dtype"
@@ -82,14 +21,16 @@ node {
         dtype: DT_STRING
         tensor_shape {
           dim {
+            size: 1
           }
         }
+        string_val: ""
       }
     }
   }
 }
 node {
-  name: "ParseExample/ParseExampleV2/sparse_keys"
+  name: "Const"
   op: "Const"
   attr {
     key: "dtype"
@@ -104,17 +45,16 @@ node {
         dtype: DT_STRING
         tensor_shape {
           dim {
-            size: 2
+            size: 1
           }
         }
-        string_val: "feature_key3"
-        string_val: "feature_key4"
+        string_val: "value"
       }
     }
   }
 }
 node {
-  name: "ParseExample/ParseExampleV2/dense_keys"
+  name: "Const_1"
   op: "Const"
   attr {
     key: "dtype"
@@ -128,54 +68,57 @@ node {
       tensor {
         dtype: DT_STRING
         tensor_shape {
-          dim {
-            size: 2
-          }
         }
-        string_val: "feature_key1"
-        string_val: "feature_key2"
+        string_val: "value"
       }
     }
   }
 }
 node {
-  name: "ParseExample/ParseExampleV2/ragged_keys"
+  name: "Const_2"
   op: "Const"
   attr {
     key: "dtype"
     value {
-      type: DT_STRING
+      type: DT_INT64
     }
   }
   attr {
     key: "value"
     value {
       tensor {
-        dtype: DT_STRING
+        dtype: DT_INT64
         tensor_shape {
-          dim {
-          }
         }
+        int64_val: -1
       }
     }
   }
 }
 node {
-  name: "ParseExample/ParseExampleV2"
-  op: "ParseExampleV2"
-  input: "input0"
-  input: "ParseExample/ParseExampleV2/names"
-  input: "ParseExample/ParseExampleV2/sparse_keys"
-  input: "ParseExample/ParseExampleV2/dense_keys"
-  input: "ParseExample/ParseExampleV2/ragged_keys"
-  input: "ParseExample/Const"
-  input: "ParseExample/Const_1"
+  name: "result"
+  op: "ParseExample"
+  input: "serilaized"
+  input: "Const"
+  input: "Const_1"
+  input: "Const_2"
+  attr {
+    key: "Ndense"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "Nsparse"
+    value {
+      i: 0
+    }
+  }
   attr {
     key: "Tdense"
     value {
       list {
-        type: DT_FLOAT
-        type: DT_FLOAT
+        type: DT_INT64
       }
     }
   }
@@ -184,29 +127,10 @@ node {
     value {
       list {
         shape {
+          dim {
+            size: 1
+          }
         }
-        shape {
-        }
-      }
-    }
-  }
-  attr {
-    key: "num_sparse"
-    value {
-      i: 2
-    }
-  }
-  attr {
-    key: "ragged_split_types"
-    value {
-      list {
-      }
-    }
-  }
-  attr {
-    key: "ragged_value_types"
-    value {
-      list {
       }
     }
   }
@@ -214,12 +138,12 @@ node {
     key: "sparse_types"
     value {
       list {
-        type: DT_STRING
-        type: DT_INT64
       }
     }
   }
 }
+library {
+}
 versions {
-  producer: 175
+  producer: 413
 }

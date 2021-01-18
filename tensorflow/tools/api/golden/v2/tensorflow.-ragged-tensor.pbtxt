@@ -2,7 +2,7 @@ path: "tensorflow.RaggedTensor"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.ragged.ragged_tensor.RaggedTensor\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
-  is_instance: "<class \'tensorflow.python.framework.tensor_like.TensorLike\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "dtype"
@@ -91,6 +91,10 @@ tf_class {
   member_method {
     name: "from_value_rowids"
     argspec: "args=[\'cls\', \'values\', \'value_rowids\', \'nrows\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "get_shape"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "merge_dims"

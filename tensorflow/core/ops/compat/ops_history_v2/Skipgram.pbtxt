@@ -1,0 +1,64 @@
+op {
+  name: "Skipgram"
+  output_arg {
+    name: "vocab_word"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "vocab_freq"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "words_per_epoch"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "current_epoch"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "total_words_processed"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "examples"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "labels"
+    type: DT_INT32
+  }
+  attr {
+    name: "filename"
+    type: "string"
+  }
+  attr {
+    name: "batch_size"
+    type: "int"
+  }
+  attr {
+    name: "window_size"
+    type: "int"
+    default_value {
+      i: 5
+    }
+  }
+  attr {
+    name: "min_count"
+    type: "int"
+    default_value {
+      i: 5
+    }
+  }
+  attr {
+    name: "subsample"
+    type: "float"
+    default_value {
+      f: 0.001
+    }
+  }
+  deprecation {
+    version: 19
+  }
+  is_stateful: true
+}

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
@@ -112,15 +111,20 @@ void DeviceSet::SortPrioritizedDeviceVector(PrioritizedDeviceVector* vector) {
       return a.second > b.second;
     }
 
-    auto a_priority =
-        DeviceSet::DeviceTypeOrder(DeviceType(a.first->device_type()));
-    auto b_priority =
-        DeviceSet::DeviceTypeOrder(DeviceType(b.first->device_type()));
-    // First sort by prioritized device type (higher is preferred) and
-    // then by device name (lexicographically).
-    if (a_priority != b_priority) {
-      return a_priority > b_priority;
+    const string& a_type_name = a.first->device_type();
+    const string& b_type_name = b.first->device_type();
+    if (a_type_name != b_type_name) {
+      auto a_priority = DeviceFactory::DevicePriority(a_type_name);
+      auto b_priority = DeviceFactory::DevicePriority(b_type_name);
+      if (a_priority != b_priority) {
+        return a_priority > b_priority;
+      }
     }
+
+    if (a.first->IsLocal() != b.first->IsLocal()) {
+      return a.first->IsLocal();
+    }
+
     return StringPiece(a.first->name()) < StringPiece(b.first->name());
   };
   std::sort(vector->begin(), vector->end(), device_sort);

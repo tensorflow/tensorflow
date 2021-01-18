@@ -1,8 +1,8 @@
-// RUN: not flatbuffer_translate -mlir-to-tflite-flatbuffer %s 2>&1 | FileCheck %s --dump-input-on-failure
+// RUN: not flatbuffer_translate -mlir-to-tflite-flatbuffer %s 2>&1 | FileCheck %s
 
 // CHECK: error: 'tf.MyCustomOp' op is neither a custom op nor a flex op
 // CHECK: error: failed while converting: 'main'
-// CHECK: Ops that need custom implementation (enabled via setting the -emit-custom-ops flag):
+// CHECK: Some ops in the model are custom ops, See instructions to implement
 // CHECK: tf.MyCustomOp {name = "MyCustomOp"}
 
 func @main(tensor<4xf32>) -> tensor<4xf32> {

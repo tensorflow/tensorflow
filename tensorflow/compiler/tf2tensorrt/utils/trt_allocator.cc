@@ -17,11 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -52,8 +50,7 @@ void* Align(uint64_t alignment, uint64_t size, void*& ptr, uint64_t& space) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -77,7 +74,7 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
   // algorithm uses too much memory. If we don't fail immediately building the
   // engine can be *very* slow with TensorRT7 when GPU memory is limited.
   AllocationAttributes attributes;
-  attributes.no_retry_on_failure = true;
+  attributes.retry_on_failure = false;
   void* mem = allocator_->AllocateRaw(alignment, total_size, attributes);
   if (!mem) return nullptr;
 
@@ -113,5 +110,4 @@ void TRTDeviceAllocator::free(void* memory) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

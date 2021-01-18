@@ -23,8 +23,10 @@ import functools
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -35,6 +37,7 @@ from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import nest
 
 
 class _Initializer(tracking.CapturableResource):
@@ -143,6 +146,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
           for input_spec in input_specs
       ]
       input_names = []
+      input_tensors = []
       for original_input_name, feed in zip(original_input_names, feeds):
         if isinstance(feed, sparse_tensor.SparseTensor):
           # We have to give explicit name for SparseTensor arguments, because
@@ -151,8 +155,15 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
           values_name = "%s_values" % original_input_name
           dense_shape_name = "%s_dense_shape" % original_input_name
           input_names.extend([indices_name, values_name, dense_shape_name])
+          input_tensors.extend([feed.indices, feed.values, feed.dense_shape])
+        elif isinstance(feed, composite_tensor.CompositeTensor):
+          component_tensors = nest.flatten(feed, expand_composites=True)
+          input_names.extend("%s_component_%d" % (original_input_name, n)
+                             for n in range(len(component_tensors)))
+          input_tensors.extend(component_tensors)
         else:
           input_names.append(original_input_name)
+          input_tensors.append(feed)
       fetches = {name: out for name, out in signature_def.outputs.items()}
       try:
         signature_fn = wrapped.prune(feeds=feeds, fetches=fetches)
@@ -173,6 +184,11 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         raise
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
+      signature_fn._func_graph.structured_input_signature = (
+          (),
+          func_graph.convert_structure_to_signature(
+              dict(zip(input_names, input_tensors))))
+
       if len(input_names) == 1:
         # Allowing positional arguments does not create any ambiguity if there's
         # only one.
@@ -200,8 +216,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     # the GraphDef itself for consistency.
     for node_def in meta_graph_def.graph_def.node:
       function_deserialization.fix_node_def(node_def, functions,
-                                            load_shared_name_suffix,
-                                            debug_name="MetaGraph import")
+                                            load_shared_name_suffix)
 
     load_graph_returns = [None]
     wrapped = wrap_function.wrap_function(

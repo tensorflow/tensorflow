@@ -1,6 +1,10 @@
 path: "tensorflow.data"
 tf_module {
   member {
+    name: "AUTOTUNE"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "Dataset"
     mtype: "<type \'type\'>"
   }
@@ -11,6 +15,10 @@ tf_module {
   member {
     name: "FixedLengthRecordDataset"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "INFINITE_CARDINALITY"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "Iterator"
@@ -27,6 +35,10 @@ tf_module {
   member {
     name: "TextLineDataset"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UNKNOWN_CARDINALITY"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "experimental"

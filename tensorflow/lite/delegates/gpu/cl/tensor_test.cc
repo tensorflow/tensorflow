@@ -20,7 +20,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/cl/cl_test.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -47,8 +46,7 @@ absl::Status TensorGenericTest(const BHWC& shape,
   }
 
   Tensor tensor;
-  RETURN_IF_ERROR(
-      CreateTensor(env->context(), env->device(), shape, descriptor, &tensor));
+  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
 
@@ -77,8 +75,7 @@ absl::Status Tensor5DGenericTest(const BHWDC& shape,
   }
 
   Tensor tensor;
-  RETURN_IF_ERROR(
-      CreateTensor(env->context(), env->device(), shape, descriptor, &tensor));
+  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
 

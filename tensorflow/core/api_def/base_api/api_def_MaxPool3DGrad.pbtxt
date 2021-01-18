@@ -48,5 +48,5 @@ Alternatively, the format could be "NCDHW", the data storage order is:
     [batch, in_channels, in_depth, in_height, in_width].
 END
   }
-  summary: "Computes gradients of max pooling function."
+  summary: "Computes gradients of 3D max pooling function."
 }

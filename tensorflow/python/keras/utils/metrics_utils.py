@@ -27,6 +27,7 @@ from enum import Enum
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.ops import array_ops
@@ -36,9 +37,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.tpu import tpu
 from tensorflow.python.util import tf_decorator
 
@@ -267,8 +266,8 @@ def update_confusion_matrix_variables(variables_to_update,
     y_true: A `Tensor` whose shape matches `y_pred`. Will be cast to `bool`.
     y_pred: A floating point `Tensor` of arbitrary shape and whose values are in
       the range `[0, 1]`.
-    thresholds: A float value or a python list or tuple of float thresholds in
-      `[0, 1]`, or NEG_INF (used when top_k is set).
+    thresholds: A float value, float tensor, python list, or tuple of float
+      thresholds in `[0, 1]`, or NEG_INF (used when top_k is set).
     top_k: Optional int, indicates that the positive labels should be limited to
       the top k predictions.
     class_id: Optional int, limits the prediction and labels to the class
@@ -299,11 +298,22 @@ def update_confusion_matrix_variables(variables_to_update,
                      '`multi_label` is True.')
   if variables_to_update is None:
     return
-  y_true = math_ops.cast(y_true, dtype=dtypes.float32)
-  y_pred = math_ops.cast(y_pred, dtype=dtypes.float32)
+  if not any(
+      key for key in variables_to_update if key in list(ConfusionMatrix)):
+    raise ValueError(
+        'Please provide at least one valid confusion matrix '
+        'variable to update. Valid variable key options are: "{}". '
+        'Received: "{}"'.format(
+            list(ConfusionMatrix), variables_to_update.keys()))
+
+  variable_dtype = list(variables_to_update.values())[0].dtype
+
+  y_true = math_ops.cast(y_true, dtype=variable_dtype)
+  y_pred = math_ops.cast(y_pred, dtype=variable_dtype)
+  thresholds = ops.convert_to_tensor_v2_with_dispatch(
+      thresholds, dtype=variable_dtype)
+  num_thresholds = thresholds.shape[0]
   if multi_label:
-    thresh_shape = array_ops.shape(thresholds)
-    num_thresholds = thresh_shape[0]
     one_thresh = math_ops.equal(
         math_ops.cast(1, dtype=dtypes.int32),
         array_ops.rank(thresholds),
@@ -312,16 +322,7 @@ def update_confusion_matrix_variables(variables_to_update,
     [y_pred,
      y_true], _ = ragged_assert_compatible_and_get_flat_values([y_pred, y_true],
                                                                sample_weight)
-    num_thresholds = len(to_list(thresholds))
     one_thresh = math_ops.cast(True, dtype=dtypes.bool)
-
-  if not any(
-      key for key in variables_to_update if key in list(ConfusionMatrix)):
-    raise ValueError(
-        'Please provide at least one valid confusion matrix '
-        'variable to update. Valid variable key options are: "{}". '
-        'Received: "{}"'.format(
-            list(ConfusionMatrix), variables_to_update.keys()))
 
   invalid_keys = [
       key for key in variables_to_update if key not in list(ConfusionMatrix)
@@ -342,11 +343,12 @@ def update_confusion_matrix_variables(variables_to_update,
           message='predictions must be <= 1')
   ]):
     if sample_weight is None:
-      y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+      y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
           y_pred, y_true)
     else:
+      sample_weight = math_ops.cast(sample_weight, dtype=variable_dtype)
       y_pred, y_true, sample_weight = (
-          tf_losses_utils.squeeze_or_expand_dimensions(
+          losses_utils.squeeze_or_expand_dimensions(
               y_pred, y_true, sample_weight=sample_weight))
   y_pred.shape.assert_is_compatible_with(y_true.shape)
 
@@ -388,9 +390,8 @@ def update_confusion_matrix_variables(variables_to_update,
     data_tiles = [num_thresholds, 1]
 
   thresh_tiled = array_ops.tile(
-      array_ops.reshape(
-          array_ops.constant(thresholds, dtype=dtypes.float32),
-          thresh_pretile_shape), array_ops.stack(thresh_tiles))
+      array_ops.reshape(thresholds, thresh_pretile_shape),
+      array_ops.stack(thresh_tiles))
 
   # Tile the predictions for every threshold.
   preds_tiled = array_ops.tile(predictions_extra_dim, data_tiles)
@@ -403,7 +404,7 @@ def update_confusion_matrix_variables(variables_to_update,
 
   if sample_weight is not None:
     sample_weight = weights_broadcast_ops.broadcast_weights(
-        math_ops.cast(sample_weight, dtype=dtypes.float32), y_pred)
+        math_ops.cast(sample_weight, dtype=variable_dtype), y_pred)
     weights_tiled = array_ops.tile(
         array_ops.reshape(sample_weight, thresh_tiles), data_tiles)
   else:
@@ -424,9 +425,9 @@ def update_confusion_matrix_variables(variables_to_update,
 
   def weighted_assign_add(label, pred, weights, var):
     label_and_pred = math_ops.cast(
-        math_ops.logical_and(label, pred), dtype=dtypes.float32)
+        math_ops.logical_and(label, pred), dtype=var.dtype)
     if weights is not None:
-      label_and_pred *= weights
+      label_and_pred *= math_ops.cast(weights, dtype=var.dtype)
     return var.assign_add(math_ops.reduce_sum(label_and_pred, 1))
 
   loop_vars = {
@@ -511,11 +512,11 @@ def ragged_assert_compatible_and_get_flat_values(values, mask=None):
     # tf.TensorShape `assert_is_compatible_with`
     # check if both dynamic dimensions are equal and then use the flat_values.
     nested_row_split_list = [rt.nested_row_splits for rt in values]
-    assertion_list = ragged_util.assert_splits_match(nested_row_split_list)
+    assertion_list = _assert_splits_match(nested_row_split_list)
 
     # if both are ragged sample_weights also should be ragged with same dims.
     if isinstance(mask, ragged_tensor.RaggedTensor):
-      assertion_list_for_mask = ragged_util.assert_splits_match(
+      assertion_list_for_mask = _assert_splits_match(
           [nested_row_split_list[0], mask.nested_row_splits])
       tmp = control_flow_ops.with_dependencies(assertion_list_for_mask,
                                                mask.flat_values)
@@ -537,3 +538,31 @@ def ragged_assert_compatible_and_get_flat_values(values, mask=None):
     raise TypeError('Ragged mask is not allowed with non-ragged inputs.')
 
   return values, mask
+
+
+def _assert_splits_match(nested_splits_lists):
+  """Checks that the given splits lists are identical.
+
+  Performs static tests to ensure that the given splits lists are identical,
+  and returns a list of control dependency op tensors that check that they are
+  fully identical.
+
+  Args:
+    nested_splits_lists: A list of nested_splits_lists, where each split_list is
+      a list of `splits` tensors from a `RaggedTensor`, ordered from outermost
+      ragged dimension to innermost ragged dimension.
+
+  Returns:
+    A list of control dependency op tensors.
+  Raises:
+    ValueError: If the splits are not identical.
+  """
+  error_msg = 'Inputs must have identical ragged splits'
+  for splits_list in nested_splits_lists:
+    if len(splits_list) != len(nested_splits_lists[0]):
+      raise ValueError(error_msg)
+  return [
+      check_ops.assert_equal(s1, s2, message=error_msg)  # pylint: disable=g-complex-comprehension
+      for splits_list in nested_splits_lists[1:]
+      for (s1, s2) in zip(nested_splits_lists[0], splits_list)
+  ]

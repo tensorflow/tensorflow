@@ -23,6 +23,7 @@ import os
 import numpy as np
 
 from tensorflow.core.protobuf import debug_event_pb2
+from tensorflow.python.compat import compat
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import dumping_callback_test_lib
@@ -33,19 +34,27 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_debug_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
 class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
+  """Tests for DebugIdentityV2Op: when DebugEventsWriter is initialized.
+
+  DebugEventsWriter being initialized prior to DebugIdentityV2 ops being invoked
+  for the first time is the typical case (e.g., tfdbg2 running on a local
+  machine with only local devices.)
+  """
 
   def setUp(self):
     super(DebugIdentityV2OpTest, self).setUp()
     # Testing using a small circular-buffer size.
     self.circular_buffer_size = 4
+    self.tfdbg_run_id = "test_tfdbg_run"
     self.writer = debug_events_writer.DebugEventsWriter(
-        self.dump_root, self.circular_buffer_size)
+        self.dump_root, self.tfdbg_run_id, self.circular_buffer_size)
 
   def tearDown(self):
     self.writer.Close()
@@ -56,8 +65,6 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     @def_function.function
     def write_debug_trace(x):
-      # DebugIdentityV2 is a stateful op. It ought to be included by auto
-      # control dependency.
       square = math_ops.square(x)
       gen_debug_ops.debug_identity_v2(
           square,
@@ -85,16 +92,13 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
           write_debug_trace(x), [9.0 + np.sqrt(3.0), 16.0 + 2.0])
 
     with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
-      metadata_iter = reader.metadata_iterator()
       # Check that the .metadata DebugEvents data file has been created, even
       # before FlushExecutionFiles() is called.
-      debug_event = next(metadata_iter).debug_event
-      self.assertGreater(debug_event.wall_time, 0)
-      self.assertTrue(debug_event.debug_metadata.tensorflow_version)
-      self.assertTrue(
-          debug_event.debug_metadata.file_version.startswith("debug.Event:"))
+      self.assertGreater(reader.starting_wall_time(), 0)
+      self.assertTrue(reader.tensorflow_version())
+      self.assertTrue(reader.tfdbg_file_version().startswith("debug.Event"))
 
-      graph_trace_iter = reader.graph_execution_traces_iterator()
+      graph_trace_iter = reader.graph_execution_traces_iterators()[0]
       # Before FlushExecutionFiles() is called, the .graph_execution_traces file
       # ought to be empty.
       with self.assertRaises(StopIteration):
@@ -102,7 +106,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
       # Flush the circular buffer.
       self.writer.FlushExecutionFiles()
-      graph_trace_iter = reader.graph_execution_traces_iterator()
+      graph_trace_iter = reader.graph_execution_traces_iterators()[0]
 
       # The circular buffer has a size of 4. So only the data from the
       # last two iterations should have been written to self.dump_root.
@@ -160,7 +164,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     self.writer.FlushExecutionFiles()
     with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
-      graph_trace_iter = reader.graph_execution_traces_iterator()
+      graph_trace_iter = reader.graph_execution_traces_iterators()[0]
       try:
         x_values = []
         timestamp = 0
@@ -186,7 +190,8 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
   def testTwoDumpRoots(self):
     another_dump_root = os.path.join(self.dump_root, "another")
     another_debug_url = "file://%s" % another_dump_root
-    another_writer = debug_events_writer.DebugEventsWriter(another_dump_root)
+    another_writer = debug_events_writer.DebugEventsWriter(
+        another_dump_root, "test_tfdbg_run")
 
     @def_function.function
     def write_debug_trace(x):
@@ -208,7 +213,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     for debug_root in (self.dump_root, another_dump_root):
       with debug_events_reader.DebugEventsReader(debug_root) as reader:
-        graph_trace_iter = reader.graph_execution_traces_iterator()
+        graph_trace_iter = reader.graph_execution_traces_iterators()[0]
 
         debug_event = next(graph_trace_iter).debug_event
         trace = debug_event.graph_execution_trace
@@ -221,6 +226,65 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
         with self.assertRaises(StopIteration):
           next(graph_trace_iter)
+
+
+class DebugIdentityV2OpUninitializedWriterTest(
+    dumping_callback_test_lib.DumpingCallbackTestBase):
+  """Tests for DebugIdentityV2Op: when DebugEventsWriter is not initialized.
+
+  This case can occur when DebugIdentityV2Ops are running on a remote
+  TensorFlow server (e.g., a TPU worker).
+  """
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvokingDebugIdentityV2OpBeforeCreatingDebugEventsWriterWorks(self):
+    if not compat.forward_compatible(2020, 6, 24):
+      self.skipTest("Functionality currently not supported.")
+    circular_buffer_size = 3
+
+    @def_function.function
+    def write_debug_trace(x):
+      # DebugIdentityV2 is a stateful op. It ought to be included by auto
+      # control dependency.
+      square = math_ops.square(x)
+      gen_debug_ops.debug_identity_v2(
+          square,
+          tfdbg_context_id="deadbeaf",
+          op_name="Square",
+          output_slot=0,
+          tensor_debug_mode=debug_event_pb2.TensorDebugMode.FULL_TENSOR,
+          debug_urls=["file://%s" % self.dump_root],
+          circular_buffer_size=circular_buffer_size)
+      return square
+
+    # The DebugIdentityV2 ops are invokes *before* a DebugEventsWriter at the
+    # same dump root is created.
+    for i in range(circular_buffer_size * 2):
+      self.assertAllClose(
+          write_debug_trace(np.array([i]).astype(np.float32)), [i**2.0])
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   "test_tfdbg_run",
+                                                   circular_buffer_size)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      graph_trace_iter = reader.graph_execution_traces_iterators()[0]
+      graph_execution_traces = []
+      while True:
+        try:
+          graph_execution_traces.append(
+              next(graph_trace_iter).debug_event.graph_execution_trace)
+        except StopIteration:
+          break
+      self.assertLen(graph_execution_traces, circular_buffer_size)
+      for i in range(circular_buffer_size):
+        self.assertAllClose(
+            tensor_util.MakeNdarray(graph_execution_traces[i].tensor_proto),
+            [(i + circular_buffer_size)**2.0])
+
+
+class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDebugNumericSummaryV2OpReduceInfNanThreeSlots(self):
@@ -275,7 +339,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
         debug_event_pb2.TensorDebugMode.SHAPE,
     ]
     # Maximum allowed tensor_id
-    tensor_id = np.power(2, 53)
+    tensor_id = np.power(2, 53, dtype=np.int64)
     for mode in modes:
       self.evaluate(
           gen_debug_ops.debug_numeric_summary_v2(
@@ -679,6 +743,39 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     tensor_2, tensor_id_2 = debug_summary(c)
     self.assertAllEqual(tensor_1, tensor_2)
     self.assertEqual(tensor_id_1, tensor_id_2)
+
+  def testCheckNumericsV2OpNegativeAndPositiveInf(self):
+    """Test that CheckNumericsV2 op distinguishes negative and positive infs."""
+    with self.session(graph=ops.Graph()):
+      t1 = constant_op.constant([-1.0, 1.0])
+      t2 = constant_op.constant([0.0, 0.0])
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"pass through test.*had -Inf and \+Inf values"):
+        self.evaluate(
+            array_ops.check_numerics_v2(t1 / t2, message="pass through test"))
+
+  def testCheckNumericsV2OpNegativeAndPositiveInfAndNaN(self):
+    """CheckNumericsV2 op distinguishes - & + infs when nan is present."""
+    with self.session(graph=ops.Graph()):
+      t1 = constant_op.constant([-1.0, 1.0, 0.0])
+      t2 = constant_op.constant([0.0, 0.0, 0.0])
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"pass through test.*had -Inf, \+Inf, and NaN values"):
+        self.evaluate(
+            array_ops.check_numerics_v2(t1 / t2, message="pass through test"))
+
+  def testCheckNumericsV2PositiveInfAndNaN(self):
+    """Test that CheckNumericsV2 op shows sign of inf when nan is present."""
+    with self.session(graph=ops.Graph()):
+      t1 = constant_op.constant([0.0, 1.0])
+      t2 = constant_op.constant([0.0, 0.0])
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"pass through test.*had \+Inf and NaN values"):
+        self.evaluate(
+            array_ops.check_numerics_v2(t1 / t2, message="pass through test"))
 
 
 if __name__ == "__main__":

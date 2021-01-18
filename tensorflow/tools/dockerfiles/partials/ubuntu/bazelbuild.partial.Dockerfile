@@ -7,21 +7,21 @@ RUN apt-get update && apt-get install -y \
     virtualenv \
     swig
 
-RUN ${PIP} --no-cache-dir install \
+RUN python3 -m pip --no-cache-dir install \
     Pillow \
     h5py \
     keras_preprocessing \
     matplotlib \
     mock \
-    numpy \
+    'numpy<1.19.0' \
     scipy \
     sklearn \
     pandas \
     portpicker \
     enum34
 
- # Build and install bazel
-ENV BAZEL_VERSION 0.15.0
+# Build and install bazel
+ENV BAZEL_VERSION 3.7.2
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \

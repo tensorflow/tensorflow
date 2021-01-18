@@ -15,8 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -31,20 +31,29 @@ constexpr int kOutputTensor = 0;
 
 TfLiteStatus LogicalImpl(TfLiteContext* context, TfLiteNode* node,
                          bool (*func)(bool, bool)) {
-  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input1 =
+      tflite::micro::GetEvalInput(context, node, kInputTensor1);
+  const TfLiteEvalTensor* input2 =
+      tflite::micro::GetEvalInput(context, node, kInputTensor2);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
-  if (HaveSameShapes(input1, input2)) {
+  if (tflite::micro::HaveSameShapes(input1, input2)) {
     reference_ops::BinaryFunction<bool, bool, bool>(
-        GetTensorShape(input1), GetTensorData<bool>(input1),
-        GetTensorShape(input2), GetTensorData<bool>(input2),
-        GetTensorShape(output), GetTensorData<bool>(output), func);
+        tflite::micro::GetTensorShape(input1),
+        tflite::micro::GetTensorData<bool>(input1),
+        tflite::micro::GetTensorShape(input2),
+        tflite::micro::GetTensorData<bool>(input2),
+        tflite::micro::GetTensorShape(output),
+        tflite::micro::GetTensorData<bool>(output), func);
   } else {
     reference_ops::BroadcastBinaryFunction4DSlow<bool, bool, bool>(
-        GetTensorShape(input1), GetTensorData<bool>(input1),
-        GetTensorShape(input2), GetTensorData<bool>(input2),
-        GetTensorShape(output), GetTensorData<bool>(output), func);
+        tflite::micro::GetTensorShape(input1),
+        tflite::micro::GetTensorData<bool>(input1),
+        tflite::micro::GetTensorShape(input2),
+        tflite::micro::GetTensorData<bool>(input2),
+        tflite::micro::GetTensorShape(output),
+        tflite::micro::GetTensorData<bool>(output), func);
   }
 
   return kTfLiteOk;
@@ -65,32 +74,30 @@ TfLiteStatus LogicalAndEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace
 }  // namespace logical
 
-TfLiteRegistration* Register_LOGICAL_OR() {
+TfLiteRegistration Register_LOGICAL_OR() {
   // Init, Free, Prepare, Eval are satisfying the Interface required by
   // TfLiteRegistration.
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/logical::LogicalOrEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/logical::LogicalOrEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-TfLiteRegistration* Register_LOGICAL_AND() {
+TfLiteRegistration Register_LOGICAL_AND() {
   // Init, Free, Prepare, Eval are satisfying the Interface required by
   // TfLiteRegistration.
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/logical::LogicalAndEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/logical::LogicalAndEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

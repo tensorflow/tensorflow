@@ -72,10 +72,8 @@ class ShuffleDatasetParams : public DatasetParams {
                               output_dtypes_);
     attr_vector->emplace_back(ShuffleDatasetOpBase::kOutputShapes,
                               output_shapes_);
-    if (count_ == 1) {
-      attr_vector->emplace_back(ShuffleDatasetOp::kReshuffleEachIteration,
-                                reshuffle_each_iteration_);
-    }
+    attr_vector->emplace_back(ShuffleDatasetOp::kReshuffleEachIteration,
+                              reshuffle_each_iteration_);
     return Status::OK();
   }
 
@@ -298,22 +296,22 @@ std::vector<GetNextTestCase<ShuffleDatasetParams>> GetNextTestCases() {
        /*expected_shuffle_outputs=*/
        CreateTensors<int64>(TensorShape({}),
                             {{9}, {0}, {8}, {6}, {1}, {3}, {7}, {2}, {4}, {5},
-                             {4}, {3}, {0}, {5}, {8}, {2}, {6}, {9}, {7}, {1}}),
+                             {9}, {0}, {8}, {6}, {1}, {3}, {7}, {2}, {4}, {5}}),
        /*expected_reshuffle_outputs=*/
        CreateTensors<int64>(TensorShape({}), {{9}, {0}, {8}, {6}, {1}, {3}, {7},
-                                              {2}, {4}, {5}, {4}, {3}, {0}, {5},
-                                              {8}, {2}, {6}, {9}, {7}, {1}})},
+                                              {2}, {4}, {5}, {9}, {0}, {8}, {6},
+                                              {1}, {3}, {7}, {2}, {4}, {5}})},
       {/*dataset_params=*/ShuffleDatasetParams8(),
        /*expected_shuffle_outputs=*/
        CreateTensors<int64>(
            TensorShape({}),
-           {{2}, {0}, {1}, {2}, {0}, {1}, {1}, {2}, {0}, {1}, {0},
-            {2}, {2}, {0}, {1}, {1}, {0}, {2}, {2}, {1}, {0}}),
+           {{2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0},
+            {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}}),
        /*expected_reshuffle_outputs=*/
        CreateTensors<int64>(
            TensorShape({}),
-           {{2}, {0}, {1}, {2}, {0}, {1}, {1}, {2}, {0}, {1}, {0},
-            {2}, {2}, {0}, {1}, {1}, {0}, {2}, {2}, {1}, {0}})}};
+           {{2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0},
+            {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}})}};
 }
 
 class ParameterizedGetNextTest : public ShuffleDatasetOpTest,
@@ -497,15 +495,15 @@ IteratorSaveAndRestoreTestCases() {
        /*breakpoints=*/{0, 5, 22},
        /*expected_shuffle_outputs=*/
        CreateTensors<int64>(TensorShape({}), {{9}, {0}, {8}, {6}, {1}, {3}, {7},
-                                              {2}, {4}, {5}, {4}, {3}, {0}, {5},
-                                              {8}, {2}, {6}, {9}, {7}, {1}})},
+                                              {2}, {4}, {5}, {9}, {0}, {8}, {6},
+                                              {1}, {3}, {7}, {2}, {4}, {5}})},
       {/*dataset_params=*/ShuffleDatasetParams8(),
        /*breakpoints=*/{0, 5, 20},
        /*expected_shuffle_outputs=*/
        CreateTensors<int64>(
            TensorShape({}),
-           {{2}, {0}, {1}, {2}, {0}, {1}, {1}, {2}, {0}, {1}, {0},
-            {2}, {2}, {0}, {1}, {1}, {0}, {2}, {2}, {1}, {0}})}};
+           {{2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0},
+            {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}})}};
 }
 
 class ParameterizedIteratorSaveAndRestoreTest

@@ -25,7 +25,7 @@
 # the Python binary path.
 #
 # The --gpu flag informs the script that this is a GPU build, so that the
-# appropriate test blacklists can be applied accordingly.
+# appropriate test denylists can be applied accordingly.
 #
 # The --mac flag informs the script that this is running on mac. Mac does not
 # have flock, so we should skip using parallel_gpu_execute on mac.
@@ -45,6 +45,7 @@ source "${SCRIPT_DIR}/builds_common.sh"
 # Process input arguments
 IS_VIRTUALENV=0
 IS_GPU=0
+IS_ROCM=0
 IS_MAC=0
 IS_OSS_SERIAL=0
 while true; do
@@ -52,6 +53,8 @@ while true; do
     IS_VIRTUALENV=1
   elif [[ "$1" == "--gpu" ]]; then
     IS_GPU=1
+  elif [[ "$1" == "--rocm" ]]; then
+    IS_ROCM=1
   elif [[ "$1" == "--mac" ]]; then
     IS_MAC=1
   elif [[ "$1" == "--oss_serial" ]]; then
@@ -65,6 +68,11 @@ while true; do
 done
 
 TF_GPU_COUNT=${TF_GPU_COUNT:-4}
+if [[ ${IS_ROCM} == "1" ]]; then
+  TF_GPU_COUNT=$(lspci|grep 'controller'|grep 'AMD/ATI'|wc -l)
+  TF_TESTS_PER_GPU=1
+  N_TEST_JOBS=$(expr ${TF_GPU_COUNT} \* ${TF_TESTS_PER_GPU})
+fi
 
 # PIP tests should have a "different" path. Different than the one we place
 # virtualenv, because we are deleting and recreating it here.
@@ -84,8 +92,11 @@ else
   PIP_TEST_FILTER_TAG="${PIP_TEST_FILTER_TAG},-oss_serial"
 fi
 
-if [[ ${IS_GPU} == "1" ]]; then
+if [[ ${IS_GPU} == "1" ]] || [[ ${IS_ROCM} == "1" ]]; then
   PIP_TEST_FILTER_TAG="-no_gpu,-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
+fi
+if [[ ${IS_ROCM} == "1" ]]; then
+  PIP_TEST_FILTER_TAG="-no_rocm,-no_pip_rocm,${PIP_TEST_FILTER_TAG}"
 fi
 if [[ ${IS_MAC} == "1" ]]; then
   # TODO(b/122370901): Fix nomac, no_mac inconsistency.
@@ -98,12 +109,19 @@ fi
 #     TF_BUILD_APPEND_ARGUMENTS any user supplied args.
 BAZEL_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --build_tests_only -k --test_tag_filters=${PIP_TEST_FILTER_TAG} \
-  --test_timeout 300,450,1200,3600 ${TF_BUILD_APPEND_ARGUMENTS} \
+  ${TF_BUILD_APPEND_ARGUMENTS} \
   --test_output=errors"
 
-BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}/tensorflow/contrib/... \
-  //${PIP_TEST_PREFIX}/tensorflow/python/... \
-  -//${PIP_TEST_PREFIX}/tensorflow/contrib/tensorboard/..."
+if [[ ${IS_ROCM} == "1" ]]; then
+  BAZEL_FLAGS="${BAZEL_FLAGS} \
+  --test_timeout 600,900,2400,7200"
+else
+  BAZEL_FLAGS="${BAZEL_FLAGS} \
+  --test_timeout 300,450,1200,3600"
+fi
+
+
+BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}/tensorflow/python/..."
 
 # Clean the bazel cache
 bazel clean
@@ -122,14 +140,21 @@ else
 fi
 
 export TF_NEED_CUDA=$IS_GPU
-${PYTHON_BIN_PATH} configure.py
+export TF_NEED_ROCM=$IS_ROCM
+yes "" | ${PYTHON_BIN_PATH} configure.py
 
 # Figure out how many concurrent tests we can run and do run the tests.
 BAZEL_PARALLEL_TEST_FLAGS=""
-if [[ $IS_GPU == 1 ]]; then
+if [[ $IS_GPU == 1 ]] || [[ $IS_ROCM == 1 ]]; then
   # Number of test threads is the number of GPU cards available.
   if [[ $IS_MAC == 1 ]]; then
     BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
+  elif [[ $IS_ROCM == 1 ]]; then
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=${N_TEST_JOBS} \
+        --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
+        --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
+        --test_sharding_strategy=disabled \
+        --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute"
   else
     PAR_TEST_JOBS=$TF_GPU_COUNT
     BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=${TF_GPU_COUNT} \

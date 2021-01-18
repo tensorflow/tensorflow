@@ -74,36 +74,50 @@ absl::Status BuildProgram(cl_program program, const CLDevice& device,
   return absl::OkStatus();
 }
 
-std::string CompilerOptionToString(const CLDevice& device,
+std::string CompilerOptionToString(const GpuInfo& gpu_info,
                                    CompilerOptions option) {
   switch (option) {
-    case CompilerOptions::ADRENO_FULL_SIMD_LINE:
-      if (device.GetInfo().adreno_info.gpu_version < 500) {
-        return "-qcom-accelerate-16-bit";
+    case CompilerOptions::kAdrenoFullSimd:
+      if (gpu_info.IsAdreno()) {
+        if (gpu_info.adreno_info.IsAdreno3xx() ||
+            gpu_info.adreno_info.IsAdreno4xx()) {
+          return "-qcom-accelerate-16-bit";
+        } else {
+          return "-qcom-accelerate-16-bit=true";
+        }
       } else {
-        return "-qcom-accelerate-16-bit=true";
+        return "unsupported";
       }
-    case CompilerOptions::ADRENO_MORE_WAVES:
-      if (device.GetInfo().adreno_info.gpu_version >= 500) {
-        return "-qcom-accelerate-16-bit=false";
+    case CompilerOptions::kAdrenoMoreWaves:
+      if (gpu_info.IsAdreno()) {
+        if (!(gpu_info.adreno_info.IsAdreno3xx() ||
+              gpu_info.adreno_info.IsAdreno4xx())) {
+          return "-qcom-accelerate-16-bit=false";
+        } else {
+          return "";
+        }
       } else {
-        return "";
+        return "unsupported";
       }
-    case CompilerOptions::POWERVR_FP16:
+    case CompilerOptions::kClPowervrFp16:
       return "-cl-fast-relaxed-math";
-    case CompilerOptions::CL_OPT_DISABLE:
+    case CompilerOptions::kClDisableOptimizations:
       return "-cl-opt-disable";
+    case CompilerOptions::kCl20:
+      return "-cl-std=CL2.0";
+    case CompilerOptions::kCl30:
+      return "-cl-std=CL3.0";
   }
 }
 
 }  // namespace
 
 std::string CompilerOptionsToString(
-    const CLDevice& device,
+    const GpuInfo& gpu_info,
     const std::vector<CompilerOptions>& compiler_options) {
   std::string result;
   for (auto option : compiler_options) {
-    absl::StrAppend(&result, CompilerOptionToString(device, option), " ");
+    absl::StrAppend(&result, CompilerOptionToString(gpu_info, option), " ");
   }
   return result;
 }

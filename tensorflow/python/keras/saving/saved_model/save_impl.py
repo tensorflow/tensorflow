@@ -25,24 +25,25 @@ import functools
 import weakref
 
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
+from tensorflow.python.keras.mixed_precision import autocast_variable
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import serialized_attributes
 from tensorflow.python.keras.saving.saved_model import utils
+from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.keras.utils import version_utils
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
@@ -375,26 +376,26 @@ class LayerCallCollection(object):
     if (isinstance(layer.call, def_function.Function) and
         layer.call.input_signature is not None):
       return layer.call.input_signature
+    elif isinstance(layer, training_lib.Model):
+      return saving_utils.model_input_signature(layer)
+    elif (layer.input_spec is not None and
+          layer._use_input_spec_as_call_signature):  # pylint: disable=protected-access
+
+      def to_tensor_spec_or_none(x):
+        spec = input_spec.to_tensor_spec(x, layer._compute_dtype)  # pylint: disable=protected-access
+        # If the shape is too general (e.g. multiple dimensions are allowed),
+        # return None so that separate functions can be generated for each
+        # inferred input signature.
+        # TODO(b/134962016): currently partial signatures are not supported.
+        if spec.shape == tensor_shape.TensorShape(None):
+          return None
+        return spec
+      input_signature = [nest.map_structure(
+          to_tensor_spec_or_none, layer.input_spec)]
+
+      return input_signature
     else:
-      if isinstance(layer, training_lib.Model):
-        return saving_utils.model_input_signature(layer)
-      elif layer.input_spec is not None:
-
-        def to_tensor_spec_or_none(x):
-          spec = input_spec.to_tensor_spec(x, layer._compute_dtype)  # pylint: disable=protected-access
-          # If the shape is too general (e.g. multiple dimensions are allowed),
-          # return None so that separate functions can be generated for each
-          # inferred input signature.
-          # TODO(b/134962016): currently partial signatures are not supported.
-          if spec.shape == tensor_shape.TensorShape(None):
-            return None
-          return spec
-        input_signature = [nest.map_structure(
-            to_tensor_spec_or_none, layer.input_spec)]
-
-        return input_signature
-      else:
-        return None
+      return None
 
   def add_trace(self, *args, **kwargs):
     """Traces all functions with the same args and kwargs.
@@ -412,7 +413,7 @@ class LayerCallCollection(object):
       if self._expects_training_arg:
         def trace_with_training(value, fn=fn):
           utils.set_training_arg(value, self._training_arg_index, args, kwargs)
-          with K.learning_phase_scope(value):
+          with K.deprecated_internal_learning_phase_scope(value):
             fn.get_concrete_function(*args, **kwargs)
 
         trace_with_training(True)
@@ -520,7 +521,8 @@ def layer_call_wrapper(call_collection, method):
     with base_layer_utils.call_context().enter(
         layer, inputs=inputs, build_graph=False, training=training,
         saving=True):
-      with base_layer_utils.autocast_context_manager(layer._compute_dtype):  # pylint: disable=protected-access
+      with autocast_variable.enable_auto_cast_variables(
+          layer._compute_dtype_object):  # pylint: disable=protected-access
         ret = method(*args, **kwargs)
     _restore_layer_losses(original_losses)
     return ret
@@ -563,7 +565,16 @@ def _wrap_call_and_conditional_losses(layer):
   # Create function that generates both outputs and losses
   layer_call = _get_layer_call_method(layer)
   def call_and_return_conditional_losses(inputs, *args, **kwargs):
-    return layer_call(inputs, *args, **kwargs), layer.get_losses_for(inputs)
+    """Returns layer (call_output, conditional losses) tuple."""
+    call_output = layer_call(inputs, *args, **kwargs)
+    if version_utils.is_v1_layer_or_model(layer):
+      conditional_losses = layer.get_losses_for(inputs)
+    else:
+      conditional_losses = [
+          l for l in layer.losses if not hasattr(l, '_unconditional_loss')
+      ]
+    return call_output, conditional_losses
+
   return _create_call_fn_decorator(layer, call_and_return_conditional_losses)
 
 
@@ -616,11 +627,13 @@ def _wrap_activity_regularizer(layer):
   return def_function.Function(
       layer._activity_regularizer,
       '{}_activity_regularizer'.format(layer.name),
-      input_signature=[tensor_spec.TensorSpec(None, layer.dtype or K.floatx())])
+      input_signature=[
+          tensor_spec.TensorSpec(None, layer._compute_dtype or K.floatx())
+      ])
   # pylint: enable=protected-access
 
 
 def _get_layer_call_method(layer):
-  if isinstance(layer.call, (def_function.Function, function.ConcreteFunction)):
+  if isinstance(layer.call, (def_function.Function)):
     return layer.call.python_function
   return layer.call

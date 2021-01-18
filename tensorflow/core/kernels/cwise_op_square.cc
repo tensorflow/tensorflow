@@ -34,13 +34,4 @@ REGISTER_KERNEL_BUILDER(Name("Square")
                         UnaryOp<CPUDevice, functor::square<int32>>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER3(UnaryOp, SYCL, "Square", functor::square, float, double, int64);
-REGISTER_KERNEL_BUILDER(Name("Square")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
-                        UnaryOp<CPUDevice, functor::square<int32>>);
-#endif  // TENSORFLOW_USE_SYC
 }  // namespace tensorflow

@@ -29,11 +29,10 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_info.pb.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
@@ -55,12 +54,17 @@ namespace quant {
 using QuantParamsEntry = QuantizationInfo::QuantParams;
 
 namespace {
-class ImportQuantStatsPass : public FunctionPass<ImportQuantStatsPass> {
+class ImportQuantStatsPass
+    : public PassWrapper<ImportQuantStatsPass, FunctionPass> {
  public:
   explicit ImportQuantStatsPass(OperationToName op_to_name)
       : op_to_name_(op_to_name) {}
 
   void runOnFunction() override;
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<quant::QuantizationDialect>();
+  }
 
   // Parses the serialized quant stats protobuf and initialize the internal
   // data structure. This method must be called after the pass is created.
@@ -76,7 +80,8 @@ class ImportQuantStatsPass : public FunctionPass<ImportQuantStatsPass> {
   // If the index is out of range, this method returns false. Otherwise it
   // returns true if the value is a float tensor.
   bool IsQuantizableResult(Operation *op, int index) {
-    if (index < 0 || index >= op->getNumResults()) return false;
+    if (index < 0 || index >= static_cast<int>(op->getNumResults()))
+      return false;
     Value res = op->getResult(index);
     return res.getType().isa<ShapedType>() &&
            res.getType().cast<ShapedType>().getElementType().isa<FloatType>();
@@ -158,7 +163,7 @@ void ImportQuantStatsPass::ImportAsStatsOps(OpBuilder b, Operation *op,
     InsertStatsOpAtResult(b, op->getResult(index), layer_stats, axis_stats,
                           axis);
   } else {
-    for (int i = 0; i < op->getNumResults(); ++i) {
+    for (int i = 0, e = op->getNumResults(); i < e; ++i) {
       if (IsQuantizableResult(op, i)) {
         InsertStatsOpAtResult(b, op->getResult(i), layer_stats, axis_stats,
                               axis);
@@ -193,7 +198,7 @@ void ImportQuantStatsPass::runOnFunction() {
 }
 
 // Creates an instance of the default quant parameters pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateImportQuantStatsPass(
+std::unique_ptr<OperationPass<FuncOp>> CreateImportQuantStatsPass(
     OperationToName op_to_name, const std::string &stats_str) {
   auto pass = absl::make_unique<ImportQuantStatsPass>(op_to_name);
   if (pass->ParseQuantStats(stats_str)) return nullptr;
@@ -203,7 +208,7 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateImportQuantStatsPass(
 // Creates an instance pass to import quantization stats to the operations in
 // the function. A custom method to get the name from the op is used because
 // different dialect ops might have different ways to assign the name.
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
   auto get_name_func = [](Operation *op) {
     Location loc = op->getLoc();

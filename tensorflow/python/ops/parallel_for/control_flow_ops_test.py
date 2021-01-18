@@ -22,7 +22,6 @@ from __future__ import print_function
 import functools
 import time
 
-from absl import flags
 from absl.testing import parameterized
 import numpy as np
 
@@ -31,22 +30,31 @@ from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.layers import core as keras_core
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
@@ -62,6 +70,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -81,11 +90,9 @@ class PForTest(PForTestCase):
       x_i = array_ops.gather(x, i)
       return nn.top_k(x_i)
 
-    with self.assertRaisesRegexp(ValueError, "No converter defined"):
-      self._test_loop_fn(loop_fn, 3)
-    flags.FLAGS.op_conversion_fallback_to_while_loop = True
-    self._test_loop_fn(loop_fn, 3)
-    flags.FLAGS.op_conversion_fallback_to_while_loop = False
+    with self.assertRaisesRegex(ValueError, "No pfor vectorization"):
+      self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=False)
+    self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=True)
 
   def test_parallel_iterations(self):
     for parallel_iterations in [2, 3, 8, 10]:
@@ -103,15 +110,23 @@ class PForTest(PForTestCase):
           4 * constant_op.constant(2),
           parallel_iterations=parallel_iterations)
 
+  def test_parallel_iterations_preserves_static_shape(self):
+    for parallel_iterations in [2, 3, 8, 10]:
+      x = pfor_control_flow_ops.pfor(
+          lambda _: random_ops.random_uniform([2, 3]),
+          8,
+          parallel_iterations=parallel_iterations)
+      self.assertAllEqual(x.shape, [8, 2, 3])
+
   def test_parallel_iterations_zero(self):
-    with self.assertRaisesRegexp(ValueError, "positive integer"):
+    with self.assertRaisesRegex(ValueError, "positive integer"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=0)
-    with self.assertRaisesRegexp(TypeError, "positive integer"):
+    with self.assertRaisesRegex(TypeError, "positive integer"):
       pfor_control_flow_ops.for_loop(
           lambda i: 1, dtypes.int32, 8, parallel_iterations=0)
 
   def test_parallel_iterations_one(self):
-    with self.assertRaisesRegexp(ValueError, "Use for_loop instead"):
+    with self.assertRaisesRegex(ValueError, "Use for_loop instead"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
   def test_vectorized_map(self):
@@ -133,6 +148,27 @@ class PForTest(PForTestCase):
     result = pfor_control_flow_ops.vectorized_map(compute, x)
     self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
 
+  def test_vectorized_map_broadcasts_unit_dimensions(self):
+    convert_with_static_shape = ops.convert_to_tensor
+    convert_with_dynamic_shape = (
+        lambda x: array_ops.placeholder_with_default(x, shape=None))
+
+    for convert in (convert_with_static_shape, convert_with_dynamic_shape):
+      a = convert([3.1])
+      b = convert([-2., 6., 9.])
+
+      # One elem with leading unit dimension.
+      a_plus_1 = pfor_control_flow_ops.vectorized_map(lambda a: a + 1, a)
+      self.assertAllEqual(*self.evaluate((a_plus_1, a + 1)))
+
+      # Two elems, both with leading unit dimension.
+      a_plus_a = pfor_control_flow_ops.vectorized_map(sum, (a, a))
+      self.assertAllEqual(*self.evaluate((a_plus_a, a + a)))
+
+      # Elem w/ unit dimension broadcast against elem with batch dim.
+      a_plus_b = pfor_control_flow_ops.vectorized_map(sum, (a, b))
+      self.assertAllEqual(*self.evaluate((a_plus_b, a + b)))
+
   def test_vectorized_map_example_1(self):
 
     def outer_product(a):
@@ -143,28 +179,6 @@ class PForTest(PForTestCase):
     c = pfor_control_flow_ops.vectorized_map(outer_product, a)
     self.assertAllEqual((batch_size, 32, 32, 32, 32), c.shape)
 
-  def test_vectorized_map_example_2(self):
-    batch_size = 10
-    num_features = 32
-    layer = keras_core.Dense(1)
-
-    def model_fn(arg):
-      with backprop.GradientTape() as g:
-        inp, label = arg
-        inp = array_ops.expand_dims(inp, 0)
-        label = array_ops.expand_dims(label, 0)
-        prediction = layer(inp)
-        loss = nn.l2_loss(label - prediction)
-      return g.gradient(loss, (layer.kernel, layer.bias))
-
-    inputs = random_ops.random_uniform([batch_size, num_features])
-    labels = random_ops.random_uniform([batch_size, 1])
-    per_example_gradients = pfor_control_flow_ops.vectorized_map(
-        model_fn, (inputs, labels))
-    self.assertAllEqual(per_example_gradients[0].shape,
-                        (batch_size, num_features, 1))
-    self.assertAllEqual(per_example_gradients[1].shape, (batch_size, 1))
-
   def test_disable_tf_function(self):
     def_function.run_functions_eagerly(True)
     # vectorized_map should ignore disabling tf.functions
@@ -173,6 +187,7 @@ class PForTest(PForTestCase):
                         pfor_control_flow_ops.vectorized_map(
                             lambda x: x * x, math_ops.range(4)))
     self.assertTrue(def_function.functions_run_eagerly())
+    def_function.run_functions_eagerly(False)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -296,8 +311,8 @@ class ReductionTest(PForTestCase):
       x_i = array_ops.gather(x, i)
       return pfor_config.reduce_sum(x_i)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "parallel_iterations currently unsupported"):
+    with self.assertRaisesRegex(ValueError,
+                                "parallel_iterations currently unsupported"):
       pfor_control_flow_ops.pfor(loop_fn, 8, parallel_iterations=2)
 
 
@@ -458,11 +473,7 @@ class NNTest(PForTestCase):
       with g:
         x1 = array_ops.gather(x, i)
         output = nn.avg_pool3d(
-            x1,
-            ksize,
-            strides=strides,
-            padding="VALID",
-            data_format="NDHWC")
+            x1, ksize, strides=strides, padding="VALID", data_format="NDHWC")
         loss = nn.l2_loss(output)
       return output, g.gradient(loss, x1)
 
@@ -511,8 +522,6 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_max_pool3d(self):
-    if test.is_built_with_rocm():
-      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     with backprop.GradientTape(persistent=True) as g:
       x = random_ops.random_uniform([3, 3, 2, 12, 12, 3])
       g.watch(x)
@@ -791,6 +800,16 @@ class LoggingTest(PForTestCase):
 
 class TensorArrayTest(PForTestCase):
 
+  def setUp(self):
+    self._enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.disable_control_flow_v2()
+    super(TensorArrayTest, self).setUp()
+
+  def tearDown(self):
+    if self._enabled:
+      control_flow_v2_toggles.enable_control_flow_v2()
+    super(TensorArrayTest, self).tearDown()
+
   @test_util.run_v1_only("b/122612051")
   def test_create_outside_and_read(self):
 
@@ -908,6 +927,266 @@ class TensorArrayTest(PForTestCase):
       self.assertAllClose(actual_grad, computed_grad)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class TensorListTest(PForTestCase):
+
+  def test_create_outside_and_write(self):
+    handle1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+    handle2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+
+    def loop_fn(i):
+      h1 = list_ops.tensor_list_set_item(handle1, 0, i)
+      h1 = list_ops.tensor_list_set_item(h1, 1, 1)
+      h2 = list_ops.tensor_list_set_item(handle2, 0, 1)
+      return (list_ops.tensor_list_stack(h1, dtypes.int32),
+              list_ops.tensor_list_stack(h2, dtypes.int32))
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_inside_and_write(self):
+
+    def loop_fn(i):
+      h1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      h1 = list_ops.tensor_list_set_item(h1, 0, i)
+      h1 = list_ops.tensor_list_set_item(h1, 1, 1)
+      h2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      h2 = list_ops.tensor_list_set_item(h2, 0, 1)
+      return (list_ops.tensor_list_stack(h1, dtypes.int32),
+              list_ops.tensor_list_stack(h2, dtypes.int32))
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_outside_and_read(self):
+    handle = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+    handle = list_ops.tensor_list_set_item(handle, 0, 0)
+    handle = list_ops.tensor_list_set_item(handle, 1, 1)
+
+    def loop_fn(i):
+      return (list_ops.tensor_list_get_item(handle, i, dtypes.int32),
+              list_ops.tensor_list_get_item(handle, 0, dtypes.int32),
+              list_ops.tensor_list_length(handle),
+              list_ops.tensor_list_element_shape(handle, dtypes.int32),
+              list_ops.tensor_list_element_shape(handle, dtypes.int64))
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_create_inside_and_read(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      handle = list_ops.tensor_list_set_item(handle, 0, i)
+      handle = list_ops.tensor_list_set_item(handle, 1, 1)
+      return (list_ops.tensor_list_get_item(handle, 0, dtypes.int32),
+              list_ops.tensor_list_get_item(handle, i, dtypes.int32),
+              list_ops.tensor_list_length(handle),
+              list_ops.tensor_list_element_shape(handle, dtypes.int32),
+              list_ops.tensor_list_element_shape(handle, dtypes.int64))
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_create_outside_and_push_back(self):
+    h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_push_back(h, [i, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_inside_and_push_back(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [i, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pop_back_no_shape(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      handle = list_ops.tensor_list_push_back(handle, [i, 2])
+      handle, tensor = list_ops.tensor_list_pop_back(handle, dtypes.int32)
+      return tensor, list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pop_back_no_shape_capture(self):
+    h = list_ops.tensor_list_reserve([2], 1, dtypes.int32)
+    h = list_ops.tensor_list_push_back(h, [1, 2])
+
+    def loop_fn(i):
+      handle, tensor = list_ops.tensor_list_pop_back(h, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [1, i])
+      return tensor, list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pop_back_with_shape(self):
+
+    @def_function.function
+    def loop_fn(i):
+      with backprop.GradientTape() as tape:
+        handle = list_ops.tensor_list_reserve(None, 1, dtypes.float32)
+        x = math_ops.cast(i, dtypes.float32)[None]
+        tape.watch(x)
+        handle = list_ops.tensor_list_push_back(handle, x)
+        stacked = list_ops.tensor_list_stack(handle, dtypes.float32)
+      list_grad = tape.gradient(stacked, x, x)
+      self.assertEqual("TensorListPopBack", list_grad.op.type)
+      return list_grad, stacked, list_grad.op.inputs[1]
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_outside_and_scatter(self):
+    h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=h)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_inside_and_scatter(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=handle)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_outside_and_gather(self):
+    handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+    handle = list_ops.tensor_list_scatter([[2, 3]], [0], input_handle=handle)
+    handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+
+    def loop_fn(i):
+      return (list_ops.tensor_list_gather(handle, [0, 1], dtypes.int32),
+              list_ops.tensor_list_gather(handle, [i], dtypes.int32))
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_create_inside_and_gather(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=handle)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return (list_ops.tensor_list_gather(handle, [0, 1], dtypes.int32),
+              list_ops.tensor_list_gather(handle, [i], dtypes.int32))
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_create_inside_and_concat(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=handle)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return gen_list_ops.tensor_list_concat_v2(
+          handle,
+          element_dtype=dtypes.int32,
+          element_shape=[2],
+          leading_dims=[])
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 2)
+    self.assertAllClose([[0, 2, 1, 2], [1, 2, 1, 2]], output[0])
+    self.assertAllClose([[2, 2], [2, 2]], output[1])
+
+  def test_create_outside_and_concat(self):
+    h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=h)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return gen_list_ops.tensor_list_concat_v2(
+          handle,
+          element_dtype=dtypes.int32,
+          element_shape=[2],
+          leading_dims=[])
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 2)
+    self.assertAllClose([[0, 2, 1, 2], [1, 2, 1, 2]], output[0])
+    self.assertAllClose([[2, 2], [2, 2]], output[1])
+
+  def test_tensor_list_from_tensor(self):
+    t = random_ops.random_uniform([2, 3, 4])
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_from_tensor(array_ops.gather(t, i), [4])
+      return list_ops.tensor_list_stack(handle, t.dtype)
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_tensor_list_reserve_while_loop(self):
+    # Here a loop invariant TensorList is captured by a while_loop, which then
+    # performs loop dependent operations on it, resulting in a loop variant
+    # output. This forces stacking of the variant handle captured by the
+    # while_loop.
+    # We handle this particular case by forcing vectorization of
+    # TensorListReserve operation.
+    v2_enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.enable_control_flow_v2()
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      _, out_handle = control_flow_ops.while_loop(
+          lambda j, _: j < 2, lambda j, h:
+          (j + 1, list_ops.tensor_list_set_item(h, j, i)), (0, handle))
+      return list_ops.tensor_list_stack(out_handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 2)
+    if not v2_enabled:
+      control_flow_v2_toggles.disable_control_flow_v2()
+
+  def test_tensor_list_addn_already_stacked(self):
+
+    def loop_fn(i):
+      l1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l1 = list_ops.tensor_list_set_item(l1, 0, i)
+      l2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l2 = list_ops.tensor_list_set_item(l2, 1, i)
+      return list_ops.tensor_list_stack(math_ops.add_n([l1, l2]), dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_tensor_list_addn_stacking_required(self):
+    l1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+    l1 = list_ops.tensor_list_set_item(l1, 1, 1)
+
+    def loop_fn(i):
+      l2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l2 = list_ops.tensor_list_set_item(l2, 1, i)
+      return list_ops.tensor_list_stack(
+          math_ops.add_n([l1, l2]), dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 2)
+
+
+class OptionalTest(PForTestCase):
+
+  def test_optional_from_value(self):
+
+    def loop_fn(i):
+      o = gen_dataset_ops.optional_from_value(
+          [i, i + 1, constant_op.constant(3)])
+      gen_dataset_ops.optional_none()
+      return gen_dataset_ops.optional_get_value(
+          o, [dtypes.int32, dtypes.int32, dtypes.int32],
+          [[], [], []])
+
+    self._test_loop_fn(loop_fn, 2)
+
+
 class StackTest(PForTestCase):
 
   @test_util.run_v1_only("b/122612051")
@@ -973,13 +1252,23 @@ class StackTest(PForTestCase):
     def loop_fn(_):
       return data_flow_ops.stack_push_v2(s, 7)
 
-    with self.assertRaisesRegexp(ValueError, "StackPushV2 not allowed.*"):
+    with self.assertRaisesRegex(ValueError, "StackPushV2 not allowed.*"):
       pfor_control_flow_ops.pfor(loop_fn, iters=2)
 
 
 # TODO(agarwal): test nested while_loops. This currently requires converting a
 # tf.cond.
 class WhileV1Test(PForTestCase):
+
+  def setUp(self):
+    self._enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.disable_control_flow_v2()
+    super(WhileV1Test, self).setUp()
+
+  def tearDown(self):
+    if self._enabled:
+      control_flow_v2_toggles.enable_control_flow_v2()
+    super(WhileV1Test, self).tearDown()
 
   def test_while_outside_loop(self):
 
@@ -1229,6 +1518,220 @@ def create_dynamic_lstm(cell_fn, batch_size, state_size, max_steps):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class WhileV2Test(PForTestCase):
+
+  def setUp(self):
+    self._enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.enable_control_flow_v2()
+    super(WhileV2Test, self).setUp()
+
+  def tearDown(self):
+    if not self._enabled:
+      control_flow_v2_toggles.disable_control_flow_v2()
+    super(WhileV2Test, self).tearDown()
+
+  def test_while_outside_loop(self):
+
+    def _f():
+      return control_flow_ops.while_loop(lambda j: j < 4, lambda j: j + 1, [0])
+
+    def loop_fn(i):
+      return _f() + i
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_invariant_while(self):
+
+    def loop_fn(_):
+      return control_flow_ops.while_loop(lambda j: j < 4, lambda j: j + 1, [0])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_invariant_while_with_control_dependency(self):
+
+    def loop_fn(i):
+      with ops.control_dependencies([i]):
+        return control_flow_ops.while_loop(lambda j: j < 4, lambda j: j + 1,
+                                           [0])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_with_stateful_ops(self):
+
+    def loop_fn(_):
+      j, _ = control_flow_ops.while_loop(
+          lambda j, x: j < 4, lambda j, x:
+          (j + 1, x + random_ops.random_uniform([])), [0, 0.])
+      return j
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_with_variable(self):
+    v = resource_variable_ops.ResourceVariable(5.)
+
+    def loop_fn(_):
+      _, output = control_flow_ops.while_loop(lambda j, x: j < 4, lambda j, x:
+                                              (j + 1, x + v), [0, 0.])
+      return output
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_unstacked_condition(self):
+
+    def loop_fn(i):
+      return control_flow_ops.while_loop(lambda j, x: j < 4, lambda j, x:
+                                         (j + 1, x + i), [0, 0])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while(self):
+    x = random_ops.random_uniform([3, 5])
+    lengths = constant_op.constant([4, 0, 2])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      lengths_i = array_ops.gather(lengths, i)
+
+      return control_flow_ops.while_loop(
+          lambda j, _: j < lengths_i, lambda j, t:
+          (j + 1, t + array_ops.gather(x_i, j)), [0, 0.])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_change_input_invariance(self):
+    # This tests cases where a loop invariant input to while has loop dependent
+    # operations applied to it inside the while body.
+    # It also test inputs that are passed through.
+    def loop_fn(i):
+      return control_flow_ops.while_loop(
+          lambda j, *_: j < i, lambda j, x, y, z, w:
+          (j + 1, x + i, y + x, z, w), [
+              0,
+              constant_op.constant(0),
+              constant_op.constant(1), i,
+              constant_op.constant(2)
+          ])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_shape_invariants(self):
+
+    def loop_fn(i):
+      return control_flow_ops.while_loop(
+          lambda j, *_: j < 4,
+          lambda j, x, y: (j + 1, x + i, y + 1),
+          [0, constant_op.constant([0, 1]),
+           constant_op.constant([2, 3])],
+          shape_invariants=[
+              None,
+              tensor_shape.TensorShape([2]),
+              tensor_shape.TensorShape([2])
+          ])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_while_jacobian(self):
+    # Note that we wrap the code below in a tf.function since we don't want the
+    # while_loop call to be evaluated eagerly using a python loop.
+    @def_function.function
+    def _f(x, y, use_pfor):
+      # out = x @ y @ y @ y @ y, where @ is matmul operator.
+      _, out = control_flow_ops.while_loop(
+          lambda i, _: i < 4, lambda i, out: (i + 1, math_ops.matmul(out, y)),
+          [0, x])
+
+      def loop_fn(i):
+        out_i = array_ops.gather(out, i, axis=1)
+        grad = gradient_ops.gradients(out_i, x)
+        return array_ops.reshape(grad[0], [-1])
+
+      if use_pfor:
+        return pfor_control_flow_ops.pfor(loop_fn, iters=3)
+      else:
+        return pfor_control_flow_ops.for_loop(
+            loop_fn, iters=3, loop_fn_dtypes=out.dtype)
+
+    x = constant_op.constant(np.random.uniform(size=(1, 3)))
+    y = constant_op.constant(np.random.uniform(size=(3, 3)))
+    self.assertAllClose(_f(x, y, True), _f(x, y, False))
+
+  def test_scan(self):
+    np.random.seed(seed=42)
+    data = np.random.randn(3).astype(np.float32)
+
+    def log_prob(x):
+      return math_ops.reduce_sum(functional_ops.scan_v2(
+          lambda _, yi: (x - yi)**2,
+          elems=data,
+          initializer=constant_op.constant(0.)))
+
+    x = variables.Variable(array_ops.ones([2]))
+    self.evaluate(x.initializer)
+    v_log_prob = lambda x: pfor_control_flow_ops.vectorized_map(log_prob, x)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        v_log_prob, (x,), delta=1e-3)
+    self.assertAllClose(theoretical, numerical, rtol=1e-2)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class NestedControlFlowTest(PForTestCase):
+
+  def setUp(self):
+    self._enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.enable_control_flow_v2()
+    super(NestedControlFlowTest, self).setUp()
+
+  def tearDown(self):
+    if not self._enabled:
+      control_flow_v2_toggles.disable_control_flow_v2()
+    super(NestedControlFlowTest, self).tearDown()
+
+  def _cond(self, f=None, split=0):
+    if f is None:
+      f = lambda x, y: (x, y)
+
+    def _f(x, y):
+      return control_flow_ops.cond(y > split, lambda: f(x, y), lambda:
+                                   (x + 1., y))
+
+    return _f
+
+  def _while(self, f=None):
+    if f is None:
+      f = lambda x, y: (x, y)
+
+    def _f(x, y):
+      return control_flow_ops.while_loop(
+          lambda j, _: j < y, lambda j, t:
+          (j + 1, t + array_ops.gather(f(x, y)[0], j)), [0, x])[1], y
+
+    return _f
+
+  def _test_helper(self, f):
+    x = random_ops.random_uniform([5, 5])
+    y = constant_op.constant([4, -1, 2, -2, 2])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      y_i = array_ops.gather(y, i)
+      return f(x_i, y_i)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_cond_while(self):
+    self._test_helper(self._cond(self._while()))
+
+  def test_while_cond(self):
+    self._test_helper(self._while(self._cond()))
+
+  def test_while_while(self):
+    self._test_helper(self._while(self._while()))
+
+  def test_cond_cond(self):
+    self._test_helper(self._cond(self._cond()))
+
+
+@test_util.run_all_in_graph_and_eager_modes
 @test_util.with_control_flow_v2
 class StatelessIfTest(PForTestCase):
 
@@ -1241,10 +1744,8 @@ class StatelessIfTest(PForTestCase):
       x_i = array_ops.gather(x, i)
       # Note that the output has a combination of then and else branches being
       # loop variant / invariant.
-      return cond_v2.cond_v2(
-          x_i < y,
-          lambda: (y - x_i, y, 1., 2.),
-          lambda: (x_i - y, 0., y, 3.))
+      return cond_v2.cond_v2(x_i < y, lambda: (y - x_i, y, 1., 2.), lambda:
+                             (x_i - y, 0., y, 3.))
 
     self._test_loop_fn(loop_fn, iters=5)
 
@@ -1258,10 +1759,8 @@ class StatelessIfTest(PForTestCase):
       x_i = array_ops.gather(x, i)
       # Note that the output has a combination of then and else branches being
       # loop variant / invariant.
-      return cond_v2.cond_v2(
-          z < y,
-          lambda: (y - x_i, y, 1., 2.),
-          lambda: (x_i - y, 0., y, 3.))
+      return cond_v2.cond_v2(z < y, lambda: (y - x_i, y, 1., 2.), lambda:
+                             (x_i - y, 0., y, 3.))
 
     self._test_loop_fn(loop_fn, iters=5)
 
@@ -1285,6 +1784,8 @@ class StatelessIfTest(PForTestCase):
 class IfTest(PForTestCase):
 
   def test_read_var(self):
+    self.skipTest("b/156438918")  # Flaky
+
     x = [1, 2, 3, 4, 5.]
     y = 2.5
     z = resource_variable_ops.ResourceVariable(5.)
@@ -1292,10 +1793,7 @@ class IfTest(PForTestCase):
     @def_function.function
     def loop_fn(i):
       x_i = array_ops.gather(x, i)
-      return cond_v2.cond_v2(
-          x_i < y,
-          lambda: z - x_i,
-          lambda: z + x_i)
+      return cond_v2.cond_v2(x_i < y, lambda: z - x_i, lambda: z + x_i)
 
     self._test_loop_fn(loop_fn, iters=5)
 
@@ -1556,6 +2054,132 @@ class SparseTest(PForTestCase):
     self.run_and_assert_equal(pfor, manual)
 
 
+# Dummy CompositeTensor to test CompositeTensor support.
+class Particle(composite_tensor.CompositeTensor):
+  """A (batch of) particles each defined by a mass and a scalar velocity."""
+
+  def __init__(self, mass, velocity):
+    mass = ops.convert_to_tensor(mass)
+    velocity = ops.convert_to_tensor(velocity)
+    self.shape = array_ops.broadcast_static_shape(mass.shape, velocity.shape)
+    self.mass = mass
+    self.velocity = velocity
+
+  @property
+  def _type_spec(self):
+    return ParticleSpec(
+        type_spec.type_spec_from_value(self.mass),
+        type_spec.type_spec_from_value(self.velocity))
+
+
+class ParticleSpec(type_spec.BatchableTypeSpec):
+
+  def __init__(self, mass, velocity):
+    self.shape = array_ops.broadcast_static_shape(
+        mass.shape, velocity.shape)
+    self.mass = mass
+    self.velocity = velocity
+
+  def _serialize(self):
+    return (self.mass, self.velocity)
+
+  @property
+  def value_type(self):
+    return Particle
+
+  @property
+  def _component_specs(self):
+    return (self.mass, self.velocity)
+
+  def _to_components(self, value):
+    return (value.mass, value.velocity)
+
+  def _from_components(self, components):
+    return Particle(*components)
+
+  def _pad_shape_to_full_rank(self, s):
+    """Pad component shapes with 1's so all components have the same rank."""
+    return tensor_shape.TensorShape(
+        [1] * (self.shape.ndims - s.ndims)).concatenate(s)
+
+  def _batch(self, batch_size):
+    return ParticleSpec(
+        mass=tensor_spec.TensorSpec(
+            dtype=self.mass.dtype,
+            shape=tensor_shape.TensorShape([batch_size]).concatenate(
+                self._pad_shape_to_full_rank(self.mass.shape))),
+        velocity=tensor_spec.TensorSpec(
+            dtype=self.velocity.dtype,
+            shape=tensor_shape.TensorShape([batch_size]).concatenate(
+                self._pad_shape_to_full_rank(self.velocity.shape))))
+
+  def _unbatch(self):
+    return ParticleSpec(
+                tensor_spec.TensorSpec(dtype=self.mass.dtype,
+                                       shape=self.mass.shape[1:]),
+                tensor_spec.TensorSpec(dtype=self.velocity.dtype,
+                                       shape=self.velocity.shape[1:]))
+
+  def _to_tensor_list(self, value):
+    return [array_ops.reshape(
+                value.mass,
+                self._pad_shape_to_full_rank(value.mass.shape)),
+            array_ops.reshape(
+                value.velocity,
+                self._pad_shape_to_full_rank(value.velocity.shape))]
+
+
+class CompositeTensorTest(PForTestCase, parameterized.TestCase):
+
+  @parameterized.parameters((None,), (3,))
+  def test_create_composite_inside_loop(self, parallel_iterations):
+    num_particles = 10
+    velocities = random_ops.random_uniform([num_particles])
+    particles = pfor_control_flow_ops.pfor(
+        # Build a batch of particles all with the same mass.
+        lambda i: Particle(mass=4., velocity=array_ops.gather(velocities, i)),
+        num_particles,
+        parallel_iterations=parallel_iterations)
+    particles_mass, particles_velocity, velocities = self.evaluate(
+        (particles.mass, particles.velocity, velocities))
+    self.assertAllEqual(particles_mass, 4. * np.ones([num_particles]))
+    self.assertAllEqual(particles_velocity, velocities)
+
+  @parameterized.parameters((None,), (3,))
+  def test_composite_is_converted_to_batched_tensor(
+      self, parallel_iterations):
+    particles = pfor_control_flow_ops.pfor(
+        lambda _: Particle(mass=random_ops.random_uniform([3]),  # pylint: disable=g-long-lambda
+                           velocity=random_ops.random_uniform([5, 3])),
+        4,
+        parallel_iterations=parallel_iterations)
+    # Naively batching the component shapes would give `[4, 3]` and `[4, 5, 3]`
+    # which have no consistent broadcast shape.
+    self.assertTrue(particles.mass.shape, [4, 1, 3])
+    self.assertAllEqual(particles.velocity.shape, [4, 5, 3])
+
+  def test_vectorized_map_gathers_composite_tensors(self):
+    particles = Particle(mass=[1., 2., 3., 4., 5.],
+                         velocity=[1., 2., 3., 4., 5.])
+    self.assertAllEqual(
+        pfor_control_flow_ops.vectorized_map(
+            lambda x: x.mass * x.velocity, particles),
+        particles.mass * particles.velocity)
+
+  def test_vectorized_map_of_ragged_tensors(self):
+    # Vmap should be able to handle ragged Tensors as long as they're not
+    # *actually* ragged.
+    ragged = ragged_tensor.RaggedTensor.from_uniform_row_length(
+        ragged_tensor.RaggedTensor.from_row_lengths(
+            values=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+            row_lengths=[3, 3, 3, 3]),
+        uniform_row_length=2)  # Overall shape [2, 2, 3].
+    self.assertAllEqual(
+        pfor_control_flow_ops.vectorized_map(
+            lambda x: x.to_tensor(shape=[2, 3]), ragged),
+        ragged.to_tensor(shape=[2, 2, 3]))
+
+
 class ParsingTest(PForTestCase):
 
   def test_decode_csv(self):
@@ -1779,11 +2403,20 @@ class VariableTest(PForTestCase):
       return math_ops.matmul(z, a_var / 16)
 
     # Note that this error is only raised under v2 behavior.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "tf.function-decorated function tried to create variables on non-first"
     ):
       pfor_control_flow_ops.vectorized_map(f, x)
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_variable_shape(self):
+    v = resource_variable_ops.ResourceVariable([1, 2])
+
+    def loop_fn(_):
+      return resource_variable_ops.variable_shape(v.handle)
+
+    self._test_loop_fn(loop_fn, 2)
 
 
 if __name__ == "__main__":

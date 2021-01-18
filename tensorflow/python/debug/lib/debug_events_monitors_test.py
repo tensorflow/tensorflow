@@ -173,7 +173,8 @@ class DebugEventsMonitorTest(dumping_callback_test_lib.DumpingCallbackTestBase,
         self.assertLen(traces[1].debug_tensor_value, 11)
         self.assertLen(traces[2].debug_tensor_value, 11)
       elif tensor_debug_mode == "FULL_TENSOR":
-        self.assertLen(traces, 4)  # [Placeholder:0, Unique:0, Unique:1, Sum:0].
+        # [Placeholder:0, Unique:0, Unique:1, Const:0, Sum:0].
+        self.assertLen(traces, 5)
         self.assertEqual(traces[0].op_type, "Placeholder")
         self.assertEqual(traces[0].output_slot, 0)
         self.assertIsNone(traces[0].debug_tensor_value)
@@ -192,11 +193,16 @@ class DebugEventsMonitorTest(dumping_callback_test_lib.DumpingCallbackTestBase,
         self.assertAllEqual(
             reader.graph_execution_trace_to_tensor_value(traces[2]),
             [0, 1, 2, 3, 0])
-        self.assertEqual(traces[3].op_type, "Sum")
+        self.assertEqual(traces[3].op_type, "Const")
         self.assertEqual(traces[3].output_slot, 0)
         self.assertIsNone(traces[3].debug_tensor_value)
         self.assertAllClose(
-            reader.graph_execution_trace_to_tensor_value(traces[3]), 17.)
+            reader.graph_execution_trace_to_tensor_value(traces[3]), [0])
+        self.assertEqual(traces[4].op_type, "Sum")
+        self.assertEqual(traces[4].output_slot, 0)
+        self.assertIsNone(traces[4].debug_tensor_value)
+        self.assertAllClose(
+            reader.graph_execution_trace_to_tensor_value(traces[4]), 17.)
 
 
 class AlertDataObjectsTest(test_util.TensorFlowTestCase):

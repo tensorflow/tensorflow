@@ -1,0 +1,15 @@
+op {
+  name: "DestroyResourceOp"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "ignore_lookup_error"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
+}

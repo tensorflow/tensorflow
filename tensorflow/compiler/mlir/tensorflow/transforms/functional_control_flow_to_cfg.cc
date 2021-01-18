@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 // This transformation pass transforms functional control flow operations in the
-// standard TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
+// TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -34,7 +35,7 @@ namespace TF {
 namespace {
 
 struct FunctionalControlFlowToCFG
-    : public FunctionPass<FunctionalControlFlowToCFG> {
+    : public PassWrapper<FunctionalControlFlowToCFG, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -42,7 +43,7 @@ struct FunctionalControlFlowToCFG
 // control flow op into an i1 value.
 static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
   auto zero_d = builder->create<ToBoolOp>(loc, value);
-  auto scalar = builder->create<ExtractElementOp>(loc, zero_d);
+  auto scalar = builder->create<tensor::ExtractOp>(loc, zero_d);
   return scalar.getResult();
 }
 
@@ -52,7 +53,6 @@ static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
 //
 // Requires the function to provide arguments for each of the `fn` operands
 // that is compatible for tensor cast.
-//
 static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
                          FuncOp fn, OpBuilder* builder) {
   FunctionType fn_type = fn.getType();
@@ -113,7 +113,6 @@ static void JumpToBlock(Location loc, const std::function<Value(int)>& get_arg,
 // Requires that the block has same number of arguments as number of results of
 // the operation and either they have same types or are more generic types and
 // it is possible to cast them to results' types.
-//
 static void ReplaceOpResultWithBlockArgs(Location loc, Operation* op,
                                          Block* block, OpBuilder* builder) {
   assert(op->getNumResults() == block->getNumArguments());
@@ -132,9 +131,6 @@ static void ReplaceOpResultWithBlockArgs(Location loc, Operation* op,
 // Given a functional IfOp, transforms the enclosing code to eliminate it
 // completely from the IR, breaking it into operations to evaluate the condition
 // as a bool, plus some branches.
-//
-// This returns true on failure.
-//
 static LogicalResult LowerIfOp(IfOp op) {
   Operation* op_inst = op.getOperation();
   Location loc = op_inst->getLoc();
@@ -144,10 +140,6 @@ static LogicalResult LowerIfOp(IfOp op) {
   // Lower the condition to a boolean value (i1).
   Value cond_i1 = LowerCondition(loc, op.cond(), &builder);
   if (!cond_i1) return failure();
-
-  auto module = op_inst->getParentOfType<ModuleOp>();
-  auto then_fn = module.lookupSymbol<FuncOp>(op.then_branch());
-  auto else_fn = module.lookupSymbol<FuncOp>(op.else_branch());
 
   // Split the basic block before the 'if'.  The new dest will be our merge
   // point.
@@ -166,14 +158,14 @@ static LogicalResult LowerIfOp(IfOp op) {
 
   // Set up the 'then' block.
   Block* then_block = builder.createBlock(merge_block);
-  Operation* call_op = CallFn(loc, get_operand, then_fn, &builder);
+  Operation* call_op = CallFn(loc, get_operand, op.then_function(), &builder);
 
   auto get_then_result = [&](int i) { return call_op->getResult(i); };
   JumpToBlock(loc, get_then_result, merge_block, &builder);
 
   // Set up the 'else' block.
   Block* else_block = builder.createBlock(merge_block);
-  call_op = CallFn(loc, get_operand, else_fn, &builder);
+  call_op = CallFn(loc, get_operand, op.else_function(), &builder);
 
   auto get_else_result = [&](int i) { return call_op->getResult(i); };
   JumpToBlock(loc, get_else_result, merge_block, &builder);
@@ -193,18 +185,14 @@ static LogicalResult LowerIfOp(IfOp op) {
 // Given a functional WhileOp, transforms the enclosing code to eliminate it
 // completely from the IR, breaking it into operations to execute the loop body
 // repeatedly while the loop condition is true.
-//
-// This returns true on failure.
-//
 static LogicalResult LowerWhileOp(WhileOp op) {
   Operation* op_inst = op.getOperation();
   Location loc = op_inst->getLoc();
 
   OpBuilder builder(op_inst);
 
-  auto module = op_inst->getParentOfType<ModuleOp>();
-  auto cond_fn = module.lookupSymbol<FuncOp>(op.cond());
-  auto body_fn = module.lookupSymbol<FuncOp>(op.body());
+  auto cond_fn = op.cond_function();
+  auto body_fn = op.body_function();
 
   // Split the block containing the While op into two blocks.  One containing
   // operations before the While op and other containing the rest.  Create two
@@ -312,7 +300,7 @@ void FunctionalControlFlowToCFG::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 

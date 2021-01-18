@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-lower-static-tensor-list %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -tfl-lower-static-tensor-list %s | FileCheck %s
 
 // CHECK-LABEL: tensorlistConst
 func @tensorlistConst(%arg0 : tensor<1xi32>) -> tensor<2x3xi32> {
@@ -13,10 +13,10 @@ func @tensorlistConst(%arg0 : tensor<1xi32>) -> tensor<2x3xi32> {
 }
 
 func @emptyTensorlistConst(%arg0 : tensor<1xi32>) -> tensor<0x3xi32> {
-  // CHECK: %[[LIST:.*]] = "tf.Const"() {value = dense<{{\[\[}}]]> : tensor<0x3xi32>} : () -> tensor<0x3xi32>
   %0 = "tf.Const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F56415249414E542074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20222A5C6E5C30323674656E736F72666C6F773A3A54656E736F724C6973745C3032325C3032305C3030305C3030335C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3030315C3032325C3030325C3031305C30303322"> : tensor<!tf.variant>} : () -> tensor<!tf.variant<tensor<3xi32>>>
 
-  // CHECK: return %[[LIST]]
+  // CHECK: "tf.Const"() {value = dense<> : tensor<0x3xi32>} : () -> tensor<0x3xi32>
+  // CHECK-NOT: tf.TensorListStack
   %1 = "tf.TensorListStack"(%0, %arg0) : (tensor<!tf.variant<tensor<3xi32>>>, tensor<1xi32>) -> tensor<0x3xi32>
   return %1 : tensor<0x3xi32>
 }
@@ -277,6 +277,89 @@ func @tensorlistWhileCond(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> ten
 // CHECK:  return %[[RESULT]] : tensor<i1>
 }
 
+// CHECK-LABEL: func @tensorlistWhileRegion
+func @tensorlistWhileRegion(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
+  %cst = constant dense<3> : tensor<1xi32>
+  %cst_0 = constant dense<0> : tensor<i32>
+  %cst_1 = constant dense<-1> : tensor<i32>
+  %0 = "tf.TensorListFromTensor"(%arg0, %cst) : (tensor<2x3xf32>, tensor<1xi32>) -> tensor<!tf.variant<tensor<3xf32>>>
+  // CHECK: "tf.WhileRegion"
+  %1:2 = "tf.WhileRegion"(%cst_0, %0) ({
+      ^bb0(%carg0: tensor<i32>, %carg1: tensor<!tf.variant>):
+       %cst_2 = constant dense<2> : tensor<i32>
+       %1 = "tf.Less"(%carg0, %cst_2) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+       "tf.Yield"(%1) : (tensor<i1>) -> ()
+
+      // verify condition types
+      // CHECK: ^bb0(%[[CARG0:.*]]: tensor<i32>, %[[CARG1:.*]]: tensor<*xf32>):
+      // CHECK:  %[[COND:.*]] = "tf.Less"(%[[CARG0]], {{.*}}) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      // CHECK:  "tf.Yield"(%[[COND]]) : (tensor<i1>) -> ()
+
+    },
+    {
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<!tf.variant>):
+       %1 = "tf.TensorListLength"(%barg1) : (tensor<!tf.variant>) -> tensor<i32>
+       "tf.Yield"(%1, %barg1) : (tensor<i32>, tensor<!tf.variant>) -> ()
+
+      // verify body types
+      // CHECK: ^bb0(%[[BARG0:.*]]: tensor<i32>, %[[BARG1:.*]]: tensor<*xf32>):
+      // CHECK-NOT: tensor<!tf.variant>
+      // CHECK:  %[[LEN:.*]] = "tf.Gather"
+      // CHECK-NOT: tensor<!tf.variant>
+      // CHECK:  "tf.Yield"(%[[LEN]], %[[BARG1]]) : (tensor<i32>, tensor<*xf32>) -> ()
+
+  }) {is_stateless = false} : (tensor<i32>, tensor<!tf.variant<tensor<3xf32>>>) -> (tensor<i32>, tensor<!tf.variant<tensor<*xf32>>>)
+  // make sure the variant types in input/output have been updated
+  // CHECK: {is_stateless = false} : (tensor<i32>, tensor<2x3xf32>) -> (tensor<i32>, tensor<*xf32>)
+  %2 = "tf.TensorListStack"(%1#1, %cst_1) : (tensor<!tf.variant<tensor<*xf32>>>, tensor<i32>) -> tensor<*xf32>
+  // CHECK:  return %0#1 : tensor<*xf32>
+  return %2 : tensor<*xf32>
+}
+
+func @otherVariantWhileLoop(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+  %2 = "tf.EmptyTensorMap"() {device = ""} : () -> tensor<!tf.variant>
+  %3:4 = "tf.While"(%0, %1, %0, %2) {_lower_using_switch_merge = true, _num_original_outputs = 4 : i64, _read_only_resource_inputs = [], body = @otherVariantWhileBody, cond = @otherVariantWhileCond, device = "", is_stateless = true, parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>)
+  %4 = "tf.Identity"(%3#3) {device = ""} : (tensor<!tf.variant>) -> tensor<!tf.variant>
+  %5 = "tf.TensorMapSize"(%4) {device = ""} : (tensor<!tf.variant>) -> tensor<i32>
+  %6 = "tf.AddV2"(%arg0, %5) {device = ""} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  return %6 : tensor<1xi32>
+}
+
+// Make sure the non TensorList variant types in input/output have remained.
+// CHECK-LABEL: otherVariantWhileLoop
+// CHECK: "tf.While"
+// CHECK-SAME: (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>)
+
+func @otherVariantWhileBody(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<!tf.variant>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>) {
+  %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.AddV2"(%arg2, %0) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %2 = "tf.TensorMapInsert"(%arg3, %arg2, %arg2) {device = "", key_dtype = i32, value_dtype = i32} : (tensor<!tf.variant>, tensor<i32>, tensor<i32>) -> tensor<!tf.variant>
+  %3 = "tf.AddV2"(%arg0, %0) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %3, %arg1, %1, %2 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>
+}
+
+// Verify `body` function's signature.
+// CHECK-LABEL: func @otherVariantWhileBody
+// CHECK:       [[CST:%.*]] = "tf.Const"()
+// CHECK-NEXT:  [[ADD:%.*]] = "tf.AddV2"(%arg2, [[CST]])
+// CHECK-NEXT:  [[TENSOR_MAP_INSERT_RESULT:%.*]] = "tf.TensorMapInsert"(%arg3, %arg2, %arg2)
+// CHECK-NEXT:  [[ADD_2:%.*]] = "tf.AddV2"(%arg0, [[CST]])
+// CHECK-NEXT:  return [[ADD_2]], %arg1, [[ADD]], [[TENSOR_MAP_INSERT_RESULT]]
+
+func @otherVariantWhileCond(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<!tf.variant>) -> tensor<i1> {
+  %0 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Less"(%arg2, %0) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %1 : tensor<i1>
+}
+
+// Verify `cond` function's signature.
+// CHECK-LABEL: func @otherVariantWhileCond
+// CHECK:       [[CST:%.*]] = "tf.Const"()
+// CHECK-NEXT:  [[LESS:%.*]] = "tf.Less"(%arg2, [[CST]])
+// CHECK-NEXT:  return [[LESS]]
+
 func @tensorlistResize(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> tensor<?x10xf32> {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf.variant<tensor<10xf32>>>
   %1 = "tf.TensorListResize"(%0, %arg2) : (tensor<!tf.variant<tensor<10xf32>>>, tensor<i32>) -> tensor<!tf.variant<tensor<10xf32>>>
@@ -292,7 +375,7 @@ func @tensorlistResize(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: ten
 // CHECK:  [[SIZE_DIFF:%.*]] = "tf.Sub"([[SIZE]], [[INPUT_SIZE]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
 // CHECK:  [[DIFF_RES:%.*]] = "tf.Greater"([[SIZE_DIFF]], [[ZERO]]) : (tensor<i32>, tensor<i32>) -> tensor<i1>
 // CHECK:  [[SHAPE_1:%.*]] = "tf.Shape"([[INPUT]]) : (tensor<3x10xf32>) -> tensor<?xi32>
-// CHECK:  [[RESULT:%.*]] = "tf.If"([[DIFF_RES]], [[INPUT]], [[SHAPE_1]], [[SIZE_DIFF]], [[SIZE]]) {else_branch = @cond_false, is_stateless = true, output_shapes = ["{}"], then_branch = @cond_true} : (tensor<i1>, tensor<3x10xf32>, tensor<?xi32>, tensor<i32>, tensor<i32>) -> tensor<?x10xf32>
+// CHECK:  [[RESULT:%.*]] = "tf.If"([[DIFF_RES]], [[INPUT]], [[SHAPE_1]], [[SIZE_DIFF]], [[SIZE]]) {else_branch = @cond_false, is_stateless = true, then_branch = @cond_true} : (tensor<i1>, tensor<3x10xf32>, tensor<?xi32>, tensor<i32>, tensor<i32>) -> tensor<?x10xf32>
 // CHECK:  return [[RESULT]] : tensor<?x10xf32>
 }
 

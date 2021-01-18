@@ -16,16 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_PASSES_H_
 
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "llvm/ADT/Optional.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 
 // Add the TF to TFLite passes, specified in the pass_config, into a
-// pass_manager.
+// pass_manager. The session object will be provided when the TF MLIR is
+// imported from saved model version one and utilized for capturing resource
+// variables.
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
-                                mlir::OpPassManager* pass_manager);
+                                mlir::OpPassManager* pass_manager,
+                                llvm::Optional<tensorflow::Session*> session);
 
 // Add the Quantization passes, specified in the quant_specs, into a pass
 // manager.

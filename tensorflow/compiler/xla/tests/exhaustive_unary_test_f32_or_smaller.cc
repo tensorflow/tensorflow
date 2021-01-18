@@ -183,7 +183,7 @@ class Exhaustive32BitOrLessUnaryTest
     return end - begin;
   }
 
-  // Generates all the input values for the test. The the range of the bit
+  // Generates all the input values for the test. The range of the bit
   // representation of the input values is described by the test parameter as
   // a pair of int64 representing the starting bit pattern and the ending
   // pattern. Each bit representation is first truncated to the integral type of
@@ -350,6 +350,17 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Sqrt, {
   }
 
   Run(Sqrt, std::sqrt, error_spec_gen);
+})
+
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cbrt, {
+  if (platform_ == "Host" || platform_ == "CUDA") {
+    ErrorSpecGen error_spec_gen = +[](NativeT x) {
+      return ErrorSpec{0.01, 0.01};
+    };
+    Run(Cbrt, std::cbrt, error_spec_gen);
+  } else {
+    Run(Cbrt, std::cbrt);
+  }
 })
 
 // TODO(jlebar): Test trig functions over complex inputs.

@@ -20,19 +20,21 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.engine.base_preprocessing_layer import PreprocessingLayer
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
@@ -52,15 +54,28 @@ _RESIZE_METHODS = {
     'mitchellcubic': ResizeMethod.MITCHELLCUBIC
 }
 
+H_AXIS = 1
+W_AXIS = 2
+
+
+def check_fill_mode_and_interpolation(fill_mode, interpolation):
+  if fill_mode not in {'reflect', 'wrap', 'constant', 'nearest'}:
+    raise NotImplementedError(
+        'Unknown `fill_mode` {}. Only `reflect`, `wrap`, '
+        '`constant` and `nearest` are supported.'.format(fill_mode))
+  if interpolation not in {'nearest', 'bilinear'}:
+    raise NotImplementedError('Unknown `interpolation` {}. Only `nearest` and '
+                              '`bilinear` are supported.'.format(interpolation))
+
 
 @keras_export('keras.layers.experimental.preprocessing.Resizing')
-class Resizing(Layer):
+class Resizing(PreprocessingLayer):
   """Image resizing layer.
 
   Resize the batched image input to target height and width. The input should
   be a 4-D tensor in the format of NHWC.
 
-  Arguments:
+  Args:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     interpolation: String, the interpolation method. Defaults to `bilinear`.
@@ -81,6 +96,7 @@ class Resizing(Layer):
     self._interpolation_method = get_interpolation(interpolation)
     self.input_spec = InputSpec(ndim=4)
     super(Resizing, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Resizing').set(True)
 
   def call(self, inputs):
     outputs = image_ops.resize_images_v2(
@@ -105,7 +121,7 @@ class Resizing(Layer):
 
 
 @keras_export('keras.layers.experimental.preprocessing.CenterCrop')
-class CenterCrop(Layer):
+class CenterCrop(PreprocessingLayer):
   """Crop the central portion of the images to target height and width.
 
   Input shape:
@@ -119,7 +135,7 @@ class CenterCrop(Layer):
   If the input height/width is even and the target height/width is odd (or
   inversely), the input image is left-padded by 1 pixel.
 
-  Arguments:
+  Args:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     name: A string, the name of the layer.
@@ -130,12 +146,12 @@ class CenterCrop(Layer):
     self.target_width = width
     self.input_spec = InputSpec(ndim=4)
     super(CenterCrop, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('CenterCrop').set(True)
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
-    h_axis, w_axis = 1, 2
-    img_hd = inputs_shape[h_axis]
-    img_wd = inputs_shape[w_axis]
+    img_hd = inputs_shape[H_AXIS]
+    img_wd = inputs_shape[W_AXIS]
     img_hd_diff = img_hd - self.target_height
     img_wd_diff = img_wd - self.target_width
     checks = []
@@ -173,7 +189,7 @@ class CenterCrop(Layer):
 
 
 @keras_export('keras.layers.experimental.preprocessing.RandomCrop')
-class RandomCrop(Layer):
+class RandomCrop(PreprocessingLayer):
   """Randomly crop the images to target height and width.
 
   This layer will crop all the images in the same batch to the same cropping
@@ -191,7 +207,7 @@ class RandomCrop(Layer):
     4D tensor with shape:
     `(samples, target_height, target_width, channels)`.
 
-  Arguments:
+  Args:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     seed: Integer. Used to create a random seed.
@@ -205,8 +221,9 @@ class RandomCrop(Layer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomCrop, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomCrop').set(True)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -231,15 +248,15 @@ class RandomCrop(Layer):
     def resize_and_center_cropped_inputs():
       """Deterministically resize to shorter side and center crop."""
       input_shape = array_ops.shape(inputs)
-      input_height_t = input_shape[1]
-      input_width_t = input_shape[2]
-      ratio_cond = (input_height_t / input_width_t > 1.)
+      input_height_t = input_shape[H_AXIS]
+      input_width_t = input_shape[W_AXIS]
+      ratio_cond = (input_height_t / input_width_t > (self.height / self.width))
       # pylint: disable=g-long-lambda
-      resized_height = tf_utils.smart_cond(
+      resized_height = control_flow_util.smart_cond(
           ratio_cond,
           lambda: math_ops.cast(self.width * input_height_t / input_width_t,
                                 input_height_t.dtype), lambda: self.height)
-      resized_width = tf_utils.smart_cond(
+      resized_width = control_flow_util.smart_cond(
           ratio_cond, lambda: self.width,
           lambda: math_ops.cast(self.height * input_width_t / input_height_t,
                                 input_width_t.dtype))
@@ -256,8 +273,8 @@ class RandomCrop(Layer):
       outputs = array_ops.slice(resized_inputs, bbox_begin, bbox_size)
       return outputs
 
-    output = tf_utils.smart_cond(training, random_cropped_inputs,
-                                 resize_and_center_cropped_inputs)
+    output = control_flow_util.smart_cond(training, random_cropped_inputs,
+                                          resize_and_center_cropped_inputs)
     original_shape = inputs.shape.as_list()
     batch_size, num_channels = original_shape[0], original_shape[3]
     output_shape = [batch_size] + [self.height, self.width] + [num_channels]
@@ -280,11 +297,16 @@ class RandomCrop(Layer):
 
 
 @keras_export('keras.layers.experimental.preprocessing.Rescaling')
-class Rescaling(Layer):
-  """Multiply inputs by `scale`.
+class Rescaling(PreprocessingLayer):
+  """Multiply inputs by `scale` and adds `offset`.
 
-  For instance, to rescale an input in the `[0, 255]` range
+  For instance:
+
+  1. To rescale an input in the `[0, 255]` range
   to be in the `[0, 1]` range, you would pass `scale=1./255`.
+
+  2. To rescale an input in the `[0, 255]` range to be in the `[-1, 1]` range,
+  you would pass `scale=1./127.5, offset=-1`.
 
   The rescaling is applied both during training and inference.
 
@@ -294,18 +316,23 @@ class Rescaling(Layer):
   Output shape:
     Same as input.
 
-  Arguments:
+  Args:
     scale: Float, the scale to apply to the inputs.
+    offset: Float, the offset to apply to the inputs.
     name: A string, the name of the layer.
   """
 
-  def __init__(self, scale, name=None, **kwargs):
+  def __init__(self, scale, offset=0., name=None, **kwargs):
     self.scale = scale
+    self.offset = offset
     super(Rescaling, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Rescaling').set(True)
 
   def call(self, inputs):
     dtype = self._compute_dtype
-    return math_ops.cast(inputs, dtype) * math_ops.cast(self.scale, dtype)
+    scale = math_ops.cast(self.scale, dtype)
+    offset = math_ops.cast(self.offset, dtype)
+    return math_ops.cast(inputs, dtype) * scale + offset
 
   def compute_output_shape(self, input_shape):
     return input_shape
@@ -313,6 +340,7 @@ class Rescaling(Layer):
   def get_config(self):
     config = {
         'scale': self.scale,
+        'offset': self.offset,
     }
     base_config = super(Rescaling, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -324,7 +352,7 @@ HORIZONTAL_AND_VERTICAL = 'horizontal_and_vertical'
 
 
 @keras_export('keras.layers.experimental.preprocessing.RandomFlip')
-class RandomFlip(Layer):
+class RandomFlip(PreprocessingLayer):
   """Randomly flip each image horizontally and vertically.
 
   This layer will flip the images based on the `mode` attribute.
@@ -342,7 +370,8 @@ class RandomFlip(Layer):
   Attributes:
     mode: String indicating which flip mode to use. Can be "horizontal",
       "vertical", or "horizontal_and_vertical". Defaults to
-      "horizontal_and_vertical".
+      "horizontal_and_vertical". "horizontal" is a left-right flip and
+      "vertical" is a top-bottom flip.
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
   """
@@ -353,6 +382,7 @@ class RandomFlip(Layer):
                name=None,
                **kwargs):
     super(RandomFlip, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomFlip').set(True)
     self.mode = mode
     if mode == HORIZONTAL:
       self.horizontal = True
@@ -370,22 +400,22 @@ class RandomFlip(Layer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
     def random_flipped_inputs():
       flipped_outputs = inputs
       if self.horizontal:
-        flipped_outputs = image_ops.random_flip_up_down(flipped_outputs,
-                                                        self.seed)
+        flipped_outputs = image_ops.random_flip_left_right(flipped_outputs,
+                                                           self.seed)
       if self.vertical:
-        flipped_outputs = image_ops.random_flip_left_right(
+        flipped_outputs = image_ops.random_flip_up_down(
             flipped_outputs, self.seed)
       return flipped_outputs
 
-    output = tf_utils.smart_cond(training, random_flipped_inputs,
-                                 lambda: inputs)
+    output = control_flow_util.smart_cond(training, random_flipped_inputs,
+                                          lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -403,23 +433,30 @@ class RandomFlip(Layer):
 
 # TODO(tanzheny): Add examples, here and everywhere.
 @keras_export('keras.layers.experimental.preprocessing.RandomTranslation')
-class RandomTranslation(Layer):
+class RandomTranslation(PreprocessingLayer):
   """Randomly translate each image during training.
 
-  Arguments:
-    height_factor: a positive float represented as fraction of value, or a tuple
-      of size 2 representing lower and upper bound for shifting vertically. When
-      represented as a single float, this value is used for both the upper and
-      lower bound. For instance, `height_factor=(0.2, 0.3)` results in an output
-      height varying in the range `[original - 20%, original + 30%]`.
-      `height_factor=0.2` results in an output height varying in the range
-      `[original - 20%, original + 20%]`.
-    width_factor: a positive float represented as fraction of value, or a tuple
+  Args:
+    height_factor: a float represented as fraction of value, or a tuple
+      of size 2 representing lower and upper bound for shifting vertically.
+      A negative value means shifting image up, while a positive value
+      means shifting image down. When represented as a single positive float,
+      this value is used for both the upper and lower bound. For instance,
+      `height_factor=(-0.2, 0.3)` results in an output shifted by a random
+      amount in the range [-20%, +30%].
+      `height_factor=0.2` results in an output height shifted by a random
+      amount in the range [-20%, +20%].
+    width_factor: a float represented as fraction of value, or a tuple
       of size 2 representing lower and upper bound for shifting horizontally.
-      When represented as a single float, this value is used for both the upper
-      and lower bound.
+      A negative value means shifting image left, while a positive value
+      means shifting image right. When represented as a single positive float,
+      this value is used for both the upper and lower bound. For instance,
+      `width_factor=(-0.2, 0.3)` results in an output shifted left by 20%, and
+      shifted right by 30%.
+      `width_factor=0.2` results in an output height shifted left or right
+      by 20%.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      to the given mode (one of `{'constant', 'reflect', 'wrap', 'nearest'}`).
       - *reflect*: `(d c b a | a b c d | d c b a)`
         The input is extended by reflecting about the edge of the last pixel.
       - *constant*: `(k k k k | a b c d | k k k k)`
@@ -427,9 +464,13 @@ class RandomTranslation(Layer):
         same constant value k = 0.
       - *wrap*: `(a b c d | a b c d | a b c d)`
         The input is extended by wrapping around to the opposite edge.
+      - *nearest*: `(a a a a | a b c d | d d d d)`
+        The input is extended by the nearest pixel.
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
 
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
@@ -440,8 +481,8 @@ class RandomTranslation(Layer):
       data_format='channels_last'.
 
   Raise:
-    ValueError: if lower bound is not between [0, 1], or upper bound is
-      negative.
+    ValueError: if either bound is not between [0, 1], or upper bound is
+      less than lower bound.
   """
 
   def __init__(self,
@@ -451,49 +492,49 @@ class RandomTranslation(Layer):
                interpolation='bilinear',
                seed=None,
                name=None,
+               fill_value=0.0,
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
-      self.height_lower = abs(height_factor[0])
+      self.height_lower = height_factor[0]
       self.height_upper = height_factor[1]
     else:
-      self.height_lower = self.height_upper = height_factor
-    if self.height_upper < 0.:
-      raise ValueError('`height_factor` cannot have negative values as upper '
-                       'bound, got {}'.format(height_factor))
+      self.height_lower = -height_factor
+      self.height_upper = height_factor
+    if self.height_upper < self.height_lower:
+      raise ValueError('`height_factor` cannot have upper bound less than '
+                       'lower bound, got {}'.format(height_factor))
     if abs(self.height_lower) > 1. or abs(self.height_upper) > 1.:
       raise ValueError('`height_factor` must have values between [-1, 1], '
                        'got {}'.format(height_factor))
 
     self.width_factor = width_factor
     if isinstance(width_factor, (tuple, list)):
-      self.width_lower = abs(width_factor[0])
+      self.width_lower = width_factor[0]
       self.width_upper = width_factor[1]
     else:
-      self.width_lower = self.width_upper = width_factor
-    if self.width_upper < 0.:
-      raise ValueError('`width_factor` cannot have negative values as upper '
-                       'bound, got {}'.format(width_factor))
+      self.width_lower = -width_factor
+      self.width_upper = width_factor
+    if self.width_upper < self.width_lower:
+      raise ValueError('`width_factor` cannot have upper bound less than '
+                       'lower bound, got {}'.format(width_factor))
     if abs(self.width_lower) > 1. or abs(self.width_upper) > 1.:
       raise ValueError('`width_factor` must have values between [-1, 1], '
                        'got {}'.format(width_factor))
 
-    if fill_mode not in {'reflect', 'wrap', 'constant'}:
-      raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
-          '`constant` are supported.'.format(fill_mode))
-    if interpolation not in {'nearest', 'bilinear'}:
-      raise NotImplementedError(
-          'Unknown `interpolation` {}. Only `nearest` and '
-          '`bilinear` are supported.'.format(interpolation))
+    check_fill_mode_and_interpolation(fill_mode, interpolation)
+
     self.fill_mode = fill_mode
+    self.fill_value = fill_value
     self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomTranslation, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'RandomTranslation').set(True)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -501,30 +542,33 @@ class RandomTranslation(Layer):
       """Translated inputs with random ops."""
       inputs_shape = array_ops.shape(inputs)
       batch_size = inputs_shape[0]
-      h_axis, w_axis = 1, 2
+      h_axis, w_axis = H_AXIS, W_AXIS
       img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
       img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
       height_translate = self._rng.uniform(
           shape=[batch_size, 1],
-          minval=-self.height_lower,
-          maxval=self.height_upper)
+          minval=self.height_lower,
+          maxval=self.height_upper,
+          dtype=dtypes.float32)
       height_translate = height_translate * img_hd
       width_translate = self._rng.uniform(
           shape=[batch_size, 1],
-          minval=-self.width_lower,
-          maxval=self.width_upper)
+          minval=self.width_lower,
+          maxval=self.width_upper,
+          dtype=dtypes.float32)
       width_translate = width_translate * img_wd
       translations = math_ops.cast(
-          array_ops.concat([height_translate, width_translate], axis=1),
-          dtype=inputs.dtype)
+          array_ops.concat([width_translate, height_translate], axis=1),
+          dtype=dtypes.float32)
       return transform(
           inputs,
           get_translation_matrix(translations),
           interpolation=self.interpolation,
-          fill_mode=self.fill_mode)
+          fill_mode=self.fill_mode,
+          fill_value=self.fill_value)
 
-    output = tf_utils.smart_cond(training, random_translated_inputs,
-                                 lambda: inputs)
+    output = control_flow_util.smart_cond(training, random_translated_inputs,
+                                          lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -536,6 +580,7 @@ class RandomTranslation(Layer):
         'height_factor': self.height_factor,
         'width_factor': self.width_factor,
         'fill_mode': self.fill_mode,
+        'fill_value': self.fill_value,
         'interpolation': self.interpolation,
         'seed': self.seed,
     }
@@ -555,7 +600,7 @@ def get_translation_matrix(translations, name=None):
     A tensor of shape (num_images, 8) projective transforms which can be given
       to `transform`.
   """
-  with ops.name_scope(name, 'translation_matrix'):
+  with K.name_scope(name or 'translation_matrix'):
     num_translations = array_ops.shape(translations)[0]
     # The translation matrix looks like:
     #     [[1 0 -dx]
@@ -579,6 +624,7 @@ def get_translation_matrix(translations, name=None):
 def transform(images,
               transforms,
               fill_mode='reflect',
+              fill_value=0.0,
               interpolation='bilinear',
               output_shape=None,
               name=None):
@@ -597,7 +643,9 @@ def transform(images,
       transform mapping input points to output points. Note that gradients are
       not backpropagated into transformation parameters.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      to the given mode (one of `{'constant', 'reflect', 'wrap', 'nearest'}`).
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     output_shape: Output dimesion after the transform, [height, width]. If None,
       output is the same size as input image.
@@ -616,6 +664,9 @@ def transform(images,
   wrap (a b c d | a b c d | a b c d)
   The input is extended by wrapping around to the opposite edge.
 
+  nearest (a a a a | a b c d | d d d d)
+  The input is extended by the nearest pixel.
+
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
       data_format='channels_last'.
@@ -632,7 +683,7 @@ def transform(images,
     TypeError: If `image` is an invalid type.
     ValueError: If output shape is not 1-D int32 Tensor.
   """
-  with ops.name_scope(name, 'transform'):
+  with K.name_scope(name or 'transform'):
     if output_shape is None:
       output_shape = array_ops.shape(images)[1:3]
       if not context.executing_eagerly():
@@ -640,7 +691,7 @@ def transform(images,
         if output_shape_value is not None:
           output_shape = output_shape_value
 
-    output_shape = ops.convert_to_tensor_v2(
+    output_shape = ops.convert_to_tensor_v2_with_dispatch(
         output_shape, dtypes.int32, name='output_shape')
 
     if not output_shape.get_shape().is_compatible_with([2]):
@@ -648,17 +699,23 @@ def transform(images,
                        'new_height, new_width, instead got '
                        '{}'.format(output_shape))
 
-    if compat.forward_compatible(2020, 3, 25):
-      return image_ops.image_projective_transform_v2(
-          images,
+    fill_value = ops.convert_to_tensor_v2_with_dispatch(
+        fill_value, dtypes.float32, name='fill_value')
+
+    if compat.forward_compatible(2020, 8, 5):
+      return gen_image_ops.ImageProjectiveTransformV3(
+          images=images,
           output_shape=output_shape,
+          fill_value=fill_value,
           transforms=transforms,
           fill_mode=fill_mode.upper(),
           interpolation=interpolation.upper())
-    return image_ops.image_projective_transform_v2(
-        images,
+
+    return gen_image_ops.ImageProjectiveTransformV2(
+        images=images,
         output_shape=output_shape,
         transforms=transforms,
+        fill_mode=fill_mode.upper(),
         interpolation=interpolation.upper())
 
 
@@ -681,7 +738,7 @@ def get_rotation_matrix(angles, image_height, image_width, name=None):
        `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`,
        where `k = c0 x + c1 y + 1`.
   """
-  with ops.name_scope(name, 'rotation_matrix'):
+  with K.name_scope(name or 'rotation_matrix'):
     x_offset = ((image_width - 1) - (math_ops.cos(angles) *
                                      (image_width - 1) - math_ops.sin(angles) *
                                      (image_height - 1))) / 2.0
@@ -703,7 +760,7 @@ def get_rotation_matrix(angles, image_height, image_width, name=None):
 
 
 @keras_export('keras.layers.experimental.preprocessing.RandomRotation')
-class RandomRotation(Layer):
+class RandomRotation(PreprocessingLayer):
   """Randomly rotate each image.
 
   By default, random rotations are only applied during training.
@@ -719,20 +776,31 @@ class RandomRotation(Layer):
     `(samples, height, width, channels)`, data_format='channels_last'.
 
   Attributes:
-    factor: a positive float represented as fraction of 2pi, or a tuple of size
+    factor: a float represented as fraction of 2pi, or a tuple of size
       2 representing lower and upper bound for rotating clockwise and
-      counter-clockwise. When represented as a single float, lower = upper.
+      counter-clockwise. A positive values means rotating counter clock-wise,
+      while a negative value means clock-wise. When represented as a single
+      float, this value is used for both the upper and lower bound. For
+      instance, `factor=(-0.2, 0.3)` results in an output
+      rotation by a random amount in the range `[-20% * 2pi, 30% * 2pi]`.
+      `factor=0.2` results in an output rotating by a random amount in the range
+      `[-20% * 2pi, 20% * 2pi]`.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      to the given mode (one of `{'constant', 'reflect', 'wrap', 'nearest'}`).
       - *reflect*: `(d c b a | a b c d | d c b a)`
         The input is extended by reflecting about the edge of the last pixel.
       - *constant*: `(k k k k | a b c d | k k k k)`
         The input is extended by filling all values beyond the edge with the
         same constant value k = 0.
       - *wrap*: `(a b c d | a b c d | a b c d)`
+        The input is extended by wrapping around to the opposite edge.
+      - *nearest*: `(a a a a | a b c d | d d d d)`
+        The input is extended by the nearest pixel.
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
 
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
@@ -742,8 +810,8 @@ class RandomRotation(Layer):
       data_format='channels_last'.
 
   Raise:
-    ValueError: if lower bound is not between [0, 1], or upper bound is
-      negative.
+    ValueError: if either bound is not between [0, 1], or upper bound is
+      less than lower bound.
   """
 
   def __init__(self,
@@ -752,32 +820,30 @@ class RandomRotation(Layer):
                interpolation='bilinear',
                seed=None,
                name=None,
+               fill_value=0.0,
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
       self.lower = factor[0]
       self.upper = factor[1]
     else:
-      self.lower = self.upper = factor
-    if self.lower < 0. or self.upper < 0.:
+      self.lower = -factor
+      self.upper = factor
+    if self.upper < self.lower:
       raise ValueError('Factor cannot have negative values, '
                        'got {}'.format(factor))
-    if fill_mode not in {'reflect', 'wrap', 'constant'}:
-      raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
-          '`constant` are supported.'.format(fill_mode))
-    if interpolation not in {'nearest', 'bilinear'}:
-      raise NotImplementedError(
-          'Unknown `interpolation` {}. Only `nearest` and '
-          '`bilinear` are supported.'.format(interpolation))
+    check_fill_mode_and_interpolation(fill_mode, interpolation)
     self.fill_mode = fill_mode
+    self.fill_value = fill_value
     self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomRotation, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'RandomRotation').set(True)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -785,21 +851,21 @@ class RandomRotation(Layer):
       """Rotated inputs with random ops."""
       inputs_shape = array_ops.shape(inputs)
       batch_size = inputs_shape[0]
-      h_axis, w_axis = 1, 2
-      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
-      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      img_hd = math_ops.cast(inputs_shape[H_AXIS], dtypes.float32)
+      img_wd = math_ops.cast(inputs_shape[W_AXIS], dtypes.float32)
       min_angle = self.lower * 2. * np.pi
       max_angle = self.upper * 2. * np.pi
       angles = self._rng.uniform(
-          shape=[batch_size], minval=-min_angle, maxval=max_angle)
+          shape=[batch_size], minval=min_angle, maxval=max_angle)
       return transform(
           inputs,
           get_rotation_matrix(angles, img_hd, img_wd),
           fill_mode=self.fill_mode,
+          fill_value=self.fill_value,
           interpolation=self.interpolation)
 
-    output = tf_utils.smart_cond(training, random_rotated_inputs,
-                                 lambda: inputs)
+    output = control_flow_util.smart_cond(training, random_rotated_inputs,
+                                          lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -810,6 +876,7 @@ class RandomRotation(Layer):
     config = {
         'factor': self.factor,
         'fill_mode': self.fill_mode,
+        'fill_value': self.fill_value,
         'interpolation': self.interpolation,
         'seed': self.seed,
     }
@@ -818,31 +885,52 @@ class RandomRotation(Layer):
 
 
 @keras_export('keras.layers.experimental.preprocessing.RandomZoom')
-class RandomZoom(Layer):
+class RandomZoom(PreprocessingLayer):
   """Randomly zoom each image during training.
 
-  Arguments:
-    height_factor: a positive float represented as fraction of value, or a tuple
-      of size 2 representing lower and upper bound for zooming horizontally.
-      When represented as a single float, this value is used for both the
-      upper and lower bound. For instance, `height_factor=(0.2, 0.3)` result in
-      an output zoom varying in the range `[original * 20%, original * 30%]`.
-    width_factor: a positive float represented as fraction of value, or a tuple
+  Args:
+    height_factor: a float represented as fraction of value, or a tuple
       of size 2 representing lower and upper bound for zooming vertically.
       When represented as a single float, this value is used for both the
-      upper and lower bound. For instance, `width_factor=(0.2, 0.3)` result in
-      an output zoom varying in the range `[original * 20%, original * 30%]`.
+      upper and lower bound. A positive value means zooming out, while a
+      negative value means zooming in.
+      For instance, `height_factor=(0.2, 0.3)` result in an output zoomed out
+      by a random amount in the range [+20%, +30%].
+      `height_factor=(-0.3, -0.2)` result in an output zoomed in by a random
+      amount in the range [+20%, +30%].
+    width_factor: a float represented as fraction of value, or a tuple
+      of size 2 representing lower and upper bound for zooming horizontally.
+      When represented as a single float, this value is used for both the
+      upper and lower bound.
+      For instance, `width_factor=(0.2, 0.3)` result in an output zooming out
+      between 20% to 30%.
+      `width_factor=(-0.3, -0.2)` result in an output zooming in between 20%
+      to 30%. Defaults to `None`, i.e., zooming vertical and horizontal
+      directions by preserving the aspect ratio.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      to the given mode (one of `{'constant', 'reflect', 'wrap', 'nearest'}`).
       - *reflect*: `(d c b a | a b c d | d c b a)`
         The input is extended by reflecting about the edge of the last pixel.
       - *constant*: `(k k k k | a b c d | k k k k)`
         The input is extended by filling all values beyond the edge with the
         same constant value k = 0.
       - *wrap*: `(a b c d | a b c d | a b c d)`
+        The input is extended by wrapping around to the opposite edge.
+      - *nearest*: `(a a a a | a b c d | d d d d)`
+        The input is extended by the nearest pixel.
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
+
+  Example:
+
+  >>> input_img = np.random.random((32, 224, 224, 3))
+  >>> layer = tf.keras.layers.experimental.preprocessing.RandomZoom(.5, .2)
+  >>> out_img = layer(input_img)
+  >>> out_img.shape
+  TensorShape([32, 224, 224, 3])
 
   Input shape:
     4D tensor with shape:
@@ -859,54 +947,50 @@ class RandomZoom(Layer):
 
   def __init__(self,
                height_factor,
-               width_factor,
+               width_factor=None,
                fill_mode='reflect',
                interpolation='bilinear',
                seed=None,
                name=None,
+               fill_value=0.0,
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
       self.height_lower = height_factor[0]
       self.height_upper = height_factor[1]
     else:
-      self.height_lower = self.height_upper = height_factor
-    if self.height_lower < 0. or self.height_upper < 0.:
-      raise ValueError('`height_factor` cannot have negative values, '
+      self.height_lower = -height_factor
+      self.height_upper = height_factor
+
+    if abs(self.height_lower) > 1. or abs(self.height_upper) > 1.:
+      raise ValueError('`height_factor` must have values between [-1, 1], '
                        'got {}'.format(height_factor))
-    if self.height_lower > self.height_upper:
-      raise ValueError('`height_factor` cannot have lower bound larger than '
-                       'upper bound, got {}.'.format(height_factor))
 
     self.width_factor = width_factor
-    if isinstance(width_factor, (tuple, list)):
-      self.width_lower = width_factor[0]
-      self.width_upper = width_factor[1]
-    else:
-      self.width_lower = self.width_upper = width_factor
-    if self.width_lower < 0. or self.width_upper < 0.:
-      raise ValueError('`width_factor` cannot have negative values, '
-                       'got {}'.format(width_factor))
-    if self.width_lower > self.width_upper:
-      raise ValueError('`width_factor` cannot have lower bound larger than '
-                       'upper bound, got {}.'.format(width_factor))
+    if width_factor is not None:
+      if isinstance(width_factor, (tuple, list)):
+        self.width_lower = width_factor[0]
+        self.width_upper = width_factor[1]
+      else:
+        self.width_lower = -width_factor  # pylint: disable=invalid-unary-operand-type
+        self.width_upper = width_factor
 
-    if fill_mode not in {'reflect', 'wrap', 'constant'}:
-      raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
-          '`constant` are supported.'.format(fill_mode))
-    if interpolation not in {'nearest', 'bilinear'}:
-      raise NotImplementedError(
-          'Unknown `interpolation` {}. Only `nearest` and '
-          '`bilinear` are supported.'.format(interpolation))
+      if self.width_lower < -1. or self.width_upper < -1.:
+        raise ValueError('`width_factor` must have values larger than -1, '
+                         'got {}'.format(width_factor))
+
+    check_fill_mode_and_interpolation(fill_mode, interpolation)
+
     self.fill_mode = fill_mode
+    self.fill_value = fill_value
     self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomZoom, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomZoom').set(True)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -914,29 +998,31 @@ class RandomZoom(Layer):
       """Zoomed inputs with random ops."""
       inputs_shape = array_ops.shape(inputs)
       batch_size = inputs_shape[0]
-      h_axis, w_axis = 1, 2
-      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
-      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      img_hd = math_ops.cast(inputs_shape[H_AXIS], dtypes.float32)
+      img_wd = math_ops.cast(inputs_shape[W_AXIS], dtypes.float32)
       height_zoom = self._rng.uniform(
           shape=[batch_size, 1],
-          minval=-self.height_lower,
-          maxval=self.height_upper)
-      height_zoom = height_zoom * img_hd
-      width_zoom = self._rng.uniform(
-          shape=[batch_size, 1],
-          minval=-self.width_lower,
-          maxval=self.width_upper)
-      width_zoom = width_zoom * img_wd
+          minval=1. + self.height_lower,
+          maxval=1. + self.height_upper)
+      if self.width_factor is not None:
+        width_zoom = self._rng.uniform(
+            shape=[batch_size, 1],
+            minval=1. + self.width_lower,
+            maxval=1. + self.width_upper)
+      else:
+        width_zoom = height_zoom
       zooms = math_ops.cast(
-          array_ops.concat([height_zoom, width_zoom], axis=1),
-          dtype=inputs.dtype)
+          array_ops.concat([width_zoom, height_zoom], axis=1),
+          dtype=dtypes.float32)
       return transform(
-          inputs, get_zoom_matrix(zooms, img_hd, img_wd),
+          inputs,
+          get_zoom_matrix(zooms, img_hd, img_wd),
           fill_mode=self.fill_mode,
+          fill_value=self.fill_value,
           interpolation=self.interpolation)
 
-    output = tf_utils.smart_cond(training, random_zoomed_inputs,
-                                 lambda: inputs)
+    output = control_flow_util.smart_cond(training, random_zoomed_inputs,
+                                          lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -948,6 +1034,7 @@ class RandomZoom(Layer):
         'height_factor': self.height_factor,
         'width_factor': self.width_factor,
         'fill_mode': self.fill_mode,
+        'fill_value': self.fill_value,
         'interpolation': self.interpolation,
         'seed': self.seed,
     }
@@ -973,7 +1060,7 @@ def get_zoom_matrix(zooms, image_height, image_width, name=None):
        `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`,
        where `k = c0 x + c1 y + 1`.
   """
-  with ops.name_scope(name, 'zoom_matrix'):
+  with K.name_scope(name or 'zoom_matrix'):
     num_zooms = array_ops.shape(zooms)[0]
     # The zoom matrix looks like:
     #     [[zx 0 0]
@@ -981,8 +1068,8 @@ def get_zoom_matrix(zooms, image_height, image_width, name=None):
     #      [0 0 1]]
     # where the last entry is implicit.
     # Zoom matrices are always float32.
-    x_offset = ((image_height + 1.) / 2.0) * (zooms[:, 0, None] - 1.)
-    y_offset = ((image_width + 1.) / 2.0) * (zooms[:, 1, None] - 1.)
+    x_offset = ((image_width - 1.) / 2.0) * (1.0 - zooms[:, 0, None])
+    y_offset = ((image_height - 1.) / 2.0) * (1.0 - zooms[:, 1, None])
     return array_ops.concat(
         values=[
             zooms[:, 0, None],
@@ -997,7 +1084,7 @@ def get_zoom_matrix(zooms, image_height, image_width, name=None):
 
 
 @keras_export('keras.layers.experimental.preprocessing.RandomContrast')
-class RandomContrast(Layer):
+class RandomContrast(PreprocessingLayer):
   """Adjust the contrast of an image or images by a random factor.
 
   Contrast is adjusted independently for each channel of each image during
@@ -1036,13 +1123,15 @@ class RandomContrast(Layer):
     else:
       self.lower = self.upper = factor
     if self.lower < 0. or self.upper < 0. or self.lower > 1.:
-      raise ValueError('Factor cannot have negative values, '
-                       'got {}'.format(factor))
+      raise ValueError('Factor cannot have negative values or greater than 1.0,'
+                       ' got {}'.format(factor))
     self.seed = seed
     self.input_spec = InputSpec(ndim=4)
     super(RandomContrast, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'RandomContrast').set(True)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -1050,8 +1139,8 @@ class RandomContrast(Layer):
       return image_ops.random_contrast(inputs, 1. - self.lower, 1. + self.upper,
                                        self.seed)
 
-    output = tf_utils.smart_cond(training, random_contrasted_inputs,
-                                 lambda: inputs)
+    output = control_flow_util.smart_cond(training, random_contrasted_inputs,
+                                          lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -1068,7 +1157,7 @@ class RandomContrast(Layer):
 
 
 @keras_export('keras.layers.experimental.preprocessing.RandomHeight')
-class RandomHeight(Layer):
+class RandomHeight(PreprocessingLayer):
   """Randomly vary the height of a batch of images during training.
 
   Adjusts the height of a batch of images by a random factor. The input
@@ -1076,15 +1165,15 @@ class RandomHeight(Layer):
 
   By default, this layer is inactive during inference.
 
-  Arguments:
+  Args:
     factor: A positive float (fraction of original height), or a tuple of size 2
       representing lower and upper bound for resizing vertically. When
       represented as a single float, this value is used for both the upper and
-      lower bound. For instance, `factor=(0.2, 0.3)` results in an output height
-      varying in the range `[original + 20%, original + 30%]`. `factor=(-0.2,
-      0.3)` results in an output height varying in the range `[original - 20%,
-      original + 30%]`. `factor=0.2` results in an output height varying in the
-      range `[original - 20%, original + 20%]`.
+      lower bound. For instance, `factor=(0.2, 0.3)` results in an output with
+      height changed by a random amount in the range `[20%, 30%]`.
+      `factor=(-0.2, 0.3)` results in an output with height changed by a random
+      amount in the range `[-20%, +30%]. `factor=0.2` results in an output with
+      height changed by a random amount in the range `[-20%, +20%]`.
     interpolation: String, the interpolation method. Defaults to `bilinear`.
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
@@ -1106,12 +1195,17 @@ class RandomHeight(Layer):
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
-      self.height_lower = -factor[0]
+      self.height_lower = factor[0]
       self.height_upper = factor[1]
     else:
-      self.height_lower = self.height_upper = factor
-    if self.height_lower > 1.:
-      raise ValueError('`factor` cannot have abs lower bound larger than 1.0, '
+      self.height_lower = -factor
+      self.height_upper = factor
+
+    if self.height_upper < self.height_lower:
+      raise ValueError('`factor` cannot have upper bound less than '
+                       'lower bound, got {}'.format(factor))
+    if self.height_lower < -1. or self.height_upper < -1.:
+      raise ValueError('`factor` must have values larger than -1, '
                        'got {}'.format(factor))
     self.interpolation = interpolation
     self._interpolation_method = get_interpolation(interpolation)
@@ -1119,20 +1213,20 @@ class RandomHeight(Layer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     super(RandomHeight, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomHeight').set(True)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
     def random_height_inputs():
       """Inputs height-adjusted with random ops."""
       inputs_shape = array_ops.shape(inputs)
-      h_axis, w_axis = 1, 2
-      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
-      img_wd = inputs_shape[w_axis]
+      img_hd = math_ops.cast(inputs_shape[H_AXIS], dtypes.float32)
+      img_wd = inputs_shape[W_AXIS]
       height_factor = self._rng.uniform(
           shape=[],
-          minval=(1.0 - self.height_lower),
+          minval=(1.0 + self.height_lower),
           maxval=(1.0 + self.height_upper))
       adjusted_height = math_ops.cast(height_factor * img_hd, dtypes.int32)
       adjusted_size = array_ops.stack([adjusted_height, img_wd])
@@ -1143,7 +1237,8 @@ class RandomHeight(Layer):
       output.set_shape(output_shape)
       return output
 
-    return tf_utils.smart_cond(training, random_height_inputs, lambda: inputs)
+    return control_flow_util.smart_cond(training, random_height_inputs,
+                                        lambda: inputs)
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -1161,7 +1256,7 @@ class RandomHeight(Layer):
 
 
 @keras_export('keras.layers.experimental.preprocessing.RandomWidth')
-class RandomWidth(Layer):
+class RandomWidth(PreprocessingLayer):
   """Randomly vary the width of a batch of images during training.
 
   Adjusts the width of a batch of images by a random factor. The input
@@ -1169,15 +1264,15 @@ class RandomWidth(Layer):
 
   By default, this layer is inactive during inference.
 
-  Arguments:
-    factor: A positive float (fraction of original width), or a tuple of
-      size 2 representing lower and upper bound for resizing horizontally. When
+  Args:
+    factor: A positive float (fraction of original height), or a tuple of size 2
+      representing lower and upper bound for resizing vertically. When
       represented as a single float, this value is used for both the upper and
-      lower bound. For instance, `factor=(0.2, 0.3)` results in an output width
-      varying in the range `[original + 20%, original + 30%]`. `factor=(-0.2,
-      0.3)` results in an output width varying in the range `[original - 20%,
-      original + 30%]`. `factor=0.2` results in an output width varying in the
-      range `[original - 20%, original + 20%]`.
+      lower bound. For instance, `factor=(0.2, 0.3)` results in an output with
+      width changed by a random amount in the range `[20%, 30%]`.
+      `factor=(-0.2, 0.3)` results in an output with width changed by a random
+      amount in the range `[-20%, +30%]. `factor=0.2` results in an output with
+      width changed by a random amount in the range `[-20%, +20%]`.
     interpolation: String, the interpolation method. Defaults to `bilinear`.
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
@@ -1190,7 +1285,7 @@ class RandomWidth(Layer):
 
   Output shape:
     4D tensor with shape:
-    `(samples, random_height, width, channels)`.
+    `(samples, height, random_width, channels)`.
   """
 
   def __init__(self,
@@ -1201,12 +1296,16 @@ class RandomWidth(Layer):
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
-      self.width_lower = -factor[0]
+      self.width_lower = factor[0]
       self.width_upper = factor[1]
     else:
-      self.width_lower = self.width_upper = factor
-    if self.width_lower > 1.:
-      raise ValueError('`factor` cannot have abs lower bound larger than 1.0, '
+      self.width_lower = -factor
+      self.width_upper = factor
+    if self.width_upper < self.width_lower:
+      raise ValueError('`factor` cannot have upper bound less than '
+                       'lower bound, got {}'.format(factor))
+    if self.width_lower < -1. or self.width_upper < -1.:
+      raise ValueError('`factor` must have values larger than -1, '
                        'got {}'.format(factor))
     self.interpolation = interpolation
     self._interpolation_method = get_interpolation(interpolation)
@@ -1214,20 +1313,20 @@ class RandomWidth(Layer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     super(RandomWidth, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomWidth').set(True)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
     def random_width_inputs():
       """Inputs width-adjusted with random ops."""
       inputs_shape = array_ops.shape(inputs)
-      h_axis, w_axis = 1, 2
-      img_hd = inputs_shape[h_axis]
-      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      img_hd = inputs_shape[H_AXIS]
+      img_wd = math_ops.cast(inputs_shape[W_AXIS], dtypes.float32)
       width_factor = self._rng.uniform(
           shape=[],
-          minval=(1.0 - self.width_lower),
+          minval=(1.0 + self.width_lower),
           maxval=(1.0 + self.width_upper))
       adjusted_width = math_ops.cast(width_factor * img_wd, dtypes.int32)
       adjusted_size = array_ops.stack([img_hd, adjusted_width])
@@ -1238,7 +1337,8 @@ class RandomWidth(Layer):
       output.set_shape(output_shape)
       return output
 
-    return tf_utils.smart_cond(training, random_width_inputs, lambda: inputs)
+    return control_flow_util.smart_cond(training, random_width_inputs,
+                                        lambda: inputs)
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -1256,6 +1356,15 @@ class RandomWidth(Layer):
 
 
 def make_generator(seed=None):
+  """Creates a random generator.
+
+  Args:
+    seed: the seed to initialize the generator. If None, the generator will be
+      initialized non-deterministically.
+
+  Returns:
+    A generator object.
+  """
   if seed:
     return stateful_random_ops.Generator.from_seed(seed)
   else:

@@ -41,15 +41,24 @@ def get_python_bin(repository_ctx):
     python_bin = get_host_environ(repository_ctx, PYTHON_BIN_PATH)
     if python_bin != None:
         return python_bin
-    python_bin_path = which(repository_ctx, "python")
-    if python_bin_path == None:
-        auto_config_fail("Cannot find python in PATH, please make sure " +
-                         "python is installed and add its directory in PATH, or --define " +
-                         "%s='/something/else'.\nPATH=%s" % (
-                             PYTHON_BIN_PATH,
-                             get_environ("PATH", ""),
-                         ))
-    return python_bin_path
+
+    # First check for an explicit "python3"
+    python_bin = which(repository_ctx, "python3")
+    if python_bin != None:
+        return python_bin
+
+    # Some systems just call pythone3 "python"
+    python_bin = which(repository_ctx, "python")
+    if python_bin != None:
+        return python_bin
+
+    auto_config_fail("Cannot find python in PATH, please make sure " +
+                     "python is installed and add its directory in PATH, or --define " +
+                     "%s='/something/else'.\nPATH=%s" % (
+                         PYTHON_BIN_PATH,
+                         get_environ("PATH", ""),
+                     ))
+    return python_bin  # unreachable
 
 def get_bash_bin(repository_ctx):
     """Gets the bash bin path.

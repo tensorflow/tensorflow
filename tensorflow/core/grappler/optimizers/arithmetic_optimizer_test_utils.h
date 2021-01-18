@@ -223,6 +223,17 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.remove_stack_slice_same_axis = true;
   }
 
+  void EnableOnlySimplifyEmbeddingLookup(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.simplify_embedding_lookup = true;
+  }
+
+  void EnableOnlyRemoveCastIntoSegmentReduction(
+      ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_cast_into_segment_reduction = true;
+  }
+
  private:
   void DisableAllStages(ArithmeticOptimizer* optimizer) {
     ArithmeticOptimizer::ArithmeticOptimizerOptions options;
@@ -250,6 +261,8 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.replace_mul_with_square = false;
     options.simplify_aggregation = false;
     options.unary_ops_composition = false;
+    options.simplify_embedding_lookup = false;
+    options.remove_cast_into_segment_reduction = false;
     optimizer->options_ = options;
   }
 };

@@ -1,0 +1,5 @@
+func @Conj_elem_type(%arg0: tensor<*xcomplex<elem_type>>)
+    -> tensor<*xcomplex<elem_type>> attributes {tf_entry, llvm.emit_c_interface} {
+  %0 = "tf.Conj"(%arg0) : (tensor<*xcomplex<elem_type>>) -> tensor<*xcomplex<elem_type>>
+  return %0 : tensor<*xcomplex<elem_type>>
+}

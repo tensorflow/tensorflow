@@ -14,6 +14,9 @@
 # ==============================================================================
 """Code for backpropagation using the tape utilities."""
 
+# TODO(b/159343581): Properly support CompositeTensor in all functions in this
+# file.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -25,7 +28,6 @@ import sys
 import six
 
 from tensorflow.python import pywrap_tfe
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -46,6 +48,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
@@ -59,6 +62,9 @@ from tensorflow.python.util.tf_export import tf_export
 pfor_ops = LazyLoader(
     "pfor_ops", globals(),
     "tensorflow.python.ops.parallel_for.control_flow_ops")
+np_arrays = LazyLoader(
+    "np_arrays", globals(),
+    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 function = LazyLoader("function", globals(),
                       "tensorflow.python.eager.function")
@@ -86,13 +92,13 @@ def make_attr(attr_type, value):
   # from integer value to class.
   if attr_type == int(pywrap_tfe.TF_ATTR_TYPE):
     return dtypes.as_dtype(value)
-  elif attr_type == [int(pywrap_tfe.TF_ATTR_TYPE)]:
+  if attr_type == [int(pywrap_tfe.TF_ATTR_TYPE)]:
     return [dtypes.as_dtype(v) for v in value]
-  elif attr_type == int(pywrap_tfe.TF_ATTR_SHAPE):
+  if attr_type == int(pywrap_tfe.TF_ATTR_SHAPE):
     return tensor_shape.as_shape(value).as_proto()
-  elif attr_type == [int(pywrap_tfe.TF_ATTR_SHAPE)]:
+  if attr_type == [int(pywrap_tfe.TF_ATTR_SHAPE)]:
     return [tensor_shape.as_shape(v).as_proto() for v in value]
-  elif isinstance(value, str):
+  if isinstance(value, str):
     return value.encode()
   return value
 
@@ -149,10 +155,9 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
   # This does not work with v1 TensorArrays.
   if ops.executing_eagerly_outside_functions(
   ) or control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
+    gradient_name_scope = "gradient_tape/"
     if forward_pass_name_scope:
-      gradient_name_scope = "gradient_tape/" + forward_pass_name_scope + "/"
-    else:
-      gradient_name_scope = "gradient_tape/"
+      gradient_name_scope += forward_pass_name_scope + "/"
     with ops.name_scope(gradient_name_scope):
       return grad_fn(mock_op, *out_grads)
   else:
@@ -242,6 +247,11 @@ def implicit_val_and_grad(f):
                        "function was being computed.")
 
     sources = [v.handle for v in variables]
+    for s in sources:
+      if getattr(s, "is_packed", False):
+        raise ValueError(
+            "GradientTape.gradient is not supported on packed EagerTensors yet."
+        )
     grad = imperative_grad.imperative_grad(this_tape, nest.flatten(end_node),
                                            sources)
     return end_node, list(zip(grad, variables))
@@ -530,7 +540,7 @@ def make_vjp(f, params=None, persistent=True):
     wrapped_fn = tfe.make_vjp(f)
     result, vjp = wrapped_fn(tf.constant(3.0))
     # result is 9.0
-    vjp()  # the vjp function rturns 6.0
+    vjp()  # the vjp function returns 6.0
 
   Raises:
     ValueError: if `f` returns None.
@@ -549,6 +559,10 @@ def make_vjp(f, params=None, persistent=True):
       ]
       args = _ensure_unique_tensor_objects(parameter_positions, args)
       for i in parameter_positions:
+        if getattr(args[i], "is_packed", False):
+          raise ValueError(
+              "GradientTape.gradient is not supported on packed EagerTensors"
+              "yet.")
         sources.append(args[i])
         tape.watch(this_tape, args[i])
       result = f(*args)
@@ -588,28 +602,27 @@ def aggregate_indexed_slices_gradients(grads):
   """Aggregates gradients containing `IndexedSlices`s."""
   if len(grads) < 1:
     return None
-  elif len(grads) == 1:
+  if len(grads) == 1:
     return grads[0]
-  else:
-    grads = [g for g in grads if g is not None]
-    # If any gradient is a `Tensor`, sum them up and return a dense tensor
-    # object.
-    if any(isinstance(g, ops.Tensor) for g in grads):
-      return math_ops.add_n(grads)
+  grads = [g for g in grads if g is not None]
+  # If any gradient is a `Tensor`, sum them up and return a dense tensor
+  # object.
+  if any(isinstance(g, ops.Tensor) for g in grads):
+    return math_ops.add_n(grads)
 
-    # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
-    # int64. It is to make sure the inputs of `concat` all have same the data
-    # type.
-    grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
+  # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
+  # int64. It is to make sure the inputs of `concat` all have same the data
+  # type.
+  grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
 
-    grads = [flatten_nested_indexed_slices(x) for x in grads]
-    # Form IndexedSlices out of the concatenated values and indices.
-    concat_grad = ops.IndexedSlices(
-        array_ops.concat([x.values for x in grads], axis=0),
-        array_ops.concat([x.indices for x in grads], axis=0),
-        grads[0].dense_shape)
+  grads = [flatten_nested_indexed_slices(x) for x in grads]
+  # Form IndexedSlices out of the concatenated values and indices.
+  concat_grad = ops.IndexedSlices(
+      array_ops.concat([x.values for x in grads], axis=0),
+      array_ops.concat([x.indices for x in grads], axis=0),
+      grads[0].dense_shape)
 
-    return concat_grad
+  return concat_grad
 
 
 def _aggregate_grads(gradients):
@@ -665,7 +678,7 @@ def _zeros(shape, dtype):
 
   device = ctx.device_name
 
-  if tensor_util.is_tensor(shape):
+  if tensor_util.is_tf_type(shape):
     shape_key = shape.ref()
   else:
     shape_key = shape
@@ -686,7 +699,7 @@ def _ones(shape, dtype):
   if as_dtype == dtypes.string:
     return None
 
-  if not context.context().executing_eagerly():
+  if not context.executing_eagerly():
     return array_ops.ones(shape, dtype)
 
   if as_dtype.is_bool:
@@ -711,9 +724,11 @@ pywrap_tfe.TFE_Py_RegisterVSpace(_default_vspace)
 
 
 def _handle_or_self(x):
-  """If x is ResourceVariable, return its handle, else x."""
+  """Unwrap resource variable/ndarray to return tensors."""
   if resource_variable_ops.is_resource_variable(x):
-    x = x.handle
+    return x.handle
+  if isinstance(x, np_arrays.ndarray):
+    return x.data
   return x
 
 
@@ -732,26 +747,28 @@ class GradientTape(object):
   For example, consider the function `y = x * x`. The gradient at `x = 3.0` can
   be computed as:
 
-  ```python
-  x = tf.constant(3.0)
-  with tf.GradientTape() as g:
-    g.watch(x)
-    y = x * x
-  dy_dx = g.gradient(y, x) # Will compute to 6.0
-  ```
+  >>> x = tf.constant(3.0)
+  >>> with tf.GradientTape() as g:
+  ...   g.watch(x)
+  ...   y = x * x
+  >>> dy_dx = g.gradient(y, x)
+  >>> print(dy_dx)
+  tf.Tensor(6.0, shape=(), dtype=float32)
 
   GradientTapes can be nested to compute higher-order derivatives. For example,
 
-  ```python
-  x = tf.constant(3.0)
-  with tf.GradientTape() as g:
-    g.watch(x)
-    with tf.GradientTape() as gg:
-      gg.watch(x)
-      y = x * x
-    dy_dx = gg.gradient(y, x)     # Will compute to 6.0
-  d2y_dx2 = g.gradient(dy_dx, x)  # Will compute to 2.0
-  ```
+  >>> x = tf.constant(5.0)
+  >>> with tf.GradientTape() as g:
+  ...   g.watch(x)
+  ...   with tf.GradientTape() as gg:
+  ...     gg.watch(x)
+  ...     y = x * x
+  ...   dy_dx = gg.gradient(y, x)  # dy_dx = 2 * x
+  >>> d2y_dx2 = g.gradient(dy_dx, x)  # d2y_dx2 = 2
+  >>> print(dy_dx)
+  tf.Tensor(10.0, shape=(), dtype=float32)
+  >>> print(d2y_dx2)
+  tf.Tensor(2.0, shape=(), dtype=float32)
 
   By default, the resources held by a GradientTape are released as soon as
   GradientTape.gradient() method is called. To compute multiple gradients over
@@ -759,29 +776,37 @@ class GradientTape(object):
   calls to the gradient() method as resources are released when the tape object
   is garbage collected. For example:
 
-  ```python
-  x = tf.constant(3.0)
-  with tf.GradientTape(persistent=True) as g:
-    g.watch(x)
-    y = x * x
-    z = y * y
-  dz_dx = g.gradient(z, x)  # 108.0 (4*x^3 at x = 3)
-  dy_dx = g.gradient(y, x)  # 6.0
-  del g  # Drop the reference to the tape
-  ```
+  >>> x = tf.constant(3.0)
+  >>> with tf.GradientTape(persistent=True) as g:
+  ...   g.watch(x)
+  ...   y = x * x
+  ...   z = y * y
+  >>> dz_dx = g.gradient(z, x)  # (4*x^3 at x = 3)
+  >>> print(dz_dx)
+  tf.Tensor(108.0, shape=(), dtype=float32)
+  >>> dy_dx = g.gradient(y, x)
+  >>> print(dy_dx)
+  tf.Tensor(6.0, shape=(), dtype=float32)
 
   By default GradientTape will automatically watch any trainable variables that
   are accessed inside the context. If you want fine grained control over which
   variables are watched you can disable automatic tracking by passing
   `watch_accessed_variables=False` to the tape constructor:
 
-  ```python
-  with tf.GradientTape(watch_accessed_variables=False) as tape:
-    tape.watch(variable_a)
-    y = variable_a ** 2  # Gradients will be available for `variable_a`.
-    z = variable_b ** 3  # No gradients will be available since `variable_b` is
-                         # not being watched.
-  ```
+  >>> x = tf.Variable(2.0)
+  >>> w = tf.Variable(5.0)
+  >>> with tf.GradientTape(
+  ...     watch_accessed_variables=False, persistent=True) as tape:
+  ...   tape.watch(x)
+  ...   y = x ** 2  # Gradients will be available for `x`.
+  ...   z = w ** 3  # No gradients will be available as `w` isn't being watched.
+  >>> dy_dx = tape.gradient(y, x)
+  >>> print(dy_dx)
+  tf.Tensor(4.0, shape=(), dtype=float32)
+  >>> # No gradients will be available as `w` isn't being watched.
+  >>> dz_dy = tape.gradient(z, w)
+  >>> print(dz_dy)
+  None
 
   Note that when using models you should ensure that your variables exist when
   using `watch_accessed_variables=False`. Otherwise it's quite easy to make your
@@ -823,10 +848,6 @@ class GradientTape(object):
     self._watch_accessed_variables = watch_accessed_variables
     self._watched_variables = ()
     self._recording = False
-    self._created_eagerly = context.executing_eagerly()
-    if self._created_eagerly:
-      context.ensure_initialized()
-      context.context().start_step()
 
   def __enter__(self):
     """Enters a context inside which operations are recorded on this tape."""
@@ -857,15 +878,6 @@ class GradientTape(object):
     tape.pop_tape(self._tape)
     self._recording = False
 
-  def __del__(self):
-    if self._created_eagerly:
-      try:
-        context.context().end_step()
-      except AttributeError:
-        pass
-      except TypeError:
-        pass
-
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
 
@@ -875,7 +887,7 @@ class GradientTape(object):
     Raises:
       ValueError: if it encounters something that is not a tensor.
     """
-    for t in nest.flatten(tensor):
+    for t in nest.flatten(tensor, expand_composites=True):
       if not (_pywrap_utils.IsTensor(t) or _pywrap_utils.IsVariable(t)):
         raise ValueError("Passed in object of type {}, not tf.Tensor".format(
             type(t)))
@@ -901,13 +913,13 @@ class GradientTape(object):
 
     For example:
 
-    ```
-      with tf.GradientTape(persistent=True) as t:
-        loss = compute_loss(model)
-        with t.stop_recording():
-          # The gradient computation below is not traced, saving memory.
-          grads = t.gradient(loss, model.variables)
-    ```
+    >>> x = tf.constant(4.0)
+    >>> with tf.GradientTape() as tape:
+    ...   with tape.stop_recording():
+    ...     y = x ** 2
+    >>> dy_dx = tape.gradient(y, x)
+    >>> print(dy_dx)
+    None
 
     Yields:
       None
@@ -972,6 +984,9 @@ class GradientTape(object):
                unconnected_gradients=UnconnectedGradients.NONE):
     """Computes the gradient using operations recorded in context of this tape.
 
+    Note: Unless you set `persistent=True` a GradientTape can only be used to
+    compute one set of gradients (or jacobians).
+
     Args:
       target: a list or nested structure of Tensors or Variables to be
         differentiated.
@@ -990,14 +1005,15 @@ class GradientTape(object):
       the structure of `sources`.
 
     Raises:
-      RuntimeError: if called inside the context of the tape, or if called more
-       than once on a non-persistent tape.
-      ValueError: if the target is a variable or if unconnected gradients is
+      RuntimeError: If called on a used, non-persistent tape.
+      RuntimeError: If called inside the context of the tape.
+      TypeError: If the target is a None object.
+      ValueError: If the target is a variable or if unconnected gradients is
        called with an unknown value.
     """
     if self._tape is None:
-      raise RuntimeError("GradientTape.gradient can only be called once on "
-                         "non-persistent tapes.")
+      raise RuntimeError("A non-persistent GradientTape can only be used to "
+                         "compute one set of gradients (or jacobians)")
     if self._recording:
       if not self._persistent:
         self._pop_tape()
@@ -1013,6 +1029,12 @@ class GradientTape(object):
             "gradient in order to compute higher order "
             "derivatives.", 1)
 
+    if target is None:
+      raise TypeError("Target should be a list or nested structure"
+                      " of Tensors or Variables to be differentiated,"
+                      " but recieved %r" % (target))
+
+    num_ndarrays = 0
     flat_targets = []
     for t in nest.flatten(target):
       if not backprop_util.IsTrainable(t):
@@ -1023,7 +1045,12 @@ class GradientTape(object):
       if resource_variable_ops.is_resource_variable(t):
         with self:
           t = ops.convert_to_tensor(t)
+      elif isinstance(t, np_arrays.ndarray):
+        t = t.data
+        num_ndarrays += 1
       flat_targets.append(t)
+    # Only rewrap if all targets are ndarray. If not, prefer tensors.
+    rewrap_as_ndarray = num_ndarrays == len(flat_targets)
 
     flat_sources = nest.flatten(sources)
     flat_sources_raw = flat_sources
@@ -1034,6 +1061,10 @@ class GradientTape(object):
             logging.WARN, "The dtype of the source tensor must be "
             "floating (e.g. tf.float32) when calling GradientTape.gradient, "
             "got %r", t.dtype)
+      if getattr(t, "is_packed", False):
+        raise ValueError(
+            "GradientTape.gradient is not supported on packed EagerTensors yet."
+        )
 
     if output_gradients is not None:
       output_gradients = [None if x is None else ops.convert_to_tensor(x)
@@ -1052,6 +1083,13 @@ class GradientTape(object):
       self._watched_variables = self._tape.watched_variables()
       self._tape = None
 
+    if rewrap_as_ndarray:
+      def _tensor_to_ndarray(x):
+        if x is not None:
+          return np_arrays.tensor_to_ndarray(x)
+        return None
+      flat_grad = nest.map_structure(_tensor_to_ndarray, flat_grad)
+
     grad = nest.pack_sequence_as(sources, flat_grad)
     return grad
 
@@ -1063,8 +1101,17 @@ class GradientTape(object):
                experimental_use_pfor=True):
     """Computes the jacobian using operations recorded in context of this tape.
 
-    See [wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant) for the
-    definition of a Jacobian.
+    Note: Unless you set `persistent=True` a GradientTape can only be used to
+    compute one set of gradients (or jacobians).
+
+    Note: By default the jacobian implementation uses parallel for (pfor), which
+    creates a tf.function under the hood for each jacobian call. For better
+    performance, and to avoid recompilation and vectorization rewrites on each
+    call, enclose GradientTape code in @tf.function.
+
+    See[wikipedia
+    article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant)
+    for the definition of a Jacobian.
 
     Example usage:
 
@@ -1101,11 +1148,20 @@ class GradientTape(object):
 
 
     Raises:
+      RuntimeError: If called on a used, non-persistent tape.
       RuntimeError: If called on a non-persistent tape with eager execution
         enabled and without enabling experimental_use_pfor.
       ValueError: If vectorization of jacobian computation fails.
     """
+    if self._tape is None:
+      raise RuntimeError("A non-persistent GradientTape can only be used to "
+                         "compute one set of gradients (or jacobians)")
+
     flat_sources = nest.flatten(sources)
+    rewrap_as_ndarray = False
+    if isinstance(target, np_arrays.ndarray):
+      target = target.data
+      rewrap_as_ndarray = True
     target_static_shape = target.shape
     target_shape = array_ops.shape(target)
     # Note that we push and pop the tape here and below. This is needed since we
@@ -1155,6 +1211,8 @@ class GradientTape(object):
         out = array_ops.reshape(out, new_shape)
         if context.executing_eagerly():
           out.set_shape(target_static_shape.concatenate(flat_sources[i].shape))
+      if rewrap_as_ndarray:
+        out = np_arrays.tensor_to_ndarray(out)
       output[i] = out
 
     return nest.pack_sequence_as(sources, output)
@@ -1167,8 +1225,8 @@ class GradientTape(object):
                      experimental_use_pfor=True):
     """Computes and stacks per-example jacobians.
 
-    See [wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant) for the
-    definition of a Jacobian. This function is essentially an efficient
+    See [wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant)
+    for the definition of a Jacobian. This function is essentially an efficient
     implementation of the following:
 
     `tf.stack([self.jacobian(y[i], x[i]) for i in range(x.shape[0])])`.
@@ -1180,6 +1238,15 @@ class GradientTape(object):
     `GradientTape.jacobian`. The output, as well as intermediate activations,
     are lower dimensional and avoid a bunch of redundant zeros which would
     result in the jacobian computation given the independence assumption.
+
+    Note: Unless you set `persistent=True` a GradientTape can only be used to
+    compute one set of gradients (or jacobians).
+
+    Note: By default the batch_jacobian implementation uses parallel for (pfor),
+    which creates a tf.function under the hood for each batch_jacobian call.
+    For better performance, and to avoid recompilation and vectorization
+    rewrites on each call, enclose GradientTape code in @tf.function.
+
 
     Example usage:
 
@@ -1211,11 +1278,21 @@ class GradientTape(object):
       per-example jacobians.
 
     Raises:
+      RuntimeError: If called on a used, non-persistent tape.
       RuntimeError: If called on a non-persistent tape with eager execution
         enabled and without enabling experimental_use_pfor.
       ValueError: If vectorization of jacobian computation fails or if first
         dimension of `target` and `source` do not match.
     """
+    if self._tape is None:
+      raise RuntimeError("A non-persistent GradientTape can only be used to"
+                         "compute one set of gradients (or jacobians)")
+    rewrap_as_ndarray = False
+    if isinstance(target, np_arrays.ndarray):
+      target = target.data
+      rewrap_as_ndarray = True
+    if isinstance(source, np_arrays.ndarray):
+      source = source.data
     target_shape = target.shape
     if target_shape.rank is None:
       dim = tensor_shape.Dimension(None)
@@ -1273,9 +1350,19 @@ class GradientTape(object):
                                  parallel_iterations=parallel_iterations)
     new_shape = array_ops.concat([target_shape, source_shape[1:]], axis=0)
     if output is None:
-      return array_ops.zeros(new_shape)
+      # Note that this block is returning zeros when it could use `None` to
+      # represent unconnected gradients. This is to maintain compatibility with
+      # the previous behavior, which ignored `unconnected_gradients`.
+      output = array_ops.zeros(new_shape, target.dtype)
+      if rewrap_as_ndarray:
+        output = np_arrays.tensor_to_ndarray(output)
+      return output
     else:
       output = array_ops.reshape(output,
                                  [target_row_size, batch_size, -1])
       output = array_ops.transpose(output, [1, 0, 2])
-      return array_ops.reshape(output, new_shape)
+
+      output = array_ops.reshape(output, new_shape)
+      if rewrap_as_ndarray:
+        output = np_arrays.tensor_to_ndarray(output)
+      return output

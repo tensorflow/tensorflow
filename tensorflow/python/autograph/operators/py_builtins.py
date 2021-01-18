@@ -21,25 +21,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import inspect
 
+import numpy as np
 import six
 
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.autograph.utils import tensors
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
-from tensorflow.python.ops import check_ops
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 
@@ -82,6 +87,16 @@ def _find_originating_frame(caller_fn_scope, innermost=True):
       ' found somewhere on the call stack')
 
   return result
+
+
+def locals_in_original_context(caller_fn_scope):
+  """Executes the locals function in the context of a specified function."""
+  return _find_originating_frame(caller_fn_scope, innermost=True).f_locals
+
+
+def globals_in_original_context(caller_fn_scope):
+  """Executes the locals function in the context of a specified function."""
+  return _find_originating_frame(caller_fn_scope, innermost=True).f_globals
 
 
 def eval_in_original_context(f, args, caller_fn_scope):
@@ -162,7 +177,7 @@ def super_in_original_context(f, args, caller_fn_scope):
 
 
 def abs_(x):
-  if tensor_util.is_tensor(x):
+  if tensor_util.is_tf_type(x):
     return _tf_abs(x)
   if isinstance(x, dataset_ops.DatasetV2):
     return _tf_dataset_abs(x)
@@ -176,8 +191,10 @@ def _tf_abs(x):
 def _tf_dataset_abs(x):
   specs = nest.flatten(x.element_spec)
   if len(specs) == 1:
-    return x.map(math_ops.abs)
-  return x.map(lambda *e: nest.map_structure(math_ops.abs, e))
+    return x.map(math_ops.abs, num_parallel_calls=dataset_ops.AUTOTUNE)
+  return x.map(
+      lambda *e: nest.map_structure(math_ops.abs, e),
+      num_parallel_calls=dataset_ops.AUTOTUNE)
 
 
 def _py_abs(x):
@@ -185,7 +202,7 @@ def _py_abs(x):
 
 
 def float_(x=0):
-  if tensor_util.is_tensor(x):
+  if tensor_util.is_tf_type(x):
     return _tf_float(x)
   return _py_float(x)
 
@@ -202,7 +219,7 @@ def _py_float(x):
 
 
 def int_(x=0, base=UNSPECIFIED):
-  if tensor_util.is_tensor(x):
+  if tensor_util.is_tf_type(x):
     return _tf_int(x, base)
   return _py_int(x, base)
 
@@ -228,8 +245,10 @@ def len_(s):
     return _tf_tensor_array_len(s)
   elif tensors.is_tensor_list(s):
     return _tf_tensor_list_len(s)
-  elif tensor_util.is_tensor(s):
+  elif tensor_util.is_tf_type(s):
     return _tf_tensor_len(s)
+  if isinstance(s, dataset_ops.DatasetV2):
+    return _tf_dataset_len(s)
   return _py_len(s)
 
 
@@ -274,6 +293,26 @@ def _tf_tensor_len(s):
                                raise_zero_rank_error)
 
 
+def _tf_dataset_len(s):
+  l = cardinality.cardinality(s)
+  msg = gen_string_ops.string_join([
+      'len requires dataset with definitive cardinality, got ',
+      gen_string_ops.as_string(l)
+  ])
+  # TODO (yongtang): UNKNOWN is treated as an error.
+  # In case there are more UNKNOWN cases for dataset, we could
+  # use dataset.reduce() to find out the length (in an expensive way).
+  with ops.control_dependencies([
+      control_flow_ops.Assert(
+          math_ops.logical_and(
+              math_ops.not_equal(l, cardinality.INFINITE),
+              math_ops.not_equal(l, cardinality.UNKNOWN)), [msg])
+  ]):
+    l = array_ops.identity(l)
+
+  return l
+
+
 def _py_len(s):
   return len(s)
 
@@ -287,7 +326,7 @@ def print_(*objects, **kwargs):
     raise ValueError('invalid keyword arguments: {}'.format(unknown_kwargs))
 
   # TODO(mdan): Use next.flatten(objects) instead?
-  if any(tensor_util.is_tensor(o) for o in objects):
+  if any(tensor_util.is_tf_type(o) for o in objects):
     # TODO(mdan): use tf.print instead.
     return _tf_py_func_print(objects, kwargs)
   else:
@@ -307,7 +346,7 @@ def _tf_py_func_print(objects, kwargs):
     override_kwargs['flush'] = True
 
   def print_wrapper(*vals):
-    vals = tuple(v.numpy() if tensor_util.is_tensor(v) else v for v in vals)
+    vals = tuple(v.numpy() if tensor_util.is_tf_type(v) else v for v in vals)
     if not six.PY2:
       # TensorFlow doesn't seem to generate Unicode when passing strings to
       # py_func. This causes the print to add a "b'" wrapper to the output,
@@ -321,7 +360,7 @@ def _tf_py_func_print(objects, kwargs):
 
 
 def range_(start_or_stop, stop=UNSPECIFIED, step=UNSPECIFIED):
-  if any(tensor_util.is_tensor(s) for s in (start_or_stop, stop, step)):
+  if any(tensor_util.is_tf_type(s) for s in (start_or_stop, stop, step)):
     return _tf_range(start_or_stop, stop, step)
   return _py_range(start_or_stop, stop, step)
 
@@ -397,6 +436,96 @@ def _py_map(fn, *iterables):
   return map(fn, *iterables)
 
 
+def next_(iterator, default=UNSPECIFIED):
+  if isinstance(iterator, iterator_ops.OwnedIterator):
+    return next_tf_iterator(iterator, default)
+  return next_py(iterator, default)
+
+
+# TODO(mdan): These checks should be easier. Fix the nest API.
+def _verify_spec_compatible(input_name, spec_name, input_, spec):
+  """Verifies that a symbol has a type compatible vith a given spec.
+
+  Here, compatibility is viewed in the general TensorFlow sense: that the dtypes
+  are the same after implicit conversion, if both are tensors.
+
+  This verifier ensures consistent treatment of types across AutoGraph.
+
+  Args:
+    input_name: A name to use for `input_` in error messages.
+    spec_name: A name to use for `spec` in error messages.
+    input_: Any, value to verify.
+    spec: TypeSpec that `input_` must be compatible with.
+
+  Raises:
+    ValueError if the two types have been determined not to be compatible.
+  """
+  assert isinstance(spec, tensor_spec.TensorSpec)
+  if input is None:
+    # TODO(mdan): raise from None when switching to Py3.
+    raise ValueError('{} cannot be None'.format(input_name))
+
+  # TODO(mdan): Use TensorCompatible when ready.
+  if isinstance(input_, (bool, int, float, str, np.ndarray)):
+    input_ = ops.convert_to_tensor_v2(input_)
+
+  input_dtype = getattr(input_, 'dtype', None)
+
+  if input_dtype != spec.dtype:
+    input_dtype_str = 'no dtype' if input_dtype is None else str(input_dtype)
+
+    raise TypeError(
+        '{} must have the same dtype as {}. Expected {}, got {}'.format(
+            input_name, spec_name, spec.dtype, input_dtype_str))
+
+
+def _verify_structure_compatible(input_name, spec_name, input_, spec):
+  """Verifies that possibly-structured symbol has types compatible vith another.
+
+  See _verify_spec_compatible for a more concrete meaning of "compatible".
+  Unspec _verify_spec_compatible, which handles singular Tensor-spec objects,
+  verify_structures_compatible can process structures recognized by tf.nest.
+
+  Args:
+    input_name: A name to use for `input_` in error messages.
+    spec_name: A name to use for `spec` in error messages.
+    input_: Any, value to verify. May, but doesn't need to, be a structure.
+    spec: Any, value that `input_` must be compatible with. May, but doesn't
+        need to, be a structure.
+
+  Raises:
+    ValueError if the two types have been determined not to be compatible.
+  """
+  try:
+    nest.assert_same_structure(input_, spec, expand_composites=True)
+  except (ValueError, TypeError) as e:
+    raise TypeError(
+        '{} must have the same element structure as {}.\n\n{}'.format(
+            input_name, spec_name, str(e)))
+
+  nest.map_structure(
+      functools.partial(_verify_spec_compatible, input_name, spec_name), input_,
+      spec)
+
+
+def next_tf_iterator(iterator, default=UNSPECIFIED):
+  if default is UNSPECIFIED:
+    # Without a default, fall back to the "normal" behavior which raises
+    # a runtime exception.
+    return next(iterator)
+  opt_iterate = iterator.get_next_as_optional()
+  _verify_structure_compatible(
+      'the default argument', 'the iterate', default, iterator.element_spec)
+  return control_flow_ops.cond(
+      opt_iterate.has_value(), opt_iterate.get_value, lambda: default)
+
+
+def next_py(iterator, default=UNSPECIFIED):
+  if default is UNSPECIFIED:
+    return next(iterator)
+  return next(iterator, default)
+
+
 def filter_(function, iterable):
   if isinstance(iterable, dataset_ops.DatasetV2):
     return _tf_dataset_filter(function, iterable)
@@ -467,7 +596,7 @@ def _py_all(iterable):
 
 
 def sorted_(iterable, key=UNSPECIFIED, reverse=UNSPECIFIED):
-  if tensor_util.is_tensor(iterable):
+  if tensor_util.is_tf_type(iterable):
     return _tf_sorted(iterable, key, reverse)
   return _py_sorted(iterable, key, reverse)
 
@@ -515,18 +644,18 @@ if six.PY2:
 
 BUILTIN_FUNCTIONS_MAP = {
     'abs': abs_,
+    'any': any_,
+    'all': all_,
+    'enumerate': enumerate_,
+    'filter': filter_,
     'float': float_,
     'int': int_,
     'len': len_,
+    'map': map_,
+    'next': next_,
     'print': print_,
     'range': range_,
-    # TODO(mdan): This might make more sense as tf.data.range.
-    'xrange': range_,
-    'enumerate': enumerate_,
-    'zip': zip_,
-    'map': map_,
-    'filter': filter_,
-    'any': any_,
-    'all': all_,
     'sorted': sorted_,
+    'xrange': range_,
+    'zip': zip_,
 }

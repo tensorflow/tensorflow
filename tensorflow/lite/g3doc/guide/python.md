@@ -29,91 +29,118 @@ package](https://www.tensorflow.org/install/).
 To install, run `pip3 install` and pass it the appropriate Python wheel URL from
 the following table.
 
-For example, if you have Raspberry Pi that's running Raspbian Buster (which has
-Python 3.7), install the Python wheel as follows:
+For example, if you have a Raspberry Pi that's running Raspberry Pi OS 10 (which
+has Python 3.7), install the Python wheel as follows:
 
 <pre class="devsite-terminal devsite-click-to-copy">
-pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_armv7l.whl
+pip3 install https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_armv7l.whl
 </pre>
 
 <table>
 <tr><th>Platform</th><th>Python</th><th>URL</th></tr>
 <tr>
-  <td style="white-space:nowrap" rowspan="3">Linux (ARM 32)</td>
+  <td style="white-space:nowrap" rowspan="4">Linux (ARM 32)</td>
   <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_armv7l.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-linux_armv7l.whl</td>
 </tr>
 <tr>
   <!-- ARM 32 -->
   <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_armv7l.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp36-cp36m-linux_armv7l.whl</td>
 </tr>
 <tr>
   <!-- ARM 32 -->
   <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_armv7l.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_armv7l.whl</td>
 </tr>
 <tr>
-  <td style="white-space:nowrap" rowspan="3">Linux (ARM 64)</td>
+  <!-- ARM 32 -->
+  <td style="white-space:nowrap">3.8</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp38-cp38-linux_armv7l.whl</td>
+</tr>
+
+<tr>
+  <td style="white-space:nowrap" rowspan="4">Linux (ARM 64)</td>
   <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_aarch64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-linux_aarch64.whl</td>
 </tr>
 <tr>
   <!-- ARM 64 -->
   <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_aarch64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp36-cp36m-linux_aarch64.whl</td>
 </tr>
 <tr>
   <!-- ARM 64 -->
   <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_aarch64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_aarch64.whl</td>
 </tr>
 <tr>
-  <td style="white-space:nowrap" rowspan="3">Linux (x86-64)</td>
+  <!-- ARM 64 -->
+  <td style="white-space:nowrap">3.8</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp38-cp38-linux_aarch64.whl</td>
+</tr>
+
+<tr>
+  <td style="white-space:nowrap" rowspan="4">Linux (x86-64)</td>
   <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_x86_64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-linux_x86_64.whl</td>
 </tr>
 <tr>
   <!-- x86-64 -->
   <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_x86_64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp36-cp36m-linux_x86_64.whl</td>
 </tr>
 <tr>
   <!-- x86-64 -->
   <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_x86_64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_x86_64.whl</td>
+</tr>
+<tr>
+  <!-- x86-64 -->
+  <td style="white-space:nowrap">3.8</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp38-cp38-linux_x86_64.whl</td>
 </tr>
 
 <tr>
-  <td style="white-space:nowrap" rowspan="3">macOS 10.14</td>
+  <td style="white-space:nowrap" rowspan="4">macOS 10.15</td>
   <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-macosx_10_14_x86_64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-macosx_10_15_x86_64.whl</td>
 </tr>
 <tr>
   <!-- Mac -->
   <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-macosx_10_14_x86_64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp36-cp36m-macosx_10_15_x86_64.whl</td>
 </tr>
 <tr>
   <!-- Mac -->
   <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-macosx_10_14_x86_64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-macosx_10_15_x86_64.whl</td>
+</tr>
+<tr>
+  <!-- Mac -->
+  <td style="white-space:nowrap">3.8</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp38-cp38-macosx_10_15_x86_64.whl</td>
 </tr>
 
 <tr>
-  <td style="white-space:nowrap" rowspan="3">Windows 10</td>
+  <td style="white-space:nowrap" rowspan="4">Windows 10</td>
   <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-win_amd64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-win_amd64.whl</td>
 </tr>
 <tr>
   <!-- Win -->
   <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-win_amd64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp36-cp36m-win_amd64.whl</td>
 </tr>
 <tr>
   <!-- Win -->
   <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-win_amd64.whl</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-win_amd64.whl</td>
+</tr>
+<tr>
+  <!-- Win -->
+  <td style="white-space:nowrap">3.8</td>
+  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp38-cp38-win_amd64.whl</td>
 </tr>
 
 </table>

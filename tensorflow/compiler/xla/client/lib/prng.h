@@ -89,6 +89,9 @@ RngOutput NormalFloatingPointDistribution(XlaOp key, XlaOp initial_state,
 xla::XlaOp ConcatScalars(xla::XlaBuilder* builder,
                          absl::Span<const xla::XlaOp> scalars);
 
+// Increases Philox counter (an uint128) by a delta (an uint64).
+xla::XlaOp PhiloxIncreaseCounter(xla::XlaOp counter, xla::XlaOp delta);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_PRNG_H_

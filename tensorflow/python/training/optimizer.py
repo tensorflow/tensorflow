@@ -768,7 +768,7 @@ class Optimizer(
       # pylint: enable=protected-access
       mirrored_slot = named_slots.get(key, None)
       if mirrored_slot is None: return None
-      return mirrored_slot._get_closest()  # pylint: disable=protected-access
+      return mirrored_slot._get_on_device_or_primary()  # pylint: disable=protected-access
 
     return named_slots.get(_var_key(var), None)
 
@@ -824,7 +824,7 @@ class Optimizer(
       with distribution_strategy.extended.colocate_vars_with(colocate_with):
         if eager:
           restored_initial_value = self._preload_simple_restoration(
-              name=name, shape=None)
+              name=name)
           if restored_initial_value is not None:
             initial_value = restored_initial_value
         v = variable_scope.variable(
@@ -1213,11 +1213,15 @@ class Optimizer(
         # (aside from double initialization), and makes variable creator scopes
         # behave the same way they do when graph building.
         and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
-      initializer = trackable.CheckpointInitialValue(
+      initializer = trackable.CheckpointInitialValueCallable(
           checkpoint_position=slot_variable_position)
-      slot_variable = self._get_or_make_slot(
+      # CheckpointInitialValueCallable will ignore the shape and dtype
+      # parameters but they must be passed.
+      slot_variable = self._get_or_make_slot_with_initializer(
           var=variable,
-          val=initializer,
+          initializer=initializer,
+          shape=variable.shape,
+          dtype=variable.dtype,
           slot_name=slot_name,
           op_name=self._name)
       # Slot variables are not owned by any one object (because we don't want to

@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -44,7 +45,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
-        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
         "@com_google_absl//absl/strings",
     ],
 )

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_EMITTER_H_
 
 #include <stddef.h>
+
 #include <map>
 #include <memory>
 #include <string>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Target/TargetMachine.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_function.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
@@ -41,8 +43,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -58,6 +62,8 @@ namespace cpu {
 // functions.
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
+  friend class CpuElementalIrEmitter;
+
  public:
   using GeneratorForOperandIrArrays =
       std::function<std::vector<llvm_ir::IrArray>()>;
@@ -67,14 +73,16 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // hlo_module: the HLO module we are emitting IR for.
   // assignment: a BufferAssignment from which we know which buffers are used by
   //             the HLO nodes.
-  // llvm_module: the LLVM module to emit IR into.
+  // mlir_context: the MLIR context used for IR emission.
+  // llvm_module: the LLVM module to emit IR into. It's built using the LLVM
+  //              context inside of mlir_context.
   // instruction_to_profile_idx: the mapping from HLO instructions to their
   //              index in the profiling array.
   // computation_to_profile_idx: the mapping from HLO computations to their
   //              index in the profiling array.
   // emit_code_for_msan: whether emitted code should be compatible with msan.
-  IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
-            llvm::Module* llvm_module,
+  IrEmitter(mlir::MLIRContext* mlir_context, const HloModule& hlo_module,
+            const BufferAssignment& assignment, llvm::Module* llvm_module,
             std::unordered_map<const HloInstruction*, int64>
                 instruction_to_profile_idx,
             std::unordered_map<const HloComputation*, int64>
@@ -113,29 +121,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emit an LLVM global variable for every constant buffer allocation.
   Status EmitConstantGlobals();
 
-  // Emit code to map one element according to `map_instr`.
-  llvm::Value* EmitElementalMap(
-      const HloMapInstruction& map_instr,
-      absl::Span<llvm::Value* const> elemental_operands,
-      absl::string_view name);
-  // Emit code to emit the element at `index` for a reduce window instruction.
-  StatusOr<llvm::Value*> EmitElementalReduceWindow(
-      const HloReduceWindowInstruction* reduce_window,
-      const llvm_ir::ElementGenerator& input_generator,
-      const llvm_ir::IrArray::Index& index);
-  // Emit code to emit the element at `index` for a convolution instruction.
-  StatusOr<llvm::Value*> EmitElementalConvolution(
-      const HloConvolutionInstruction* convolution,
-      const llvm_ir::ElementGenerator& input_generator,
-      const llvm_ir::ElementGenerator& kernel_generator,
-      const llvm_ir::IrArray::Index& index);
-  // Emit code to emit the element at `index` for a reduce instruction.
-  StatusOr<llvm::Value*> EmitElementalReduce(
-      const HloReduceInstruction* reduce,
-      std::vector<llvm_ir::ElementGenerator> input_generators,
-      std::vector<llvm_ir::ElementGenerator> initial_value_generator,
-      const llvm_ir::IrArray::Index& index);
-
  protected:
   //
   // The following methods implement the DfsHloVisitor interface.
@@ -155,6 +140,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleAllReduce(HloInstruction* crs) override;
+  Status HandleCollectivePermute(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleSort(HloInstruction* sort) override;
@@ -196,6 +182,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
  private:
+  Status HandleSliceToDynamic(HloInstruction* hlo);
+  Status HandlePadToStatic(HloInstruction* hlo);
+  Status HandleTopK(HloInstruction* hlo);
   Status HandleAllReduceSingleReplica(HloInstruction* crs);
   Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 
@@ -239,10 +228,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   std::vector<llvm_ir::IrArray> GetIrArraysForOperandsOf(
       const HloInstruction* hlo);
 
-  GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
-      HloInstruction* unnested_hlo) {
-    return [=]() { return GetIrArraysForOperandsOf(unnested_hlo); };
-  }
+  // Bind all argument IrArrays of `fusion` to `fused_emitter`.
+  void BindFusionArguments(const HloInstruction* fusion,
+                           FusedIrEmitter* fused_emitter);
 
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
@@ -427,6 +415,18 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                             const llvm_ir::IrArray& target_array,
                             const llvm_ir::IrArray& source_array);
 
+  // Emits printing during the execution.
+  llvm::Value* EmitPrintf(absl::string_view fmt,
+                          absl::Span<llvm::Value* const> arguments);
+
+  // Emits a call to a non-variadic function `func_name` with arguments
+  // `arguments` assuming C calling convention.
+  llvm::Value* EmitCallToFunc(
+      std::string func_name, const std::vector<llvm::Value*>& arguments,
+      llvm::Type* return_type, bool does_not_throw = true,
+      bool only_accesses_arg_memory = false,
+      bool only_accesses_inaccessible_mem_or_arg_mem = false);
+
   // Assignment of the buffers needed by the computation and their shape
   // information.
   const BufferAssignment& assignment_;
@@ -453,6 +453,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // module's function list).
   std::unique_ptr<IrFunction> compute_function_;
   llvm::IRBuilder<> b_;
+  mlir::MLIRContext* mlir_context_;
 
   // The buffer allocation slice for the root of the computation being compiled.
   // Only relevant for thread local computations.

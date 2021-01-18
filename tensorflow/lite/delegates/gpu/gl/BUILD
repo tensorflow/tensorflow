@@ -29,6 +29,7 @@ cc_library(
         ":runtime_options",
         ":stats",
         ":variable",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -66,6 +67,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl/kernels:converter",
         "//tensorflow/lite/delegates/gpu/gl/kernels:registry",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:default_calculator",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -125,6 +127,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl/compiler:fuse_inplace",
         "//tensorflow/lite/delegates/gpu/gl/compiler:shader_code",
         "//tensorflow/lite/delegates/gpu/gl/compiler:shader_codegen",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:any",
     ],
@@ -322,6 +325,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/types:any",
     ],
 )
 
@@ -399,6 +403,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl/runtime:shared_buffer",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

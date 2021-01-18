@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -52,6 +53,20 @@ class SessionMgr {
       const string& session, const ServerDef& server_def,
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
       bool isolate_session_state);
+
+  // Create WorkerSession from the master with the given `master_task` and
+  // `master_incarnation`. We first look for existing WorkerSessions associated
+  // with the specified master task. If there are sessions created by the same
+  // master but with a different incarnation, it indicates that the remote
+  // master has restarted before deleting the sessions on worker. When it
+  // happens, old sessions associated with the master will be automatically
+  // removed before the new session is created.
+  Status CreateSession(
+      const string& session, const ServerDef& server_def,
+      const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
+      bool isolate_session_state, string master_task, int64 master_incarnation);
+
+  void ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache);
 
   // Updates state (worker cache, devices) of worker session identified by
   // session name (`session`) based on a new server_def and set of devices.
@@ -105,6 +120,15 @@ class SessionMgr {
   mutex mu_;
   // A map from session identifier to internal session structure.
   std::map<string, std::shared_ptr<WorkerSession>> sessions_ TF_GUARDED_BY(mu_);
+
+  // Incarnation and WorkerSession handle associated with a master task.
+  struct MasterAssociatedSession {
+    const int64 master_incarnation;
+    const string session_handle;
+  };
+  // A map from master task name to its associated worker sessions.
+  std::unordered_multimap<string, MasterAssociatedSession>
+      master_to_associated_sessions_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

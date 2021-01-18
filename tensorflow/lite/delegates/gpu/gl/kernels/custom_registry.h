@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
 
 namespace tflite {
@@ -29,7 +29,7 @@ namespace gl {
 
 // Registers custom operations.
 void RegisterCustomOps(
-    std::unordered_map<std::string, std::vector<std::unique_ptr<NodeShader>>>*
+    absl::flat_hash_map<std::string, std::vector<std::unique_ptr<NodeShader>>>*
         shaders_);
 
 }  // namespace gl

@@ -25,6 +25,10 @@ namespace memory {
 struct MemoryUsage {
   static const int kValueNotSet;
 
+  // Indicates whether obtaining memory usage is supported on the platform, thus
+  // indicating whether the values defined in this struct make sense or not.
+  static bool IsSupported();
+
   MemoryUsage()
       : max_rss_kb(kValueNotSet),
         total_allocated_bytes(kValueNotSet),

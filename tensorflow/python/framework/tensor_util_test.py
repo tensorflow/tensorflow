@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import indexed_slices
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -227,15 +228,11 @@ class TensorUtilTest(test.TestCase):
 
   def testHalf(self):
     t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=np.float16))
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
       dtype: DT_HALF
-      tensor_shape {
-        dim {
-          size: 2
-        }
-      }
-      half_val: 18688
-      half_val: 19712
+      tensor_shape { dim { size: 2 } }
+      tensor_content: "\000I\000M"
       """, t)
 
     a = tensor_util.MakeNdarray(t)
@@ -717,6 +714,19 @@ class TensorUtilTest(test.TestCase):
     self.assertAllEqual(
         np.array([[(1 + 2j), (3 + 4j)], [(5 + 6j), (7 + 8j)]]), a)
 
+  def testNestedNumpyArrayWithoutDType(self):
+    t = tensor_util.make_tensor_proto([10.0, 20.0, np.array(30.0)])
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(np.float32, a.dtype)
+    self.assertAllClose(np.array([10.0, 20.0, 30.0], dtype=np.float32), a)
+
+  def testNestedNumpyArrayWithDType(self):
+    t = tensor_util.make_tensor_proto([10.0, 20.0, np.array(30.0)],
+                                      dtype=dtypes.float32)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(np.float32, a.dtype)
+    self.assertAllClose(np.array([10.0, 20.0, 30.0], dtype=np.float32), a)
+
   def testUnsupportedDTypes(self):
     with self.assertRaises(TypeError):
       tensor_util.make_tensor_proto(np.array([1]), 0)
@@ -727,7 +737,7 @@ class TensorUtilTest(test.TestCase):
 
     # Validate the helpful error message when trying to convert an
     # unconvertible list as strings.
-    with self.assertRaisesRegexp(TypeError, "Failed to convert object"):
+    with self.assertRaisesRegex(TypeError, "Failed to convert object"):
       tensor_util.make_tensor_proto([tensor_shape.Dimension(1)])
 
   def testTensorShapeVerification(self):
@@ -768,32 +778,32 @@ class IsTensorTest(test.TestCase):
   def testConstantTensor(self):
     np_val = np.random.rand(3).astype(np.int32)
     tf_val = constant_op.constant(np_val)
-    self.assertFalse(tensor_util.is_tensor(np_val))
-    self.assertTrue(tensor_util.is_tensor(tf_val))
+    self.assertFalse(tensor_util.is_tf_type(np_val))
+    self.assertTrue(tensor_util.is_tf_type(tf_val))
 
   def testRaggedTensor(self):
     rt = ragged_factory_ops.constant([[1, 2], [3]])
     rt_value = self.evaluate(rt)
-    self.assertTrue(tensor_util.is_tensor(rt))
-    self.assertFalse(tensor_util.is_tensor(rt_value))
+    self.assertTrue(tensor_util.is_tf_type(rt))
+    self.assertFalse(tensor_util.is_tf_type(rt_value))
 
   def testSparseTensor(self):
     st = sparse_tensor.SparseTensor([[1, 2]], [3], [10, 10])
     st_value = self.evaluate(st)
-    self.assertTrue(tensor_util.is_tensor(st))
-    self.assertFalse(tensor_util.is_tensor(st_value))
+    self.assertTrue(tensor_util.is_tf_type(st))
+    self.assertFalse(tensor_util.is_tf_type(st_value))
 
   def testIndexedSlices(self):
     x = indexed_slices.IndexedSlices(
         constant_op.constant([1, 2, 3]), constant_op.constant([10, 20, 30]))
     x_value = indexed_slices.IndexedSlicesValue(
         np.array([1, 2, 3]), np.array([10, 20, 30]), np.array([100]))
-    self.assertTrue(tensor_util.is_tensor(x))
-    self.assertFalse(tensor_util.is_tensor(x_value))
+    self.assertTrue(tensor_util.is_tf_type(x))
+    self.assertFalse(tensor_util.is_tf_type(x_value))
 
   def testVariable(self):
     v = variables.Variable([1, 2, 3])
-    self.assertTrue(tensor_util.is_tensor(v))
+    self.assertTrue(tensor_util.is_tf_type(v))
 
 
 class ConstantValueTest(test.TestCase):
@@ -807,15 +817,15 @@ class ConstantValueTest(test.TestCase):
     tf_val = constant_op.constant(np_val)
     self.assertAllClose(np_val, tensor_util.constant_value(tf_val))
 
-  @test_util.run_deprecated_v1
   def testUnknown(self):
-    tf_val = gen_state_ops.variable(
-        shape=[3, 4, 7],
-        dtype=dtypes.float32,
-        name="tf_val",
-        container="",
-        shared_name="")
-    self.assertIs(None, tensor_util.constant_value(tf_val))
+    with ops.Graph().as_default():
+      tf_val = gen_state_ops.variable(
+          shape=[3, 4, 7],
+          dtype=dtypes.float32,
+          name="tf_val",
+          container="",
+          shared_name="")
+      self.assertIs(None, tensor_util.constant_value(tf_val))
 
   def testShape(self):
     np_val = np.array([1, 2, 3], dtype=np.int32)
@@ -836,19 +846,17 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertEqual(6, c_val)
 
-  @test_util.run_deprecated_v1
   def testSizeOfScalar(self):
     tf_val = array_ops.size(constant_op.constant(0.0))
     c_val = tensor_util.constant_value(tf_val)
     self.assertEqual(1, c_val)
-    self.assertEqual(np.ndarray, type(c_val))
+    self.assertIn(type(c_val), [np.ndarray, np.int32])
 
-  @test_util.run_deprecated_v1
   def testRank(self):
     tf_val = array_ops.rank(constant_op.constant(0.0, shape=[1, 2, 3]))
     c_val = tensor_util.constant_value(tf_val)
 
-    self.assertEqual(np.ndarray, type(c_val))
+    self.assertIn(type(c_val), [np.ndarray, np.int32])
     self.assertEqual((), c_val.shape)
     self.assertEqual(3, c_val)
 
@@ -859,7 +867,7 @@ class ConstantValueTest(test.TestCase):
             0.0, shape=[1, 2, 3]), optimize=False)
     c_val = tensor_util.constant_value(tf_val)
 
-    self.assertEqual(np.ndarray, type(c_val))
+    self.assertIn(type(c_val), [np.ndarray, np.int32])
     self.assertEqual((), c_val.shape)
     self.assertEqual(3, c_val)
     self.assertEqual([3], c_val)
@@ -875,7 +883,6 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllClose(np_val.astype(np.float64), c_val)
 
-  @test_util.run_deprecated_v1
   def testConcat(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
     tf_val = array_ops.concat(
@@ -883,19 +890,21 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
-    tf_val = array_ops.concat(
-        [np_val[0, :, :], np_val[1, :, :], np_val[2, :, :]],
-        array_ops.placeholder(dtypes.int32))
-    c_val = tensor_util.constant_value(tf_val)
-    self.assertIs(None, c_val)
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      tf_val = array_ops.concat(
+          [np_val[0, :, :], np_val[1, :, :], np_val[2, :, :]],
+          array_ops.placeholder(dtypes.int32))
+      c_val = tensor_util.constant_value(tf_val)
+      self.assertIs(None, c_val)
 
-    tf_val = array_ops.concat([
-        np_val[0, :, :], array_ops.placeholder(dtypes.float32), np_val[2, :, :]
-    ], 1)
-    c_val = tensor_util.constant_value(tf_val)
-    self.assertIs(None, c_val)
+      tf_val = array_ops.concat([
+          np_val[0, :, :],
+          array_ops.placeholder(dtypes.float32), np_val[2, :, :]
+      ], 1)
+      c_val = tensor_util.constant_value(tf_val)
+      self.assertIs(None, c_val)
 
-  @test_util.run_deprecated_v1
   def testPack_Axis0(self):
     inputs = [np.random.rand(4, 7) for _ in range(3)]
     np_val = np.array(inputs)
@@ -903,72 +912,79 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
-    tf_val = array_ops.stack(
-        [inputs[0], array_ops.placeholder(dtypes.float32), inputs[2]])
-    c_val = tensor_util.constant_value(tf_val)
-    self.assertIs(None, c_val)
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      tf_val = array_ops.stack(
+          [inputs[0],
+           array_ops.placeholder(dtypes.float32), inputs[2]])
+      c_val = tensor_util.constant_value(tf_val)
+      self.assertIs(None, c_val)
 
-  @test_util.run_deprecated_v1
   def testPack_Axis1(self):
-    inputs = [np.random.rand(4, 7) for _ in range(3)]
-    tf_val = array_ops.stack(inputs, axis=1)
-    c_val = tensor_util.constant_value(tf_val)
-    self.assertIsNone(c_val)
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      inputs = [np.random.rand(4, 7) for _ in range(3)]
+      tf_val = array_ops.stack(inputs, axis=1)
+      c_val = tensor_util.constant_value(tf_val)
+      self.assertIsNone(c_val)
 
-    tf_val = array_ops.stack(
-        [inputs[0], array_ops.placeholder(dtypes.float32), inputs[2]], axis=1)
-    c_val = tensor_util.constant_value(tf_val)
-    self.assertIs(None, c_val)
+      tf_val = array_ops.stack(
+          [inputs[0],
+           array_ops.placeholder(dtypes.float32), inputs[2]], axis=1)
+      c_val = tensor_util.constant_value(tf_val)
+      self.assertIs(None, c_val)
 
-  @test_util.run_deprecated_v1
   def testPack_Partial_Axis0(self):
     input_ = np.random.rand(4, 7)
-    tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
-    c_val = tensor_util.constant_value(tf_val, partial=True)
-    self.assertAllClose(input_, c_val[0])
-    self.assertIsNone(c_val[1])
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
+      c_val = tensor_util.constant_value(tf_val, partial=True)
+      self.assertAllClose(input_, c_val[0])
+      self.assertIsNone(c_val[1])
 
-  @test_util.run_deprecated_v1
   def testPack_Partial_Axis1(self):
     input_ = np.random.rand(4, 7)
-    tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)],
-                             axis=1)
-    c_val = tensor_util.constant_value(tf_val, partial=True)
-    self.assertIsNone(c_val)
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      tf_val = array_ops.stack(
+          [input_, array_ops.placeholder(dtypes.float32)], axis=1)
+      c_val = tensor_util.constant_value(tf_val, partial=True)
+      self.assertIsNone(c_val)
 
-  @test_util.run_deprecated_v1
   def testUnpack_Axis0(self):
     inputs = np.random.rand(3, 4, 7)
     tf_vals = array_ops.unstack(inputs)
     c_vals = [tensor_util.constant_value(x) for x in tf_vals]
     self.assertAllClose(inputs, c_vals)
 
-  @test_util.run_deprecated_v1
   def testUnpack_Partial_Axis0(self):
     input_ = np.random.rand(4, 7)
-    packed = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
-    tf_vals = array_ops.unstack(packed)
-    c_vals = [tensor_util.constant_value(x, partial=True) for x in tf_vals]
-    self.assertAllClose(input_, c_vals[0])
-    self.assertIsNone(c_vals[1])
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      packed = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
+      tf_vals = array_ops.unstack(packed)
+      c_vals = [tensor_util.constant_value(x, partial=True) for x in tf_vals]
+      self.assertAllClose(input_, c_vals[0])
+      self.assertIsNone(c_vals[1])
 
-  @test_util.run_deprecated_v1
   def testSplit_Axis0(self):
     inputs = np.random.rand(6, 5, 7)
     tf_vals = array_ops.split(inputs, 3)
     c_vals = [tensor_util.constant_value(x) for x in tf_vals]
     self.assertAllClose(np.split(inputs, 3), c_vals)
 
-  @test_util.run_deprecated_v1
   def testSplit_Partial_Axis0(self):
     input_ = np.random.rand(4, 7)
-    placeholder = array_ops.placeholder(dtypes.float32, shape=(4, 7))
-    # it'd be better to use concat here, but concat doesn't support partial
-    packed = array_ops.stack([input_, placeholder])
-    tf_vals = array_ops.split(packed, 2)
-    c_vals = [tensor_util.constant_value(x, partial=True) for x in tf_vals]
-    self.assertAllClose(input_, c_vals[0][0])
-    self.assertIsNone(c_vals[1][0])
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      placeholder = array_ops.placeholder(dtypes.float32, shape=(4, 7))
+      # it'd be better to use concat here, but concat doesn't support partial
+      packed = array_ops.stack([input_, placeholder])
+      tf_vals = array_ops.split(packed, 2)
+      c_vals = [tensor_util.constant_value(x, partial=True) for x in tf_vals]
+      self.assertAllClose(input_, c_vals[0][0])
+      self.assertIsNone(c_vals[1][0])
 
   def testEqual(self):
     # Scalar inputs.
@@ -1003,6 +1019,12 @@ class ConstantValueTest(test.TestCase):
   def testStopGradient(self):
     input_ = np.random.rand(4, 7)
     tf_val = array_ops.stop_gradient(input_)
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertAllEqual(input_, c_val)
+
+  def testIdentity(self):
+    input_ = np.random.rand(4, 7)
+    tf_val = array_ops.identity(input_)
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllEqual(input_, c_val)
 
@@ -1064,32 +1086,35 @@ class ConstantValueAsShapeTest(test.TestCase):
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([None, 1, None], c_val.as_list())
 
-  @test_util.run_deprecated_v1
   def testPack(self):
-    tf_val = array_ops.stack(
-        [constant_op.constant(16), 37, array_ops.placeholder(dtypes.int32)])
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([16, 37, None], c_val.as_list())
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      tf_val = array_ops.stack(
+          [constant_op.constant(16), 37,
+           array_ops.placeholder(dtypes.int32)])
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([16, 37, None], c_val.as_list())
 
-  @test_util.run_deprecated_v1
   def testConcat(self):
-    tf_val = array_ops.concat(
-        [[16, 37], array_ops.placeholder(
-            dtypes.int32, shape=(2,))], 0)
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([16, 37, None, None], c_val.as_list())
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      tf_val = array_ops.concat(
+          [[16, 37], array_ops.placeholder(dtypes.int32, shape=(2,))], 0)
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([16, 37, None, None], c_val.as_list())
 
-    tf_val = array_ops.concat(
-        [[16, 37], array_ops.placeholder(
-            dtypes.int32, shape=(1,)), [48]], 0)
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([16, 37, None, 48], c_val.as_list())
+      tf_val = array_ops.concat(
+          [[16, 37],
+           array_ops.placeholder(dtypes.int32, shape=(1,)), [48]], 0)
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([16, 37, None, 48], c_val.as_list())
 
-  @test_util.run_deprecated_v1
   def testSlice(self):
-    tf_val = array_ops.placeholder(dtypes.int32, shape=(4,))[0:2]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([None, None], c_val.as_list())
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      tf_val = array_ops.placeholder(dtypes.int32, shape=(4,))[0:2]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([None, None], c_val.as_list())
 
     # begin:end
     tf_val = constant_op.constant([10, 20, 30])[1:3]
@@ -1103,65 +1128,67 @@ class ConstantValueAsShapeTest(test.TestCase):
     self.assertEqual([20], c_val.as_list())
 
     # [1, 2, 16, 37, None, 48]
-    tf_val_orig = array_ops.concat(
-        [[1, 2, 16, 37], array_ops.placeholder(
-            dtypes.int32, shape=(1,)), [48]], 0)
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      tf_val_orig = array_ops.concat(
+          [[1, 2, 16, 37],
+           array_ops.placeholder(dtypes.int32, shape=(1,)), [48]], 0)
 
-    # begin: no end
-    tf_val = tf_val_orig[2:]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([16, 37, None, 48], c_val.as_list())
-
-    # begin::negative slice
-    tf_val = tf_val_orig[2::-1]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([16, 2, 1], c_val.as_list())
-
-    # :end:negative slice
-    tf_val = tf_val_orig[:1:-2]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([48, 37], c_val.as_list())
-
-    # begin:end:negative slice
-    tf_val = tf_val_orig[3:1:-1]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([37, 16], c_val.as_list())
-
-    # begin:negative end:slice
-    tf_val = tf_val_orig[1:-3:1]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([2, 16], c_val.as_list())
-
-    # negative begin::slice
-    tf_val = tf_val_orig[-3::1]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([37, None, 48], c_val.as_list())
-
-    # negative begin::negative slice
-    tf_val = tf_val_orig[-3::-1]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([37, 16, 2, 1], c_val.as_list())
-
-    # negative begin:negative end:negative slice
-    tf_val = tf_val_orig[-3:-5:-1]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([37, 16], c_val.as_list())
-
-    # Do not support shape inference for additional arguments
-    tf_val = constant_op.constant([10, 20, 30])[...]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual([None, None, None], c_val.as_list())
-
-    # Do not support shape inference for tensor slices.
-    tf_val = constant_op.constant([10, 20, 30])[
-        array_ops.placeholder(dtypes.int32, shape=()):]
-    c_val = tensor_util.constant_value_as_shape(tf_val)
-    self.assertEqual(tensor_shape.unknown_shape(), c_val)
-
-    # Do not support shape inference for higher rank
-    with self.assertRaises(ValueError):
-      tf_val = constant_op.constant([[10], [20], [30]])[:, 0:]
+      # begin: no end
+      tf_val = tf_val_orig[2:]
       c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([16, 37, None, 48], c_val.as_list())
+
+      # begin::negative slice
+      tf_val = tf_val_orig[2::-1]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([16, 2, 1], c_val.as_list())
+
+      # :end:negative slice
+      tf_val = tf_val_orig[:1:-2]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([48, 37], c_val.as_list())
+
+      # begin:end:negative slice
+      tf_val = tf_val_orig[3:1:-1]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([37, 16], c_val.as_list())
+
+      # begin:negative end:slice
+      tf_val = tf_val_orig[1:-3:1]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([2, 16], c_val.as_list())
+
+      # negative begin::slice
+      tf_val = tf_val_orig[-3::1]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([37, None, 48], c_val.as_list())
+
+      # negative begin::negative slice
+      tf_val = tf_val_orig[-3::-1]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([37, 16, 2, 1], c_val.as_list())
+
+      # negative begin:negative end:negative slice
+      tf_val = tf_val_orig[-3:-5:-1]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([37, 16], c_val.as_list())
+
+      # Do not support shape inference for additional arguments
+      tf_val = constant_op.constant([10, 20, 30])[...]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual([None, None, None], c_val.as_list())
+
+      # Do not support shape inference for tensor slices.
+      tf_val = constant_op.constant(
+          [10, 20, 30])[array_ops.placeholder(dtypes.int32, shape=()):]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
+      self.assertEqual(tensor_shape.unknown_shape(), c_val)
+
+      # Do not support shape inference for higher rank
+      with self.assertRaises(ValueError):
+        tf_val = constant_op.constant([[10], [20], [30]])[:, 0:]
+        c_val = tensor_util.constant_value_as_shape(tf_val)
 
 
 class MaybeSetStaticShapeTest(test.TestCase):
@@ -1175,24 +1202,23 @@ class MaybeSetStaticShapeTest(test.TestCase):
     finally:
       tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE = flag_old
 
-  @test_util.run_deprecated_v1
   def testMaybeSetStaticShape(self):
     shape = constant_op.constant([2, 5], dtype=dtypes.int32)
 
     def reshape():
       v = array_ops.zeros([10])
       return array_ops.reshape(v, shape)
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      with self.disableSetStaticShape():
+        graph_without_shape_propagation = func_graph.func_graph_from_py_func(
+            "without_shape_propagation", reshape, [], {})
+      graph_with_shape_propagation = func_graph.func_graph_from_py_func(
+          "with_shape_propagation", reshape, [], {})
+      self.assertCountEqual(
+          [op.type for op in graph_without_shape_propagation.get_operations()],
+          [op.type for op in graph_with_shape_propagation.get_operations()])
 
-    with self.disableSetStaticShape():
-      graph_without_shape_propagation = func_graph.func_graph_from_py_func(
-          "without_shape_propagation", reshape, [], {})
-    graph_with_shape_propagation = func_graph.func_graph_from_py_func(
-        "with_shape_propagation", reshape, [], {})
-    self.assertCountEqual(
-        [op.type for op in graph_without_shape_propagation.get_operations()],
-        [op.type for op in graph_with_shape_propagation.get_operations()])
-
-  @test_util.run_deprecated_v1
   def testMaybeSetStaticShapeScalarShape(self):
 
     def reshape():

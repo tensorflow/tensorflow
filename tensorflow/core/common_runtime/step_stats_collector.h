@@ -19,7 +19,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -188,7 +187,7 @@ class StepStatsCollector : public StepStatsCollectorInterface {
  private:
   // TODO(suharshs): Make this configurable if its not possible to find a value
   // that works for all cases.
-  static const uint64 kMaxCollectedNodes = 1 << 20;
+  static constexpr uint64 kMaxCollectedNodes = 1 << 20;
 
   typedef std::vector<std::unique_ptr<NodeExecStatsWrapper>> NodeStatsVector;
   typedef std::unordered_map<uint32, string> ThreadNamesMap;

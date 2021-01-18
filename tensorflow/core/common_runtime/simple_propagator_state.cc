@@ -14,25 +14,34 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/simple_propagator_state.h"
 
+#include <atomic>
+
 #include "tensorflow/core/common_runtime/propagator_debug_utils.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
 SimplePropagatorState::SimplePropagatorState(
-    const ImmutableExecutorState& immutable_state, int64 step_id)
+    const ImmutableExecutorState& immutable_state, int64 step_id, bool vlog)
     : SimplePropagatorState(immutable_state, step_id,
-                            immutable_state.get_root_frame_info()) {}
+                            immutable_state.get_root_frame_info(), vlog) {}
 
 SimplePropagatorState::SimplePropagatorState(
     const ImmutableExecutorState& immutable_state, int64 step_id,
-    const ImmutableExecutorState::FrameInfo& finfo)
+    const ImmutableExecutorState::FrameInfo& finfo, bool vlog)
     : immutable_state_(immutable_state),
       step_id_(step_id),
-      vlog_(VLOG_IS_ON(1)),
+      vlog_(vlog || VLOG_IS_ON(1)),
       input_tensors_(finfo.total_inputs),
-      counts_(*finfo.pending_counts),
-      nodes_(finfo.nodes.get()) {}
+      pending_(
+          new std::atomic<int32>[immutable_state.graph_view().num_nodes()]),
+      active_(vlog_ ? new std::vector<bool>(
+                          immutable_state.graph_view().num_nodes())
+                    : nullptr),
+      nodes_(finfo.nodes.get()) {
+  immutable_state_.copy_pending_counts(pending_.get());
+}
 
 SimplePropagatorState::~SimplePropagatorState() {}
 
@@ -40,7 +49,7 @@ void SimplePropagatorState::ActivateRoots(
     gtl::ArraySlice<const NodeItem*> roots, TaggedNodeSeq* ready) {
   for (const NodeItem* item : roots) {
     DCHECK_EQ(item->num_inputs, 0);
-    ready->emplace_back(item);
+    ready->push_back(TaggedNode{item});
   }
 }
 
@@ -65,53 +74,47 @@ void SimplePropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
   const GraphView& gview = immutable_state_.graph_view();
   const NodeItem* item = tagged_node.node_item;
 
-  mutex_lock l(mu_);
-
   for (const EdgeInfo& e : item->output_edges()) {
     const int dst_id = e.dst_id;
-    const PendingCounts::Handle dst_pending_id =
-        immutable_state_.pending_ids()[dst_id];
     const int src_slot = e.output_slot;
-    int num_pending = counts_.decrement_pending(dst_pending_id, 1);
     const int dst_loc = e.input_slot;
+
+    // NOTE(mrry): The write to `input_tensors_[dst_loc]` must happen before
+    // the pending count update, or else one thread might conclude that the
+    // count has dropped to zero before another thread finishes updating the
+    // input.
     if (e.is_last) {
       input_tensors_[dst_loc] = std::move((*outputs)[src_slot]);
     } else {
       input_tensors_[dst_loc] = (*outputs)[src_slot];
     }
-    if (num_pending == 0) ready->emplace_back(&gview.node_ref(dst_id));
+
+    int32 previous_num_pending =
+        pending_[dst_id].fetch_sub(1, std::memory_order_release);
+    if (previous_num_pending == 1) ready->emplace_back(&gview.node_ref(dst_id));
   }
 
   for (const ControlEdgeInfo& e : item->output_control_edges()) {
     const int dst_id = e.dst_id;
-    const PendingCounts::Handle dst_pending_id =
-        immutable_state_.pending_ids()[dst_id];
-    int num_pending = counts_.decrement_pending(dst_pending_id, 1);
-    if (num_pending == 0) ready->emplace_back(&gview.node_ref(dst_id));
+
+    int32 previous_num_pending =
+        pending_[dst_id].fetch_sub(1, std::memory_order_release);
+    if (previous_num_pending == 1) ready->emplace_back(&gview.node_ref(dst_id));
   }
 }
 
 void SimplePropagatorState::DumpState() {
   mutex_lock l(mu_);
-  LOG(WARNING) << "Dumping state";
-
   // Dump any waiting nodes that are holding on to tensors.
   for (const NodeItem* node : *nodes_) {
-    PendingCounts::Handle pending_id =
-        immutable_state_.pending_ids()[node->node_id];
-    if (counts_.node_state(pending_id) == PendingCounts::PENDING_NOTREADY ||
-        counts_.node_state(pending_id) == PendingCounts::PENDING_READY) {
-      DumpPendingNodeState(immutable_state_, node->node_id,
-                           input_tensors_.data(), false);
+    if (pending_[node->node_id]) {
+      DumpPendingNodeState(*node, input_tensors_.data(), false);
     }
   }
   // Then the active nodes.
   for (const NodeItem* node : *nodes_) {
-    PendingCounts::Handle pending_id =
-        immutable_state_.pending_ids()[node->node_id];
-    if (counts_.node_state(pending_id) == PendingCounts::STARTED) {
-      DumpActiveNodeState(immutable_state_, node->node_id,
-                          input_tensors_.data());
+    if ((*active_)[node->node_id]) {
+      DumpActiveNodeState(*node, input_tensors_.data());
     }
   }
   // Show all input tensors in use.

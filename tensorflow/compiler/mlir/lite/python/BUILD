@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = [":friends"])
@@ -20,14 +22,16 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:types_proto_cc",
         "//tensorflow/stream_executor/lib",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -56,7 +60,7 @@ cc_library(
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:types_proto_cc",
         "//tensorflow/stream_executor/lib",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -85,7 +89,8 @@ cc_library(
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:types_proto_cc",
         "//tensorflow/stream_executor/lib",
-        "@llvm-project//llvm:support",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",

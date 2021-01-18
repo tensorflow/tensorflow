@@ -1,0 +1,25 @@
+op {
+  name: "ReaderReadUpTo"
+  input_arg {
+    name: "reader_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "queue_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "num_records"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "keys"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "values"
+    type: DT_STRING
+  }
+}

@@ -1,0 +1,38 @@
+op {
+  graph_op_name: "OutfeedDequeueTupleV2"
+  visibility: HIDDEN
+  in_arg {
+    name: "device_ordinal"
+    description: <<END
+An int scalar tensor, representing the TPU device to use. This should be -1 when
+the Op is running on a TPU device, and >= 0 when the Op is running on the CPU
+device.
+END
+  }
+  out_arg {
+    name: "outputs"
+    description: <<END
+A list of tensors that will be read from the outfeed.
+END
+  }
+  attr {
+    name: "dtypes"
+    description: <<END
+The element types of each element in `outputs`.
+END
+  }
+  attr {
+    name: "shapes"
+    description: <<END
+The shapes of each tensor in `outputs`.
+END
+  }
+  summary: <<END
+Retrieve multiple values from the computation outfeed. Device ordinal is a
+tensor allowing dynamic outfeed.
+END
+  description: <<END
+This operation will block indefinitely until data is available. Output `i`
+corresponds to XLA tuple element `i`.
+END
+}

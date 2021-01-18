@@ -71,7 +71,6 @@ using reference_ops::ReluX;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
-using reference_ops::StridedSlice;
 using reference_ops::TensorFlowSplit;
 
 static constexpr int kDepthwiseReverseShift = -1;
@@ -1104,7 +1103,7 @@ inline void FullyConnected(
   const int32 output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
@@ -1654,7 +1653,7 @@ inline void FullyConnected(
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
 
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
@@ -2120,7 +2119,7 @@ inline void FullyConnected(
   const int32 output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
@@ -2229,7 +2228,7 @@ inline void ShuffledFullyConnected(
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
@@ -2946,6 +2945,18 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                 output_data, DimsToShape(im2col_dims), im2col_data);
 }
 
+inline void TransposeConvV2(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
+    const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
+    CpuBackendContext* cpu_backend_context) {
+  TransposeConvV2(params, input_shape, input_data, hwoi_ordered_filter_shape,
+                  hwoi_ordered_filter_data, /*bias_shape*/ RuntimeShape(),
+                  /*bias_data*/ nullptr, output_shape, output_data,
+                  col2im_shape, col2im_data, cpu_backend_context);
+}
+
 template <typename T>
 void TransposeIm2col(const T* input_data, const Dims<4>& input_dims,
                      const Dims<4>& filter_dims, int stride_width,
@@ -3429,9 +3440,9 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   tflite::ArithmeticParams op_params;
   SetActivationParams(output_activation_min, output_activation_max, &op_params);
 
-  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
+  BroadcastDivSlow(op_params, DimsToShape(input1_dims), input1_data,
+                   DimsToShape(input2_dims), input2_data,
+                   DimsToShape(output_dims), output_data);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -4935,6 +4946,23 @@ void Transpose(const T* input, const Dims<4>& input_dims, T* output,
   }
   Transpose(params, DimsToShape(input_dims), input, DimsToShape(output_dims),
             output);
+}
+
+template <typename T>
+inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
+                         int begin_mask, int end_mask, int shrink_axis_mask,
+                         const std::vector<int>& start_indices,
+                         const std::vector<int>& stop_indices,
+                         const std::vector<int>& strides, T* output_data,
+                         const Dims<4>& output_dims) {
+  TFLITE_DCHECK_EQ(start_indices.size(), 4);
+  auto op_params = strided_slice::BuildStridedSliceParams(
+      begin_mask, end_mask, shrink_axis_mask, start_indices, stop_indices,
+      strides);
+  reference_ops::StridedSliceReverseIndices(&op_params);
+
+  StridedSlice(op_params, DimsToShape(input_dims), input_data,
+               DimsToShape(output_dims), output_data);
 }
 
 }  // namespace optimized_ops

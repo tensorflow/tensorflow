@@ -15,12 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_IMMUTABLE_EXECUTOR_STATE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_IMMUTABLE_EXECUTOR_STATE_H_
 
+#include <atomic>
 #include <deque>
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/executor.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/common_runtime/graph_view.h"
+#include "tensorflow/core/common_runtime/local_executor_params.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -40,11 +42,16 @@ class Graph;
 class ImmutableExecutorState {
  public:
   struct FrameInfo {
-    FrameInfo()
-        : input_count(0),
+    explicit FrameInfo(string name)
+        : name(std::move(name)),
+          input_count(0),
           total_inputs(0),
           pending_counts(nullptr),
-          nodes(nullptr) {}
+          nodes(nullptr),
+          parallel_iterations(-1) {}
+
+    // The name of the frame.
+    string name;
 
     // The total number of inputs to a frame.
     int input_count;
@@ -62,6 +69,9 @@ class ImmutableExecutorState {
 
     // The nodes in a frame. Used only for debugging.
     std::unique_ptr<std::vector<const NodeItem*>> nodes;
+
+    // The number of iterations of this frame that can execute concurrently.
+    int32 parallel_iterations;
   };
 
   explicit ImmutableExecutorState(const LocalExecutorParams& p)
@@ -82,18 +92,29 @@ class ImmutableExecutorState {
   }
   const std::vector<const NodeItem*>& root_nodes() const { return root_nodes_; }
 
-  const FrameInfo* get_frame_info(const string& frame_name) const {
-    auto it_frame_info = frame_info_.find(frame_name);
-    if (it_frame_info == frame_info_.end()) {
-      return nullptr;
-    } else {
-      return it_frame_info->second;
-    }
-  }
-
   const FrameInfo& get_root_frame_info() const { return *root_frame_info_; }
 
+  const FrameInfo& get_enter_frame_info(const NodeItem& node_item) const {
+    DCHECK(node_item.is_enter);
+    return *enter_frame_info_[node_item.node_id];
+  }
+
   bool requires_control_flow_support() const { return requires_control_flow_; }
+
+  // Copies the pending counts for nodes in this graph to the given array.
+  //
+  // This method provides a more efficient way of initializing
+  // `SimplePropagatorState` than individually accessing the pending counts from
+  // `get_root_frame_info().counts`.
+  //
+  // REQUIRES: `!requires_control_flow_support && len(dest) ==
+  // graph_view().num_nodes()`.
+  void copy_pending_counts(std::atomic<int32>* dest) const {
+    DCHECK(!requires_control_flow_);
+    memcpy(dest, atomic_pending_counts_.get(),
+           graph_view().num_nodes() * sizeof(std::atomic<int32>));
+    std::atomic_thread_fence(std::memory_order_release);
+  }
 
  private:
   struct ControlFlowInfo {
@@ -119,8 +140,17 @@ class ImmutableExecutorState {
   // Mapping from frame name to static information about the frame.
   // TODO(yuanbyu): We could cache it along with the graph so to avoid
   // the overhead of constructing it for each executor instance.
-  gtl::FlatMap<string, FrameInfo*> frame_info_;
+  absl::flat_hash_map<absl::string_view, std::unique_ptr<FrameInfo>>
+      frame_info_;
   const FrameInfo* root_frame_info_;  // Not owned.
+
+  // If the graph contains any "Enter" or "RefEnter" nodes, this vector maps
+  // dense node IDs to the corresponding FrameInfo.
+  std::vector<FrameInfo*> enter_frame_info_;
+
+  // If `requires_control_flow_` is false, this points to an array of initial
+  // pending counts for the nodes in the graph, indexed by node ID.
+  std::unique_ptr<std::atomic<int32>[]> atomic_pending_counts_;
 
   // Shallow copies of the constant tensors used in the graph.
   std::vector<Tensor> const_tensors_;

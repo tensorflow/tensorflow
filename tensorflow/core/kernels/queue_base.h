@@ -36,7 +36,7 @@ namespace tensorflow {
 class QueueBase : public QueueInterface {
  public:
   // As a possible value of 'capacity'.
-  static const int32 kUnbounded = INT_MAX;
+  static constexpr int32 kUnbounded = INT_MAX;
 
   // Args:
   //   component_dtypes: The types of each component in a queue-element tuple.

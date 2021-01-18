@@ -132,10 +132,10 @@ function prepare_src() {
     unzip -o -q ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_windows.zip -d ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
     echo "Unzip finished."
     # runfiles structure after unzip the python binary
-    cp \
+    cp -L \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
-    cp -R \
+    cp -LR \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
     cp_external \
@@ -149,10 +149,10 @@ function prepare_src() {
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
-      cp \
+      cp -L \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
         "${TMPDIR}"
-      cp -R \
+      cp -LR \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       cp_external \
@@ -172,10 +172,10 @@ function prepare_src() {
       fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
-      cp \
+      cp -L \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
         "${TMPDIR}"
-      cp -R \
+      cp -LR \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       cp_external \
@@ -216,10 +216,10 @@ function prepare_src() {
   if [ -d "${TMPDIR}/tensorflow/_api/v1/" ]
   then
     cp -r ${TMPDIR}/tensorflow/python/keras/api/_v1/keras/ ${TMPDIR}/tensorflow/keras/
-    sed -i'.original' -e 's/.python.keras.api._v1/tensorflow/g' ${TMPDIR}/tensorflow/__init__.py
+    find . -type f -maxdepth 0 -exec sed -i'.original' -e 's/.python.keras.api._v1/tensorflow/g' ${TMPDIR}/tensorflow/__init__.py {} +
   else
     cp -r ${TMPDIR}/tensorflow/python/keras/api/_v2/keras/ ${TMPDIR}/tensorflow/keras/
-    sed -i'.original' -e 's/.python.keras.api._v2/tensorflow/g' ${TMPDIR}/tensorflow/__init__.py
+    find . -type f -maxdepth 0 -exec sed -i'.original' -e 's/.python.keras.api._v2/tensorflow/g' ${TMPDIR}/tensorflow/__init__.py {} +
   fi
 }
 

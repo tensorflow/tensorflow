@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::Axis;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::Convolution2DAttributes;
 using ::tflite::gpu::DataType;
+using ::tflite::gpu::DivideRoundUp;
 using ::tflite::gpu::HW;
 using ::tflite::gpu::Linear;
 using ::tflite::gpu::OHWI;
@@ -44,7 +44,6 @@ using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::ValueId;
 using ::tflite::gpu::metal::ConvolutionGeneric;
 using ::tflite::gpu::metal::ConvolutionWino4x4To6x6;
-using ::tflite::gpu::IntegralDivideRoundUp;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
 
@@ -275,7 +274,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   BHWC conv_shape;
   conv_shape.b = dst_shape.b;
   conv_shape.h = 36;
-  conv_shape.w = IntegralDivideRoundUp(new_width, 4) * IntegralDivideRoundUp(new_height, 4);
+  conv_shape.w = DivideRoundUp(new_width, 4) * DivideRoundUp(new_height, 4);
   conv_shape.c = dst_shape.c;
 
   TensorFloat32 src_tensor;
@@ -285,50 +284,52 @@ using ::tflite::gpu::metal::SingleOpModel;
     src_tensor.data[i] = sin(i);
   }
 
-  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  tflite::gpu::metal::RuntimeOptions options;
-  options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
+  TensorFloat32 output0;
 
-  std::map<ValueId, TensorFloat32> inputs_v0;
-  inputs_v0[0] = src_tensor;
-  std::map<ValueId, TensorFloat32> outputs_v0;
-  outputs_v0[1].shape = dst_shape;
-  outputs_v0[1].data.resize(dst_shape.DimensionsProduct());
+  tflite::gpu::OperationDef op_def;
+  op_def.precision = tflite::gpu::CalculationsPrecision::F32;
+  tflite::gpu::TensorDescriptor tensor_descriptor = tflite::gpu::TensorDescriptor{
+    DataType::FLOAT32, tflite::gpu::TensorStorageType::BUFFER, tflite::gpu::Layout::HWC};
+  op_def.src_tensors.push_back(tensor_descriptor);
+  op_def.dst_tensors.push_back(tensor_descriptor);
 
-  std::string device_name = std::string([[device name] UTF8String]);
-  tflite::gpu::metal::DeviceInfo device_info(device_name);
-  auto tasks_v0 = ConvolutionGeneric(0, 0, 1, dst_shape, attr, device_info, options);
-
-  auto status = RunGraph(tasks_v0, device, inputs_v0, &outputs_v0);
+  tflite::gpu::metal::MetalExecutionEnvironment env;
+  auto gpu_op0 = ConvolutionGeneric(op_def, dst_shape, attr, env.GetGpuInfo());
+  auto op0_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op0));
+  auto status = env.ExecuteGPUOperation(src_tensor, std::move(op0_ptr), dst_shape, &output0);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
-
-  std::map<ValueId, TensorFloat32> inputs_v1;
-  inputs_v1[0] = src_tensor;
-  std::map<ValueId, TensorFloat32> outputs_v1;
-  outputs_v1[1].shape = dst_shape;
-  outputs_v1[1].data.resize(outputs_v1[1].shape.DimensionsProduct());
 
   tflite::gpu::metal::Winograd4x4To36Attributes wino_up_attr;
   wino_up_attr.padding = attr.padding;
-  auto tasks_v1 = tflite::gpu::metal::Winograd4x4To36(0, 0, 2, wino_up_attr);
+  auto gpu_op1 = tflite::gpu::metal::Winograd4x4To36(op_def, wino_up_attr);
+  auto op1_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op1));
 
-  auto tasks_v2 = ConvolutionWino4x4To6x6(1, 2, 3, conv_shape, attr, device_info, options);
+  auto gpu_op2 = ConvolutionWino4x4To6x6(op_def, conv_shape, attr, env.GetGpuInfo());
+  auto op2_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op2));
 
   tflite::gpu::metal::Winograd36To4x4Attributes wino_down_attr;
   wino_down_attr.output_shape = dst_shape;
   wino_down_attr.biases = attr.bias;
-  auto tasks_v3 = tflite::gpu::metal::Winograd36To4x4(2, 3, 1, options, wino_down_attr);
+  auto gpu_op3 = tflite::gpu::metal::Winograd36To4x4(op_def, wino_down_attr);
+  auto op3_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op3));
 
-  std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks;
-  tasks.insert(tasks.end(), tasks_v1.begin(), tasks_v1.end());
-  tasks.insert(tasks.end(), tasks_v2.begin(), tasks_v2.end());
-  tasks.insert(tasks.end(), tasks_v3.begin(), tasks_v3.end());
-
-  status = RunGraph(tasks, device, inputs_v1, &outputs_v1);
+  TensorFloat32 output1;
+  BHWC output1_shape = conv_shape;
+  output1_shape.c = src_shape.c;
+  status = env.ExecuteGPUOperation(src_tensor, std::move(op1_ptr), output1_shape, &output1);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
-  status = CompareVectors(outputs_v0[1].data, outputs_v1[1].data, 1e-4f);
+  TensorFloat32 output2;
+  BHWC output2_shape = conv_shape;
+  status = env.ExecuteGPUOperation(output1, std::move(op2_ptr), output2_shape, &output2);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+
+  TensorFloat32 output3;
+  BHWC output3_shape = dst_shape;
+  status = env.ExecuteGPUOperation(output2, std::move(op3_ptr), output3_shape, &output3);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+
+  status = CompareVectors(output0.data, output3.data, 1e-4f);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 

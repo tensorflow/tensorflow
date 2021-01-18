@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,22 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/type_to_tflitetype.h"
+
+// Copied from tensorflow/lite/version.h to avoid a dependency chain into
+// tensorflow/core.
+#define TFLITE_SCHEMA_VERSION (3)
 
 namespace tflite {
 
@@ -30,47 +39,63 @@ namespace internal {
 // A helper class to encapsulate the implementation of APIs in Context.
 // context->impl_ points to an instance of this class.
 // Check tensorflow/lite/c/common.h for detailed descriptions.
+// TODO(b/16157777): Consider rolling this class into MicroInterpreter.
 class ContextHelper {
  public:
   explicit ContextHelper(ErrorReporter* error_reporter,
-                         MicroAllocator* allocator)
-      : allocator_(allocator), error_reporter_(error_reporter) {}
+                         MicroAllocator* allocator, const Model* model);
 
-  static TfLiteStatus AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes,
-                                               void** ptr);
-
+  // Functions that will be assigned to function pointers on TfLiteContext:
+  static void* AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes);
   static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* ctx,
                                                   size_t bytes,
                                                   int* buffer_idx);
-
   static void* GetScratchBuffer(TfLiteContext* ctx, int buffer_idx);
-
   static void ReportOpError(struct TfLiteContext* context, const char* format,
                             ...);
+  static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
+                                 int tensor_idx);
+  static TfLiteEvalTensor* GetEvalTensor(const struct TfLiteContext* context,
+                                         int tensor_idx);
 
-  void SetNodeIndex(int idx) { current_node_idx_ = idx; }
+  // Sets the pointer to a list of TfLiteEvalTensor instances.
+  void SetTfLiteEvalTensors(TfLiteEvalTensor* eval_tensors);
+
+  // Sets the pointer to a list of ScratchBufferHandle instances.
+  void SetScratchBufferHandles(ScratchBufferHandle* scratch_buffer_handles);
 
  private:
-  MicroAllocator* allocator_;
-  ErrorReporter* error_reporter_;
-  int current_node_idx_ = -1;
+  MicroAllocator* allocator_ = nullptr;
+  ErrorReporter* error_reporter_ = nullptr;
+  const Model* model_ = nullptr;
+  TfLiteEvalTensor* eval_tensors_ = nullptr;
+  ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
 };
 
 }  // namespace internal
 
 class MicroInterpreter {
  public:
-  // The lifetime of the model, op resolver, tensor arena, and error reporter
-  // must be at least as long as that of the interpreter object, since the
-  // interpreter may need to access them at any time. This means that you should
-  // usually create them with the same scope as each other, for example having
-  // them all allocated on the stack as local variables through a top-level
-  // function.
-  // The interpreter doesn't do any deallocation of any of the pointed-to
-  // objects, ownership remains with the caller.
-  MicroInterpreter(const Model* model, const OpResolver& op_resolver,
+  // The lifetime of the model, op resolver, tensor arena, error reporter and
+  // profiler must be at least as long as that of the interpreter object, since
+  // the interpreter may need to access them at any time. This means that you
+  // should usually create them with the same scope as each other, for example
+  // having them all allocated on the stack as local variables through a
+  // top-level function. The interpreter doesn't do any deallocation of any of
+  // the pointed-to objects, ownership remains with the caller.
+  MicroInterpreter(const Model* model, const MicroOpResolver& op_resolver,
                    uint8_t* tensor_arena, size_t tensor_arena_size,
-                   ErrorReporter* error_reporter);
+                   ErrorReporter* error_reporter,
+                   tflite::Profiler* profiler = nullptr);
+
+  // Create an interpreter instance using an existing MicroAllocator instance.
+  // This constructor should be used when creating an allocator that needs to
+  // have allocation handled in more than one interpreter or for recording
+  // allocations inside the interpreter. The lifetime of the allocator must be
+  // as long as that of the interpreter object.
+  MicroInterpreter(const Model* model, const MicroOpResolver& op_resolver,
+                   MicroAllocator* allocator, ErrorReporter* error_reporter,
+                   tflite::Profiler* profiler = nullptr);
 
   ~MicroInterpreter();
 
@@ -132,15 +157,31 @@ class MicroInterpreter {
 
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
-  size_t operators_size() const { return operators_->size(); }
+  size_t operators_size() const { return subgraph_->operators()->size(); }
 
   // For debugging only.
   const NodeAndRegistration node_and_registration(int node_index) const {
     return node_and_registrations_[node_index];
   }
 
+  // For debugging only.
+  // Returns the actual used arena in bytes. This method gives the optimal arena
+  // size. It's only available after `AllocateTensors` has been called.
+  // Note that normally `tensor_arena` requires 16 bytes alignment to fully
+  // utilize the space. If it's not the case, the optimial arena size would be
+  // arena_used_bytes() + 16.
+  size_t arena_used_bytes() const { return allocator_.used_bytes(); }
+
+ protected:
+  const MicroAllocator& allocator() const { return allocator_; }
+  const TfLiteContext& context() const { return context_; }
+
  private:
-  void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
+  // TODO(b/158263161): Consider switching to Create() function to enable better
+  // error reporting during initialization.
+  void Init(tflite::Profiler* profiler);
+
+  void CorrectTensorEndianness(TfLiteEvalTensor* tensorCorr);
 
   template <class T>
   void CorrectTensorDataEndianness(T* data, int32_t size);
@@ -148,18 +189,25 @@ class MicroInterpreter {
   NodeAndRegistration* node_and_registrations_ = nullptr;
 
   const Model* model_;
-  const OpResolver& op_resolver_;
+  const MicroOpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
   TfLiteContext context_ = {};
-  MicroAllocator allocator_;
+  MicroAllocator& allocator_;
   bool tensors_allocated_;
 
   TfLiteStatus initialization_status_;
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
-  const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
 
-  const SubGraph* subgraph_;
+  const SubGraph* subgraph_ = nullptr;
+  TfLiteEvalTensor* eval_tensors_ = nullptr;
+  ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
+
+  // TODO(b/16157777): Drop this reference:
   internal::ContextHelper context_helper_;
+
+  // TODO(b/162311891): Clean these pointers up when this class supports buffers
+  // from TfLiteEvalTensor.
+  TfLiteTensor* input_tensor_;
+  TfLiteTensor* output_tensor_;
 };
 
 }  // namespace tflite

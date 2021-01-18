@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
@@ -126,6 +128,10 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
   candidates_index_.clear();
   all_fusion_candidates_.clear();
   reachability_.reset();
+  if (changed) {
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module).status());
+  }
   return changed;
 }
 
@@ -333,6 +339,21 @@ bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
   if (!ShapesCompatibleForFusion(instr1, instr2)) {
     return false;
   }
+
+  // If both nodes are in-place operations and they use a common in-place
+  // operand, we can't fuse these two.
+  for (const auto& operand_and_output_index1 :
+       HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr1)) {
+    const HloInstruction* operand =
+        instr1->operand(operand_and_output_index1.first.operand_number);
+    for (const auto& operand_and_output_index2 :
+         HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr2)) {
+      if (operand ==
+          instr2->operand(operand_and_output_index2.first.operand_number)) {
+        return false;
+      }
+    }
+  }
   return true;
 }
 
@@ -346,19 +367,23 @@ void MultiOutputFusion::UpdateReachability(
     HloInstruction* instr1, HloInstruction* instr2,
     absl::Span<HloInstruction* const> instrs_to_update,
     const std::function<bool(HloInstruction*)>& skip) {
+  auto instr1_i = reachability_->GetIndex(instr1);
+  auto instr2_i = reachability_->GetIndex(instr2);
   for (auto instr : instrs_to_update) {
     if (skip != nullptr && skip(instr)) {
       continue;
     }
-    if (reachability_->IsReachable(instr2, instr) &&
-        reachability_->IsReachable(instr1, instr)) {
+    auto instr_i = reachability_->GetIndex(instr);
+    bool instr2_instr = reachability_->IsReachable(instr2_i, instr_i);
+    bool instr1_instr = reachability_->IsReachable(instr1_i, instr_i);
+    if (instr2_instr && instr1_instr) {
       // If a candidate was already reachable by both, no update needed.
       continue;
     }
-    if (reachability_->IsReachable(instr2, instr)) {
+    if (instr2_instr) {
       reachability_->FastSetReachabilityToUnion({instr, instr1}, instr);
     }
-    if (reachability_->IsReachable(instr1, instr)) {
+    if (reachability_->IsReachable(instr1_i, instr_i)) {
       reachability_->FastSetReachabilityToUnion({instr, instr2}, instr);
     }
   }

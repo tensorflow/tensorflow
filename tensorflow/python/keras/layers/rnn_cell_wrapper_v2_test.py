@@ -26,11 +26,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import layers
 from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
+from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_impl
+from tensorflow.python.keras.legacy_tf_layers import base as legacy_base_layer
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
@@ -40,8 +40,10 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
 
   def testResidualWrapper(self):
     wrapper_type = rnn_cell_wrapper_v2.ResidualWrapper
-    x = ops.convert_to_tensor_v2(np.array([[1., 1., 1.]]), dtype="float32")
-    m = ops.convert_to_tensor_v2(np.array([[0.1, 0.1, 0.1]]), dtype="float32")
+    x = ops.convert_to_tensor_v2_with_dispatch(
+        np.array([[1., 1., 1.]]), dtype="float32")
+    m = ops.convert_to_tensor_v2_with_dispatch(
+        np.array([[0.1, 0.1, 0.1]]), dtype="float32")
     base_cell = rnn_cell_impl.GRUCell(
         3, kernel_initializer=init_ops.constant_initializer(0.5),
         bias_initializer=init_ops.constant_initializer(0.5))
@@ -62,9 +64,10 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
 
   def testResidualWrapperWithSlice(self):
     wrapper_type = rnn_cell_wrapper_v2.ResidualWrapper
-    x = ops.convert_to_tensor_v2(
+    x = ops.convert_to_tensor_v2_with_dispatch(
         np.array([[1., 1., 1., 1., 1.]]), dtype="float32")
-    m = ops.convert_to_tensor_v2(np.array([[0.1, 0.1, 0.1]]), dtype="float32")
+    m = ops.convert_to_tensor_v2_with_dispatch(
+        np.array([[0.1, 0.1, 0.1]]), dtype="float32")
     base_cell = rnn_cell_impl.GRUCell(
         3, kernel_initializer=init_ops.constant_initializer(0.5),
         bias_initializer=init_ops.constant_initializer(0.5))
@@ -116,7 +119,8 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
     base_cell = layers.SimpleRNNCell(1, name="basic_rnn_cell")
     rnn_cell = wrapper(base_cell)
     rnn_layer = layers.RNN(rnn_cell)
-    inputs = ops.convert_to_tensor_v2([[[1]]], dtype=dtypes.float32)
+    inputs = ops.convert_to_tensor_v2_with_dispatch([[[1]]],
+                                                    dtype=dtypes.float32)
     rnn_layer(inputs)
 
     wrapper_name = generic_utils.to_snake_case(wrapper.__name__)
@@ -136,12 +140,12 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
   def testWrapperV2Caller(self, wrapper):
     """Tests that wrapper V2 is using the LayerRNNCell's caller."""
 
-    with base_layer.keras_style_scope():
+    with legacy_base_layer.keras_style_scope():
       base_cell = rnn_cell_impl.MultiRNNCell(
           [rnn_cell_impl.BasicRNNCell(1) for _ in range(2)])
     rnn_cell = wrapper(base_cell)
-    inputs = ops.convert_to_tensor_v2([[1]], dtype=dtypes.float32)
-    state = ops.convert_to_tensor_v2([[1]], dtype=dtypes.float32)
+    inputs = ops.convert_to_tensor_v2_with_dispatch([[1]], dtype=dtypes.float32)
+    state = ops.convert_to_tensor_v2_with_dispatch([[1]], dtype=dtypes.float32)
     _ = rnn_cell(inputs, [state, state])
     weights = base_cell._cells[0].weights
     self.assertLen(weights, expected_len=2)
@@ -222,11 +226,11 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
     wrapper_cls = rnn_cell_wrapper_v2.DropoutWrapper
     cell = layers.LSTMCell(10)
 
-    with self.assertRaisesRegexp(ValueError, "does not work with "):
+    with self.assertRaisesRegex(ValueError, "does not work with "):
       wrapper_cls(cell)
 
     cell = layers.LSTMCellV2(10)
-    with self.assertRaisesRegexp(ValueError, "does not work with "):
+    with self.assertRaisesRegex(ValueError, "does not work with "):
       wrapper_cls(cell)
 
 

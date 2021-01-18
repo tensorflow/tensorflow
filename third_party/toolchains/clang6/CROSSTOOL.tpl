@@ -531,7 +531,6 @@ toolchain {
   linker_flag: "-L/usr/lib/gcc/x86_64-linux-gnu/4.8"
 
   # This is the minimum x86 architecture TensorFlow supports.
-  compiler_flag: "-DARCH_K8"
   compiler_flag: "-m64"
 
   # These are for Linux.

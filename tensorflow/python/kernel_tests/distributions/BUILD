@@ -60,6 +60,13 @@ cuda_py_test(
     name = "beta_test",
     size = "small",
     srcs = ["beta_test.py"],
+    tags = [
+        "no_rocm",  # ROCm 3.9 regression
+        "notsan",  # b/173653918
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -111,6 +118,9 @@ cuda_py_test(
     name = "dirichlet_test",
     size = "small",
     srcs = ["dirichlet_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -189,7 +199,6 @@ cuda_py_test(
 cuda_py_test(
     name = "multinomial_test",
     srcs = ["multinomial_test.py"],
-    tags = ["manual"],  # b/69001419
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -213,6 +222,7 @@ cuda_py_test(
         "no_oss",
         # disable to avoid false positives from scipy.
         "nomsan",
+        "noasan",  #b/168810473
     ],
     deps = [
         "//tensorflow/python:client_testlib",

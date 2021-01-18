@@ -23,26 +23,11 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> GpuScatterExpander::Run(HloModule* module) {
-  auto is_nontrivial_scatter = [](HloInstruction* inst) {
-    // TODO(b/129698548): Scattering elements larger than 64 bits is not
-    // supported by XLA:GPU.
-    return inst->opcode() == HloOpcode::kScatter &&
-           inst->shape().element_type() == C128;
-  };
-
-  std::vector<HloInstruction*> scatter_instrs;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    absl::c_copy_if(computation->instructions(),
-                    std::back_inserter(scatter_instrs), is_nontrivial_scatter);
-  }
-
-  for (HloInstruction* inst : scatter_instrs) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * expanded_root, ExpandScatter(inst));
-    TF_RETURN_IF_ERROR(inst->parent()->ReplaceInstruction(inst, expanded_root));
-  }
-
-  return !scatter_instrs.empty();
+bool GpuScatterExpander::InstructionMatchesPattern(HloInstruction* inst) {
+  // TODO(b/129698548): Scattering elements larger than 64 bits is not
+  // supported by XLA:GPU.
+  return inst->opcode() == HloOpcode::kScatter &&
+         primitive_util::BitWidth(inst->shape().element_type()) > 64;
 }
 
 }  // namespace xla

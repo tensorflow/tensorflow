@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -99,7 +99,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
           std::vector<tensorflow::NamedDevice> named_devices;
           for (const auto& s : serialized_named_devices) {
             tensorflow::NamedDevice named_device;
-            if (!named_device.ParseFromString(s)) {
+            if (!named_device.ParseFromString(std::string(s))) {
               throw std::invalid_argument(
                   "The NamedDevice could not be parsed as a valid protocol "
                   "buffer");
@@ -241,7 +241,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
 
   m.def("TF_EstimatePerformance", [](const py::bytes& serialized_device) {
     tensorflow::NamedDevice device;
-    if (!device.ParseFromString(serialized_device)) {
+    if (!device.ParseFromString(std::string(serialized_device))) {
       throw std::invalid_argument(
           "The NamedDevice could not be parsed as a valid protocol buffer");
     }

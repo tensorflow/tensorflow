@@ -59,7 +59,8 @@ constexpr llvm::StringRef kTpuStatusAttr = "_tpu_compilation_status";
 // TPU-annotated operations and intended to preserve backward compatibility with
 // TFv1.
 struct TpuV1BridgeExecutorIslandCoarsening
-    : public OperationPass<TpuV1BridgeExecutorIslandCoarsening, ModuleOp> {
+    : public PassWrapper<TpuV1BridgeExecutorIslandCoarsening,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -322,7 +323,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandCoarseningPass() {
   return std::make_unique<TpuV1BridgeExecutorIslandCoarsening>();
 }

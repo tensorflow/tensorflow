@@ -44,7 +44,8 @@ class MethodNameUpdater(object):
   Typical usages of the `MethodNameUpdater`
   ```python
   ...
-  updater = tf.compat.v1.saved_model.MethodNameUpdater(export_dir)
+  updater = tf.compat.v1.saved_model.signature_def_utils.MethodNameUpdater(
+      export_dir)
   # Update all signature_defs with key "foo" in all meta graph defs.
   updater.replace_method_name(signature_key="foo", method_name="regress")
   # Update a single signature_def with key "bar" in the meta graph def with

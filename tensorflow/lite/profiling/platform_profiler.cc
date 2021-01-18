@@ -25,11 +25,11 @@ limitations under the License.
 namespace tflite {
 namespace profiling {
 
-std::unique_ptr<tflite::Profiler> CreatePlatformProfiler() {
+std::unique_ptr<tflite::Profiler> MaybeCreatePlatformProfiler() {
 #if defined(__ANDROID__)
-  return CreateATraceProfiler();
+  return MaybeCreateATraceProfiler();
 #else
-  return std::unique_ptr<tflite::Profiler>(nullptr);
+  return nullptr;
 #endif
 }
 

@@ -19,11 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-
 import copy
-import hashlib
 import os
 import pipes
+import re
 import shlex
 
 import six
@@ -215,8 +214,9 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
                                    signature_def_key,
                                    cpp_class,
                                    target_triple,
+                                   target_cpu,
                                    variables_to_feed=(),
-                                   enable_multithreading=False):
+                                   multithreading=False):
   """Compile a `MetaGraphDef` to header+object files in `output_prefix`.
 
   Use XLA AOT (`tfcompile`) to convert the given meta graph and
@@ -239,12 +239,14 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
     signature_def_key: String, the signature_def to use in the SavedModel.
     cpp_class: String, Name of output C++ class.
     target_triple: String, LLVM target triple.
+    target_cpu: String, LLVM target cpu name.
     variables_to_feed: A list of strings, the variables that will be fed by the
       user; these won't be frozen.  If `None`, then we will extract all the
       variables in the graph and mark them as to-feed.  The default behavior is
       an empty tuple: all variables must be frozen.
-    enable_multithreading: Not implemented.  Enable multithreading in the
-      compiled computation.
+    multithreading: Whether to enable multithreading in the compiled
+      computation.  Note that if using this option, the resulting object files
+      may have external dependencies on multithreading libraries like nsync.
 
   Raises:
     RuntimeError: If tensorflow was not built with XLA.
@@ -252,23 +254,20 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       issue importing the tfcompile python wrapper.
     ValueError: If `meta_graph_def.signature_def[signature_def_key]` is
       missing or has empty outputs.
-    NotImplementedError: If `enable_multithreading is True`.
   """
   if _pywrap_tfcompile_import_error:
-    raise _pywrap_tfcompile_import_error
+    raise _pywrap_tfcompile_import_error  # pylint: disable=raising-bad-type
 
-  if enable_multithreading:
-    raise NotImplementedError(
-        'Multithreading is not currently supported because it requires '
-        'additional dependencies in the AOT runtime.')
   else:
     # TODO(ebrevdo): Pipe DebugOptions through tfcompile::Main and pywrap
     # so that we can set these directly instead of relying on env vars.
     xla_flags = os.environ.get('XLA_FLAGS')
     if not xla_flags:
-      xla_flags = '--xla_cpu_multi_thread_eigen=false'
+      xla_flags = '--xla_cpu_multi_thread_eigen={}'.format(
+          'true' if multithreading else 'false')
     else:
-      xla_flags += ',--xla_cpu_multi_thread_eigen=false'
+      xla_flags += ',--xla_cpu_multi_thread_eigen={}'.format(
+          'true' if multithreading else 'false')
     os.environ['XLA_FLAGS'] = xla_flags
 
   signature_def_map = meta_graph_def.signature_def
@@ -319,7 +318,8 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
   # Load the Variables so that we can freeze the graph.
   with session.Session(graph=ops_lib.Graph()) as sess:
     restorer = saver_lib.import_meta_graph(meta_graph_def, clear_devices=True)
-    restorer.restore(sess, checkpoint_path)
+    if restorer is not None:
+      restorer.restore(sess, checkpoint_path)
     graph_def.CopyFrom(
         graph_util.convert_variables_to_constants(
             sess,
@@ -349,10 +349,9 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
   output_dir = os.path.dirname(output_prefix)
   file_io.recursive_create_dir(output_dir)
 
-  entry_digest = hashlib.md5()
-  entry_digest.update(str(config).encode())
-  entry_digest.update(str(graph_def).encode())
-  entry_digest = entry_digest.hexdigest()
+  entry_point = re.sub(
+      '[^0-9a-zA-Z]+', '_',
+      '__xla_' + output_prefix + '__' + cpp_class)
 
   logging.info('Generating XLA AOT artifacts in: {}'.format(output_dir))
 
@@ -367,7 +366,8 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       config=config_pbtxt_location,
       cpp_class=cpp_class,
       target_triple=target_triple,
-      entry_point='entry_{}'.format(entry_digest),
+      target_cpu=target_cpu,
+      entry_point=entry_point,
       out_function_object='{}.o'.format(output_prefix),
       out_header='{}.h'.format(output_prefix),
       out_metadata_object='{}_metadata.o'.format(output_prefix),

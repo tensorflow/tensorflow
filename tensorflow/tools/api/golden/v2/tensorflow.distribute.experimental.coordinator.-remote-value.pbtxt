@@ -1,0 +1,12 @@
+path: "tensorflow.distribute.experimental.coordinator.RemoteValue"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.coordinator.cluster_coordinator.RemoteValue\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "fetch"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -53,7 +53,7 @@ class LogicalExpressionTransformer(converter.Base):
     op_type = type(operator)
     if op_type in LOGICAL_OPERATORS:
       return LOGICAL_OPERATORS[op_type]
-    if self.ctx.program.options.uses(converter.Feature.EQUALITY_OPERATORS):
+    if self.ctx.user.options.uses(converter.Feature.EQUALITY_OPERATORS):
       if op_type in EQUALITY_OPERATORS:
         return EQUALITY_OPERATORS[op_type]
     return None
@@ -83,7 +83,7 @@ class LogicalExpressionTransformer(converter.Base):
   def visit_Compare(self, node):
     node = self.generic_visit(node)
 
-    if (not self.ctx.program.options.uses(
+    if (not self.ctx.user.options.uses(
         converter.Feature.EQUALITY_OPERATORS)):
       return node
 

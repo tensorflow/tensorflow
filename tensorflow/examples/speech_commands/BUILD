@@ -7,10 +7,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files([
-    "LICENSE",
-])
-
 py_binary(
     name = "accuracy_utils_py",
     srcs = ["accuracy_utils.py"],
@@ -56,7 +52,7 @@ py_library(
     srcs = [
         "models.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
@@ -82,7 +78,7 @@ py_library(
     srcs = [
         "input_data.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
@@ -119,7 +115,7 @@ py_library(
     srcs = [
         "train.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":input_data",
         ":models",
@@ -154,7 +150,7 @@ py_binary(
 py_library(
     name = "freeze_main_lib",
     srcs = ["freeze.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":freeze_lib"],
 )
 
@@ -163,7 +159,7 @@ py_library(
     srcs = [
         "freeze.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",  # b/131330719
     ],
@@ -199,7 +195,7 @@ py_binary(
 py_library(
     name = "wav_to_features_main_lib",
     srcs = ["wav_to_features.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":wav_to_features_lib"],
 )
 
@@ -208,7 +204,7 @@ py_library(
     srcs = [
         "wav_to_features.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":input_data",
         ":models",
@@ -241,7 +237,7 @@ py_binary(
 py_library(
     name = "generate_streaming_test_wav_main_lib",
     srcs = ["generate_streaming_test_wav.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":generate_streaming_test_wav_lib"],
 )
 
@@ -250,7 +246,7 @@ py_library(
     srcs = [
         "generate_streaming_test_wav.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":input_data",
         ":models",
@@ -299,7 +295,7 @@ py_binary(
 py_library(
     name = "label_wav_main_lib",
     srcs = ["label_wav.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":label_wav_lib"],
 )
 
@@ -308,7 +304,7 @@ py_library(
     srcs = [
         "label_wav.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -415,7 +411,7 @@ tf_cc_binary(
 
 py_library(
     name = "test_lib",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":freeze",
         ":generate_streaming_test_wav",

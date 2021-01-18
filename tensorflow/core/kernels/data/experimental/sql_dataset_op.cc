@@ -103,6 +103,11 @@ class SqlDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override { return Status::OK(); }
 
    protected:

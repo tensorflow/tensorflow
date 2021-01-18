@@ -20,13 +20,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -154,6 +155,14 @@ TEST_F(ExecutorTest, SimpleAdd) {
   std::vector<Tensor> retvals;
   TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
   EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
+
+  // Verify that the argument values are unchanged.
+  const Tensor* arg_0;
+  TF_ASSERT_OK(call_frame.GetArg(0, &arg_0));
+  EXPECT_EQ(1.0, V(*arg_0));
+  const Tensor* arg_1;
+  TF_ASSERT_OK(call_frame.GetArg(1, &arg_1));
+  EXPECT_EQ(2.0, V(*arg_1));
 }
 
 TEST_F(ExecutorTest, SelfAdd) {
@@ -246,10 +255,28 @@ TEST_F(ExecutorTest, OpError) {
   EXPECT_TRUE(errors::IsInvalidArgument(Run(&call_frame)));
 }
 
-static void BM_executor(int iters, int width, int depth) {
-#ifdef PLATFORM_GOOGLE
-  BenchmarkUseRealTime();
-#endif  // PLATFORM_GOOGLE
+TEST_F(ExecutorTest, ControlDependenciesFromSpecialNodes) {
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
+  auto one = test::graph::Constant(g.get(), V(2.0));
+  auto add = test::graph::Add(g.get(), in0, one);
+  auto ret = test::graph::Retval(g.get(), 0, add);
+  g->AddControlEdge(in0, add);
+  g->AddControlEdge(one, ret);
+  FixupSourceAndSinkEdges(g.get());
+  Create(std::move(g));
+  FunctionCallFrame call_frame({DT_FLOAT}, {DT_FLOAT});
+  TF_ASSERT_OK(call_frame.SetArgs({V(1.0)}));
+  TF_ASSERT_OK(Run(&call_frame));
+  std::vector<Tensor> retvals;
+  TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
+  EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
+}
+
+void BM_executor(::testing::benchmark::State& state) {
+  const int width = state.range(0);
+  const int depth = state.range(1);
+
   Graph* g = new Graph(OpRegistry::Global());
   random::PhiloxRandom philox(1729, 17);
   random::SimplePhilox rand(&philox);
@@ -279,25 +306,51 @@ static void BM_executor(int iters, int width, int depth) {
     }
   }
   FixupSourceAndSinkEdges(g);
-#ifdef PLATFORM_GOOGLE
-  SetBenchmarkLabel(strings::StrCat("Nodes = ", cur));
-  SetBenchmarkItemsProcessed(cur * static_cast<int64>(iters));
-#endif  // PLATFORM_GOOGLE
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
-                  "SINGLE_THREADED_EXECUTOR")
-      .Run(iters);
+                  "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api=*/false)
+      .Run(state);
+  state.SetLabel(strings::StrCat("Nodes = ", cur));
+  state.SetItemsProcessed(cur * static_cast<int64>(state.iterations()));
 }
 
 // Tall skinny graphs
-BENCHMARK(BM_executor)->ArgPair(16, 1024);
-BENCHMARK(BM_executor)->ArgPair(32, 8192);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(16, 1024);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(32, 8192);
 
 // Short fat graphs
-BENCHMARK(BM_executor)->ArgPair(1024, 16);
-BENCHMARK(BM_executor)->ArgPair(8192, 32);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(1024, 16);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(8192, 32);
 
 // Tall fat graph
-BENCHMARK(BM_executor)->ArgPair(1024, 1024);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(1024, 1024);
+
+void BM_const_identity(::testing::benchmark::State& state) {
+  const int width = state.range(0);
+  const int outputs_per_const = state.range(1);
+
+  Graph* g = new Graph(OpRegistry::Global());
+  for (int i = 0; i < width; ++i) {
+    Tensor i_t(i);
+    Node* const_node = test::graph::Constant(g, i_t);
+    for (int j = 0; j < outputs_per_const; ++j) {
+      test::graph::Identity(g, const_node);
+    }
+  }
+  FixupSourceAndSinkEdges(g);
+  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
+                  "SINGLE_THREADED_EXECUTOR",
+                  /*old_benchmark_api=*/false)
+      .Run(state);
+  state.SetLabel(strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
+  state.SetItemsProcessed((1 + outputs_per_const) * width *
+                          static_cast<int64>(state.iterations()));
+}
+
+// Graph with actual op execution.
+BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(1, 1);
+BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(1, 100);
+BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(100, 1);
+BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(100, 100);
 
 // TODO(mrry): This benchmark currently crashes with a use-after free, because
 // test::Benchmark::RunWithArgs() assumes that the executor will take ownership
@@ -311,7 +364,7 @@ BENCHMARK(BM_executor)->ArgPair(1024, 1024);
 #define ALICE "/job:j/replica:0/task:0/cpu:0"
 #define BOB "/job:j/replica:0/task:0/gpu:0"
 
-static void BM_FeedInputFetchOutput(int iters) {
+static void BM_FeedInputFetchOutput(::testing::benchmark::State& state) {
   Graph* g = new Graph(OpRegistry::Global());
   // z = x + y: x and y are provided as benchmark inputs.  z is the
   // output of the benchmark.  Conceptually, the caller is ALICE, the
@@ -323,10 +376,10 @@ static void BM_FeedInputFetchOutput(int iters) {
   FixupSourceAndSinkEdges(g);
   Tensor val(DT_FLOAT, TensorShape({}));
   val.scalar<float>()() = 3.14;
-  SetBenchmarkItemsProcessed(static_cast<int64>(iters));
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
-                  "SINGLE_THREADED_EXECUTOR")
-      .RunWithArgs({{x, val}, {y, val}}, {z}, iters);
+                  "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api=*/false)
+      .RunWithArgs({{x, val}, {y, val}}, {z}, state);
+  state.SetItemsProcessed(state.iterations());
 }
 BENCHMARK(BM_FeedInputFetchOutput);
 #endif

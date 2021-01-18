@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow.data;
 
+import "tensorflow/core/data/dataset.proto";
 import "tensorflow/core/data/service/common.proto";
 
 message ProcessTaskRequest {
@@ -13,6 +14,15 @@ message ProcessTaskResponse {}
 message GetElementRequest {
   // The task to fetch an element from.
   int64 task_id = 1;
+  // Optional index to indentify the consumer.
+  oneof optional_consumer_index {
+    int64 consumer_index = 2;
+  }
+  // Optional round index, indicating which round of round-robin the consumer
+  // wants to read from. This is used to keep consumers in sync.
+  oneof optional_round_index {
+    int64 round_index = 3;
+  }
 }
 
 message GetElementResponse {
@@ -22,10 +32,20 @@ message GetElementResponse {
   bool end_of_sequence = 2;
 }
 
+// Named GetWorkerTasks to avoid conflicting with GetTasks in dispatcher.proto
+message GetWorkerTasksRequest {}
+
+message GetWorkerTasksResponse {
+  repeated TaskInfo tasks = 1;
+}
+
 service WorkerService {
   // Processes an task for a dataset, making elements available to clients.
   rpc ProcessTask(ProcessTaskRequest) returns (ProcessTaskResponse);
 
   // Gets the next dataset element.
   rpc GetElement(GetElementRequest) returns (GetElementResponse);
+
+  // Gets the tasks currently being executed by the worker.
+  rpc GetWorkerTasks(GetWorkerTasksRequest) returns (GetWorkerTasksResponse);
 }

@@ -13,11 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
+# pylint: disable=missing-docstring
 """EfficientNet models for Keras.
 
-Reference paper:
-  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks]
-    (https://arxiv.org/abs/1905.11946) (ICML 2019)
+Reference:
+  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
+      https://arxiv.org/abs/1905.11946) (ICML 2019)
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -25,7 +26,6 @@ from __future__ import print_function
 
 import copy
 import math
-import os
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils
@@ -33,6 +33,7 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -142,6 +143,53 @@ DENSE_KERNEL_INITIALIZER = {
 
 layers = VersionAwareLayers()
 
+BASE_DOCSTRING = """Instantiates the {name} architecture.
+
+  Reference:
+  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
+      https://arxiv.org/abs/1905.11946) (ICML 2019)
+
+  Optionally loads weights pre-trained on ImageNet.
+  Note that the data format convention used by the model is
+  the one specified in your Keras config at `~/.keras/keras.json`.
+  If you have never configured it, it defaults to `"channels_last"`.
+
+  Args:
+    include_top: Whether to include the fully-connected
+        layer at the top of the network. Defaults to True.
+    weights: One of `None` (random initialization),
+          'imagenet' (pre-training on ImageNet),
+          or the path to the weights file to be loaded. Defaults to 'imagenet'.
+    input_tensor: Optional Keras tensor
+        (i.e. output of `layers.Input()`)
+        to use as image input for the model.
+    input_shape: Optional shape tuple, only to be specified
+        if `include_top` is False.
+        It should have exactly 3 inputs channels.
+    pooling: Optional pooling mode for feature extraction
+        when `include_top` is `False`. Defaults to None.
+        - `None` means that the output of the model will be
+            the 4D tensor output of the
+            last convolutional layer.
+        - `avg` means that global average pooling
+            will be applied to the output of the
+            last convolutional layer, and thus
+            the output of the model will be a 2D tensor.
+        - `max` means that global max pooling will
+            be applied.
+    classes: Optional number of classes to classify images
+        into, only to be specified if `include_top` is True, and
+        if no `weights` argument is specified. Defaults to 1000 (number of
+        ImageNet classes).
+    classifier_activation: A `str` or callable. The activation function to use
+        on the "top" layer. Ignored unless `include_top=True`. Set
+        `classifier_activation=None` to return the logits of the "top" layer.
+        Defaults to 'softmax'.
+
+  Returns:
+    A `keras.Model` instance.
+"""
+
 
 def EfficientNet(
     width_coefficient,
@@ -162,15 +210,15 @@ def EfficientNet(
     classifier_activation='softmax'):
   """Instantiates the EfficientNet architecture using given scaling coefficients.
 
-  Reference paper:
-  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks]
-    (https://arxiv.org/abs/1905.11946) (ICML 2019)
+  Reference:
+  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
+      https://arxiv.org/abs/1905.11946) (ICML 2019)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Args:
     width_coefficient: float, scaling coefficient for network width.
     depth_coefficient: float, scaling coefficient for network depth.
     default_size: integer, default input image size.
@@ -221,7 +269,7 @@ def EfficientNet(
   if blocks_args == 'default':
     blocks_args = DEFAULT_BLOCKS_ARGS
 
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -286,7 +334,7 @@ def EfficientNet(
   blocks_args = copy.deepcopy(blocks_args)
 
   b = 0
-  blocks = float(sum(args['repeats'] for args in blocks_args))
+  blocks = float(sum(round_repeats(args['repeats']) for args in blocks_args))
   for (i, args) in enumerate(blocks_args):
     assert args['repeats'] > 0
     # Update block input and output filters based on depth multiplier.
@@ -375,7 +423,7 @@ def block(inputs,
           id_skip=True):
   """An inverted residual block.
 
-  Arguments:
+  Args:
       inputs: input tensor.
       activation: activation function.
       drop_rate: float between 0 and 1, fraction of the input units to drop.
@@ -431,7 +479,11 @@ def block(inputs,
   if 0 < se_ratio <= 1:
     filters_se = max(1, int(filters_in * se_ratio))
     se = layers.GlobalAveragePooling2D(name=name + 'se_squeeze')(x)
-    se = layers.Reshape((1, 1, filters), name=name + 'se_reshape')(se)
+    if bn_axis == 1:
+      se_shape = (filters, 1, 1)
+    else:
+      se_shape = (1, 1, filters)
+    se = layers.Reshape(se_shape, name=name + 'se_reshape')(se)
     se = layers.Conv2D(
         filters_se,
         1,
@@ -474,6 +526,7 @@ def EfficientNetB0(include_top=True,
                    input_shape=None,
                    pooling=None,
                    classes=1000,
+                   classifier_activation='softmax',
                    **kwargs):
   return EfficientNet(
       1.0,
@@ -487,6 +540,7 @@ def EfficientNetB0(include_top=True,
       input_shape=input_shape,
       pooling=pooling,
       classes=classes,
+      classifier_activation=classifier_activation,
       **kwargs)
 
 
@@ -498,6 +552,7 @@ def EfficientNetB1(include_top=True,
                    input_shape=None,
                    pooling=None,
                    classes=1000,
+                   classifier_activation='softmax',
                    **kwargs):
   return EfficientNet(
       1.0,
@@ -511,6 +566,7 @@ def EfficientNetB1(include_top=True,
       input_shape=input_shape,
       pooling=pooling,
       classes=classes,
+      classifier_activation=classifier_activation,
       **kwargs)
 
 
@@ -522,6 +578,7 @@ def EfficientNetB2(include_top=True,
                    input_shape=None,
                    pooling=None,
                    classes=1000,
+                   classifier_activation='softmax',
                    **kwargs):
   return EfficientNet(
       1.1,
@@ -535,6 +592,7 @@ def EfficientNetB2(include_top=True,
       input_shape=input_shape,
       pooling=pooling,
       classes=classes,
+      classifier_activation=classifier_activation,
       **kwargs)
 
 
@@ -546,6 +604,7 @@ def EfficientNetB3(include_top=True,
                    input_shape=None,
                    pooling=None,
                    classes=1000,
+                   classifier_activation='softmax',
                    **kwargs):
   return EfficientNet(
       1.2,
@@ -559,6 +618,7 @@ def EfficientNetB3(include_top=True,
       input_shape=input_shape,
       pooling=pooling,
       classes=classes,
+      classifier_activation=classifier_activation,
       **kwargs)
 
 
@@ -570,6 +630,7 @@ def EfficientNetB4(include_top=True,
                    input_shape=None,
                    pooling=None,
                    classes=1000,
+                   classifier_activation='softmax',
                    **kwargs):
   return EfficientNet(
       1.4,
@@ -583,6 +644,7 @@ def EfficientNetB4(include_top=True,
       input_shape=input_shape,
       pooling=pooling,
       classes=classes,
+      classifier_activation=classifier_activation,
       **kwargs)
 
 
@@ -594,6 +656,7 @@ def EfficientNetB5(include_top=True,
                    input_shape=None,
                    pooling=None,
                    classes=1000,
+                   classifier_activation='softmax',
                    **kwargs):
   return EfficientNet(
       1.6,
@@ -607,6 +670,7 @@ def EfficientNetB5(include_top=True,
       input_shape=input_shape,
       pooling=pooling,
       classes=classes,
+      classifier_activation=classifier_activation,
       **kwargs)
 
 
@@ -618,6 +682,7 @@ def EfficientNetB6(include_top=True,
                    input_shape=None,
                    pooling=None,
                    classes=1000,
+                   classifier_activation='softmax',
                    **kwargs):
   return EfficientNet(
       1.8,
@@ -631,6 +696,7 @@ def EfficientNetB6(include_top=True,
       input_shape=input_shape,
       pooling=pooling,
       classes=classes,
+      classifier_activation=classifier_activation,
       **kwargs)
 
 
@@ -642,6 +708,7 @@ def EfficientNetB7(include_top=True,
                    input_shape=None,
                    pooling=None,
                    classes=1000,
+                   classifier_activation='softmax',
                    **kwargs):
   return EfficientNet(
       2.0,
@@ -655,7 +722,18 @@ def EfficientNetB7(include_top=True,
       input_shape=input_shape,
       pooling=pooling,
       classes=classes,
+      classifier_activation=classifier_activation,
       **kwargs)
+
+
+EfficientNetB0.__doc__ = BASE_DOCSTRING.format(name='EfficientNetB0')
+EfficientNetB1.__doc__ = BASE_DOCSTRING.format(name='EfficientNetB1')
+EfficientNetB2.__doc__ = BASE_DOCSTRING.format(name='EfficientNetB2')
+EfficientNetB3.__doc__ = BASE_DOCSTRING.format(name='EfficientNetB3')
+EfficientNetB4.__doc__ = BASE_DOCSTRING.format(name='EfficientNetB4')
+EfficientNetB5.__doc__ = BASE_DOCSTRING.format(name='EfficientNetB5')
+EfficientNetB6.__doc__ = BASE_DOCSTRING.format(name='EfficientNetB6')
+EfficientNetB7.__doc__ = BASE_DOCSTRING.format(name='EfficientNetB7')
 
 
 @keras_export('keras.applications.efficientnet.preprocess_input')

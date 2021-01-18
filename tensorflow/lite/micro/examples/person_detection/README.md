@@ -3,15 +3,115 @@
 This example shows how you can use Tensorflow Lite to run a 250 kilobyte neural
 network to recognize people in images captured by a camera.  It is designed to
 run on systems with small amounts of memory such as microcontrollers and DSPs.
+This uses the experimental int8 quantized version of the person detection model.
 
 ## Table of contents
+
 -   [Getting started](#getting-started)
+-   [Running on ARC EM SDP](#running-on-arc-em-sdp)
 -   [Running on Arduino](#running-on-arduino)
 -   [Running on ESP32](#running-on-esp32)
+-   [Running on HIMAX WE1 EVB](#running-on-himax-we1-evb)
 -   [Running on SparkFun Edge](#running-on-sparkfun-edge)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Debugging image capture](#debugging-image-capture)
 -   [Training your own model](#training-your-own-model)
+
+## Running on ARC EM SDP
+
+The following instructions will help you to build and deploy this example to
+[ARC EM SDP](https://www.synopsys.com/dw/ipdir.php?ds=arc-em-software-development-platform)
+board. General information and instructions on using the board with TensorFlow
+Lite Micro can be found in the common
+[ARC targets description](/tensorflow/lite/micro/tools/make/targets/arc/README.md).
+
+This example uses asymmetric int8 quantization and can therefore leverage
+optimized int8 kernels from the embARC MLI library
+
+The ARC EM SDP board contains a rich set of extension interfaces. You can choose
+any compatible camera and modify
+[image_provider.cc](/tensorflow/lite/micro/examples/person_detection/image_provider.cc)
+file accordingly to use input from your specific camera. By default, results of
+running this example are printed to the console. If you would like to instead
+implement some target-specific actions, you need to modify
+[detection_responder.cc](/tensorflow/lite/micro/examples/person_detection/detection_responder.cc)
+accordingly.
+
+The reference implementations of these files are used by default on the EM SDP.
+
+### Initial setup
+
+Follow the instructions on the
+[ARC EM SDP Initial Setup](/tensorflow/lite/micro/tools/make/targets/arc/README.md#ARC-EM-Software-Development-Platform-ARC-EM-SDP)
+to get and install all required tools for work with ARC EM SDP.
+
+### Generate Example Project
+
+The example project for ARC EM SDP platform can be generated with the following
+command:
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile \
+TARGET=arc_emsdp TAGS=reduce_codesize \
+generate_person_detection_int8_make_project
+```
+
+Note that `TAGS=reduce_codesize` applies example specific changes of code to
+reduce total size of application. It can be omitted.
+
+### Build and Run Example
+
+For more detailed information on building and running examples see the
+appropriate sections of general descriptions of the
+[ARC EM SDP usage with TFLM](/tensorflow/lite/micro/tools/make/targets/arc/README.md#ARC-EM-Software-Development-Platform-ARC-EM-SDP).
+In the directory with generated project you can also find a
+*README_ARC_EMSDP.md* file with instructions and options on building and
+running. Here we only briefly mention main steps which are typically enough to
+get it started.
+
+1.  You need to
+    [connect the board](/tensorflow/lite/micro/tools/make/targets/arc/README.md#connect-the-board)
+    and open an serial connection.
+
+2.  Go to the generated example project director
+
+    ```
+    cd tensorflow/lite/micro/tools/make/gen/arc_emsdp_arc/prj/person_detection_int8/make
+    ```
+
+3.  Build the example using
+
+    ```
+    make app
+    ```
+
+4.  To generate artefacts for self-boot of example from the board use
+
+    ```
+    make flash
+    ```
+
+5.  To run application from the board using microSD card:
+
+    *   Copy the content of the created /bin folder into the root of microSD
+        card. Note that the card must be formatted as FAT32 with default cluster
+        size (but less than 32 Kbytes)
+    *   Plug in the microSD card into the J11 connector.
+    *   Push the RST button. If a red LED is lit beside RST button, push the CFG
+        button.
+    *   Type or copy next commands one-by-another into serial terminal: `setenv
+        loadaddr 0x10800000 setenv bootfile app.elf setenv bootdelay 1 setenv
+        bootcmd fatload mmc 0 \$\{loadaddr\} \$\{bootfile\} \&\& bootelf
+        saveenv`
+    *   Push the RST button.
+
+6.  If you have the MetaWare Debugger installed in your environment:
+
+    *   To run application from the console using it type `make run`.
+    *   To stop the execution type `Ctrl+C` in the console several times.
+
+In both cases (step 5 and 6) you will see the application output in the serial
+terminal.
 
 ## Running on Arduino
 
@@ -44,7 +144,7 @@ Connect the Arducam pins as follows:
 ### Install the Arduino_TensorFlowLite library
 
 Download the current nightly build of the library:
-[person_detection.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/micro/tools/make/gen/arduino_x86_64/prj/person_detection/tensorflow_lite.zip)
+[person_detection.zip](https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_01_13.zip)
 
 This example application is included as part of the official TensorFlow Lite
 Arduino library. To install it, open the Arduino library manager in
@@ -207,33 +307,151 @@ The next steps assume that the
 
 ### Generate the examples
 
-The example project can be generated with the following command: `make -f
-tensorflow/lite/micro/tools/make/Makefile TARGET=esp
-generate_person_detection_esp_project`
+The example project can be generated with the following command:
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=esp generate_person_detection_esp_project
+```
 
 ### Building the example
 
-Go the the example project directory `cd
-tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/person_detection/esp-idf`
+Go to the example project directory
+```
+cd tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/person_detection/esp-idf
+```
 
 As the `person_detection` example requires an external component `esp32-camera`
 for functioning hence we will have to manually clone it in `components/`
-directory of the example with following command. `git clone
-https://github.com/espressif/esp32-camera.git components/esp32-camera`
+directory of the example with following command.
+```
+git clone https://github.com/espressif/esp32-camera.git components/esp32-camera
+```
 
 Then build with `idf.py` `idf.py build`
 
 ### Load and run the example
 
-To flash (replace `/dev/ttyUSB0` with the device serial port): `idf.py --port
-/dev/ttyUSB0 flash`
+To flash (replace `/dev/ttyUSB0` with the device serial port):
+```
+idf.py --port /dev/ttyUSB0 flash
+```
 
-Monitor the serial output: `idf.py --port /dev/ttyUSB0 monitor`
+Monitor the serial output:
+```
+idf.py --port /dev/ttyUSB0 monitor
+```
 
 Use `Ctrl+]` to exit.
 
-The previous two commands can be combined: `idf.py --port /dev/ttyUSB0 flash
-monitor`
+The previous two commands can be combined:
+```
+idf.py --port /dev/ttyUSB0 flash monitor
+```
+
+## Running on HIMAX WE1 EVB
+
+The following instructions will help you build and deploy this example to
+[HIMAX WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_board_brief)
+board. To understand more about using this board, please check
+[HIMAX WE1 EVB user guide](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide).
+
+### Initial Setup
+
+To use the HIMAX WE1 EVB, please make sure following software are installed:
+
+#### MetaWare Development Toolkit
+
+See
+[Install the Synopsys DesignWare ARC MetaWare Development Toolkit](/tensorflow/lite/micro/tools/make/targets/arc/README.md#install-the-synopsys-designware-arc-metaware-development-toolkit)
+section for instructions on toolchain installation.
+
+#### Make Tool version
+
+A `'make'` tool is required for deploying Tensorflow Lite Micro applications on
+HIMAX WE1 EVB, See
+[Check make tool version](/tensorflow/lite/micro/tools/make/targets/arc/README.md#make-tool)
+section for proper environment.
+
+#### Serial Terminal Emulation Application
+
+There are 2 main purposes for HIMAX WE1 EVB Debug UART port
+
+-   print application output
+-   burn application to flash by using xmodem send application binary
+
+You can use any terminal emulation program (like [PuTTY](https://www.putty.org/)
+or [minicom](https://linux.die.net/man/1/minicom)).
+
+### Generate Example Project
+
+The example project for HIMAX WE1 EVB platform can be generated with the
+following command:
+
+Download related third party data
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=himax_we1_evb third_party_downloads
+```
+
+Generate person detection project
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_int8_make_project TARGET=himax_we1_evb
+```
+
+### Build and Burn Example
+
+Following the Steps to run person detection example at HIMAX WE1 EVB platform.
+
+1.  Go to the generated example project directory.
+
+    ```
+    cd tensorflow/lite/micro/tools/make/gen/himax_we1_evb_arc/prj/person_detection_int8/make
+    ```
+
+2.  Build the example using
+
+    ```
+    make app
+    ```
+
+3.  After example build finish, copy ELF file and map file to image generate
+    tool directory. \
+    image generate tool directory located at
+    `'tensorflow/lite/micro/tools/make/downloads/himax_we1_sdk/image_gen_linux_v3/'`
+
+    ```
+    cp person_detection_int8.elf himax_we1_evb.map ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
+    ```
+
+4.  Go to flash image generate tool directory.
+
+    ```
+    cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
+    ```
+
+    make sure this tool directory is in $PATH. You can permanently set it to
+    PATH by
+
+    ```
+    export PATH=$PATH:$(pwd)
+    ```
+
+5.  run image generate tool, generate flash image file.
+
+    *   Before running image generate tool, by typing `sudo chmod +x image_gen`
+        and `sudo chmod +x sign_tool` to make sure it is executable.
+
+    ```
+    image_gen -e person_detection_int8.elf -m himax_we1_evb.map -o out.img
+    ```
+
+6.  Download flash image file to HIMAX WE1 EVB by UART:
+
+    *   more detail about download image through UART can be found at
+        [HIMAX WE1 EVB update Flash image](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide#flash-image-update)
+
+After these steps, press reset button on the HIMAX WE1 EVB, you will see
+application output in the serial terminal.
 
 ## Running on SparkFun Edge
 
@@ -252,13 +470,13 @@ The following command will download the required dependencies and then compile a
 binary for the SparkFun Edge:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge person_detection_bin
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge person_detection_int8_bin
 ```
 
 The binary will be created in the following location:
 
 ```
-tensorflow/lite/micro/tools/make/gen/sparkfun_edge_cortex-m4/bin/person_detection.bin
+tensorflow/lite/micro/tools/make/gen/sparkfun_edge_cortex-m4/bin/person_detection_int8.bin
 ```
 
 ### Sign the binary
@@ -272,15 +490,15 @@ Enter the following command to set up some dummy cryptographic keys we can use
 for development:
 
 ```
-cp tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/keys_info0.py \
-tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/keys_info.py
+cp tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/keys_info0.py \
+tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/keys_info.py
 ```
 
 Next, run the following command to create a signed binary:
 
 ```
-python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/create_cust_image_blob.py \
---bin tensorflow/lite/micro/tools/make/gen/sparkfun_edge_cortex-m4/bin/person_detection.bin \
+python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/create_cust_image_blob.py \
+--bin tensorflow/lite/micro/tools/make/gen/sparkfun_edge_cortex-m4/bin/person_detection_int8.bin \
 --load-address 0xC000 \
 --magic-num 0xCB \
 -o main_nonsecure_ota \
@@ -292,7 +510,7 @@ command to create a final version of the file that can be used to flash our
 device with the bootloader script we will use in the next step:
 
 ```
-python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/create_cust_wireupdate_blob.py \
+python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/create_cust_wireupdate_blob.py \
 --load-address 0x20000 \
 --bin main_nonsecure_ota.bin \
 -i 6 \
@@ -328,7 +546,7 @@ hit the button marked `RST`. Continue holding the button marked `14` while
 running the following command:
 
 ```
-python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/uart_wired_update.py \
+python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/uart_wired_update.py \
 -b ${BAUD_RATE} ${DEVICENAME} \
 -r 1 \
 -f main_nonsecure_wire.bin \

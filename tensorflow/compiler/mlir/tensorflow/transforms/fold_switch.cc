@@ -34,21 +34,19 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -58,7 +56,7 @@ limitations under the License.
 namespace mlir {
 namespace {
 
-class SwitchFoldPass : public mlir::FunctionPass<SwitchFoldPass> {
+class SwitchFoldPass : public mlir::PassWrapper<SwitchFoldPass, FunctionPass> {
  public:
   void runOnFunction() override;
 };
@@ -201,7 +199,7 @@ static void MatchSwitchFoldOps(tf_executor::SwitchOp switch_op,
 // Folds merge nodes with only a single non-dead input.
 static LogicalResult FoldMergeNodes(FuncOp function, const DeadQueue& queue) {
   // Create builder for val_index of MergeOp.
-  auto* block = &function.getBlocks().front();
+  auto* block = &function.front();
   OpBuilder builder = OpBuilder::atBlockEnd(block);
   auto type = builder.getIntegerType(32);
   auto build_index = [&](Location loc, int value) {
@@ -242,7 +240,7 @@ static LogicalResult FoldMergeNodes(FuncOp function, const DeadQueue& queue) {
       auto def_op = val.getDefiningOp();
 #ifndef NDEBUG
       auto exec_dialect =
-          function.getContext()->getRegisteredDialect("tf_executor");
+          function.getContext()->getLoadedDialect("tf_executor");
       assert(def_op->getDialect() == exec_dialect &&
              "unable to forward control dependencies");
 #endif
@@ -279,7 +277,7 @@ void SwitchFoldPass::runOnFunction() {
 }  // namespace mlir
 
 namespace tf_executor {
-std::unique_ptr<OpPassBase<FuncOp>> CreateSwitchFoldPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateSwitchFoldPass() {
   return std::make_unique<SwitchFoldPass>();
 }
 }  // namespace tf_executor

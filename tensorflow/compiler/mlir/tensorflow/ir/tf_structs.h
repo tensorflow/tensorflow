@@ -19,17 +19,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_STRUCTS_H_
 
 #include "llvm/ADT/StringMap.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h.inc"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
-
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h.inc"
-
 namespace TF {
 
 // Tensorflow devices available at runtime with corresponding metadata if it is

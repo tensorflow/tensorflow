@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/metal/kernels/add.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 
 #import <XCTest/XCTest.h>
 
@@ -27,9 +27,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/elementwise_test_util.h"
 
 using ::tflite::gpu::DataType;
+using ::tflite::gpu::HWC;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::OperationType;
 using ::tflite::gpu::TensorRef;
@@ -39,7 +40,10 @@ using ::tflite::gpu::metal::SingleOpModel;
 @interface ElementwiseTest : XCTestCase
 @end
 
-@implementation ElementwiseTest
+@implementation ElementwiseTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+}
+
 - (void)setUp {
   [super setUp];
 }
@@ -74,7 +78,20 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   XCTAssertTrue(model.PopulateTensor(0, {0.0, 3.1415926, -3.1415926, 1}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  status = CompareVectors({1.0, -1.0, -1.0, 0.540302}, model.GetOutput(0), 1e-6f);
+  status = CompareVectors({1.0, -1.0, -1.0, 0.540302}, model.GetOutput(0), 1e-5f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testCopy {
+  OperationType op_type = OperationType::COPY;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({0.0, -6.2, 2.0, 4.0}, model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
@@ -89,6 +106,21 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({0.0, -3.1, -4.0, 1.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testElu {
+  OperationType op_type = OperationType::ELU;
+  const BHWC shape(1, 1, 1, 7);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0f, 1.0f, -1.0f, 100.0f, -100.0f, 0.01f, -0.01f}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({0.0f, 1.0f, std::exp(-1.0f) - 1.0f, 100.0f,
+                           std::exp(-100.0f) - 1.0f, 0.01f, std::exp(-0.01f) - 1.0f},
+                          model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
@@ -163,6 +195,42 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testMaximumWithConstantHWCTensor {
+  OperationType op_type = OperationType::MAXIMUM;
+  const BHWC shape(1, 2, 1, 2);
+  tflite::gpu::ElementwiseAttributes attr;
+  tflite::gpu::Tensor<HWC, DataType::FLOAT32> hwc_tensor;
+  hwc_tensor.shape = HWC(2, 1, 2);
+  hwc_tensor.data = {0.5f, 2.0f, 0.7f, 4.7f};
+  attr.param = hwc_tensor;
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/attr},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {1.0f, -6.2f, -2.0f, 3.0f}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({1.0f, 2.0f, 0.7f, 4.7f}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaximumWithConstantHWCTensorBroadcastChannels {
+  OperationType op_type = OperationType::MAXIMUM;
+  const BHWC shape(1, 2, 1, 2);
+  tflite::gpu::ElementwiseAttributes attr;
+  tflite::gpu::Tensor<HWC, DataType::FLOAT32> hwc_tensor;
+  hwc_tensor.shape = HWC(2, 1, 1);
+  hwc_tensor.data = {0.5f, 2.0f};
+  attr.param = hwc_tensor;
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/attr},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {1.0f, -6.2f, -2.0f, 3.0f}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({1.0f, 0.5f, 2.0f, 3.0f}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 - (void)testMinimum {
   OperationType op_type = OperationType::MINIMUM;
   const BHWC shape(1, 2, 2, 1);
@@ -189,6 +257,19 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({-1.0, -6.2, -1.0, -3.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testNeg {
+  OperationType op_type = OperationType::NEG;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {-1.0, 3.1415926, 0.0, 1.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({1.0, -3.1415926, 0.0, -1.0}, model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
@@ -339,6 +420,186 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({2.0, 6.0, 6.0, 12.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testAbsUnit {
+  auto status = AbsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testCosUnit {
+  auto status = CosTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testCopyUnit {
+  auto status = CopyTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testEluUnit {
+  auto status = EluTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testExpUnit {
+  auto status = ExpTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testHardSwishUnit {
+  auto status = HardSwishTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testLogUnit {
+  auto status = LogTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testNegUnit {
+  auto status = NegTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testRsqrtUnit {
+  auto status = RsqrtTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSigmoidUnit {
+  auto status = SigmoidTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSinUnit {
+  auto status = SinTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSqrtUnit {
+  auto status = SqrtTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSquareUnit {
+  auto status = SquareTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTanhUnit {
+  auto status = TanhTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSubUnit {
+  auto status = SubTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSquaredDiffUnit {
+  auto status = SquaredDiffTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testDivUnit {
+  auto status = DivTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testPowUnit {
+  auto status = PowTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testAddUnit {
+  auto status = AddTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaximumUnit {
+  auto status = MaximumTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaximumWithScalarUnit {
+  auto status = MaximumWithScalarTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaximumWithConstantLinearTensorUnit {
+  auto status = MaximumWithConstantLinearTensorTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaximumWithConstantHWCTensorUnit {
+  auto status = MaximumWithConstantHWCTensorTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaximumWithConstantHWCTensorBroadcastChannelsUnit {
+  auto status = MaximumWithConstantHWCTensorBroadcastChannelsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMinimumUnit {
+  auto status = MinimumTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMinimumWithScalarUnit {
+  auto status = MinimumWithScalarTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMulUnit {
+  auto status = MulTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMulBroadcastHWUnit {
+  auto status = MulBroadcastHWTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMulBroadcastChannelsUnit {
+  auto status = MulBroadcastChannelsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSubWithScalarAtFirstPositionUnit {
+  auto status = SubWithScalarAtFirstPositionTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testLessUnit {
+  auto status = LessTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testLessEqualUnit {
+  auto status = LessEqualTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testGreaterUnit {
+  auto status = GreaterTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testGreaterEqualUnit {
+  auto status = GreaterEqualTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testEqualUnit {
+  auto status = EqualTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testNotEqualUnit {
+  auto status = NotEqualTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

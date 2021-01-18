@@ -58,11 +58,11 @@ RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/t
 ENV LANG C.UTF-8
 
 RUN apt-get update && apt-get install -y \
-    python3
+    python3 \
     python3-pip
 
 RUN python3 -m pip --no-cache-dir install --upgrade \
-    pip \
+    "pip<20.3" \
     setuptools
 
 # Some TF tools expect a "python" binary
@@ -78,13 +78,13 @@ RUN apt-get update && apt-get install -y \
     virtualenv \
     swig
 
-RUN ${PIP} --no-cache-dir install \
+RUN python3 -m pip --no-cache-dir install \
     Pillow \
     h5py \
     keras_preprocessing \
     matplotlib \
     mock \
-    numpy \
+    'numpy<1.19.0' \
     scipy \
     sklearn \
     pandas \
@@ -93,7 +93,7 @@ RUN ${PIP} --no-cache-dir install \
     enum34
 
 # Install bazel
-ARG BAZEL_VERSION=2.0.0
+ARG BAZEL_VERSION=3.7.2
 RUN mkdir /bazel && \
     wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
     wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
@@ -104,16 +104,14 @@ RUN mkdir /bazel && \
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
-RUN python3 -m pip install jupyter matplotlib
+RUN python3 -m pip install --no-cache-dir jupyter matplotlib
 # Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN python3 -m pip install jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
+RUN python3 -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local
-RUN apt-get install -y --no-install-recommends wget
-# some examples require git to fetch dependencies
-RUN apt-get install -y --no-install-recommends git
+RUN apt-get update && apt-get install -y --no-install-recommends wget git
 WORKDIR /tf/tensorflow-tutorials
 RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/classification.ipynb
 RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/overfit_and_underfit.ipynb

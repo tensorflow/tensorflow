@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/lower_case_op.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/graph_view.h"
@@ -280,6 +280,13 @@ class FunctionOptimizerContext {
 
   const GraphView& graph_view() const { return graph_view_; }
 
+  bool IsFeedNode(const string& node_name) const {
+    return absl::c_any_of(
+        item_->feed, [&](const std::pair<std::string, Tensor>& feed) {
+          return ParseTensorName(feed.first).node() == node_name;
+        });
+  }
+
   bool IsFetchNode(const string& node_name) const {
     return absl::c_any_of(item_->fetch, [&](const string& fetch) {
       return ParseTensorName(fetch).node() == node_name;
@@ -431,8 +438,8 @@ bool HasUnusedOutputs(const NodeDef& func_node, const FunctionDef& func,
   int num_outputs = func.signature().output_arg_size();
   const absl::flat_hash_set<int> active_outputs =
       GetActiveOutputs(func_node, ctx, /*size_hind*/ num_outputs);
-
-  return active_outputs.size() != num_outputs;
+  int active_outputs_size = active_outputs.size();
+  return active_outputs_size != num_outputs;
 }
 
 // Return pruned FunctionDefLibrary with functions that are reachable from
@@ -556,7 +563,8 @@ void RemoveUnusedOutputsTypes(const FunctionSpecialization& specialization,
   if (tout == nullptr || !tout->has_list()) return;
 
   // Nothing to do if all outputs are active.
-  if (specialization.active_outputs.size() == tout->list().type_size()) return;
+  int specialization_active_outputs_size = specialization.active_outputs.size();
+  if (specialization_active_outputs_size == tout->list().type_size()) return;
 
   // Clear input types for the specialized node.
   auto* attr = specialized_func_node->mutable_attr();
@@ -820,8 +828,10 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
       {// LINT.IfChange
        // Op types that should not run in program order, e.g. because they need
        // to run asynchronously to avoid deadlock.
-       "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
-       "CollectiveBcastRecv", "NcclAllReduce",
+       "CollectiveGather", "CollectiveGatherV2", "CollectiveReduce",
+       "CollectiveReduceV2", "CollectiveBcastSend", "CollectiveBcastRecv",
+       "CollectiveBcastSendV2", "CollectiveBcastRecvV2", "NcclAllReduce",
+       "Send", "Recv",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.
@@ -829,7 +839,6 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        "ParameterizedTruncatedNormal", "TruncatedNormal", "RandomShuffle",
        "Multinomial", "RandomGamma", "RandomGammaGrad", "RandomPoisson",
        "RandomPoissonV2",
-       // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
 
        // ReadVariableOp marked as stateful because it consumes DT_RESOURCE,
        // but it can't generate any observable side-effect.
@@ -837,12 +846,19 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
 
        // CudnnRNN ops are stateful but they can't generate any observable
        // side-effect.
-       "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+       "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNV2", "CudnnRNNV3",
+       "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
 
        // TPUEmbedding EnqueueOps are stateful but this is only between ops with
        // the same device_ordinal on the same host.
        "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
-       "EnqueueTPUEmbeddingSparseTensorBatch"});
+       "EnqueueTPUEmbeddingSparseTensorBatch",
+       "EnqueueTPUEmbeddingRaggedTensorBatch",
+
+       // SaveV2 and RestoreV2 should be allowed to operate in parallel on
+       // multiple hosts.
+       "SaveV2", "RestoreV2"});
+  // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
   return exemption->contains(op);
 }
 
@@ -1114,7 +1130,15 @@ void AddStrictInputSemantics(Node* caller, Graph* g) {
 
   VLOG(3) << "Add control edges from all data inputs to enforce strict "
              "semantics with regard to function inputs";
+
+  // Do not add control edges from placeholders, because it will prevent
+  // pruning, and they can't produce any side effects anyway.
+  const auto is_placeholder = [](const Node* node) -> bool {
+    return node->type_string() == "Placeholder";
+  };
+
   for (const Node* node : data_inputs) {
+    if (is_placeholder(node)) continue;
     g->AddControlEdge(g->FindNodeId(node->id()), caller,
                       /*allow_duplicates=*/true);
   }
@@ -1126,7 +1150,8 @@ void AddFrameForwardingControlEdge(const std::vector<ControlFlowInfo>& info,
                                    Node* caller, Graph* g) {
   // All nodes added to the graph by v2 control flow lowering and function
   // inlining are guaranteed to have control edges to nested function calls.
-  if (caller->id() >= info.size()) return;
+  int info_size = info.size();
+  if (caller->id() >= info_size) return;
 
   // Check if a lowered node is executing inside a while loop.
   const Node* frame = info[caller->id()].frame;
@@ -1198,6 +1223,13 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
   std::vector<string> inlined_function_names;
 
+  // Do not inline function call nodes that are part of a feed set.
+  NodeNames feed_nodes;
+  feed_nodes.reserve(item.feed.size());
+  for (const std::pair<std::string, Tensor>& feed : item.feed) {
+    feed_nodes.insert(ParseTensorName(feed.first).node());
+  }
+
   // If a function call is inside a While loop, it must have an incoming control
   // edge, because it will be used to pass execution frame into the function
   // body. All nodes without inputs in the function body (e.g. Const and NoOp)
@@ -1221,7 +1253,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
       if (n->IsIfNode()) {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), false));
-      } else if (n->type_string() == "Case") {
+      } else if (n->IsCaseNode()) {
         TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), false));
       } else if (n->IsWhileNode()) {
         TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), false));
@@ -1233,6 +1265,8 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     if (!IsFunctionCall(flib_def, *n)) continue;
     // Skip function calls that we plan to compile later.
     if (MarkedForXlaCompilation(n->def())) continue;
+    // Skip nodes in a feed set.
+    if (feed_nodes.contains(n->name())) continue;
 
     // Function body that we will inline into the main graph. It can be a
     // function instantiation, or a gradient function instantiated from
@@ -1436,9 +1470,9 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
 
     // Do not specialize if function has custom gradient or marked nospecialize.
     const string grad_func = ctx.function_library().FindGradient(func_name);
-    const bool no_specialize = !grad_func.empty() ||
-                               MarkedNoSpecialize(*func) ||
-                               MarkedForXlaCompilation(node);
+    const bool no_specialize =
+        !grad_func.empty() || ctx.IsFeedNode(node.name()) ||
+        MarkedNoSpecialize(*func) || MarkedForXlaCompilation(node);
 
     if (specialization_worthy && !no_specialize) {
       // TODO(ezhulenev): Specialize function call if input has a known shape.

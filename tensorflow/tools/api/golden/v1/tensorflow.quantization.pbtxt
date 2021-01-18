@@ -37,6 +37,10 @@ tf_module {
     argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'name\', \'narrow_range\', \'axis\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'None\', \'False\', \'None\'], "
   }
   member_method {
+    name: "quantize_and_dequantize_v2"
+    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'name\', \'narrow_range\', \'axis\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "quantized_concat"
     argspec: "args=[\'concat_dim\', \'values\', \'input_mins\', \'input_maxes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

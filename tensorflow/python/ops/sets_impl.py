@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import gen_set_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -32,6 +33,7 @@ _VALID_DTYPES = set([
 
 
 @tf_export("sets.size", v1=["sets.size", "sets.set_size"])
+@dispatch.add_dispatch_support
 def set_size(a, validate_indices=True):
   """Compute number of unique elements along last dimension of `a`.
 
@@ -135,6 +137,7 @@ def _set_operation(a, b, set_operation, validate_indices=True):
 
 @tf_export(
     "sets.intersection", v1=["sets.intersection", "sets.set_intersection"])
+@dispatch.add_dispatch_support
 def set_intersection(a, b, validate_indices=True):
   """Compute set intersection of elements in last dimension of `a` and `b`.
 
@@ -205,6 +208,7 @@ def set_intersection(a, b, validate_indices=True):
 
 @tf_export(
     "sets.difference", v1=["sets.difference", "sets.set_difference"])
+@dispatch.add_dispatch_support
 def set_difference(a, b, aminusb=True, validate_indices=True):
   """Compute set difference of elements in last dimension of `a` and `b`.
 
@@ -286,6 +290,7 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
 
 @tf_export(
     "sets.union", v1=["sets.union", "sets.set_union"])
+@dispatch.add_dispatch_support
 def set_union(a, b, validate_indices=True):
   """Compute set union of elements in last dimension of `a` and `b`.
 

@@ -38,7 +38,7 @@ class XlaCpuDeviceFactory : public DeviceFactory {
 Status XlaCpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices) {
-    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+    VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
     return Status::OK();
   }
 
@@ -51,7 +51,7 @@ Status XlaCpuDeviceFactory::CreateDevices(
     std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices) {
-    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+    VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
     return Status::OK();
   }
   bool compile_on_demand = flags->tf_xla_compile_on_demand;

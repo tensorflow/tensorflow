@@ -181,6 +181,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "ReluGrad",
                                           "Rint",
                                           "Select",
+                                          "SelectV2",
                                           "Selu",
                                           "SeluGrad",
                                           "Shape",
@@ -1100,7 +1101,8 @@ class Conv2DProcessor : public NodeProcessor {
  protected:
   bool ShouldProcess() const override {
     return !MustPreserve() && IsNHWC() && IsPortZeroDimsFour(*node_) &&
-           HasOutputs() && (!IsGemmUsed() || no_gemm_) && IsOnGPU();
+           HasOutputs() && (!IsGemmUsed() || no_gemm_) && IsOnGPU() &&
+           IsDataTypeFloat();
   }
 
   TensorShapeProto GetShape(const string& input_name) const {
@@ -1127,6 +1129,13 @@ class Conv2DProcessor : public NodeProcessor {
     if (node_->attr().find("padding") != node_->attr().end()) {
       auto padding = node_->attr().at("padding").s();
       return padding == "VALID";
+    }
+    return false;
+  }
+
+  bool IsDataTypeFloat() const {
+    if (node_->attr().find("T") != node_->attr().end()) {
+      return kDataTypeIsFloating.Contains(node_->attr().at("T").type());
     }
     return false;
   }

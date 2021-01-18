@@ -28,11 +28,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_v2_func_graphs
+from tensorflow.python.ops import gradients_util
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util import tf_contextlib
 
 
 _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = None
-_KERAS_LAYER_CONTEXT_FUNCTION = None
+_DISABLE_LOWER_USING_SWITCH_MERGE = False
 
 
 CondBranchFuncGraph = control_flow_v2_func_graphs.CondBranchFuncGraph
@@ -46,9 +48,17 @@ def in_defun():
 
   graph = ops.get_default_graph()
   while (isinstance(graph, CondBranchFuncGraph) or
-         isinstance(graph, WhileBodyFuncGraph)):
+         isinstance(graph, WhileBodyFuncGraph) or
+         isinstance(graph, WhileCondFuncGraph)):
     graph = graph.outer_graph
   return isinstance(graph, FuncGraph)
+
+
+def in_while_loop_defun(graph):
+  """Returns if the graph is a while loop FuncGraph."""
+  if context.executing_eagerly(): return False
+  return (isinstance(graph, WhileCondFuncGraph) or
+          isinstance(graph, WhileBodyFuncGraph))
 
 
 def create_new_tf_function(func_graph):
@@ -83,7 +93,7 @@ def unique_grad_fn_name(forward_name):
   return "%s_grad_%s" % (forward_name, ops.uid())
 
 
-def maybe_set_lowering_attr(op):
+def maybe_set_lowering_attr(op, lower_using_switch_merge=None):
   """Sets the flag to enable lowering on `op` if necessary.
 
   Lowering allows cond_v2 and while_v2 to avoid some of the limitations of
@@ -99,13 +109,21 @@ def maybe_set_lowering_attr(op):
     - When the eager execution context specifies the executor of functions to
       be the single threaded executor (see context.function_executor_type()).
       Because the single threaded executor does not support v1 control flow ops.
+    - When 'lower_using_switch_merge' is explicitly set to False.
 
   Args:
     op: An `If` or `While` Operation.
+    lower_using_switch_merge: Explicit value to lower or not (optional).
   """
-  if (not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
-      context.context().function_call_options.executor_type !=
-      "SINGLE_THREADED_EXECUTOR"):
+  if lower_using_switch_merge is not None:
+    # pylint: disable=protected-access
+    op._set_attr("_lower_using_switch_merge",
+                 attr_value_pb2.AttrValue(b=lower_using_switch_merge))
+    # pylint: enable=protected-access
+  elif (not _DISABLE_LOWER_USING_SWITCH_MERGE and
+        not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
+        context.context().function_call_options.executor_type !=
+        "SINGLE_THREADED_EXECUTOR"):
     # pylint: disable=protected-access
     op._set_attr("_lower_using_switch_merge", attr_value_pb2.AttrValue(b=True))
     # pylint: enable=protected-access
@@ -171,10 +189,10 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
     output_idx = int(output_idx)
     node_def = node_defs[op_name]
 
-    if node_def.op == "While":
+    if node_def.op in ("Identity", "While"):
       # Captured resources occur at the same index in the lists of inputs and
-      # outputs of a while op. So we lookup the input of `tensor.op` at the
-      # same index as the index of `tensor` in the `tensor.op.outputs`.
+      # outputs of a while or identity op. So we lookup the input of `tensor.op`
+      # at the same index as the index of `tensor` in the `tensor.op.outputs`.
       tensor_name = node_def.input[output_idx]
     elif node_def.op in ("PartitionedCall", "StatefulPartitionedCall"):
       # Functions output any captured resource tensors used by their
@@ -225,17 +243,11 @@ def _is_tpu_strategy(strategy):
           strategy.__class__.__name__.startswith("TPUStrategy"))
 
 
-def _register_keras_layer_context_function(func):
-  global _KERAS_LAYER_CONTEXT_FUNCTION
-  if _KERAS_LAYER_CONTEXT_FUNCTION is None:
-    _KERAS_LAYER_CONTEXT_FUNCTION = func
-
-
 def _is_building_keras_layer():
   # TODO(srbs): Remove this function when we no long support session with Keras.
-  global _KERAS_LAYER_CONTEXT_FUNCTION
-  if _KERAS_LAYER_CONTEXT_FUNCTION is not None:
-    return _KERAS_LAYER_CONTEXT_FUNCTION().layer is not None
+  keras_call_context_function = keras_deps.get_call_context_function()
+  if keras_call_context_function:
+    return keras_call_context_function().layer is not None
   else:
     return False
 
@@ -275,6 +287,7 @@ def output_all_intermediates():
 
 def get_func_graph(op, input_shapes, func_name):
   """Generates and returns a FuncGraph for the given op and input_shapes."""
+  fdef = None
   graph = op.graph
   # Recursively search the func in graphs.
   while graph is not None:
@@ -287,6 +300,9 @@ def get_func_graph(op, input_shapes, func_name):
     else:
       break
 
+  if fdef is None:
+    raise KeyError("%s cannot be found in the graph" % func_name)
+
   # `op.graph` may not be the same as `ops.get_default_graph()` e.g.
   # in the case of nested if ops or when the gradient is being computed
   # from inside a Defun. We build the `func_graph` with `op.graph` as its
@@ -297,3 +313,56 @@ def get_func_graph(op, input_shapes, func_name):
     func_graph = function_def_to_graph.function_def_to_graph(
         fdef, input_shapes)
   return func_graph
+
+
+def get_op_and_outputs(op_or_outputs):
+  if isinstance(op_or_outputs, ops.Operation):
+    return op_or_outputs, []
+  elif not op_or_outputs:  # Empty list.
+    return None, []
+  else:
+    return op_or_outputs[0].op, op_or_outputs
+
+
+def graph_wrapped_for_higher_order_tape_gradients(graph):
+  """Check if `graph` is wrapped by `run_as_function_for_tape_gradients`."""
+  while graph is not None:
+    if "cflow_gradient_wrapper" in getattr(graph, "name", ""):
+      return True
+    graph = getattr(graph, "outer_graph", None)
+  return False
+
+
+def run_as_function_for_tape_gradients(make_op, inputs):
+  """Fix higher-order tape gradients by wrapping `make_op` in a function.
+
+  Args:
+    make_op: A function that takes a list of inputs and returns a list of output
+      tensors. This function should set any handle data relevant to its outputs
+      before returning.
+    inputs: A list of tensors to check for tape gradients and pass to
+      `make_op`. These should include all tensors used in `make_op`.
+
+  Returns:
+    Tensors corresponding to `make_op`'s output.
+  """
+  # GradientTapes created inside a function currently don't work well with
+  # un-wrapped control flow ops in that same function. Wrapping in an extra
+  # layer of intermediate function means we run extra logic in the function
+  # gradient code to record the correct intermediates on the tape.
+  #
+  # The function attribute inputs to control flow ops are not hashable, so we
+  # pass everything as a capture to bypass defun's caching.
+  if (gradients_util.PossibleTapeGradientTypes(inputs)
+      == gradients_util.POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER
+      # We only need one function between the tape and the op; if we've already
+      # wrapped once, we stop wrapping to avoid infinite recursion.
+      and not (ops.get_default_graph().building_function
+               and "cflow_gradient_wrapper" in ops.get_default_graph().name)):
+    results = function.defun_with_attributes(
+        make_op,
+        autograph=False,
+        attributes=dict(func_name="cflow_gradient_wrapper"))(inputs)
+    return results
+  else:
+    return make_op(inputs)

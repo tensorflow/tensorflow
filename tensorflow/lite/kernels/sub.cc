@@ -12,18 +12,29 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/sub.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include <algorithm>
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/add.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
+#include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -60,6 +71,11 @@ struct OpData {
   int32 input1_offset;
   int32 input2_offset;
   int32 output_offset;
+
+  // This parameter is used to indicate whether
+  // parameter scale is power of two.
+  // It is used in 16-bit -> 16-bit quantization.
+  bool pot_scale_int16;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -72,13 +88,14 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
-TfLiteStatus Prepare8BitSubOp(TfLiteContext* context,
-                              const TfLiteTensor* input_1,
-                              const TfLiteTensor* input_2, TfLiteTensor* output,
-                              TfLiteSubParams* params, OpData* op_params,
-                              int op_sign) {
-  TF_LITE_ENSURE(context,
-                 output->type == kTfLiteUInt8 || output->type == kTfLiteInt8);
+TfLiteStatus PrepareGeneralSubOp(TfLiteContext* context,
+                                 const TfLiteTensor* input_1,
+                                 const TfLiteTensor* input_2,
+                                 TfLiteTensor* output, TfLiteSubParams* params,
+                                 OpData* op_params, int op_sign) {
+  TF_LITE_ENSURE(context, output->type == kTfLiteUInt8 ||
+                              output->type == kTfLiteInt8 ||
+                              output->type == kTfLiteInt16);
   const auto& input1_quantization_params = input_1->params;
   const auto& input2_quantization_params = input_2->params;
   const auto& output_quantization_params = output->params;
@@ -87,6 +104,9 @@ TfLiteStatus Prepare8BitSubOp(TfLiteContext* context,
   if (output->type == kTfLiteUInt8) {
     integer_type_min = std::numeric_limits<uint8_t>::min();
     integer_type_max = std::numeric_limits<uint8_t>::max();
+  } else if (output->type == kTfLiteInt16) {
+    integer_type_min = std::numeric_limits<int16_t>::min();
+    integer_type_max = std::numeric_limits<int16_t>::max();
   } else {
     // output->type == kTfLiteInt8
     integer_type_min = std::numeric_limits<int8_t>::min();
@@ -109,7 +129,11 @@ TfLiteStatus Prepare8BitSubOp(TfLiteContext* context,
   op_params->input1_offset = -input1_quantization_params.zero_point;
   op_params->input2_offset = -input2_quantization_params.zero_point;
   op_params->output_offset = output_quantization_params.zero_point;
-  op_params->left_shift = 20;
+
+  // The shift is set to 15 in case of 16-bit and 20 in case of 8-bit,
+  // accordingly. In case of 16-bit we have 65535 << 15 which is less than 1 <<
+  // 31, therefore the addition will still fit in a 32 bit accumulator.
+  op_params->left_shift = output->type == kTfLiteInt16 ? 15 : 20;
   const double twice_max_input_scale =
       2 * std::max(input1_quantization_params.scale,
                    input2_quantization_params.scale);
@@ -135,13 +159,15 @@ TfLiteStatus Prepare8BitSubOp(TfLiteContext* context,
   TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
       context, params->activation, output, &op_params->output_activation_min,
       &op_params->output_activation_max));
+
   return kTfLiteOk;
 }
 
-TfLiteStatus PrepareInt16SubOp(TfLiteContext* context,
-                               const TfLiteTensor* input1,
-                               const TfLiteTensor* input2, TfLiteTensor* output,
-                               TfLiteSubParams* params, OpData* data) {
+TfLiteStatus PrepareInt16SubOpPOT(TfLiteContext* context,
+                                  const TfLiteTensor* input1,
+                                  const TfLiteTensor* input2,
+                                  TfLiteTensor* output, TfLiteSubParams* params,
+                                  OpData* data) {
   // 16bit -> 16bit special quantized path, supporting only a rather
   // narrow case of quantization parameters: zero_points must all be 0
   // ("symmetric quantization") and scales must be power-of-two (which
@@ -191,11 +217,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input1;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor1, &input1));
+  const TfLiteTensor* input2;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor2, &input2));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
-  TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
   output->type = input2->type;
 
   data->requires_broadcast = !HaveSameShapes(input1, input2);
@@ -208,62 +240,128 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     output_size = TfLiteIntArrayCopy(input1->dims);
   }
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
-    TF_LITE_ENSURE_OK(context, Prepare8BitSubOp(context, input1, input2, output,
-                                                params, data, -1));
+  // 8bit -> 8bit general quantized path, with general rescalings
+  // as well as, 16bit -> 16bit with general rescalings
+
+  // There are two implementations of SUB operator in case of
+  // 16bit input depending on whether the scale parameter is
+  // the power of 2 or not. Currently only implementation for
+  // general case is used, but we need to use another implementation
+  // for older versions.
+  bool general_scale_int16 = false;
+
+  bool input1_scale_is_pot = false;
+  bool input2_scale_is_pot = false;
+  bool output_scale_is_pot = false;
+
+  int input1_scale_log2_rounded{0};
+  int input2_scale_log2_rounded{0};
+  int output_scale_log2_rounded{0};
+
+  if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
+      output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input1->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, input2->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+
+    general_scale_int16 = !params || !params->pot_scale_int16;
+
+    if (!general_scale_int16) {
+      // Do preparation in the case of the scale parameter is power of 2.
+      input1_scale_is_pot =
+          CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
+
+      input2_scale_is_pot =
+          CheckedLog2(input2->params.scale, &input2_scale_log2_rounded);
+
+      output_scale_is_pot =
+          CheckedLog2(output->params.scale, &output_scale_log2_rounded);
+
+      general_scale_int16 =
+          !input1_scale_is_pot || !input2_scale_is_pot || !output_scale_is_pot;
+    }
+  }
+
+  data->pot_scale_int16 = !general_scale_int16;
+
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+      general_scale_int16) {
+    TF_LITE_ENSURE_OK(context, PrepareGeneralSubOp(context, input1, input2,
+                                                   output, params, data, -1));
   } else if (output->type == kTfLiteInt16) {
-    TF_LITE_ENSURE_OK(context, PrepareInt16SubOp(context, input1, input2,
-                                                 output, params, data));
+    // LSTM-special case with scale parameter of POT
+    TF_LITE_ENSURE_OK(context, PrepareInt16SubOpPOT(context, input1, input2,
+                                                    output, params, data));
   }
 
   return context->ResizeTensor(context, output, output_size);
+}
+
+template <KernelType kernel_type, typename data_type>
+void EvalSubImpl(TfLiteContext* context, TfLiteNode* node,
+                 TfLiteSubParams* params, const OpData* data,
+                 const TfLiteTensor* input1, const TfLiteTensor* input2,
+                 bool requires_broadcast, TfLiteTensor* output) {
+  data_type output_activation_min, output_activation_max;
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+
+  switch (kernel_type) {
+    case kReference:
+      if (requires_broadcast) {
+        reference_ops::BroadcastSubSlow(
+            op_params, GetTensorShape(input1), GetTensorData<data_type>(input1),
+            GetTensorShape(input2), GetTensorData<data_type>(input2),
+            GetTensorShape(output), GetTensorData<data_type>(output));
+      } else {
+        reference_ops::SubWithActivation(
+            op_params, GetTensorShape(input1), GetTensorData<data_type>(input1),
+            GetTensorShape(input2), GetTensorData<data_type>(input2),
+            GetTensorShape(output), GetTensorData<data_type>(output));
+      }
+      break;
+    case kGenericOptimized:
+    case kNeonOptimized:
+      if (requires_broadcast) {
+        optimized_ops::BroadcastSubSlow(
+            op_params, GetTensorShape(input1), GetTensorData<data_type>(input1),
+            GetTensorShape(input2), GetTensorData<data_type>(input2),
+            GetTensorShape(output), GetTensorData<data_type>(output));
+      } else {
+        optimized_ops::SubWithActivation(
+            op_params, GetTensorShape(input1), GetTensorData<data_type>(input1),
+            GetTensorShape(input2), GetTensorData<data_type>(input2),
+            GetTensorShape(output), GetTensorData<data_type>(output));
+      }
+      break;
+  }
 }
 
 template <KernelType kernel_type>
 void EvalSub(TfLiteContext* context, TfLiteNode* node, TfLiteSubParams* params,
              const OpData* data, const TfLiteTensor* input1,
              const TfLiteTensor* input2, TfLiteTensor* output) {
-#define TF_LITE_SUB(type, opname, data_type)                             \
-  data_type output_activation_min, output_activation_max;                \
-  CalculateActivationRange(params->activation, &output_activation_min,   \
-                           &output_activation_max);                      \
-  tflite::ArithmeticParams op_params;                                    \
-  SetActivationParams(output_activation_min, output_activation_max,      \
-                      &op_params);                                       \
-  type::opname(op_params, GetTensorShape(input1),                        \
-               GetTensorData<data_type>(input1), GetTensorShape(input2), \
-               GetTensorData<data_type>(input2), GetTensorShape(output), \
-               GetTensorData<data_type>(output))
-  if (output->type == kTfLiteInt32) {
-    if (kernel_type == kReference) {
-      if (data->requires_broadcast) {
-        TF_LITE_SUB(reference_ops, BroadcastSubSlow, int32_t);
-      } else {
-        TF_LITE_SUB(reference_ops, SubWithActivation, int32_t);
-      }
-    } else {
-      if (data->requires_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastSubSlow, int32_t);
-      } else {
-        TF_LITE_SUB(optimized_ops, SubWithActivation, int32_t);
-      }
-    }
-  } else if (output->type == kTfLiteFloat32) {
-    if (kernel_type == kReference) {
-      if (data->requires_broadcast) {
-        TF_LITE_SUB(reference_ops, BroadcastSubSlow, float);
-      } else {
-        TF_LITE_SUB(reference_ops, SubWithActivation, float);
-      }
-    } else {
-      if (data->requires_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastSubSlow, float);
-      } else {
-        TF_LITE_SUB(optimized_ops, SubWithActivation, float);
-      }
-    }
+  const bool requires_broadcast = data->requires_broadcast;
+  switch (output->type) {
+    case kTfLiteInt32:
+      EvalSubImpl<kernel_type, int32_t>(context, node, params, data, input1,
+                                        input2, requires_broadcast, output);
+      break;
+    case kTfLiteFloat32:
+      EvalSubImpl<kernel_type, float>(context, node, params, data, input1,
+                                      input2, requires_broadcast, output);
+      break;
+    case kTfLiteInt64:
+      EvalSubImpl<kernel_type, int64_t>(context, node, params, data, input1,
+                                        input2, requires_broadcast, output);
+      break;
+
+    default:
+      TF_LITE_KERNEL_LOG(context, "output type %s is not supported.",
+                         TfLiteTypeGetName(output->type));
   }
-#undef TF_LITE_SUB
 }
 
 template <KernelType kernel_type>
@@ -301,6 +399,15 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     } else {
       TF_LITE_SUB(reference_integer_ops, Add, int8_t);
     }
+  } else if (!data->pot_scale_int16) {
+    if (need_broadcast) {
+      TF_LITE_SUB(reference_ops, BroadcastAdd4DSlow, int16_t);
+    } else {
+      reference_ops::Add(op_params, GetTensorShape(input1),
+                         GetTensorData<int16_t>(input1), GetTensorShape(input2),
+                         GetTensorData<int16_t>(input2), GetTensorShape(output),
+                         GetTensorData<int16_t>(output), false);
+    }
   } else if (output->type == kTfLiteUInt8) {
     if (kernel_type == kReference) {
       if (need_broadcast) {
@@ -309,25 +416,27 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         TF_LITE_SUB(reference_ops, Add, uint8_t);
       }
     } else {
-      if (op_params.broadcast_category ==
-          BroadcastableOpCategory::kGenericBroadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastAdd4DSlow, uint8_t);
-      } else if (need_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastAddFivefold, uint8_t);
+      if (need_broadcast) {
+        optimized_ops::BroadcastAddDispatch(
+            op_params, GetTensorShape(input1), GetTensorData<uint8_t>(input1),
+            GetTensorShape(input2), GetTensorData<uint8_t>(input2),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
         TF_LITE_SUB(optimized_ops, Add, uint8_t);
       }
     }
   } else {
+    // In the case of 16-bit sub with POT scaling, we use the sub kernels as
+    // there is no multiplier to negate to reuse the add kernels.
     if (kernel_type == kReference) {
       if (need_broadcast) {
-        TF_LITE_SUB(reference_ops, BroadcastSubSlow, int16_t);
+        TF_LITE_SUB(reference_ops, BroadcastSub16POTSlow, int16_t);
       } else {
         TF_LITE_SUB(reference_ops, Sub16, int16_t);
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastSubSlow, int16_t);
+        TF_LITE_SUB(optimized_ops, BroadcastSub16POTSlow, int16_t);
       } else {
         TF_LITE_SUB(optimized_ops, Sub16, int16_t);
       }
@@ -341,11 +450,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSubParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input1;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor1, &input1));
+  const TfLiteTensor* input2;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor2, &input2));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
-  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32) {
+  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
+      output->type == kTfLiteInt64) {
     EvalSub<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
              output->type == kTfLiteInt16) {

@@ -1,5 +1,5 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - -strip-debug-info | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s --check-prefix=STRIP
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - -strip-debug-info | flatbuffer_to_string - | FileCheck %s --check-prefix=STRIP
 
 func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
   attributes {tf.entry_function = {inputs = "input", outputs = "SameNameAsOutput"}} {
@@ -7,8 +7,9 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: SUB,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 41,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: SUB
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     version: 1
 // CHECK-NEXT:   } ],
@@ -104,6 +105,7 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK-NEXT:   name: "min_runtime_version",
 // CHECK-NEXT:   buffer: 6
 // CHECK-NEXT:   } ]
+// CHECK-NEXT:   signature_defs: [ ]
 // CHECK-NEXT: }
 
   %0 = "tfl.pseudo_const" () {value = dense<[[1, 2], [3, 4], [5, 6]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32> loc("Const")

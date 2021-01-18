@@ -15,22 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_IMPL_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_IMPL_H_
 
+#include <algorithm>
 #include <cstdint>
-
-// TODO(ghodrat): Remove this header file and the dependency to internal data
-// structure.
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
 
 namespace tflite {
-namespace tensor_utils {
 
-// Limit a float input f between +abs_limit and -abs_limit.
-float PortableClip(float f, float abs_limit);
+// Not all backends support CpuBackendContext usage, so forward declare to avoid
+// pulling in its implementation.
+class CpuBackendContext;
+
+namespace tensor_utils {
 
 template <typename T>
 bool PortableIsZeroVector(const T* vector, int v_size) {
@@ -79,11 +77,10 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     int n_batch, int32_t* scratch, float* __restrict__ result,
     CpuBackendContext* context);
 
-void PortableMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, const float* per_channel_scale,
-    const int32_t* input_offset);
+void PortableSparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result);
 
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
@@ -175,19 +172,18 @@ void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
 void PortableCwiseAdd(const int16_t* input_1, const int16_t* input_2,
                       int n_batch, int n_input, int16_t* output);
 
-void PortableCwiseClipping(int16_t* input, const int16_t clipping_value,
-                           int32_t n_batch, int32_t n_input);
-
-void PortableCwiseClipping(int8_t* input, const int8_t clipping_value,
-                           int32_t n_batch, int32_t n_input);
+template <typename T>
+void PortableCwiseClipping(T* vector, const int v_size,
+                           const T& clipping_value) {
+  for (int i = 0; i < v_size; i++) {
+    vector[i] = std::max(std::min(clipping_value, vector[i]),
+                         static_cast<T>(-clipping_value));
+  }
+}
 
 // Batch vector initialization with another vector.
 void PortableVectorBatchVectorAssign(const float* vector, int v_size,
                                      int n_batch, float* batch_vector);
-
-// Add another vector for each batch in the batch vector.
-void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                                  float* batch_vector);
 
 // Compute "1.0f - elements of vector" (used in CIFG).
 void PortableSub1Vector(const float* vector, int v_size, float* result);
@@ -198,26 +194,24 @@ void PortableSub1Vector(const int16_t* vector, int v_size, int16_t* result);
 void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
                                   float* result);
 
-// Clip elements of a vector using a abs_limit value.
-void PortableClipVector(const float* vector, int v_size, float abs_limit,
-                        float* result);
-
-// Reduce-sum on a float input vector:
-// input_vector: float pointer to input vector.
-// output_vector: float pointer to vector.
+// Reduce-sum on a vector:
+// input_vector: pointer to input vector.
+// output_vector: pointer to vector.
 // output_size: output vector size.
 // reduction_size: number of consecutive elements from input vector which are
 // added to get one element of output.
-void PortableReductionSumVector(const float* input_vector, float* output_vector,
-                                int output_size, int reduction_size);
-
-void PortableReductionSumVector(const int32_t* input_vector,
-                                int32_t* output_vector, int output_size,
-                                int reduction_size);
-
-void PortableReductionSumVector(const int8_t* input_vector,
-                                int32_t* output_vector, int output_size,
-                                int reduction_size);
+template <typename IN, typename OUT>
+void PortableReductionSumVector(const IN* input_vector, OUT* output_vector,
+                                int output_size, int reduction_size) {
+  for (int o = 0; o < output_size; o++) {
+    OUT result = 0;
+    for (int r = 0; r < reduction_size; r++) {
+      result += input_vector[r];
+    }
+    output_vector[o] = result;
+    input_vector += reduction_size;
+  }
+}
 
 // Layer norm for each batch.
 void PortableMeanStddevNormalization(const float* input_vector,
@@ -225,14 +219,14 @@ void PortableMeanStddevNormalization(const float* input_vector,
                                      int n_batch);
 
 // Saturate Add.
-void PortableTwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
-                                   const int8_t* recurrent, int8_t recurrent_zp,
-                                   int32_t input_effective_scale_a,
-                                   int32_t input_effective_scale_b,
-                                   int32_t recurrent_effective_scale_a,
-                                   int32_t recurrent_effective_scale_b,
-                                   int32_t n_batch, int32_t n_cell,
-                                   int16_t* output);
+void PortableTwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                                  const int8_t* recurrent, int8_t recurrent_zp,
+                                  int32_t input_effective_scale_a,
+                                  int32_t input_effective_scale_b,
+                                  int32_t recurrent_effective_scale_a,
+                                  int32_t recurrent_effective_scale_b,
+                                  int32_t n_batch, int32_t n_cell,
+                                  int16_t* output);
 
 }  // namespace tensor_utils
 }  // namespace tflite

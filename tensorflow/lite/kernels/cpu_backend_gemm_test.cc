@@ -15,19 +15,26 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+
 #include <algorithm>
-#include <cstdarg>
+#include <iterator>
 #include <limits>
 #include <random>
 #include <sstream>
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 #include <gtest/gtest.h>
-#include "ruy/ruy.h"  // from @ruy
+#include "ruy/matrix.h"  // from @ruy
+#include "ruy/reference_mul.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_ruy.h"
 
 namespace tflite {
 
@@ -290,7 +297,7 @@ void PerformGemmThenCompareResultsThenAgainWithClamping(
 // done so far. Until that is done, the best that we can do is to search for
 // a good exponent value by trial-and-error. This is expensive, as each try
 // requires computing a whole GEMM. This is thus probably a major contribution
-// to the overall latency of this tesat. To partially mitigate that,
+// to the overall latency of this test. To partially mitigate that,
 // we use a bisection to reduce the required number of tries.
 //
 // This function is recursive. The bisect_min and bisect_max arguments
@@ -350,11 +357,10 @@ void ReferenceGemm(
   cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, rhs_data, &ruy_rhs);
   cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, dst_data, &ruy_dst);
 
-  ruy::BasicSpec<AccumScalar, DstScalar> ruy_spec;
-  cpu_backend_gemm::detail::MakeRuySpec(params, &ruy_spec);
+  ruy::MulParams<AccumScalar, DstScalar> ruy_mul_params;
+  cpu_backend_gemm::detail::MakeRuyMulParams(params, &ruy_mul_params);
 
-  ruy::Mul<ruy::Path::kReference>(ruy_lhs, ruy_rhs, ruy_spec,
-                                  context->ruy_context(), &ruy_dst);
+  ruy::ReferenceMul(ruy_lhs, ruy_rhs, ruy_mul_params, &ruy_dst);
 }
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
@@ -364,7 +370,8 @@ void TestSomeGemm(int rows, int depth, int cols,
   CpuBackendContext cpu_backend_context;
   std::default_random_engine random_engine;
   cpu_backend_context.SetMaxNumThreads(1 + (random_engine() % 8));
-
+  bool use_caching = static_cast<bool>(random_engine() % 2);
+  cpu_backend_context.SetUseCaching(use_caching);
   const bool use_golden = !golden.empty();
 
   std::vector<LhsScalar> lhs_data;
@@ -382,8 +389,13 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
   MakeDeterministicPseudoRandomVector(rows * cols, &dst_data);
 
+  auto random_order = [&]() {
+    return random_engine() % 2 ? cpu_backend_gemm::Order::kRowMajor
+                               : cpu_backend_gemm::Order::kColMajor;
+  };
   MatrixParams<LhsScalar> lhs_params;
-  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.order =
+      use_golden ? cpu_backend_gemm::Order::kRowMajor : random_order();
   lhs_params.rows = rows;
   lhs_params.cols = depth;
   if (!std::is_floating_point<LhsScalar>::value) {
@@ -394,7 +406,8 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
 
   MatrixParams<RhsScalar> rhs_params;
-  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.order =
+      use_golden ? cpu_backend_gemm::Order::kColMajor : random_order();
   rhs_params.rows = depth;
   rhs_params.cols = cols;
   if (!std::is_floating_point<RhsScalar>::value) {
@@ -405,7 +418,8 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
 
   MatrixParams<DstScalar> dst_params;
-  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.order =
+      use_golden ? cpu_backend_gemm::Order::kColMajor : random_order();
   dst_params.rows = rows;
   dst_params.cols = cols;
   if (!std::is_floating_point<DstScalar>::value) {

@@ -1,0 +1,20 @@
+op {
+  name: "TensorForestTreePredict"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "dense_features"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "logits"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+  }
+  is_stateful: true
+}

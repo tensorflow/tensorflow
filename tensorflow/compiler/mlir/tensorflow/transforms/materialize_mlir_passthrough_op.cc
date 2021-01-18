@@ -18,8 +18,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -35,7 +35,7 @@ namespace mlir {
 namespace {
 
 class MaterializePassthroughOpPass
-    : public FunctionPass<MaterializePassthroughOpPass> {
+    : public PassWrapper<MaterializePassthroughOpPass, FunctionPass> {
  public:
   void runOnFunction() override;
 };
@@ -71,7 +71,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
       return;
     }
     Region &body = main.getBody();
-    if (body.getBlocks().size() != 1) {
+    if (!llvm::hasSingleElement(body)) {
       op->emitError() << "MLIR Opaque Op expects a main() entry point with a "
                          "single block\n";
       return;
@@ -96,7 +96,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<FuncOp>> CreateMaterializePassthroughOpPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass() {
   return std::make_unique<MaterializePassthroughOpPass>();
 }
 }  // namespace TF

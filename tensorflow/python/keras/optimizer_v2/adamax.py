@@ -25,7 +25,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import training_ops
+from tensorflow.python.training import gen_training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -122,7 +122,8 @@ class Adamax(optimizer_v2.OptimizerV2):
     apply_state[(var_device, var_dtype)].update(
         dict(
             neg_scaled_lr=-lr_t / (1 - beta_1_power),
-            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            epsilon=ops.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype),
             beta_1_t=beta_1_t,
             beta_1_power=beta_1_power,
             one_minus_beta_1_t=1 - beta_1_t,
@@ -136,17 +137,16 @@ class Adamax(optimizer_v2.OptimizerV2):
 
     m = self.get_slot(var, 'm')
     v = self.get_slot(var, 'v')
-
-    return training_ops.resource_apply_ada_max(
-        var.handle,
-        m.handle,
-        v.handle,
-        coefficients['beta_1_power'],
-        coefficients['lr_t'],
-        coefficients['beta_1_t'],
-        coefficients['beta_2_t'],
-        coefficients['epsilon'],
-        grad,
+    return gen_training_ops.ResourceApplyAdaMax(
+        var=var.handle,
+        m=m.handle,
+        v=v.handle,
+        beta1_power=coefficients['beta_1_power'],
+        lr=coefficients['lr_t'],
+        beta1=coefficients['beta_1_t'],
+        beta2=coefficients['beta_2_t'],
+        epsilon=coefficients['epsilon'],
+        grad=grad,
         use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
@@ -180,7 +180,7 @@ class Adamax(optimizer_v2.OptimizerV2):
     config = super(Adamax, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
-        'decay': self._serialize_hyperparameter('decay'),
+        'decay': self._initial_decay,
         'beta_1': self._serialize_hyperparameter('beta_1'),
         'beta_2': self._serialize_hyperparameter('beta_2'),
         'epsilon': self.epsilon,

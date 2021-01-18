@@ -25,29 +25,23 @@ import sys
 
 import six
 
-from tensorflow.python.autograph import operators
-from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import function_wrappers
-from tensorflow.python.autograph.lang import special_functions
-from tensorflow.python.autograph.pyct import loader
-from tensorflow.python.autograph.pyct import naming
-from tensorflow.python.autograph.pyct import origin_info
-from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.autograph.pyct import pretty_printer
-from tensorflow.python.autograph.pyct import transformer
+from tensorflow.python.autograph.impl import api
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
-def whitelist(entity):
-  if 'test_whitelisted_call' not in sys.modules:
-    whitelisted_mod = imp.new_module('test_whitelisted_call')
-    sys.modules['test_whitelisted_call'] = whitelisted_mod
-    config.CONVERSION_RULES = ((config.DoNotConvert('test_whitelisted_call'),) +
-                               config.CONVERSION_RULES)
+def allowlist(f):
+  """Helper that marks a callable as whtelitisted."""
+  if 'allowlisted_module_for_testing' not in sys.modules:
+    allowlisted_mod = imp.new_module('allowlisted_module_for_testing')
+    sys.modules['allowlisted_module_for_testing'] = allowlisted_mod
+    config.CONVERSION_RULES = (
+        (config.DoNotConvert('allowlisted_module_for_testing'),) +
+        config.CONVERSION_RULES)
 
-  entity.__module__ = 'test_whitelisted_call'
+  f.__module__ = 'allowlisted_module_for_testing'
 
 
 def is_inside_generated_code():
@@ -69,8 +63,48 @@ def is_inside_generated_code():
     del frame
 
 
+class TestingTranspiler(api.PyToTF):
+  """Testing version that only applies given transformations."""
+
+  def __init__(self, converters, ag_overrides):
+    super(TestingTranspiler, self).__init__()
+    if isinstance(converters, (list, tuple)):
+      self._converters = converters
+    else:
+      self._converters = (converters,)
+    self.transformed_ast = None
+    self._ag_overrides = ag_overrides
+
+  def get_extra_locals(self):
+    retval = super(TestingTranspiler, self).get_extra_locals()
+    if self._ag_overrides:
+      modified_ag = imp.new_module('fake_autograph')
+      modified_ag.__dict__.update(retval['ag__'].__dict__)
+      modified_ag.__dict__.update(self._ag_overrides)
+      retval['ag__'] = modified_ag
+    return retval
+
+  def transform_ast(self, node, ctx):
+    node = self.initial_analysis(node, ctx)
+
+    for c in self._converters:
+      node = c.transform(node, ctx)
+
+    self.transformed_ast = node
+    self.transform_ctx = ctx
+    return node
+
+
 class TestCase(test.TestCase):
   """Base class for unit tests in this module. Contains relevant utilities."""
+
+  def setUp(self):
+    # AutoGraph tests must run in graph mode to properly test control flow.
+    self.graph = ops.Graph().as_default()
+    self.graph.__enter__()
+
+  def tearDown(self):
+    self.graph.__exit__(None, None, None)
 
   @contextlib.contextmanager
   def assertPrints(self, expected_result):
@@ -82,93 +116,16 @@ class TestCase(test.TestCase):
     finally:
       sys.stdout = sys.__stdout__
 
-  @contextlib.contextmanager
-  def compiled(self, node, namespace, symbols=()):
-    source = None
-
-    self.dynamic_calls = []
-    # See api.converted_call
-    def converted_call(
-        f, args, kwargs, unused_opts=None, unused_function_ctx=None):
-      """Mock version of api.converted_call."""
-      self.dynamic_calls.append((args, kwargs))
-      if kwargs is None:
-        kwargs = {}
-      return f(*args, **kwargs)
-
-    try:
-      result, source, source_map = loader.load_ast(
-          node, include_source_map=True)
-      # TODO(mdan): Move the unparsing from converter into pyct and reuse here.
-
-      # TODO(mdan): Move this into self.prepare()
-      result.tf = self.make_fake_mod('fake_tf', *symbols)
-      fake_ag = self.make_fake_mod('fake_ag', converted_call,
-                                   converter.ConversionOptions)
-      fake_ag.__dict__.update(operators.__dict__)
-      fake_ag.__dict__.update(special_functions.__dict__)
-      fake_ag.ConversionOptions = converter.ConversionOptions
-      fake_ag.Feature = converter.Feature
-      fake_ag.utils = utils
-      fake_ag.FunctionScope = function_wrappers.FunctionScope
-      result.ag__ = fake_ag
-      result.ag_source_map__ = source_map
-      for k, v in namespace.items():
-        result.__dict__[k] = v
-      yield result
-    except Exception:  # pylint:disable=broad-except
-      if source is None:
-        print('Offending AST:\n%s' % pretty_printer.fmt(node, color=False))
-      else:
-        print('Offending source code:\n%s' % source)
-      raise
-
-  @contextlib.contextmanager
-  def converted(self, entity, converter_module, namespace, tf_symbols=()):
-
-    node, ctx = self.prepare(entity, namespace)
-
-    if not isinstance(converter_module, (list, tuple)):
-      converter_module = (converter_module,)
-    for i, m in enumerate(converter_module):
-      node = converter.standard_analysis(node, ctx, is_initial=not i)
-      node = m.transform(node, ctx)
-
-    with self.compiled(node, namespace, tf_symbols) as result:
-      yield result
-
-  def make_fake_mod(self, name, *symbols):
-    fake_mod = imp.new_module(name)
-    for s in symbols:
-      if hasattr(s, '__name__'):
-        setattr(fake_mod, s.__name__, s)
-      elif hasattr(s, 'name'):
-        # This is a bit of a hack, but works for things like tf.int32
-        setattr(fake_mod, s.name, s)
-      else:
-        raise ValueError('can not attach %s - what should be its name?' % s)
-    return fake_mod
-
-  def attach_namespace(self, module, **ns):
-    for k, v in ns.items():
-      setattr(module, k, v)
-
-  def prepare(self, test_fn, namespace, recursive=True):
-    namespace['ConversionOptions'] = converter.ConversionOptions
-
-    future_features = ('print_function', 'division')
-    node, source = parser.parse_entity(test_fn, future_features=future_features)
-    namer = naming.Namer(namespace)
+  def transform(
+      self, f, converter_module, include_ast=False, ag_overrides=None):
     program_ctx = converter.ProgramContext(
-        options=converter.ConversionOptions(recursive=recursive),
-        autograph_module=None)
-    entity_info = transformer.EntityInfo(
-        source_code=source,
-        source_file='<fragment>',
-        future_features=future_features,
-        namespace=namespace)
-    ctx = converter.EntityContext(
-        namer, entity_info, program_ctx, 'test_fn')
-    origin_info.resolve_entity(node, source, test_fn)
-    node = converter.standard_analysis(node, ctx, is_initial=True)
-    return node, ctx
+        options=converter.ConversionOptions(recursive=True),
+        autograph_module=api)
+
+    tr = TestingTranspiler(converter_module, ag_overrides)
+    transformed, _, _ = tr.transform_function(f, program_ctx)
+
+    if include_ast:
+      return transformed, tr.transformed_ast, tr.transform_ctx
+
+    return transformed

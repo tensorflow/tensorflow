@@ -13,112 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <chrono>  // NOLINT(build/c++11)
 #include <iostream>
 #include <string>
 
-#include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
-#include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
-#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
-#include "tensorflow/lite/delegates/gpu/common/model_builder.h"
-#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
+#include "tensorflow/lite/delegates/gpu/common/testing/tflite_model_reader.h"
 #include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
-
-class DelegateContext {
- public:
-  bool Init(TfLiteContext* context,
-            const TfLiteDelegateParams* delegate_params) {
-    auto denormalized_graph =
-        reinterpret_cast<GraphFloat32*>(delegate_params->delegate->data_);
-    absl::Status status =
-        BuildModel(context, delegate_params, denormalized_graph);
-    if (!status.ok()) {
-      context->ReportError(context, "Failed to convert a model: %s",
-                           std::string(status.message()).c_str());
-    }
-    return status.ok();
-  }
-};
-
-TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
-  const TfLiteRegistration kRegistration = {
-      .init = [](TfLiteContext* context, const char* buffer, size_t) -> void* {
-        auto* delegate_context = new DelegateContext();
-        if (!delegate_context->Init(
-                context,
-                reinterpret_cast<const TfLiteDelegateParams*>(buffer))) {
-          delete delegate_context;
-          return nullptr;
-        }
-        return delegate_context;
-      },
-      .free = [](TfLiteContext* context, void* buffer) -> void {
-        delete reinterpret_cast<DelegateContext*>(buffer);
-      },
-      .prepare = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
-        return node->user_data ? kTfLiteOk : kTfLiteError;
-      },
-      .invoke = nullptr,
-  };
-
-  TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
-  const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, kRegistration, ops_to_replace, delegate);
-  TfLiteIntArrayFree(ops_to_replace);
-  return status;
-}
-
-absl::Status FlatBufferToGPUGraph(
-    const std::unique_ptr<tflite::FlatBufferModel>& flatbuffer,
-    GraphFloat32* graph) {
-  tflite::ops::builtin::BuiltinOpResolver op_resolver;
-  std::unique_ptr<tflite::Interpreter> interpreter;
-  tflite::InterpreterBuilder interpreter_builder(*flatbuffer, op_resolver);
-  if (interpreter_builder(&interpreter) != kTfLiteOk || !interpreter) {
-    return absl::InternalError("Unable to prepare TfLite interpreter.");
-  }
-  interpreter->UseNNAPI(false);
-  TfLiteDelegate delegate;
-  delegate.data_ = graph;
-  delegate.flags = kTfLiteDelegateFlagsNone;
-  delegate.Prepare = DelegatePrepare;
-  delegate.CopyFromBufferHandle = nullptr;
-  delegate.CopyToBufferHandle = nullptr;
-  delegate.FreeBufferHandle = nullptr;
-
-  if (interpreter->ModifyGraphWithDelegate(&delegate) != kTfLiteOk) {
-    return absl::InternalError("Conversion from TfLite model failed.");
-  }
-
-  NullTransformationReporter reporter;
-  ModelTransformer transformer(graph, &reporter);
-  if (!ApplyGeneralTransformations(&transformer)) {
-    return absl::InternalError("Graph general transformations failed");
-  }
-
-  return absl::OkStatus();
-}
-}  // namespace
 
 absl::Status RunModelSample(const std::string& model_name) {
   auto flatbuffer = tflite::FlatBufferModel::BuildFromFile(model_name.c_str());
   GraphFloat32 graph_cl;
-  RETURN_IF_ERROR(FlatBufferToGPUGraph(flatbuffer, &graph_cl));
+  ops::builtin::BuiltinOpResolver op_resolver;
+  RETURN_IF_ERROR(BuildFromFlatBuffer(*flatbuffer, op_resolver, &graph_cl));
 
   Environment env;
   RETURN_IF_ERROR(CreateEnvironment(&env));
@@ -127,7 +43,8 @@ absl::Status RunModelSample(const std::string& model_name) {
   create_info.precision = env.IsSupported(CalculationsPrecision::F16)
                               ? CalculationsPrecision::F16
                               : CalculationsPrecision::F32;
-  create_info.storage_type = GetFastestStorageType(env.device());
+  create_info.storage_type = GetFastestStorageType(env.device().GetInfo());
+  create_info.hints.Add(ModelHints::kAllowSpecialKernels);
   std::cout << "Precision: " << ToString(create_info.precision) << std::endl;
   std::cout << "Storage type: " << ToString(create_info.storage_type)
             << std::endl;
@@ -149,14 +66,13 @@ absl::Status RunModelSample(const std::string& model_name) {
 
   const int kNumRuns = 10;
   for (int i = 0; i < kNumRuns; ++i) {
-    const auto start = absl::Now();
+    const auto start = std::chrono::high_resolution_clock::now();
     for (int k = 0; k < num_runs_per_sec; ++k) {
       RETURN_IF_ERROR(context.AddToQueue(env.queue()));
     }
     RETURN_IF_ERROR(env.queue()->WaitForCompletion());
-    const auto end = absl::Now();
-    const double total_time_ms =
-        static_cast<double>((end - start) / absl::Nanoseconds(1)) * 1e-6;
+    const auto end = std::chrono::high_resolution_clock::now();
+    const double total_time_ms = (end - start).count() * 1e-6f;
     const double average_inference_time = total_time_ms / num_runs_per_sec;
     std::cout << "Total time - " << average_inference_time << "ms" << std::endl;
   }

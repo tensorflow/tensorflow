@@ -20,8 +20,6 @@ limitations under the License.
 #include <utility>
 
 #include "fixedpoint/fixedpoint.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
@@ -53,7 +51,7 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float min_value,
                                      float max_value, float* scaling_factor) {
-  const int kScale = 127;
+  const int32_t kScale = 127;
   const float range = std::max(std::abs(min_value), std::abs(max_value));
   if (range == 0) {
     memset(quantized_values, 0, size * sizeof(int8_t));
@@ -66,7 +64,8 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
     const int32_t quantized_value =
         static_cast<int32_t>(TfLiteRound(values[i] * scaling_factor_inv));
     // Clamp: just in case some odd numeric offset.
-    quantized_values[i] = std::min(kScale, std::max(-kScale, quantized_value));
+    quantized_values[i] = static_cast<int8_t>(
+        std::min(kScale, std::max(-kScale, quantized_value)));
   }
 }
 
@@ -97,13 +96,13 @@ void PortableAsymmetricQuantizeFloats(const float* values, const int size,
         zero_point_from_min_error < zero_point_from_max_error
             ? zero_point_from_min
             : zero_point_from_max;
-    int8 nudged_zero_point = 0;
+    int8_t nudged_zero_point = 0;
     if (zero_point_double <= qmin_double) {
       nudged_zero_point = kMinScale;
     } else if (zero_point_double >= qmax_double) {
       nudged_zero_point = kMaxScale;
     } else {
-      nudged_zero_point = static_cast<int8>(round(zero_point_double));
+      nudged_zero_point = static_cast<int8_t>(round(zero_point_double));
     }
     *scaling_factor = scale;
     *offset = nudged_zero_point;
@@ -165,35 +164,6 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
-    const int32_t* input_offset) {
-  for (int batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
-    const float batch_scaling_factor = scaling_factors[batch];
-    const float batch_offset = input_offset[batch];
-    const int8_t* row_ptr = matrix;
-    for (int row = 0; row < m_rows; ++row) {
-      int32_t dotprod = 0;
-      float scale = batch_scaling_factor;
-      if (per_channel_scale) {
-        scale *= per_channel_scale[row];
-      }
-#if defined(__GNUC__)
-      // Prefetch the row to cache.
-      __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
-                         3 /* temporal locality */);
-#endif
-      for (int col = 0; col < m_cols; ++col, ++row_ptr) {
-        dotprod += (*row_ptr) * (vectors[col] - batch_offset);
-      }  // for col
-      *result += dotprod * scale;
-      ++result;
-    }  // for row
-  }    // for batch
-}
-
-void PortableMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
   if (input_offset == nullptr) {
@@ -202,7 +172,6 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     return;
   }
   if (!compute_row_sums || *compute_row_sums) {
-    memset(row_sums, 0, sizeof(int32_t) * m_rows);
     PortableReductionSumVector(matrix, row_sums, m_rows, m_cols);
     if (compute_row_sums) {
       *compute_row_sums = false;
@@ -211,7 +180,7 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
 
   for (int batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
     const float batch_scaling_factor = scaling_factors[batch];
-    const float batch_offset = input_offset[batch];
+    const int32_t batch_offset = input_offset[batch];
     const int8_t* row_ptr = matrix;
     for (int row = 0; row < m_rows; ++row) {
       int32_t dotprod = 0;
@@ -232,6 +201,30 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
       ++result;
     }  // for row
   }    // for batch
+}
+
+void PortableSparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
+  const int kBlockSize = 4;
+  TFLITE_DCHECK_EQ(m_cols % kBlockSize, 0);
+  for (int batch = 0; batch < n_batch; batch++) {
+    const float* matrix_ptr = matrix;
+    for (int row = 0; row < m_rows; row++) {
+      float dot_prod = 0.0f;
+      const float* vector_in_batch = vector + batch * m_cols;
+      for (int i = segments[row]; i < segments[row + 1]; i++) {
+        const int block_start_index = indices[i] * kBlockSize;
+        const float* vector_block_in_batch_ptr =
+            vector_in_batch + block_start_index;
+        for (int c = 0; c < kBlockSize; c++) {
+          dot_prod += *matrix_ptr++ * *vector_block_in_batch_ptr++;
+        }
+      }
+      result[batch * m_rows + row] += dot_prod;
+    }
+  }
 }
 
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
@@ -308,8 +301,8 @@ void PortableMatrixBatchVectorMultiplyAccumulateImpl(
     for (int row = 0; row < n_output; ++row) {
       int32_t acc = bias[row];
       for (int col = 0; col < n_input; ++col) {
-        int8 input_val = input[batch * n_input + col];
-        int8 weights_val = input_to_gate_weights[row * n_input + col];
+        int8_t input_val = input[batch * n_input + col];
+        int8_t weights_val = input_to_gate_weights[row * n_input + col];
         acc += input_val * weights_val;
       }
       acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
@@ -354,8 +347,8 @@ void PortableMatrixBatchVectorMultiply(const int8_t* input,
                                        int32_t n_batch, int32_t n_input,
                                        int32_t n_cell, int8_t* gate_output,
                                        int8_t gate_output_zp) {
-  const int32_t int8_max = std::numeric_limits<int8>::max();
-  const int32_t int8_min = std::numeric_limits<int8>::min();
+  const int32_t int8_max = std::numeric_limits<int8_t>::max();
+  const int32_t int8_min = std::numeric_limits<int8_t>::min();
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int row = 0; row < n_cell; ++row) {
       int32_t acc = 0;
@@ -383,8 +376,8 @@ void PortableMatrixBatchVectorMultiply(
     int32_t proj_effective_scale_a, int32_t proj_effective_scale_b,
     const int32_t* gate_bias, int32_t n_batch, int32_t n_hidden,
     int32_t n_output, int32_t output_zp, int8_t* proj_output) {
-  const int16_t int8_max = std::numeric_limits<int8>::max();
-  const int16_t int8_min = std::numeric_limits<int8>::min();
+  const int16_t int8_max = std::numeric_limits<int8_t>::max();
+  const int16_t int8_min = std::numeric_limits<int8_t>::min();
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int row = 0; row < n_output; ++row) {
       int64_t acc = gate_bias[row];
@@ -394,10 +387,10 @@ void PortableMatrixBatchVectorMultiply(
         int64_t curr = acc;
         acc += input_val * weights_val;
         if (input_val * weights_val > 0 && acc < curr) {
-          acc = std::numeric_limits<int32>::max();
+          acc = std::numeric_limits<int32_t>::max();
         }
         if (input_val * weights_val < 0 && acc > curr) {
-          acc = std::numeric_limits<int32>::min();
+          acc = std::numeric_limits<int32_t>::min();
         }
       }
       acc = MultiplyByQuantizedMultiplier(acc, proj_effective_scale_a,
@@ -433,11 +426,11 @@ void PortableApplyLayerNorm(const int16_t* input,
     }
     int32_t mean =
         static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
-    // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
-    int32 temp = kTwoToPower20 / n_input;
+    // TODO(b/173994730): Avoids overflow but only works for POT n_input.
+    int32_t temp = kTwoToPower20 / n_input;
     int64_t variance =
         sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);
-    int32_t variance2 = static_cast<int32>(variance / kTwoToPower20);
+    int32_t variance2 = static_cast<int32_t>(variance / kTwoToPower20);
     if (variance2 < 1) {
       variance2 = variance_limit;
     }
@@ -447,17 +440,17 @@ void PortableApplyLayerNorm(const int16_t* input,
                                      &stddev_inverse_a, &stddev_inverse_b);
 
     for (int j = 0; j < n_input; ++j) {
-      const int32 index = i * n_input + j;
-      int32 val = static_cast<int32_t>(input[index]);
-      int32 shifted = 1024 * val - mean;
-      int32 rescaled = MultiplyByQuantizedMultiplier(shifted, stddev_inverse_a,
-                                                     stddev_inverse_b);
+      const int32_t index = i * n_input + j;
+      int32_t val = static_cast<int32_t>(input[index]);
+      int32_t shifted = 1024 * val - mean;
+      int32_t rescaled = MultiplyByQuantizedMultiplier(
+          shifted, stddev_inverse_a, stddev_inverse_b);
       // TODO(jianlijianli): Saturate this.
       int64_t val3 = rescaled * layer_norm_weights[j] + bias[j];
-      int32 val4 =
-          static_cast<int32>((val3 > 0 ? val3 + 512 : val3 - 512) / 1024);
-      int32 val5 = MultiplyByQuantizedMultiplier(val4, layer_norm_scale_a,
-                                                 layer_norm_scale_b + 12);
+      int32_t val4 =
+          static_cast<int32_t>((val3 > 0 ? val3 + 512 : val3 - 512) / 1024);
+      int32_t val5 = MultiplyByQuantizedMultiplier(val4, layer_norm_scale_a,
+                                                   layer_norm_scale_b + 12);
       val5 = std::min(std::max(kInt16Min, val5), kInt16Max);
       output[index] = static_cast<int16_t>(val5);
     }
@@ -470,8 +463,8 @@ void PortableApplyLayerNormFloat(const int16_t* input,
                                  int32_t layer_norm_scale_b,
                                  const int32_t* bias, int n_batch, int n_input,
                                  int16_t* output) {
-  const int32_t int16_max = std::numeric_limits<int16>::max();
-  const int32_t int16_min = std::numeric_limits<int16>::min();
+  const int32_t int16_max = std::numeric_limits<int16_t>::max();
+  const int32_t int16_min = std::numeric_limits<int16_t>::min();
   // This is to surpress a lint warning.
   const double two = 2.0;
   const float layer_norm_scale =
@@ -503,7 +496,7 @@ void PortableApplyLayerNormFloat(const int16_t* input,
       const float weighted_normalized_value =
           normalized_value * layer_norm_weights[i] * layer_norm_scale +
           bias[i] * bias_scale;
-      const int32_t quant_output = static_cast<int32>(
+      const int32_t quant_output = static_cast<int32_t>(
           std::round(weighted_normalized_value * std::pow(2, 12)));
       output[index] = std::min(int16_max, std::max(int16_min, quant_output));
     }
@@ -538,18 +531,18 @@ void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
 
 void PortableApplySigmoidFloat(const int16_t* input, int32_t n_batch,
                                int32_t n_input, int16_t* output) {
-  const int32_t int16_max = std::numeric_limits<int16>::max();
-  const int32_t int16_min = std::numeric_limits<int16>::min();
+  const int32_t int16_max = std::numeric_limits<int16_t>::max();
+  const int32_t int16_min = std::numeric_limits<int16_t>::min();
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int i = 0; i < n_input; ++i) {
       const int index = batch * n_input + i;
       const float float_input = input[index] * std::pow(2, -12);
       const float float_output = 1.0f / (1.0f + std::exp(-float_input));
       const int32_t quant_output =
-          static_cast<int32>(float_output * std::pow(2, 15));
+          static_cast<int32_t>(float_output * std::pow(2, 15));
       const int32_t quant_output_clamped =
           std::min(int16_max, std::max(int16_min, quant_output));
-      output[index] = static_cast<int16>(quant_output_clamped);
+      output[index] = static_cast<int16_t>(quant_output_clamped);
     }
   }
 }
@@ -593,8 +586,8 @@ void PortableApplyTanh(int32_t integer_bits, const int16_t* input,
 void PortableApplyTanhFloat(const int16_t* input, int32_t n_batch,
                             int32_t n_input, int32_t integer_bits,
                             int16_t* output) {
-  const int32_t int16_max = std::numeric_limits<int16>::max();
-  const int32_t int16_min = std::numeric_limits<int16>::min();
+  const int32_t int16_max = std::numeric_limits<int16_t>::max();
+  const int32_t int16_min = std::numeric_limits<int16_t>::min();
   const double two = 2.0;
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int i = 0; i < n_input; ++i) {
@@ -603,10 +596,10 @@ void PortableApplyTanhFloat(const int16_t* input, int32_t n_batch,
           input[index] * std::pow(two, static_cast<double>(integer_bits));
       const float float_output = std::tanh(float_input);
       const int32_t quant_output =
-          static_cast<int32>(float_output * std::pow(2, 15));
+          static_cast<int32_t>(float_output * std::pow(2, 15));
       const int32_t quant_output_clamped =
           std::min(int16_max, std::max(int16_min, quant_output));
-      output[index] = static_cast<int16>(quant_output_clamped);
+      output[index] = static_cast<int16_t>(quant_output_clamped);
     }
   }
 }
@@ -636,9 +629,10 @@ void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
       int32_t value = static_cast<int32_t>(a) * static_cast<int32_t>(b);
       value = MultiplyByQuantizedMultiplier(value, multiplier, shift);
       value -= output_zp;
-      value = std::min(std::max(-128, value), 127);
+      value = std::min(std::max(static_cast<int32_t>(-128), value),
+                       static_cast<int32_t>(127));
 
-      output[index] = static_cast<int8>(value);
+      output[index] = static_cast<int8_t>(value);
     }
   }
 }
@@ -649,38 +643,8 @@ void PortableCwiseAdd(const int16_t* input_1, const int16_t* input_2,
     for (int i = 0; i < n_input; ++i) {
       const int index = batch * n_input + i;
       int32_t sum = input_1[index] + input_2[index];
-      const int32 sum_clamped = std::min(kInt16Max, std::max(kInt16Min, sum));
+      const int32_t sum_clamped = std::min(kInt16Max, std::max(kInt16Min, sum));
       output[index] = static_cast<int16_t>(sum_clamped);
-    }
-  }
-}
-
-void PortableCwiseClipping(int16_t* input, const int16_t clipping_value,
-                           int32_t n_batch, int32_t n_input) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      if (input[index] > clipping_value) {
-        input[index] = clipping_value;
-      }
-      if (input[index] < -clipping_value) {
-        input[index] = -clipping_value;
-      }
-    }
-  }
-}
-
-void PortableCwiseClipping(int8_t* input, const int8_t clipping_value,
-                           int32_t n_batch, int32_t n_input) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      if (input[index] > clipping_value) {
-        input[index] = clipping_value;
-      }
-      if (input[index] < -clipping_value) {
-        input[index] = -clipping_value;
-      }
     }
   }
 }
@@ -724,19 +688,10 @@ void PortableVectorBatchVectorCwiseProductAccumulate(
       int32_t prod = vector[v] * *batch_vector++;
       prod = MultiplyByQuantizedMultiplier(prod, multiplier, shift);
       int32_t output = prod + *result;
-      output = std::max(std::min(32767, output), -32768);
+      output = std::max(std::min(static_cast<int32_t>(32767), output),
+                        static_cast<int32_t>(-32768));
       *result++ = output;
     }
-  }
-}
-
-void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                                  float* batch_vector) {
-  for (int b = 0; b < n_batch; b++) {
-    for (int i = 0; i < v_size; ++i) {
-      batch_vector[i] += vector[i];
-    }
-    batch_vector += v_size;
   }
 }
 
@@ -757,45 +712,6 @@ void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
                                   const float scale, float* result) {
   for (int v = 0; v < v_size; ++v) {
     *result++ = scale * *vector++;
-  }
-}
-
-void PortableClipVector(const float* vector, int v_size, float abs_limit,
-                        float* result) {
-  for (int v = 0; v < v_size; v++) {
-    result[v] = std::max(std::min(abs_limit, vector[v]), -abs_limit);
-  }
-}
-
-void PortableReductionSumVector(const float* input_vector, float* output_vector,
-                                int output_size, int reduction_size) {
-  const float* input_vector_ptr = input_vector;
-  for (int o = 0; o < output_size; o++) {
-    for (int r = 0; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
-    }
-  }
-}
-
-void PortableReductionSumVector(const int32_t* input_vector,
-                                int32_t* output_vector, int output_size,
-                                int reduction_size) {
-  const int32_t* input_vector_ptr = input_vector;
-  for (int o = 0; o < output_size; o++) {
-    for (int r = 0; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
-    }
-  }
-}
-
-void PortableReductionSumVector(const int8_t* input_vector,
-                                int32_t* output_vector, int output_size,
-                                int reduction_size) {
-  const int8_t* input_vector_ptr = input_vector;
-  for (int o = 0; o < output_size; o++) {
-    for (int r = 0; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
-    }
   }
 }
 
@@ -825,20 +741,20 @@ void PortableMeanStddevNormalization(const float* input_vector,
   }
 }
 
-void PortableTwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
-                                   const int8_t* recurrent, int8_t recurrent_zp,
-                                   int32_t input_effective_scale_a,
-                                   int32_t input_effective_scale_b,
-                                   int32_t recurrent_effective_scale_a,
-                                   int32_t recurrent_effective_scale_b,
-                                   int32_t n_batch, int32_t n_cell,
-                                   int16_t* output) {
-  const int32_t int16_max = std::numeric_limits<int16>::max();
-  const int32_t int16_min = std::numeric_limits<int16>::min();
+void PortableTwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                                  const int8_t* recurrent, int8_t recurrent_zp,
+                                  int32_t input_effective_scale_a,
+                                  int32_t input_effective_scale_b,
+                                  int32_t recurrent_effective_scale_a,
+                                  int32_t recurrent_effective_scale_b,
+                                  int32_t n_batch, int32_t n_cell,
+                                  int16_t* output) {
+  const int32_t int16_max = std::numeric_limits<int16_t>::max();
+  const int32_t int16_min = std::numeric_limits<int16_t>::min();
   for (int i = 0; i < n_batch * n_cell; ++i) {
-    int32_t x = static_cast<int32>(input[i]) - static_cast<int32>(input_zp);
+    int32_t x = static_cast<int32_t>(input[i]) - static_cast<int32_t>(input_zp);
     int32_t h =
-        static_cast<int32>(recurrent[i]) - static_cast<int32>(recurrent_zp);
+        static_cast<int32_t>(recurrent[i]) - static_cast<int32_t>(recurrent_zp);
     int32_t x_scaled = MultiplyByQuantizedMultiplier(x, input_effective_scale_a,
                                                      input_effective_scale_b);
     int32_t h_scaled = MultiplyByQuantizedMultiplier(

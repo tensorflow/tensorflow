@@ -402,7 +402,7 @@ REGISTER_OP("Empty")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("init: bool = false")
-    .SetIsStateful()
+    .SetDoNotOptimize()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
@@ -744,7 +744,7 @@ REGISTER_OP("GuaranteeConst")
       return UnchangedShape(c);
     })
     // We don't want this to be optimized away.
-    .SetIsStateful();
+    .SetDoNotOptimize();
 
 // --------------------------------------------------------------------------
 REGISTER_OP("ZerosLike")
@@ -1219,9 +1219,15 @@ REGISTER_OP("GatherV2")
       // Note, batch_dims can be negative.
       int32 batch_dims;
       TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
-          params_shape, batch_dims < 0 ? -batch_dims : batch_dims + 1,
-          &unused));
+      // -rank(indices) <= batch_dims <= rank(indices)
+      TF_RETURN_IF_ERROR(
+          c->WithRankAtLeast(indices_shape, std::abs(batch_dims), &unused));
+      if (batch_dims < 0) {
+        batch_dims += c->Rank(indices_shape);
+      }
+      // rank(params) > batch_dims
+      TF_RETURN_IF_ERROR(
+          c->WithRankAtLeast(params_shape, batch_dims + 1, &unused));
 
       ShapeHandle params_outer_subshape;
       TF_RETURN_IF_ERROR(
@@ -1435,6 +1441,50 @@ REGISTER_OP("_MklConjugateTranspose")
 #endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
+namespace {
+Status UniqueIdxShapeFn(InferenceContext* c) {
+  ShapeHandle input = c->input(0);
+  const Tensor* axis_t = c->input_tensor(1);
+  if (axis_t == nullptr || !c->RankKnown(input)) {
+    c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+    return Status::OK();
+  }
+
+  if (c->Rank(c->input(1)) != 1) {
+    return errors::InvalidArgument("axis expects a 1D vector.");
+  }
+
+  int32 n = axis_t->NumElements();
+  if (n == 0) {
+    if (c->Rank(input) != 1) {
+      return errors::InvalidArgument("x expects a 1D vector.");
+    }
+    c->set_output(1, input);
+    return Status::OK();
+  } else if (n == 1) {
+    int64 axis;
+    if (axis_t->dtype() == DT_INT32) {
+      axis = static_cast<int64>(axis_t->flat<int32>()(0));
+    } else {
+      axis = axis_t->flat<int64>()(0);
+    }
+
+    int64 input_rank = c->Rank(input);
+    if (axis < -input_rank || axis >= input_rank) {
+      return errors::InvalidArgument("axis expects to be in the range [",
+                                     -input_rank, ", ", input_rank, ")");
+    }
+    if (axis < 0) {
+      axis += input_rank;
+    }
+    c->set_output(1, c->Vector(c->Dim(input, axis)));
+    return Status::OK();
+  }
+  return errors::InvalidArgument(
+      "axis does not support input tensors larger than 1 elements.");
+}
+}  // namespace
+
 REGISTER_OP("Unique")
     .Input("x: T")
     .Output("y: T")
@@ -1459,7 +1509,7 @@ REGISTER_OP("UniqueV2")
     .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
-      c->set_output(1, c->input(0));
+      TF_RETURN_IF_ERROR(UniqueIdxShapeFn(c));
       return Status::OK();
     });
 
@@ -1490,7 +1540,7 @@ REGISTER_OP("UniqueWithCountsV2")
     .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
-      c->set_output(1, c->input(0));
+      TF_RETURN_IF_ERROR(UniqueIdxShapeFn(c));
       c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
     });
@@ -2164,8 +2214,10 @@ namespace {
 template <typename InputType>
 std::vector<int64> GetFlatInt64(const Tensor& t) {
   std::vector<int64> output(t.shape().num_elements());
-  auto eigen_vec = t.flat<InputType>();
-  std::copy_n(&eigen_vec(0), output.size(), output.begin());
+  if (t.shape().num_elements() > 0) {
+    auto eigen_vec = t.flat<InputType>();
+    std::copy_n(&eigen_vec(0), output.size(), output.begin());
+  }
   return output;
 }
 
@@ -2202,7 +2254,7 @@ Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
 
   DimensionHandle batch_size = c->Dim(input_shape, 0);
   std::vector<int64> block_shape_vec;
-  if (block_shape_t) {
+  if (block_shape_t && (block_shape_t->NumElements() > 0)) {
     block_shape_vec = GetFlatInt64(*block_shape_t);
     for (int64 dim = 0; dim < num_block_dims; ++dim) {
       const int64 block_shape_value = block_shape_vec[dim];
@@ -2223,7 +2275,7 @@ Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
   std::vector<DimensionHandle> output_dims{batch_size};
   output_dims.resize(num_block_dims + 1, c->UnknownDim());
 
-  if (paddings_t) {
+  if (paddings_t && (paddings_t->NumElements() > 0)) {
     const std::vector<int64> paddings_vec = GetFlatInt64(*paddings_t);
     for (int64 dim = 0; dim < num_block_dims; ++dim) {
       const int64 pad_start = paddings_vec[dim * 2],
@@ -2800,6 +2852,70 @@ REGISTER_OP("QuantizeAndDequantizeV2")
       return Status::OK();
     });
 
+REGISTER_OP("QuantizeAndDequantizeV4")
+    .Input("input: T")
+    .Input("input_min: T")
+    .Input("input_max: T")
+    .Attr("signed_input: bool = true")
+    .Attr("num_bits: int = 8")
+    .Attr("range_given: bool = false")
+    .Output("output: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr(
+        "round_mode: {'HALF_TO_EVEN', 'HALF_UP'} = "
+        "'HALF_TO_EVEN'")
+    .Attr("narrow_range: bool = false")
+    .Attr("axis: int = -1")
+    .SetShapeFn([](InferenceContext* c) {
+      int axis;
+      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
+      const int minmax_rank = (axis == -1) ? 0 : 1;
+      ShapeHandle minmax;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(2), minmax, &minmax));
+      if (axis != -1) {
+        ShapeHandle input;
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
+        DimensionHandle depth;
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->Dim(minmax, 0), c->Dim(input, axis), &depth));
+      }
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+
+REGISTER_OP("QuantizeAndDequantizeV4Grad")
+    .Input("gradients: T")
+    .Input("input: T")
+    .Input("input_min: T")
+    .Input("input_max: T")
+    .Output("input_backprop: T")
+    .Output("input_min_backprop: T")
+    .Output("input_max_backprop: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("axis: int = -1")
+    .SetShapeFn([](InferenceContext* c) {
+      int axis;
+      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
+      const int minmax_rank = (axis == -1) ? 0 : 1;
+      ShapeHandle minmax;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), minmax_rank, &minmax));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(3), minmax, &minmax));
+      if (axis != -1) {
+        ShapeHandle input;
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
+        DimensionHandle depth;
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->Dim(minmax, 0), c->Dim(input, axis), &depth));
+      }
+      ShapeHandle inputs;
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &inputs));
+      c->set_output(0, inputs);
+      c->set_output(1, minmax);
+      c->set_output(2, minmax);
+      return Status::OK();
+    });
+
 REGISTER_OP("QuantizeAndDequantizeV3")
     .Input("input: T")
     .Input("input_min: T")
@@ -2972,73 +3088,6 @@ REGISTER_OP("QuantizedInstanceNorm")
 
 namespace {
 
-Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
-                            ShapeHandle updates_shape,
-                            ShapeHandle output_shape) {
-  if (c->Value(c->NumElements(output_shape)) == 0 &&
-      (c->Value(c->NumElements(indices_shape)) > 0 ||
-       c->Value(c->NumElements(updates_shape)) > 0)) {
-    return errors::InvalidArgument(
-        "Indices and updates specified for empty output shape");
-  }
-
-  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape)) {
-    const int64 outer_dims = c->Rank(indices_shape) - 1;
-    const DimensionHandle ixdim = c->Dim(indices_shape, -1);
-
-    // We can only do more validation if the last dimension of indices
-    // is a known value.
-    if (c->ValueKnown(ixdim)) {
-      int64 ix = c->Value(ixdim);
-      ShapeHandle unused;
-      ShapeHandle prefix_indices;
-      TF_RETURN_IF_ERROR(
-          c->Subshape(indices_shape, 0, outer_dims, &prefix_indices));
-      ShapeHandle prefix_updates;
-      TF_RETURN_IF_ERROR(
-          c->Subshape(updates_shape, 0, outer_dims, &prefix_updates));
-
-      Status s = c->Merge(prefix_indices, prefix_updates, &unused);
-      if (!s.ok()) {
-        return errors::InvalidArgument(
-            "The outer ", outer_dims,
-            " dimensions of indices.shape=", c->DebugString(indices_shape),
-            " must match the outer ", outer_dims,
-            " dimensions of updates.shape=", c->DebugString(updates_shape),
-            ": ", s.error_message());
-      }
-
-      ShapeHandle suffix_output;
-      TF_RETURN_IF_ERROR(c->Subshape(output_shape, ix, &suffix_output));
-      ShapeHandle suffix_updates;
-      TF_RETURN_IF_ERROR(
-          c->Subshape(updates_shape, outer_dims, &suffix_updates));
-      s = c->Merge(suffix_output, suffix_updates, &unused);
-      if (!s.ok()) {
-        return errors::InvalidArgument(
-            "The inner ", c->Rank(output_shape) - ix,
-            " dimensions of output.shape=", c->DebugString(output_shape),
-            " must match the inner ", c->Rank(updates_shape) - outer_dims,
-            " dimensions of updates.shape=", c->DebugString(updates_shape),
-            ": ", s.error_message());
-      }
-    }
-  }
-
-  c->set_output(0, output_shape);
-  return Status::OK();
-}
-
-Status ScatterNdShape(InferenceContext* c) {
-  ShapeHandle indices_shape;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));
-  ShapeHandle updates_shape;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &updates_shape));
-  ShapeHandle output_shape;
-  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output_shape));
-  return ScatterNdShapeHelper(c, indices_shape, updates_shape, output_shape);
-}
-
 Status ScatterNdTensorShape(InferenceContext* c) {
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &output_shape));
@@ -3046,7 +3095,8 @@ Status ScatterNdTensorShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
   ShapeHandle updates_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &updates_shape));
-  return ScatterNdShapeHelper(c, indices_shape, updates_shape, output_shape);
+  return shape_inference::ScatterNdShapeHelper(c, indices_shape, updates_shape,
+                                               output_shape);
 }
 
 }  // namespace
@@ -3086,7 +3136,16 @@ REGISTER_OP("ScatterNd")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
-    .SetShapeFn(ScatterNdShape);
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle indices_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));
+      ShapeHandle updates_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &updates_shape));
+      ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output_shape));
+      return shape_inference::ScatterNdShapeHelper(c, indices_shape,
+                                                   updates_shape, output_shape);
+    });
 
 REGISTER_OP("TensorScatterUpdate")
     .Input("tensor: T")
@@ -3115,6 +3174,24 @@ REGISTER_OP("TensorScatterSub")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn(ScatterNdTensorShape);
 
+REGISTER_OP("TensorScatterMin")
+    .Input("tensor: T")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ScatterNdTensorShape);
+
+REGISTER_OP("TensorScatterMax")
+    .Input("tensor: T")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ScatterNdTensorShape);
+
 REGISTER_OP("ScatterNdNonAliasingAdd")
     .Input("input: T")
     .Input("indices: Tindices")
@@ -3122,7 +3199,7 @@ REGISTER_OP("ScatterNdNonAliasingAdd")
     .Output("output: T")
     .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
-    .SetShapeFn(shape_inference::ScatterNdUpdateShape);
+    .SetShapeFn(ScatterNdTensorShape);
 
 REGISTER_OP("FakeQuantWithMinMaxArgs")
     .Attr("min: float = -6.0")

@@ -27,7 +27,7 @@ namespace TF {
 
 LogicalResult ConstantFoldFallbackHook(
     Operation *inst, ArrayRef<Attribute> operands,
-    SmallVectorImpl<Attribute> &results);  // NOLINT
+    SmallVectorImpl<OpFoldResult> &results);  // NOLINT
 
 }  // namespace TF
 }  // namespace mlir

@@ -3,17 +3,36 @@
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
+
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
+tpu_module = [
+    "tpu.",
+    "distribute.tpu_strategy",
+    "distribute.cluster_resolver.tpu",
+    "distribute.cluster_resolver.tpu_oss",
+]
+
+# tf.distribute docstring often uses GPU, so they're only covered in
+# tf_doctest_gpu.
+distribute_module = [
+    "distribute.",
+]
 
 py_library(
     name = "tf_doctest_lib",
     srcs = ["tf_doctest_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
     ],
@@ -22,6 +41,7 @@ py_library(
 py_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
+    args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module)],
     python_version = "PY3",
     tags = [
         "no_oss_py2",
@@ -35,8 +55,58 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/keras/preprocessing",
         "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+tpu_py_test(
+    name = "tf_doctest_tpu",
+    srcs = ["tf_doctest.py"],
+    args = ["--module=" + ",".join(tpu_module)],
+    disable_experimental = True,
+    disable_v3 = True,
+    main = "tf_doctest.py",
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":tf_doctest_lib",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "tf_doctest_gpu",
+    srcs = ["tf_doctest.py"],
+    args = [
+        "--module=distribute.",
+        "--module_prefix_skip=" + ",".join(tpu_module),
+        "--required_gpus=2",
+    ],
+    main = "tf_doctest.py",
+    python_version = "PY3",
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "no_rocm",
+        "no_windows",  # numpy prints differently on windows.
+        "noasan",
+        "nomsan",
+        "notsan",
+    ] + tf_gpu_tests_tags(),
+    deps = [
+        ":tf_doctest_lib",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
     ],
 )
 
@@ -53,88 +123,17 @@ py_test(
     ],
     deps = [
         ":tf_doctest_lib",
+        "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
 py_library(
-    name = "doc_generator_visitor",
-    srcs = [
-        "doc_generator_visitor.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = ["@six_archive//:six"],
-)
-
-py_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
-    srcs_version = "PY2AND3",
+    compatible_with = get_compatible_with_portable(),
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
-)
-
-py_test(
-    name = "doc_controls_test",
-    size = "small",
-    srcs = ["doc_controls_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":doc_controls",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_library(
-    name = "parser",
-    srcs = ["parser.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":doc_controls",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
-        "@astor_archive//:astor",
-        "@six_archive//:six",
-    ],
-)
-
-py_library(
-    name = "pretty_docs",
-    srcs = ["pretty_docs.py"],
-    srcs_version = "PY2AND3",
-    deps = ["@six_archive//:six"],
-)
-
-py_library(
-    name = "generate_lib",
-    srcs = ["generate_lib.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":doc_controls",
-        ":doc_generator_visitor",
-        ":parser",
-        ":pretty_docs",
-        ":py_guide_parser",
-        "//tensorflow/python:util",
-        "//tensorflow/tools/common:public_api",
-        "//tensorflow/tools/common:traverse",
-        "@six_archive//:six",
-    ],
-)
-
-py_binary(
-    name = "generate",
-    srcs = ["generate.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":generate_lib",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:util",
-        "//tensorflow/python/debug:debug_py",
-    ],
 )
 
 py_test(
@@ -150,10 +149,11 @@ py_test(
         "nomsan",
         "notsan",
         "optonly",
-        "notap",
     ],
     deps = [
         ":generate2_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -182,13 +182,21 @@ py_library(
     deps = [
         ":base_dir_oss",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
-py_library(
-    name = "py_guide_parser",
-    srcs = ["py_guide_parser.py"],
-    srcs_version = "PY2AND3",
-    deps = ["@six_archive//:six"],
+py_binary(
+    name = "build_java_api_docs",
+    srcs = ["build_java_api_docs.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
 )

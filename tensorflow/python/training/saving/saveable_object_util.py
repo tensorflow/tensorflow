@@ -17,15 +17,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import six
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
+
+
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -88,11 +99,16 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
       def _read_variable_closure(v):
         def f():
           with ops.device(v.device):
+            if context.executing_eagerly() and not v.is_initialized():
+              # A SaveSpec tensor value of `None` indicates that the variable is
+              # uninitialized.
+              return None
             x = v.read_value()
             # To allow variables placed on non-CPU devices to be checkpointed,
             # we copy them to CPU on the same machine first.
             with ops.device("/device:CPU:0"):
               return array_ops.identity(x)
+
         return f
 
       self.handle_op = var.handle
@@ -166,8 +182,8 @@ def saveable_objects_for_op(op, name):
         yield ReferenceVariableSaveable(
             variable, variable._save_slice_info.spec, name)
       else:
-        yield ResourceVariableSaveable(
-            variable, variable._save_slice_info.spec, name)
+        yield ResourceVariableSaveable(variable, variable._save_slice_info.spec,
+                                       name)
     # pylint: enable=protected-access
   elif isinstance(op, trackable.Trackable) and not isinstance(
       op, variables.Variable):
@@ -185,12 +201,10 @@ def saveable_objects_for_op(op, name):
   else:
     # A variable or tensor.
     if isinstance(op, resource_variable_ops.BaseResourceVariable):
-      # pylint: disable=protected-access
-      if op._in_graph_mode:
-        variable = op._graph_element
+      if op._in_graph_mode:  # pylint: disable=protected-access
+        variable = op._graph_element  # pylint: disable=protected-access
       else:
         variable = op
-      # pylint: enable=protected-access
       yield ResourceVariableSaveable(variable, "", name)
     else:
       if context.executing_eagerly():
@@ -206,8 +220,7 @@ def saveable_objects_for_op(op, name):
                               "AutoReloadVariable"]:
         yield ReferenceVariableSaveable(variable, "", name)
       else:
-        yield ResourceVariableSaveable(
-            variable, "", name)
+        yield ResourceVariableSaveable(variable, "", name)
 
 
 def op_list_to_dict(op_list, convert_variable_to_tensor=True):
@@ -279,7 +292,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
           raise ValueError(
               ("Two different ResourceVariable objects with the same "
                "shared_name '%s' were passed to the Saver. This likely means "
-               "that they were created in different Graphs or isolation "
+               "that they were created in different Graphs or isoWlation "
                "contexts, and may not be checkpointed together.") %
               (var._shared_name,))
       else:
@@ -315,7 +328,7 @@ def _add_saveable(saveables, seen_ops, saveable):
   Raises:
     ValueError: If the saveable has already been processed.
   """
-  if saveable.op in seen_ops:
+  if saveable.op is not None and saveable.op in seen_ops:
     raise ValueError("The same saveable will be restored with two names: %s" %
                      saveable.name)
   saveables.append(saveable)
@@ -349,3 +362,147 @@ def validate_and_slice_inputs(names_to_saveables):
     for converted_saveable_object in saveable_objects_for_op(op, name):
       _add_saveable(saveables, seen_ops, converted_saveable_object)
   return saveables
+
+
+def trace_save_restore_functions(object_to_save):
+  """Gathers all SaveableObjects and traces the save and restore ops."""
+  saveable_map = {}  # Maps name -> (save function, restore function)
+  for name, saveable_factory in (
+      object_to_save._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
+    if not callable(saveable_factory):
+      if isinstance(saveable_factory, saveable_object.SaveableObject):
+        logging.debug(
+            "Trackable {} should return callable factories, not SaveableObjects"
+            " in `_gather_saveables_for_checkpoint`. This could lead to "
+            "problems loading the SavedModel back into Python."
+            .format(object_to_save))
+      continue
+
+    if is_factory_for_restored_saveable_object(saveable_factory):
+      saveable_map[name] = (saveable_factory.keywords["save_function"],
+                            saveable_factory.keywords["restore_function"])
+    else:
+      concrete_save_fn, concrete_restore_fn = _trace_save_and_restore_function(
+          saveable_factory, object_to_save)
+      if concrete_save_fn is not None:
+        saveable_map[name] = (concrete_save_fn, concrete_restore_fn)
+  return saveable_map
+
+
+def _trace_save_and_restore_function(saveable_factory, object_to_save):
+  """Traces the save and restore concrete functions."""
+  saveables = []
+
+  @def_function.function(
+      input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
+  def save_fn(checkpoint_key):
+    maybe_saveable = saveable_factory(name=checkpoint_key)
+    if isinstance(maybe_saveable, saveable_object.SaveableObject):
+      maybe_saveable = [maybe_saveable]
+    saveables[:] = maybe_saveable
+
+    # Return list of all SaveSpecs created by the factory.
+    ret = []
+    for saveable in saveables:
+      for spec in saveable.specs:
+        ret.append({"name": spec.name, "tensor": spec.tensor,
+                    "slice_spec": spec.slice_spec})
+    return ret
+
+  concrete_save_fn = save_fn.get_concrete_function()
+  if any(isinstance(saveable, trackable.PythonStateSaveable)
+         for saveable in saveables):
+    logging.warn(
+        "Note that object {} stores python values into the checkpoint. "
+        "These values will not be restored when loading the SavedModel "
+        "into python.".format(object_to_save))
+    return None, None
+  if any(isinstance(saveable, trackable.NoRestoreSaveable)
+         for saveable in saveables):
+    return None, None
+
+  restored_type_specs = []
+  tensor_structure = []
+  for saveable in saveables:
+    saveable_tensor_structure = []
+    tensor_structure.append(saveable_tensor_structure)
+    for spec in saveable.specs:
+      restored_type_specs.append(type_spec.type_spec_from_value(spec.tensor))
+      saveable_tensor_structure.append(spec.name)
+
+  @def_function.function(input_signature=restored_type_specs)
+  def restore_fn(*restored_tensors):
+    structured_restored_tensors = nest.pack_sequence_as(
+        tensor_structure, restored_tensors)
+    for saveable, restored_tensors in zip(saveables,
+                                          structured_restored_tensors):
+      saveable.restore(restored_tensors, restored_shapes=None)
+    return 1
+
+  concrete_restore_fn = restore_fn.get_concrete_function()
+  return concrete_save_fn, concrete_restore_fn
+
+
+class RestoredSaveableObject(saveable_object.SaveableObject):
+  """SaveableObject restored from SavedModel using the traced save/restore."""
+
+  def __init__(self, save_function, restore_function, name):
+    self.save_function = save_function
+    self.restore_function = restore_function
+
+    if tensor_util.is_tf_type(name):
+      name_tensor = name
+    else:
+      with ops.init_scope():
+        name_tensor = constant_op.constant(name)
+    tensors = save_function(name_tensor)
+    specs = [saveable_object.SaveSpec(x["tensor"], x["slice_spec"], x["name"])
+             for x in tensors]
+    super(RestoredSaveableObject, self).__init__(None, specs, name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    del restored_shapes  # unused
+    return self.restore_function(
+        *[restored_tensors[i] for i in range(len(self.specs))])
+
+
+def restored_saved_object_factory(save_function, restore_function):
+  return functools.partial(RestoredSaveableObject,
+                           save_function=save_function,
+                           restore_function=restore_function)
+
+
+def create_saveable_object(factory, name, call_with_mapped_captures):
+  """Creates a SaveableObject while potentially in a different graph.
+
+  When creating the frozen saver for SavedModel, the save and restore ops are
+  placed in a separate graph. Since RestoredSaveableObject uses tf.functions to
+  save and restore, the function captures must be mapped to the new graph.
+
+  Args:
+    factory: Factory method for creating the SaveableObject.
+    name: Checkpoint key of this SaveableObject.
+    call_with_mapped_captures: Helper that calls a tf.function while remapping
+      the captures.
+
+  Returns:
+    a SaveableObject.
+  """
+  if (call_with_mapped_captures is None or
+      not is_factory_for_restored_saveable_object(factory)):
+    return factory(name=name)
+
+  concrete_save_fn = factory.keywords["save_function"]
+  def save_fn(name):
+    return call_with_mapped_captures(concrete_save_fn, [name])
+
+  concrete_restore_fn = factory.keywords["restore_function"]
+  def restore_fn(*restored_tensors):
+    return call_with_mapped_captures(concrete_restore_fn, restored_tensors)
+
+  return factory(save_function=save_fn, restore_function=restore_fn, name=name)
+
+
+def is_factory_for_restored_saveable_object(factory):
+  return (isinstance(factory, functools.partial) and
+          factory.func is RestoredSaveableObject)

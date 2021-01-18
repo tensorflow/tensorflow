@@ -25,16 +25,17 @@ inline void TransposeConvV2(
     const ConvParams& params, const int32* output_multiplier,
     const int32* output_shift, const RuntimeShape& input_shape,
     const int8_t* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
-    const int8_t* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
+    const int8_t* hwoi_ordered_filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
     int8_t* output_data, const RuntimeShape& col2im_shape, int32_t* col2im_data,
     int32_t* scratch_data, CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("TransposeConvV2/int8");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
-  const int batch_size = input_shape.Dims(0);
   TFLITE_DCHECK(col2im_data);
   TFLITE_DCHECK(hwoi_ordered_filter_data);
 
+  const int batch_size = MatchingDim(input_shape, 0, output_shape, 0);
   const int input_image_size = input_shape.Dims(1) * input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
@@ -93,6 +94,9 @@ inline void TransposeConvV2(
 
     scratch_data_p += output_offset;
   }
+  scratch_data_p = scratch_data;
+  optimized_ops::BiasAdd(scratch_data_p, bias_data, batch_size, output_height,
+                         output_width, output_depth);
 
   const int32_t output_min = std::numeric_limits<int8_t>::min();
   const int32_t output_max = std::numeric_limits<int8_t>::max();

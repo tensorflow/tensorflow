@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_getitem
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -29,8 +30,24 @@ def _right(operator):
   return tf_decorator.make_decorator(operator, lambda y, x: operator(x, y))
 
 
+def ragged_hash(self):
+  """The operation invoked by the `RaggedTensor.__hash__` operator."""
+  g = getattr(self.row_splits, "graph", None)
+  # pylint: disable=protected-access
+  if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
+      (g is None or g.building_function)):
+    raise TypeError("RaggedTensor is unhashable.")
+  else:
+    return id(self)
+
+
 # Indexing
 ragged_tensor.RaggedTensor.__getitem__ = ragged_getitem.ragged_tensor_getitem
+
+# Equality
+ragged_tensor.RaggedTensor.__eq__ = math_ops.tensor_equals
+ragged_tensor.RaggedTensor.__ne__ = math_ops.tensor_not_equals
+ragged_tensor.RaggedTensor.__hash__ = ragged_hash
 
 # Ordering operators
 ragged_tensor.RaggedTensor.__ge__ = math_ops.greater_equal

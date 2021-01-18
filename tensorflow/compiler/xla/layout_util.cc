@@ -63,7 +63,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   for (int64 dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
   }
-  for (Tile tile : tiles) {
+  for (const Tile& tile : tiles) {
     for (int64 dim : tile.dimensions()) {
       if (dim < 0 && dim != Tile::kCombineDimension) {
         LOG(FATAL) << "Tile dimension size needs to be minimum int64 value if "
@@ -81,6 +81,12 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 /* static */ Layout LayoutUtil::MakeDescendingLayout(int64 rank) {
   std::vector<int64> layout(rank);
   std::iota(layout.rbegin(), layout.rend(), static_cast<int64>(0));
+  return MakeLayout(layout);
+}
+
+/* static */ Layout LayoutUtil::MakeAscendingLayout(int64 rank) {
+  std::vector<int64> layout(rank);
+  std::iota(layout.begin(), layout.end(), static_cast<int64>(0));
   return MakeLayout(layout);
 }
 
@@ -342,7 +348,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 /* static */ std::vector<int64> LayoutUtil::MakeLogicalToPhysical(
     const Layout& layout) {
   std::vector<int64> logical_to_physical(layout.minor_to_major_size());
-  for (int64 physical = 0; physical < logical_to_physical.size(); ++physical) {
+  for (int64 physical = 0, end = logical_to_physical.size(); physical < end;
+       ++physical) {
     const int64 logical = Major(layout, physical);
     logical_to_physical[logical] = physical;
   }
@@ -441,7 +448,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   for (int64 minor_to_major : layout.minor_to_major()) {
     hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
   }
-  for (Tile tile : layout.tiles()) {
+  for (const Tile& tile : layout.tiles()) {
     for (int64 tile_dim : tile.dimensions()) {
       hash_value = Hash64Combine(hash_value, hash<int64>()(tile_dim));
     }

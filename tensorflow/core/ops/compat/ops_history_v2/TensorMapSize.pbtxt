@@ -1,0 +1,11 @@
+op {
+  name: "TensorMapSize"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+}

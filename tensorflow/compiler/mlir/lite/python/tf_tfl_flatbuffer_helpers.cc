@@ -15,11 +15,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
 #include <ostream>
+#include <unordered_set>
 #include <utility>
 
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -105,18 +107,30 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
   switch (dtype) {
     case toco::IODataType::FLOAT:
       return DT_FLOAT;
+    case toco::IODataType::FLOAT16:
+      return DT_HALF;
+    case toco::IODataType::FLOAT64:
+      return DT_DOUBLE;
     case toco::IODataType::QUANTIZED_UINT8:
       return DT_QUINT8;
     case toco::IODataType::INT8:
       return DT_QINT8;
+    case toco::IODataType::QUANTIZED_INT16:
+      return DT_INT16;
     case toco::IODataType::INT32:
       return DT_INT32;
     case toco::IODataType::INT64:
       return DT_INT64;
+    case toco::IODataType::UINT64:
+      return DT_UINT64;
     case toco::IODataType::STRING:
       return DT_STRING;
     case toco::IODataType::BOOL:
       return DT_BOOL;
+    case toco::IODataType::COMPLEX64:
+      return DT_COMPLEX64;
+    case toco::IODataType::COMPLEX128:
+      return DT_COMPLEX128;
     default:
       return DT_INVALID;
   }
@@ -171,14 +185,13 @@ Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
   return RegisterCustomBuiltinOps(extra_tf_opdefs);
 }
 
-Status PopulateQuantizationSpecs(const toco::ModelFlags& model_flags,
-                                 const toco::TocoFlags& toco_flags,
-                                 mlir::TFL::QuantizationSpecs* quant_specs,
-                                 std::vector<string>* node_names,
-                                 std::vector<string>* node_dtypes,
-                                 std::vector<std::vector<int>>* node_shapes,
-                                 std::vector<double>* node_mins,
-                                 std::vector<double>* node_maxs) {
+Status PopulateQuantizationSpecs(
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
+    std::vector<string>* node_dtypes,
+    std::vector<llvm::Optional<std::vector<int>>>* node_shapes,
+    std::vector<llvm::Optional<double>>* node_mins,
+    std::vector<llvm::Optional<double>>* node_maxs) {
   quant_specs->inference_input_type =
       ConvertIODataTypeToDataType(toco_flags.inference_input_type());
   tensorflow::DataType inference_type =
@@ -201,15 +214,24 @@ Status PopulateQuantizationSpecs(const toco::ModelFlags& model_flags,
       node_dtypes->push_back(
           DataType_Name(ConvertIODataTypeToDataType(toco_data_type)));
     }
-    node_shapes->push_back(std::vector<int>(flag.shape().dims().begin(),
-                                            flag.shape().dims().end()));
+    if (flag.shape().unknown_rank()) {
+      node_shapes->push_back(llvm::None);
+    } else {
+      node_shapes->push_back(std::vector<int>(flag.shape().dims().begin(),
+                                              flag.shape().dims().end()));
+    }
     // Currently, only UINT8 and INT8 require inputs stats
     if (inference_type == DT_QINT8 || inference_type == DT_QUINT8) {
-      TF_ASSIGN_OR_RETURN(
-          auto min_max, InputStatsToMinMax(flag.mean_value(), flag.std_value(),
-                                           inference_type));
-      node_mins->push_back(min_max.first);
-      node_maxs->push_back(min_max.second);
+      if (flag.has_mean_value() && flag.has_std_value()) {
+        TF_ASSIGN_OR_RETURN(
+            auto min_max, InputStatsToMinMax(flag.mean_value(),
+                                             flag.std_value(), inference_type));
+        node_mins->push_back(min_max.first);
+        node_maxs->push_back(min_max.second);
+      } else {
+        node_mins->push_back(llvm::None);
+        node_maxs->push_back(llvm::None);
+      }
     }
   }
 
@@ -248,7 +270,7 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
   std::string error_message;
   auto output = mlir::openOutputFile(filename, &error_message);
   if (!error_message.empty()) {
-    return errors::InvalidArgument("Failed to open file in %s.", filename);
+    return errors::InvalidArgument("Failed to open file in ", filename);
   }
   mlir::PassManager pm(module.getContext());
   pm.addPass(mlir::createPrintOpGraphPass(output->os()));
@@ -259,13 +281,18 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
   return Status::OK();
 }
 
-Status ConvertMLIRToTFLiteFlatBuffer(const toco::TocoFlags& toco_flags,
-                                     mlir::OwningModuleRef module,
-                                     const mlir::TFL::PassConfig& pass_config,
-                                     string* result) {
+Status ConvertMLIRToTFLiteFlatBuffer(
+    const toco::TocoFlags& toco_flags, mlir::OwningModuleRef module,
+    const mlir::TFL::PassConfig& pass_config,
+    const std::unordered_set<std::string>& saved_model_tags, string* result,
+    llvm::Optional<tensorflow::Session*> session) {
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   bool emit_select_tf_ops = toco_flags.enable_select_tf_ops();
   bool emit_custom_ops = toco_flags.allow_custom_ops();
+
+  const std::unordered_set<std::string> select_user_tf_ops(
+      toco_flags.select_user_tf_ops().begin(),
+      toco_flags.select_user_tf_ops().end());
 
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
@@ -274,19 +301,21 @@ Status ConvertMLIRToTFLiteFlatBuffer(const toco::TocoFlags& toco_flags,
         absl::StrCat(toco_flags.dump_graphviz_dir(), "/toco_AT_IMPORT.dot")));
   }
 
-  mlir::PassManager pm(module->getContext());
+  mlir::PassManager pm(module->getContext(),
+                       mlir::OpPassManager::Nesting::Implicit);
+  ::tensorflow::SetCrashReproducer(pm);
 
-  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm, session);
   // Convert back to outlined while format for export back to flatbuffer.
   if (pass_config.legalize_tf_while) {
     pm.addPass(mlir::TFL::CreateWhileOutlinePass());
   }
-  pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
+  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, pass_config.quant_specs, result,
-      &pm);
+      emit_select_tf_ops, emit_custom_ops, select_user_tf_ops,
+      pass_config.quant_specs, saved_model_tags, result, &pm);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

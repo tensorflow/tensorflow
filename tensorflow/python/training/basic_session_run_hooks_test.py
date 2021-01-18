@@ -233,14 +233,14 @@ class LoggingTensorHookTest(test.TestCase):
     tf_logging.info = self._actual_log
 
   def test_illegal_args(self):
-    with self.assertRaisesRegexp(ValueError, 'nvalid every_n_iter'):
+    with self.assertRaisesRegex(ValueError, 'nvalid every_n_iter'):
       basic_session_run_hooks.LoggingTensorHook(tensors=['t'], every_n_iter=0)
-    with self.assertRaisesRegexp(ValueError, 'nvalid every_n_iter'):
+    with self.assertRaisesRegex(ValueError, 'nvalid every_n_iter'):
       basic_session_run_hooks.LoggingTensorHook(tensors=['t'], every_n_iter=-10)
-    with self.assertRaisesRegexp(ValueError, 'xactly one of'):
+    with self.assertRaisesRegex(ValueError, 'xactly one of'):
       basic_session_run_hooks.LoggingTensorHook(
           tensors=['t'], every_n_iter=5, every_n_secs=5)
-    with self.assertRaisesRegexp(ValueError, 'xactly one of'):
+    with self.assertRaisesRegex(ValueError, 'xactly one of'):
       basic_session_run_hooks.LoggingTensorHook(tensors=['t'])
 
   def test_print_at_end_only(self):
@@ -259,7 +259,7 @@ class LoggingTensorHookTest(test.TestCase):
         self.assertEqual(str(self.logged_message).find(t.name), -1)
 
       hook.end(sess)
-      self.assertRegexpMatches(str(self.logged_message), t.name)
+      self.assertRegex(str(self.logged_message), t.name)
 
   def _validate_print_every_n_steps(self, sess, at_end):
     t = constant_op.constant(42.0, name='foo')
@@ -271,7 +271,7 @@ class LoggingTensorHookTest(test.TestCase):
     mon_sess = monitored_session._HookedSession(sess, [hook])
     self.evaluate(variables_lib.global_variables_initializer())
     mon_sess.run(train_op)
-    self.assertRegexpMatches(str(self.logged_message), t.name)
+    self.assertRegex(str(self.logged_message), t.name)
     for _ in range(3):
       self.logged_message = ''
       for _ in range(9):
@@ -279,7 +279,7 @@ class LoggingTensorHookTest(test.TestCase):
         # assertNotRegexpMatches is not supported by python 3.1 and later
         self.assertEqual(str(self.logged_message).find(t.name), -1)
       mon_sess.run(train_op)
-      self.assertRegexpMatches(str(self.logged_message), t.name)
+      self.assertRegex(str(self.logged_message), t.name)
 
     # Add additional run to verify proper reset when called multiple times.
     self.logged_message = ''
@@ -290,7 +290,7 @@ class LoggingTensorHookTest(test.TestCase):
     self.logged_message = ''
     hook.end(sess)
     if at_end:
-      self.assertRegexpMatches(str(self.logged_message), t.name)
+      self.assertRegex(str(self.logged_message), t.name)
     else:
       # assertNotRegexpMatches is not supported by python 3.1 and later
       self.assertEqual(str(self.logged_message).find(t.name), -1)
@@ -318,7 +318,7 @@ class LoggingTensorHookTest(test.TestCase):
       mon_sess = monitored_session._HookedSession(sess, [hook])
       self.evaluate(variables_lib.global_variables_initializer())
       mon_sess.run(train_op)
-      self.assertRegexpMatches(str(self.logged_message), 'foo')
+      self.assertRegex(str(self.logged_message), 'foo')
       # in first run, elapsed time is None.
       self.assertEqual(str(self.logged_message).find('sec'), -1)
 
@@ -333,7 +333,7 @@ class LoggingTensorHookTest(test.TestCase):
     self.evaluate(variables_lib.global_variables_initializer())
 
     mon_sess.run(train_op)
-    self.assertRegexpMatches(str(self.logged_message), t.name)
+    self.assertRegex(str(self.logged_message), t.name)
 
     # assertNotRegexpMatches is not supported by python 3.1 and later
     self.logged_message = ''
@@ -343,12 +343,12 @@ class LoggingTensorHookTest(test.TestCase):
 
     self.logged_message = ''
     mon_sess.run(train_op)
-    self.assertRegexpMatches(str(self.logged_message), t.name)
+    self.assertRegex(str(self.logged_message), t.name)
 
     self.logged_message = ''
     hook.end(sess)
     if at_end:
-      self.assertRegexpMatches(str(self.logged_message), t.name)
+      self.assertRegex(str(self.logged_message), t.name)
     else:
       # assertNotRegexpMatches is not supported by python 3.1 and later
       self.assertEqual(str(self.logged_message).find(t.name), -1)
@@ -1070,9 +1070,8 @@ class StepCounterHookTest(test.TestCase):
       with test.mock.patch.object(tf_logging, 'log_first_n') as mock_log:
         for _ in range(30):
           mon_sess.run(train_op)
-        self.assertRegexpMatches(
-            str(mock_log.call_args),
-            'global step.*has not been increased')
+        self.assertRegex(
+            str(mock_log.call_args), 'global step.*has not been increased')
       hook.end(sess)
 
   def _setup_steps_per_run_test(self,
@@ -1422,12 +1421,11 @@ class FinalOpsHookTest(test.TestCase):
       with session_lib.Session() as session:
         session.run(read_ops)
         with test.mock.patch.object(tf_logging, 'warning') as mock_log:
-          with self.assertRaisesRegexp(errors.OutOfRangeError,
-                                       'End of sequence'):
+          with self.assertRaisesRegex(errors.OutOfRangeError,
+                                      'End of sequence'):
             hook.end(session)
-          self.assertRegexpMatches(
-              str(mock_log.call_args),
-              'dependency back to some input source')
+          self.assertRegex(
+              str(mock_log.call_args), 'dependency back to some input source')
 
   def test_final_ops_with_dictionary(self):
     with ops.Graph().as_default():

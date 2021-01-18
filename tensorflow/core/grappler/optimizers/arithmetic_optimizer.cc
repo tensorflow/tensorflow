@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -598,7 +599,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     std::deque<InputAndShape> add_ops;
 
     // Prepare leaf AddN nodes for inputs of equal shape
-    for (int i = 0; i < shapes.size(); ++i) {
+    for (int i = 0, end = shapes.size(); i < end; ++i) {
       const auto node_name = leaf_node_name(i);
       const auto& inputs = shape_sig_to_inputs[ShapeSignature(shapes[i])];
       add_ops.push_back(AddInputsOfSymbolicallyEqualShape(*group.root_node,
@@ -666,7 +667,8 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
 
     // add new Add node
     NodeDef* node = AddEmptyNode(node_name);
-    node->set_op("Add");
+    node->set_op((dtype == DT_STRING || dtype == DT_STRING_REF) ? "Add"
+                                                                : "AddV2");
     node->set_device(root_node.device());
     (*node->mutable_attr())["T"].set_type(dtype);
     node->add_input(left.input);
@@ -750,7 +752,7 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
         ctx().node_map->AddOutput(new_add_node->name(), new_outer_node->name());
 
         // Hoist non-shared factors up into the new AddN node.
-        for (int i = 0; i < unique_factors.size(); ++i) {
+        for (int i = 0, end = unique_factors.size(); i < end; ++i) {
           const string& unique_factor_i = unique_factors[i];
           new_add_node->set_input(i, unique_factor_i);
           ctx().node_map->AddOutput(unique_factor_i, new_add_node->name());
@@ -783,7 +785,7 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
   // Get a name new inner Add node
   string InnerAddNodeName(const NodeDef* node) const {
     auto scope_and_name = ParseNodeScopeAndName(node->name());
-    return OptimizedNodeName(scope_and_name, "Add");
+    return OptimizedNodeName(scope_and_name, "AddV2");
   }
 
   // Determine the set of common factors if the input nodes are all Mul or
@@ -1161,7 +1163,19 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     } else {
       // Remove simple identity transposes.
       if (IsIdentityPermutation(node_perm_values)) {
-        *simplified_node_name = node->input(0);
+        if (IsConjugateTranspose(*node)) {
+          const NodeScopeAndName transpose =
+              ParseNodeScopeAndName(node->name());
+          const string optimized_node_name = OptimizedNodeName(transpose);
+          NodeDef* new_op = AddCopyNode(optimized_node_name, node);
+          new_op->set_op("Conj");
+          new_op->mutable_input()->RemoveLast();
+          new_op->mutable_attr()->erase("Tperm");
+          ForwardControlDependencies(new_op, {node});
+          *simplified_node_name = new_op->name();
+        } else {
+          *simplified_node_name = node->input(0);
+        }
       }
     }
     return Status::OK();
@@ -1190,7 +1204,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     if (a.size() != b.size()) {
       return false;
     }
-    for (int i = 0; i < a.size(); ++i) {
+    for (int i = 0, end = a.size(); i < end; ++i) {
       if (a[b[i]] != i) {
         return false;
       }
@@ -1199,7 +1213,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   }
 
   bool IsIdentityPermutation(const std::vector<int64>& perm) {
-    for (int64 i = 0; i < perm.size(); ++i) {
+    for (int64 i = 0, end = perm.size(); i < end; ++i) {
       if (i != perm[i]) {
         return false;
       }
@@ -1273,7 +1287,7 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &input_type));
     DataType output_type;
     TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "type", &output_type));
-    if (input_type == output_type) {
+    if ((input_type == output_type) && !IsInPreserveSet(*node)) {
       *simplified_node_name = node->input(0);
       return Status::OK();
     }
@@ -1283,7 +1297,7 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
     NodeDef* operand;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &operand));
 
-    if (IsBitcast(*operand)) {
+    if (IsBitcast(*operand) && !IsInPreserveSet(*operand)) {
       AttrSlice operand_attrs(*operand);
       DataType operand_input_type;
       TF_RETURN_IF_ERROR(GetNodeAttr(operand_attrs, "T", &operand_input_type));
@@ -1308,7 +1322,9 @@ class RemoveRedundantCastStage : public ArithmeticOptimizerStage {
       : ArithmeticOptimizerStage("RemoveRedundantCast", ctx, ctx_ext) {}
   ~RemoveRedundantCastStage() override = default;
 
-  bool IsSupported(const NodeDef* node) const override { return IsCast(*node); }
+  bool IsSupported(const NodeDef* node) const override {
+    return IsCast(*node) && !IsInPreserveSet(*node);
+  }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
@@ -1334,7 +1350,7 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
   ~RemoveNegationStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAdd(*node) || IsSub(*node);
+    return (IsAdd(*node) || IsSub(*node)) && !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -1347,7 +1363,7 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
       // a - (-b) = a + b or  a + (-b) = a - b
       ForwardControlDependencies(node, {y});
       ctx().node_map->UpdateInput(node->name(), node->input(1), y->input(0));
-      node->set_op(IsAdd(*node) ? "Sub" : "Add");
+      node->set_op(IsAdd(*node) ? "Sub" : "AddV2");
       node->set_input(1, y->input(0));
       updated = true;
     } else if (IsAdd(*node) && IsNeg(*x)) {
@@ -1498,7 +1514,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     for (int i = start; i < end; ++i) {
       unique_inputs.insert(node.input(i));
     }
-    return unique_inputs.size() == n;
+    int unique_input_size = unique_inputs.size();
+    return unique_input_size == n;
   }
 
   // Returns the length of the common unary chain of ops that can be
@@ -1847,8 +1864,8 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
   }
 };
 
-// Performs the conversion:
-// Square(Sub(x, y)) => Identity(SquaredDifference(x, y))
+// Performs the following conversion for real types:
+//   Square(Sub(x, y)) => Identity(SquaredDifference(x, y) )
 class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
  public:
   explicit FuseSquaredDiffStage(const GraphOptimizerContext& ctx,
@@ -1867,6 +1884,11 @@ class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
     // elsewhere.
     if (IsSub(*b) && !IsInPreserveSet(*b) &&
         (NumNonControlOutputs(*b, *ctx().node_map) == 1)) {
+      // For complex, SquaredDiff computes conj(x-y)*(x-y), so this rewrite is
+      // invalid.
+      const DataType type = GetDataTypeFromAttr(*b, "T");
+      if ((type == DT_COMPLEX64) || (type == DT_COMPLEX128))
+        return Status::OK();
       node->set_op("Identity");
       b->set_op("SquaredDifference");
       AddToOptimizationQueue(node);
@@ -1913,15 +1935,22 @@ class LogSoftmaxStage : public ArithmeticOptimizerStage {
 //      ^                                  |
 //      |                                  |
 //    input                      input  ---+
-class RemoveRedundantReshape : public ArithmeticOptimizerStage {
+//
+// Additionally,  Reshape and BroadcastTo nodes where the
+// input and target shapes are equal are bypassed.
+//
+class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
  public:
-  explicit RemoveRedundantReshape(const GraphOptimizerContext& ctx,
-                                  const ArithmeticOptimizerContext& ctx_ext)
-      : ArithmeticOptimizerStage("RemoveRedundantReshape", ctx, ctx_ext) {}
-  ~RemoveRedundantReshape() override = default;
+  explicit RemoveRedundantReshapeOrBroadcastTo(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveRedundantReshapeOrBroadcastTo", ctx,
+                                 ctx_ext) {}
+  ~RemoveRedundantReshapeOrBroadcastTo() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsReshape(*node);
+    return (IsReshape(*node) || IsBroadcastTo(*node)) &&
+           !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -1929,7 +1958,8 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
 
     // 1. Bypass reshape followed by reshape.
-    if (IsReshape(*input) && !HasControlInputs(*input)) {
+    if (IsReshape(*node) && IsReshape(*input) && !IsInPreserveSet(*input)) {
+      ForwardControlDependencies(node, {input});
       node->set_input(0, input->input(0));
       ctx().node_map->UpdateInput(node->name(), input->name(), input->input(0));
       *simplified_node_name = node->name();
@@ -1940,7 +1970,7 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
     // 2. If the reshape is a no-op, forward its input to its consumers, unless
     // it anchors a control dependency since we want to make sure that control
     // dependency is triggered.
-    if (ReshapeIsIdentity(*node) && !HasControlInputs(*node)) {
+    if (InputMatchesTargetShape(*node) && !HasControlInputs(*node)) {
       *simplified_node_name = node->input(0);
       return Status::OK();
     }
@@ -1950,7 +1980,7 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
 
  private:
   // Returns whether `reshape` is an identity op.
-  bool ReshapeIsIdentity(const NodeDef& reshape) {
+  bool InputMatchesTargetShape(const NodeDef& reshape) {
     const OpInfo::TensorProperties* reshape_props;
     const OpInfo::TensorProperties* input_props;
 
@@ -2005,6 +2035,7 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
         ((producer_is_cast && IsValuePreserving(*consumer)) ||
          (IsValuePreserving(*producer) && IsCastLike(*consumer)));
     if (!can_optimize || IsControlFlow(*producer) ||
+        IsInPreserveSet(*producer) ||
         producer->device() != consumer->device()) {
       return Status::OK();
     }
@@ -2176,6 +2207,8 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
     // Check that value preserving chain is the only consumer of the Mul output.
     TF_RETURN_IF_TRUE(!IsAnyMul(*source));
     TF_RETURN_IF_TRUE(NumNonControlOutputs(*source, *ctx().node_map) != 1);
+    // And that Mul is not in the preserve set.
+    TF_RETURN_IF_TRUE(IsInPreserveSet(*source));
 
     const NodeDef* mul = source;
     int input_idx = 0;
@@ -2248,7 +2281,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
   ~FoldTransposeIntoMatMul() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAnyMatMul(*node);
+    return IsAnyMatMul(*node) && !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -3118,7 +3151,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
   ~RemoveStackSliceSameAxis() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsStridedSlice(*node) || IsSlice(*node);
+    return (IsStridedSlice(*node) || IsSlice(*node)) && !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -3243,14 +3276,15 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
                                      slice_begin_vec.size(), ") and size (",
                                      slice_size_vec.size(), ") vectors.");
     }
+    int slice_begin_vec_size = slice_begin_vec.size();
     if (!pack_output_shape.unknown_rank() &&
-        slice_begin_vec.size() != pack_output_shape.dims()) {
+        slice_begin_vec_size != pack_output_shape.dims()) {
       return Status::OK();
     }
-    if (pack_axis >= slice_begin_vec.size()) {
+    if (pack_axis >= slice_begin_vec_size) {
       return errors::InvalidArgument(
           "Input to node ", node->name(), " had pack_axis ", pack_axis,
-          " but rank was ", slice_begin_vec.size(), ".");
+          " but rank was ", slice_begin_vec_size, ".");
     }
 
     *slice_start_value = slice_begin_vec[pack_axis];
@@ -3259,7 +3293,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
       return Status::OK();
     }
 
-    for (size_t i = 0; i < slice_begin_vec.size(); ++i) {
+    for (int i = 0; i < slice_begin_vec_size; ++i) {
       if (i != pack_axis) {
         if (slice_begin_vec[i] != 0 ||
             !(slice_size_vec[i] == -1 ||
@@ -3347,7 +3381,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
     int begin_index = -1;
     int64 begin_value = 0;
-    for (int i = 0; i < slice_begin_vec.size(); ++i) {
+    for (int i = 0, end = slice_begin_vec.size(); i < end; ++i) {
       const int64 v = slice_begin_vec[i];
       if (v != 0) {
         if (begin_index != -1) {
@@ -3361,7 +3395,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
     int end_index = -1;
     int64 end_value = 0;
-    for (int i = 0; i < slice_end_vec.size(); ++i) {
+    for (int i = 0, end = slice_begin_vec.size(); i < end; ++i) {
       const int64 v = slice_end_vec[i];
       if (v != pack_output_shape.dim_size(i)) {
         if (end_index != -1) {
@@ -3464,6 +3498,167 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
   }
 };
 
+// Eliminates unnecessary copies during sparse embedding lookup operations.
+//
+// For non-partitioned variables, the `tf.nn.embedding_lookup_sparse()` function
+// generates code of the form:
+//
+//     embeddings = <a 2D Tensor>
+//     sparse_ids = <a tf.int64 SparseTensor>
+//     segment_ids = sparse_ids.indices[:, 0]
+//     ids, idx = tf.unique(sparse_ids.values)
+//     gathered_rows = tf.gather(params, ids)
+//     result = tf.sparse.segment_<combiner>(gathered_rows, idx, segment_ids)
+//
+// In this case, all of the work in `tf.unique()` and `tf.gather()`
+// can be avoided by passing the full embeddings to
+// `tf.sparse.segment_<combiner>()` and performing the same amount of
+// computation (but fewer copies and allocations) as follows:
+//
+//     embeddings = <a 2D Tensor>
+//     sparse_ids = <a tf.int64 SparseTensor>
+//     segment_ids = sparse_ids.indices[:, 0]
+//     result = tf.sparse.segment_<combiner>(
+//          embeddings, sparse_ids.values, segment_ids)
+class SimplifyEmbeddingLookupStage : public ArithmeticOptimizerStage {
+ public:
+  explicit SimplifyEmbeddingLookupStage(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("SimplifyEmbeddingLookupStage", ctx, ctx_ext) {
+  }
+  ~SimplifyEmbeddingLookupStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsAnySparseSegmentReduction(*node);
+  }
+
+  Status TrySimplify(NodeDef* reduction_node,
+                     string* simplified_node_name) override {
+    if (IsInPreserveSet(*reduction_node)) return Status::OK();
+
+    // Input 0 (data) of the reduction node must be a tf.gather() on the 0th
+    // axis.
+    NodeDef* gather_node = nullptr;
+    TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &gather_node));
+    if (!IsGather(*gather_node) || IsInPreserveSet(*gather_node) ||
+        gather_node->device() != reduction_node->device())
+      return Status::OK();
+    if (gather_node->op() == "GatherV2" && !IsAxis0(*gather_node, 2))
+      return Status::OK();
+
+    // Input 1 (indices) of the gather node must be a tf.unique() on the 0th
+    // axis.
+    NodeDef* unique_node = nullptr;
+    TF_RETURN_IF_ERROR(GetInputNode(gather_node->input(1), &unique_node));
+    if (!IsUnique(*unique_node) || IsInPreserveSet(*unique_node) ||
+        unique_node->device() != gather_node->device())
+      return Status::OK();
+    if (unique_node->op() == "UniqueV2" && !IsAxis0(*unique_node, 1))
+      return Status::OK();
+
+    DataType unique_element_type;
+    TF_RETURN_IF_ERROR(GetNodeAttr(*unique_node, "T", &unique_element_type));
+
+    // Input 1 (indices) of the reduction node must be output 1 of the unique
+    // node.
+    const TensorId idx_tensor = ParseTensorName(reduction_node->input(1));
+    if (idx_tensor != TensorId(unique_node->name(), 1)) return Status::OK();
+
+    // Input 0 (data) of the reduction node becomes input 1 (params) of the
+    // gather node.
+    reduction_node->set_input(0, gather_node->input(0));
+    ctx().node_map->UpdateInput(reduction_node->name(),
+                                reduction_node->input(0),
+                                gather_node->input(0));
+
+    // Input 1 (indices) of the reduction node becomes input 0 (x) of the unique
+    // node.
+    reduction_node->set_input(1, unique_node->input(0));
+    ctx().node_map->UpdateInput(reduction_node->name(),
+                                reduction_node->input(1),
+                                unique_node->input(0));
+    SetDataTypeToAttr(unique_element_type, "Tidx", reduction_node);
+
+    *simplified_node_name = reduction_node->name();
+    return Status::OK();
+  }
+
+ private:
+  bool IsAxis0(const NodeDef& node, int axis_input) {
+    Tensor axis_tensor;
+    if (!GetTensorFromConstNode(node.input(axis_input), &axis_tensor))
+      return false;
+    if (axis_tensor.NumElements() != 1) return false;
+    if (axis_tensor.dtype() == DT_INT32) {
+      return axis_tensor.flat<int32>()(0) == 0;
+    } else if (axis_tensor.dtype() == DT_INT64) {
+      return axis_tensor.flat<int64>()(0) == 0;
+    } else {
+      return false;
+    }
+  }
+};
+
+// Eliminates unnecessary casts before sparse segment reduction operations.
+//
+// Existing graphs and library code would often insert a cast from DT_INT64 to
+// DT_INT32 on the indices and/or segment_ids inputs to "SparseSegment*" ops.
+// Support for for DT_INT64 indices and/or segment_ids now exists, so we can
+// pass the input directly without a cast.
+class RemoveCastIntoSegmentReductionStage : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveCastIntoSegmentReductionStage(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveCastIntoSegmentReductionStage", ctx,
+                                 ctx_ext) {}
+  ~RemoveCastIntoSegmentReductionStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsAnySparseSegmentReduction(*node);
+  }
+
+  Status TrySimplify(NodeDef* reduction_node,
+                     string* simplified_node_name) override {
+    if (IsInPreserveSet(*reduction_node)) return Status::OK();
+
+    bool optimized = false;
+
+    // Inputs 1 (indices) and 2 (segment_ids) can be either DT_INT32 or
+    // DT_INT64.
+    std::array<std::pair<int, string>, 2> input_details = {
+        std::make_pair(1, "Tidx"), std::make_pair(2, "Tsegmentids")};
+
+    for (const auto& input : input_details) {
+      int input_index = input.first;
+      const string& type_attr_name = input.second;
+      NodeDef* cast_node = nullptr;
+      TF_RETURN_IF_ERROR(
+          GetInputNode(reduction_node->input(input_index), &cast_node));
+      DataType original_index_type;
+      if (IsCastFromSupportedType(*cast_node, &original_index_type)) {
+        reduction_node->set_input(input_index, cast_node->input(0));
+        ctx().node_map->UpdateInput(reduction_node->name(),
+                                    reduction_node->input(1),
+                                    cast_node->input(0));
+        SetDataTypeToAttr(original_index_type, type_attr_name, reduction_node);
+        optimized = true;
+      }
+    }
+
+    if (optimized) *simplified_node_name = reduction_node->name();
+    return Status::OK();
+  }
+
+ private:
+  bool IsCastFromSupportedType(const NodeDef& node, DataType* out_input_type) {
+    if (!IsCast(node)) return false;
+    if (!GetNodeAttr(node, "SrcT", out_input_type).ok()) return false;
+    return *out_input_type == DT_INT32 || *out_input_type == DT_INT64;
+  }
+};
+
 }  // namespace
 
 Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
@@ -3504,7 +3699,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.remove_redundant_cast)
     pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
   if (options_.remove_redundant_reshape)
-    pipeline.AddStage<RemoveRedundantReshape>(ctx, ctx_ext);
+    pipeline.AddStage<RemoveRedundantReshapeOrBroadcastTo>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
   if (options_.replace_mul_with_square)
@@ -3534,6 +3729,10 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<UnaryOpsComposition>(ctx, ctx_ext);
   if (options_.remove_stack_slice_same_axis)
     pipeline.AddStage<RemoveStackSliceSameAxis>(ctx, ctx_ext);
+  if (options_.simplify_embedding_lookup)
+    pipeline.AddStage<SimplifyEmbeddingLookupStage>(ctx, ctx_ext);
+  if (options_.remove_cast_into_segment_reduction)
+    pipeline.AddStage<RemoveCastIntoSegmentReductionStage>(ctx, ctx_ext);
   if (options_.fuse_squared_diff)
     pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 

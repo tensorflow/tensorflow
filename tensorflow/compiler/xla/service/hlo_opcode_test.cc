@@ -58,12 +58,14 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kCustomCall:
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kDynamicReshape:
       case HloOpcode::kFusion:
       case HloOpcode::kMap:
       case HloOpcode::kReduce:
       case HloOpcode::kRng:
       case HloOpcode::kSort:
       case HloOpcode::kTuple:
+      case HloOpcode::kReduceWindow:
         EXPECT_TRUE(HloOpcodeIsVariadic(opcode));
         break;
       default:

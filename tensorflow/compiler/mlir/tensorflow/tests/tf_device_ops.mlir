@@ -1,4 +1,4 @@
-// RUN: tf-opt %s | tf-opt | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s | tf-opt | FileCheck %s
 
 // CHECK-LABEL: func @return_no_operands
 func @return_no_operands() {
@@ -40,18 +40,34 @@ func @empty_replicate() {
 // CHECK-NEXT:   tf_device.return
 }
 
+// CHECK-LABEL: func @no_operand_replicate
+func @no_operand_replicate() {
+  tf_device.replicate {n = 2 : i32} {
+    %0 = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+    %1 = "tf.Const"() { value = dense<1> : tensor<i64> } : () -> tensor<i64>
+    tf_device.return %0, %1 : tensor<i64>, tensor<i64>
+  }
+  return
+  // CHECK:      tf_device.replicate
+  // CHECK-SAME: n = 2
+  // CHECK:   tf_device.return
+}
+
 // CHECK-LABEL: func @replicate_with_multiple_operands
 func @replicate_with_multiple_operands() {
-  %0 = "tf.opA"() : () -> (tensor<*xi1>)
-  %1 = "tf.opB"() : () -> (tensor<*xi1>)
-  %2 = "tf.opC"() : () -> (tensor<*xi1>)
-  %3 = "tf.opD"() : () -> (tensor<*xi32>)
-  %4 = "tf.opE"() : () -> (tensor<*xi32>)
-  %5 = "tf.opF"() : () -> (tensor<*xi32>)
-  %6 = "tf.opG"() : () -> (tensor<*xf32>)
-  %7 = "tf.opH"() : () -> (tensor<*xf32>)
-  %8 = "tf.opI"() : () -> (tensor<*xf32>)
-  tf_device.replicate([%0, %1, %2] as %input0: tensor<*xi1>, [%3, %4, %5] as %input1: tensor<*xi32>, [%6, %7, %8] as %input2: tensor<*xf32>) {n = 3 : i32} {
+  %0 = "tf.opA"() : () -> tensor<*xi1>
+  %1 = "tf.opB"() : () -> tensor<*xi1>
+  %2 = "tf.opC"() : () -> tensor<*xi1>
+  %3 = "tf.opD"() : () -> tensor<*xi32>
+  %4 = "tf.opE"() : () -> tensor<*xi32>
+  %5 = "tf.opF"() : () -> tensor<*xi32>
+  %6 = "tf.opG"() : () -> tensor<*xf32>
+  %7 = "tf.opH"() : () -> tensor<*xf32>
+  %8 = "tf.opI"() : () -> tensor<*xf32>
+  %9 = "tf.opJ"() : () -> tensor<*xi8>
+  %10 = "tf.opK"() : () -> tensor<*xi16>
+  %11 = "tf.opL"() : () -> tensor<*xi64>
+  tf_device.replicate([%0, %1, %2] as %input0: tensor<*xi1>, %9 as %input1: tensor<*xi8>, %10 as %input2: tensor<*xi16>, [%3, %4, %5] as %input3: tensor<*xi32>, [%6, %7, %8] as %input4: tensor<*xf32>, %11 as %input5: tensor<*xi64>) {n = 3 : i32} {
     tf_device.return
   }
   return
@@ -65,9 +81,29 @@ func @replicate_with_multiple_operands() {
 // CHECK:      %[[OP_G:[a-z0-9]*]] = "tf.opG"
 // CHECK:      %[[OP_H:[a-z0-9]*]] = "tf.opH"
 // CHECK:      %[[OP_I:[a-z0-9]*]] = "tf.opI"
+// CHECK:      %[[OP_J:[a-z0-9]*]] = "tf.opJ"
+// CHECK:      %[[OP_K:[a-z0-9]*]] = "tf.opK"
+// CHECK:      %[[OP_L:[a-z0-9]*]] = "tf.opL"
 // CHECK:      tf_device.replicate
-// CHECK-SAME: ([%[[OP_A]], %[[OP_B]], %[[OP_C]]] as %{{[a-z0-9]*}}: tensor<*xi1>, [%[[OP_D]], %[[OP_E]], %[[OP_F]]] as %{{[a-z0-9]*}}: tensor<*xi32>, [%[[OP_G]], %[[OP_H]], %[[OP_I]]] as %{{[a-z0-9]*}}: tensor<*xf32>)
+// CHECK-SAME: [%[[OP_A]], %[[OP_B]], %[[OP_C]]] as %{{[a-z0-9]*}}: tensor<*xi1>
+// CHECK-SAME: [%[[OP_D]], %[[OP_E]], %[[OP_F]]] as %{{[a-z0-9]*}}: tensor<*xi32>
+// CHECK-SAME: [%[[OP_G]], %[[OP_H]], %[[OP_I]]] as %{{[a-z0-9]*}}: tensor<*xf32>
+// CHECK-SAME: %[[OP_J]] as %{{[a-z0-9]*}}: tensor<*xi8>
+// CHECK-SAME: %[[OP_K]] as %{{[a-z0-9]*}}: tensor<*xi16>
+// CHECK-SAME: %[[OP_L]] as %{{[a-z0-9]*}}: tensor<*xi64>
 // CHECK-SAME: n = 3
+// CHECK-NEXT:   tf_device.return
+}
+
+// CHECK-LABEL: func @replicate_derived_operand_segment_sizes
+func @replicate_derived_operand_segment_sizes() {
+  tf_device.replicate {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} {
+  }
+  return
+
+// CHECK:      tf_device.replicate
+// CHECK-SAME: n = 2
+// CHECK-NOT:  operand_segment_sizes
 // CHECK-NEXT:   tf_device.return
 }
 

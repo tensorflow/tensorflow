@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-tpu-v1-island-coarsening | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-executor-tpu-v1-island-coarsening | FileCheck %s
 
 
 // Test that islands without the attribute are not merged.

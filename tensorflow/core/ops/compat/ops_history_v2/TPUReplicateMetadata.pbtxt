@@ -1,0 +1,286 @@
+op {
+  name: "TPUReplicateMetadata"
+  attr {
+    name: "num_replicas"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_cores_per_replica"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "topology"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "use_tpu"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "device_assignment"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "computation_shape"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "host_compute_core"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "padding_map"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+}
+op {
+  name: "TPUReplicateMetadata"
+  attr {
+    name: "num_replicas"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_cores_per_replica"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "topology"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "use_tpu"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "device_assignment"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "computation_shape"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "host_compute_core"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "padding_map"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "step_marker_location"
+    type: "string"
+    default_value {
+      s: "STEP_MARK_AT_ENTRY"
+    }
+  }
+}
+op {
+  name: "TPUReplicateMetadata"
+  attr {
+    name: "num_replicas"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_cores_per_replica"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "topology"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "use_tpu"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "device_assignment"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "computation_shape"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "host_compute_core"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "padding_map"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "step_marker_location"
+    type: "string"
+    default_value {
+      s: "STEP_MARK_AT_ENTRY"
+    }
+  }
+  attr {
+    name: "allow_soft_placement"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "TPUReplicateMetadata"
+  attr {
+    name: "num_replicas"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_cores_per_replica"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "topology"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "use_tpu"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "device_assignment"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "computation_shape"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "host_compute_core"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "padding_map"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "step_marker_location"
+    type: "string"
+    default_value {
+      s: "STEP_MARK_AT_ENTRY"
+    }
+  }
+  attr {
+    name: "allow_soft_placement"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "use_spmd_for_xla_partitioning"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}

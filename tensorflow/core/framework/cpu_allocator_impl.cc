@@ -29,9 +29,8 @@ namespace tensorflow {
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
 
-void EnableCPUAllocatorStats(bool enable) {
-  cpu_allocator_collect_stats = enable;
-}
+void EnableCPUAllocatorStats() { cpu_allocator_collect_stats = true; }
+void DisableCPUAllocatorStats() { cpu_allocator_collect_stats = false; }
 bool CPUAllocatorStatsEnabled() { return cpu_allocator_collect_stats; }
 
 static const int kMaxTotalAllocationWarnings = 1;
@@ -75,7 +74,7 @@ class CPUAllocator : public Allocator {
   string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    if (num_bytes > LargeAllocationWarningBytes() &&
+    if (num_bytes > static_cast<size_t>(LargeAllocationWarningBytes()) &&
         single_allocation_warning_count_ < kMaxSingleAllocationWarnings) {
       ++single_allocation_warning_count_;
       LOG(WARNING) << "Allocation of " << num_bytes << " exceeds "
@@ -157,13 +156,17 @@ class CPUAllocatorFactory : public AllocatorFactory {
     explicit CPUSubAllocator(CPUAllocator* cpu_allocator)
         : SubAllocator({}, {}), cpu_allocator_(cpu_allocator) {}
 
-    void* Alloc(size_t alignment, size_t num_bytes) override {
+    void* Alloc(size_t alignment, size_t num_bytes,
+                size_t* bytes_received) override {
+      *bytes_received = num_bytes;
       return cpu_allocator_->AllocateRaw(alignment, num_bytes);
     }
 
     void Free(void* ptr, size_t num_bytes) override {
       cpu_allocator_->DeallocateRaw(ptr);
     }
+
+    bool SupportsCoalescing() const override { return false; }
 
    private:
     CPUAllocator* cpu_allocator_;

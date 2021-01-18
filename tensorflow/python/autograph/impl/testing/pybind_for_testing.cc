@@ -13,9 +13,9 @@
 // limitations under the License.
 // ==============================================================================
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
+#include "pybind11/stl.h"
 
 namespace autograph {
 

@@ -64,7 +64,7 @@ class ClientSession {
   ClientSession(const Scope& scope, const string& target);
 
   /// Same as above, but use the empty string ("") as the target specification.
-  ClientSession(const Scope& scope);
+  explicit ClientSession(const Scope& scope);
 
   /// Create a new session, configuring it with `session_options`.
   ClientSession(const Scope& scope, const SessionOptions& session_options);

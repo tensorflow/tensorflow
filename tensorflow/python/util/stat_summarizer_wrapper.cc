@@ -16,8 +16,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/util/stat_summarizer.h"

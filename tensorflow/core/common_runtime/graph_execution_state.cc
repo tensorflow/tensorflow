@@ -22,9 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
@@ -40,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/collective_order.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/graph/validate.h"
@@ -378,7 +379,7 @@ struct TensorAndDevice {
 };
 
 // Tensors of some DataTypes cannot placed in device memory as feeds or
-// fetches. Validate against a whitelist of those known to work.
+// fetches. Validate against a allowlist of those known to work.
 bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
   // The mechanism for supporting feeds of device-backed Tensors requires
   // the _Arg kernel to be registered for the corresponding type (and that
@@ -391,7 +392,7 @@ bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
   // For now, we return true iff there are _Arg AND _Retval kernels for dtype on
   // the device. False negatives are okay, false positives would be bad.
   //
-  // TODO(ashankar): Instead of a whitelist here, perhaps we could query
+  // TODO(ashankar): Instead of a allowlist here, perhaps we could query
   // the kernel registry for _Arg and _Retval kernels instead.
   if (device_type == DEVICE_CPU) return true;
   if (device_type != DEVICE_GPU) return false;
@@ -634,16 +635,19 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
 Status GraphExecutionState::OptimizeGraph(
     const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
     std::unique_ptr<FunctionLibraryDefinition>* optimized_flib) {
-#ifndef IS_MOBILE_PLATFORM
+#ifdef IS_MOBILE_PLATFORM
+  return errors::InvalidArgument("Mobile platforms not supported");
+#else
   if (session_options_->config.graph_options().place_pruned_graph()) {
     return errors::InvalidArgument("Can't optimize a pruned graph");
   }
 
   if (grappler::MetaOptimizerEnabled(session_options_->config)) {
+    // Here we build the GrapplerItem before calling the optimizer.
     grappler::GrapplerItem item;
     item.id = "tf_graph";
-    graph_->ToGraphDef(&item.graph);
 
+    // Add devices to the GrapplerItem
     // It's ok to skip invalid device annotations in Grappler.
     for (const Device* d : device_set_->devices()) {
       Status added_device = item.AddDevice(d->name());
@@ -652,11 +656,7 @@ Status GraphExecutionState::OptimizeGraph(
     VLOG(3) << "Grappler available devices: "
             << absl::StrJoin(item.devices(), ", ");
 
-    // TODO(b/114748242): Add a unit test to test this bug fix.
-    if (flib_def_) {
-      *item.graph.mutable_library() = flib_def_->ToProto();
-    }
-
+    // Add fetches to the GrapplerItem.
     item.fetch.insert(item.fetch.end(),
                       options.callable_options.fetch().begin(),
                       options.callable_options.fetch().end());
@@ -669,34 +669,61 @@ Status GraphExecutionState::OptimizeGraph(
       item.fetch.push_back(tensor_connection.from_tensor());
     }
 
+    // Add feeds to the GrapplerItem if we know them.
+    absl::flat_hash_set<absl::string_view> node_names;
     if (!(options.callable_options.feed().empty() &&
           options.callable_options.tensor_connection().empty())) {
-      std::unordered_set<string> feeds;
+      std::vector<SafeTensorId> feeds;
+
       for (const string& feed : options.callable_options.feed()) {
-        TensorId id = ParseTensorName(feed);
-        if (id.second != 0) {
-          return errors::InvalidArgument("Unsupported feed: ", feed);
-        }
-        feeds.emplace(id.first);
+        feeds.emplace_back(ParseTensorName(feed));
       }
       for (const TensorConnection& tensor_connection :
            options.callable_options.tensor_connection()) {
-        TensorId id = ParseTensorName(tensor_connection.to_tensor());
-        if (id.second != 0) {
-          return errors::InvalidArgument("Unsupported feed: ",
-                                         tensor_connection.to_tensor());
-        }
-        feeds.emplace(id.first);
+        feeds.emplace_back(ParseTensorName(tensor_connection.to_tensor()));
       }
-      for (const Node* node : graph_->nodes()) {
-        if (feeds.find(node->name()) == feeds.end()) {
+
+      // For feeds with tensor index 0 we try to find the corresponding node in
+      // the graph to infer feed data type and shape.
+      absl::flat_hash_set<absl::string_view> feed_nodes;
+
+      // For feeds with tensor index larger than 0, we can't infer data type or
+      // shape from the graph. Currently we only support type and shape
+      // inference from a small set of node types: Placeholder, Const, etc...
+      for (const SafeTensorId& feed : feeds) {
+        if (feed.index() > 0) {
+          VLOG(3) << "Add undefined feed for: " << feed.ToString();
+          Tensor fake_input(DT_INVALID, {0});
+          item.feed.emplace_back(feed.ToString(), fake_input);
+        } else {
+          VLOG(3) << "Add node for feed inference: " << feed.ToString();
+          feed_nodes.insert(feed.node());
           continue;
         }
-        // Get the type and shape of the feed node.
+      }
+
+      // For feeds with tensor index == 0 we try to infer data type and tensor
+      // shape from the graph, by looking at the fed node attributes.
+      node_names.reserve(graph_->num_nodes());
+      for (const Node* node : graph_->nodes()) {
+        node_names.insert(node->name());
+        if (feed_nodes.find(node->name()) == feed_nodes.end()) continue;
+
+        // Try to get the type and shape of the feed node.
         PartialTensorShape partial_shape;
         DataType type;
-        TF_RETURN_IF_ERROR(GetFeedShapeAndTypeFromAttribute(
-            node->def(), &partial_shape, &type));
+        Status st = GetFeedShapeAndTypeFromAttribute(node->def(),
+                                                     &partial_shape, &type);
+
+        // Failed to get type and shape of the feed node.
+        if (!st.ok()) {
+          VLOG(3) << "Failed to infer feed node type and shape."
+                  << " Add undefined feed for: " << node->name();
+          Tensor fake_input(DT_INVALID, {0});
+          item.feed.emplace_back(node->name(), fake_input);
+          continue;
+        }
+
         // If the shape of the placeholder is only partially known, we are free
         // to set unknown dimensions of its shape to any value we desire. We
         // choose 0 to minimize the memory impact. Note that this only matters
@@ -717,11 +744,46 @@ Status GraphExecutionState::OptimizeGraph(
           }
         }
 
+        VLOG(3) << "Add feed for: " << node->name() << "; type: " << type
+                << "; shape: " << shape;
         Tensor fake_input(type, shape);
         item.feed.emplace_back(node->name(), fake_input);
       }
     }
 
+    // Validate that the feeds and fetches are valid.
+    if (node_names.empty()) {
+      // Collect all node names in the graph if we didn't already.
+      node_names.reserve(graph_->num_nodes());
+      for (const Node* node : graph_->nodes()) {
+        node_names.insert(node->name());
+      }
+    }
+    for (const auto& feed : item.feed) {
+      SafeTensorId tensor_id = ParseTensorName(feed.first);
+      if (node_names.find(tensor_id.node()) == node_names.end()) {
+        return errors::InvalidArgument("Invalid feed, no such node in graph: ",
+                                       feed.first);
+      }
+    }
+    for (const auto& fetch : item.fetch) {
+      SafeTensorId tensor_id = ParseTensorName(fetch);
+      if (node_names.find(tensor_id.node()) == node_names.end()) {
+        return errors::InvalidArgument("Invalid fetch, no such node in graph: ",
+                                       fetch);
+      }
+    }
+
+    // Convert Graph to GraphDef and add it to the GrapplerItem.
+    graph_->ToGraphDef(&item.graph);
+    // TODO(b/114748242): Add a unit test to test this bug fix.
+    if (flib_def_) {
+      *item.graph.mutable_library() = flib_def_->ToProto();
+    }
+
+    // Construct a virtual cluster and find the cpu_device, which the
+    // ConstantFolding optimizer will use for partial evaluation of the graph.
+    grappler::VirtualCluster cluster(device_set_);
     Device* cpu_device = nullptr;
     for (const auto& device : device_set_->devices()) {
       if (device->parsed_name().id == 0 &&
@@ -730,7 +792,8 @@ Status GraphExecutionState::OptimizeGraph(
         cpu_device = device;
       }
     }
-    grappler::VirtualCluster cluster(device_set_);
+
+    // Now we can run the MetaOptimizer on the constructed GrapplerItem.
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(
         grappler::RunMetaOptimizer(std::move(item), session_options_->config,
@@ -753,9 +816,9 @@ Status GraphExecutionState::OptimizeGraph(
         TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));
       }
     }
-
     optimized_graph->reset(new Graph(OpRegistry::Global()));
 
+    // Convert the optimized GraphDef back to a Graph.
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, std::move(new_graph),
@@ -771,8 +834,6 @@ Status GraphExecutionState::OptimizeGraph(
   } else {
     return errors::InvalidArgument("Meta Optimizer disabled");
   }
-#else
-  return errors::InvalidArgument("Mobile platforms not supported");
 #endif  // IS_MOBILE_PLATFORM
 }
 

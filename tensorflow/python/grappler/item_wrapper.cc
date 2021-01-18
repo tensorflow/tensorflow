@@ -19,8 +19,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -129,7 +129,7 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
         [](const py::bytes& serialized_metagraph, bool ignore_colocation,
            bool ignore_user_placement) -> tensorflow::grappler::GrapplerItem* {
           tensorflow::MetaGraphDef metagraph;
-          if (!metagraph.ParseFromString(serialized_metagraph)) {
+          if (!metagraph.ParseFromString(std::string(serialized_metagraph))) {
             throw std::invalid_argument(
                 "The MetaGraphDef could not be parsed as a valid protocol "
                 "buffer");

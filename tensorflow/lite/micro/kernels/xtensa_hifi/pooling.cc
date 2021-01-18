@@ -1,24 +1,3 @@
-/******************************************************************************
- * Copyright (C) 2019 Cadence Design Systems, Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to use this Software with Cadence processor cores only and
- * not with any other processors and platforms, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- ******************************************************************************/
-
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,7 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-#include "xtensa_tf_micro_common.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifi/xtensa_tf_micro_common.h"
 
 namespace tflite {
 namespace ops {
@@ -83,6 +62,7 @@ TfLiteStatus AverageEvalFloat(TfLiteContext* context, const TfLiteNode* node,
   CalculateActivationRange(params->activation, &activation_min,
                            &activation_max);
 
+#if HIFI_VFPU
   const int stride_height = params->stride_height;
   const int stride_width = params->stride_width;
   const int pad_width = data->padding.width;
@@ -147,7 +127,7 @@ TfLiteStatus AverageEvalFloat(TfLiteContext* context, const TfLiteNode* node,
   }
 
   out_length = batches * output_height * output_width * depth;
-  uint32 p_unalign_val = (uint32)out_data_ptr, p_align_val;
+  uint32_t p_unalign_val = (uint32_t)out_data_ptr, p_align_val;
   p_align_val = (p_unalign_val + 7) & (~7);
 
   // pre loop for activation_min_max
@@ -168,6 +148,20 @@ TfLiteStatus AverageEvalFloat(TfLiteContext* context, const TfLiteNode* node,
     CHECK_ERR_HIFI_NNLIB_KER(
         err, "AveragepoolFloat: xa_nn_vec_activation_min_max_f32_f32 failed");
   }
+#else
+  PoolParams op_params;
+  op_params.stride_height = params->stride_height;
+  op_params.stride_width = params->stride_width;
+  op_params.filter_height = params->filter_height;
+  op_params.filter_width = params->filter_width;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width = data->padding.width;
+  op_params.float_activation_min = activation_min;
+  op_params.float_activation_max = activation_max;
+  reference_ops::AveragePool(
+      op_params, GetTensorShape(input), GetTensorData<float>(input),
+      GetTensorShape(output), GetTensorData<float>(output));
+#endif /* HIFI_VFPU */
   return kTfLiteOk;
 }
 
@@ -177,7 +171,6 @@ TfLiteStatus AverageEvalQuantized(TfLiteContext* context,
                                   const OpData* data, const TfLiteTensor* input,
                                   TfLiteTensor* output) {
   TFLITE_DCHECK(input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
-
   int32_t activation_min, activation_max;
   (void)CalculateActivationRangeQuantized(context, params->activation, output,
                                           &activation_min, &activation_max);
@@ -201,8 +194,8 @@ TfLiteStatus AverageEvalQuantized(TfLiteContext* context,
     const int output_height = output_shape.Dims(1);
     const int output_width = output_shape.Dims(2);
 
-    const uint8* inp_data_ptr;
-    uint8* out_data_ptr;
+    const uint8_t* inp_data_ptr;
+    uint8_t* out_data_ptr;
     int inp_data_format = 0, out_data_format = 0, out_length;
     int inp_precision = PREC_ASYM8, out_precision = PREC_ASYM8;
     void* p_scratch;
@@ -248,7 +241,7 @@ TfLiteStatus AverageEvalQuantized(TfLiteContext* context,
     }
 
     out_length = batches * output_height * output_width * depth;
-    uint32 p_unalign_val = (uint32)out_data_ptr, p_align_val;
+    uint32_t p_unalign_val = (uint32_t)out_data_ptr, p_align_val;
     p_align_val = (p_unalign_val + 7) & (~7);
 
     // pre loop for activation_min_max
@@ -295,6 +288,7 @@ TfLiteStatus MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRange(params->activation, &activation_min,
                            &activation_max);
 
+#if HIFI_VFPU
   const int stride_height = params->stride_height;
   const int stride_width = params->stride_width;
   const int pad_width = data->padding.width;
@@ -357,7 +351,7 @@ TfLiteStatus MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
   }
 
   out_length = batches * output_height * output_width * depth;
-  uint32 p_unalign_val = (uint32)out_data_ptr, p_align_val;
+  uint32_t p_unalign_val = (uint32_t)out_data_ptr, p_align_val;
   p_align_val = (p_unalign_val + 7) & (~7);
 
   // pre loop for activation_min_max
@@ -378,6 +372,20 @@ TfLiteStatus MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
     CHECK_ERR_HIFI_NNLIB_KER(
         err, "MaxpoolFloat: xa_nn_vec_activation_min_max_f32_f32 failed");
   }
+#else
+  tflite::PoolParams op_params;
+  op_params.stride_height = params->stride_height;
+  op_params.stride_width = params->stride_width;
+  op_params.filter_height = params->filter_height;
+  op_params.filter_width = params->filter_width;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width = data->padding.width;
+  op_params.float_activation_min = activation_min;
+  op_params.float_activation_max = activation_max;
+  reference_ops::MaxPool(op_params, GetTensorShape(input),
+                         GetTensorData<float>(input), GetTensorShape(output),
+                         GetTensorData<float>(output));
+#endif /* HIFI_VFPU */
   return kTfLiteOk;
 }
 
@@ -409,8 +417,8 @@ TfLiteStatus MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
     const int output_height = output_shape.Dims(1);
     const int output_width = output_shape.Dims(2);
 
-    const uint8* inp_data_ptr;
-    uint8* out_data_ptr;
+    const uint8_t* inp_data_ptr;
+    uint8_t* out_data_ptr;
     int inp_data_format = 0, out_data_format = 0, out_length;
     int inp_precision = PREC_ASYM8, out_precision = PREC_ASYM8;
     void* p_scratch;
@@ -453,7 +461,7 @@ TfLiteStatus MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
     }
 
     out_length = batches * output_height * output_width * depth;
-    uint32 p_unalign_val = (uint32)out_data_ptr, p_align_val;
+    uint32_t p_unalign_val = (uint32_t)out_data_ptr, p_align_val;
     p_align_val = (p_unalign_val + 7) & (~7);
 
     // pre loop for activation_min_max
@@ -491,9 +499,7 @@ TfLiteStatus MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
   }
   return kTfLiteOk;
 }
-
 }  // namespace
-
 
 TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
@@ -504,7 +510,7 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, input, output, &data));
 
-  // Inputs and outputs share the same type, guarenteed by the converter.
+  // Inputs and outputs share the same type, guaranteed by the converter.
   switch (input->type) {
     case kTfLiteFloat32:
       AverageEvalFloat(context, node, params, &data, input, output);
@@ -548,28 +554,26 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace pooling
 
-TfLiteRegistration* Register_AVERAGE_POOL_2D() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/pooling::AverageEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_AVERAGE_POOL_2D() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/pooling::AverageEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-TfLiteRegistration* Register_MAX_POOL_2D() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/pooling::MaxEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_MAX_POOL_2D() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/pooling::MaxEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

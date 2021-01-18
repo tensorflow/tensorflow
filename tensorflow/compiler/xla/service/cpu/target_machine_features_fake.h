@@ -44,6 +44,10 @@ class TargetMachineFeaturesWithFakeAlignmentLogic
     LOG(FATAL) << "Unexpected call to " << __func__;
   }
 
+  int vector_register_count(const llvm::Function& function) const override {
+    LOG(FATAL) << "Unexpected call to " << __func__;
+  }
+
   int64 minimum_alignment_for_allocation(int64 size_bytes) const override {
     return fake_alignment_logic_(size_bytes);
   }

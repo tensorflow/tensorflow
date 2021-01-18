@@ -16,7 +16,7 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 
 // clang-format off
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 #include <math.h>  // NOLINT
 #include <algorithm>  // NOLINT
@@ -353,7 +353,7 @@ class CheckNumericsV2Op<GPUDevice, T> : public CheckNumericsOp<GPUDevice, T> {
     }
   }
 
-  static const int abnormal_detected_size = 3;
+  static constexpr int abnormal_detected_size = 3;
 };
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

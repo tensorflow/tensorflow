@@ -1,91 +1,182 @@
 # Build TensorFlow Lite for Raspberry Pi
 
-This page describes how to build the TensorFlow Lite static library for
-Raspberry Pi. If you just want to start using TensorFlow Lite to execute your
-models, the fastest option is to install the TensorFlow Lite runtime package as
-shown in the [Python quickstart](python.md).
+This page describes how to build the TensorFlow Lite static and shared libraries
+for Raspberry Pi. If you just want to start using TensorFlow Lite to execute
+your models, the fastest option is to install the TensorFlow Lite runtime
+package as shown in the [Python quickstart](python.md).
 
-Note: This page shows how to compile only the C++ static library for
-TensorFlow Lite. Alternative install options include: [install just the Python
-interpreter API](python.md) (for inferencing only); [install the full
-TensorFlow package from pip](https://www.tensorflow.org/install/pip);
-or [build the full TensorFlow package](
-https://www.tensorflow.org/install/source_rpi).
+**Note:** This page shows how to compile the C++ static and shared libraries for
+TensorFlow Lite. Alternative install options include:
+[install just the Python interpreter API](python.md) (for inferencing only);
+[install the full TensorFlow package from pip](https://www.tensorflow.org/install/pip);
+or
+[build the full TensorFlow package](https://www.tensorflow.org/install/source_rpi).
 
+**Note:** This page only covers 32-bit builds. If you're looking for 64-bit
+builds, check [Build for ARM64](build_arm64.md) page.
 
-## Cross-compile for Raspberry Pi
+## Cross-compile for Raspberry Pi with Make
 
-This has been tested on Ubuntu 16.04.3 64bit and TensorFlow devel docker image
-[tensorflow/tensorflow:nightly-devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
+The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
+and TensorFlow devel docker image
+[tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
-To cross compile TensorFlow Lite, first install the toolchain and libs:
+To cross compile TensorFlow Lite follow the steps:
 
-```bash
-sudo apt-get update
-sudo apt-get install crossbuild-essential-armhf
-# The following is only needed for Pi Zero build.
-sudo apt-get install crossbuild-essential-armel
+#### Step 1. Clone official Raspberry Pi cross-compilation toolchain
+
+```sh
+git clone https://github.com/raspberrypi/tools.git rpi_tools
 ```
 
-If you are using Docker, you may not use `sudo`.
+#### Step 2. Clone TensorFlow repository
 
-Now git-clone the TensorFlow repository
-(`https://github.com/tensorflow/tensorflow`)—if you're using the TensorFlow
-Docker image, the repo is already provided in `/tensorflow_src/`—and then run
-this script at the root of the TensorFlow repository to download all the
-build dependencies:
-
-```bash
-./tensorflow/lite/tools/make/download_dependencies.sh
+```sh
+git clone https://github.com/tensorflow/tensorflow.git tensorflow_src
 ```
 
-Note that you only need to do this once.
+**Note:** If you're using the TensorFlow Docker image, the repo is already
+provided in `/tensorflow_src/`.
 
-You should then be able to compile:
+#### Step 3. Run following script at the root of the TensorFlow repository to download
 
-To build ARMv7 binary for Raspberry Pi 2, 3 and 4:
+all the build dependencies:
 
-```bash
-./tensorflow/lite/tools/make/build_rpi_lib.sh
+```sh
+cd tensorflow_src && ./tensorflow/lite/tools/make/download_dependencies.sh
 ```
 
-This should compile a static library in:
+**Note:** You only need to do this once.
+
+#### Step 4a. To build ARMv7 binary for Raspberry Pi 2, 3 and 4
+
+```sh
+PATH=../rpi_tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin:$PATH \
+  ./tensorflow/lite/tools/make/build_rpi_lib.sh
+```
+
+**Note:** This should compile a static library in:
 `tensorflow/lite/tools/make/gen/rpi_armv7l/lib/libtensorflow-lite.a`.
 
-To build ARMv6 binary for Raspberry Pi Zero:
+You can add additional Make options or target names to the `build_rpi_lib.sh`
+script since it's a wrapper of Make with TFLite
+[Makefile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/make/Makefile).
+Here are some possible options:
 
-```bash
-./tensorflow/lite/tools/make/build_rpi_lib.sh TARGET_ARCH=armv6
+```sh
+./tensorflow/lite/tools/make/build_rpi_lib.sh clean # clean object files
+./tensorflow/lite/tools/make/build_rpi_lib.sh -j 16 # run with 16 jobs to leverage more CPU cores
+./tensorflow/lite/tools/make/build_rpi_lib.sh label_image # # build label_image binary
 ```
 
-This should compile a static library in:
+#### Step 4b. To build ARMv6 binary for Raspberry Pi Zero
+
+```sh
+PATH=../rpi_tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin:$PATH \
+  ./tensorflow/lite/tools/make/build_rpi_lib.sh TARGET_ARCH=armv6
+```
+
+**Note:** This should compile a static library in:
 `tensorflow/lite/tools/make/gen/rpi_armv6/lib/libtensorflow-lite.a`.
 
 ## Compile natively on Raspberry Pi
 
-This has been tested on Raspberry Pi 3b, Raspbian GNU/Linux 9.1 (stretch), gcc version 6.3.0 20170516 (Raspbian 6.3.0-18+rpi1).
+The following instructions have been tested on Raspberry Pi Zero, Raspberry Pi
+OS GNU/Linux 10 (Buster), gcc version 8.3.0 (Raspbian 8.3.0-6+rpi1):
 
-Log in to your Raspberry Pi and install the toolchain:
+To natively compile TensorFlow Lite follow the steps:
 
-```bash
+#### Step 1. Log in to your Raspberry Pi and install the toolchain
+
+```sh
 sudo apt-get install build-essential
 ```
 
-Now git-clone the TensorFlow repository
-(`https://github.com/tensorflow/tensorflow`) and run this at the root of
-the repository:
+#### Step 2. Clone TensorFlow repository
 
-```bash
-./tensorflow/lite/tools/make/download_dependencies.sh
+```sh
+git clone https://github.com/tensorflow/tensorflow.git tensorflow_src
 ```
 
-Note that you only need to do this once.
+#### Step 3. Run following script at the root of the TensorFlow repository to download all the build dependencies
 
-You should then be able to compile:
+```sh
+cd tensorflow_src && ./tensorflow/lite/tools/make/download_dependencies.sh
+```
 
-```bash
+**Note:** You only need to do this once.
+
+#### Step 4. You should then be able to compile TensorFlow Lite with:
+
+```sh
 ./tensorflow/lite/tools/make/build_rpi_lib.sh
 ```
 
-This should compile a static library in:
-`tensorflow/lite/tools/make/gen/lib/rpi_armv7/libtensorflow-lite.a`.
+**Note:** This should compile a static library in:
+`tensorflow/lite/tools/make/gen/lib/rpi_armv6/libtensorflow-lite.a`.
+
+## Cross-compile for armhf with Bazel
+
+You can use
+[ARM GCC toolchains](https://github.com/tensorflow/tensorflow/tree/master/third_party/toolchains/embedded/arm-linux)
+with Bazel to build an armhf shared library which is compatible with Raspberry
+Pi 2, 3 and 4.
+
+Note: The generated shared library requires glibc 2.28 or higher to run.
+
+The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
+and TensorFlow devel docker image
+[tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
+
+To cross compile TensorFlow Lite with Bazel, follow the steps:
+
+#### Step 1. Install Bazel
+
+Bazel is the primary build system for TensorFlow. Install the latest version of
+the [Bazel build system](https://bazel.build/versions/master/docs/install.html).
+
+**Note:** If you're using the TensorFlow Docker image, Bazel is already
+available.
+
+#### Step 2. Clone TensorFlow repository
+
+```sh
+git clone https://github.com/tensorflow/tensorflow.git tensorflow_src
+```
+
+**Note:** If you're using the TensorFlow Docker image, the repo is already
+provided in `/tensorflow_src/`.
+
+#### Step 3. Build ARMv7 binary for Raspberry Pi 2, 3 and 4
+
+##### C library
+
+```bash
+bazel build --config=elinux_armhf -c opt //tensorflow/lite/c:libtensorflowlite_c.so
+```
+
+Check
+[TensorFlow Lite C API](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/c)
+page for the detail.
+
+##### C++ library
+
+```bash
+bazel build --config=elinux_armhf -c opt //tensorflow/lite:libtensorflowlite.so
+```
+
+You can find a shared library in:
+`bazel-bin/tensorflow/lite/libtensorflowlite.so`.
+
+Currently, there is no straightforward way to extract all header files needed,
+so you must include all header files in tensorflow/lite/ from the TensorFlow
+repository. Additionally, you will need header files from FlatBuffers and
+Abseil.
+
+##### Etc
+
+You can also build other Bazel targets with the toolchain. Here are some useful
+targets.
+
+*   //tensorflow/lite/tools/benchmark:benchmark_model
+*   //tensorflow/lite/examples/label_image:label_image

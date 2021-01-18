@@ -833,7 +833,7 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
   auto expected_ir = R"(
-; CHECK: shared_cache_{{[0-9]*}} = private addrspace({{[0-9]*}}) global [1 x [32 x float]]
+; CHECK: shared_cache_{{[0-9]*}} = private unnamed_addr addrspace({{[0-9]*}}) global [1 x [32 x float]]
   )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);

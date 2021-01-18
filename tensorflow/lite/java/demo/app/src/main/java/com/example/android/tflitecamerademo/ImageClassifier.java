@@ -172,7 +172,10 @@ public abstract class ImageClassifier {
 
   public void useGpu() {
     if (gpuDelegate == null) {
-      gpuDelegate = new GpuDelegate();
+      GpuDelegate.Options options = new GpuDelegate.Options();
+      options.setQuantizedModelsAllowed(true);
+
+      gpuDelegate = new GpuDelegate(options);
       tfliteOptions.addDelegate(gpuDelegate);
       recreateInterpreter();
     }
