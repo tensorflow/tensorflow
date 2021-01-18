@@ -316,6 +316,50 @@ func @tensorlistWhileRegion(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
   return %2 : tensor<*xf32>
 }
 
+func @otherVariantWhileLoop(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+  %2 = "tf.EmptyTensorMap"() {device = ""} : () -> tensor<!tf.variant>
+  %3:4 = "tf.While"(%0, %1, %0, %2) {_lower_using_switch_merge = true, _num_original_outputs = 4 : i64, _read_only_resource_inputs = [], body = @otherVariantWhileBody, cond = @otherVariantWhileCond, device = "", is_stateless = true, parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>)
+  %4 = "tf.Identity"(%3#3) {device = ""} : (tensor<!tf.variant>) -> tensor<!tf.variant>
+  %5 = "tf.TensorMapSize"(%4) {device = ""} : (tensor<!tf.variant>) -> tensor<i32>
+  %6 = "tf.AddV2"(%arg0, %5) {device = ""} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  return %6 : tensor<1xi32>
+}
+
+// Make sure the non TensorList variant types in input/output have remained.
+// CHECK-LABEL: otherVariantWhileLoop
+// CHECK: "tf.While"
+// CHECK-SAME: (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>)
+
+func @otherVariantWhileBody(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<!tf.variant>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>) {
+  %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.AddV2"(%arg2, %0) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %2 = "tf.TensorMapInsert"(%arg3, %arg2, %arg2) {device = "", key_dtype = i32, value_dtype = i32} : (tensor<!tf.variant>, tensor<i32>, tensor<i32>) -> tensor<!tf.variant>
+  %3 = "tf.AddV2"(%arg0, %0) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %3, %arg1, %1, %2 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.variant>
+}
+
+// Verify `body` function's signature.
+// CHECK-LABEL: func @otherVariantWhileBody
+// CHECK:       [[CST:%.*]] = "tf.Const"()
+// CHECK-NEXT:  [[ADD:%.*]] = "tf.AddV2"(%arg2, [[CST]])
+// CHECK-NEXT:  [[TENSOR_MAP_INSERT_RESULT:%.*]] = "tf.TensorMapInsert"(%arg3, %arg2, %arg2)
+// CHECK-NEXT:  [[ADD_2:%.*]] = "tf.AddV2"(%arg0, [[CST]])
+// CHECK-NEXT:  return [[ADD_2]], %arg1, [[ADD]], [[TENSOR_MAP_INSERT_RESULT]]
+
+func @otherVariantWhileCond(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<!tf.variant>) -> tensor<i1> {
+  %0 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Less"(%arg2, %0) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %1 : tensor<i1>
+}
+
+// Verify `cond` function's signature.
+// CHECK-LABEL: func @otherVariantWhileCond
+// CHECK:       [[CST:%.*]] = "tf.Const"()
+// CHECK-NEXT:  [[LESS:%.*]] = "tf.Less"(%arg2, [[CST]])
+// CHECK-NEXT:  return [[LESS]]
+
 func @tensorlistResize(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> tensor<?x10xf32> {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf.variant<tensor<10xf32>>>
   %1 = "tf.TensorListResize"(%0, %arg2) : (tensor<!tf.variant<tensor<10xf32>>>, tensor<i32>) -> tensor<!tf.variant<tensor<10xf32>>>
