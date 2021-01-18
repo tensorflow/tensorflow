@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -589,24 +590,21 @@ TEST(TestKernel, DeleteKernelBuilderIsOkOnNull) {
   TF_DeleteKernelBuilder(nullptr);
 }
 
-std::string expected_string(const char* type) {
-  const auto expected_str = R"str(kernel {
-  op: "TypeOp)str" + std::string(type) +
-                            std::string("\"") +
-                            R"str(
+std::string ExpectedString(const char* type) {
+  const auto format_str = R"str(kernel {
+  op: "TypeOp%s"
   device_type: "FakeDeviceName1"
   constraint {
     name: "T"
     allowed_values {
       list {
-        type: )str" + std::string(type) +
-                            R"##(
+        type: %s
       }
     }
   }
 }
-)##";
-  return expected_str;
+)str";
+  return absl::StrFormat(format_str, type, type);
 }
 
 #define TEST_KERNEL_TYPE_CONSTRAINT(tf_type, dtype)                          \
@@ -634,7 +632,7 @@ std::string expected_string(const char* type) {
     EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
     KernelList list;                                                         \
     list.ParseFromArray(buf->data, buf->length);                             \
-    ASSERT_EQ(expected_string(#dtype), list.DebugString());                  \
+    ASSERT_EQ(ExpectedString(#dtype), list.DebugString());                   \
                                                                              \
     TF_DeleteBuffer(buf);                                                    \
     TF_DeleteStatus(status);                                                 \
