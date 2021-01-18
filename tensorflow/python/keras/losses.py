@@ -1390,16 +1390,16 @@ def categorical_hinge(y_true, y_pred):
   where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Usage:
-
-  >>> y_true = np.random.randint(0, 3, size=(2,))
-  >>> y_true = tf.keras.utils.to_categorical(y_true, num_classes=3)
-  >>> y_pred = np.random.random(size=(2, 3))
-  >>> loss = tf.keras.losses.categorical_hinge(y_true, y_pred)
-  >>> assert loss.shape == (2,)
-  >>> pos = np.sum(y_true * y_pred, axis=-1)
-  >>> neg = np.amax((1. - y_true) * y_pred, axis=-1)
-  >>> assert np.array_equal(loss.numpy(), np.maximum(0., neg - pos + 1.))
-
+  ```python
+  y_true = np.random.randint(0, 3, size=(2,))
+  y_true = tf.keras.utils.to_categorical(y_true, num_classes=3)
+  y_pred = np.random.random(size=(2, 3))
+  loss = tf.keras.losses.categorical_hinge(y_true, y_pred)
+  assert loss.shape == (2,)
+  pos = np.sum(y_true * y_pred, axis=-1)
+  neg = np.amax((1. - y_true) * y_pred, axis=-1)
+  assert np.array_equal(loss.numpy(), np.maximum(0., neg - pos + 1.))
+  ```
   Args:
     y_true: The ground truth values. `y_true` values are expected to be
     either {-1, +1} or {0, 1}(i.e. a one-hot-encoded tensor).
