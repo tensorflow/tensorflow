@@ -1088,7 +1088,7 @@ gen_api_init_files(
 
 py_library(
     name = "tensorflow_py",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = select({
         "api_version_2": [],
@@ -1110,7 +1110,7 @@ py_library(
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],
 )

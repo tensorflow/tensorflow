@@ -161,6 +161,14 @@ foreach fromToBinPair = [[TF_DivNoNanOp, TF_DivOp],
   def : BinaryNoNanPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
+// Expm1 op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerExpm1Op : Pat<(TF_Expm1Op $x),
+                       (TF_SubOp (TF_ExpOp $x),
+                        (TF_ConstOp (GetScalarOfType<1> $x)))>;
+
+//===----------------------------------------------------------------------===//
 // Fill op patterns.
 //===----------------------------------------------------------------------===//
 

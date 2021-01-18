@@ -387,7 +387,6 @@ $(wildcard tensorflow/lite/micro/benchmarks/*model_data.h) \
 $(wildcard tensorflow/lite/micro/kernels/*.h) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.h) \
 LICENSE \
-tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
 tensorflow/lite/c/c_api_types.h \
 tensorflow/lite/c/common.h \
@@ -455,8 +454,7 @@ tensorflow/lite/kernels/op_macros.h \
 tensorflow/lite/kernels/padding.h \
 tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/schema/schema_utils.h \
-tensorflow/lite/version.h
+tensorflow/lite/schema/schema_utils.h
 
 # TODO(b/165940489): Figure out how to avoid including fixed point
 # platform-specific headers.

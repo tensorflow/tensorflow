@@ -2753,28 +2753,13 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
   // If that's the case then we can partition the gather across such dimensions
   // by adjusting the offsets.
   if (absl::optional<hlo_sharding_util::GatherParallelDims> parallel_dims =
-          hlo_sharding_util::GetGatherBatchParallelDims(
-              operand.sharding(), indices.sharding(), *hlo)) {
-    auto indices_parallel_dims = parallel_dims->indices_parallel_dims;
-    auto operand_parallel_dims = parallel_dims->operand_parallel_dims;
+          hlo_sharding_util::GetGatherBatchParallelDims(*hlo)) {
     if (auto gather_sharding = GatherOperandsShardedAcrossParallelDims(
-            *operand.hlo(), *indices.hlo(),
-            absl::MakeConstSpan(indices_parallel_dims),
-            absl::MakeConstSpan(operand_parallel_dims))) {
-      absl::InlinedVector<int64, 4> output_parallel_dims;
-      Shape gather_shape = gather->shape();
-      absl::c_sort(indices_parallel_dims);
-      for (int i = 0, idx_dim = 0; i < gather_shape.dimensions_size(); ++i) {
-        if (absl::c_linear_search(dnums.offset_dims(), i)) {
-          continue;
-        }
-        int index_dim =
-            idx_dim < dnums.index_vector_dim() ? idx_dim : idx_dim + 1;
-        if (absl::c_linear_search(indices_parallel_dims, index_dim)) {
-          output_parallel_dims.push_back(i);
-        }
-        ++idx_dim;
-      }
+            *operand.hlo(), *indices.hlo(), *parallel_dims)) {
+      auto indices_parallel_dims = parallel_dims->indices_parallel_dims;
+      auto operand_parallel_dims = parallel_dims->operand_parallel_dims;
+      auto output_parallel_dims =
+          hlo_sharding_util::GatherParallelOutputDims(*hlo, *parallel_dims);
       HloSharding indices_sharding = gather_sharding->indices_sharding;
       HloSharding operand_sharding = gather_sharding->operand_sharding;
       if (operand_sharding.NumTiles() ==

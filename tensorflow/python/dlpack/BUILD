@@ -8,7 +8,7 @@ package(
 py_library(
     name = "dlpack",
     srcs = ["dlpack.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python:pywrap_tensorflow",

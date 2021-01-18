@@ -24,7 +24,10 @@ REGISTER2(UnaryOp, CPU, "ComplexAbs", functor::abs, complex64, complex128);
 #ifndef MLIR_GENERATED_GPU_KERNELS_ENABLED
 REGISTER4(UnaryOp, GPU, "Abs", functor::abs, Eigen::half, float, double, int64);
 #endif
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER2(UnaryOp, GPU, "ComplexAbs", functor::abs, complex64, complex128);
+#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

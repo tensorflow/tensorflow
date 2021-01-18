@@ -16,7 +16,7 @@ py_binary(
 py_library(
     name = "raw_to_bitmap_lib",
     srcs = ["raw_to_bitmap.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
     ],

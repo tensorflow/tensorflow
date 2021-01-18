@@ -339,6 +339,26 @@ func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor
   return %s, %u, %v : tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>
 }
 
+func @abs_impl(%arg0: f32) -> f32 {
+ return %arg0 : f32
+}
+
+// This test verifies that legalization for ops with symbol reference attribute
+// is not attempted even if they are in allow-list. XLA op kernels for these
+// ops compile the function to HLO on-demand which won't work in our case as it
+// may contain unsupported ops in the fallback nor we provide XlaCompiler to
+// the kernel. Using a allowed op Abs to protect against future addition of a
+// new op with a symbol ref.
+
+// CHECK-LABEL: @abs_with_symbol_ref
+func @abs_with_symbol_ref(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: tf.Abs
+  // expected-remark@+1 {{ops with symbol references are not supported}}
+  %0 = "tf.Abs"(%arg0) {_body = @abs_impl} : (tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }

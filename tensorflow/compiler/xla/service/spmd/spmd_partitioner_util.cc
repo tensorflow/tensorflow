@@ -1830,8 +1830,9 @@ HloSharding CreateMatchingShardingOnDims(const Shape& target_shape,
 absl::optional<GatherParallelDimSharding>
 GatherOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
-    absl::Span<const int64> indices_parallel_dims,
-    absl::Span<const int64> operand_parallel_dims) {
+    const hlo_sharding_util::GatherParallelDims& parallel_dims) {
+  auto& indices_parallel_dims = parallel_dims.indices_parallel_dims;
+  auto& operand_parallel_dims = parallel_dims.operand_parallel_dims;
   if (indices_parallel_dims.size() != operand_parallel_dims.size()) {
     return absl::nullopt;
   }
@@ -1842,25 +1843,32 @@ GatherOperandsShardedAcrossParallelDims(
   if (idx_parallel_tiles_num == 1 && op_parallel_tiles_num == 1) {
     return absl::nullopt;
   }
+  absl::InlinedVector<int64, 1> indices_parallel_dims_ordered_as_operand;
+  for (int idx : parallel_dims.index_parallel_in_dim) {
+    if (idx != -1) {
+      indices_parallel_dims_ordered_as_operand.push_back(idx);
+    }
+  }
   if (new_index_shard.IsReplicated()) {
     return GatherParallelDimSharding{
         CreateMatchingShardingOnDims(indices.shape(), new_operand_shard,
-                                     indices_parallel_dims,
+                                     indices_parallel_dims_ordered_as_operand,
                                      operand_parallel_dims),
         new_operand_shard};
   }
   if (new_operand_shard.IsReplicated()) {
     return GatherParallelDimSharding{
-        new_index_shard, CreateMatchingShardingOnDims(
-                             operand.shape(), new_index_shard,
-                             operand_parallel_dims, indices_parallel_dims)};
+        new_index_shard,
+        CreateMatchingShardingOnDims(operand.shape(), new_index_shard,
+                                     operand_parallel_dims,
+                                     indices_parallel_dims_ordered_as_operand)};
   }
 
   // Parallel dimension distribution needs to be the same, so try to steal
   // sharding from partial replication to compensate.
   if (idx_parallel_tiles_num != op_parallel_tiles_num) {
     auto to_adjust_dims = operand_parallel_dims;
-    auto target_dims = indices_parallel_dims;
+    auto target_dims = indices_parallel_dims_ordered_as_operand;
     HloSharding* target = &new_index_shard;
     HloSharding* to_adjust = &new_operand_shard;
     if (idx_parallel_tiles_num < op_parallel_tiles_num) {
@@ -1908,17 +1916,19 @@ GatherOperandsShardedAcrossParallelDims(
   // Make sure that the parallel dimensions are aligned.
   auto operand_shard_tile_dims =
       new_operand_shard.tile_assignment().dimensions();
-  for (int i = 0; i < indices_parallel_dims.size(); ++i) {
+  for (int i = 0; i < indices_parallel_dims_ordered_as_operand.size(); ++i) {
     operand_shard_tile_dims[operand_parallel_dims[i]] =
-        new_index_shard.tile_assignment().dim(indices_parallel_dims[i]);
+        new_index_shard.tile_assignment().dim(
+            indices_parallel_dims_ordered_as_operand[i]);
   }
   auto operand_shard_tiles = new_operand_shard.tile_assignment();
   operand_shard_tiles.Reshape(operand_shard_tile_dims);
-  new_operand_shard = AlignShardingOnDims(
-      new_operand_shard.ReplicateOnLastTileDim()
-          ? HloSharding::PartialTile(operand_shard_tiles)
-          : HloSharding::Tile(operand_shard_tiles),
-      operand_parallel_dims, new_index_shard, indices_parallel_dims);
+  new_operand_shard =
+      AlignShardingOnDims(new_operand_shard.ReplicateOnLastTileDim()
+                              ? HloSharding::PartialTile(operand_shard_tiles)
+                              : HloSharding::Tile(operand_shard_tiles),
+                          operand_parallel_dims, new_index_shard,
+                          indices_parallel_dims_ordered_as_operand);
   return GatherParallelDimSharding{new_index_shard, new_operand_shard};
 }
 

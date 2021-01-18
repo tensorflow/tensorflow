@@ -71,7 +71,7 @@ pybind_extension(
 py_library(
     name = "signature_def_utils",
     srcs = ["signature_def_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":_pywrap_signature_def_util_wrapper",
         "//tensorflow/core:protos_all_py",

@@ -1079,7 +1079,30 @@ class DataHandler(object):
                workers=1,
                use_multiprocessing=False,
                model=None,
-               steps_per_execution=None):
+               steps_per_execution=None,
+               distribute=True):
+    """Initializes a `DataHandler`.
+
+    Arguments:
+      x: See `Model.fit`.
+      y: See `Model.fit`.
+      sample_weight: See `Model.fit`.
+      batch_size: See `Model.fit`.
+      steps_per_epoch: See `Model.fit`.
+      initial_epoch: See `Model.fit`.
+      epochs: See `Model.fit`.
+      shuffle: See `Model.fit`.
+      class_weight: See `Model.fit`.
+      max_queue_size: See `Model.fit`.
+      workers: See `Model.fit`.
+      use_multiprocessing: See `Model.fit`.
+      model: The `Model` instance. Needed in order to correctly `build` the
+        `Model` using generator-like inputs (see `GeneratorDataAdapter`).
+      steps_per_execution: See `Model.compile`.
+      distribute: Whether to distribute the `tf.dataset`.
+        `PreprocessingLayer.adapt` does not support distributed datasets,
+        `Model` should always set this to `True`.
+    """
 
     self._initial_epoch = initial_epoch
     self._epochs = epochs
@@ -1117,7 +1140,9 @@ class DataHandler(object):
       dataset = dataset.map(_make_class_weight_map_fn(class_weight))
     self._inferred_steps = self._infer_steps(steps_per_epoch, dataset)
 
-    if not _is_distributed_dataset(dataset):
+    # `PreprocessingLayer.adapt` does not currently support distributed
+    # datasets, so we pass `distribute=False` there.
+    if distribute and not _is_distributed_dataset(dataset):
       dataset = strategy.experimental_distribute_dataset(dataset)
     self._dataset = dataset
 

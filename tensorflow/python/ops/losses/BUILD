@@ -16,7 +16,7 @@ py_library(
         "losses_impl.py",
         "util.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:confusion_matrix",

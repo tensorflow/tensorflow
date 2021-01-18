@@ -296,6 +296,19 @@ cc_library(
 )
 
 cc_library(
+    name = "elementwise_test_util",
+    testonly = 1,
+    srcs = ["elementwise_test_util.cc"],
+    hdrs = ["elementwise_test_util.h"],
+    deps = [
+        ":elementwise",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "fully_connected",
     srcs = ["fully_connected.cc"],
     hdrs = ["fully_connected.h"],
@@ -414,6 +427,19 @@ cc_library(
 )
 
 cc_library(
+    name = "prelu_test_util",
+    testonly = 1,
+    srcs = ["prelu_test_util.cc"],
+    hdrs = ["prelu_test_util.h"],
+    deps = [
+        ":prelu",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "quantize_and_dequantize",
     srcs = ["quantize_and_dequantize.cc"],
     hdrs = ["quantize_and_dequantize.h"],
@@ -426,6 +452,20 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_library(
+    name = "quantize_and_dequantize_test_util",
+    testonly = 1,
+    srcs = ["quantize_and_dequantize_test_util.cc"],
+    hdrs = ["quantize_and_dequantize_test_util.h"],
+    deps = [
+        ":quantize_and_dequantize",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "//tensorflow/lite/kernels/internal:quantization_util",
     ],
 )
 
@@ -466,7 +506,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
-        "@com_google_googletest//:gtest",
     ],
 )
 
