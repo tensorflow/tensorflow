@@ -18,7 +18,6 @@ limitations under the License.
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include "CEVA_basic_op.h"
 
 // typedef int8_t int8_t;
 // typedef int16_t int16;
