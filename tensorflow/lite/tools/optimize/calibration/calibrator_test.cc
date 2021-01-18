@@ -397,6 +397,80 @@ TEST(CalibratorTest, UnidirectionalSequenceLSTM) {
   }
 }
 
+TEST(CalibratorTest, CustomLSTM) {
+  auto flatbuffer_model = ReadModel("custom_lstm.bin");
+  ASSERT_TRUE(flatbuffer_model);
+  std::unique_ptr<Interpreter> interpreter;
+  std::unique_ptr<CalibrationReader> reader;
+  auto status = BuildLoggingInterpreter(*flatbuffer_model,
+                                        ops::builtin::BuiltinOpResolver{},
+                                        &interpreter, &reader);
+  EXPECT_EQ(kTfLiteOk, status);
+
+  auto readonly_model = flatbuffer_model->GetModel();
+  tflite::ModelT model;
+  readonly_model->UnPackTo(&model);
+
+  ASSERT_TRUE(interpreter);
+  ASSERT_TRUE(reader);
+  EXPECT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
+  const std::vector<float> lstm_input = {0.3, 0.2, 0.9, 0.8};
+  int input_tensor_idx = interpreter->inputs()[0];
+  TfLiteTensor* tensor = interpreter->tensor(input_tensor_idx);
+  for (size_t j = 0; j < lstm_input.size(); j++) {
+    tensor->data.f[j] = lstm_input[j];
+  }
+
+  ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
+
+  absl::flat_hash_map<int, CalibrationReader::CalibrationStats> stats;
+  EXPECT_EQ(reader->GetTensorStatsAsMap(&stats), kTfLiteOk);
+
+  // Check the results.
+  const float eps = 1e-6f;
+  const std::unordered_map<int, CalibrationReader::CalibrationStats>
+      expected_calibration_result = {
+          // input.
+          {0, {0.200000, 0.300000}},
+          // state.
+          {18, {0.000000, 0.468415}},
+          // state.
+          {19, {0.000000, 0.424349}},
+          // output.
+          {24, {0.265968, 0.468415}},
+          // intermediate 0.
+          {25, {0.080045, 0.170588}},
+          // intermediate 1.
+          {26, {0.080045, 0.170588}},
+          // intermediate 2.
+          {27, {0.000000, 0.000000}},
+          // intermediate 3.
+          {28, {0.080045, 0.170588}},
+          // intermediate 4.
+          {29, {0.080045, 0.170588}},
+          // intermediate 5.
+          {30, {0.000000, 0.000000}},
+          // intermediate 6.
+          {31, {0.080045, 0.170588}},
+          // intermediate 7.
+          {32, {0.080045, 0.170588}},
+          // intermediate 8.
+          {33, {0.000000, 0.000000}},
+          // intermediate 9.
+          {34, {0.080045, 0.170588}},
+          // intermediate 10.
+          {35, {0.080045, 0.170588}},
+          // intermediate 11.
+          {36, {0.000000, 0.000000}},
+      };
+  EXPECT_EQ(expected_calibration_result.size(), stats.size());
+  for (const auto& e : stats) {
+    auto expected_result = expected_calibration_result.at(e.first);
+    EXPECT_NEAR(e.second.min, expected_result.min, eps);
+    EXPECT_NEAR(e.second.max, expected_result.max, eps);
+  }
+}
+
 }  // namespace
 }  // namespace calibration
 }  // namespace optimize

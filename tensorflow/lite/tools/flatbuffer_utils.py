@@ -32,6 +32,7 @@ import re
 
 import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
+from tensorflow.python.platform import gfile
 
 _TFLITE_FILE_IDENTIFIER = b'TFL3'
 
@@ -57,8 +58,8 @@ def read_model(input_tflite_file):
   """
   if not os.path.exists(input_tflite_file):
     raise RuntimeError('Input file not found at %r\n' % input_tflite_file)
-  with open(input_tflite_file, 'rb') as file_handle:
-    model_bytearray = bytearray(file_handle.read())
+  with gfile.GFile(input_tflite_file, 'rb') as input_file_handle:
+    model_bytearray = bytearray(input_file_handle.read())
   return convert_bytearray_to_object(model_bytearray)
 
 
@@ -102,8 +103,8 @@ def write_model(model_object, output_tflite_file):
     IOError: If output_tflite_file path is invalid or cannot be opened.
   """
   model_bytearray = convert_object_to_bytearray(model_object)
-  with open(output_tflite_file, 'wb') as out_file:
-    out_file.write(model_bytearray)
+  with gfile.GFile(output_tflite_file, 'wb') as output_file_handle:
+    output_file_handle.write(model_bytearray)
 
 
 def strip_strings(model):
@@ -121,11 +122,13 @@ def strip_strings(model):
 
   """
 
-  model.description = ''
+  model.description = None
   for subgraph in model.subgraphs:
-    subgraph.name = ''
+    subgraph.name = None
     for tensor in subgraph.tensors:
-      tensor.name = ''
+      tensor.name = None
+  # We clear all signature_def structure, since without names it is useless.
+  model.signatureDefs = None
 
 
 def randomize_weights(model, random_seed=0):
@@ -157,7 +160,7 @@ def randomize_weights(model, random_seed=0):
 
 
 def xxd_output_to_bytes(input_cc_file):
-  """Converts xxd output C++ source file to bytes (immutable)
+  """Converts xxd output C++ source file to bytes (immutable).
 
   Args:
     input_cc_file: Full path name to th C++ source file dumped by xxd
@@ -196,7 +199,7 @@ def xxd_output_to_bytes(input_cc_file):
 
 
 def xxd_output_to_object(input_cc_file):
-  """Converts xxd output C++ source file to object
+  """Converts xxd output C++ source file to object.
 
   Args:
     input_cc_file: Full path name to th C++ source file dumped by xxd

@@ -19,7 +19,7 @@ py_library(
         "np_random.py",
         "np_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -43,7 +43,6 @@ py_library(
 cuda_py_test(
     name = "np_arrays_test",
     srcs = ["np_arrays_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":numpy",
         "//tensorflow/python:dtypes",
@@ -69,7 +68,6 @@ cuda_py_test(
 cuda_py_test(
     name = "np_logic_test",
     srcs = ["np_logic_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":numpy",
         "//third_party/py/numpy",
@@ -102,7 +100,6 @@ cuda_py_test(
 cuda_py_test(
     name = "np_utils_test",
     srcs = ["np_utils_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":numpy",
         "//tensorflow/python:platform",

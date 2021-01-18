@@ -347,7 +347,7 @@ def _slice_length(value_length, slice_key):
 
   Args:
     value_length: Scalar int `Tensor`: the length of the value being sliced.
-    slice_key: A `slice` object used to slice elements from the the value.
+    slice_key: A `slice` object used to slice elements from the value.
 
   Returns:
     The number of elements in the sliced value.

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -1294,10 +1295,43 @@ class HloReduceWindowInstruction : public HloInstruction {
                                       HloInstruction* init_value,
                                       const Window& window,
                                       HloComputation* reduce_computation);
+  explicit HloReduceWindowInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<HloInstruction* const> init_values, const Window& window,
+      HloComputation* reduce_computation);
   const Window& window() const override { return window_; }
   void set_window(const Window& window) override { window_ = window; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
+  // Returns the number of input arrays (and, consequentially, the number of
+  // init values) this reduce has.
+  int64 input_count() const { return operand_count() / 2; }
+  // Returns the input tensors to be reduced.
+  absl::Span<HloInstruction* const> input_arrays() const {
+    return absl::MakeSpan(operands()).subspan(0, input_count());
+  }
+  // Returns the init values of the reduction.
+  absl::Span<HloInstruction* const> init_values() const {
+    return absl::MakeSpan(operands()).subspan(input_count(), operand_count());
+  }
+  // Returns the shapes of input tensors to be reduced.
+  absl::InlinedVector<const Shape*, 2> input_array_shapes() const {
+    absl::InlinedVector<const Shape*, 2> shapes;
+    for (const auto* op : input_arrays()) {
+      VLOG(2) << "Pushing input array shape for: " << op->ToString() << "\n";
+      shapes.push_back(&op->shape());
+      VLOG(2) << "Pushed shape: " << shapes.back()->ToString() << "\n";
+    }
+    return shapes;
+  }
+  // Returns the init values of the reduction.
+  absl::InlinedVector<const Shape*, 2> init_value_shapes() const {
+    absl::InlinedVector<const Shape*, 2> shapes;
+    for (const auto* op : init_values()) {
+      shapes.push_back(&op->shape());
+    }
+    return shapes;
+  }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -1310,6 +1344,7 @@ class HloReduceWindowInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+
   Window window_;
 };
 
@@ -1380,6 +1415,12 @@ class HloCustomCallInstruction : public HloInstruction {
                            HloComputation* to_apply,
                            absl::string_view custom_call_target, string opaque);
 
+  // Constructor for a custom call with multiple computations.
+  HloCustomCallInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<HloComputation* const> called_computations,
+      absl::string_view custom_call_target, string opaque);
+
   const Window& window() const override {
     CHECK(window_ != nullptr);
     return *window_;
@@ -1418,6 +1459,16 @@ class HloCustomCallInstruction : public HloInstruction {
   bool custom_call_has_side_effect() const {
     return custom_call_has_side_effect_;
   }
+  // Returns padding type used for ops like convolution.
+  PaddingType padding_type() const { return padding_type_; }
+
+  void set_padding_type(PaddingType padding_type) {
+    padding_type_ = padding_type;
+  }
+
+  const PrecisionConfig& precision_config() const { return precision_config_; }
+  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
+
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1467,6 +1518,11 @@ class HloCustomCallInstruction : public HloInstruction {
   int64 batch_group_count_;
   // Whether the result and operand layouts are constrained.
   bool layout_constrained_;
+  // Information used to communicate to the implementation about the algorithm
+  // used to produce results for convolution instructions.
+  PrecisionConfig precision_config_;
+  // Describes the padding type for convolution instructions.
+  PaddingType padding_type_;
   // For layout-constrained custom calls, this vector holds the shape with
   // layout for each operand.
   std::vector<Shape> operand_shapes_with_layout_;

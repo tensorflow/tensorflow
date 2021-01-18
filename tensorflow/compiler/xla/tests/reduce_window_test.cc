@@ -1704,5 +1704,114 @@ ENTRY R4OnlyDilation {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
+XLA_TEST_F(HloTestBase,
+           DISABLED_ON_GPU(DISABLED_ON_CPU(ReduceWindowVariadicSupport))) {
+  const char* const hlo_string = R"(
+HloModule module
+
+sum {
+  a0 = f32[] parameter(0)
+  a1 = f32[] parameter(1) 
+  b0 = f32[] parameter(2)
+  b1 = f32[] parameter(3)
+  add0 = f32[] add(a0, b0)
+  add1 = f32[] add(a1, b1)
+  ROOT sum2 = (f32[], f32[]) tuple(add0, add1)
+}
+
+ENTRY entry {
+  constant = f32[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
+  constant.1 = f32[] constant(0)
+  constant.2 = f32[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
+  constant.3 = f32[] constant(0)
+  reduce-window = (f32[2,2]{1,0}, f32[2,2]{1,0}) 
+    reduce-window(constant, constant.2, constant.1, constant.3),
+    window={size=5x1 stride=3x1 pad=2_2x0_0}, to_apply=sum
+  ROOT copy = (f32[2,2]{1,0}, f32[2,2]{1,0}) copy(reduce-window)
+})";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
+XLA_TEST_F(HloTestBase,
+           DISABLED_ON_GPU(DISABLED_ON_CPU(ReduceWindowVariadicSupport2))) {
+  const char* const hlo_string = R"(
+HloModule module
+
+sum {
+  a0 = f32[] parameter(0)
+  a1 = s32[] parameter(1) 
+  b0 = f32[] parameter(2)
+  b1 = s32[] parameter(3)
+  add0 = f32[] add(a0, b0)
+  add1 = s32[] add(a1, b1)
+  ROOT sum2 = (f32[], s32[]) tuple(add0, add1)
+}
+
+ENTRY entry {
+  constant = f32[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
+  constant.1 = f32[] constant(0)
+  constant.2 = s32[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
+  constant.3 = s32[] constant(0)
+  ROOT reduce-window = (f32[2,2]{1,0}, s32[2,2]{1,0}) 
+    reduce-window(constant, constant.2, constant.1, constant.3),
+    window={size=5x1 stride=3x1 pad=2_2x0_0}, to_apply=sum
+})";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
+XLA_TEST_F(HloTestBase,
+           DISABLED_ON_GPU(DISABLED_ON_CPU(ReduceWindowVariadicSupport3))) {
+  const char* const hlo_string = R"(
+HloModule module
+
+sum {
+  a0 = f32[] parameter(0)
+  a1 = bf16[] parameter(1) 
+  b0 = f32[] parameter(2)
+  b1 = bf16[] parameter(3)
+  add0 = f32[] add(a0, b0)
+  add1 = bf16[] add(a1, b1)
+  ROOT sum2 = (f32[], bf16[]) tuple(add0, add1)
+}
+
+ENTRY entry {
+  constant = f32[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
+  constant.1 = f32[] constant(0)
+  constant.2 = bf16[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
+  constant.3 = bf16[] constant(0)
+  ROOT reduce-window = (f32[2,2]{1,0}, bf16[2,2]{1,0}) 
+    reduce-window(constant, constant.2, constant.1, constant.3),
+    window={size=5x1 stride=3x1 pad=2_2x0_0}, to_apply=sum
+})";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
+XLA_TEST_F(HloTestBase,
+           DISABLED_ON_GPU(DISABLED_ON_CPU(ReduceWindowVariadicSupport4))) {
+  const char* const hlo_string = R"(
+HloModule module
+
+sum {
+  a0 = f32[] parameter(0)
+  a1 = bf16[] parameter(1) 
+  b0 = f32[] parameter(2)
+  b1 = bf16[] parameter(3)
+  add0 = f32[] add(a0, b0)
+  add1 = bf16[] multiply(a1, b1)
+  ROOT sum2 = (f32[], bf16[]) tuple(add0, add1)
+}
+
+ENTRY entry {
+  constant = f32[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
+  constant.1 = f32[] constant(0)
+  constant.2 = bf16[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
+  constant.3 = bf16[] constant(1)
+  ROOT reduce-window = (f32[2,2]{1,0}, bf16[2,2]{1,0}) 
+    reduce-window(constant, constant.2, constant.1, constant.3),
+    window={size=5x1 stride=3x1 pad=2_2x0_0}, to_apply=sum
+})";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
 }  // namespace
 }  // namespace xla

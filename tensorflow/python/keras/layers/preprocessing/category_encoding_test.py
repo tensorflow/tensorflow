@@ -269,7 +269,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     _ = model.predict(input_array, steps=1)
 
   def test_dense_oov_input(self):
-    input_array = constant_op.constant([[1, 2, 3], [4, 3, 4]])
+    input_array = constant_op.constant([[0, 1, 2], [2, 3, 1]])
     max_tokens = 3
     expected_output_shape = [None, max_tokens]
     encoder_layer = get_layer_class()(max_tokens)
@@ -753,7 +753,8 @@ class CategoryEncodingCombinerTest(
       _ = layer([1, 2, 3])
 
   def test_saving_loading(self):
-    encoder = category_encoding.CategoryEncoding()
+    cls = get_layer_class()
+    encoder = cls()
     encoder.adapt([1, 2, 3])
     model = keras.Sequential([encoder])
     model.save("/tmp/model", save_format="tf")
@@ -761,7 +762,8 @@ class CategoryEncodingCombinerTest(
     self.assertAllClose(model.predict([[1]]), loaded_model.predict([[1]]))
 
   def test_serialize(self):
-    encoder = category_encoding.CategoryEncoding()
+    cls = get_layer_class()
+    encoder = cls()
     encoder.adapt([1, 2, 3])
     model = keras.Sequential([encoder])
     _ = keras.models.clone_model(model)

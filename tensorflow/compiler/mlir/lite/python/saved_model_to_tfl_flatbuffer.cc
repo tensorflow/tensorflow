@@ -20,9 +20,9 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -51,7 +51,7 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   mlir::FuncOp entry_function = nullptr;
   for (auto func : module->get().getOps<mlir::FuncOp>()) {
     if (auto tf_attrs =
-            func.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function")) {
+            func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function")) {
       // TODO(jaesung): There could be multiple entry functions. Let's handle
       // such cases if there are any needs for that.
       if (entry_function != nullptr) {
@@ -67,7 +67,7 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
 
   // Get the list of input Op names from the function attribute.
   mlir::DictionaryAttr tf_attrs =
-      entry_function.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+      entry_function->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   llvm::SmallVector<llvm::StringRef, 4> function_input_names;
   function_input_names.reserve(model_flags.input_arrays().size());
   auto input_attr = tf_attrs.get("inputs");
@@ -128,7 +128,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   // Parse input arrays.
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
-  std::vector<std::vector<int>> node_shapes;
+  std::vector<llvm::Optional<std::vector<int>>> node_shapes;
   std::vector<llvm::Optional<double>> node_mins;
   std::vector<llvm::Optional<double>> node_maxs;
 
@@ -174,6 +174,11 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = true;
+  // Disable the unfolding of the 16x16 TF::BatchMatMulOp to avoid the
+  // conversion to an unsupported 16x16 TFL::FullyConnectedOp.
+  if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
+    pass_config.unfold_batch_matmul = false;
+  }
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(

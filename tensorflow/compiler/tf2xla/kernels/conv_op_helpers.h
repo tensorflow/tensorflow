@@ -37,7 +37,7 @@ namespace tensorflow {
 
 // We don't support integers for convolutions, so we list the supported types
 // here.
-absl::Span<const DataType> GetXlaConvTypes();
+std::vector<DataType> GetXlaConvTypes();
 
 // ConvOpAttrs contains all of the metadata necessary to specify a TF or XLA
 // convolution.
@@ -64,7 +64,8 @@ xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
 xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
     StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
     xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
-    const xla::PrecisionConfig* precision_config = nullptr);
+    const xla::PrecisionConfig* precision_config = nullptr,
+    xla::XlaOp* input_sizes = nullptr);
 xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     StringPiece type_string, xla::XlaOp activations,
     const xla::Shape& filter_shape, xla::XlaOp gradients,

@@ -514,6 +514,26 @@ ENTRY %pad {
               op::Sharding("{devices=[2,2]0,1,2,3}"));
 }
 
+TEST_F(ShardingPropagationTest, PadBackwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %pad {
+  %input = f32[11,17]{1,0} parameter(0)
+  %copy = f32[11,17]{1,0} copy(%input)
+  %pad_value = f32[] parameter(1)
+  %pad = f32[27,51]{1,0} pad(%copy, %pad_value), padding=2_4_1x1_1_2,
+    sharding={devices=[2,2]0,1,2,3}
+  ROOT %result = f32[27,51]{1,0} copy(%pad)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          ShardingPropagation().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "copy"),
+              op::Sharding("{devices=[2,2]0,1,2,3}"));
+}
+
 TEST_F(ShardingPropagationTest, PartialReplicatedPadForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
@@ -856,40 +876,41 @@ TEST_F(ShardingPropagationTest, While) {
 HloModule module
 
 %cond {
-  %vars.cond = (u32[], f32[10]{0}) parameter(0)
-  %count.cond = u32[] get-tuple-element((u32[], f32[10]{0}) %vars.cond), index=0
+  %vars.cond = (u32[], f32[10,10]) parameter(0)
+  %count.cond = u32[] get-tuple-element((u32[], f32[10,10]) %vars.cond), index=0
   %limit = u32[] constant(10)
   ROOT %lt = pred[] compare(u32[] %count.cond, u32[] %limit), direction=LT
 }
 
 %body {
-  %vars = (u32[], f32[10]{0}) parameter(0)
+  %vars = (u32[], f32[10,10]) parameter(0)
   %count = u32[] get-tuple-element(%vars), index=0
-  %acc = f32[10]{0} get-tuple-element((u32[], f32[10]{0}) %vars), index=1
+  %acc = f32[10,10] get-tuple-element((u32[], f32[10,10]) %vars), index=1
 
   %one = u32[] constant(1)
   %count.1 = u32[] add(u32[] %count, u32[] %one), sharding={replicated}
-  %acc.1 = f32[10]{0} add(f32[10]{0} %acc, f32[10]{0} %acc)
-  ROOT %tuple = (u32[], f32[10]{0}) tuple(u32[] %count.1, f32[10]{0} %acc.1)
+  %acc.1 = f32[10,10] add(f32[10,10] %acc, f32[10,10] %acc)
+  ROOT %tuple = (u32[], f32[10,10]) tuple(u32[] %count.1, f32[10,10] %acc.1)
 }
 
 ENTRY %entry {
-  %p0 = f32[10]{0} parameter(0)
-  %p0.copy = f32[10]{0} copy(f32[10]{0} %p0)
-  %p1 = f32[10]{0} parameter(1)
+  %p0 = f32[10,10] parameter(0)
+  %p0.copy = f32[10,10] copy(f32[10,10] %p0)
+  %p1 = f32[10,10] parameter(1)
   %zero = u32[] constant(0)
-  %init = (u32[], f32[10]{0}) tuple(u32[] %zero, f32[10]{0} %p0.copy)
-  %while = (u32[], f32[10]{0}) while((u32[], f32[10]{0}) %init),
+  %init = (u32[], f32[10,10]) tuple(u32[] %zero, f32[10,10] %p0.copy)
+  %while = (u32[], f32[10,10]) while((u32[], f32[10,10]) %init),
     body=%body, condition=%cond
-  %res = f32[10]{0} get-tuple-element((u32[], f32[10]{0}) %while), index=1
-  %prev = f32[10]{0} get-tuple-element((u32[], f32[10]{0}) %init), index=1
-  %res.1 = f32[10]{0} multiply(f32[10]{0} %res, %prev)
-  ROOT %res_tuple = (f32[10]{0}) tuple(f32[10]{0} %res.1)
+  %res = f32[10,10] get-tuple-element((u32[], f32[10,10]) %while), index=1
+  %prev = f32[10,10] get-tuple-element((u32[], f32[10,10]) %init), index=1
+  %res.1 = f32[10,10] multiply(f32[10,10] %res, %prev)
+  ROOT %res_tuple = (f32[10,10]) tuple(f32[10,10] %res.1)
 })";
 
   auto while_is_sharded = [this](HloModule* module,
                                  const HloSharding& sharding) {
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardingPropagation().Run(module));
+    TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                            ShardingPropagation(/*is_spmd=*/true).Run(module));
     EXPECT_TRUE(changed);
     auto while_instr = FindInstruction(module, "while");
     EXPECT_NE(nullptr, while_instr);
@@ -911,7 +932,7 @@ ENTRY %entry {
     auto body_root = FindInstruction(module.get(), "tuple");
     EXPECT_NE(nullptr, body_root);
     auto sharding =
-        ParseSharding("{{replicated}, {devices=[2]0,1}}").ConsumeValueOrDie();
+        ParseSharding("{{replicated}, {devices=[2,1]0,1}}").ConsumeValueOrDie();
     body_root->set_sharding(sharding);
     while_is_sharded(module.get(), sharding);
   }
@@ -921,11 +942,30 @@ ENTRY %entry {
                             ParseAndReturnVerifiedModule(hlo_string));
     auto acc_1 = FindInstruction(module.get(), "acc.1");
     EXPECT_NE(nullptr, acc_1);
-    acc_1->set_sharding(ParseSharding("{devices=[2]0,1}").ConsumeValueOrDie());
+    acc_1->set_sharding(
+        ParseSharding("{devices=[2,1]0,1}").ConsumeValueOrDie());
 
-    while_is_sharded(
-        module.get(),
-        ParseSharding("{{replicated}, {devices=[2]0,1}}").ConsumeValueOrDie());
+    while_is_sharded(module.get(),
+                     ParseSharding("{{replicated}, {devices=[2,1]0,1}}")
+                         .ConsumeValueOrDie());
+  }
+  {
+    // Merge partial sharding from operand and body.
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    auto acc_1 = FindInstruction(module.get(), "acc.1");
+    EXPECT_NE(nullptr, acc_1);
+    acc_1->set_sharding(
+        ParseSharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}")
+            .ConsumeValueOrDie());
+    auto p0 = FindInstruction(module.get(), "p0");
+    p0->set_sharding(
+        ParseSharding("{devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}")
+            .ConsumeValueOrDie());
+
+    while_is_sharded(module.get(),
+                     ParseSharding("{{replicated}, {devices=[2,2]0,1,2,3}}")
+                         .ConsumeValueOrDie());
   }
 }
 
@@ -1220,6 +1260,25 @@ ENTRY %conv {
       FindInstruction(module.get(), "dot"),
       op::Sharding(
           "{devices=[2,2,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, DotMergeOperands3) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %p0 = f32[256,512] parameter(0), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
+  %p1 = f32[128,512] parameter(1), sharding={devices=[4,2]0,4,2,6,3,7,1,5}
+  %dot = f32[256,128] dot(%p0, %p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  ROOT %copy = f32[256,128] copy(%dot)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "dot"),
+              op::Sharding("{devices=[2,4]0,2,3,1,4,6,7,5}"));
 }
 
 TEST_F(ShardingPropagationTest, BackwardDotFromContracting) {
@@ -2518,6 +2577,244 @@ ENTRY %transpose {
       FindInstruction(module.get(), "copy"),
       op::Sharding(
           "{devices=[2,1,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, ParallelGatherFromOperandForwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0),
+    sharding={devices=[8,1,1,1]0,1,4,5,2,3,6,7}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}
+  %gather = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate.19), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "gather"),
+              op::Sharding("{devices=[8,1,1,1]0,1,4,5,2,3,6,7}"));
+}
+
+TEST_F(ShardingPropagationTest, ParallelGatherFromIndexForwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1,
+    sharding={devices=[1,8,1]0,1,4,5,2,3,6,7}
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}
+  %gather = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate.19), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "gather"),
+              op::Sharding("{devices=[8,1,1,1]0,1,4,5,2,3,6,7}"));
+}
+
+TEST_F(ShardingPropagationTest, ParallelGatherBackwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
+  %copy.p = s32[8,4,2,2]{3,2,1,0} copy(%parameter.0)
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}
+  %gather = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %copy.p,
+    s32[2,8,4]{2,1,0} %concatenate), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}, sharding={devices=[8,1,1,1]0,1,4,5,2,3,6,7}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "concatenate"),
+              op::Sharding("{devices=[1,8,1]0,1,4,5,2,3,6,7}"));
+  EXPECT_THAT(FindInstruction(module.get(), "copy.p"),
+              op::Sharding("{devices=[8,1,1,1]0,1,4,5,2,3,6,7}"));
+}
+
+TEST_F(ShardingPropagationTest, ParallelGatherBackwardPass2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[4,8,2,2]{3,2,1,0} parameter(0)
+  %copy.p = s32[4,8,2,2]{3,2,1,0} copy(%parameter.0)
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}
+  %gather = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[4,8,2,2]{3,2,1,0} %copy.p,
+    s32[2,8,4]{2,1,0} %concatenate), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={1,0}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}, sharding={devices=[1,4,1,1]0,1,4,5}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "concatenate"),
+              op::Sharding("{devices=[1,1,4]0,1,4,5}"));
+  EXPECT_THAT(FindInstruction(module.get(), "copy.p"),
+              op::Sharding("{devices=[4,1,1,1]0,1,4,5}"));
+}
+
+TEST_F(ShardingPropagationTest,
+       PartialShardingParallelGatherFromOperandForwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0),
+    sharding={devices=[4,1,1,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}
+  %gather = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate.19), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "gather"),
+      op::Sharding(
+          "{devices=[4,1,1,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest,
+       PartialShardingParallelGatherFromIndexForwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1,
+    sharding={devices=[1,4,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}
+  %gather = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate.19), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "gather"),
+      op::Sharding(
+          "{devices=[4,1,1,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, PartialShardingParallelGatherBackwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
+  %copy.p = s32[8,4,2,2]{3,2,1,0} copy(%parameter.0)
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}
+  %gather = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %copy.p,
+    s32[2,8,4]{2,1,0} %concatenate), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2},
+    sharding={devices=[4,1,1,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "concatenate"),
+      op::Sharding(
+          "{devices=[1,4,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+  EXPECT_THAT(
+      FindInstruction(module.get(), "copy.p"),
+      op::Sharding(
+          "{devices=[4,1,1,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, PartialShardingParallelGatherBackwardPass2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[4,8,2,2]{3,2,1,0} parameter(0)
+  %copy.p = s32[4,8,2,2]{3,2,1,0} copy(%parameter.0)
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}
+  %gather = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[4,8,2,2]{3,2,1,0} %copy.p,
+    s32[2,8,4]{2,1,0} %concatenate), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={1,0}, index_vector_dim=0,
+    slice_sizes={1,1,2,2},
+    sharding={devices=[1,2,1,1,2]0,1,4,5 last_tile_dim_replicate}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "concatenate"),
+      op::Sharding("{devices=[1,1,2,2]0,1,4,5 last_tile_dim_replicate}"));
+  EXPECT_THAT(
+      FindInstruction(module.get(), "copy.p"),
+      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
 }
 
 }  // namespace

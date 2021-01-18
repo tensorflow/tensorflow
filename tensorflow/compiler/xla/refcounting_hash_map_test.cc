@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 
 #include <functional>
+#include <memory>
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -77,6 +79,21 @@ TEST(RefcountingHashMapTest, CustomFactory) {
   auto factory = [](const int& x) { return absl::make_unique<int>(x + 1); };
   EXPECT_EQ(*m.GetOrCreateIfAbsent(0, factory), 1);
   EXPECT_EQ(*m.GetOrCreateIfAbsent(100, factory), 101);
+}
+
+TEST(RefcountingHashMapTest, TrySuccessful) {
+  RefcountingHashMap<int, int> m;
+  auto factory = [](const int&) { return absl::make_unique<int>(7); };
+  StatusOr<std::shared_ptr<int>> result = m.GetOrTryCreateIfAbsent(42, factory);
+  ASSERT_TRUE(result.ok());
+  EXPECT_EQ(**result, 7);
+}
+
+TEST(RefcountingHashMapTest, TryFailure) {
+  RefcountingHashMap<int, int> m;
+  Status status = tensorflow::errors::Internal("Arrggg!");
+  auto factory = [&](const int&) { return status; };
+  EXPECT_EQ(m.GetOrTryCreateIfAbsent(42, factory).status(), status);
 }
 
 TEST(RefcountingHashMapTest, ForEachEmpty) {

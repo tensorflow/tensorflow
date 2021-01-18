@@ -151,10 +151,9 @@ class WhereCPUOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
-    // TODO(ebrevdo): Replace single-threaded copy with a
-    // multithreaded block copy by getting block counts above instead
-    // of a global NumTrue, then having each block filled in in
-    // separate threads below.
+    // TODO(ebrevdo): Replace single-threaded copy with a multithreaded block
+    // copy by getting block counts above instead of a global NumTrue, then
+    // having each block filled in separate threads below.
     int64 found_true = 0;
 
 #define HANDLE_DIM(NDIM)                                                      \

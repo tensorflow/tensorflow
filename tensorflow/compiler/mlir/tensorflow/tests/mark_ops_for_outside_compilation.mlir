@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -tf-mark-ops-for-outside-compilation | FILECHECK_OPTS="" FileCheck %s
 
-// CHECK-LABEL: func @unsupported_op_no_soft_placement
-func @unsupported_op_no_soft_placement() -> tensor<i32> {
+// CHECK-LABEL: func @unsupported_op_missing_soft_placement_attribute
+func @unsupported_op_missing_soft_placement_attribute() -> tensor<i32> {
   %0 = "tf_device.cluster"() ( {
     // CHECK: "tf.UnsupportedOp"
     // CHECK-NOT: _xla_outside_compilation
@@ -25,6 +25,24 @@ func @unsupported_op_soft_placement_false() -> tensor<i32> {
     %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %2 : tensor<i32>
   }) {allow_soft_placement = false, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @assert_op_string_operand
+func @assert_op_string_operand(%arg0: tensor<!tf.string>) -> tensor<i32> {
+  %0 = "tf_device.cluster"() ( {
+    // CHECK: "tf.Assert"
+    // CHECK-NOT: _xla_outside_compilation
+    // CHECK: "tf.UnsupportedOp"
+    // CHECK-SAME: _xla_outside_compilation
+    // CHECK: "tf.Identity"
+    // CHECK-NOT: _xla_outside_compilation
+    %t = constant dense<true> : tensor<i1>
+    "tf.Assert"(%t, %arg0) {summarize = 3} : (tensor<i1>, tensor<!tf.string>) -> ()
+    %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %2 : tensor<i32>
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
   return %0 : tensor<i32>
 }
 
@@ -80,6 +98,20 @@ func @ignore_stack_ops(%arg0: tensor<i32>) -> () {
     // CHECK: "tf.StackV2"
     // CHECK-NOT: _xla_outside_compilation
     %0 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf.resource>
+    tf_device.return
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+  return
+}
+
+// CHECK-LABEL: func @ignore_const_foldable_ops
+func @ignore_const_foldable_ops(%arg0: tensor<i32>) -> () {
+  "tf_device.cluster"() ( {
+    %s0 = "tf.Const"() {value = dense<[501, 1, 32, 1280]> : tensor<4xi32>} : () -> tensor<4xi32>
+    %s1 = "tf.Const"() {value = dense<[  1, 1,  1, 1280]> : tensor<4xi32>} : () -> tensor<4xi32>
+
+    // CHECK: "tf.BroadcastGradientArgs"
+    // CHECK-NOT: _xla_outside_compilation
+    %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) {} : (tensor<4xi32>, tensor<4xi32>) -> (tensor<1xi32>, tensor<3xi32>)
     tf_device.return
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
   return

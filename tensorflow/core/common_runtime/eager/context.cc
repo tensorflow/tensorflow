@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
@@ -75,8 +76,7 @@ auto* eager_context_created =
 EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
-    const bool lazy_copy_function_remote_inputs, const DeviceMgr* device_mgr,
-    bool device_mgr_owned, Rendezvous* rendezvous,
+    const DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
     DistributedFunctionLibraryRuntime* cluster_flr)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
@@ -89,10 +89,11 @@ EagerContext::EagerContext(
       log_device_placement_(opts.config.log_device_placement()),
       allow_soft_placement_(opts.config.allow_soft_placement()),
       num_active_steps_(0),
+      step_container_(std::make_unique<ScopedStepContainer>(
+          0, [this](const string& name) { ClearResourceContainer(name); })),
       default_executor_(async),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
-      lazy_copy_function_remote_inputs_(lazy_copy_function_remote_inputs),
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
@@ -107,6 +108,8 @@ EagerContext::EagerContext(
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
   };
+
+  run_metadata_ = std::make_unique<RunMetadata>();
 
 #if !defined(IS_MOBILE_PLATFORM)
   context_id_ = kInvalidContextId;
@@ -321,7 +324,7 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
 
 void EagerContext::ResetClusterFLR(
     DistributedFunctionLibraryRuntime* cluster_flr) {
-  cluster_flr_.Reset(cluster_flr, lazy_copy_function_remote_inputs_);
+  cluster_flr_.Reset(cluster_flr, /*owned=*/true);
 }
 
 EagerExecutor& EagerContext::Executor() {
@@ -382,6 +385,11 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
   for (auto& entry : registered_functions_) {
     entry.second->cached_kernel_keys->clear();
   }
+  {
+    mutex_lock ml(metadata_mu_);
+    step_container_.reset(new ScopedStepContainer(
+        0, [this](const string& name) { ClearResourceContainer(name); }));
+  }
 }
 
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
@@ -398,10 +406,6 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() const {
     return policy_map_it->second;
   }
   return default_device_placement_policy_;
-}
-
-bool EagerContext::LazyCopyFunctionRemoteInputs() const {
-  return lazy_copy_function_remote_inputs_;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -577,7 +581,12 @@ const FunctionDef* EagerContext::FindFunctionDef(const string& name) const {
   return func_lib_def_.Find(name);
 }
 
-void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
+std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
+  mutex_lock ml(metadata_mu_);
+  auto result = std::make_unique<RunMetadata>();
+  run_metadata_.swap(result);
+  return result;
+}
 
 bool EagerContext::UsesTFRT() { return false; }
 
@@ -592,29 +601,20 @@ void EagerContext::ListDevices(
 void EagerContext::StartStep() {
   mutex_lock ml(metadata_mu_);
   num_active_steps_++;
-  if (step_container_ == nullptr) {
-    step_container_.reset(
-        new ScopedStepContainer(0, [this](const string& name) {
-          auto local_devices = local_device_mgr()->ListDevices();
-          for (Device* device : local_devices) {
-            device->resource_manager()->Cleanup(name).IgnoreError();
-          }
-        }));
-  }
 }
 
 void EagerContext::EndStep() {
   mutex_lock ml(metadata_mu_);
   num_active_steps_--;
   if (num_active_steps_ == 0) {
-    step_container_.reset();
+    // TODO(b/139809335): This does not properly clean up remote resources
+    // Clean up the previous step container and create a new one.
+    step_container_.reset(new ScopedStepContainer(
+        0, [this](const string& name) { ClearResourceContainer(name); }));
   }
 }
 
 ScopedStepContainer* EagerContext::StepContainer() {
-  if (num_active_steps_.load() == 0) {
-    return nullptr;
-  }
   mutex_lock ml(metadata_mu_);
   return step_container_.get();
 }
@@ -699,6 +699,12 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
   return Status::OK();
 }
 
+Status EagerContext::AddFunctionDefWithStackTraces(
+    const FunctionDef& fdef, const StackTracesMap& stack_traces) {
+  return AddFunctionDef(fdef, FunctionDefLibrary(),
+                        /* add_to_local_only=*/false, stack_traces);
+}
+
 Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
   return AddFunctionDef(fdef, FunctionDefLibrary(),
                         /* add_to_local_only=*/false);
@@ -706,7 +712,8 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
 
 Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
                                     const FunctionDefLibrary& library,
-                                    const bool add_to_local_only) {
+                                    const bool add_to_local_only,
+                                    const StackTracesMap& stack_traces) {
   bool is_first_ref = false;
   {
     mutex_lock l(cache_mu_);
@@ -731,7 +738,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
         return errors::InvalidArgument(
             "Attempting to add a duplicate function with name: ",
             fdef.signature().name(), " where the previous and current ",
-            "definitions differ. Previous definiton: ",
+            "definitions differ. Previous definition: ",
             prev_fdef->DebugString(),
             " and current definition: ", fdef.DebugString());
       }
@@ -740,7 +747,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
     is_first_ref = registered_function->RefCountIsOne();
   }
   if (is_first_ref) {
-    TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
+    TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef, stack_traces));
     TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
     if (!add_to_local_only) {
       return MaybeRegisterFunctionRemotely(fdef);
@@ -858,7 +865,7 @@ void EagerContext::SetShouldStoreGraphs(bool value) {
   mutex_lock ml(metadata_mu_);
   should_store_graphs_.store(value);
   if (!value) {
-    run_metadata_.Clear();
+    run_metadata_.reset(new RunMetadata);
   }
 }
 
@@ -978,6 +985,15 @@ Status EagerContext::CPUDeviceOnTask(const Device* device,
       device->name(), &cpu_device_name));
 
   return FindDeviceFromName(cpu_device_name.c_str(), cpu_device);
+}
+
+void EagerContext::ClearResourceContainer(const string& name) {
+  // TODO(b/139809335): This does not properly clean up remote resources
+  auto local_devices = local_device_mgr()->ListDevices();
+  for (Device* device : local_devices) {
+    // Only ignore container not found errors.
+    device->resource_manager()->Cleanup(name).IgnoreError();
+  }
 }
 
 namespace {
@@ -1225,9 +1241,8 @@ Status EagerContext::UpdateRemoteMaster(
     tf_shared_lock l(remote_state_mu_);
     if (context_id != context_id_) {
       return errors::InvalidArgument(
-          "Failed to update remote remote master context due to invalid ",
-          "context id. Request id = ", context_id,
-          " but current id = ", context_id_);
+          "Failed to update remote master context due to invalid context id. ",
+          "Request id = ", context_id, " but current id = ", context_id_);
     }
   }
 

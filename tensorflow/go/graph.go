@@ -72,7 +72,7 @@ type GraphImportOptions struct {
 }
 
 // AddInputMapping adds a mapping between an Output in the imported graph
-// and an Ouput in the destination graph that it should be replaced with,
+// and an Output in the destination graph that it should be replaced with,
 // where src:srcIndex is the name of the Operation and Output index to
 // replace and dst is the output to replace it with.
 func (o *GraphImportOptions) AddInputMapping(src string, srcIndex int, dst Output) {
@@ -500,7 +500,7 @@ type LibraryHandler struct {
 	cptr *C.TF_Library
 }
 
-// Load library content into current context, useful to load ops implementation into non-monolitic TF build. Returns LibraryHandler or nil and error
+// Load library content into current context, useful to load ops implementation into non-monolithic TF build. Returns LibraryHandler or nil and error
 func LoadLibrary(path string) (*LibraryHandler, error) {
 	status := newStatus()
 

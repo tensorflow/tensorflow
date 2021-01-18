@@ -15,7 +15,7 @@ END
   in_arg {
     name: "shape"
     description: <<END
-The desired shape of the the output tensor. If left unspecified (empty),
+The desired shape of the output tensor. If left unspecified (empty),
 the minimal shape required to contain all the elements in the ragged tensor
 (the natural shape) will be used. If some dimensions are left unspecified, then
 the size of the natural shape is used in that dimension.

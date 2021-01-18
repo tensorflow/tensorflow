@@ -308,8 +308,9 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       save.save(root, save_dir)
 
     expected_message = (
-        "WARNING:absl:No concrete functions found for untraced function `foo` "
-        "while saving. This function will not be callable after loading.")
+        "WARNING:absl:Found untraced functions such as foo while saving "
+        "(showing 1 of 1). These functions will not be directly callable after "
+        "loading.")
     self.assertIn(expected_message, logs.output)
 
   def test_find_default_save_function(self):
@@ -667,6 +668,23 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       # the checkpoint).
       with self.assertRaises(ValueError):
         loader.load(session, [tag_constants.SERVING], export_dir)
+
+  def test_concrete_function_with_set_shape(self,):
+    # Serialized concrete function should retain the shape from the TensorSpec,
+    # instead of using the shape of the inputs (which are changed by set_shape).
+    @def_function.function
+    def f(x):
+      x.set_shape((5, 1))
+      return x
+
+    root = tracking.AutoTrackable()
+    path = os.path.join(self.get_temp_dir(), "saved_model")
+    concrete = f.get_concrete_function(
+        tensor_spec.TensorSpec((None, 1), name="name"))
+    save.save(root, path, signatures={"key": concrete})
+    imported = load.load(path)
+    self.assertEqual(imported.signatures["key"].structured_input_signature[1],
+                     {"name": tensor_spec.TensorSpec((None, 1), name="name")})
 
 
 class VariablePolicyEnumTest(test.TestCase):

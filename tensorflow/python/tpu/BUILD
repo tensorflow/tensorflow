@@ -12,6 +12,7 @@ package(
     default_visibility = [
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
+        "//learning/serving:__subpackages__",
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
@@ -33,7 +34,6 @@ py_test(
         "no_oss_py2",
         "no_oss_py35",
         "no_pip",
-        "no_rocm",
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -91,6 +91,16 @@ tpu_py_test(
 )
 
 pytype_library(
+    name = "device_assignment",
+    srcs = ["device_assignment.py"],
+    deps = [
+        ":topology",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+pytype_library(
     name = "preempted_hook_py",
     srcs = ["preempted_hook.py"],
     srcs_version = "PY2AND3",
@@ -112,7 +122,7 @@ py_library(
         "tpu_estimator.py",
         "util.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":async_checkpoint",
         ":feature_column",
@@ -145,7 +155,7 @@ py_library(
 py_library(
     name = "functional",
     srcs = ["functional.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//visibility:public",
     ],
@@ -154,12 +164,23 @@ py_library(
     ],
 )
 
+pytype_library(
+    name = "topology",
+    srcs = ["topology.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core/protobuf/tpu:topology_proto_py",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "tpu",
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -175,7 +196,7 @@ py_library(
         "__init__.py",
         "api.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -192,31 +213,30 @@ pytype_library(
     srcs = [
         "__init__.py",
         "bfloat16.py",
-        "device_assignment.py",
         "session_support.py",
         "tensor_tracer.py",
         "tensor_tracer_flags.py",
         "tensor_tracer_report.py",
-        "topology.py",
-        "tpu_feed.py",
         "tpu_optimizer.py",
-        "tpu_sharding.py",
         "tpu_strategy_util.py",
         "training_loop.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
+        ":device_assignment",
         ":functional",
+        ":topology",
+        ":tpu_feed",
         ":tpu_function",
         ":tpu_ops",
+        ":tpu_sharding",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/protobuf/tpu:compilation_result_proto_py",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
         "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_py",
-        "//tensorflow/core/protobuf/tpu:topology_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_py",
         "//tensorflow/python:array_ops",
@@ -246,9 +266,13 @@ pytype_library(
     name = "tpu_py",
     srcs = ["tpu.py"],
     deps = [
+        ":device_assignment",
+        ":tpu_feed",
         ":tpu_function",
+        ":tpu_name_util",
         ":tpu_ops",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:auto_control_deps",
         "//tensorflow/python:c_api_util",
@@ -263,12 +287,12 @@ pytype_library(
         "//tensorflow/python:function",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/compiler/xla",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
         "@enum34_archive//:enum",
@@ -277,9 +301,32 @@ pytype_library(
 )
 
 pytype_library(
+    name = "tpu_feed",
+    srcs = ["tpu_feed.py"],
+    deps = [
+        ":tpu_name_util",
+        ":tpu_ops",
+        ":tpu_sharding",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:tensor_shape",
+    ],
+)
+
+pytype_library(
     name = "tpu_function",
     srcs = ["tpu_function.py"],
     deps = [
+    ],
+)
+
+pytype_library(
+    name = "tpu_sharding",
+    srcs = ["tpu_sharding.py"],
+    deps = [
+        "//tensorflow/python:tensor_shape",
     ],
 )
 
@@ -337,7 +384,6 @@ tf_py_test(
         "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
         "no_windows",  # TODO: needs investigation on Windows
     ],
-    tfrt_enabled = True,
     deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
@@ -351,9 +397,8 @@ tf_py_test(
     name = "tpu_sharding_test",
     size = "small",
     srcs = ["tpu_sharding_test.py"],
-    tfrt_enabled = True,
     deps = [
-        ":tpu",
+        ":tpu_sharding",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
     ],
@@ -363,7 +408,6 @@ tf_py_test(
     name = "bfloat16_test",
     size = "small",
     srcs = ["bfloat16_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
@@ -375,7 +419,6 @@ tf_py_test(
     name = "tpu_infeed_test",
     size = "small",
     srcs = ["tpu_infeed_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":tpu",
         "//tensorflow/python:framework",
@@ -387,9 +430,8 @@ tf_py_test(
     name = "topology_test",
     size = "medium",
     srcs = ["topology_test.py"],
-    tfrt_enabled = True,
     deps = [
-        ":tpu",
+        ":topology",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -431,6 +473,15 @@ pytype_library(
     ],
 )
 
+py_library(
+    name = "tpu_name_util",
+    srcs = ["tpu_name_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
 pytype_library(
     name = "feature_column",
     srcs = ["feature_column.py"],
@@ -464,7 +515,6 @@ tf_py_test(
         "feature_column_test.py",
     ],
     main = "feature_column_test.py",
-    tfrt_enabled = True,
     deps = [
         ":feature_column",
         "//tensorflow/python:client_testlib",
@@ -487,7 +537,6 @@ tf_py_test(
         "feature_column_v2_test.py",
     ],
     main = "feature_column_v2_test.py",
-    tfrt_enabled = True,
     deps = [
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
@@ -622,7 +671,6 @@ tf_py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tfrt_enabled = True,
     deps = [
         ":tpu_embedding_v2",
         "//tensorflow/python/compat:v2_compat",
@@ -650,6 +698,7 @@ tpu_py_test(
 # NOTE this target should only be depended on by the tpu_test_wrapper macro.
 py_library(
     name = "tpu_test_deps",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:client_testlib"],
 )

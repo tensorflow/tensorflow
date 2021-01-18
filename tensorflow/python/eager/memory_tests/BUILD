@@ -11,6 +11,7 @@ package(
 py_library(
     name = "memory_test_util",
     srcs = ["memory_test_util.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = ["@six_archive//:six"],
 )

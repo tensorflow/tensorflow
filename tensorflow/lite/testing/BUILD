@@ -12,7 +12,6 @@ load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load(
     "//tensorflow:tensorflow.bzl",
-    "py_test",  # @unused
     "tf_cc_binary",
     "tf_cc_test",
 )
@@ -99,6 +98,7 @@ py_library(
     data = [
         "//tensorflow/lite/toco",
     ],
+    srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
         "//tensorflow:tensorflow_py",
@@ -109,7 +109,7 @@ py_library(
 py_library(
     name = "op_tests",
     srcs = glob(["op_tests/*.py"]),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
         "//tensorflow:tensorflow_py",
@@ -120,7 +120,7 @@ py_library(
 py_library(
     name = "generate_examples_lib",
     srcs = ["generate_examples_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":op_tests",
         ":zip_test_utils",
@@ -131,7 +131,7 @@ py_library(
 py_library(
     name = "zip_test_utils",
     srcs = ["zip_test_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":_pywrap_string_util",
         ":generate_examples_report",
@@ -157,7 +157,7 @@ py_binary(
 py_library(
     name = "generate_examples_report",
     srcs = ["generate_examples_report.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 cc_library(
@@ -240,6 +240,8 @@ cc_library(
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels:test_delegate_providers_lib",
         "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
+        "//tensorflow/lite/kernels/parse_example:parse_example",
+        "//tensorflow/lite/kernels/perception:perception_ops",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:ios": [],
@@ -312,7 +314,7 @@ cc_library(
     hdrs = ["util.h"],
     deps = [
         "//tensorflow/core/platform:logging",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
     ],
@@ -591,7 +593,7 @@ pybind_extension(
 tflite_portable_test_suite()
 
 tflite_custom_android_library(
-    name = "customtized_tflite_for_add_ops",
+    name = "customized_tflite_for_add_ops",
     models = ["//tensorflow/lite:testdata/add.bin"],
     visibility = ["//visibility:public"],
 )

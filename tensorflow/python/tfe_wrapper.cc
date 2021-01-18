@@ -204,6 +204,13 @@ TFE_OutputTensorHandles InputTFE_OutputTensorHandles(
 #else
   long sz = PyLong_AsLong(num_outputs.ptr());  // NOLINT
 #endif
+  // We can't handle more than int32 sizes for number of outputs.
+  if (static_cast<long>(static_cast<int32>(sz)) != sz) {  // NOLINT
+    PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
+                                          "Number of outputs is too big: ", sz)
+                                          .c_str());
+    throw py::error_already_set();
+  }
   if (sz > 0) {
 #if PY_MAJOR_VERSION < 3
     output_tensor_handles.resize(PyInt_AsLong(num_outputs.ptr()), nullptr);
@@ -999,8 +1006,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
   m.def("TFE_ContextOptionsSetDevicePlacementPolicy",
         &TFE_ContextOptionsSetDevicePlacementPolicy);
-  m.def("TFE_ContextOptionsSetLazyRemoteInputsCopy",
-        &TFE_ContextOptionsSetLazyRemoteInputsCopy);
   m.def("TFE_ContextOptionsSetTfrt", &TFE_ContextOptionsSetTfrt);
   m.def("TFE_ContextOptionsSetAsync", &TFE_ContextOptionsSetAsync);
   m.def("TFE_DeleteContextOptions", &TFE_DeleteContextOptions,
@@ -1022,12 +1027,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   // Additional Context Logic
   m.def("TFE_Py_SetEagerContext", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_SetEagerContext(o.ptr()));
-  });
-  m.def("TFE_ContextStartStep", [](py::handle& o) {
-    TFE_ContextStartStep(tensorflow::InputTFE_Context(o.ptr()));
-  });
-  m.def("TFE_ContextEndStep", [](py::handle& o) {
-    TFE_ContextEndStep(tensorflow::InputTFE_Context(o.ptr()));
   });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
@@ -1054,11 +1053,11 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     TFE_AbortCollectiveOps(tensorflow::InputTFE_Context(ctx), status.get());
   });
   m.def("TFE_CollectiveOpsCheckPeerHealth",
-        [](const py::handle& ctx, const char* task) {
+        [](const py::handle& ctx, const char* task, int64_t timeout_in_ms) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
           TFE_CollectiveOpsCheckPeerHealth(tensorflow::InputTFE_Context(ctx),
-                                           task, status.get());
+                                           task, timeout_in_ms, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
   m.def("TF_ListPhysicalDevices", &tensorflow::TF_ListPhysicalDevices);

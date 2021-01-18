@@ -809,6 +809,41 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   This function attempts to partially evaluate the given tensor, and
   returns its value as a numpy ndarray if this succeeds.
 
+  Example usage:
+
+  >>> a = tf.constant(10)
+  >>> tf.get_static_value(a)
+  10
+  >>> b = tf.constant(20)
+  >>> tf.get_static_value(tf.add(a, b))
+  30
+
+  >>> # `tf.Variable` is not supported.
+  >>> c = tf.Variable(30)
+  >>> print(tf.get_static_value(c))
+  None
+
+  Using `partial` option is most relevant when calling `get_static_value` inside
+  a `tf.function`. Setting it to `True` will return the results but for the
+  values that cannot be evaluated will be `None`. For example:
+
+  ```python
+  class Foo(object):
+    def __init__(self):
+      self.a = tf.Variable(1)
+      self.b = tf.constant(2)
+
+    @tf.function
+    def bar(self, partial):
+      packed = tf.raw_ops.Pack(values=[self.a, self.b])
+      static_val = tf.get_static_value(packed, partial=partial)
+      tf.print(static_val)
+
+  f = Foo()
+  f.bar(partial=True)  # `array([None, array(2, dtype=int32)], dtype=object)`
+  f.bar(partial=False)  # `None`
+  ```
+
   Compatibility(V1): If `constant_value(tensor)` returns a non-`None` result, it
   will no longer be possible to feed a different value for `tensor`. This allows
   the result of this function to influence the graph that is constructed, and
@@ -990,10 +1025,10 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
 
 # TODO(mdan): Deprecate in favor of more static-friendly types.
 @tf_export("is_tensor")
-def is_tensor(x):  # pylint: disable=invalid-name
+def is_tf_type(x):  # pylint: disable=invalid-name
   """Checks whether `x` is a TF-native type that can be passed to many TF ops.
 
-  Use is_tensor to differentiate types that can ingested by TensorFlow ops
+  Use `is_tensor` to differentiate types that can ingested by TensorFlow ops
   without any conversion (e.g., `tf.Tensor`, `tf.SparseTensor`, and
   `tf.RaggedTensor`) from types that need to be converted into tensors before
   they are ingested (e.g., numpy `ndarray` and Python scalars).
@@ -1003,21 +1038,27 @@ def is_tensor(x):  # pylint: disable=invalid-name
   ```python
   if not tf.is_tensor(t):
     t = tf.convert_to_tensor(t)
-  return t.dtype
+  return t.shape, t.dtype
   ```
 
   we check to make sure that `t` is a tensor (and convert it if not) before
-  accessing its `shape` and `dtype`.
+  accessing its `shape` and `dtype`.  (But note that not all TensorFlow native
+  types have shapes or dtypes; `tf.data.Dataset` is an example of a TensorFlow
+  native type that has neither shape nor dtype.)
 
   Args:
     x: A python object to check.
 
   Returns:
-    `True` if `x` is a tensor or "tensor-like", `False` if not.
+    `True` if `x` is a TensorFlow-native type.
   """
   return (isinstance(x, internal.NativeObject) or
           isinstance(x, core.Tensor) or
           getattr(x, "is_tensor_like", False))
+
+
+# Deprecated alias for tensor_util.is_tf_type.
+is_tensor = is_tf_type
 
 
 def shape_tensor(shape):  # pylint: disable=invalid-name

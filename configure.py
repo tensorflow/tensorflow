@@ -46,7 +46,7 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '3.1.0'
+_TF_MIN_BAZEL_VERSION = '3.7.2'
 _TF_MAX_BAZEL_VERSION = '3.99.0'
 
 NCCL_LIB_PATHS = [
@@ -55,16 +55,15 @@ NCCL_LIB_PATHS = [
 
 # List of files to configure when building Bazel on Apple platforms.
 APPLE_BAZEL_FILES = [
-    'tensorflow/lite/experimental/ios/BUILD',
-    'tensorflow/lite/experimental/objc/BUILD',
-    'tensorflow/lite/experimental/swift/BUILD',
+    'tensorflow/lite/ios/BUILD', 'tensorflow/lite/objc/BUILD',
+    'tensorflow/lite/swift/BUILD',
     'tensorflow/lite/tools/benchmark/experimental/ios/BUILD'
 ]
 
 # List of files to move when building for iOS.
 IOS_FILES = [
-    'tensorflow/lite/experimental/objc/TensorFlowLiteObjC.podspec',
-    'tensorflow/lite/experimental/swift/TensorFlowLiteSwift.podspec',
+    'tensorflow/lite/objc/TensorFlowLiteObjC.podspec',
+    'tensorflow/lite/swift/TensorFlowLiteSwift.podspec',
 ]
 
 
@@ -526,7 +525,12 @@ def set_cc_opt_flags(environ_cp):
   elif is_windows():
     default_cc_opt_flags = '/arch:AVX'
   else:
-    default_cc_opt_flags = '-march=native -Wno-sign-compare'
+    # On all other platforms, no longer use `-march=native` as this can result
+    # in instructions that are too modern being generated. Users that want
+    # maximum performance should compile TF in their environment and can pass
+    # `-march=native` there.
+    # See https://github.com/tensorflow/tensorflow/issues/45744 and duplicates
+    default_cc_opt_flags = '-Wno-sign-compare'
   question = ('Please specify optimization flags to use during compilation when'
               ' bazel option "--config=opt" is specified [Default is %s]: '
              ) % default_cc_opt_flags
@@ -534,9 +538,7 @@ def set_cc_opt_flags(environ_cp):
                                                  question, default_cc_opt_flags)
   for opt in cc_opt_flags.split():
     write_to_bazelrc('build:opt --copt=%s' % opt)
-  # It should be safe on the same build host.
-  if not is_ppc64le() and not is_windows():
-    write_to_bazelrc('build:opt --host_copt=-march=native')
+    write_to_bazelrc('build:opt --host_copt=%s' % opt)
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
 
 
@@ -1163,49 +1165,20 @@ def set_system_libs_flag(environ_cp):
       syslibs = ','.join(sorted(syslibs.split()))
     write_action_env_to_bazelrc('TF_SYSTEM_LIBS', syslibs)
 
-  if 'PREFIX' in environ_cp:
-    write_to_bazelrc('build --define=PREFIX=%s' % environ_cp['PREFIX'])
-  if 'LIBDIR' in environ_cp:
-    write_to_bazelrc('build --define=LIBDIR=%s' % environ_cp['LIBDIR'])
-  if 'INCLUDEDIR' in environ_cp:
-    write_to_bazelrc('build --define=INCLUDEDIR=%s' % environ_cp['INCLUDEDIR'])
-
-
-def is_reduced_optimize_huge_functions_available(environ_cp):
-  """Check to see if the system supports /d2ReducedOptimizeHugeFunctions.
-
-  The above compiler flag is a new compiler flag introduced to the Visual Studio
-  compiler in version 16.4 (available in Visual Studio 2019, Preview edition
-  only, as of 2019-11-19). TensorFlow needs this flag to massively reduce
-  compile times, but until 16.4 is officially released, we can't depend on it.
-
-  See also
-  https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
-
-  Because it's very annoying to check this manually (to check the MSVC installed
-  versions, you need to use the registry, and it's not clear if Bazel will be
-  using that install version anyway), we expect enviroments who know they may
-  use this flag to export TF_VC_VERSION=16.4
-
-  TODO(angerson, gunan): Remove this function when TensorFlow's minimum VS
-  version is upgraded to 16.4.
-
-  Arguments:
-    environ_cp: Environment of the current execution
-
-  Returns:
-    boolean, whether or not /d2ReducedOptimizeHugeFunctions is available on this
-    machine.
-  """
-  return float(environ_cp.get('TF_VC_VERSION', '0')) >= 16.4
+  for varname in ('PREFIX', 'LIBDIR', 'INCLUDEDIR', 'PROTOBUF_INCLUDE_PATH'):
+    if varname in environ_cp:
+      write_to_bazelrc('build --define=%s=%s' % (varname, environ_cp[varname]))
 
 
 def set_windows_build_flags(environ_cp):
   """Set Windows specific build options."""
-  if is_reduced_optimize_huge_functions_available(environ_cp):
-    write_to_bazelrc(
-        'build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions'
-    )
+
+  # First available in VS 16.4. Speeds up Windows compile times by a lot. See
+  # https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+  # pylint: disable=line-too-long
+  write_to_bazelrc(
+      'build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions'
+  )
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
@@ -1364,7 +1337,6 @@ def main():
 
   if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_PATH')):
     write_action_env_to_bazelrc('ROCM_PATH', environ_cp.get('ROCM_PATH'))
-    write_action_env_to_bazelrc('ROCM_ROOT', environ_cp.get('ROCM_PATH'))
 
   if ((environ_cp.get('TF_NEED_ROCM') == '1') and
       (environ_cp.get('TF_ENABLE_MLIR_GENERATED_GPU_KERNELS') == '1')):
@@ -1487,7 +1459,6 @@ def main():
   config_info_line('mkl', 'Build with MKL support.')
   config_info_line('mkl_aarch64', 'Build with oneDNN support for Aarch64.')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
-  config_info_line('ngraph', 'Build with Intel nGraph support.')
   config_info_line('numa', 'Build with NUMA support.')
   config_info_line(
       'dynamic_kernels',

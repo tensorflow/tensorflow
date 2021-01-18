@@ -25,11 +25,11 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec as type_spec_module
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_operators  # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 
 # pylint: disable=g-classes-have-attributes
 
@@ -96,8 +96,8 @@ class KerasTensor(object):
   placeholders.
 
   In rare cases (such as when directly manipulating shapes using Keras layers),
-  the layer may be able to partially infer the value of of the output in
-  addition to just inferring the signature.
+  the layer may be able to partially infer the value of the output in addition
+  to just inferring the signature.
   When this happens, the returned KerasTensor will also contain the inferred
   value information. Follow-on layers can use this information.
   during their own output signature inference.
@@ -117,7 +117,7 @@ class KerasTensor(object):
   Calling a `tf.function` does not support dispatching, so you cannot pass
   `KerasTensor`s as inputs to a `tf.function`.
 
-  Higher-order apis that take methods which produce tensors (e.g. `tf.while`,
+  Higher-order APIs that take methods which produce tensors (e.g. `tf.while`,
   `tf.map_fn`, `tf.cond`) also do not currently support dispatching. So, you
   cannot directly pass KerasTensors as inputs to these APIs either. If you
   want to use these APIs inside of a Functional model, you must put them inside
@@ -204,6 +204,10 @@ class KerasTensor(object):
       name = getattr(tensor, 'name', None)
       type_spec = type_spec_module.type_spec_from_value(tensor)
       return cls(type_spec, name=name)
+
+  @classmethod
+  def from_type_spec(cls, type_spec, name=None):
+    return cls(type_spec=type_spec, name=name)
 
   def _to_placeholder(self):
     """Convert this KerasTensor to a placeholder in a graph."""
@@ -538,6 +542,11 @@ class UserRegisteredTypeKerasTensor(KerasTensor):
   def from_tensor(cls, tensor):
     return cls(tensor)
 
+  @classmethod
+  def from_type_spec(cls, type_spec, name=None):
+    raise NotImplementedError('You cannot instantiate a KerasTensor '
+                              'directly from TypeSpec: %s' % type_spec)
+
   def _to_placeholder(self):
     return self._user_registered_symbolic_object
 
@@ -608,3 +617,17 @@ def keras_tensor_from_tensor(tensor):
   if hasattr(tensor, '_keras_mask'):
     out._keras_mask = keras_tensor_from_tensor(tensor._keras_mask)  # pylint: disable=protected-access
   return out
+
+
+def keras_tensor_from_type_spec(type_spec, name=None):
+  """Convert a TypeSpec to a representative KerasTensor."""
+  # Create a specialized KerasTensor that supports instance methods,
+  # operators, and additional value inference if possible
+  keras_tensor_cls = None
+  value_type = type_spec.value_type
+  for tensor_type, cls in keras_tensor_classes:
+    if issubclass(value_type, tensor_type):
+      keras_tensor_cls = cls
+      break
+
+  return keras_tensor_cls.from_type_spec(type_spec, name=name)

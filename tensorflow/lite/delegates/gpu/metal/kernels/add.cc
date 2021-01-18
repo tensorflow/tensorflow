@@ -27,44 +27,23 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
-namespace {
 
-std::string GetAddTableCodeFused(int src_count) {
-  std::string code = "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid";
-  for (int i = 0; i < src_count; ++i) {
-    code += ", device FLT4* const src_buf" + std::to_string(i);
+ComputeTaskDescriptor Add(const OperationDef& definition) {
+  ComputeTaskDescriptor desc(definition);
+  desc.is_linkable = true;
+
+  for (int i = 1; i < definition.src_tensors.size(); ++i) {
+    const std::string tensor_name = "src_tensor_" + std::to_string(i);
+    desc.AddSrcTensor(tensor_name, definition.src_tensors[i]);
+    desc.shader_source += "  in_out_value += args." + tensor_name +
+                          ".Read(X_COORD, Y_COORD, S_COORD);\n";
   }
-  code += ") {\n";
-  for (int i = 0; i < src_count; ++i) {
-    code += "  value += src_buf" + std::to_string(i) + "[linear_index];\n";
-    code += "  return value;\n";
-  }
-  code += "}\n";
-  return code;
-}
-}  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> Add(int id,
-                                          const std::vector<ValueId> input_ids,
-                                          ValueId output_id,
-                                          const RuntimeOptions& options) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
-  desc->is_associative_op = true;
-  desc->shader_source = GetAddTableCodeFused(input_ids.size() - 1);
-
-  for (int i = 0; i < input_ids.size(); ++i) {
-    desc->input_buffers.push_back({input_ids[i], "device FLT4* const"});
-  }
-  desc->output_buffer = {output_id};
-
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

@@ -1,4 +1,7 @@
 // Copyright (c) 2019, XMOS Ltd, All rights reserved
+#include <sstream>
+#include <string>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_interpreter.h"

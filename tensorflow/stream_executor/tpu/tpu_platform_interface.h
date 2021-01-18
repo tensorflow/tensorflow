@@ -57,6 +57,8 @@ class TpuPlatformInterface : public stream_executor::Platform {
 
   virtual const TpuHostLocationExternal GetTpuHostLocation() const = 0;
 
+  virtual TpuRuntimeVersion version() const = 0;
+
   TpuTopologyExternal topology() {
     return TpuTopologyExternal(GetTopologyPtr());
   }

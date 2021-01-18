@@ -85,6 +85,14 @@ class SubgraphBuilder {
   // 2 inputs, 2 outputs.
   void BuildWhileSubgraph(Subgraph* subgraph);
 
+  // Build a subgraph that assigns a random value to a variable.
+  // No input/output.
+  void BuildAssignRandomValueToVariableSubgraph(Subgraph* graph);
+
+  // Build a subgraph with CallOnce op and ReadVariable op.
+  // No input and 1 output.
+  void BuildCallOnceAndReadVariableSubgraph(Subgraph* graph);
+
  private:
   void CreateConstantInt32Tensor(Subgraph* subgraph, int tensor_index,
                                  const std::vector<int>& shape,

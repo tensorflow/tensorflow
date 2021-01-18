@@ -90,7 +90,6 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_framework_deps")
@@ -122,14 +121,12 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
     "if_static",
-    "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
-    "mkl_deps",
 )
 
 package(
@@ -346,6 +343,7 @@ cc_library(
         ":lib_internal",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -540,15 +538,11 @@ cc_library(
         ],
 )
 
-# One target for all user ops
-cc_library(
+# One target for all user ops.
+alias(
     name = "user_ops_op_lib",
-    srcs = glob(["user_ops/**/*.cc"]),
-    copts = tf_copts(),
-    linkstatic = 1,
+    actual = "//tensorflow/core/user_ops:user_ops_op_lib",
     visibility = ["//visibility:public"],
-    deps = [":framework"],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -652,6 +646,7 @@ cc_library(
         "//tensorflow/core/kernels:sparse",
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:stateless_random_ops",
+        "//tensorflow/core/kernels:stateless_random_gamma_op",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",
@@ -875,6 +870,9 @@ filegroup(
     srcs = [
         # Sources for which we do not yet have granular targets.
         "//tensorflow/c/eager:srcs",
+        # StreamExecutor C API is currently not supported for mobile.
+        # Including just the header for SP_Stream reference in kernels C API.
+        "//tensorflow/c/experimental/stream_executor:headers",
         "//tensorflow/c:srcs",
         "//tensorflow/core/common_runtime:mobile_srcs_only_runtime",
         "//tensorflow/core/common_runtime/eager:srcs",
@@ -899,18 +897,11 @@ filegroup(
         "//tensorflow/core/lib/random:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/strings:mobile_srcs_only_runtime",
         "//tensorflow/core/platform:mobile_srcs_only_runtime",
-    ] + glob(
-        [
-            "lib/wav/*.cc",
-            "lib/wav/*.h",
-        ],
-        exclude = [
-            "**/*test.*",
-            "**/*testutil*",
-            "**/*testlib*",
-            "**/*main.cc",
-        ],
-    ),
+
+        # Wav io files
+        "//tensorflow/core/lib/wav:wav_io.h",
+        "//tensorflow/core/lib/wav:wav_io.cc",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -982,6 +973,7 @@ filegroup(
         "random_ops_op_lib",
         "remote_fused_graph_ops_op_lib",
         "resource_variable_ops_op_lib",
+        "risc_ops_op_lib",
         "rnn_ops_op_lib",
         "rpc_ops_op_lib",
         "scoped_allocator_ops_op_lib",
@@ -1123,12 +1115,11 @@ cc_library(
 
 # -----------------------------------------------------------------------------
 # Libraries with GPU facilities that are useful for writing kernels.
-cc_library(
+alias(
     name = "gpu_lib",
-    visibility = ["//visibility:public"],
-    deps = [
+    actual =
         "//tensorflow/core/common_runtime/gpu:gpu_lib",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 alias(
@@ -1201,7 +1192,6 @@ filegroup(
 filegroup(
     name = "lib_internal_public_headers",
     srcs = [
-        "lib/wav/wav_io.h",
         "//tensorflow/core/lib/core:legacy_lib_internal_core_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_internal_public_gtl_headers",
         "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
@@ -1210,6 +1200,7 @@ filegroup(
         "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
         "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
+        "//tensorflow/core/lib/wav:wav_io.h",
         "//tensorflow/core/platform:legacy_platform_lib_hdrs",
         "//tensorflow/core/platform:lib_internal_public_hdrs",
         "//tensorflow/core/util:lib_internal_public_hdrs",
@@ -1256,7 +1247,7 @@ cc_library(
             "-lpthread",
         ],
     }),
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = ["//tensorflow/python:__subpackages__"],
     deps = tf_additional_lib_deps() + [
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
@@ -1344,15 +1335,12 @@ cc_library(
         "//tensorflow/core/lib/io:zlib_inputstream",
         "//tensorflow/core/lib/io:zlib_outputbuffer",
         "//tensorflow/core/lib/math:math_util",
+        "//tensorflow/core/lib/wav:wav_io",
         "//tensorflow/core/lib/monitoring:collected_metrics",
         "//tensorflow/core/lib/monitoring:collection_registry",
         "//tensorflow/core/lib/monitoring:counter",
         "//tensorflow/core/lib/monitoring:gauge",
         "//tensorflow/core/lib/monitoring:metric_def",
-        "//tensorflow/core/lib/monitoring:mobile_counter",
-        "//tensorflow/core/lib/monitoring:mobile_gauge",
-        "//tensorflow/core/lib/monitoring:mobile_percentile_sampler",
-        "//tensorflow/core/lib/monitoring:mobile_sampler",
         "//tensorflow/core/lib/monitoring:percentile_sampler",
         "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/lib/monitoring:timed",
@@ -1442,49 +1430,14 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+alias(
     name = "gif_internal",
-    srcs = [
-        "lib/gif/gif_io.cc",
-        "//tensorflow/core/platform:gif_hdrs",
-    ],
-    hdrs = ["lib/gif/gif_io.h"],
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:freebsd": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-ldl"],
-    }),
-    deps = [
-        ":lib",
-        ":lib_internal",
-        "//tensorflow/core/platform:gif",
-        "@com_google_absl//absl/strings",
-    ],
+    actual = "//tensorflow/core/lib/gif:gif_internal",
 )
 
-cc_library(
+alias(
     name = "jpeg_internal",
-    srcs = [
-        "lib/jpeg/jpeg_handle.cc",
-        "lib/jpeg/jpeg_mem.cc",
-        "//tensorflow/core/platform:jpeg_hdrs",
-    ],
-    hdrs = [
-        "lib/jpeg/jpeg_handle.h",
-        "lib/jpeg/jpeg_mem.h",
-    ],
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:freebsd": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-ldl"],
-    }),
-    deps = [
-        ":lib",
-        ":lib_internal",
-        "//tensorflow/core/platform:jpeg",
-    ],
+    actual = "//tensorflow/core/lib/jpeg:jpeg_internal",
 )
 
 cc_library(
@@ -1509,58 +1462,14 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "portable_jpeg_internal",
-    srcs = if_mobile([
-        "lib/jpeg/jpeg_handle.cc",
-        "lib/jpeg/jpeg_mem.cc",
-        "//tensorflow/core/platform:jpeg_hdrs",
-    ]),
-    hdrs = [
-        "lib/jpeg/jpeg_handle.h",
-        "lib/jpeg/jpeg_mem.h",
-        "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
-        "//tensorflow/core/platform:jpeg_internal_hdrs",
-        "//tensorflow/core/platform/default:integral_types.h",
-        "//tensorflow/core/platform/default:logging.h",
-    ],
-    copts = tf_copts(),
-    linkopts = if_android(["-ldl"]),
-    deps = [
-        ":core_stringpiece",
-        "//tensorflow/core/platform:dynamic_annotations",
-        "//tensorflow/core/platform:jpeg",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:stringpiece",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-    ],
+    actual = "//tensorflow/core/lib/jpeg:portable_jpeg_internal",
 )
 
-cc_library(
+alias(
     name = "portable_gif_internal",
-    srcs = if_mobile([
-        "lib/gif/gif_io.cc",
-        "//tensorflow/core/platform:gif_hdrs",
-    ]),
-    hdrs = [
-        "lib/gif/gif_io.h",
-        "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
-        "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
-        "//tensorflow/core/platform:gif_internal_hdrs",
-        "//tensorflow/core/platform/default:integral_types.h",
-        "//tensorflow/core/platform/default:logging.h",
-    ],
-    copts = tf_copts(),
-    linkopts = if_android(["-ldl"]),
-    deps = [
-        "//tensorflow/core/platform:dynamic_annotations",
-        "//tensorflow/core/platform:gif",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:stringpiece",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-    ],
+    actual = "//tensorflow/core/lib/gif:portable_gif_internal",
 )
 
 alias(
@@ -1722,7 +1631,7 @@ tf_cuda_library(
     ] + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
-    ) + mkl_deps(),
+    ),
     alwayslink = 1,
 )
 
@@ -1870,7 +1779,6 @@ tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
     srcs = [
-        "lib/wav/wav_io_test.cc",
         "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
         "//tensorflow/core/lib/hash:legacy_lib_hash_all_tests",
@@ -1885,6 +1793,7 @@ tf_cc_tests(
         "//tensorflow/core/lib/monitoring:sampler_test.cc",
         "//tensorflow/core/lib/random:legacy_lib_random_tests",
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
+        "//tensorflow/core/lib/wav:wav_io_test.cc",
     ],
     deps = [
         ":lib",
@@ -1918,20 +1827,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "lib_jpeg_jpeg_mem_unittest",
-    srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
-    data = glob(["lib/jpeg/testdata/*.jpg"]),
-    deps = [
-        ":jpeg_internal",
-        ":lib",
-        ":lib_internal",
-        ":test",
-        ":test_main",
-        "@com_google_absl//absl/base",
     ],
 )
 
@@ -2078,31 +1973,6 @@ tf_cc_test_mkl(
     ]),
 )
 
-tf_cc_tests_gpu(
-    name = "gpu_related_tests",
-    size = "small",
-    srcs = glob(["user_ops/**/*_test.cc"]),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":gpu_id",
-        ":gpu_runtime",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:ops_util",
-    ],
-)
-
 # Test data
 filegroup(
     name = "image_testdata",
@@ -2112,27 +1982,9 @@ filegroup(
         "//tensorflow/core/lib/ssim:testdata",
         "//tensorflow/core/lib/psnr:testdata",
         # JPEG data
-        "lib/jpeg/testdata/jpeg_merge_test1.jpg",
-        "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
-        # JPEG data for jpeg benchmark.
-        "lib/jpeg/testdata/small.jpg",
-        "lib/jpeg/testdata/medium.jpg",
-        # Corrupted JPEG files for tests
-        "lib/jpeg/testdata/bad_huffman.jpg",
-        "lib/jpeg/testdata/corrupt.jpg",
-        # -- hand-edited variant: stops at line 0
-        "lib/jpeg/testdata/corrupt34_2.jpg",
-        # -- hand-edited variant: stops at line 4
-        "lib/jpeg/testdata/corrupt34_3.jpg",
-        # -- hand-edited variant: stops after a restart marker
-        "lib/jpeg/testdata/corrupt34_4.jpg",
+        "//tensorflow/core/lib/jpeg/testdata",
         # GIF data
-        "lib/gif/testdata/lena.gif",
-        "lib/gif/testdata/scan.gif",
-        "lib/gif/testdata/red_black.gif",
-        "lib/gif/testdata/squares.gif",
-        # GIF data with optimization
-        "lib/gif/testdata/optimized.gif",
+        "//tensorflow/core/lib/gif/testdata:gif_testdata",
         # BMP data
         "//tensorflow/core/lib/bmp:bmp_testdata",
     ],
@@ -2143,7 +1995,7 @@ transitive_hdrs(
     name = "headers",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        ":core_cpu",
+        ":core",
         ":framework",
         ":lib",
         ":protos_all_cc",

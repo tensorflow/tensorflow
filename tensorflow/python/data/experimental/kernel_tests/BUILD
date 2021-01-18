@@ -402,7 +402,6 @@ tf_py_test(
     size = "small",
     srcs = ["map_defun_op_test.py"],
     tags = ["no_pip"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -622,7 +621,7 @@ py_library(
     srcs = [
         "reader_dataset_ops_test_base.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -683,7 +682,10 @@ tf_py_test(
     name = "replicate_test",
     srcs = ["replicate_test.py"],
     grpc_enabled = True,
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "notsan",  # b/173146507
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
@@ -740,7 +742,6 @@ tf_py_test(
 tf_py_test(
     name = "sleep_test",
     srcs = ["sleep_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
@@ -753,7 +754,7 @@ tf_py_test(
 py_library(
     name = "sql_dataset_test_base",
     srcs = ["sql_dataset_test_base.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow/python/data/experimental/kernel_tests:__pkg__",
         "//tensorflow/python/data/experimental/kernel_tests/serialization:__pkg__",
@@ -807,6 +808,7 @@ tf_py_test(
     size = "small",
     srcs = ["stats_dataset_ops_test.py"],
     tags = [
+        "no_oss",  # TODO(b/155795733): Note that this functionality is deprecated.
         "no_pip",
         "notap",
     ],
@@ -831,7 +833,7 @@ tf_py_test(
 py_library(
     name = "stats_dataset_test_base",
     srcs = ["stats_dataset_test_base.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",

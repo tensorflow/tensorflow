@@ -875,11 +875,12 @@ void NcclManager::StartAbort(const Status& s) {
     }
     item.second->Unref();
   }
-  // Abort ncclComm. Note that there could be multiple ncclComm per device, and
-  // ncclCommAbort contains cuda calls that requires device synchronization.
-  // That is a collective on nccl_comm_0 can block ncclCommAbort(nccl_comm_1),
-  // so we need to abort all ncclComm in a concurrent fashion. This assumes that
-  // there's only one active NcclManager at a time.
+  // Abort ncclComm. Note that there could be multiple ncclComm per device,
+  // and ncclCommAbort contains cuda calls that requires device
+  // synchronization. That is a collective on nccl_comm_0 can block
+  // ncclCommAbort(nccl_comm_1), so we need to abort all ncclComm in a
+  // concurrent fashion. This assumes that there's only one active NcclManager
+  // at a time.
   UnboundedWorkQueue queue(Env::Default(), "nccl_abort");
   int num_comms = 0;
   for (std::unique_ptr<Communicator>& communicator : communicators) {

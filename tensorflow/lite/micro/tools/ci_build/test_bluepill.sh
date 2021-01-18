@@ -39,12 +39,4 @@ readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARG
 # Next, build w/o release so that we can run the tests and get additional
 # debugging info on failures.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build
-
-# TODO(b/149597202): Running tests via renode are disabled as part of the
-# continuous integration until we can get Docker running inside Docker. However,
-# if this script is run locally, the tests will still be run.
-if [[ ${1} != "PRESUBMIT" ]]; then
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test
-fi
-
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test

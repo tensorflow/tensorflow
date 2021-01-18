@@ -19,7 +19,7 @@ operations. APIs are based on and have been tested with NumPy 1.16 version.
 
 The set of supported APIs may be expanded over time. Also future releases may
 change the baseline version of NumPy API being supported. A list of some
-systematic differences with NumPy are listed later in the "Differences with
+systematic differences with NumPy is listed later in the "Differences with
 NumPy" section.
 
 ## Getting Started
@@ -31,14 +31,14 @@ In the code snippets below, we will assume that `tf.experimental.numpy` is
 imported as `tnp` and NumPy is imported as `np`
 
 ```python
-print(tnp.ones([2,1]) + tnp.ones([1, 2]))
+print(tnp.ones([2,1]) + np.ones([1, 2]))
 ```
 
 ## Types
 
 The module provides an `ndarray` class which wraps an immutable `tf.Tensor`.
 Additional functions are provided which accept array-like objects. Here
-array-like objects includes `ndarrays` as defined by this module, as well as
+array-like objects include `ndarrays` as defined by this module, as well as
 `tf.Tensor`, in addition to types accepted by NumPy.
 
 A subset of NumPy dtypes are supported. Type promotion follows NumPy
@@ -75,7 +75,7 @@ tnp.sum(tnp.ones([1, 2]) + tf.ones([2, 1]))
 Note that the `__array_priority__` is currently chosen to be lower than
 `tf.Tensor`. Hence the `+` operator above returns a `tf.Tensor`.
 
-Additional examples of interopability include:
+Additional examples of interoperability include:
 
 *  using `with tf.GradientTape()` scope to compute gradients through the
   TF-NumPy API calls.
@@ -153,11 +153,11 @@ Here is a non-exhaustive list of differences:
     are not supported.
 *   Only a subset of functions and modules are supported. This set will be
     expanded over time. For supported functions, some arguments or argument
-    values may not be supported. This differences are generally provide in the
+    values may not be supported. These differences are generally provided in the
     function comments. Full `ufunc` support is also not provided.
 *   Buffer mutation is currently not supported. `ndarrays` wrap immutable
-    tensors. This means that output buffer arguments (e..g `out` in ufuncs) are
-    not supported
+    tensors. This means that output buffer arguments (e.g. `out` in ufuncs) are
+    not supported.
 *   NumPy C API is not supported. NumPy's Cython and Swig integration are not
     supported.
 """

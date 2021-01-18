@@ -16,16 +16,14 @@ limitations under the License.
 #define TENSORFLOW_LITE_PORTABLE_TYPE_TO_TFLITETYPE_H_
 
 // Most of the definitions have been moved to this subheader so that Micro
-// can include it without relying on <string>, which isn't available on all
-// platforms.
+// can include it without relying on <string> and <complex>, which isn't
+// available on all platforms.
 
 // Arduino build defines abs as a macro here. That is invalid C++, and breaks
 // libc++'s <complex> header, undefine it.
 #ifdef abs
 #undef abs
 #endif
-
-#include <complex>
 
 #include "tensorflow/lite/c/common.h"
 
@@ -58,17 +56,16 @@ struct TfLiteTypeToType {};  // Specializations below
 
 // No string mapping is included here, since the TF Lite packed representation
 // doesn't correspond to a C++ type well.
-MATCH_TYPE_AND_TFLITE_TYPE(int, kTfLiteInt32);
+MATCH_TYPE_AND_TFLITE_TYPE(int32_t, kTfLiteInt32);
 MATCH_TYPE_AND_TFLITE_TYPE(int16_t, kTfLiteInt16);
 MATCH_TYPE_AND_TFLITE_TYPE(int64_t, kTfLiteInt64);
 MATCH_TYPE_AND_TFLITE_TYPE(float, kTfLiteFloat32);
 MATCH_TYPE_AND_TFLITE_TYPE(unsigned char, kTfLiteUInt8);
 MATCH_TYPE_AND_TFLITE_TYPE(int8_t, kTfLiteInt8);
 MATCH_TYPE_AND_TFLITE_TYPE(bool, kTfLiteBool);
-MATCH_TYPE_AND_TFLITE_TYPE(std::complex<float>, kTfLiteComplex64);
-MATCH_TYPE_AND_TFLITE_TYPE(std::complex<double>, kTfLiteComplex128);
 MATCH_TYPE_AND_TFLITE_TYPE(TfLiteFloat16, kTfLiteFloat16);
 MATCH_TYPE_AND_TFLITE_TYPE(double, kTfLiteFloat64);
+MATCH_TYPE_AND_TFLITE_TYPE(uint64_t, kTfLiteUInt64);
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_PORTABLE_TYPE_TO_TFLITETYPE_H_

@@ -272,6 +272,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       self.assertEmpty(functions)
 
+  def testImplementsAttributeWorksWithGradientTape(self):
+    add = lambda x, y: x + y ** 2
+    add = def_function.function(experimental_implements='MyFunc')(add)
+    x = variables.Variable(3.0)
+    y = variables.Variable(2.0)
+
+    with backprop.GradientTape() as tape:
+      g = add(x, y)
+
+    dg_dy, dg_dx = tape.gradient(g, [y, x])
+    self.assertEqual(dg_dy.numpy(), 4.0)
+    self.assertEqual(dg_dx.numpy(), 1.0)
+
   def testImplementsAttributeWorksOnVariables(self):
     with context.graph_mode(), self.cached_session():
       v = def_function.function(
@@ -1322,7 +1335,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
-  @test_util.disable_tfrt('b/169294215')
   def testRunMetadata(self):
 
     @def_function.function
@@ -2805,6 +2817,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Grappler fallback to use the CPU impl even called with GPU function.
         self.assertEqual(y_value, 3.0)
 
+  @test_util.disable_tfrt('b/174712583: TFRT doesn\'t support behavior '
+                          'equivalent to implementation_selector for function')
   def testSwapImplementationInEager(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3158,6 +3172,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       modify_same_flat(nested_input)
 
+  @test_util.disable_tfrt('b/173429686')
   def testExecutorType(self):
     @function.defun
     def add_five(x):
@@ -3524,6 +3539,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     ]:
       for output in [cf(a), cf(x=a), cf(a, b), cf(x=a, y=b)]:
         self.assertAllEqual(output[0] + output[1], 1253)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithNonTensorStringInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return string_ops.string_join([x, y])
+
+    a = constant_op.constant('a')
+    b = 'b'
+
+    cf = f.get_concrete_function(a, b)
+    for output in [cf(a), cf(x=a), cf(a, b), cf(x=a, y=b)]:
+      self.assertAllEqual(output, b'ab')
 
   @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionWithBoundNestedNonTensorInputs(self):
@@ -4382,6 +4411,47 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return y
 
     self.assertAllEqual(g(), array_ops.ones([1, 2, 3]))
+
+  @test_util.run_v2_only
+  def testControlDependencyAfterInline(self):
+    v = variables.Variable(0.)
+
+    @def_function.function
+    def assign():
+      return v.assign(1.)
+
+    @def_function.function
+    def assign_add():
+      return v.assign_add(1.)
+
+    @def_function.function
+    def f():
+      check_ops.assert_equal_v2(assign(), 1.)
+      check_ops.assert_equal_v2(assign_add(), 2.)
+
+    # We don't have a way to inspect the inlined graph in Python, so we run it
+    # multiple times to have more confidence the dependency is correct.
+    for _ in range(30):
+      f()
+
+  @test_util.run_v2_only
+  def testReadInFuncWriteOutside(self):
+    # Run many times since we are testing for a potential race condition.
+    for _ in range(30):
+      # pylint: disable=cell-var-from-loop
+      v = variables.Variable(1.)
+
+      @def_function.function
+      def add_one():
+        return v + 1.
+
+      @def_function.function
+      def get_v_plus_one():
+        v_plus_one = add_one()
+        v.assign_add(2.0)
+        return v_plus_one
+
+      self.assertAllEqual(get_v_plus_one(), 2.0)
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

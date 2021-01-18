@@ -43,11 +43,12 @@ class PyExecutable {
 
   std::shared_ptr<PyClient> client() const { return client_; }
 
-  const std::vector<std::pair<int, int>>& local_logical_device_ids() const {
-    return executable_->local_logical_device_ids();
+  absl::Span<const PjRtExecutable::LogicalDeviceIds>
+  addressable_device_logical_ids() const {
+    return executable_->addressable_device_logical_ids();
   }
 
-  std::vector<ClientAndPtr<PjRtDevice>> LocalDevices() const;
+  std::vector<ClientAndPtr<PjRtDevice>> AddressableDevices() const;
 
   int64 SizeOfGeneratedCodeInBytes() const {
     return executable_->SizeOfGeneratedCodeInBytes();
@@ -60,7 +61,7 @@ class PyExecutable {
 
   // Same as above, but take as inputs `PjRtBuffer*`. Only targets C++ code.
   StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PjRtExecute(
-      absl::Span<PjRtBuffer* const> args);
+      const std::vector<PjRtBuffer*>& args);
 
   StatusOr<std::vector<std::vector<std::unique_ptr<PyBuffer>>>>
   ExecuteOnLocalDevices(absl::Span<const std::vector<PyBuffer*>> args);

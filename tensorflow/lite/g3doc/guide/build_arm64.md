@@ -126,7 +126,7 @@ page for the detail.
 bazel build --config=elinux_aarch64 -c opt //tensorflow/lite:libtensorflowlite.so
 ```
 
-You can find a shared library library in:
+You can find a shared library in:
 `bazel-bin/tensorflow/lite/libtensorflowlite.so`.
 
 Currently, there is no straightforward way to extract all header files needed,

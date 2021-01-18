@@ -32,7 +32,7 @@ distribute_module = [
 py_library(
     name = "tf_doctest_lib",
     srcs = ["tf_doctest_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
     ],
@@ -78,7 +78,6 @@ tpu_py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/keras/preprocessing",
         "//third_party/py/numpy",
     ],
 )
@@ -133,7 +132,7 @@ py_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 
@@ -184,8 +183,8 @@ py_library(
         ":base_dir_oss",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],

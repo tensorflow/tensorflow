@@ -64,15 +64,6 @@ StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
   VLOG(2) << "RegisterInternal("
           << "tag: \"" << tag << "\" with " << replicated_buffers.size()
           << " shaped_buffers.";
-  for (const auto& shaped_buffer : replicated_buffers) {
-    VLOG(2) << "shaped_buffer:" << shaped_buffer;
-    if (shaped_buffer.platform() != backend_->platform()) {
-      return InvalidArgument(
-          "AllocationTracker for platform %s cannot register buffer from "
-          "platform %s",
-          backend_->platform()->Name(), shaped_buffer.platform()->Name());
-    }
-  }
 
   int64 handle = next_handle_++;
   for (auto& shaped_buffer : replicated_buffers) {
@@ -158,7 +149,7 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
        ++i) {
     auto element_buffer = ShapedBuffer(
         ShapeUtil::GetTupleElementShape(shaped_buffer->on_device_shape(), i),
-        shaped_buffer->platform(), shaped_buffer->device_ordinal());
+        shaped_buffer->device_ordinal());
     element_buffer.set_buffer(shaped_buffer->buffer(/*index=*/{i}),
                               /*index=*/{});
     std::vector<ShapedBuffer> replicated_buffers;

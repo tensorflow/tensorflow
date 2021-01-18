@@ -65,7 +65,7 @@ class LearningRateSchedule(object):
 class ExponentialDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses an exponential decay schedule.
 
-  When training a model, it is often recommended to lower the learning rate as
+  When training a model, it is often useful to lower the learning rate as
   the training progresses. This schedule applies an exponential decay function
   to an optimizer step, given a provided initial learning rate.
 
@@ -416,7 +416,7 @@ class PolynomialDecay(LearningRateSchedule):
 class InverseTimeDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses an inverse time decay schedule.
 
-  When training a model, it is often recommended to lower the learning rate as
+  When training a model, it is often useful to lower the learning rate as
   the training progresses. This schedule applies the inverse decay function
   to an optimizer step, given a provided initial learning rate.
   It requires a `step` value to compute the decayed learning rate. You can
@@ -518,14 +518,15 @@ class InverseTimeDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.experimental.CosineDecay")
+@keras_export("keras.optimizers.schedules.CosineDecay",
+              "keras.experimental.CosineDecay")
 class CosineDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses a cosine decay schedule.
 
-  See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
-  with Warm Restarts. https://arxiv.org/abs/1608.03983
+  See [Loshchilov & Hutter, ICLR2016](https://arxiv.org/abs/1608.03983),
+  SGDR: Stochastic Gradient Descent with Warm Restarts.
 
-  When training a model, it is often recommended to lower the learning rate as
+  When training a model, it is often useful to lower the learning rate as
   the training progresses. This schedule applies a cosine decay function
   to an optimizer step, given a provided initial learning rate.
   It requires a `step` value to compute the decayed learning rate. You can
@@ -547,7 +548,7 @@ class CosineDecay(LearningRateSchedule):
   Example usage:
   ```python
   decay_steps = 1000
-  lr_decayed_fn = tf.keras.experimental.CosineDecay(
+  lr_decayed_fn = tf.keras.optimizers.schedules.CosineDecay(
       initial_learning_rate, decay_steps)
   ```
 
@@ -611,14 +612,15 @@ class CosineDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.experimental.CosineDecayRestarts")
+@keras_export("keras.optimizers.schedules.CosineDecayRestarts",
+              "keras.experimental.CosineDecayRestarts")
 class CosineDecayRestarts(LearningRateSchedule):
   """A LearningRateSchedule that uses a cosine decay schedule with restarts.
 
-  See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
-  with Warm Restarts. https://arxiv.org/abs/1608.03983
+  See [Loshchilov & Hutter, ICLR2016](https://arxiv.org/abs/1608.03983),
+  SGDR: Stochastic Gradient Descent with Warm Restarts.
 
-  When training a model, it is often recommended to lower the learning rate as
+  When training a model, it is often useful to lower the learning rate as
   the training progresses. This schedule applies a cosine decay function with
   restarts to an optimizer step, given a provided initial learning rate.
   It requires a `step` value to compute the decayed learning rate. You can
@@ -637,7 +639,7 @@ class CosineDecayRestarts(LearningRateSchedule):
   ```python
   first_decay_steps = 1000
   lr_decayed_fn = (
-    tf.keras.experimental.CosineDecayRestarts(
+    tf.keras.optimizers.schedules.CosineDecayRestarts(
         initial_learning_rate,
         first_decay_steps))
   ```
@@ -737,7 +739,7 @@ class CosineDecayRestarts(LearningRateSchedule):
     }
 
 
-@keras_export("keras.experimental.LinearCosineDecay")
+# Note: this code is still used by V1 APIs.
 class LinearCosineDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses a linear cosine decay schedule.
 
@@ -855,7 +857,7 @@ class LinearCosineDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.experimental.NoisyLinearCosineDecay")
+# Note: this code is still used by V1 APIs.
 class NoisyLinearCosineDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses a noisy linear cosine decay schedule.
 

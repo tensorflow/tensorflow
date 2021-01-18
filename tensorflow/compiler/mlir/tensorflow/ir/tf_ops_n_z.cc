@@ -44,9 +44,10 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -54,10 +55,10 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -77,15 +78,6 @@ namespace {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_helpers.inc"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
-
-//===----------------------------------------------------------------------===//
-// NegOp
-//===----------------------------------------------------------------------===//
-
-void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                        MLIRContext *context) {
-  results.insert<NegNested>(context);
-}
 
 //===----------------------------------------------------------------------===//
 // NotEqualOp
@@ -408,8 +400,8 @@ static LogicalResult Verify(ParseExampleV2Op op) {
 
 template <class OpClass>
 static LogicalResult VerifyPartitionedCall(OpClass op) {
-  auto module = op.template getParentOfType<ModuleOp>();
-  SymbolRefAttr func = op.getAttr("f").template cast<SymbolRefAttr>();
+  auto module = op->template getParentOfType<ModuleOp>();
+  SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
 
   auto function =
       dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
@@ -485,15 +477,6 @@ void ReadVariableOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
-// ReciprocalOp
-//===----------------------------------------------------------------------===//
-
-void ReciprocalOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<ReciprocalNested>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // RandomUniformOp
 //===----------------------------------------------------------------------===//
 
@@ -549,7 +532,11 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
   auto ranked_type = type.dyn_cast<RankedTensorType>();
   if (!ranked_type) return {};
 
-  auto output_type = getType().cast<ShapedType>();
+  // DenseIntElementsAttr::get requires the output type be ranked with static
+  // shape.
+  auto output_type = getType().dyn_cast<RankedTensorType>();
+  if (!output_type || !output_type.hasStaticShape()) return {};
+
   int32_t rank = ranked_type.getRank();
   return DenseIntElementsAttr::get(output_type, rank);
 }
@@ -911,7 +898,7 @@ static Attribute ConvertShapeToAttr(Type input_ty, int out_width) {
     dimensions.push_back(APInt(out_width, shape[i]));
 
   auto result_type = RankedTensorType::get(
-      {rank}, IntegerType::get(out_width, input_ty.getContext()));
+      {rank}, IntegerType::get(input_ty.getContext(), out_width));
   return DenseElementsAttr::get(result_type, dimensions);
 }
 
@@ -1332,7 +1319,7 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
   SmallVector<int64_t, 4> return_shape(input_rank, ShapedType::kDynamicSize);
 
   // The return has all dimension sizes unknown when block_rank is unknown.
-  if (block_rank == -1) {
+  if (block_rank == ShapedType::kDynamicSize) {
     inferredReturnTypes.assign(
         {RankedTensorType::get(return_shape, input_type.getElementType())});
     return success();
@@ -1351,6 +1338,14 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
       matchPattern(paddings_val, m_Constant(&paddings_attr))) {
     int64_t return_batch = input_shape[0];
     for (uint64_t i = 0; i < block_rank; ++i) {
+      // Propagate dynamic dimension.
+      if (input_shape[i + 1] == ShapedType::kDynamicSize) {
+        return_batch = ShapedType::kDynamicSize;
+      }
+      if (return_batch == ShapedType::kDynamicSize) {
+        return_shape[1 + i] = ShapedType::kDynamicSize;
+        continue;
+      }
       int64_t paddings_sum =
           paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt() +
           paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
@@ -1547,6 +1542,21 @@ void SumOp::build(OpBuilder &builder, OperationState &result, Value input,
   Type out_ty =
       InferReductionOpType(input, reduction_indices, keep_dims, &builder);
   build(builder, result, out_ty, input, reduction_indices, keep_dims);
+}
+
+// TODO: Templatize this fold for all reduction ops.
+OpFoldResult SumOp::fold(ArrayRef<Attribute> operands) {
+  auto input_ty = input().getType().template dyn_cast<RankedTensorType>();
+  if (!input_ty) return {};
+  auto result_ty = getType().template dyn_cast<RankedTensorType>();
+  if (!result_ty) return {};
+
+  // Bypass this op if the result has the same shape and type. This can happen
+  // if the input tensor has size 0 or size 1.
+  if (!keep_dims() && input_ty == result_ty) {
+    return input();
+  }
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1943,6 +1953,105 @@ ResourceHandleValueAndId SummaryWriterOp::GetResourceHandleValueAndId(
 }
 
 //===----------------------------------------------------------------------===//
+// TPUExecuteOp
+//===----------------------------------------------------------------------===//
+
+void TPUExecuteOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.reserve(args().size() + 1);
+
+  // There may be some TPU Embedding ops in the computation, so this effect is
+  // added conservatively.
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::TPUEmbedding::get());
+
+  for (Value value : args()) {
+    if (value.getType()
+            .cast<TensorType>()
+            .getElementType()
+            .isa<ResourceType>()) {
+      // Conservatively mark resource handles as read and write, as without
+      // analyzing TPUCompile, there is not sufficient information to determine
+      // effects on resources. For the MLIR bridge, this op will never be
+      // populated with resource handles and tf.TPUExecuteAndUpdateVariables is
+      // used instead.
+      effects.emplace_back(MemoryEffects::Read::get(), value,
+                           ResourceEffects::Variable::get());
+      effects.emplace_back(MemoryEffects::Write::get(), value,
+                           ResourceEffects::Variable::get());
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// TPUExecuteAndUpdateVariablesOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TPUExecuteAndUpdateVariablesOp op) {
+  int num_resource_args = 0;
+  for (Type arg_type : op.args().getTypes())
+    if (arg_type.cast<TensorType>().getElementType().isa<ResourceType>())
+      ++num_resource_args;
+
+  auto check_attr = [&](ArrayAttr indices, llvm::StringRef name,
+                        int min) -> LogicalResult {
+    if (indices.size() != num_resource_args)
+      return op.emitOpError()
+             << "requires '" << name
+             << "' to be the same size as number of resource handles in 'args' "
+                "("
+             << num_resource_args << "), but got " << indices.size();
+
+    for (auto entry : llvm::enumerate(indices.getValue())) {
+      auto int_attr = entry.value().cast<IntegerAttr>();
+      if (int_attr.getInt() < min)
+        return op.emitOpError()
+               << "requires '" << name << "' to contain values of at least "
+               << min << ", but got " << int_attr.getInt() << " at index "
+               << entry.index();
+    }
+
+    return success();
+  };
+
+  return failure(
+      failed(check_attr(op.device_var_reads_indices(),
+                        /*name=*/"device_var_reads_indices", /*min=*/0)) ||
+      failed(check_attr(op.device_var_updates_indices(),
+                        /*name=*/"device_var_updates_indices", /*min=*/-1)));
+}
+
+void TPUExecuteAndUpdateVariablesOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.reserve(device_var_reads_indices().size() + 1);
+
+  // There may be some TPU Embedding ops in the computation, so this effect is
+  // added conservatively.
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::TPUEmbedding::get());
+  auto resource_handles = llvm::make_filter_range(args(), [](Value value) {
+    return value.getType()
+        .cast<TensorType>()
+        .getElementType()
+        .isa<ResourceType>();
+  });
+
+  for (auto &entry : llvm::enumerate(resource_handles)) {
+    Value value = entry.value();
+    effects.emplace_back(MemoryEffects::Read::get(), value,
+                         ResourceEffects::Variable::get());
+    if (device_var_updates_indices()
+            .getValue()[entry.index()]
+            .cast<IntegerAttr>()
+            .getInt() >= 0)
+      effects.emplace_back(MemoryEffects::Write::get(), value,
+                           ResourceEffects::Variable::get());
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
@@ -2123,7 +2232,8 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
     // If the input is an unranked tensor, cannpt rewrite.
     if (!type) return failure();
 
-    // Expected return type of the ToBool operation.
+    // Expected return type of the ToBool operation. The return type of ToBool
+    // operation is always 0D tensor of bool type.
     auto result_type = op.getResult().getType().cast<RankedTensorType>();
 
     // If input is already a tensor<i1>, it can be folded into an identity.
@@ -2269,7 +2379,7 @@ OpFoldResult FoldIdentityTranspose(TransposeOp op) {
     // If the types don't match then only fold if all the operands are in the TF
     // dialect.
     for (auto user : op.getOperation()->getUsers())
-      if (user->getDialect() != op.getDialect()) return {};
+      if (user->getDialect() != op->getDialect()) return {};
   }
 
   return op.x();
@@ -2408,6 +2518,74 @@ static LogicalResult Verify(UnpackOp op) {
   return success();
 }
 
+namespace {
+
+// Hoist coefficient-wise unary operation out of the Unpack op:
+//
+//   %unpacked:N = "tf.Unpack"(%0)
+//   %neg0 = "tf.Neg"(%unpacked#0)
+//   %neg1 = "tf.Neg"(%unpacked#1)
+//   ...
+//   %negN-1 = "tf.Neg"(%unpacked:N-1)
+//
+// Rewrite it to:
+//
+//   %neg = "tf.Neg"(%0)
+//   %unpacked:N = "tf.Unpack"(%neg)
+class HoistCwiseUnaryOutOfUnpack : public OpRewritePattern<UnpackOp> {
+ public:
+  explicit HoistCwiseUnaryOutOfUnpack(MLIRContext *context)
+      : OpRewritePattern<UnpackOp>(context) {}
+  LogicalResult matchAndRewrite(UnpackOp op,
+                                PatternRewriter &rewriter) const override;
+};
+
+LogicalResult HoistCwiseUnaryOutOfUnpack::matchAndRewrite(
+    UnpackOp op, PatternRewriter &rewriter) const {
+  auto loc = op.getLoc();
+
+  // First unpack user must be coeff-wise unary operation.
+  Operation *first_user = *op->getUsers().begin();
+  if (!first_user->hasTrait<OpTrait::TF::CwiseUnary>()) return failure();
+
+  // All unpack users must be defined by the op of same kind.
+  bool users_same_op = llvm::all_of(op->getUsers(), [&](Operation *user) {
+    return user->getName() == first_user->getName();
+  });
+  if (!users_same_op) return failure();
+
+  // Pass unpack operand to unary operation.
+  OperationState new_unary_op_state(loc, first_user->getName().getStringRef(),
+                                    op.getOperand(), op.getOperand().getType(),
+                                    ArrayRef<NamedAttribute>());
+  Operation *new_unary_op = rewriter.createOperation(new_unary_op_state);
+
+  // Unpack results after applying unary operation.
+  auto unpack_unary_op = rewriter.create<UnpackOp>(
+      loc, op.getResultTypes(), new_unary_op->getResult(0), op.axis());
+
+  // Bypass all users of the original unpack operation and use `unpack_unary_op`
+  // results instead.
+  for (auto pair : llvm::zip(op.getResults(), unpack_unary_op.getResults())) {
+    OpResult old_result = std::get<0>(pair);  // result of original Unpack
+    OpResult new_result = std::get<1>(pair);  // result of transformed Unpack
+    for (Operation *user : llvm::make_early_inc_range(old_result.getUsers()))
+      rewriter.replaceOp(user, ValueRange(new_result));
+  }
+
+  // Erase original unpack operation.
+  rewriter.eraseOp(op.getOperation());
+
+  return success();
+}
+
+}  // namespace
+
+void UnpackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<HoistCwiseUnaryOutOfUnpack>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // Unsorted segment reduction ops
 //===----------------------------------------------------------------------===//
@@ -2491,6 +2669,15 @@ void VarIsInitializedOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// VariableOp
+//===----------------------------------------------------------------------===//
+
+void VariableOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<VariableToVariableV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // VariableShapeOp
 //===----------------------------------------------------------------------===//
 
@@ -2528,21 +2715,20 @@ OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
 
 static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
                                       TypeRange body_input,
-                                      TypeRange body_result) {
-  // Collect all the type lists for the op so that different pairs of type lists
-  // can be compared for the compatibility.
-  constexpr int kNumTypeLists = 5;
-  const std::array<TypeRangeWithDesc, kNumTypeLists> type_lists = {{
-      {op->getOperandTypes(), "input"},
+                                      TypeRange body_result,
+                                      bool shape_invariant) {
+  const TypeRangeWithDesc input_type = {op->getOperandTypes(), "input"};
+  const TypeRangeWithDesc result_type = {op->getResultTypes(), "result"};
+  constexpr int kNumRegionTypeLists = 3;
+  const std::array<TypeRangeWithDesc, kNumRegionTypeLists> region_types = {{
       {body_result, "body result"},
-      {op->getResultTypes(), "result"},
       {cond_input, "condition input"},
       {body_input, "body input"},
   }};
 
   // A pair of type lists should be cast compatible with each other if one is
   // converted to the another for a function call or assignment or there is a
-  // common source of inputs for both.  Therefore, the While op requires the
+  // common source of inputs for both. Therefore, the While op requires the
   // following pairs of type lists to be cast compatible for the tensor_cast
   // operation:
   //
@@ -2551,7 +2737,8 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
   // * Operands and body inputs to call the body function for the first
   //   iteration if the cond functions returns True or equivalent result.
   // * Operands and results to assign cond function arguments to op results if
-  //   the cond function returns False or equivalent result.
+  //   the cond function returns False or equivalent result. If the op is shape
+  //   invariant, this does not hold as shapes can differ.
   // * All three pairs using cond inputs, body inputs and results as operand is
   //   a common source for all three.
   // * Body result and cond inputs to call the cond function for the subsequent
@@ -2560,17 +2747,28 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
   //
   // Note that the operands and body results need not be compatible as they are
   // never converted from one to the another nor there is a common source
-  // tensors.  Compatibility requirement is not transitive.
+  // tensors. Compatibility requirement is not transitive.
 
-  for (int i = 0; i < kNumTypeLists; ++i) {
-    // Skip the first pair as the While op operands and body function results
-    // does not need to be compatible with each other.
-    for (int j = std::max(2, i + 1); j < kNumTypeLists; ++j) {
-      auto &a = type_lists[i];
-      auto &b = type_lists[j];
-      if (failed(VerifyTypeRangesAreCompatible(op, a, b))) return failure();
-    }
-  }
+  if (!shape_invariant &&
+      failed(VerifyTypeRangesAreCompatible(op, input_type, result_type)))
+    return failure();
+
+  // Skip the first pair as the While op operands and body function results does
+  // not need to be compatible with each other.
+  for (int i = 1; i < kNumRegionTypeLists; ++i)
+    if (failed(VerifyTypeRangesAreCompatible(op, input_type, region_types[i])))
+      return failure();
+
+  for (int i = 0; i < kNumRegionTypeLists; ++i)
+    if (failed(VerifyTypeRangesAreCompatible(op, result_type, region_types[i])))
+      return failure();
+
+  for (int i = 0; i < kNumRegionTypeLists; ++i)
+    for (int j = i + 1; j < kNumRegionTypeLists; ++j)
+      if (failed(VerifyTypeRangesAreCompatible(op, region_types[i],
+                                               region_types[j])))
+        return failure();
+
   return success();
 }
 
@@ -2595,17 +2793,10 @@ static LogicalResult Verify(WhileOp op) {
 
   if (failed(VerifyWhileTypes(op, /*cond_input=*/cond_fn_type.getInputs(),
                               /*body_input=*/body_fn_type.getInputs(),
-                              /*body_result=*/body_fn_type.getResults())))
+                              /*body_result=*/body_fn_type.getResults(),
+                              op.shape_invariant())))
     return failure();
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// WhileOp canonicalization.
-//===----------------------------------------------------------------------===//
-void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context) {
-  results.insert<DropAttributes<WhileOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2628,7 +2819,8 @@ static LogicalResult Verify(WhileRegionOp op) {
   Operation *body_yield = op.body().front().getTerminator();
   if (failed(VerifyWhileTypes(op, /*cond_input=*/op.cond().getArgumentTypes(),
                               /*body_input=*/op.body().getArgumentTypes(),
-                              /*body_result=*/body_yield->getOperandTypes())))
+                              /*body_result=*/body_yield->getOperandTypes(),
+                              op.shape_invariant())))
     return failure();
   return success();
 }
@@ -2775,6 +2967,18 @@ void WhileRegionOp::getCanonicalizationPatterns(
 void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<XdivyWithSqrtDivisor>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaSetDynamicDimensionSizeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.assign({operands.front().getType()});
+  return success();
 }
 
 }  // namespace TF

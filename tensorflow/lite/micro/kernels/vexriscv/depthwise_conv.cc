@@ -362,7 +362,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Per channel quantization is only needed for int8_t inference. For other
   // quantized types, only a single scale and zero point is needed.
   const int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
-  // Dynimically allocate per-channel quantization parameters.
+  // Dynamically allocate per-channel quantization parameters.
   data->per_channel_output_multiplier =
       reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));

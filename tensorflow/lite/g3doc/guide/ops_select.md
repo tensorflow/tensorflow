@@ -133,8 +133,13 @@ dependencies {
 
 #### Using CocoaPods
 
-We provide nightly prebuilt select TF ops CocoaPods, which you can depend on
-alongside the `TensorFlowLiteSwift` or `TensorFlowLiteObjC` CocoaPods.
+We provide nightly prebuilt select TF ops CocoaPods for `armv7` and `arm64`,
+which you can depend on alongside the `TensorFlowLiteSwift` or
+`TensorFlowLiteObjC` CocoaPods.
+
+*Note*: If you need to use select TF ops in an `x86_64` simulator, you can build
+the select ops framework yourself. See [Using Bazel + Xcode](#using_bazel_xcode)
+section for more details.
 
 ```ruby
 # In your Podfile target:
@@ -174,12 +179,12 @@ provide the list of target architectures excluding `i386`.
 
 ```sh
 bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 \
-  //tensorflow/lite/experimental/ios:TensorFlowLiteSelectTfOps_framework
+  //tensorflow/lite/ios:TensorFlowLiteSelectTfOps_framework
 ```
 
-This will generate the framework under
-`bazel-bin/tensorflow/lite/experimental/ios/` directory. You can add this new
-framework to your Xcode project by following similar steps described under the
+This will generate the framework under `bazel-bin/tensorflow/lite/ios/`
+directory. You can add this new framework to your Xcode project by following
+similar steps described under the
 [Xcode project settings](./build_ios.md#modify_xcode_project_settings_directly)
 section in the iOS build guide.
 
@@ -222,7 +227,7 @@ pip package version since 2.3 for Linux and 2.4 for other environments.
 ### Performance
 
 When using a mixture of both builtin and select TensorFlow ops, all of the same
-TensorFlow Lite optimizations and optimized builtin ops will be be available and
+TensorFlow Lite optimizations and optimized builtin ops will be available and
 usable with the converted model.
 
 The following table describes the average time taken to run inference on
@@ -256,15 +261,11 @@ TFLite builtin ops and 3 Tensorflow ops. For more details, please see the
     input/output types that are typically available in TensorFlow.
 *   Unsupported ops: Control flow ops and ops that require explicit
     initialization from resources, like `HashTableV2`, are not yet supported.
-*   Unsupported optimizations: If you apply an optimization known as
-    [post training quantization](../performance/post_training_quantization.md),
-    only the TensorFlow Lite ops will be quantized (or optimized), but the
-    TensorFlow ops will remain as float (or unoptimized).
 
-## Future plans
+## Updates
 
-The following is a list of improvements to this pipeline that are in progress:
-
-*   *Improved performance* - Work is being done to ensure TensorFlow Lite with
-    TensorFlow ops nicely cooperates with hardware accelerated delegates, for
-    example, NNAPI and GPU delegates.
+*   Version 2.5 (not yet officially released)
+    -   You can apply an optimization known as
+        [post training quantization](../performance/post_training_quantization.md)
+*   Version 2.4
+    -   Compatibility with hardware accelerated delegates has improved

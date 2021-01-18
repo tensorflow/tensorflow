@@ -673,15 +673,17 @@ TEST(BCastTest, BatchIndices) {
             BCastBatchIndices({3, 1}, {2, 1, 2}));
 }
 
-static void BM_BCastSetup(int iters, int same_shape) {
+void BM_BCastSetup(::testing::benchmark::State& state) {
+  const int same_shape = state.range(0);
+
   if (same_shape) {
-    testing::SetLabel("same_shapes");
-    while (--iters > 0) {
+    state.SetLabel("same_shapes");
+    for (auto s : state) {
       class BCast b({1000, 100}, {1000, 100});
     }
   } else {
-    testing::SetLabel("different_shapes");
-    while (--iters > 0) {
+    state.SetLabel("different_shapes");
+    for (auto s : state) {
       class BCast b({3, 1, 5}, {2, 0, 3, 0, 5});
     }
   }

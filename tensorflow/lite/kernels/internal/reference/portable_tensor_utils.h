@@ -15,9 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_H_
 
-// TODO(ghodrat): Remove this header file and the dependency to internal data
-// structure.
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 
 #if defined(_MSC_VER)
@@ -263,11 +260,6 @@ void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       int n_batch, int32_t* result) {
   PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size, n_batch,
                                            result);
-}
-
-void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                          float* batch_vector) {
-  PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
 }
 
 void Sub1Vector(const float* vector, int v_size, float* result) {

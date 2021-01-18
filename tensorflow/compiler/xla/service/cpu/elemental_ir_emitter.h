@@ -31,12 +31,9 @@ class CpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   CpuElementalIrEmitter(const HloModuleConfig& module_config,
                         IrEmitter* ir_emitter, llvm::Module* module)
-      : ElementalIrEmitter(module_config, module, ir_emitter->b()),
+      : ElementalIrEmitter(module, ir_emitter->b()),
+        hlo_module_config_(module_config),
         ir_emitter_(ir_emitter) {}
-
-  llvm_ir::ElementGenerator MakeElementGenerator(
-      const HloInstruction* hlo,
-      const HloToElementGeneratorMap& operand_to_generator) override;
 
  protected:
   StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
@@ -54,6 +51,7 @@ class CpuElementalIrEmitter : public ElementalIrEmitter {
     return hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max();
   }
 
+  const HloModuleConfig& hlo_module_config_;
   IrEmitter* ir_emitter_;
 };
 

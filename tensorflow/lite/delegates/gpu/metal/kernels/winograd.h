@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -29,26 +28,22 @@ struct Winograd4x4To36Attributes {
   Padding2D padding;
 };
 
-std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
-    int id, ValueId input_id, ValueId output_id,
-    const Winograd4x4To36Attributes& attr);
+ComputeTaskDescriptor Winograd4x4To36(const OperationDef& definition,
+                                      const Winograd4x4To36Attributes& attr);
 
-std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36TileX6(
-    int id, ValueId input_id, ValueId output_id,
-    const Winograd4x4To36Attributes& attr, const RuntimeOptions& options);
+ComputeTaskDescriptor Winograd4x4To36TileX6(
+    const OperationDef& definition, const Winograd4x4To36Attributes& attr);
 
 struct Winograd36To4x4Attributes {
   BHWC output_shape;
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
 };
 
-std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4(
-    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
-    const Winograd36To4x4Attributes& attr);
+ComputeTaskDescriptor Winograd36To4x4(const OperationDef& definition,
+                                      const Winograd36To4x4Attributes& attr);
 
-std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
-    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
-    const Winograd36To4x4Attributes& attr);
+ComputeTaskDescriptor Winograd36To4x4Tile4x1(
+    const OperationDef& definition, const Winograd36To4x4Attributes& attr);
 
 }  // namespace metal
 }  // namespace gpu

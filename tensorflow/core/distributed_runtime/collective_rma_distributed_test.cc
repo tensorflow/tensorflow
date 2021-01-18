@@ -74,7 +74,7 @@ class FakeWorker : public TestWorkerInterface {
   // worker is supposed to have.
   BufRendezvous* buf_rendezvous() { return &buf_rendezvous_; }
 
-  void GetStatusAsync(const GetStatusRequest* request,
+  void GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
                       GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     if (is_failed_) {
@@ -459,7 +459,7 @@ TEST_F(CollRMADistTest, CheckHealthOKWithCachedAttr) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
-      "/job:worker/replica:0/task:1",
+      "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const Status s) {
         check_health_status = s;
         check_health_done.Notify();
@@ -472,7 +472,7 @@ TEST_F(CollRMADistTest, CheckHealthOKWithoutCachedAttr) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
-      "/job:worker/replica:0/task:1",
+      "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const Status s) {
         check_health_status = s;
         check_health_done.Notify();
@@ -488,7 +488,7 @@ TEST_F(CollRMADistTest, CheckHealthRestarted) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
-      "/job:worker/replica:0/task:1",
+      "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const Status s) {
         check_health_status = s;
         check_health_done.Notify();
@@ -505,7 +505,7 @@ TEST_F(CollRMADistTest, CheckHealthFailedPeer) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
-      "/job:worker/replica:0/task:1",
+      "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const Status s) {
         check_health_status = s;
         check_health_done.Notify();
@@ -520,7 +520,7 @@ TEST_F(CollRMADistTest, CheckHealthRestartedWithDifferentDevices) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
-      "/job:worker/replica:0/task:1",
+      "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const Status s) {
         check_health_status = s;
         check_health_done.Notify();

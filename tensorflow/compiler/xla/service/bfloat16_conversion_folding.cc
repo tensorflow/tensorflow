@@ -63,7 +63,7 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
 
   // Folds the BF16 -> F32 conversion operand to the HLO.
   //
-  // Precondition: the operand is a F32 -> BF16 conversion.
+  // Precondition: the operand is a BF16 -> F32 conversion.
   Status FoldOperandConversion(HloInstruction* hlo, int64 operand_index);
 
   HloComputation* computation_;
@@ -188,8 +188,8 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
 }
 
 Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
-  if (crs->IsCrossModuleAllReduce()) {
-    // Cross-module all-reduce has side effect.
+  if (crs->HasSideEffectNoRecurse()) {
+    // Do not perform optimization on side-effected AllReduce.
     return Status::OK();
   }
   // First use DefaultAction() to handle the operands. It can't handle
@@ -226,6 +226,10 @@ Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
     // Fold conversions only when all the get-tuple-elements' users are
     // conversions from F32 to BF16.
     auto all_gte_users_are_bf16_convert = [&per_tuple_element_gtes, i]() {
+      // If no uses then return false. (As no uses are bf16 converts).
+      if (per_tuple_element_gtes[i].empty()) {
+        return false;
+      }
       for (auto gte : per_tuple_element_gtes[i]) {
         if (!AllUsersAreF32ToBF16Converts(gte)) {
           return false;

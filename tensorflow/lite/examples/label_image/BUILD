@@ -63,6 +63,7 @@ cc_library(
         "bitmap_helpers.h",
         "bitmap_helpers_impl.h",
         "label_image.h",
+        "log.h",
     ],
     deps = [
         "//tensorflow/lite:builtin_op_data",

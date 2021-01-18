@@ -84,9 +84,6 @@ class SavedModelAPI {
   SignatureDefFunction* GetSignatureDefFunction(
       const std::string& function_path, Status* status);
 
-  // Lists all Conrete Functions available from the SavedModel.
-  std::vector<ConcreteFunction*> ListFunctions();
-
   // SavedModelAPI is movable, but not copyable.
   SavedModelAPI(SavedModelAPI&&) = default;
   SavedModelAPI& operator=(SavedModelAPI&&) = default;
@@ -149,11 +146,6 @@ inline SignatureDefFunction* SavedModelAPI::GetSignatureDefFunction(
     return nullptr;
   }
   return SignatureDefFunction::wrap(function);
-}
-
-inline std::vector<ConcreteFunction*> SavedModelAPI::ListFunctions() {
-  ConcreteFunctionList list(TF_ListSavedModelFunctions(saved_model_.get()));
-  return list.ToVector();
 }
 
 }  // namespace cc

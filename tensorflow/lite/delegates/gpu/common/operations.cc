@@ -86,7 +86,7 @@ std::string ToString(enum OperationType op) {
       return "batched_matmul";
     case OperationType::CONCAT:
       return "concat";
-    case OperationType::CONST:
+    case OperationType::CONSTANT:
       return "const";
     case OperationType::CONVOLUTION_2D:
       return "convolution_2d";
@@ -201,7 +201,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
           {"batched_matmul", OperationType::BATCHED_MATMUL},
           {"concat", OperationType::CONCAT},
-          {"const", OperationType::CONST},
+          {"const", OperationType::CONSTANT},
           {"convolution_2d", OperationType::CONVOLUTION_2D},
           {"convolution_transposed", OperationType::CONVOLUTION_TRANSPOSED},
           {"copy", OperationType::COPY},
@@ -584,6 +584,15 @@ BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr) {
   const int w = attr.dims.find(Axis::WIDTH) == attr.dims.end() ? input.w : 1;
   const int c = attr.dims.find(Axis::CHANNELS) == attr.dims.end() ? input.c : 1;
   return BHWC(b, h, w, c);
+}
+
+BHWDC CalculateOutputShape(const BHWDC& input, const MeanAttributes& attr) {
+  const int b = attr.dims.find(Axis::BATCH) == attr.dims.end() ? input.b : 1;
+  const int h = attr.dims.find(Axis::HEIGHT) == attr.dims.end() ? input.h : 1;
+  const int w = attr.dims.find(Axis::WIDTH) == attr.dims.end() ? input.w : 1;
+  const int d = attr.dims.find(Axis::DEPTH) == attr.dims.end() ? input.d : 1;
+  const int c = attr.dims.find(Axis::CHANNELS) == attr.dims.end() ? input.c : 1;
+  return BHWDC(b, h, w, d, c);
 }
 
 absl::Status CalculateOutputShape(const std::vector<BHWC>& input,

@@ -65,6 +65,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kRng:
       case HloOpcode::kSort:
       case HloOpcode::kTuple:
+      case HloOpcode::kReduceWindow:
         EXPECT_TRUE(HloOpcodeIsVariadic(opcode));
         break;
       default:

@@ -1,12 +1,23 @@
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 package(licenses = ["notice"])
 
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    tags_override = {
+        "hlo_to_lhlo_with_xla/gpu_ops.mlir": tf_cuda_tests_tags() + [
+            "noasan",
+            "nomsan",
+            "noubsan",
+        ],  # b/171751580
+    },
     test_file_exts = [
         "mlir",
         "hlotxt",

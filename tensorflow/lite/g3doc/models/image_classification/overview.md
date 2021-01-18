@@ -21,11 +21,11 @@ If you are new to TensorFlow Lite and are working with Android or iOS, it is
 recommended you explore the following example applications that can help you get
 started.
 
-You can leverage the out-of-box API from TensorFlow Lite Task Library to
-[integrate image classification models](../../inference_with_metadata/task_library/image_classifier)
-in just a few lines of code. You can also
-[build your own custom inference pipeline](../../inference_with_metadata/lite_support)
-using the TensorFlow Lite Support Library.
+You can leverage the out-of-box API from
+[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/image_classifier)
+to integrate image classification models in just a few lines of code. You can
+also build your own custom inference pipeline using the
+[TensorFlow Lite Support Library](../../inference_with_metadata/lite_support).
 
 The Android example below demonstrates the implementation for both methods as
 [lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/lib_task_api)

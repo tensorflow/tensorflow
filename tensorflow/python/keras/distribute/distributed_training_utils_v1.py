@@ -42,11 +42,11 @@ from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -346,7 +346,7 @@ def validate_per_replica_inputs(distribution_strategy, x):
     # At this point x should contain only tensors.
     x_values = distribution_strategy.unwrap(x)
     for value in x_values:
-      if not tensor_util.is_tensor(value):
+      if not tensor_util.is_tf_type(value):
         raise ValueError('Dataset input to the model should be tensors instead '
                          'they are of type {}'.format(type(value)))
 
@@ -611,7 +611,7 @@ def _get_input_from_iterator(iterator, model):
 def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """Prepare feed values to the model execution function.
 
-  Arguments:
+  Args:
     model: Model to prepare feed values for.
     inputs: List or dict of model inputs.
     targets: Optional list of model targets.
@@ -1097,7 +1097,7 @@ def is_current_worker_chief():
 def filter_distributed_callbacks(callbacks_list, model):
   """Filter Callbacks based on the worker context when running multi-worker.
 
-  Arguments:
+  Args:
     callbacks_list: A list of `Callback` instances.
     model: Keras model instance.
 
@@ -1154,5 +1154,5 @@ def concat_along_batch_dimension(outputs):
   if isinstance(outputs[0], sparse_tensor.SparseTensor):
     return sparse_ops.sparse_concat_v2(axis=0, sp_inputs=outputs)
   if isinstance(outputs[0], ragged_tensor.RaggedTensor):
-    return ragged_concat_ops.concat(outputs, axis=0)
+    return array_ops.concat(outputs, axis=0)
   return np.concatenate(outputs)

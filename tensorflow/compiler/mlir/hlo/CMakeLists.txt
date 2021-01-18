@@ -41,27 +41,22 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 # Options and settings
 #-------------------------------------------------------------------------------
 
-#-------------------------------------------------------------------------------
-# MSVC defaults
-#-------------------------------------------------------------------------------
-
-if(MSVC)
-    add_compile_options(
-        $<$<CONFIG:>:/MD>
-        $<$<CONFIG:Debug>:/MD>
-        $<$<CONFIG:Release>:/MD>
-    )
-endif()
+option(MHLO_BUILD_EMBEDDED "Build MHLO as part of another project" OFF)
 
 #-------------------------------------------------------------------------------
 # MLIR/LLVM Configuration
 #-------------------------------------------------------------------------------
 
-find_package(MLIR REQUIRED CONFIG)
-message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
-message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
-list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+# Find MLIR to install if we are building standalone. If building as part of
+# another project, let it handle the MLIR dependency. The dependent project
+# might use a bundled version of MLIR instead of installing, for instance.
+if(NOT MHLO_BUILD_EMBEDDED)
+  find_package(MLIR REQUIRED CONFIG)
+  message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
+  message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+  list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
+  list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+endif()
 
 if(LLVM_ENABLE_ZLIB)
   find_package(ZLIB)

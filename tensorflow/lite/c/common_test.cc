@@ -84,6 +84,7 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteInt16), "INT16");
   EXPECT_EQ(type_name(kTfLiteInt32), "INT32");
   EXPECT_EQ(type_name(kTfLiteUInt8), "UINT8");
+  EXPECT_EQ(type_name(kTfLiteUInt64), "UINT64");
   EXPECT_EQ(type_name(kTfLiteInt8), "INT8");
   EXPECT_EQ(type_name(kTfLiteInt64), "INT64");
   EXPECT_EQ(type_name(kTfLiteBool), "BOOL");

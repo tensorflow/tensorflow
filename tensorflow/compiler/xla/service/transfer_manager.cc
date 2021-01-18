@@ -169,7 +169,7 @@ Status TransferManager::TransferArrayToDeviceAsync(
         "%d < %d",
         dest.size(), GetByteSizeRequirement(on_device_shape));
   }
-  ShapedBuffer shaped_buffer(on_device_shape, stream->parent()->platform(),
+  ShapedBuffer shaped_buffer(on_device_shape,
                              stream->parent()->device_ordinal());
   shaped_buffer.set_buffer(dest, /*index=*/{});
   return TransferLiteralToDevice(stream, literal, shaped_buffer,
@@ -193,8 +193,7 @@ void TransferManager::TransferArrayFromDevice(
                            "%d < %d",
                            source.size(), GetByteSizeRequirement(shape)));
   }
-  ShapedBuffer shaped_buffer(shape, stream->parent()->platform(),
-                             stream->parent()->device_ordinal());
+  ShapedBuffer shaped_buffer(shape, stream->parent()->device_ordinal());
   shaped_buffer.set_buffer(source, /*index=*/{});
   return TransferLiteralFromDevice(stream, shaped_buffer, literal,
                                    std::move(done), transfer_metadata);
@@ -202,11 +201,9 @@ void TransferManager::TransferArrayFromDevice(
 
 Status TransferManager::ReadDynamicShapes(se::Stream* stream,
                                           ShapedBuffer* device_buffer,
-                                          Shape* host_shape,
                                           Shape* device_shape) {
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
-  Shape original_host_shape = *host_shape;
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   TF_ASSIGN_OR_RETURN(auto compiler,
@@ -218,8 +215,6 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
         if (buffer_shape.IsTuple()) {
           return Status::OK();
         }
-        Shape& host_sub_shape =
-            *ShapeUtil::GetMutableSubshape(host_shape, index);
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
@@ -246,18 +241,14 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
 
         // Update shape size from metadata.
         for (int64 i = 0; i < metadata.element_count(); ++i) {
-          host_sub_shape.mutable_dimensions()[i] = metadata.Get<int32>({i});
           device_sub_shape.mutable_dimensions()[i] = metadata.Get<int32>({i});
         }
         return Status::OK();
       }));
-  host_shape->clear_dynamic_dimensions();
   device_shape->clear_dynamic_dimensions();
 
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  TF_RET_CHECK(
-      ShapeUtil::DynamicShapeIsCompatible(*host_shape, original_host_shape));
   return Status::OK();
 }
 

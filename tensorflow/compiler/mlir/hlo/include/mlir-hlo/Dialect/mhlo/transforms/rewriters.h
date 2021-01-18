@@ -24,10 +24,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-class LLVMTypeConverter;
-class LowerToLLVMOptions;
 class OwningRewritePatternList;
-class BufferAssignmentPlacer;
 
 // Populates a collection of rewrite patterns to realize element-wise operations
 // on ranked tensors where possible.
@@ -54,6 +51,11 @@ void PopulateGatherToTorchIndexSelectPatterns(
 
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                MLIRContext *ctx);
+
+// Collection of rewrite patterns for lowering of dynamic HLOs to LHLO dialect.
+void populateDynamicHLOToLHLOConversionPattern(
+    MLIRContext *context, BufferizeTypeConverter *converter,
+    OwningRewritePatternList *patterns, bool insert_copy = true);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(MLIRContext *context,
@@ -94,14 +96,6 @@ void PopulateTrigonometricToApproximationPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
 }  // namespace mhlo
-
-namespace lmhlo {
-
-/// Collect a set of patterns to convert from the LHLO dialect to LLVM.
-void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
-                                          OwningRewritePatternList *patterns);
-
-}  // namespace lmhlo
 
 namespace chlo {
 

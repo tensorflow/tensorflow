@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 33.
+// Next ID to use: 34.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -226,4 +226,8 @@ message TocoFlags {
   // String representing the custom ops OpDefs that are included in the
   // GraphDef.
   repeated string custom_opdefs = 32;
+
+  // Name of user's defined Tensorflow ops required in the TensorFlow Lite
+  // runtime. These ops will be supported as select TensorFlow ops.
+  repeated string select_user_tf_ops = 33;
 }

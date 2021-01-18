@@ -10,6 +10,7 @@ py_library(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
+        "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:platform",
     ],

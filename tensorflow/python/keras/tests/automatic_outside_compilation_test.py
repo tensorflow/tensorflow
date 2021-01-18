@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 
+from absl import flags
 import numpy as np
 
 from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
@@ -29,9 +30,9 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import tpu_strategy as tpu_strategy_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
+from tensorflow.python.eager.context import set_soft_device_placement
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import initializers
@@ -45,7 +46,7 @@ from tensorflow.python.keras.layers import pooling as pool_layer_lib
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
-from tensorflow.python.platform import flags
+# from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.tpu import tpu_strategy_util
@@ -167,7 +168,7 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
   def setUp(self):
     super(AutoOutsideCompilationWithKerasTest, self).setUp()
     v2_compat.enable_v2_behavior()
-    context.context().soft_device_placement = True
+    set_soft_device_placement(True)
     self.summary_dir = self.get_temp_dir()
 
   def validate_recorded_sumary_file(self, event_files, summary_dict,
@@ -257,7 +258,7 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
       def _custom_step(features, labels):
         del labels
         logits = model(features)
-        with summary_ops_v2.always_record_summaries(), writer.as_default():
+        with summary_ops_v2.record_if(True), writer.as_default():
           scalar_summary_v2.scalar(
               'logits',
               math_ops.reduce_sum(logits),

@@ -2473,5 +2473,75 @@ class InputsOutputsErrorTest(keras_parameterized.TestCase):
       model({'1': np.zeros((3, 10)), '2': np.zeros((3, 6))})
 
 
+class FunctionalSubclassModel(training_lib.Model):
+
+  def __init__(self, *args, **kwargs):
+    my_input = input_layer_lib.Input(shape=(16,))
+    dense = layers.Dense(32, activation='relu')
+    output = dense(my_input)
+    outputs = {'output': output}
+    super().__init__(inputs=[my_input], outputs=outputs, *args, **kwargs)
+
+
+class MixinClass(object):
+
+  def __init__(self, foo, **kwargs):
+    self._foo = foo
+    super().__init__(**kwargs)
+
+  def get_foo(self):
+    return self._foo
+
+
+class SubclassedModel(training_lib.Model):
+
+  def __init__(self, bar, **kwargs):
+    self._bar = bar
+    super().__init__(**kwargs)
+
+  def get_bar(self):
+    return self._bar
+
+
+class MultipleInheritanceModelTest(keras_parameterized.TestCase):
+
+  def testFunctionalSubclass(self):
+    m = FunctionalSubclassModel()
+    # Some smoke test for the weights and output shape of the model
+    self.assertLen(m.weights, 2)
+    self.assertEqual(m.outputs[0].shape.as_list(), [None, 32])
+
+  def testFunctionalSubclassPreMixin(self):
+    class MixedFunctionalSubclassModel(MixinClass, FunctionalSubclassModel):
+      pass
+
+    m = MixedFunctionalSubclassModel(foo='123')
+    self.assertTrue(m._is_graph_network)
+    self.assertLen(m.weights, 2)
+    self.assertEqual(m.outputs[0].shape.as_list(), [None, 32])
+    self.assertEqual(m.get_foo(), '123')
+
+  def testFunctionalSubclassPostMixin(self):
+    # Make sure the the mixin class is also init correct when the order changed.
+
+    class MixedFunctionalSubclassModel(FunctionalSubclassModel, MixinClass):
+      pass
+
+    m = MixedFunctionalSubclassModel(foo='123')
+    self.assertTrue(m._is_graph_network)
+    self.assertLen(m.weights, 2)
+    self.assertEqual(m.outputs[0].shape.as_list(), [None, 32])
+    self.assertEqual(m.get_foo(), '123')
+
+  def testSubclassModelPreMixin(self):
+    class MixedSubclassModel(MixinClass, SubclassedModel):
+      pass
+
+    m = MixedSubclassModel(foo='123', bar='456')
+    self.assertFalse(m._is_graph_network)
+    self.assertEqual(m.get_foo(), '123')
+    self.assertEqual(m.get_bar(), '456')
+
+
 if __name__ == '__main__':
   test.main()

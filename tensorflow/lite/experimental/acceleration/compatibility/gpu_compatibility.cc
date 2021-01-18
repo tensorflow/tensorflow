@@ -70,10 +70,11 @@ std::map<std::string, std::string> GPUCompatibilityList::CalculateVariables(
   variables[kDeviceModel] = android_info.model;
   variables[kDeviceName] = android_info.device;
   variables[kManufacturer] = android_info.manufacturer;
-  variables[kGPUModel] = gpu_info.renderer_name;
+  const auto& gl_info = gpu_info.opengl_info;
+  variables[kGPUModel] = gl_info.renderer_name;
   char buffer[128];
-  int len = snprintf(buffer, 128 - 1, "%d.%d", gpu_info.major_version,
-                     gpu_info.minor_version);
+  int len = snprintf(buffer, 128 - 1, "%d.%d", gl_info.major_version,
+                     gl_info.minor_version);
   buffer[len] = '\0';
   variables[kOpenGLESVersion] = std::string(buffer);
   CanonicalizeValues(&variables);

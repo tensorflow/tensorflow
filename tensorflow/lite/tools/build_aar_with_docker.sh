@@ -23,12 +23,16 @@ function print_usage {
   echo "  $(basename ${BASH_SOURCE}) \\"
   echo "    --input_models=model1.tflite,model2.tflite \\"
   echo "    --target_archs=x86,x86_64,arm64-v8a,armeabi-v7a \\"
-  echo "    --checkpoint=master"
+  echo "    --checkpoint=master \\"
+  echo "    [--cache_dir=<path to cache directory>]"
   echo ""
   echo "Where: "
   echo "  --input_models: Supported TFLite models. "
   echo "  --target_archs: Supported arches included in the aar file."
-  echo "  --checkpoint: Checkpoint of the github repo, could be a branch, a commit or a tag. Default: master"
+  echo "  --checkpoint: Checkpoint of the github repo, could be a branch, a "
+  echo "        commit or a tag. Default: lastest release branch."
+  echo "  --cache_dir: Path to the directory to store bazel cache. If not "
+  echo "        provided, a directory name bazel-build-cache will be created."
   echo ""
   exit 1
 }
@@ -37,9 +41,9 @@ function print_usage {
 ARGUMENTS=$@
 BUILD_FLAGS=""
 TARGET_ARCHS=x86,x86_64,arm64-v8a,armeabi-v7a
-FLAG_CHECKPOINT="master"
+FLAG_CHECKPOINT="r2.4" # TODO(b/163918542) Set default to lastest release.
 
-if [ "$#" -gt 3 ]; then
+if [ "$#" -gt 4 ]; then
   echo "ERROR: Too many arguments."
   print_usage
 fi
@@ -58,6 +62,9 @@ case $i in
     --checkpoint=*)
       FLAG_CHECKPOINT="${i#*=}"
       shift;;
+    --cache_dir=*)
+      BAZEL_CACHE_DIR="${i#*=}"
+      shift;;
     *)
       echo "ERROR: Unrecognized argument: ${i}"
       print_usage;;
@@ -70,6 +77,14 @@ if [ ! -d /tensorflow_src ]; then
   do
     FLAG_DIR="${FLAG_DIR} -v ${model}:${model}"
   done
+
+  if [ -z ${BAZEL_CACHE_DIR} ]; then
+    mkdir -p "bazel-build-cache"
+    BAZEL_CACHE_DIR="$PWD/bazel-build-cache"
+    ARGUMENTS="${ARGUMENTS} --cache_dir=${BAZEL_CACHE_DIR}"
+  fi
+  FLAG_DIR="${FLAG_DIR} -v ${BAZEL_CACHE_DIR}:${BAZEL_CACHE_DIR}"
+
   docker run --rm -it -v $PWD:/host_dir -v ${SCRIPT_DIR}:/script_dir ${FLAG_DIR} \
     --entrypoint /script_dir/build_aar_with_docker.sh tflite-builder \
     ${ARGUMENTS}
@@ -100,10 +115,11 @@ else
   git checkout ${FLAG_CHECKPOINT}
 
   # Building with bazel.
+  export BAZEL_CACHE_DIR=${BAZEL_CACHE_DIR}
+  export OMIT_PRINTING_OUTPUT_PATHS=YES
   bash /tensorflow_src/tensorflow/lite/tools/build_aar.sh ${BUILD_FLAGS}
 
   # Copy the output files from docker container.
-  clear
   OUT_FILES="/tensorflow_src/bazel-bin/tmp/tensorflow-lite.aar"
   OUT_FILES="${OUT_FILES} /tensorflow_src/bazel-bin/tmp/tensorflow-lite-select-tf-ops.aar"
   echo "Output can be found here:"
@@ -115,4 +131,3 @@ else
     fi
   done
 fi
-

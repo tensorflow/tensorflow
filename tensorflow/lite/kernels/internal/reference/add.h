@@ -202,14 +202,6 @@ inline void Add(const ArithmeticParams& params,
   }
 }
 
-// TODO(jiawen): We can implement BroadcastAdd on buffers of arbitrary
-// dimensionality if the runtime code does a single loop over one dimension
-// that handles broadcasting as the base case. The code generator would then
-// generate max(D1, D2) nested for loops.
-// TODO(benoitjacob): BroadcastAdd is intentionally duplicated from
-// reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
-// is no longer referenced in this file, move NdArrayDesc<T> from types.h to
-// reference_ops.h.
 inline void BroadcastAdd4DSlow(const ArithmeticParams& params,
                                const RuntimeShape& input1_shape,
                                const float* input1_data,

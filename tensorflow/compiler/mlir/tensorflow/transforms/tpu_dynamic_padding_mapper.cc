@@ -27,8 +27,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -95,7 +94,7 @@ LogicalResult GetRemappedPaddings(
         .str();
   };
 
-  Attribute padding_map_attr = cluster_func.getAttr(kPaddingMapAttr);
+  Attribute padding_map_attr = cluster_func->getAttr(kPaddingMapAttr);
   if (!padding_map_attr) return success();
 
   auto padding_map = padding_map_attr.dyn_cast<ArrayAttr>();
@@ -181,7 +180,7 @@ void AnnotateFunctionArgumentsWithPaddings(
 
 LogicalResult RemapAndAssignPaddingMaps(tf_device::ClusterFuncOp cluster_func,
                                         SymbolTable* symbol_table) {
-  auto replicate = cluster_func.getParentOfType<tf_device::ReplicateOp>();
+  auto replicate = cluster_func->getParentOfType<tf_device::ReplicateOp>();
   // LaunchFunc is not replicated, there will be no padding.
   if (!replicate) return success();
 
@@ -189,7 +188,7 @@ LogicalResult RemapAndAssignPaddingMaps(tf_device::ClusterFuncOp cluster_func,
   if (!func) return success();
 
   auto replicated_input_indices_attr =
-      replicate.getAttrOfType<ArrayAttr>(kReplicatedInputIndicesAttr);
+      replicate->getAttrOfType<ArrayAttr>(kReplicatedInputIndicesAttr);
   if (!replicated_input_indices_attr) return success();
 
   llvm::SmallDenseMap<int32_t, int32_t> remapped_indices =

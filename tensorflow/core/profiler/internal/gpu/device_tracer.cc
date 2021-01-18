@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
@@ -102,6 +102,24 @@ Status GpuTracer::DoStart() {
       CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,
       CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,
       CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,
+      // MemAlloc
+      CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,
+      // MemFree
+      CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2,
+      // Memset
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async,
       // GENERIC
       CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
   };
@@ -122,6 +140,8 @@ Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY2);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
+  options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMORY);
+  options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMSET);
 
 // CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
 #if CUDA_VERSION < 10000
@@ -133,7 +153,7 @@ Status GpuTracer::DoStart() {
   CuptiTracerCollectorOptions collector_options;
   collector_options.num_gpus = cupti_tracer_->NumGpus();
   uint64 start_gputime_ns = CuptiTracer::GetTimestamp();
-  uint64 start_walltime_ns = tensorflow::EnvTime::NowNanos();
+  uint64 start_walltime_ns = GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
 

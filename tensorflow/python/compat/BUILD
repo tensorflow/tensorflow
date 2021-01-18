@@ -7,7 +7,7 @@ package(
 py_library(
     name = "v2_compat",
     srcs = ["v2_compat.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:control_flow_v2_toggles",
@@ -20,7 +20,7 @@ py_library(
 py_library(
     name = "compat",
     srcs = ["compat.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:util",
@@ -32,7 +32,6 @@ tf_py_test(
     size = "small",
     srcs = ["compat_test.py"],
     tags = ["nofwdcompat"],
-    tfrt_enabled = True,
     deps = [
         ":compat",
         "//tensorflow/python:client_testlib",
@@ -43,7 +42,6 @@ tf_py_test(
     name = "disable_v2_behavior_test",
     size = "small",
     srcs = ["disable_v2_behavior_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":v2_compat",
         "//tensorflow/python:client_testlib",

@@ -64,7 +64,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
       return "IgnoreErrorsDatasetOp::Dataset";
     }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64 Cardinality() const override { return kUnknownCardinality; }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {

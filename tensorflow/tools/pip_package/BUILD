@@ -6,7 +6,6 @@ load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
-load("//third_party/ngraph:build_defs.bzl", "if_ngraph")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -47,17 +46,17 @@ transitive_hdrs(
         # Code that relies on these headers should dynamically link to
         # _pywrap_tensorflow_internal.so as well.
         "//tensorflow/python:model_analyzer_lib",
-        "//tensorflow/python:py_exception_registry",
-        "//tensorflow/python:pybind11_absl",
-        "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
-        "//tensorflow/python:pybind11_proto",
-        "//tensorflow/python:kernel_registry",
-        "//tensorflow/python:cpp_python_util",
-        "//tensorflow/python:py_func_lib",
-        "//tensorflow/python:py_seq_tensor",
-        "//tensorflow/python:py_util",
-        "//tensorflow/python:py_record_reader_lib",
+        "//tensorflow/python/lib/core:py_exception_registry",
+        "//tensorflow/python/lib/core:pybind11_proto",
+        "//tensorflow/python/lib/core:pybind11_absl",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/lib/core:py_seq_tensor",
+        "//tensorflow/python/lib/core:py_util",
+        "//tensorflow/python/lib/io:py_record_reader_lib",
+        "//tensorflow/python/util:cpp_python_util",
+        "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python:python_op_gen",
         "//tensorflow/python:tf_session_helper",
         "//third_party/eigen3",
@@ -104,6 +103,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
+    "//tensorflow/lite/tools:visualize",
     "//tensorflow/python/autograph/core:test_lib",
     "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
     "//tensorflow/python/autograph/pyct/testing",
@@ -116,7 +116,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/training/experimental:loss_scale_optimizer",
     "//tensorflow/python:memory_checker",
     "//tensorflow/python:meta_graph_testdata",
-    "//tensorflow/python:util_example_parser_configuration",
     "//tensorflow/python/data/benchmarks:benchmark_base",
     "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:data_service_test_base",
@@ -133,7 +132,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras:combinations",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_test_lib_pip",
-    "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+    "//tensorflow/python/keras/mixed_precision:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",
     "//tensorflow/python/keras/tests:model_architectures",
     "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
@@ -147,6 +146,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python/tpu",
+    "//tensorflow/python/util:example_parser_configuration",
     "//tensorflow/python:image_grad_test_base",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
@@ -275,12 +275,7 @@ filegroup(
             "@com_github_grpc_grpc//:LICENSE",
             "@com_github_grpc_grpc//third_party/address_sorting:LICENSE",
         ],
-    ) + if_ngraph([
-        "@ngraph//:LICENSE",
-        "@ngraph_tf//:LICENSE",
-        "@nlohmann_json_lib//:LICENSE.MIT",
-        "@tbb//:LICENSE",
-    ]) + tf_additional_license_deps(),
+    ) + tf_additional_license_deps(),
 )
 
 sh_binary(

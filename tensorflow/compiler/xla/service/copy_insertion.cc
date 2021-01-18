@@ -274,7 +274,7 @@ bool IndicesToCopyForConditional(const HloDataflowAnalysis& dataflow,
 //       between the copies themselves.
 //
 // If the loop state is a tuple then the above kCopy instructions are a deep
-// copy constructed of kCopy, KGetTupleElement, and kTuple instruction as
+// copy constructed of kCopy, kGetTupleElement, and kTuple instruction as
 // constructed by HloInstruction::DeepCopyInstruction.
 Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
                          HloInstruction* xla_while) {

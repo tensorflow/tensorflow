@@ -184,6 +184,7 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/compiler/tf2xla:tf2xla_util",
     "//tensorflow/compiler/tf2xla:xla_compiler",
     "//tensorflow/compiler/tf2xla:xla_op_registry",
+    "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
     "//tensorflow/compiler/tf2xla/kernels:xla_ops",
     "//tensorflow/compiler/xla:util",
     "//tensorflow/compiler/xla/client:client_library",
@@ -364,12 +365,9 @@ cc_library(
         ":flags",
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
+        "//tensorflow/compiler/mlir:array_container_utils",
+        "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -384,13 +382,13 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:logging",
-    ] + if_libtpu(
-        if_false = [
-            "//tensorflow/compiler/mlir:array_container_utils",
-            "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
-        ],
-        if_true = [],
-    ),
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_cc_test(
@@ -507,6 +505,7 @@ cc_library(
         ":flags",
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops_no_jit_rewrite_registration",
+        "//tensorflow/compiler/tf2xla:mlir_bridge_pass",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:core_cpu_internal",
@@ -546,8 +545,8 @@ cc_library(
     hdrs = ["resource_operation_safety_analysis.h"],
     deps = [
         ":xla_cluster_util",
-        "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
+        "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -718,7 +717,6 @@ cc_library(
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:scope_internal",
-        "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/compiler/tf2xla:side_effect_util",
@@ -731,6 +729,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:union_find",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -758,9 +757,9 @@ cc_library(
     deps = [
         ":flags",
         ":xla_activity_proto_cc",
-        "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -868,9 +867,12 @@ tf_cc_test(
         "partially_decluster_pass_test.cc",
         "rearrange_function_argument_pass_test.cc",
     ],
-    # TODO(b/141643254) Re-enable msan after fixing use-of-uninitialized-value
-    # error.
-    tags = ["nomsan"] + tf_cuda_tests_tags(),
+    tags = [
+        # TODO(b/141643254) Re-enable msan after fixing
+        # use-of-uninitialized-value error.
+        "nomsan",
+        "no_cuda_asan",  # TODO(b/171317460): re-enable.
+    ] + tf_cuda_tests_tags(),
     deps = [
         ":common",
         ":compilability_check_util",
@@ -991,13 +993,13 @@ cc_library(
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
         ":xla_cluster_util",
-        "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:union_find",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",

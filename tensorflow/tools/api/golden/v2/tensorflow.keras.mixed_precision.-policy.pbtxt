@@ -1,6 +1,6 @@
 path: "tensorflow.keras.mixed_precision.Policy"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.mixed_precision.experimental.policy.Policy\'>"
+  is_instance: "<class \'tensorflow.python.keras.mixed_precision.policy.Policy\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "compute_dtype"

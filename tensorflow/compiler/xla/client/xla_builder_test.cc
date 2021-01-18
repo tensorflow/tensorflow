@@ -338,8 +338,7 @@ TEST_F(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
                  /*broadcast_dimensions=*/{0, 1, 2});
   auto statusor = BuildHloModule(&b);
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("shape's dimensions must not be < 0"));
+  EXPECT_THAT(statusor.status().error_message(), HasSubstr("invalid shape"));
 }
 
 TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
@@ -873,11 +872,53 @@ TEST_F(XlaBuilderTest, DynamicReduceWindow) {
   ReduceWindow(gte, init, sum, /*window_dimensions=*/{1, 2, 4},
                /*window_strides=*/{1, 1, 1}, Padding::kValid);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  VLOG(2) << module->entry_computation()->root_instruction()->ToString()
+          << "\n";
   const Shape& result_shape =
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(
       ContainersEqual(result_shape.dynamic_dimensions(), {true, false, false}))
       << result_shape;
+}
+
+TEST_F(XlaBuilderTest, VariadicDynamicReduceWindow) {
+  XlaBuilder b(TestName());
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
+       ShapeUtil::MakeShape(U32, {})});
+  auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
+  auto p1 = Parameter(&b, 1, tuple_param_shape, "p1");
+  ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
+                                   /*dynamic_size_param_index=*/{1},
+                                   /*target_param_num=*/0,
+                                   /*target_param_index=*/{0},
+                                   /*target_dim_num=*/0));
+  auto gte0 = GetTupleElement(p0, 0);
+  auto gte1 = GetTupleElement(p1, 0);
+  std::vector<XlaOp> input_operands = {gte0, gte1};
+  XlaBuilder bsum(TestName());
+  auto p2 = Parameter(&bsum, 0, ShapeUtil::MakeShape(F32, {}), "x0");
+  auto p3 = Parameter(&bsum, 1, ShapeUtil::MakeShape(F32, {}), "x1");
+  auto p4 = Parameter(&bsum, 2, ShapeUtil::MakeShape(F32, {}), "y0");
+  auto p5 = Parameter(&bsum, 3, ShapeUtil::MakeShape(F32, {}), "y1");
+  std::vector<XlaOp> output_operands = {Add(p2, p4), Add(p3, p5)};
+  Tuple(&bsum, absl::MakeSpan(output_operands));
+  TF_ASSERT_OK_AND_ASSIGN(auto sum, bsum.Build());
+  auto init = ConstantR0<float>(&b, 0.f);
+  ReduceWindow(input_operands, {init, init}, sum,
+               /*window_dimensions=*/{1, 2, 4},
+               /*window_strides=*/{1, 1, 1}, Padding::kValid);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  VLOG(2) << module->entry_computation()->root_instruction()->ToString()
+          << "\n";
+  const Shape& result_shape =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ContainersEqual(result_shape.tuple_shapes(0).dynamic_dimensions(),
+                              {true, false, false}))
+      << result_shape.tuple_shapes(0);
+  EXPECT_TRUE(ContainersEqual(result_shape.tuple_shapes(1).dynamic_dimensions(),
+                              {true, false, false}))
+      << result_shape.tuple_shapes(1);
 }
 
 TEST_F(XlaBuilderTest, DynamicSelectAndScatter) {
@@ -1022,6 +1063,56 @@ TEST_F(XlaBuilderTest, DynamicTranspose) {
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(ContainersEqual(result_shape.dynamic_dimensions(), {false, true}))
       << result_shape;
+}
+
+TEST_F(XlaBuilderTest, DotWithPreferredElementType) {
+  XlaBuilder b(TestName());
+  Shape p0_shape = ShapeUtil::MakeShape(U8, {2, 3});
+  Shape p1_shape = ShapeUtil::MakeShape(U16, {3, 2});
+  auto p0 = Parameter(&b, 0, p0_shape, "p0");
+  auto p1 = Parameter(&b, 1, p1_shape, "p1");
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(0);
+  DotGeneral(p0, p1, dnums, /*precision_config=*/nullptr,
+             /*preferred_element_type=*/U32);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result_shape =
+      module->entry_computation()->root_instruction()->shape();
+  ASSERT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(U32, {2, 2}), result_shape));
+}
+
+TEST_F(XlaBuilderTest, ConvolutionWithPreferredElementType) {
+  XlaBuilder b(TestName());
+  Shape p0_shape = ShapeUtil::MakeShape(S16, {1, 2, 2, 128});
+  Shape p1_shape = ShapeUtil::MakeShape(S8, {2, 2, 128, 8});
+  auto p0 = Parameter(&b, 0, p0_shape, "p0");
+  auto p1 = Parameter(&b, 1, p1_shape, "p1");
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
+  dnums.add_kernel_spatial_dimensions(0);
+  dnums.add_kernel_spatial_dimensions(1);
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.set_kernel_output_feature_dimension(3);
+  ConvWithGeneralDimensions(p0, p1, {1, 1}, Padding::kValid, dnums,
+                            /*feature_group_count=*/1, /*batch_group_count=*/1,
+                            /*precision_config=*/nullptr,
+                            /*preferred_element_type=*/S32);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result_shape =
+      module->entry_computation()->root_instruction()->shape();
+  ASSERT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {1, 1, 1, 8}), result_shape));
 }
 
 TEST_F(XlaBuilderTest, AfterAllWithNonTokenOperands) {

@@ -46,8 +46,6 @@ class SavedModelAPI {
   virtual Status GetSignatureDefFunction(const std::string& signature_def_key,
                                          SignatureDefFunction** function) = 0;
 
-  virtual std::vector<ConcreteFunction*> ListFunctions() = 0;
-
   virtual ~SavedModelAPI() = default;
 };
 

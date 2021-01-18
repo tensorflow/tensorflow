@@ -20,12 +20,12 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -109,7 +109,7 @@ bool IsSupportedInputOp(
   };
 
   // Check all generator aliases (ops or function argument) are on CPU.
-  FuncOp func = iterator_op.getParentOfType<FuncOp>();
+  FuncOp func = iterator_op->getParentOfType<FuncOp>();
   return llvm::all_of(aliases, [&](Value alias) {
     // Ignore non-generator aliases.
     if (!is_generator(alias)) return true;
@@ -172,7 +172,7 @@ void HandleInput(Value input, const int64_t execute_arg_index,
   builder.setInsertionPoint(execute_launch);
   auto copy_with_layout = BuildCopyWithLayout(execute_launch, compile_launch,
                                               get_layout, input, &builder);
-  copy_with_layout.setAttr(kDeviceAttr, execute_launch.deviceAttr());
+  copy_with_layout->setAttr(kDeviceAttr, execute_launch.deviceAttr());
   execute.setOperand(execute_arg_index, copy_with_layout);
 }
 
@@ -206,8 +206,8 @@ bool HandleReplicatedInputs(
                            .getValue()
                            .get(execute_launch.getDevice())
                            .cast<ArrayAttr>();
-    copy_with_layout.setAttr(kDeviceAttr,
-                             device_list.getValue()[entry.index()]);
+    copy_with_layout->setAttr(kDeviceAttr,
+                              device_list.getValue()[entry.index()]);
 
     replicate.setOperand(num_replicas * replicate_arg_index + entry.index(),
                          copy_with_layout);
@@ -230,7 +230,7 @@ void HandleCompileAndExecutes(
 
   bool metadata_updated = false;
   auto maybe_replicate =
-      execute_launches.front().getParentOfType<tf_device::ReplicateOp>();
+      execute_launches.front()->getParentOfType<tf_device::ReplicateOp>();
 
   for (auto execute_and_input_mapping :
        llvm::zip(execute_launches, input_mappings)) {
@@ -274,8 +274,8 @@ void HandleCompileAndExecutes(
   }
 
   if (metadata_updated)
-    compile.setAttr("metadata", StringAttr::get(metadata.SerializeAsString(),
-                                                compile.getContext()));
+    compile->setAttr("metadata", StringAttr::get(metadata.SerializeAsString(),
+                                                 compile.getContext()));
 }
 
 void TPUDynamicLayoutPass::runOnFunction(
@@ -284,7 +284,7 @@ void TPUDynamicLayoutPass::runOnFunction(
   func.walk([&](TF::_TPUCompileMlirOp compile) {
     // Detect tf._TPUCompileMlir -> tf.TPUExecute(s).
     auto compile_launch =
-        llvm::dyn_cast<tf_device::LaunchOp>(compile.getParentOp());
+        llvm::dyn_cast<tf_device::LaunchOp>(compile->getParentOp());
     if (!compile_launch || !compile_launch.WrapsSingleOp()) return;
 
     llvm::SmallVector<tf_device::LaunchOp, 4> execute_launches;
@@ -295,7 +295,7 @@ void TPUDynamicLayoutPass::runOnFunction(
       auto execute = llvm::dyn_cast<TF::TPUExecuteOp>(user);
       if (!execute) return;
       auto execute_launch =
-          llvm::dyn_cast<tf_device::LaunchOp>(execute.getParentOp());
+          llvm::dyn_cast<tf_device::LaunchOp>(execute->getParentOp());
       if (!execute_launch || !execute_launch.WrapsSingleOp()) return;
       execute_launches.push_back(execute_launch);
     }

@@ -225,7 +225,7 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypesForSparseAdagrad(self, x, y, lr, grad, indices):
     self.setUp()
-    with self.session(use_gpu=False):
+    with self.session(use_gpu=True):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       self.evaluate(variables.global_variables_initializer())

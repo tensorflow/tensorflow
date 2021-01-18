@@ -64,6 +64,15 @@ tensorflow::StringPiece Basename(tensorflow::StringPiece path);
 // there is no "." in the basename, the result is empty.
 tensorflow::StringPiece Extension(tensorflow::StringPiece path);
 
+// Returns the largest common subpath of `paths`.
+//
+// For example, for "/alpha/beta/gamma" and "/alpha/beta/ga" returns
+// "/alpha/beta/". For "/alpha/beta/gamma" and "/alpha/beta/gamma" returns
+// "/alpha/beta/".
+//
+// Does not perform any path normalization.
+string CommonPathPrefix(absl::Span<string const> paths);
+
 // Collapse duplicate "/"s, resolve ".." and "." path elements, remove
 // trailing "/".
 //

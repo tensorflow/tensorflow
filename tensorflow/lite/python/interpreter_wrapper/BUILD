@@ -38,7 +38,6 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/experimental/tflite_api_dispatcher",
         "//tensorflow/lite/kernels:builtin_ops",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/memory",
@@ -90,7 +89,6 @@ pybind_extension(
         "@pybind11",
         "//third_party/python_runtime:headers",
         "//tensorflow/lite:framework_lib",
-        "//tensorflow/lite/experimental/tflite_api_dispatcher",
         "//tensorflow/python:pybind11_lib",
     ] + select({
         ":tflite_pip_with_flex": ["//tensorflow/lite/delegates/flex:delegate"],

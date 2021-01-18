@@ -20,6 +20,7 @@ limitations under the License.
 #include "grpcpp/generic/generic_stub.h"
 #include "grpcpp/grpcpp.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -70,10 +71,10 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   ~GrpcRemoteWorker() override {}
 
-  void GetStatusAsync(const GetStatusRequest* request,
+  void GetStatusAsync(CallOptions* call_opts, const GetStatusRequest* request,
                       GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
-    IssueRequest(request, response, getstatus_, std::move(done), nullptr,
+    IssueRequest(request, response, getstatus_, std::move(done), call_opts,
                  fail_fast);
   }
 

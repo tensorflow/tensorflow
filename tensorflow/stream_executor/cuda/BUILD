@@ -142,7 +142,9 @@ cc_library(
 tf_cuda_cc_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171512140): re-enable.
+    ],
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -154,7 +156,9 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "memcpy_test",
     srcs = ["memcpy_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171512140): re-enable.
+    ],
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -595,6 +599,16 @@ cc_library(
 )
 
 cc_library(
+    name = "cuda_asm_compiler",
+    srcs = if_cuda_is_configured(["cuda_asm_compiler.cc"]),
+    deps = if_cuda_is_configured([
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/stream_executor/gpu:gpu_driver_header",
+    ]),
+)
+
+cc_library(
     name = "cuda_gpu_executor",
     srcs = if_cuda_is_configured(["cuda_gpu_executor.cc"]),
     hdrs = if_cuda_is_configured(["cuda_gpu_executor.h"]),
@@ -607,6 +621,7 @@ cc_library(
         ":cuda_platform_id",
         ":cuda_stream",
         ":cuda_timer",
+        ":cuda_asm_compiler",
         "@com_google_absl//absl/strings",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",
@@ -658,7 +673,9 @@ cc_library(
 tf_cuda_cc_test(
     name = "redzone_allocator_test",
     srcs = ["redzone_allocator_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171512140): re-enable.
+    ],
     deps = [
         ":cuda_activation",
         ":cuda_gpu_executor",

@@ -19,47 +19,74 @@ limitations under the License.
 #import <Metal/Metal.h>
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
-@interface TFLComputeTask : NSObject
+namespace tflite {
+namespace gpu {
+namespace metal {
 
-/// Returns empty string or error if shader can't be compiled.
-- (absl::Status)compileWithDevice:(id<MTLDevice>)device
-                   taskDescriptor:(::tflite::gpu::metal::ComputeTaskDescriptorPtr)desc
-                   runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
+class ComputeTask {
+ public:
+  ComputeTask() = default;
 
-/// Updates dimensions for inputs/outputs/intermediate tensors
-- (absl::Status)
-    setInputDimensionsWithDevice:(id<MTLDevice>)device
-                      dimensions:(std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)dimensions;
+  // Move only
+  ComputeTask(ComputeTask&& args) = default;
+  ComputeTask& operator=(ComputeTask&& args) = default;
+  ComputeTask(const ComputeTask&) = delete;
+  ComputeTask& operator=(const ComputeTask&) = delete;
 
-/// Updates buffers for intermediate tensors only. Returns error if out of memory or a buffer is
-/// larger than MTLDevice can support.
-/// @param buffers is a map from intermediate tensors' ValueId to metal handles with corresponding
-///        buffers.
-/// @param outputIDs must match the output of added operations.
-/// @param usageRecordIds is a map from intermediate tensors' ValueId to corresponding tensor usage
-/// records ids.
-/// @param sharedBufferIds contain shared buffer id for each tensor usage record id.
-/// @param sharedBuffers contain metal handles to the allocated buffers for each shared buffer id.
-/// TODO(ypisarchyk): probably we can decrease the number of parameters here
-- (absl::Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
-                    outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
-               usageRecordIds:(const std::map<::tflite::gpu::ValueId, size_t>&)usageRecordIds
-              sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
-                sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers;
+  void Init(std::unique_ptr<ComputeTaskDescriptor>&& task_desc);
 
-- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder
-       inputOutputBuffers:
-           (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers;
+  void Init(std::unique_ptr<GPUOperation>&& operation);
 
-@end
+  ComputeTaskDescriptor& GetTaskDesc() { return *task_desc_; }
+  const ComputeTaskDescriptor& GetTaskDesc() const { return *task_desc_; }
+
+  /// Returns empty string or error if shader can't be compiled.
+  absl::Status Compile(CalculationsPrecision precision, MetalDevice* device);
+
+  absl::Status CompileOp(MetalDevice* device);
+
+  /// Updates parameters for inputs/outputs/intermediate tensors
+  absl::Status UpdateParams(const GpuInfo& gpu_info,
+                            const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes);
+
+  // should be called after changes of inputs/outputs.
+  absl::Status UpdateOpParams();
+
+  void EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder);
+
+  void EncodeOpWithEncoder(id<MTLComputeCommandEncoder> encoder);
+
+  void SetSrcTensor(const MetalSpatialTensor& tensor, int index);
+
+  void SetDstTensor(const MetalSpatialTensor& tensor, int index);
+
+ private:
+  std::unique_ptr<ComputeTaskDescriptor> task_desc_;
+  std::unique_ptr<GPUOperation> operation_ = nullptr;
+  id<MTLComputePipelineState> program_;
+  MetalArguments metal_args_;
+  uint3 groups_size_;
+  uint3 groups_count_;
+};
+
+}  // namespace metal
+}  // namespace gpu
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_COMPUTE_TASK_H_

@@ -65,6 +65,19 @@ TEST(PartialTensorShapeTest, Concatenate) {
   EXPECT_EQ(-1, s4.num_elements());
 }
 
+TEST(PartialTensorShapeTest, ConcatenateWithStatus) {
+  PartialTensorShape s({10, 5, 20});
+  Status status = s.ConcatenateWithStatus(400, &s);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(400000, s.num_elements());
+  ASSERT_EQ(4, s.dims());
+
+  status = s.ConcatenateWithStatus(-10, &s);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(-1, s.num_elements());
+  ASSERT_EQ(5, s.dims());
+}
+
 TEST(PartialTensorShapeTest, InvalidShapeProto) {
   TensorShapeProto proto;
   EXPECT_TRUE(PartialTensorShape::IsValid(proto));

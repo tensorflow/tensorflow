@@ -450,6 +450,8 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
                         TfLiteTensor* scaling_factors,
                         TfLiteTensor* accum_scratch, TfLiteTensor* row_sums,
                         TfLiteTensor* input_offsets, TfLiteTensor* output) {
+  const auto* params =
+      reinterpret_cast<TfLiteBatchMatMulParams*>(node->builtin_data);
   const int32_t num_input_dims = input_shape.DimensionsCount();
 
   // Input row/cols have been swapped at this point, so dims are
@@ -465,18 +467,20 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
   int32_t* input_offset_ptr = nullptr;
   int32_t* row_sums_ptr = nullptr;
-  // Only asymmetric quantization is supported.
   input_offset_ptr = GetTensorData<int32_t>(input_offsets);
   row_sums_ptr = GetTensorData<int32_t>(row_sums);
+  if (!params->asymmetric_quantize_inputs) {
+    memset(input_offset_ptr, 0, input_offsets->bytes);
+  }
   int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
   const int8_t* filter_data = GetTensorData<int8_t>(filter);
   const float* input_ptr = GetTensorData<float>(input);
   // Quantize each batch independently.
+  tensor_utils::BatchQuantizeFloats(input_ptr, num_batches_to_quantize,
+                                    input_size, quant_data, scaling_factors_ptr,
+                                    input_offset_ptr,
+                                    params->asymmetric_quantize_inputs);
   for (int b = 0; b < num_batches_to_quantize; ++b) {
-    const int offset = b * input_size;
-    tensor_utils::AsymmetricQuantizeFloats(
-        input_ptr + offset, input_size, quant_data + offset,
-        &scaling_factors_ptr[b], &input_offset_ptr[b]);
     // Incorporate scaling of the filter.
     scaling_factors_ptr[b] *= filter->params.scale;
   }

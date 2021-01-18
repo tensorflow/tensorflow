@@ -35,7 +35,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import recurrent as rnn_v1
@@ -339,7 +339,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
         test_samples=0,
         input_shape=(timestep, input_shape),
         num_classes=rnn_state_size,
-        random_seed=random_seed.DEFAULT_GRAPH_SEED)
+        random_seed=87654321)
     y_train = np_utils.to_categorical(y_train, rnn_state_size)
     # For the last batch item of the test data, we filter out the last
     # timestep to simulate the variable length sequence and masking test.
@@ -796,6 +796,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
       outputs_trimmed = lstm(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
 
+  @tf_test_util.enable_output_all_intermediates
   def test_v1_session_behavior(self):
     with ops.get_default_graph().as_default():
       # See b/139132348 for more details.

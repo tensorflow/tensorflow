@@ -97,12 +97,16 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   const std::string& platform_name() const {
     return pjrt_client_->platform_name();
   }
-  int local_device_count() const { return pjrt_client_->local_device_count(); }
+  int addressable_device_count() const {
+    return pjrt_client_->addressable_device_count();
+  }
   int device_count() const { return pjrt_client_->device_count(); }
   int host_id() const { return pjrt_client_->host_id(); }
 
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
+
+  std::vector<ClientAndPtr<PyBuffer>> LiveBuffers();
 
   StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
   GetDefaultDeviceAssignment(int num_replicas, int num_partitions);
@@ -112,17 +116,20 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
       int num_replicas);
 
   StatusOr<ChannelHandle> CreateChannelHandle() {
-    return pjrt_client_->client()->CreateChannelHandle();
+    return pjrt_client_->CreateChannelHandle();
   }
   StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
-    return pjrt_client_->client()->CreateDeviceToHostChannelHandle();
+    return pjrt_client_->CreateDeviceToHostChannelHandle();
   }
   StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
-    return pjrt_client_->client()->CreateHostToDeviceChannelHandle();
+    return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
 
+  StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBufferFromPyval(
+      pybind11::handle argument, PjRtDevice* device, bool force_copy,
+      PjRtClient::HostBufferSemantics host_buffer_semantics);
   StatusOr<std::unique_ptr<PyBuffer>> BufferFromPyval(
-      const pybind11::object& argument, PjRtDevice* device, bool force_copy,
+      pybind11::handle argument, PjRtDevice* device, bool force_copy,
       PjRtClient::HostBufferSemantics host_buffer_semantics);
 
   StatusOr<std::shared_ptr<PyExecutable>> Compile(

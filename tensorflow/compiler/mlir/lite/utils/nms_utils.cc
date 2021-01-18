@@ -40,8 +40,8 @@ inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
 }  // namespace
 
 void ConvertNMSPaddedFunc::RewriteFunc() {
-  func_.setAttr(kTFImplements,
-                StringAttr::get(kTfNMSPadded, func_.getContext()));
+  func_->setAttr(kTFImplements,
+                 StringAttr::get(kTfNMSPadded, func_.getContext()));
   Value boxes = func_.getArgument(0);
   Value scores = func_.getArgument(1);
   Value max_output_size = func_.getArgument(2);
@@ -64,7 +64,7 @@ LogicalResult ConvertNMSPaddedFunc::VerifySignature() {
   if (func_.getNumArguments() < 5) {
     return func_.emitError()
            << "Invalid number of arguments to "
-              "non_max_suppression_padded_v2 (need atleast 5): "
+              "non_max_suppression_padded_v2 (need at least 5): "
            << func_.getNumArguments();
   }
   if (func_.getType().getNumResults() != 2) {
@@ -85,8 +85,8 @@ LogicalResult ConvertNMSPaddedFunc::VerifySignature() {
 LogicalResult ConvertSSDPostProcessFunc::RewriteFunc() {
   func_.eraseBody();
   func_.addEntryBlock();
-  func_.setAttr(kTFImplements,
-                StringAttr::get(kCustomSSDPostprocessing, func_.getContext()));
+  func_->setAttr(kTFImplements,
+                 StringAttr::get(kCustomSSDPostprocessing, func_.getContext()));
 
   OpBuilder builder(func_.getBody());
   std::string custom_option_buffer;

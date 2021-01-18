@@ -21,28 +21,12 @@ limitations under the License.
 namespace tflite {
 
 // The following methods are introduced to resolve op builtin code shortage
-// problem. The new builtin opreator will be assigned to the extended builtin
+// problem. The new builtin operator will be assigned to the extended builtin
 // code field in the flatbuffer schema. Those methods helps to hide builtin code
 // details.
 BuiltinOperator GetBuiltinCode(const OperatorCode *op_code);
 
 BuiltinOperator GetBuiltinCode(const OperatorCodeT *op_code);
-
-int8_t ConvertBuiltinCodeToDeprecatedBuiltinCode(
-    const BuiltinOperator builtin_code);
-
-// The following methods are for backward compatibility for the early version
-// three, which does not have an extended builtin code.
-flatbuffers::Offset<OperatorCode> CreateOperatorCode(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    BuiltinOperator builtin_code = BuiltinOperator_ADD,
-    flatbuffers::Offset<flatbuffers::String> custom_code = 0,
-    int32_t version = 1);
-
-flatbuffers::Offset<OperatorCode> CreateOperatorCodeDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    BuiltinOperator builtin_code = BuiltinOperator_ADD,
-    const char *custom_code = nullptr, int32_t version = 1);
 
 }  // namespace tflite
 

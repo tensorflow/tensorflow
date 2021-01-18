@@ -114,15 +114,23 @@ static Graph* ManyConsts(int num, bool sequential) {
   return g;
 }
 
-static void BM_ManyConsts_Parallel(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  test::Benchmark("cpu", ManyConsts(num, false /* !sequential */)).Run(iters);
+static void BM_ManyConsts_Parallel(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+
+  test::Benchmark("cpu", ManyConsts(num, false /* !sequential */),
+                  /*old_benchmark_api*/ false)
+      .Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
 }
 BENCHMARK(BM_ManyConsts_Parallel)->Range(1, 1 << 10);
 
-static void BM_ManyConsts_Sequential(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  test::Benchmark("cpu", ManyConsts(num, true /* sequential */)).Run(iters);
+static void BM_ManyConsts_Sequential(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+
+  test::Benchmark("cpu", ManyConsts(num, true /* sequential */),
+                  /*old_benchmark_api*/ false)
+      .Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
 }
 BENCHMARK(BM_ManyConsts_Sequential)->Range(1, 1 << 10);
 

@@ -25,6 +25,10 @@ tf_module {
     argspec: "args=[\'writer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "graph"
+    argspec: "args=[\'graph_data\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "histogram"
     argspec: "args=[\'name\', \'data\', \'step\', \'buckets\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }

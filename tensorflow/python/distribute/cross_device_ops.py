@@ -89,7 +89,7 @@ def reduce_non_distributed_value(
   # be a single value. We also handle the case when `value` is a single value
   # and equal to 0.
   # TODO:(b/138823479): handle the tensor value properly.
-  if not tensor_util.is_tensor(value) and value == 0:
+  if not tensor_util.is_tf_type(value) and value == 0:
     return 0
   # If there is only a single value and the reduce op is MEAN,
   # that value should be on all destinations.
@@ -803,7 +803,10 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
   def reduce_implementation(self, reduce_op, per_replica_value, destinations,
                             options):
     del options  # Unused.
-    if _devices_match(per_replica_value, destinations):
+    # To use NCCL or all-reduce, source and destination devices should match,
+    # and none of the devices should be CPU.
+    if (_devices_match(per_replica_value, destinations) and
+        not any("cpu" in d.lower() for d in get_devices_from(destinations))):
       return self._batch_all_reduce(reduce_op, [per_replica_value])[0]
     else:
       return self._simple_cross_replica_ops.reduce(reduce_op, per_replica_value,
@@ -1026,12 +1029,18 @@ class CollectiveAllReduce(CrossDeviceOps):
     # function building, the executors are not used.
     self._executors = []
     self._launchers = []
+    # Whether to only use NCCL for batched all-reduce when NCCL is requested.
+    # This is because of the lack of mechanism to order NCCL operations
+    # deterministically.
+    self._limited_nccl = False
     for device in self._devices:
       executor = executor_lib.new_executor(enable_async=True)
       self._executors.append(executor)
       launcher = cross_device_utils.CollectiveReplicaLauncher(
           group_key, group_size, self._collective_keys, device, executor)
       self._launchers.append(launcher)
+      if not launcher.can_order_nccl():
+        self._limited_nccl = True
 
     super(CollectiveAllReduce, self).__init__()
 
@@ -1118,8 +1127,8 @@ class CollectiveAllReduce(CrossDeviceOps):
     # all-reduce, which is the gradients.
     # TODO(b/132575814): switch to NCCL for all collectives when communication
     # is NCCL if and only if we can order collectives deterministically.
-    # is NCCL.
-    if (options.implementation == CommunicationImplementation.NCCL and
+    if (self._limited_nccl and
+        options.implementation == CommunicationImplementation.NCCL and
         batch_size == 1):
       implementation = CommunicationImplementation.AUTO.value
 
@@ -1179,8 +1188,9 @@ class CollectiveAllReduce(CrossDeviceOps):
     # For now, we use NCCL only when batch_size > 1.
     # TODO(b/132575814): switch to NCCL for all collectives when implementation
     # is NCCL.
-    if options.implementation == CommunicationImplementation.NCCL and len(
-        per_replica_values) == 1:
+    if (self._limited_nccl and
+        options.implementation == CommunicationImplementation.NCCL and
+        len(per_replica_values) == 1):
       implementation = CommunicationImplementation.AUTO.value
 
     gathered_values = []

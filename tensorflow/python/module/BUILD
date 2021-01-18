@@ -10,6 +10,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "module",
     srcs = ["module.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tf2",
@@ -23,7 +24,6 @@ py_library(
 tf_py_test(
     name = "module_test",
     srcs = ["module_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":module",
         "//tensorflow/python:client_testlib",

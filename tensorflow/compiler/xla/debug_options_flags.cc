@@ -42,6 +42,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_include_timestamp(true);
   opts.set_xla_dump_max_hlo_modules(-1);
+  opts.set_xla_dump_module_metadata(false);
 #ifdef INTEL_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
@@ -73,7 +74,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_deterministic_reductions(false);
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
-
+  opts.set_xla_multiheap_size_constraint_per_heap(-1);
+  opts.set_xla_detailed_logging(true);
   return opts;
 }
 
@@ -229,7 +231,6 @@ static void AllocateFlags() {
   };
 
   flag_objects = new std::vector<tensorflow::Flag>();
-  flag_objects->reserve(55);
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -513,6 +514,12 @@ static void AllocateFlags() {
       "Max number of hlo module dumps in a directory. Set to < 0 for "
       "unbounded."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_module_metadata",
+      bool_setter_for(&DebugOptions::set_xla_dump_module_metadata),
+      flag_values->xla_dump_module_metadata(),
+      "Dumps HloModuleMetadata as text protos to the directory specified "
+      "by --xla_dump_to."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_hlo_graph_addresses",
       bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),
       flag_values->xla_hlo_graph_addresses(),
@@ -533,7 +540,12 @@ static void AllocateFlags() {
       "xla_gpu_force_conv_nchw",
       bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
       flag_values->xla_gpu_force_conv_nchw(),
-      "For cuDNN convolutions, always NCHW layouts."));
+      "For cuDNN convolutions, always use NCHW layouts."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_force_conv_nhwc",
+      bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nhwc),
+      flag_values->xla_gpu_force_conv_nhwc(),
+      "For cuDNN convolutions, always use NHWC layouts."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_algorithm_denylist_path",
       string_setter_for(&DebugOptions::set_xla_gpu_algorithm_denylist_path),
@@ -571,6 +583,29 @@ static void AllocateFlags() {
       "that falling back to the driver can have drawbacks like using more "
       "memory and/or other bugs during compilation, so we recommend setting "
       "this flag to false."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_multiheap_size_constraint_per_heap",
+      int32_setter_for(
+          &DebugOptions::set_xla_multiheap_size_constraint_per_heap),
+      flag_values->xla_multiheap_size_constraint_per_heap(),
+      "Generates multiple heaps (i.e., temp buffers) with a size "
+      "constraint on each heap to avoid Out-of-Memory due to memory "
+      "fragmentation. The constraint is soft, so it works with tensors "
+      "larger than the given constraint size. -1 corresponds to no "
+      "constraints."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_force_compilation_parallelism",
+      int32_setter_for(
+          &DebugOptions::set_xla_gpu_force_compilation_parallelism),
+      flag_values->xla_gpu_force_compilation_parallelism(),
+      "Overrides normal multi-threaded compilation settting to use this many "
+      "threads. Setting to 0 (the default value) means no enforcement."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_deterministic_ops",
+      bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
+      flag_values->xla_gpu_deterministic_ops(),
+      "Guarantees run-to-run determinism on GPU."));
+
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
 

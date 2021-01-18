@@ -66,7 +66,7 @@ def model_iteration(model,
                     **kwargs):
   """Loop function for arrays of data with modes TRAIN/TEST/PREDICT.
 
-  Arguments:
+  Args:
       model: Keras Model instance.
       inputs: Either a list or dictionary of arrays, or a dataset instance.
       targets: List/dictionary of input arrays.
@@ -94,7 +94,7 @@ def model_iteration(model,
         validation from data tensors). Ignored with the default value of
         `None`.
       validation_freq: Only relevant if validation data is provided. Integer or
-        `collections_abc.Container` instance (e.g. list, tuple, etc.). If an
+        `collections.abc.Container` instance (e.g. list, tuple, etc.). If an
         integer, specifies how many training epochs to run before a new
         validation run is performed, e.g. `validation_freq=2` runs
         validation every 2 epochs. If a Container, specifies the epochs on
@@ -486,7 +486,7 @@ def _get_num_samples_or_steps(ins, batch_size, steps_per_epoch):
 def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """Prepare feed values to the model execution function.
 
-  Arguments:
+  Args:
     model: Model to prepare feed values for.
     inputs: List or dict of model inputs.
     targets: Optional list of model targets.
@@ -510,7 +510,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     # in Distribution Strategy case as it follows the same code path for both
     # eager and graph modes.
     # TODO(priyag,omalleyt): Either we should move the training DS with
-    # OwnedIterator to use training_generator code path, or figure out how to
+    # IteratorBase to use training_generator code path, or figure out how to
     # set a symbolic Iterator out of a Dataset when in eager mode.
     if context.executing_eagerly():
       return get_distributed_inputs

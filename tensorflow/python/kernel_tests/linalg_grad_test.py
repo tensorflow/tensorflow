@@ -192,30 +192,25 @@ if __name__ == '__main__':
       for extra in [(), (2,), (3,)] + [(3, 2)] * (size < 10):
         for adjoint in False, True:
           shape = extra + (size, size)
-          name = '%s_%s_adj_%s' % (dtype.__name__, '_'.join(map(str, shape)),
-                                   str(adjoint))
-          _AddTest(MatrixBinaryFunctorGradientTest, 'MatrixSolveGradient', name,
-                   _GetMatrixBinaryFunctorGradientTest(
-                       linalg_ops.matrix_solve, dtype, shape, adjoint=adjoint))
+          name = '%s_%s_adj_%s' % (dtype.__name__, '_'.join(map(
+              str, shape)), str(adjoint))
+          _AddTest(
+              MatrixBinaryFunctorGradientTest, 'MatrixSolveGradient', name,
+              _GetMatrixBinaryFunctorGradientTest(
+                  linalg_ops.matrix_solve, dtype, shape, adjoint=adjoint))
 
           for lower in True, False:
             name = '%s_low_%s' % (name, lower)
-            if (name == 'float32_10_10_adj_False_low_True') and \
-               test_lib.is_built_with_rocm():
-              # Skip this one particular subtest on the ROCm platform
-              # It will fail because of 1 element in 10,000 mismatch,
-              # and the mismatch is minor (tolerance is 0.20, mismatch is 0,22)
-              # TODO(rocm) : investigate cause of mismatch and fix
-              continue
-            _AddTest(MatrixBinaryFunctorGradientTest,
-                     'MatrixTriangularSolveGradient', name,
-                     _GetMatrixBinaryFunctorGradientTest(
-                         linalg_ops.matrix_triangular_solve,
-                         dtype,
-                         shape,
-                         float32_tol_fudge=4.0,
-                         adjoint=adjoint,
-                         lower=lower))
+            _AddTest(
+                MatrixBinaryFunctorGradientTest,
+                'MatrixTriangularSolveGradient', name,
+                _GetMatrixBinaryFunctorGradientTest(
+                    linalg_ops.matrix_triangular_solve,
+                    dtype,
+                    shape,
+                    float32_tol_fudge=4.0,
+                    adjoint=adjoint,
+                    lower=lower))
 
             band_shape = extra + (size // 2 + 1, size)
             name = '%s_%s_adj_%s_low_%s' % (dtype.__name__, '_'.join(
@@ -239,13 +234,18 @@ if __name__ == '__main__':
       for extra in [(), (2,), (3,)] + [(3, 2)] * (size < 10):
         shape = extra + (size, size)
         name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
-        _AddTest(MatrixUnaryFunctorGradientTest, 'MatrixInverseGradient', name,
-                 _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_inverse,
-                                                    dtype, shape))
-        _AddTest(MatrixUnaryFunctorGradientTest, 'MatrixExponentialGradient',
-                 name,
-                 _GetMatrixUnaryFunctorGradientTest(
-                     linalg_impl.matrix_exponential, dtype, shape))
+        _AddTest(
+            MatrixUnaryFunctorGradientTest, 'MatrixInverseGradient', name,
+            _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_inverse, dtype,
+                                               shape))
+        if not test_lib.is_built_with_rocm():
+          # TODO(rocm) :
+          # re-enable this test when upstream issues are resolved
+          # see commit msg for details
+          _AddTest(
+              MatrixUnaryFunctorGradientTest, 'MatrixExponentialGradient', name,
+              _GetMatrixUnaryFunctorGradientTest(linalg_impl.matrix_exponential,
+                                                 dtype, shape))
         _AddTest(
             MatrixUnaryFunctorGradientTest, 'MatrixDeterminantGradient', name,
             _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_determinant,
@@ -254,8 +254,8 @@ if __name__ == '__main__':
             MatrixUnaryFunctorGradientTest, 'LogMatrixDeterminantGradient',
             name,
             _GetMatrixUnaryFunctorGradientTest(
-                lambda x: linalg_ops.log_matrix_determinant(x)[1],
-                dtype, shape))
+                lambda x: linalg_ops.log_matrix_determinant(x)[1], dtype,
+                shape))
 
         # The numerical Jacobian is consistently invalid for these four shapes
         # because the matrix square root of the perturbed input doesn't exist
@@ -274,8 +274,8 @@ if __name__ == '__main__':
       for cols in 2, 5, 10:
         for l2_regularization in 1e-6, 0.001, 1.0:
           shape = (rows, cols)
-          name = '%s_%s_%s' % (dtype.__name__, '_'.join(map(str, shape)),
-                               l2_regularization)
+          name = '%s_%s_%s' % (dtype.__name__, '_'.join(map(
+              str, shape)), l2_regularization)
           float32_tol_fudge = 5.1 if l2_regularization == 1e-6 else 4.0
           _AddTest(
               MatrixBinaryFunctorGradientTest,
@@ -283,10 +283,7 @@ if __name__ == '__main__':
               name,
               # pylint: disable=long-lambda,g-long-lambda
               _GetMatrixBinaryFunctorGradientTest(
-                  (lambda a, b, l=l2_regularization:
-                   linalg_ops.matrix_solve_ls(a, b, l)),
-                  dtype,
-                  shape,
-                  float32_tol_fudge))
+                  (lambda a, b, l=l2_regularization: linalg_ops.matrix_solve_ls(
+                      a, b, l)), dtype, shape, float32_tol_fudge))
 
   test_lib.main()

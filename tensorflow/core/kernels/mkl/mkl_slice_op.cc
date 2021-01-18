@@ -230,8 +230,6 @@ class MklSlicePrimitive : public MklPrimitive {
         new memory(sliceParams.from->get_desc(), cpu_engine_, DummyData));
     context_.dst_mem.reset(
         new memory(sliceParams.to->get_desc(), cpu_engine_, DummyData));
-    auto src_pd = context_.src_mem->get_desc();
-    auto dst_pd = context_.dst_mem->get_desc();
 
     auto src_sub_desc = context_.src_mem->get_desc().submemory_desc(
         sliceParams.size_dims, sliceParams.begin_dims);
@@ -276,7 +274,6 @@ class MklSlicePrimitiveFactory : public MklPrimitiveFactory<T> {
     FactoryKeyCreator key_creator;
     auto const& from_desc = sliceParams.from->get_desc().data;
     auto const& to_desc = sliceParams.to->get_desc().data;
-    const int kIdxFirstStride = 0;
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
 

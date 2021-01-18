@@ -15,6 +15,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
+#include "tensorflow/core/kernels/image/non_max_suppression_op.h"
+
 #include <limits>
 
 #include "absl/strings/str_cat.h"
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
-#include "tensorflow/core/kernels/image/non_max_suppression_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/stream_executor/stream_executor.h"
@@ -88,7 +89,7 @@ __device__ EIGEN_STRONG_INLINE bool OverThreshold(const Box* a, const Box* b,
   const float aa = intersection;
   const float bb = a_area + b_area - intersection;
   const float bt = bb * iou_threshold;
-  return aa >= bt;
+  return aa > bt;
 }
 
 template <bool flip_box>
@@ -550,30 +551,44 @@ Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
                         const Tensor& iou_threshold) {
   if (!TensorShapeUtils::IsScalar(max_output_size.shape())) {
     return errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                   max_output_size.shape().DebugString());
+                                   max_output_size.shape().DebugString(),
+                                   " (Shape must be rank 0 but is ", "rank ",
+                                   max_output_size.dims(), ")");
   }
   if (!TensorShapeUtils::IsScalar(iou_threshold.shape())) {
     return errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                   iou_threshold.shape().DebugString());
+                                   iou_threshold.shape().DebugString(),
+                                   " (Shape must be rank 0 but is rank ",
+                                   iou_threshold.dims(), ")");
   }
   const float iou_threshold_val = iou_threshold.scalar<float>()();
   if (iou_threshold_val < 0 || iou_threshold_val > 1) {
     return errors::InvalidArgument("iou_threshold must be in [0, 1]");
   }
   if (boxes.dims() != 2) {
-    return errors::InvalidArgument("boxes must be a rank 2 tensor!");
+    return errors::InvalidArgument(
+        "boxes must be a rank 2 tensor! (Shape must "
+        "be rank 2 but is rank ",
+        boxes.dims(), ")");
   }
   int num_boxes = boxes.dim_size(0);
   if (boxes.dim_size(1) != 4) {
-    return errors::InvalidArgument("boxes must be Nx4");
+    return errors::InvalidArgument(
+        "boxes must be Nx4 (Dimension must be 4 but"
+        " is ",
+        boxes.dim_size(1), ")");
   }
   if (scores.dims() != 1) {
-    return errors::InvalidArgument("scores must be a vector!");
+    return errors::InvalidArgument(
+        "scores must be a vector! (Shape must be "
+        "rank 1 but is rank ",
+        scores.dims(), ")");
   }
   if (scores.dim_size(0) != num_boxes) {
     return errors::InvalidArgument(
-        "scores has incompatible shape");  // message must be exactly this
-                                           // otherwise tests fail!
+        "scores has incompatible shape "        // message must be exactly this
+        "(Dimensions must be equal, but are ",  // otherwise tests fail!
+        num_boxes, " and ", scores.dim_size(0), ")");
   }
   return Status::OK();
 }

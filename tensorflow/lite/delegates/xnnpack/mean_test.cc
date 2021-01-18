@@ -25,7 +25,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(Mean, DISABLED_4DReduceBatch) {
+TEST(Mean, DISABLED_4DReduceBatchSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -42,10 +42,32 @@ TEST(Mean, DISABLED_4DReduceBatch) {
   ReduceTester()
       .InputShape({batch, height, width, channels})
       .Axes({0})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(Mean, DISABLED_4DReduceHeight) {
+TEST(Mean, DISABLED_4DReduceBatchKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  ReduceTester()
+      .InputShape({batch, height, width, channels})
+      .Axes({0})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, DISABLED_4DReduceHeightSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -62,10 +84,32 @@ TEST(Mean, DISABLED_4DReduceHeight) {
   ReduceTester()
       .InputShape({batch, height, width, channels})
       .Axes({1})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(Mean, DISABLED_4DReduceWidth) {
+TEST(Mean, DISABLED_4DReduceHeightKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  ReduceTester()
+      .InputShape({batch, height, width, channels})
+      .Axes({1})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, DISABLED_4DReduceWidthSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -82,10 +126,32 @@ TEST(Mean, DISABLED_4DReduceWidth) {
   ReduceTester()
       .InputShape({batch, height, width, channels})
       .Axes({2})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(Mean, 4DReduceHeightWidth) {
+TEST(Mean, DISABLED_4DReduceWidthKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  ReduceTester()
+      .InputShape({batch, height, width, channels})
+      .Axes({2})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, 4DReduceHeightWidthSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -102,15 +168,44 @@ TEST(Mean, 4DReduceHeightWidth) {
   ReduceTester()
       .InputShape({batch, height, width, channels})
       .Axes({1, 2})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 
   ReduceTester()
       .InputShape({batch, height, width, channels})
       .Axes({2, 1})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(Mean, DISABLED_4DReduceChannels) {
+TEST(Mean, 4DReduceHeightWidthKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  ReduceTester()
+      .InputShape({batch, height, width, channels})
+      .Axes({1, 2})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+
+  ReduceTester()
+      .InputShape({batch, height, width, channels})
+      .Axes({2, 1})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, DISABLED_4DReduceChannelsSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -127,10 +222,32 @@ TEST(Mean, DISABLED_4DReduceChannels) {
   ReduceTester()
       .InputShape({batch, height, width, channels})
       .Axes({3})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(Mean, DISABLED_3DReduceBatch) {
+TEST(Mean, DISABLED_4DReduceChannelsKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  ReduceTester()
+      .InputShape({batch, height, width, channels})
+      .Axes({3})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, DISABLED_3DReduceBatchSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -146,10 +263,31 @@ TEST(Mean, DISABLED_3DReduceBatch) {
   ReduceTester()
       .InputShape({batch, width, channels})
       .Axes({0})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(Mean, DISABLED_3DReduceWidth) {
+TEST(Mean, DISABLED_3DReduceBatchKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  ReduceTester()
+      .InputShape({batch, width, channels})
+      .Axes({0})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, DISABLED_3DReduceWidthSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -165,10 +303,31 @@ TEST(Mean, DISABLED_3DReduceWidth) {
   ReduceTester()
       .InputShape({batch, width, channels})
       .Axes({1})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(Mean, DISABLED_3DReduceChannels) {
+TEST(Mean, DISABLED_3DReduceWidthKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  ReduceTester()
+      .InputShape({batch, width, channels})
+      .Axes({1})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, DISABLED_3DReduceChannelsSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -184,10 +343,31 @@ TEST(Mean, DISABLED_3DReduceChannels) {
   ReduceTester()
       .InputShape({batch, width, channels})
       .Axes({2})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(Mean, DISABLED_2DReduceBatch) {
+TEST(Mean, DISABLED_3DReduceChannelsKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  ReduceTester()
+      .InputShape({batch, width, channels})
+      .Axes({2})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, DISABLED_2DReduceBatchSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -202,10 +382,30 @@ TEST(Mean, DISABLED_2DReduceBatch) {
   ReduceTester()
       .InputShape({batch, channels})
       .Axes({0})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(Mean, DISABLED_2DReduceChannels) {
+TEST(Mean, DISABLED_2DReduceBatchKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto channels = shape_rng();
+
+  ReduceTester()
+      .InputShape({batch, channels})
+      .Axes({0})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, DISABLED_2DReduceChannelsSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -220,10 +420,30 @@ TEST(Mean, DISABLED_2DReduceChannels) {
   ReduceTester()
       .InputShape({batch, channels})
       .Axes({1})
+      .KeepDims(false)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(Mean, DISABLED_1D) {
+TEST(Mean, DISABLED_2DReduceChannelsKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto channels = shape_rng();
+
+  ReduceTester()
+      .InputShape({batch, channels})
+      .Axes({1})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, DISABLED_1DSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -234,8 +454,23 @@ TEST(Mean, DISABLED_1D) {
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   const auto batch = shape_rng();
 
-  ReduceTester().InputShape({batch}).Axes({0}).Test(BuiltinOperator_MEAN,
-                                                    xnnpack_delegate.get());
+  ReduceTester().InputShape({batch}).Axes({0}).KeepDims(false).Test(
+      BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(Mean, DISABLED_1DKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+
+  ReduceTester().InputShape({batch}).Axes({0}).KeepDims(true).Test(
+      BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
 TEST(Mean, MultiThreading) {
@@ -258,6 +493,7 @@ TEST(Mean, MultiThreading) {
   ReduceTester()
       .InputShape({batch, height, width, channels})
       .Axes({1, 2})
+      .KeepDims(true)
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 

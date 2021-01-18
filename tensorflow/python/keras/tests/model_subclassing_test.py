@@ -342,7 +342,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     model(np.ones((3, 4)))  # need to build model first
     print_fn = ToString()
     model.summary(print_fn=print_fn)
-    self.assertTrue('Trainable params: 356' in print_fn.contents)
+    self.assertIn('Trainable params: 356', print_fn.contents)
 
     # Multi-io
     model = model_util.get_multi_io_subclass_model(
@@ -350,7 +350,17 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     model([np.ones((3, 4)), np.ones((3, 4))])  # need to build model first
     print_fn = ToString()
     model.summary(print_fn=print_fn)
-    self.assertTrue('Trainable params: 587' in print_fn.contents)
+    self.assertIn('Trainable params: 587', print_fn.contents)
+
+    # Single-io with unused layer
+    model = testing_utils.SmallSubclassMLP(
+        num_hidden=32, num_classes=4, use_bn=True, use_dp=True)
+    model.unused_layer = keras.layers.Dense(10)
+    model(np.ones((3, 4)))  # need to build model first
+    print_fn = ToString()
+    model.summary(print_fn=print_fn)
+    self.assertIn('Trainable params: 356', print_fn.contents)
+    self.assertIn('0 (unused)', print_fn.contents)
 
   def test_no_dependency(self):
     class Foo(keras.Model):

@@ -20,6 +20,11 @@ message TaskDef {
   int64 task_id = 4;
   int64 job_id = 5;
   ProcessingModeDef processing_mode = 6;
+  // Optional number of consumers. If set, the results of the task will be
+  // provided to consumers round-robin.
+  oneof optional_num_consumers {
+    int64 num_consumers = 7;
+  }
 }
 
 message TaskInfo {

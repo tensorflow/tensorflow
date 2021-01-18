@@ -86,6 +86,6 @@ versions {
 # CHECK-SAME: f = @[[FUNCTION_FOO:[a-zA-Z0-9_]*]]
 
 # Find callee and verify it has the stateful attribute set.
-# CHECK: func @[[FUNCTION_FOO]]
+# CHECK: func private @[[FUNCTION_FOO]]
 # CHECK-SAME: attributes
 # CHECK-SAME: tf.signature.is_stateful

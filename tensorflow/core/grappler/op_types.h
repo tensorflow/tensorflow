@@ -45,6 +45,7 @@ bool IsAtan2(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsBetainc(const NodeDef& node);
 bool IsBiasAdd(const NodeDef& node);
+bool IsBiasAddV2(const NodeDef& node);
 bool IsBiasAddGrad(const NodeDef& node);
 bool IsBitcast(const NodeDef& node);
 bool IsBroadcastTo(const NodeDef& node);

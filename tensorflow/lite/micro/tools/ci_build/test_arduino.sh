@@ -39,4 +39,4 @@ readable_run make -f tensorflow/lite/micro/tools/make/Makefile \
 readable_run tensorflow/lite/micro/tools/ci_build/install_arduino_cli.sh
 
 readable_run tensorflow/lite/micro/tools/ci_build/test_arduino_library.sh \
-  tensorflow/lite/micro/tools/make/gen/arduino_x86_64/prj/tensorflow_lite.zip
+  tensorflow/lite/micro/tools/make/gen/arduino_x86_64_default/prj/tensorflow_lite.zip

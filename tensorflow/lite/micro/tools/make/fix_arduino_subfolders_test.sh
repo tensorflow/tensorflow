@@ -30,7 +30,7 @@ mkdir -p `dirname ${EXAMPLES_SUBDIR_HEADER}`
 touch ${EXAMPLES_SUBDIR_HEADER}
 
 TENSORFLOW_SRC_DIR=${LIBRARY_DIR}/src/
-PERSON_DATA_FILE=${TENSORFLOW_SRC_DIR}tensorflow/lite/micro/tools/make/downloads/person_model_grayscale/person_detect_model_data.cpp
+PERSON_DATA_FILE=${TENSORFLOW_SRC_DIR}tensorflow/lite/micro/tools/make/downloads/person_model_int8/person_detect_model_data.cpp
 mkdir -p `dirname ${PERSON_DATA_FILE}`
 echo '#include "tensorflow/lite/micro/examples/person_detection/person_detect_model_data.h"' > ${PERSON_DATA_FILE}
 mkdir -p ${LIBRARY_DIR}/examples/person_detection

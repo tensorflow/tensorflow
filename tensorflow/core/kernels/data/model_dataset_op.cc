@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -51,7 +52,15 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         input_(input),
         algorithm_(algorithm),
         cpu_budget_(cpu_budget),
-        ram_budget_(ram_budget) {
+        ram_budget_(ram_budget),
+        traceme_metadata_(
+            {{"algorithm", algorithm == model::AutotuneAlgorithm::HILL_CLIMB
+                               ? "hill climb"
+                               : "gradient descent"},
+             {"cpu_budget",
+              strings::Printf("%lld", static_cast<long long>(cpu_budget))},
+             {"ram_budget",
+              strings::Printf("%lldB", static_cast<long long>(ram_budget))}}) {
     input_->Ref();
   }
 
@@ -140,7 +149,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       IteratorContext::Params params(ctx);
       {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(EnsureOptimizeThreadStarted(ctx));
+        TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));
         params.model = model_;
         int64 now_nanos = EnvTime::NowNanos();
         RecordInput(now_nanos);
@@ -174,19 +183,21 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return dataset()->traceme_metadata_;
+    }
+
    private:
-    Status EnsureOptimizeThreadStarted(IteratorContext* ctx)
+    Status EnsureModelThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!model_thread_) {
-        std::shared_ptr<IteratorContext> new_ctx =
-            std::make_shared<IteratorContext>(*ctx);
-        model_thread_ = ctx->StartThread(
-            "tf_data_model", [this, new_ctx]() { ModelThread(new_ctx); });
+        model_thread_ =
+            ctx->StartThread("tf_data_model", [this]() { ModelThread(); });
       }
       return Status::OK();
     }
 
-    void ModelThread(const std::shared_ptr<IteratorContext>& ctx) {
+    void ModelThread() {
       int64 last_optimization_ms = 0;
       int64 optimization_period_ms = 10;
       int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
@@ -208,8 +219,13 @@ class ModelDatasetOp::Dataset : public DatasetBase {
           tf_shared_lock l(mu_);
           model_input_time = SelfInputTime();
         }
+
+        int64 optimization_start_us = EnvTime::NowMicros();
         model_->Optimize(dataset()->algorithm_, cpu_budget_, ram_budget_,
                          /*model_input_time=*/0);
+        VLOG(2) << "Optimized for "
+                << (EnvTime::NowMicros() - optimization_start_us) << " us.";
+
         // Exponentially increase the period of running the optimization
         // until a threshold is reached.
         if (optimization_period_ms != kOptimizationPeriodThresholdMs) {
@@ -259,6 +275,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
   const model::AutotuneAlgorithm algorithm_;
   const int64 cpu_budget_;
   const int64 ram_budget_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)

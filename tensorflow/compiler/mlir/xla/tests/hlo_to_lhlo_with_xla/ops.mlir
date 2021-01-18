@@ -45,6 +45,34 @@ func @main(%value0: tensor<2x2xi32>, %value1: tensor<2x2xi32>) -> tensor<2x2xi32
 
 // CHECK-LABEL: func @main
 // CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xf32>, %value1: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.atan2
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK-NEXT: return
+  %res = "mhlo.atan2"(%value0, %value1) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value: tensor<2x2xf32>) -> tensor<2x2xi32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xi32>
+// CHECK: lmhlo.bitcast_convert
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.bitcast_convert"(%value) : (tensor<2x2xf32>) -> tensor<2x2xi32>
+  return %res : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
 // CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
 func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
@@ -52,6 +80,63 @@ func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK-SAME: %[[ARG0]], %[[VIEW]]
   %res = "mhlo.ceil"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.cbrt
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.cbrt"(%value) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 2
+// CHECK-SAME: %[[ARG3:.*]]: memref<16xi8>
+func @main(%pred: tensor<2x2xf32>, %lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.clamp
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[ARG2]], %[[VIEW]]
+// CHECK-NEXT: return
+  %0 = "mhlo.clamp"(%pred, %lhs, %rhs) : (tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>) -> (tensor<2x2xf32>)
+  return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value: tensor<2x2xi32>) -> tensor<2x2xi32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xi32>
+// CHECK: lmhlo.count_leading_zeros
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.count_leading_zeros"(%value) : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %res : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<4xi8>
+func @main(%value0: tensor<2x2xf32>, %value1: tensor<2x2xf32>) -> tensor<2x2xi1> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<4xi8> to memref<2x2xi1>
+// CHECK: lmhlo.compare
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK-NEXT: return
+  %res = "mhlo.compare"(%value0, %value1) {comparison_direction="GT"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
+  return %res : tensor<2x2xi1>
 }
 
 // -----
@@ -67,6 +152,19 @@ func @main(%value0: tensor<1x2xf32>, %value1: tensor<1x2xf32>) -> tensor<1x2xcom
 // CHECK-NEXT: return
   %res = "mhlo.complex"(%value0, %value1) : (tensor<1x2xf32>, tensor<1x2xf32>) -> (tensor<1x2xcomplex<f32>>)
   return %res : tensor<1x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<8xi8>
+func @main(%value: tensor<2x2xf32>) -> tensor<2x2xf16> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<8xi8> to memref<2x2xf16>
+// CHECK: lmhlo.convert
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.convert"(%value) : (tensor<2x2xf32>) -> tensor<2x2xf16>
+  return %res : tensor<2x2xf16>
 }
 
 // -----
@@ -118,9 +216,81 @@ func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
 func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.exponential_minus_one
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.exponential_minus_one"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.floor
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.floor"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<4xi8>
+func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xi1> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<4xi8> to memref<2x2xi1>
+// CHECK: lmhlo.is_finite
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.is_finite"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xi1>
+  return %res : tensor<2x2xi1>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
 // CHECK: lmhlo.log
 // CHECK-SAME: %[[ARG0]], %[[VIEW]]
   %res = "mhlo.log"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.log_plus_one
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.log_plus_one"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xf32>, %value1: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.map
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK: return
+  %res = "mhlo.map"(%value0, %value1) ({
+  ^bb0(%a: tensor<f32>, %b: tensor<f32>):
+    %c = "mhlo.add"(%a, %b) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %ret = "mhlo.add"(%a, %c) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    "mhlo.return"(%ret) : (tensor<f32>) -> ()
+  }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %res : tensor<2x2xf32>
 }
 
@@ -185,6 +355,90 @@ func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi1> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<4xi8>
+func @main(%value0: tensor<2x2xi1>) -> tensor<2x2xi1> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<4xi8> to memref<2x2xi1>
+// CHECK: lmhlo.not
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.not"(%value0) : (tensor<2x2xi1>) -> tensor<2x2xi1>
+  return %res : tensor<2x2xi1>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xi32>
+// CHECK: lmhlo.not
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.not"(%value0) : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %res : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi1> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xi1> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<4xi8>
+func @main(%value0: tensor<2x2xi1>, %value1: tensor<2x2xi1>) -> tensor<2x2xi1> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<4xi8> to memref<2x2xi1>
+// CHECK: lmhlo.or
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK-NEXT: return
+  %res = "mhlo.or"(%value0, %value1) : (tensor<2x2xi1>, tensor<2x2xi1>) -> tensor<2x2xi1>
+  return %res : tensor<2x2xi1>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xi32>, %value1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xi32>
+// CHECK: lmhlo.or
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK-NEXT: return
+  %res = "mhlo.or"(%value0, %value1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %res : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xi32>
+// CHECK: lmhlo.popcnt
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.popcnt"(%value0) : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %res : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xf32>, %value1: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.power
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK-NEXT: return
+  %res = "mhlo.power"(%value0, %value1) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
 // CHECK-SAME: %[[ARG0:.*]]: memref<1x2xcomplex<f32>> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
 // CHECK-SAME: %[[ARG1:.*]]: memref<8xi8>
 func @main(%value0: tensor<1x2xcomplex<f32>>) -> tensor<1x2xf32> {
@@ -211,6 +465,19 @@ func @main(%value0: tensor<1x2xcomplex<f32>>) -> tensor<1x2xf32> {
 // -----
 
 // CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.reduce_precision
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.reduce_precision"(%value0) {exponent_bits=5 : i32, mantissa_bits=12 : i32}: (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
 // CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
 // CHECK-SAME: %[[ARG1:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
 // CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
@@ -221,6 +488,19 @@ func @main(%value0: tensor<2x2xi32>, %value1: tensor<2x2xi32>) -> tensor<2x2xi32
 // CHECK-NEXT: return
   %res = "mhlo.remainder"(%value0, %value1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   return %res : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.round_nearest_afz
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.round_nearest_afz"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %res : tensor<2x2xf32>
 }
 
 // -----
@@ -255,6 +535,51 @@ func @main(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) 
 // -----
 
 // CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xi32>, %value1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xi32>
+// CHECK: lmhlo.shift_left
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK-NEXT: return
+  %res = "mhlo.shift_left"(%value0, %value1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %res : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xi32>, %value1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xi32>
+// CHECK: lmhlo.shift_right_arithmetic
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK-NEXT: return
+  %res = "mhlo.shift_right_arithmetic"(%value0, %value1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %res : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xi32>, %value1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xi32>
+// CHECK: lmhlo.shift_right_logical
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK-NEXT: return
+  %res = "mhlo.shift_right_logical"(%value0, %value1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %res : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
 // CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
 // CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
 func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -262,6 +587,19 @@ func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK: lmhlo.sign
 // CHECK-SAME: %[[ARG0]], %[[VIEW]]
   %res = "mhlo.sign"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xf32>
+// CHECK: lmhlo.sine
+// CHECK-SAME: %[[ARG0]], %[[VIEW]]
+  %res = "mhlo.sine"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %res : tensor<2x2xf32>
 }
 
@@ -304,6 +642,36 @@ func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK-SAME: %[[ARG0]], %[[VIEW]]
   %res = "mhlo.tanh"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %res : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi1> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xi1> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<4xi8>
+func @main(%value0: tensor<2x2xi1>, %value1: tensor<2x2xi1>) -> tensor<2x2xi1> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<4xi8> to memref<2x2xi1>
+// CHECK: lmhlo.xor
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK-NEXT: return
+  %res = "mhlo.xor"(%value0, %value1) : (tensor<2x2xi1>, tensor<2x2xi1>) -> tensor<2x2xi1>
+  return %res : tensor<2x2xi1>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<2x2xi32> {lmhlo.alloc = {{[0-9]+}} : index, lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
+func @main(%value0: tensor<2x2xi32>, %value1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+// CHECK: %[[VIEW:.*]] = {{.*}} memref<16xi8> to memref<2x2xi32>
+// CHECK: lmhlo.xor
+// CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[VIEW]]
+// CHECK-NEXT: return
+  %res = "mhlo.xor"(%value0, %value1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %res : tensor<2x2xi32>
 }
 
 // -----
@@ -373,4 +741,24 @@ func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tensor<f3
     }) { fusion_kind = "kLoop" } : (tuple<tuple<tensor<f32>>, tensor<f32>>, tuple<tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
 
   return %result : tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK:   "lmhlo.reduce"({{.*}}) ( {
+// CHECK:   ^bb0(%[[VAL1:.*]]: tensor<f32>, %[[VAL2:.*]]: tensor<i32>, %[[VAL3:.*]]: tensor<f32>, %[[VAL4:.*]]: tensor<i32>):  // no predecessors
+// CHECK:     %[[VAL5:.*]] = mhlo.maximum %[[VAL1]], %[[VAL3]] : tensor<f32>
+// CHECK:     %[[VAL6:.*]] = mhlo.maximum %[[VAL2]], %[[VAL4:.*]] : tensor<i32>
+// CHECK:     %[[VAL7:.*]] = "mhlo.tuple"(%[[VAL5]], %[[VAL6:.*]]) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+// CHECK:     "mhlo.return"(%[[VAL7:.*]]) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+// CHECK:   })
+func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f32>, %arg3 : tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>) {
+  %result0, %result1 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ( {
+    ^bb0(%fa: tensor<f32>, %ia : tensor<i32>, %fb: tensor<f32>, %ib: tensor<i32>):   // no predecessors
+      %fmax = "mhlo.maximum"(%fa, %fb) {} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      %imax = "mhlo.maximum"(%ia, %ib) {} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "mhlo.return"(%fmax, %imax) : (tensor<f32>, tensor<i32>) -> ()
+    }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x10xf32>, tensor<1x10xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
+  return %result0, %result1 : tensor<1xf32>, tensor<1xi32>
 }

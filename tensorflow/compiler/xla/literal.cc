@@ -57,14 +57,14 @@ constexpr int kMinimumAlignment = 64;
 //
 // Precondition: size % 2 == 0 (elements in the array are 16 bits long)
 void ConvertEndianShort(string* bytes) {
-  CHECK_EQ(bytes->size() / 2, 0);
+  CHECK_EQ(bytes->size() % 2, 0);
   for (int64 i = 0, end = bytes->size(); i < end; i += 2) {
     std::swap((*bytes)[i], (*bytes)[i + 1]);
   }
 }
 
 void ConvertEndianShort(char* bytes, int64 size) {
-  CHECK_EQ(size / 2, 0);
+  CHECK_EQ(size % 2, 0);
   for (int64 i = 0; i < size; i += 2) {
     std::swap(bytes[i], bytes[i + 1]);
   }

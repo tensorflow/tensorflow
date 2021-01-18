@@ -15,7 +15,7 @@ py_library(
         "client.py",
         "version.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "@six_archive//:six",
     ],
@@ -26,7 +26,7 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":client",
         "@six_archive//:six",
@@ -43,7 +43,6 @@ tf_py_test(
     tags = [
         "no_oss_py2",
     ],
-    tfrt_enabled = True,
     deps = [
         ":client",
         "//tensorflow/python:client_testlib",

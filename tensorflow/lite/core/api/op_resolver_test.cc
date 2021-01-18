@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstring>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 
 namespace tflite {
 namespace {

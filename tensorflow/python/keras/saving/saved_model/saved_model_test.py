@@ -26,7 +26,6 @@ from __future__ import print_function
 
 import os
 import shutil
-import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -83,6 +82,10 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
 
   def compute_output_shape(self, input_shape):
     return input_shape
+
+  @property
+  def _use_input_spec_as_call_signature(self):
+    return True
 
 
 class LayerWithLoss(keras.layers.Layer):
@@ -327,6 +330,10 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
             'a': keras.layers.InputSpec(max_ndim=3, axes={-1: 2}),
             'b': keras.layers.InputSpec(shape=(None, 2, 3), dtype='float16')}
 
+      @property
+      def _use_input_spec_as_call_signature(self):
+        return True
+
     layer = LayerWithNestedSpec()
     saved_model_dir = self._save_model_dir()
     tf_save.save(layer, saved_model_dir)
@@ -411,14 +418,16 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     self.evaluate(variables.variables_initializer(model.variables))
     saved_model_dir = self._save_model_dir()
 
-    with self.captureWritesToStream(sys.stderr) as captured_logs:
-      model.save(saved_model_dir, save_format='tf')
-      loaded = keras_load.load(saved_model_dir)
+    # TODO(kathywu): Re-enable this check after removing the tf.saved_model.save
+    # metadata warning.
+    # with self.captureWritesToStream(sys.stderr) as captured_logs:
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
 
     # Assert that saving does not log deprecation warnings
     # (even if it needs to set learning phase for compat reasons)
-    if context.executing_eagerly():
-      self.assertNotIn('deprecated', captured_logs.contents())
+    # if context.executing_eagerly():
+    #   self.assertNotIn('deprecated', captured_logs.contents())
 
     input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
     input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
@@ -736,8 +745,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
                         predictions)
 
   @parameterized.named_parameters([
-      # TODO(b/148491963): Unrolling does not work with SavedModel
-      # ('with_unrolling', True),
+      ('with_unrolling', True),
       ('no_unrolling', False)
   ])
   def testSaveStatefulRNN(self, unroll):
@@ -880,6 +888,10 @@ class TestSavedModelFormat(test.TestCase):
 
       def get_config(self):
         return {}
+
+      @property
+      def _use_input_spec_as_call_signature(self):
+        return True
 
     root = keras.models.Sequential()
     root.add(keras.layers.Input(shape=(3,)))
@@ -1146,6 +1158,22 @@ class MetricTest(test.TestCase, parameterized.TestCase):
     with generic_utils.CustomObjectScope({'NegativeMean': NegativeMean}):
       self._test_metric_save_and_load(
           metric, self._save_model_dir(), 1, test_sample_weight=False)
+
+  @keras_parameterized.run_with_all_model_types
+  def test_custom_metric_model(self):
+
+    class CustomMetric(keras.metrics.MeanSquaredError):
+      pass
+
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    model.compile(loss='mse', optimizer='rmsprop', metrics=[CustomMetric()])
+
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+    with self.assertRaisesRegex(ValueError, 'custom_objects'):
+      keras_load.load(saved_model_dir)
+
+    keras_load.load(saved_model_dir, compile=False)
 
 
 if __name__ == '__main__':

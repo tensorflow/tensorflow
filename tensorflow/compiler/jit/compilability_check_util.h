@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -62,6 +62,7 @@ class RecursiveCompilabilityChecker {
   struct StackFrame {
     std::string name;
     std::string function_name;
+    std::shared_ptr<AbstractStackTrace> stack_trace;
   };
 
   // Contains information about uncompilable node inside a function body.
@@ -128,6 +129,9 @@ class RecursiveCompilabilityChecker {
     // Require the function to be always compilable, regardless whether some
     // control flow branches might be dead for a given input.
     bool require_always_compilable = false;
+
+    // Whether string constants are compilable.
+    bool allow_string_consts = true;
   };
 
   RecursiveCompilabilityChecker(OperationFilter op_filter,
@@ -193,6 +197,7 @@ class RecursiveCompilabilityChecker {
   struct StackFrameView {
     absl::string_view name;
     absl::string_view function_name;
+    std::shared_ptr<AbstractStackTrace> stack_trace;
   };
 
   bool IsCompilableNode(
@@ -270,7 +275,7 @@ class RecursiveCompilabilityChecker {
       UncompilableNodesMap* uncompilable_nodes_map);
 
   // Make sure we don't recurse infinitely on recursive functions.
-  const size_t kMaxRecursionDepth = 10;
+  const size_t kMaxRecursionDepth = 50;
 
   const OperationFilter op_filter_;
   const DeviceType jit_device_type_;

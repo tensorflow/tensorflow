@@ -1,5 +1,5 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 package(
@@ -12,8 +12,6 @@ package(
 exports_files([
     "logging.h",
 ])
-
-common_copts = ["-Wall"]
 
 py_binary(
     name = "visualize",
@@ -52,8 +50,9 @@ py_binary(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -80,7 +79,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -91,7 +91,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -102,16 +103,18 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
 py_library(
     name = "flatbuffer_utils",
     srcs = ["flatbuffer_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
+        "//tensorflow/python/platform",
         "@flatbuffers//:runtime_py",
     ],
 )
@@ -135,7 +138,7 @@ py_test(
 py_library(
     name = "test_utils",
     srcs = ["test_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
         "@flatbuffers//:runtime_py",
@@ -220,8 +223,8 @@ cc_test(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -231,7 +234,7 @@ cc_test(
 cc_library(
     name = "logging",
     hdrs = ["logging.h"],
-    copts = common_copts,
+    copts = tflite_copts_warnings(),
 )
 
 cc_library(

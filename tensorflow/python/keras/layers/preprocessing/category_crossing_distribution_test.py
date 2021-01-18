@@ -23,12 +23,12 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
-from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
 from tensorflow.python.keras.layers.preprocessing import category_crossing
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.platform import test
@@ -49,7 +49,7 @@ def batch_wrapper(dataset, batch_size, distribution, repeat=None):
 @ds_combinations.generate(
     combinations.combine(
         # Investigate why crossing is not supported with TPU.
-        distribution=strategy_combinations.all_strategies,
+        distribution=all_strategies,
         mode=['eager', 'graph']))
 class CategoryCrossingDistributionTest(
     keras_parameterized.TestCase,

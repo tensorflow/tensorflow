@@ -22,6 +22,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::StartsWith;
+using ::testing::StrEq;
+
 class HloMetadataTest : public LocalClientTestBase {
  protected:
   HloMetadataTest() {
@@ -79,9 +82,8 @@ TEST_F(HloMetadataTest, MetadataClearing) {
                          ->module()
                          .entry_computation()
                          ->root_instruction();
-  // We expect these to be empty (no metadata set).
-  EXPECT_EQ("", instruction->metadata().op_type());
-  EXPECT_EQ("", instruction->metadata().op_name());
+  EXPECT_THAT(instruction->metadata().op_type(), StrEq(""));
+  EXPECT_THAT(instruction->metadata().op_name(), StartsWith("DUMMY"));
 }
 
 }  // namespace

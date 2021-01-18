@@ -30,8 +30,13 @@ REGISTER(BinaryOp, CPU, "Sub", functor::sub, int32);
 #endif  // __ANDROID_TYPES_SLIM__
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER7(BinaryOp, GPU, "Sub", functor::sub, float, Eigen::half, double, int64,
           complex64, complex128, uint32);
+#else
+REGISTER3(BinaryOp, GPU, "Sub", functor::sub, complex64, complex128, uint32);
+#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

@@ -24,9 +24,6 @@ limitations under the License.
 // NEON_2_SSE translator library. If a native SSE version of a function is
 // implemented, replace the appropriate one to SSE_OR_PORTABLE.
 
-// TODO(ghodrat): Remove this header file and the dependency to internal data
-// structure.
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
@@ -232,18 +229,13 @@ void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
                                              const int16_t* batch_vector,
                                              int n_batch, int32_t multiplier,
                                              int shift, int16_t* result) {
-  PortableVectorBatchVectorCwiseProductAccumulate(
-      vector, v_size, batch_vector, n_batch, multiplier, shift, result);
+  NEON_OR_PORTABLE(VectorBatchVectorCwiseProductAccumulate, vector, v_size,
+                   batch_vector, n_batch, multiplier, shift, result);
 }
 
 float VectorVectorDotProduct(const float* vector1, const float* vector2,
                              int v_size) {
   return NEON_OR_PORTABLE(VectorVectorDotProduct, vector1, vector2, v_size);
-}
-
-void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                          float* batch_vector) {
-  PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
 }
 
 void Sub1Vector(const float* vector, int v_size, float* result) {

@@ -113,6 +113,8 @@ bool IsBiasAdd(const NodeDef& node) {
   return node.op() == "BiasAdd" || node.op() == "BiasAddV1";
 }
 
+bool IsBiasAddV2(const NodeDef& node) { return node.op() == "BiasAdd"; }
+
 bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }

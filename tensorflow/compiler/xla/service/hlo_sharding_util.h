@@ -19,6 +19,7 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -28,6 +29,12 @@ limitations under the License.
 
 namespace xla {
 namespace hlo_sharding_util {
+
+struct GatherParallelDims {
+  absl::InlinedVector<int64, 1> indices_parallel_dims;
+  absl::InlinedVector<int64, 1> operand_parallel_dims;
+  std::vector<int64> index_parallel_in_dim;
+};
 
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the
@@ -180,6 +187,21 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
 absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
     const HloSharding& source, absl::Span<int64 const> src_to_tgt,
     absl::Span<int64 const> tgt_to_src);
+
+// Returns identified parallel dimensions for Gather.
+absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
+    const HloInstruction& hlo);
+
+// Returns the parallel dimensions of the output of a gather based on the
+// parallel dimensions of the input.
+absl::InlinedVector<int64, 1> GatherParallelOutputDims(
+    const HloInstruction& gather, const GatherParallelDims& parallel_dim);
+
+// Returns the parallel dimensions of the data operand of a gather with the
+// order of the parallel dimensions matching that of the parallel dimensions
+// of the output.
+absl::InlinedVector<int64, 1> GatherOutputAlignedOperandParallelDims(
+    const HloInstruction& gather, const GatherParallelDims& parallel_dims);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

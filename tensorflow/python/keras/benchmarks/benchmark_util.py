@@ -25,6 +25,55 @@ import tensorflow as tf
 from tensorflow.python.keras.benchmarks import distribution_util
 
 
+def get_benchmark_name(name):
+  """Split the suffix of the benchmark name.
+
+  For example, for the name = 'benchmark_layer_call__Conv2D_small_shape',
+  the return value is ['Conv2D', 'small', 'shape'].
+
+  This is to generate the metadata of the benchmark test.
+
+  Args:
+    name: A string, the benchmark name.
+
+  Returns:
+    A list of strings of the suffix in the benchmark name.
+  """
+  if '__' not in name or '_' not in name:
+    raise ValueError('The format of the benchmark name is wrong.')
+  return name.split('__')[-1].split('_')
+
+
+def generate_benchmark_params_cpu_gpu(*params_list):
+  """Extend the benchmark names with CPU and GPU suffix.
+
+  Args:
+    *params_list: A list of tuples represents the benchmark parameters.
+
+  Returns:
+    A list of strings with the benchmark name extended with CPU and GPU suffix.
+  """
+  benchmark_params = []
+  for params in params_list:
+    benchmark_params.extend([
+        ((param[0] + '_CPU',) + param[1:]) for param in params
+    ])
+    benchmark_params.extend([
+        ((param[0] + '_GPU',) + param[1:]) for param in params
+    ])
+  return benchmark_params
+
+
+def get_keras_examples_metadata(keras_model,
+                                batch_size,
+                                impl='.keras.cfit_graph'):
+  return {
+      'model_name': 'keras_examples',
+      'implementation': keras_model + impl,
+      'parameters': 'bs_' + str(batch_size),
+  }
+
+
 class TimerCallBack(tf.keras.callbacks.Callback):
   """Callback for logging time in each epoch or batch."""
 
@@ -60,7 +109,7 @@ def measure_performance(model_fn,
                         distribution_strategy='off'):
   """Run models and measure the performance.
 
-  Arguments:
+  Args:
     model_fn: Model function to be benchmarked.
     x: Input data. See `x` in the `fit()` method of `keras.Model`.
     y: Target data. See `y` in the `fit()` method of `keras.Model`.

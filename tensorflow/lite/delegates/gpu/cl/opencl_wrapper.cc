@@ -69,13 +69,7 @@ absl::Status LoadOpenCL() {
         error_code));
   }
 #else
-  void* libopencl = dlopen("libOpenCL.so", RTLD_NOW | RTLD_LOCAL);
-  if (libopencl) {
-    LoadOpenCLFunctions(libopencl, false);
-    return absl::OkStatus();
-  }
-  // record error
-  std::string error(dlerror());
+  void* libopencl = nullptr;
 #ifdef __ANDROID__
   // Pixel phone or auto?
   libopencl = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
@@ -91,6 +85,13 @@ absl::Status LoadOpenCL() {
     return absl::OkStatus();
   }
 #endif
+  libopencl = dlopen("libOpenCL.so", RTLD_NOW | RTLD_LOCAL);
+  if (libopencl) {
+    LoadOpenCLFunctions(libopencl, false);
+    return absl::OkStatus();
+  }
+  // record error
+  std::string error(dlerror());
   return absl::UnknownError(
       absl::StrCat("Can not open OpenCL library on this device - ", error));
 #endif
