@@ -4286,6 +4286,7 @@ cc_library(
         ":decode_csv_op",
         ":decode_padded_raw_op",
         ":decode_raw_op",
+        ":encode_raw_op",
         ":example_parsing_ops",
         ":parse_tensor_op",
         ":string_to_number_op",
@@ -4324,6 +4325,12 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:lib_internal",
     ] + PARSING_DEPS,
+)
+
+tf_kernel_library(
+    name = "encode_raw_op",
+    prefix = "encode_raw_op",
+    deps = PARSING_DEPS,
 )
 
 tf_kernel_library(

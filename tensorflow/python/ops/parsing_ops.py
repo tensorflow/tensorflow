@@ -884,6 +884,24 @@ def decode_raw(input_bytes,
         input_bytes, out_type, little_endian=little_endian, name=name)
 
 
+@tf_export("io.encode_raw", v1=[])
+@dispatch.add_dispatch_support
+def encode_raw(tensor, name=None):
+  """Convert tensor into raw byte strings.
+
+  Args:
+    tensor:
+      The tensor to encode. The first dimension of the tensor will be
+      regard as batch dimension and it will be converted into a batch of
+      string tensor.
+    name: A name for the operation (optional).
+
+  Returns:
+    Each element of the input Tensor is converted to an array of bytes.
+  """
+  return gen_parsing_ops.encode_raw(tensor, name=name)
+
+
 @tf_export(v1=["decode_raw", "io.decode_raw"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,

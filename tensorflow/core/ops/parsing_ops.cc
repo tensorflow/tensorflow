@@ -111,6 +111,18 @@ REGISTER_OP("DecodeRaw")
       return Status::OK();
     });
 
+REGISTER_OP("EncodeRaw")
+    .Input("tensor: dtype")
+    .Output("output: string")
+    .Attr("dtype: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle in, out;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &in));
+      TF_RETURN_IF_ERROR(c->Subshape(in, 0, 1, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    });
+
 REGISTER_OP("DecodePaddedRaw")
     .Input("input_bytes: string")
     .Input("fixed_length: int32")
