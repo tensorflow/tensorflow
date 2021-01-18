@@ -131,7 +131,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
-}
+}  // namespace
 
 TfLiteRegistration* Register_CAST() {
   static TfLiteRegistration r = {nullptr, nullptr, cast::Prepare, cast::Eval};
