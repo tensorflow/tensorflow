@@ -283,9 +283,9 @@ class PartitionedHlo {
   // unevenly partitioned dimensions are padded on the right, but this function
   // allows specifying left-padded dimensions, which can be used during the
   // handling of kReverse, etc.
-  PartitionedHlo PadWithValue(
-      HloInstruction* pad_value,
-      absl::Span<const int64> left_padded_dims = {}) const;
+  PartitionedHlo PadWithValue(HloInstruction* pad_value,
+                              absl::Span<const int64> left_padded_dims = {},
+                              absl::Span<const int64> skipped_dims = {}) const;
 
   // Returns the SPMD instruction.
   HloInstruction* hlo() const { return hlo_; }
@@ -336,6 +336,10 @@ class PartitionedHlo {
 
   // Helper function to reshard from partial replicate using DynamicSlice.
   absl::optional<PartitionedHlo> ReshardFromPartialReplicateWithDynamicSlice(
+      const HloSharding& target);
+
+  // Helper function to reshard from partial replicate using AllToAll.
+  absl::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
       const HloSharding& target);
 
   // SPMD instruction.
@@ -474,6 +478,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     int64 windowed_operand;
     bool windowed_in_contracting_dims;
     bool windowed_in_batch_dims;
+    bool operands_sharded_at_contracting_dims;
   };
 
  private:
@@ -510,6 +515,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   SpmdLogger* logger_;
   const SpmdPartitionerOptions options_;
   SpmdPartitioner* partitioner_;
+  std::vector<HloSharding> visiting_hlo_operand_shardings_;
+  absl::optional<HloSharding> visiting_hlo_sharding_;
 };
 
 }  // namespace spmd

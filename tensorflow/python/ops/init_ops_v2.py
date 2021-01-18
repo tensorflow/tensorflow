@@ -12,19 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Operations often used for initializing tensors.
-
-All variable initializers returned by functions in this file should have the
-following signature:
-
-def _initializer(shape, dtype=dtypes.float32):
-  Args:
-    shape: List of `int` representing the shape of the output `Tensor`. Some
-      initializers may also be able to accept a `Tensor`.
-    dtype: (Optional) Type of the output `Tensor`.
-  Returns:
-    A `Tensor` of type `dtype` and `shape`.
-"""
+"""Initializers for TF 2."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -44,18 +32,40 @@ from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops.init_ops import _compute_fans
 from tensorflow.python.util.tf_export import tf_export
 
+_PARTITION_SHAPE = "partition_shape"
+_PARTITION_OFFSET = "partition_offset"
+
 
 class Initializer(object):
   """Initializer base class: all initializers inherit from this class.
+
+  Initializers should implement a `__call__` method with the following
+  signature:
+
+  ```python
+  def __call__(self, shape, dtype=None, **kwargs):
+    # returns a tensor of shape `shape` and dtype `dtype`
+    # containing values drawn from a distribution of your choice.
+  ```
   """
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. If not provided will return tensor
-       of `tf.float32`.
+        of `tf.float32`.
+      **kwargs: Additional keyword arguments. Accepted values:
+        `partition_shape` and `partition_offset`. Used when creating a single
+        partition in a partitioned variable. `partition_shape` is the shape of
+        the partition (i.e. the shape of the returned tensor) and
+        `partition_offset` is a tuple of `int` specifying the offset of this
+        partition w.r.t each axis. For example, a tensor of shape `(30, 100)`
+        can be partitioned into two partitions: `p0` of shape `(10, 100)` and
+        `p1` of shape `(20, 100)`; if the initializer is called with
+        `partition_shape=(20, 100)` and `partition_offset=(10, 0)`, it should
+        return the value for `p1`.
     """
     raise NotImplementedError
 
@@ -89,6 +99,14 @@ class Initializer(object):
     config.pop("dtype", None)
     return cls(**config)
 
+  def _validate_kwargs(self, kwargs, support_partition=True):
+    for kwarg in kwargs:
+      if kwarg not in [_PARTITION_SHAPE, _PARTITION_OFFSET]:
+        raise TypeError("Unknown keyword arguments: %s" % kwarg)
+      elif not support_partition:
+        raise ValueError("%s initializer doesn't support partition-related"
+                         " arguments" % self.__class__.__name__)
+
 
 @tf_export("zeros_initializer", v1=[])
 class Zeros(Initializer):
@@ -115,20 +133,24 @@ class Zeros(Initializer):
   (<tf.Variable...shape=(4,) dtype=float32...>, <tf.Variable...shape=(4, 4) ...
   """
 
-  def __call__(self, shape, dtype=dtypes.float32):
+  def __call__(self, shape, dtype=dtypes.float32, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only numeric or boolean dtypes are
        supported.
+      **kwargs: Additional keyword arguments.
 
     Raises:
       ValuesError: If the dtype is not numeric or boolean.
     """
+    self._validate_kwargs(kwargs)
     dtype = dtypes.as_dtype(dtype)
     if not dtype.is_numpy_compatible or dtype == dtypes.string:
       raise ValueError("Expected numeric or boolean dtype, got %s." % dtype)
+    if _PARTITION_SHAPE in kwargs:
+      shape = kwargs[_PARTITION_SHAPE]
     return array_ops.zeros(shape, dtype)
 
 
@@ -157,20 +179,24 @@ class Ones(Initializer):
   (<tf.Variable...shape=(4,) dtype=float32...>, <tf.Variable...shape=(4, 4) ...
   """
 
-  def __call__(self, shape, dtype=dtypes.float32):
+  def __call__(self, shape, dtype=dtypes.float32, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only numeric or boolean dtypes are
-       supported.
+        supported.
+      **kwargs: Additional keyword arguments.
 
     Raises:
       ValuesError: If the dtype is not numeric or boolean.
     """
+    self._validate_kwargs(kwargs)
     dtype = dtypes.as_dtype(dtype)
     if not dtype.is_numpy_compatible or dtype == dtypes.string:
       raise ValueError("Expected numeric or boolean dtype, got %s." % dtype)
+    if _PARTITION_SHAPE in kwargs:
+      shape = kwargs[_PARTITION_SHAPE]
     return array_ops.ones(shape, dtype)
 
 
@@ -245,22 +271,23 @@ class Constant(Initializer):
           "tuple of values, or numpy.ndarray)." % type(value))
     self.value = value
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. If not provided the dtype of the
-       tensor created will be the type of the inital value.
+        tensor created will be the type of the inital value.
+      **kwargs: Additional keyword arguments.
 
     Raises:
       TypeError: If the initializer cannot create a tensor of the requested
        dtype.
     """
+    self._validate_kwargs(kwargs, support_partition=False)
     if dtype is not None:
       dtype = dtypes.as_dtype(dtype)
-    return constant_op.constant(
-        self.value, dtype=dtype, shape=shape)
+    return constant_op.constant(self.value, dtype=dtype, shape=shape)
 
   def get_config(self):
     return {"value": self.value}
@@ -305,20 +332,24 @@ class RandomUniform(Initializer):
     self.seed = seed
     self._random_generator = _RandomGenerator(seed)
 
-  def __call__(self, shape, dtype=dtypes.float32):
+  def __call__(self, shape, dtype=dtypes.float32, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only floating point and integer
-      types are supported.
+        types are supported.
+      **kwargs: Additional keyword arguments.
 
     Raises:
       ValueError: If the dtype is not numeric.
     """
+    self._validate_kwargs(kwargs)
     dtype = dtypes.as_dtype(dtype)
     if not dtype.is_floating and not dtype.is_integer:
       raise ValueError("Expected float or integer dtype, got %s." % dtype)
+    if _PARTITION_SHAPE in kwargs:
+      shape = kwargs[_PARTITION_SHAPE]
     return self._random_generator.random_uniform(shape, self.minval,
                                                  self.maxval, dtype)
 
@@ -369,18 +400,22 @@ class RandomNormal(Initializer):
     self.seed = seed
     self._random_generator = _RandomGenerator(seed)
 
-  def __call__(self, shape, dtype=dtypes.float32):
+  def __call__(self, shape, dtype=dtypes.float32, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only floating point types are
-       supported.
+        supported.
+      **kwargs: Additional keyword arguments.
 
     Raises:
       ValueError: If the dtype is not floating point
     """
+    self._validate_kwargs(kwargs)
     dtype = _assert_float_dtype(dtype)
+    if _PARTITION_SHAPE in kwargs:
+      shape = kwargs[_PARTITION_SHAPE]
     return self._random_generator.random_normal(shape, self.mean, self.stddev,
                                                 dtype)
 
@@ -434,18 +469,22 @@ class TruncatedNormal(Initializer):
     self.seed = seed
     self._random_generator = _RandomGenerator(seed)
 
-  def __call__(self, shape, dtype=dtypes.float32):
+  def __call__(self, shape, dtype=dtypes.float32, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only floating point types are
-       supported.
+        supported.
+      **kwargs: Additional keyword arguments.
 
     Raises:
       ValueError: If the dtype is not floating point
     """
+    self._validate_kwargs(kwargs)
     dtype = _assert_float_dtype(dtype)
+    if _PARTITION_SHAPE in kwargs:
+      shape = kwargs[_PARTITION_SHAPE]
     return self._random_generator.truncated_normal(shape, self.mean,
                                                    self.stddev, dtype)
 
@@ -525,24 +564,24 @@ class VarianceScaling(Initializer):
     self.seed = seed
     self._random_generator = _RandomGenerator(seed)
 
-  def __call__(self, shape, dtype=dtypes.float32):
+  def __call__(self, shape, dtype=dtypes.float32, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only floating point types are
-       supported.
+        supported.
+      **kwargs: Additional keyword arguments.
 
     Raises:
       ValueError: If the dtype is not floating point
     """
-    partition_info = None  # Keeps logic so can be readded later if necessary
+    self._validate_kwargs(kwargs)
     dtype = _assert_float_dtype(dtype)
     scale = self.scale
-    scale_shape = shape
-    if partition_info is not None:
-      scale_shape = partition_info.full_shape
-    fan_in, fan_out = _compute_fans(scale_shape)
+    fan_in, fan_out = _compute_fans(shape)
+    if _PARTITION_SHAPE in kwargs:
+      shape = kwargs[_PARTITION_SHAPE]
     if self.mode == "fan_in":
       scale /= max(1., fan_in)
     elif self.mode == "fan_out":
@@ -616,18 +655,20 @@ class Orthogonal(Initializer):
     self.seed = seed
     self._random_generator = _RandomGenerator(seed)
 
-  def __call__(self, shape, dtype=dtypes.float32):
+  def __call__(self, shape, dtype=dtypes.float32, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only floating point types are
         supported.
+      **kwargs: Additional keyword arguments.
 
     Raises:
       ValueError: If the dtype is not floating point or the input shape is not
        valid.
     """
+    self._validate_kwargs(kwargs, support_partition=False)
     dtype = _assert_float_dtype(dtype)
     # Check the shape
     if len(shape) < 2:
@@ -686,28 +727,25 @@ class Identity(Initializer):
   def __init__(self, gain=1.0):
     self.gain = gain
 
-  def __call__(self, shape, dtype=dtypes.float32):
+  def __call__(self, shape, dtype=dtypes.float32, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only floating point types are
        supported.
+      **kwargs: Additional keyword arguments.
 
     Raises:
       ValueError: If the dtype is not floating point
       ValueError: If the requested shape does not have exactly two axes.
     """
-    partition_info = None  # Keeps logic so can be readded later if necessary
+    self._validate_kwargs(kwargs, support_partition=False)
     dtype = _assert_float_dtype(dtype)
-    full_shape = shape if partition_info is None else partition_info.full_shape
-    if len(full_shape) != 2:
+    if len(shape) != 2:
       raise ValueError(
           "Identity matrix initializer can only be used for 2D matrices.")
-    initializer = linalg_ops_impl.eye(*full_shape, dtype=dtype)
-    if partition_info is not None:
-      initializer = array_ops.slice(initializer, partition_info.var_offset,
-                                    shape)
+    initializer = linalg_ops_impl.eye(*shape, dtype=dtype)
     return self.gain * initializer
 
   def get_config(self):
@@ -848,7 +886,7 @@ def lecun_normal(seed=None):
   (<tf.Variable ... shape=(4, 4) dtype=float32...
    <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:
@@ -893,7 +931,7 @@ def lecun_uniform(seed=None):
   (<tf.Variable ... shape=(4, 4) dtype=float32...
    <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:
@@ -936,7 +974,7 @@ def he_normal(seed=None):
   (<tf.Variable ... shape=(4, 4) dtype=float32...
    <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:
@@ -976,7 +1014,7 @@ def he_uniform(seed=None):
   (<tf.Variable ... shape=(4, 4) dtype=float32...
    <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:

@@ -25,15 +25,11 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/macros.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
-
-// Forward declare since NNAPIDelegate uses Interpreter.
-class NNAPIDelegate;
 
 class Subgraph {
  public:
@@ -115,11 +111,15 @@ class Subgraph {
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
-      bool is_variable = false, const size_t rank_dims_signature = 0,
-      const int* dims_signature = nullptr) {
-    return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
-                                        dims.data(), quantization, is_variable,
-                                        rank_dims_signature, dims_signature);
+      bool is_variable = false, const std::vector<int>& dims_signature = {}) {
+    if (dims_signature.empty()) {
+      return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
+                                          dims.data(), quantization,
+                                          is_variable);
+    }
+    return SetTensorParametersReadWrite(
+        tensor_index, type, name, dims.size(), dims.data(), quantization,
+        is_variable, dims_signature.size(), dims_signature.data());
   }
   TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
@@ -184,16 +184,6 @@ class Subgraph {
   // Return read-only vector of node indices in the order of execution.
   const std::vector<int>& execution_plan() const { return execution_plan_; }
 
-  // Mutable form of tensors (TEMPORARY for refactor).
-  // TODO(b/119495520): remove when refactoring complete.
-  std::vector<TfLiteTensor>& tensors() { return tensors_; }
-  // Mutable form of tensors (TEMPORARY for refactor).
-  // TODO(b/119495520): remove when refactoring complete.
-  std::vector<std::pair<TfLiteNode, TfLiteRegistration>>&
-  nodes_and_registration() {
-    return nodes_and_registration_;
-  }
-
   const std::vector<std::pair<TfLiteNode, TfLiteRegistration>>&
   nodes_and_registration() const {
     return nodes_and_registration_;
@@ -246,8 +236,6 @@ class Subgraph {
 
   // Entry point for C node plugin API to report an error.
   void ReportError(const char* format, ...);
-
-  void UseNNAPI(bool enable);
 
   // Return the subgraph specific context.
   TfLiteContext* context() { return &context_; }
@@ -703,10 +691,6 @@ class Subgraph {
 
   // Used by PreviewDelegateParitioning.
   std::vector<TfLiteDelegateParams> partitioning_preview_cache_;
-
-  // Whether to use delegate to modify the graph.
-  bool should_apply_nnapi_delegate_ = false;
-  bool applied_nnapi_delegate_ = false;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 

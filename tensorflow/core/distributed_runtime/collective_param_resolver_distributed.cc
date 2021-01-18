@@ -295,19 +295,30 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
     CompleteGroupCall* call =
         new CompleteGroupCall(cp->group, device, cp->instance.type, cancel_mgr,
                               group_leader_, worker_cache_);
-    call->Start([this, device, cp, call, done](const Status& s) {
-      if (s.ok()) {
-        Status status = UpdateGroupCache(call->resp_);
-        if (status.ok()) {
-          CompleteGroupLocal(device, cp, done);
-        } else {
-          done(status, nullptr);
-        }
-      } else {
-        done(s, nullptr);
-      }
+    CancellationToken abortion_token =
+        abortion_cancel_mgr_.get_cancellation_token();
+    bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
+        abortion_token, [call] { call->Cancel(); });
+    if (already_aborted) {
+      done(errors::Cancelled("collective ops already aborted"), nullptr);
       delete call;
-    });
+      return;
+    }
+    call->Start(
+        [this, device, cp, call, abortion_token, done](const Status& s) {
+          abortion_cancel_mgr_.DeregisterCallback(abortion_token);
+          if (s.ok()) {
+            Status status = UpdateGroupCache(call->resp_);
+            if (status.ok()) {
+              CompleteGroupLocal(device, cp, done);
+            } else {
+              done(status, nullptr);
+            }
+          } else {
+            done(s, nullptr);
+          }
+          delete call;
+        });
     return;
   } else {
     return CompleteGroupLocal(device, cp, done);
@@ -373,7 +384,17 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
     CompleteInstanceCall* call = new CompleteInstanceCall(
         cp->group, cp->instance, cp->name, device, cp->is_source, cancel_mgr,
         group_leader_, worker_cache_);
-    call->Start([this, device, gr, cp, call, done](Status s) {
+    CancellationToken abortion_token =
+        abortion_cancel_mgr_.get_cancellation_token();
+    bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
+        abortion_token, [call] { call->Cancel(); });
+    if (already_aborted) {
+      done(errors::Cancelled("collective ops already aborted"));
+      delete call;
+      return;
+    }
+    call->Start([this, device, gr, cp, call, abortion_token, done](Status s) {
+      abortion_cancel_mgr_.DeregisterCallback(abortion_token);
       if (s.ok()) {
         s = UpdateInstanceCache(gr, cp, call->resp_);
       }
@@ -386,6 +407,21 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
     });
     return;
   }
+}
+
+void CollectiveParamResolverDistributed::StartAbort(const Status& s) {
+  {
+    mutex_lock l(status_mu_);
+    if (!status_.ok()) {
+      VLOG(2) << "CollectiveParamResolverDistributed already aborted. Ignoring "
+                 "subsequent abortion with status: "
+              << s;
+      return;
+    }
+    status_ = s;
+  }
+  StartAbortLocal(s);
+  abortion_cancel_mgr_.StartCancel();
 }
 
 }  // namespace tensorflow

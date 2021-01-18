@@ -85,6 +85,12 @@ class ExecutableBuildOptions {
   bool deduplicate_hlo() const { return deduplicate_hlo_; }
   ExecutableBuildOptions& set_deduplicate_hlo(bool deduplicate_hlo);
 
+  bool broadcast_replicated_params() const {
+    return broadcast_replicated_params_;
+  }
+  ExecutableBuildOptions& set_broadcast_replicated_params(
+      bool broadcast_replicated_params);
+
   // If set, this specifies a static device assignment for the computation.
   // Otherwise, the computation will be compiled generically and can be run with
   // any device assignment compatible with the computation's replica and
@@ -104,6 +110,27 @@ class ExecutableBuildOptions {
     alias_passthrough_params_ = alias_passthrough_params;
   }
 
+  bool run_backend_only() const { return run_backend_only_; }
+  // By default, XLA builds an executable by invoking standard compilation, i.e,
+  // running Compiler::Compile, or both Compiler::RunHloPasses and
+  // Compiler::RunBackend. When run_backend_only is set to true, XLA builds an
+  // executable by invoking only RunBackend and skip invoking RunHloPasses,
+  // which can be used to compile post-optimizations HLO modules.
+  ExecutableBuildOptions& set_run_backend_only(bool run_backend_only) {
+    run_backend_only_ = run_backend_only;
+    return *this;
+  }
+
+  // Thread pool for parallel compilation.
+  tensorflow::thread::ThreadPool* compile_thread_pool() const {
+    return compile_thread_pool_;
+  }
+  ExecutableBuildOptions& set_compile_thread_pool(
+      tensorflow::thread::ThreadPool* compile_thread_pool) {
+    compile_thread_pool_ = compile_thread_pool;
+    return *this;
+  }
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
@@ -114,9 +141,18 @@ class ExecutableBuildOptions {
   int num_partitions_ = 1;
   bool use_spmd_partitioning_ = false;
   bool deduplicate_hlo_ = false;
+  bool broadcast_replicated_params_ = false;
   absl::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
+  bool run_backend_only_ = false;
+  tensorflow::thread::ThreadPool* compile_thread_pool_ = nullptr;
 };
+
+// Creates an ExecutionOptions based on a given ExecutableBuildOptions and
+// ProgramShape.
+ExecutionOptions CreateExecutionOptions(
+    const ExecutableBuildOptions& build_options,
+    const ProgramShape* program_shape);
 
 }  // namespace xla
 

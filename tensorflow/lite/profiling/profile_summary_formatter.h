@@ -38,7 +38,7 @@ class ProfileSummaryFormatter {
       const std::map<uint32_t, std::unique_ptr<tensorflow::StatsCalculator>>&
           stats_calculator_map,
       const tensorflow::StatsCalculator& delegate_stats_calculator) const = 0;
-  // Returns a string detailing the short summary of the the accumulated runtime
+  // Returns a string detailing the short summary of the accumulated runtime
   // stats in StatsCalculator of ProfileSummarizer.
   virtual std::string GetShortSummary(
       const std::map<uint32_t, std::unique_ptr<tensorflow::StatsCalculator>>&

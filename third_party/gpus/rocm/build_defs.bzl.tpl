@@ -47,3 +47,7 @@ def if_rocm_is_configured(x):
     if rocm_is_configured():
       return x
     return []
+
+def rocm_library(copts = [], **kwargs):
+    """Wrapper over cc_library which adds default ROCm options."""
+    native.cc_library(copts = rocm_default_copts() + copts, **kwargs)

@@ -15,6 +15,7 @@ package(
 py_library(
     name = "util",
     srcs = ["util.py"],
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
     ],
@@ -24,7 +25,6 @@ cuda_py_test(
     name = "parameterized_truncated_normal_op_test",
     size = "medium",
     srcs = ["parameterized_truncated_normal_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
@@ -46,7 +46,6 @@ tf_py_test(
     tags = [
         "no_cuda_on_cpu_tap",  # TODO(b/171060960) flakyly broken assertions
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
@@ -62,7 +61,6 @@ cuda_py_test(
     name = "multinomial_op_test",
     size = "small",
     srcs = ["multinomial_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -82,7 +80,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["multinomial_op_big_test.py"],
     shard_count = 3,
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -101,7 +98,9 @@ cuda_py_test(
     name = "random_crop_test",
     size = "small",
     srcs = ["random_crop_test.py"],
-    tfrt_enabled = True,
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:random_ops",
@@ -113,7 +112,6 @@ cuda_py_test(
     name = "random_ops_test",
     size = "medium",
     srcs = ["random_ops_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -128,10 +126,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
     shard_count = 10,
-    tags = [
-        "no_windows",  # TODO(b/171384674)
+    xla_tags = [
+        "no_cuda_asan",  # times-out
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -149,6 +146,9 @@ cuda_py_test(
     srcs = ["random_gamma_test.py"],
     shard_count = 4,
     tags = ["nozapfhahn"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":util",
         "//tensorflow/python:array_ops",
@@ -165,7 +165,9 @@ cuda_py_test(
     name = "random_grad_test",
     size = "small",
     srcs = ["random_grad_test.py"],
-    tfrt_enabled = True,
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -186,7 +188,6 @@ tf_py_test(
     srcs = ["random_binomial_test.py"],
     shard_count = 3,
     tags = ["no_oss"],
-    tfrt_enabled = True,
     deps = [
         ":util",
         "//tensorflow/python:array_ops",
@@ -203,7 +204,6 @@ cuda_py_test(
     name = "random_poisson_test",
     size = "medium",
     srcs = ["random_poisson_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":util",
         "//tensorflow/python:array_ops",

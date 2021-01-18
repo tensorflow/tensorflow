@@ -13,6 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=
 
 package(
     default_visibility = [
+        "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
@@ -56,7 +57,8 @@ cc_library(
         ":tpu_op_util",
         ":tpu_program_group_interface",
         ":tpu_util",
-        ":tpu_util_c_api_hdrs",
+        "//tensorflow/core/tpu:tpu_compile_interface",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         ":tpu_util_hdrs",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -114,26 +116,13 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/core/tpu:tpu_config_c_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "tpu_compile_c_api_hdrs",
-    hdrs = ["tpu_compile_c_api.h"],
-    deps = [
-        ":tpu_mesh_state_c_api_hdrs",
-        ":tpu_program_c_api_hdrs",
-        ":tpu_util_c_api_hdrs",
-        "//tensorflow/core/tpu:libtftpu_header",
-        "//tensorflow/stream_executor/tpu:c_api_decl",
-    ],
-    alwayslink = True,
 )
 
 tf_proto_library(
@@ -262,23 +251,15 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_mesh_state_c_api_hdrs",
-    hdrs = ["tpu_mesh_state_c_api.h"],
-    deps = ["//tensorflow/core/tpu:libtftpu_header"],
-    alwayslink = True,
-)
-
-cc_library(
     name = "tpu_mesh_state_interface",
     srcs = [],
     hdrs = ["tpu_mesh_state_interface.h"],
     deps = [
-        ":tpu_compile_c_api_hdrs",
-        ":tpu_mesh_state_c_api_hdrs",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/core:framework",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
     ],
 )
 
@@ -310,14 +291,11 @@ cc_library(
     srcs = ["tpu_program_group.cc"],
     hdrs = ["tpu_program_group.h"],
     deps = [
-        ":tpu_compile_c_api_hdrs",
         ":tpu_compile_op_common",
         ":tpu_compile_op_support",
         ":tpu_compile_proto_cc",
         ":tpu_executable_info_proto_cc",
-        ":tpu_mesh_state_c_api_hdrs",
         ":tpu_mesh_state_interface",
-        ":tpu_program_c_api_hdrs",
         ":tpu_program_group_interface",
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -326,9 +304,11 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_module_group",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xrt:xrt_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "//tensorflow/stream_executor/tpu:status_helper",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
@@ -382,11 +362,9 @@ cc_library(
         ":tpu_compilation_cache_key",
         ":tpu_compilation_metrics",  # buildcleaner: keep
         ":tpu_compilation_metrics_hdrs",
-        ":tpu_compile_c_api_hdrs",
         ":tpu_compile_op_support",
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
-        ":tpu_program_c_api_hdrs",
         ":tpu_program_group",
         ":tpu_util",
         ":trace_util_hdrs",
@@ -398,6 +376,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -451,41 +430,17 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_util_c_api_hdrs",
-    hdrs = ["tpu_util_c_api.h"],
-    deps = [
-        ":tpu_mesh_state_c_api_hdrs",
-        "//tensorflow/core/tpu:libtftpu_header",
-        "//tensorflow/stream_executor/tpu:c_api_decl",
-        "//tensorflow/stream_executor/tpu:proto_helper",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "tpu_program_c_api_hdrs",
-    hdrs = ["tpu_program_c_api.h"],
-    deps = [
-        ":tpu_util_c_api_hdrs",
-        "//tensorflow/core/tpu:libtftpu_header",
-        "//tensorflow/stream_executor/tpu:c_api_decl",
-        "//tensorflow/stream_executor/tpu:proto_helper",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
     name = "tpu_op_util",
     srcs = ["tpu_op_util.cc"],
     hdrs = ["tpu_op_util.h"],
     deps = [
         ":tpu_compilation_cache_key",
-        ":tpu_compile_c_api_hdrs",
         ":tpu_mesh_state_interface",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -496,7 +451,6 @@ cc_library(
     hdrs = ["tpu_util.h"],
     deps = [
         ":tpu_compilation_cache_key",
-        ":tpu_util_c_api_hdrs",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
@@ -504,6 +458,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         tf_grpc_cc_dependency(),
@@ -548,7 +503,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "//tensorflow/core/tpu:tpu_config_c_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
 )
@@ -666,28 +621,15 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_execute_c_api_hdrs",
-    hdrs = ["tpu_execute_c_api.h"],
-    deps = [
-        ":tpu_program_c_api_hdrs",
-        ":tpu_util_c_api_hdrs",
-        "//tensorflow/core/tpu:libtftpu_header",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
-    ],
-)
-
-cc_library(
     name = "tpu_compile_op_impl",
     srcs = ["tpu_compile_op_impl.cc"],
     hdrs = ["tpu_compile_op_impl.h"],
     copts = tf_copts(),
     deps = [
         ":tpu_compilation_cache_key",
-        ":tpu_compile_c_api_hdrs",
         ":tpu_compile_op_common",
         ":tpu_compile_op_support",
         ":tpu_compile_proto_cc",
-        ":tpu_mesh_state_c_api_hdrs",
         ":tpu_program_group",
         ":tpu_program_group_interface",
         ":tpu_util",
@@ -696,6 +638,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "@com_google_absl//absl/types:variant",
@@ -854,7 +797,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/stream_executor:multi_platform_manager",
         "//tensorflow/stream_executor/tpu:tpu_node_context",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",

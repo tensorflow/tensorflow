@@ -24,17 +24,18 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
@@ -300,6 +301,19 @@ class ShardedVariableTest(test.TestCase):
     # Continue using root.train for training
     self.assertAllEqual([3., 2.], root.train([0, 1]).numpy())
 
+  def test_load_raises_error(self):
+    root = tracking.AutoTrackable()
+    v1 = variables_lib.Variable([3.])
+    v2 = variables_lib.Variable([2.])
+    root.v = sharded_variable.ShardedVariable([v1, v2])
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save.save(root, save_dir)
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, 'Loading `ShardedVariable` is not supported'):
+      load.load(save_dir)
+
   def test_validation_errors(self):
     with self.assertRaisesRegex(ValueError, 'Expected a list of '):
       sharded_variable.ShardedVariable(
@@ -364,7 +378,6 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(variables, got)
 
   def test_tf_module(self):
-    self.skipTest('integration with tf.module is not added yet.')
 
     class Model(module.Module):
 
@@ -386,82 +399,55 @@ class ShardedVariableTest(test.TestCase):
     self.assertLen(model._checkpoint_dependencies, 1)
     self.assertEqual(model._checkpoint_dependencies[0].ref, model.w)
 
-  def test_keras_layer_setattr(self):
+  def test_embedding_lookup(self):
+    v = [
+        variables_lib.Variable([[1., 2.], [3., 4.]]),
+        variables_lib.Variable([[5., 6.], [7., 8.]]),
+        variables_lib.Variable([[9., 10.]])
+    ]
+    sv = sharded_variable.ShardedVariable(v)
 
-    class Layer(base_layer.Layer):
+    @def_function.function
+    def lookup():
+      ids = constant_op.constant([0, 3, 4])
+      return embedding_ops.embedding_lookup_v2(sv, ids)
 
-      def __init__(self):
-        super().__init__()
-        variables1 = [
-            variables_lib.Variable([0]),
-            variables_lib.Variable([1]),
-        ]
-        variables2 = [
-            variables_lib.Variable([2], trainable=False),
-            variables_lib.Variable([3], trainable=False),
-        ]
-        self.w = sharded_variable.ShardedVariable(variables1)
-        self.b = sharded_variable.ShardedVariable(variables2)
+    @def_function.function
+    def sparse_lookup():
+      sp_ids = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0], [2, 2]],
+          values=[0, 3, 4, 1],
+          dense_shape=[3, 3])
+      return embedding_ops.embedding_lookup_sparse_v2(sv, sp_ids, None)
 
-    layer = Layer()
+    @def_function.function
+    def safe_sparse_lookup():
+      sp_ids = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0], [2, 2]],
+          values=[0, -1, 4, 1],
+          dense_shape=[3, 3])
+      sp_weights = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0], [2, 2]],
+          values=[1., 1., -1., 1.],
+          dense_shape=[3, 3])
+      return embedding_ops.safe_embedding_lookup_sparse_v2(
+          sv, sp_ids, sp_weights)
 
-    self.assertLen(layer.trainable_weights, 2)
-    self.assertEqual(layer.trainable_weights[0], [0])
-    self.assertEqual(layer.trainable_weights[1], [1])
-    self.assertLen(layer.non_trainable_weights, 2)
-    self.assertEqual(layer.non_trainable_weights[0], [2])
-    self.assertEqual(layer.non_trainable_weights[1], [3])
-    self.assertAllEqual(layer.weights,
-                        layer.trainable_weights + layer.non_trainable_weights)
-    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
-    self.assertAllEqual(layer.weights, layer.variables)
+    # TODO(chenkai): Add safe_sparse_lookup to the list. Currently
+    # ShardedVariable is converted to a tensor in safe_sparse_lookup.
+    for func in [lookup, sparse_lookup]:
+      num_gather_ops = 0
+      for op in func.get_concrete_function().graph.get_operations():
+        if op.type == 'ResourceGather':
+          num_gather_ops += 1
+      self.assertEqual(
+          num_gather_ops, len(v), 'Number of ResourceGather op does not match'
+          ' expected, possibly due to ShardedVariable accidentally being'
+          ' converted to tensor in embedding_lookup ops.')
 
-    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
-    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
-
-  def test_keras_layer_add_weight(self):
-
-    class Layer(base_layer.Layer):
-
-      def __init__(self):
-        super().__init__()
-        self.w = self.add_weight(
-            shape=(2,), initializer=lambda shape, dtype: [0, 1], trainable=True)
-        self.b = self.add_weight(
-            shape=(2,),
-            initializer=lambda shape, dtype: [2, 3],
-            trainable=False)
-
-    def sharded_variable_creator(next_creator, **kwargs):
-      v1_value = kwargs['initial_value']()[0:1]
-      v2_value = kwargs['initial_value']()[1:]
-
-      kwargs['initial_value'] = v1_value
-      kwargs['shape'] = (1,)
-      v1 = next_creator(**kwargs)
-
-      kwargs['initial_value'] = v2_value
-      kwargs['shape'] = (1,)
-      v2 = next_creator(**kwargs)
-
-      return sharded_variable.ShardedVariable([v1, v2])
-
-    with variable_scope.variable_creator_scope(sharded_variable_creator):
-      layer = Layer()
-
-    self.assertLen(layer.trainable_weights, 2)
-    self.assertEqual(layer.trainable_weights[0], [0])
-    self.assertEqual(layer.trainable_weights[1], [1])
-    self.assertLen(layer.non_trainable_weights, 2)
-    self.assertEqual(layer.non_trainable_weights[0], [2])
-    self.assertEqual(layer.non_trainable_weights[1], [3])
-    self.assertAllEqual(layer.weights,
-                        layer.trainable_weights + layer.non_trainable_weights)
-    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
-    self.assertAllEqual(layer.weights, layer.variables)
-
-    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
-    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
+    self.assertAllEqual(lookup(), [[1., 2.], [7., 8.], [9., 10.]])
+    self.assertAllClose(sparse_lookup(), [[4., 5.], [9., 10.], [3., 4.]])
+    self.assertAllClose(safe_sparse_lookup(), [[1., 2.], [0., 0.], [3., 4.]])
 
 
 if __name__ == '__main__':

@@ -1,7 +1,5 @@
 # Object detection
 
-<img src="../images/detection.png" class="attempt-right">
-
 Given an image or a video stream, an object detection model can identify which
 of a known set of objects might be present and provide information about their
 positions within the image.
@@ -48,11 +46,11 @@ started.
 
 #### Android
 
-You can leverage the out-of-box API from TensorFlow Lite Task Library to
-[integrate object detection models](../../inference_with_metadata/task_library/object_detector)
-in just a few lines of code. You can also
-[build your own custom inference pipeline](../../guide/inference#load_and_run_a_model_in_java)
-using the TensorFlow Lite Interpreter Java API.
+You can leverage the out-of-box API from
+[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/object_detector)
+to integrate object detection models in just a few lines of code. You can also
+build your own custom inference pipeline using the
+[TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).
 
 The Android example below demonstrates the implementation for both methods as
 [lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/lib_task_api)

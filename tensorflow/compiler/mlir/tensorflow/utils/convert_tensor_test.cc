@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -136,30 +136,30 @@ TEST_F(ConvertTensorTest, Simple) {
       {1.0, -1.0}, DT_DOUBLE, mlir::FloatType::getF64(&context)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int8>(
-      {1, -1}, DT_INT8, mlir::IntegerType::get(8, &context)));
+      {1, -1}, DT_INT8, mlir::IntegerType::get(&context, 8)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int16>(
-      {1, -1}, DT_INT16, mlir::IntegerType::get(16, &context)));
+      {1, -1}, DT_INT16, mlir::IntegerType::get(&context, 16)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int32>(
-      {1, -1}, DT_INT32, mlir::IntegerType::get(32, &context)));
+      {1, -1}, DT_INT32, mlir::IntegerType::get(&context, 32)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int64>(
-      {1, -1}, DT_INT64, mlir::IntegerType::get(64, &context)));
+      {1, -1}, DT_INT64, mlir::IntegerType::get(&context, 64)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint8>(
       {1, 2}, DT_UINT8,
       mlir::IntegerType::get(
-          8, mlir::IntegerType::SignednessSemantics::Unsigned, &context)));
+          &context, 8, mlir::IntegerType::SignednessSemantics::Unsigned)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint16>(
       {1, 2}, DT_UINT16,
       mlir::IntegerType::get(
-          16, mlir::IntegerType::SignednessSemantics::Unsigned, &context)));
+          &context, 16, mlir::IntegerType::SignednessSemantics::Unsigned)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint32>(
       {1, 2}, DT_UINT32,
       mlir::IntegerType::get(
-          32, mlir::IntegerType::SignednessSemantics::Unsigned, &context)));
+          &context, 32, mlir::IntegerType::SignednessSemantics::Unsigned)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint64>(
       {1, 2}, DT_UINT64,
       mlir::IntegerType::get(
-          64, mlir::IntegerType::SignednessSemantics::Unsigned, &context)));
+          &context, 64, mlir::IntegerType::SignednessSemantics::Unsigned)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<float>>(
       {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX64,

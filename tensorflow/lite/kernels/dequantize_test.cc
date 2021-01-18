@@ -108,8 +108,8 @@ TEST(DequantizeOpTest, Float16) {
 }
 
 TEST(DequantizeOpTest, Int16) {
-  DequantizeOpModel m(TensorType_INT16, {2, 5}, 0.5, -1, 4);
-  m.SetInput<int16_t>({-130, -127, -126, -125, -124, 123, 124, 125, 126, 130});
+  DequantizeOpModel m(TensorType_INT16, {2, 5}, 0.5, 0, 4);
+  m.SetInput<int16_t>({-129, -126, -125, -124, -123, 124, 125, 126, 127, 131});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(

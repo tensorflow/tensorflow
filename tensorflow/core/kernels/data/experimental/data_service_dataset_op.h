@@ -52,6 +52,8 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kAddress = "address";
   static constexpr const char* const kProtocol = "protocol";
   static constexpr const char* const kJobName = "job_name";
+  static constexpr const char* const kConsumerIndex = "consumer_index";
+  static constexpr const char* const kNumConsumers = "num_consumers";
   static constexpr const char* const kMaxOutstandingRequests =
       "max_outstanding_requests";
   static constexpr const char* const kTaskRefreshIntervalHintMs =
@@ -59,6 +61,8 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kIterationCounter = "iteration_counter";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
+  // Note: If a new constant is declared here, it *must* be defined in
+  // data_service_dataset_op.cc, otherwise it will not compile in debug mode.
 
   explicit DataServiceDatasetOp(OpKernelConstruction* ctx);
 
@@ -68,6 +72,7 @@ class DataServiceDatasetOp : public DatasetOpKernel {
  private:
   class Dataset;
 
+  int op_version_;
   int64 task_refresh_interval_hint_ms_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;

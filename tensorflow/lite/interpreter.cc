@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/delegates/status.h"
+#include "tensorflow/lite/delegates/telemetry.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -109,8 +109,6 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   own_external_cpu_backend_context_.reset(new ExternalCpuBackendContext());
   external_contexts_[kTfLiteCpuBackendContext] =
       own_external_cpu_backend_context_.get();
-
-  primary_subgraph().UseNNAPI(false);
 }
 
 Interpreter::~Interpreter() {
@@ -182,17 +180,20 @@ TfLiteStatus Interpreter::AllocateTensors() {
   // Apply the default delegate that TFLite will enable at this point to allow
   // other user-level delegates to be applied first.
   if (!lazy_delegate_providers_.empty()) {
+    // We only apply lazy delegate providers once.
+    std::vector<TfLiteDelegatePtr> delegate_providers;
+    delegate_providers.swap(lazy_delegate_providers_);
+
     TFLITE_LOG(TFLITE_LOG_INFO,
                "Applying %zu TensorFlow Lite delegate(s) lazily.",
-               lazy_delegate_providers_.size());
+               delegate_providers.size());
     // At the momement, XNNPACK delegate is the only one that might be applied
     // by default, in which case, the execution will fall back to default
     // implementation if the XNNPACK delegate fails to be applied. Therefore, we
     // ignore the return status here and let it fall through the rest of the
     // code.
-    for (size_t i = 0; i < lazy_delegate_providers_.size(); ++i) {
-      auto status =
-          ModifyGraphWithDelegate(std::move(lazy_delegate_providers_[i]));
+    for (size_t i = 0; i < delegate_providers.size(); ++i) {
+      auto status = ModifyGraphWithDelegate(std::move(delegate_providers[i]));
       switch (status) {
         case kTfLiteOk:
           TFLITE_LOG(TFLITE_LOG_INFO,
@@ -227,7 +228,6 @@ TfLiteStatus Interpreter::AllocateTensors() {
           return kTfLiteError;
       }
     }
-    lazy_delegate_providers_.clear();
   }
 
   return primary_subgraph().AllocateTensors();
@@ -344,13 +344,6 @@ TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
   return primary_subgraph().SetExecutionPlan(new_plan);
 }
 
-void Interpreter::UseNNAPI(bool enable) {
-  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
-                       "Interpreter::UseNNAPI() is deprecated. Use "
-                       "tflite::NnApiDelegate() directly instead.");
-  primary_subgraph().UseNNAPI(enable);
-}
-
 TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
   if (num_threads < -1) {
     context_->ReportError(context_,
@@ -418,8 +411,7 @@ TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {
   TF_LITE_ENSURE(context_, tensor_index < tensors_size());
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-  TfLiteTensor* tensor = &tensors[tensor_index];
+  TfLiteTensor* tensor = primary_subgraph().tensor(tensor_index);
 
   TF_LITE_ENSURE(context_,
                  tensor->delegate == nullptr || tensor->delegate == delegate);
@@ -438,8 +430,7 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle* buffer_handle,
                                           TfLiteDelegate** delegate) {
   TF_LITE_ENSURE(context_, tensor_index < tensors_size());
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-  TfLiteTensor* tensor = &tensors[tensor_index];
+  TfLiteTensor* tensor = primary_subgraph().tensor(tensor_index);
 
   *delegate = tensor->delegate;
   *buffer_handle = tensor->buffer_handle;

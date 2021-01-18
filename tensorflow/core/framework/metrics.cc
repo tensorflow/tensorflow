@@ -94,25 +94,23 @@ auto* tf_data_experiment_counter = monitoring::Counter<1>::New(
 auto* tf_data_fingerprint_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
 
-auto* tf_data_getnext_duration_usecs_histogram = monitoring::Sampler<0>::New(
+auto* tf_data_get_next_duration_usecs_histogram = monitoring::Sampler<0>::New(
     {"/tensorflow/data/getnext_duration",
-     "Microseconds spent fetching an element from tf.data Dataset iterator."},
+     "Microseconds spent fetching an element from tf.data iterator."},
     // Power of 2 with bucket count 10 (1024 microseconds) and 1 second.
     {monitoring::Buckets::Explicit(
         {2., 4., 8., 16., 32., 64., 128., 256., 512., 1024., 1e6})});
 
-auto* tf_data_getnext_time_between_msecs_histogram =
-    monitoring::Sampler<0>::New(
-        {"/tensorflow/data/getnext_time_between",
-         "Milliseconds spent in between calls to tf.data Dataset iterator."},
-        // A typical training step is in the 200ms to 1 second range.
-        // Elapsed time less than 25ms are likely due to multiple devices
-        // calling the iterator's getNext() during the same step. Bucket density
-        // is highest for small time intervals to more accurately measure fast
-        // ingest rates. Buckets from 25ms to 10 seconds.
-        {monitoring::Buckets::Explicit({25., 50., 75., 100., 125., 150., 175.,
-                                        200., 225., 250., 300., 350., 400.,
-                                        450., 500., 1000., 10000.})});
+auto* tf_data_iterator_busy_counter =
+    monitoring::Counter<0>::New("/tensorflow/data/iterator_busy",
+                                "The time (in microseconds) during which a "
+                                "tf.data iterator was busy processing at "
+                                "least one `GetNext()` request.");
+
+auto* tf_data_iterator_lifetime_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/iterator_lifetime",
+    "The time (in microseconds) between a tf.data iterator receiving the first "
+    "`GetNext()` request and responding to the last `GetNext()` request.");
 
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
@@ -199,17 +197,21 @@ void RecordTFDataFingerprint(const string& name) {
 }
 
 void RecordTFDataGetNextDuration(uint64 duration_us) {
-  static auto* tfdata_getnext_duration_cell =
-      tf_data_getnext_duration_usecs_histogram->GetCell();
-  tfdata_getnext_duration_cell->Add(duration_us);
+  static auto* tf_data_get_next_duration_cell =
+      tf_data_get_next_duration_usecs_histogram->GetCell();
+  tf_data_get_next_duration_cell->Add(duration_us);
 }
 
-void RecordTFDataGetNextTimeBetween(uint64 duration_us) {
-  static auto* tfdata_getnext_time_between_cell =
-      tf_data_getnext_time_between_msecs_histogram->GetCell();
-  // Convert to milliseconds for histogram
-  const auto duration_ms = duration_us / 1000;
-  tfdata_getnext_time_between_cell->Add(duration_ms);
+void RecordTFDataIteratorBusy(uint64 duration_us) {
+  static auto* tf_data_iterator_busy_cell =
+      tf_data_iterator_busy_counter->GetCell();
+  tf_data_iterator_busy_cell->IncrementBy(duration_us);
+}
+
+void RecordTFDataIteratorLifetime(uint64 duration_us) {
+  static auto* tf_data_iterator_lifetime_cell =
+      tf_data_iterator_lifetime_counter->GetCell();
+  tf_data_iterator_lifetime_cell->IncrementBy(duration_us);
 }
 
 void RecordTFDataOptimization(const string& name, int64 num_changes) {

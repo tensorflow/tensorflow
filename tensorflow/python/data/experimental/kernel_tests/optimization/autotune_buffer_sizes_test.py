@@ -81,10 +81,12 @@ class AutotuneBufferSizesTest(test_base.DatasetTestBase,
         ]))
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.prefetch(buffer_size=3)
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
     dataset = dataset.interleave(
         lambda x: dataset_ops.Dataset.from_tensors(x + 1),
         num_parallel_calls=dataset_ops.AUTOTUNE)

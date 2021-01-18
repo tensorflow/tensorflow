@@ -2972,9 +2972,9 @@ TEST_F(NestedPlacerTest, NestedTwoFunctionsBackToBack) {
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
   EXPECT_TRUE(absl::StrContains(
       s.error_message(),
-      "Nodes were connected by a reference connection (requiring them to be on "
-      "the same device), but the two nodes were assigned two different "
-      "devices"))
+      "Nodes were connected by a reference or resource connection (requiring "
+      "them to be on the same device), but the two nodes were assigned two "
+      "different devices"))
       << s.ToString();
 }
 

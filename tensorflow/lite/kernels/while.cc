@@ -155,7 +155,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, cond_subgraph->AllocateTensors());
   TfLiteTensor* cond_output =
       cond_subgraph->tensor(cond_subgraph->outputs()[0]);
-  // TODO(ycling): Handle the case the cond subgraph has dynamic tensor outputs.
   // This should rarely happens. In most cases the output is static with shape
   // [1]. However theoretically intermediate tensors in the cond subgraph
   // can be dynamic.
@@ -181,7 +180,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
           body_subgraph->tensor(body_subgraph->outputs()[i]);
       TF_LITE_ENSURE_TYPES_EQ(context, body_input->type, body_output->type);
 
-      // TODO(ycling): Support dynamic sized body subgraph.
       TF_LITE_ENSURE(context, !IsDynamicTensor(body_output));
       if (!TfLiteIntArrayEqual(body_input->dims, body_output->dims)) {
         // If the output shape of the body subgraph is static w.r.t. a fixed

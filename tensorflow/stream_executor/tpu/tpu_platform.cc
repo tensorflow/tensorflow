@@ -128,6 +128,10 @@ const tensorflow::tpu::TpuHostLocationExternal TpuPlatform::GetTpuHostLocation()
       tpu::ExecutorApiFn()->TpuPlatform_GetHostLocationFn(platform_));
 }
 
+TpuRuntimeVersion TpuPlatform::version() const {
+  return tpu::ExecutorApiFn()->TpuPlatform_GetRuntimeVersionFn(platform_);
+}
+
 void TpuPlatform::InsertEvent(stream_executor::internal::EventInterface* key,
                               SE_Event* val) {
   tensorflow::mutex_lock lock(event_map_mu_);
@@ -147,7 +151,7 @@ void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
 
 Status TpuPlatform::TpusPerHost(int* tpus) {
   TF_Status* status = TF_NewStatus();
-  tpu::ConfigApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus, status);
+  tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus, status);
   auto ret_status = StatusFromTF_Status(status);
   TF_DeleteStatus(status);
   return ret_status;
@@ -155,7 +159,7 @@ Status TpuPlatform::TpusPerHost(int* tpus) {
 
 Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
   TF_Status* status = TF_NewStatus();
-  tpu::ConfigApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
+  tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
       reinterpret_cast<int64_t*>(memory_limit), status);
   auto ret_status = StatusFromTF_Status(status);
   TF_DeleteStatus(status);

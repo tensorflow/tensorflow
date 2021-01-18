@@ -78,6 +78,18 @@ class RandNTest(RandomTestBase):
     self._test(*dims, allow_float64=False, onp_dtype=np.float32)
 
 
+class StandardNormalTest(RandomTestBase):
+
+  def setUp(self):
+    self.np_func = np.random.standard_normal
+    self.onp_func = onp.random.standard_normal
+    super(StandardNormalTest, self).setUp()
+
+  @parameterized.parameters((None,), ((),), ((1,),), ((1, 2),))
+  def test(self, size):
+    self._test(size)
+
+
 class UniformTest(RandomTestBase):
 
   def setUp(self):
@@ -104,6 +116,18 @@ class UniformTest(RandomTestBase):
 
   def test_dtype_cast(self):
     self._test(np.int8(0), np.uint8(1), (1, 2))
+
+
+class PoissonTest(RandomTestBase):
+
+  def setUp(self):
+    self.np_func = np.random.poisson
+    self.onp_func = onp.random.poisson
+    super(PoissonTest, self).setUp()
+
+  @parameterized.parameters((1.0, None), (1.0, 1), (2.0, (3, 3)))
+  def test(self, lam, size):
+    self._test(lam, size)
 
 
 class RandomTest(RandomTestBase):

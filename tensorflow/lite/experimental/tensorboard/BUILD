@@ -8,7 +8,7 @@ package(
 py_library(
     name = "ops_util",
     srcs = ["ops_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python:wrap_toco",

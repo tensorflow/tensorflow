@@ -29,12 +29,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -184,7 +184,7 @@ struct LhloLegalizeToGpuPass
     target.addIllegalOp<ReduceOp>();
     auto func = getFunction();
     patterns.insert<LhloReduceToGPULaunchConverter>(func.getContext());
-    if (failed(applyPartialConversion(func, target, patterns))) {
+    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

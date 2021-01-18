@@ -29,7 +29,6 @@ TfLiteRegistration* Register_IMAG();
 TfLiteRegistration* Register_MULTINOMIAL();
 TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL();
 TfLiteRegistration* Register_REAL();
-TfLiteRegistration* Register_RFFT2D();
 
 }  // namespace custom
 }  // namespace ops

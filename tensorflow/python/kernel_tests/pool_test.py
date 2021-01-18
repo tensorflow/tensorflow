@@ -274,9 +274,6 @@ class PoolingTest(test.TestCase):
               strides=[1, 2],
               dilation_rate=[1, 1],
               data_format="NCHW")
-          if test.is_built_with_rocm():
-            # Pooling with 3D tensors is not supported in ROCm
-            continue
           self._test(
               input_shape=[2, 2, 7, 5, 3],
               window_shape=[2, 2, 2],

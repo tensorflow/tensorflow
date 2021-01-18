@@ -106,5 +106,5 @@ versions {
 # CHECK: func @main
 # CHECK: "tf.PartitionedCall"()
 # CHECK-SAME: f = @[[FUNCTION:[A-Za-z0-9_]*]]
-# CHECK: func @[[FUNCTION]]() -> tensor<*xui8>
+# CHECK: func private @[[FUNCTION]]() -> tensor<*xui8>
 # CHECK: return {{.*}} : tensor<*xui8>

@@ -14,6 +14,10 @@ load(
     "tf_py_logged_benchmark",
 )
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_rpc_deps",
+)
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -60,15 +64,16 @@ cc_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/util:abstract_stack_trace",
-        "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",
         "//tensorflow/python:py_exception_registry",
-        "//tensorflow/python:py_seq_tensor",
-        "//tensorflow/python:py_util",
-        "//tensorflow/python:safe_ptr",
-        "//tensorflow/python:stack_trace",
+        "//tensorflow/python/lib/core:py_seq_tensor",
+        "//tensorflow/python/lib/core:py_util",
+        "//tensorflow/python/lib/core:safe_ptr",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//tensorflow/python/util:cpp_python_util",
+        "//tensorflow/python/util:stack_trace",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -103,7 +108,6 @@ cuda_py_test(
         "no_oss",  # TODO(b/168051787): Enable.
         "no_pip",  # TODO(b/168051787): Enable.
     ],
-    tfrt_enabled = True,
     deps = [
         ":pywrap_tensor_test_util",
         ":test",
@@ -127,6 +131,7 @@ filegroup(
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
     name = "eager_pip",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
@@ -155,7 +160,7 @@ py_library(
 py_library(
     name = "core",
     srcs = ["core.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -167,7 +172,7 @@ py_library(
 py_library(
     name = "cancellation",
     srcs = ["cancellation.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -179,7 +184,6 @@ cuda_py_test(
     size = "small",
     srcs = ["cancellation_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":cancellation",
         ":test",
@@ -189,7 +193,7 @@ cuda_py_test(
 py_library(
     name = "executor",
     srcs = ["executor.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -199,7 +203,7 @@ py_library(
 py_library(
     name = "context",
     srcs = ["context.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":executor",
@@ -229,10 +233,10 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:custom_device_testutil",
-        "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
-        "//tensorflow/python:safe_ptr",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_ptr",
+        "//tensorflow/python/util:cpp_python_util",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -251,6 +255,7 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "no_tfrt",  # TFRT doesn't support custom device yet.
     ],
     deps = [
         ":context",
@@ -264,7 +269,6 @@ cuda_py_test(
     size = "small",
     srcs = ["context_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":context",
         ":test",
@@ -274,7 +278,7 @@ cuda_py_test(
 py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:c_api_util",
@@ -288,7 +292,6 @@ cuda_py_test(
     name = "monitoring_test",
     srcs = ["monitoring_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":monitoring",
         ":test",
@@ -298,7 +301,7 @@ cuda_py_test(
 py_library(
     name = "profiler",
     srcs = ["profiler.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -324,7 +327,7 @@ cuda_py_test(
 py_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/core/profiler:internal",
@@ -353,7 +356,7 @@ py_test(
 py_library(
     name = "tape",
     srcs = ["tape.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
 )
 
@@ -361,7 +364,6 @@ cuda_py_test(
     name = "tensor_test",
     srcs = ["tensor_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":context",
         ":test",
@@ -375,8 +377,12 @@ cuda_py_test(
     srcs = ["backprop_test.py"],
     python_version = "PY3",
     tags = [
+        "no_cuda_asan",  # b/173825938
         "no_windows",  #TODO(b/139745667)
         "notsan",  #TODO(b/139745667)
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":backprop",
@@ -415,7 +421,6 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":context",
         ":core",
@@ -451,7 +456,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["function_defun_collection_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":def_function",
@@ -523,7 +527,7 @@ cuda_py_test(
 py_library(
     name = "test",
     srcs = ["test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":core",
@@ -535,7 +539,7 @@ py_library(
 py_library(
     name = "execute",
     srcs = ["execute.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -553,7 +557,7 @@ py_library(
 py_library(
     name = "graph_only_ops",
     srcs = ["graph_only_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -567,7 +571,6 @@ cuda_py_test(
     name = "graph_only_ops_test",
     srcs = ["graph_only_ops_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "graph_only_ops",
         "//tensorflow/python:client_testlib",
@@ -580,7 +583,7 @@ cuda_py_test(
 
 py_library(
     name = "framework_for_generated_wrappers",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":execute",
@@ -593,7 +596,7 @@ py_library(
 py_library(
     name = "function",
     srcs = ["function.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -630,7 +633,7 @@ pybind_extension(
 py_library(
     name = "backprop",
     srcs = ["backprop.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop_util",
@@ -658,7 +661,7 @@ py_library(
 py_library(
     name = "backprop_util",
     srcs = ["backprop_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:dtypes",
@@ -669,7 +672,7 @@ py_library(
 py_library(
     name = "forwardprop",
     srcs = ["forwardprop.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":forwardprop_util",
@@ -684,7 +687,7 @@ py_library(
 py_library(
     name = "forwardprop_util",
     srcs = ["forwardprop_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -694,7 +697,7 @@ py_library(
 py_library(
     name = "benchmarks_test_base",
     srcs = ["benchmarks_test_base.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [":test"],
 )
@@ -703,7 +706,6 @@ cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":benchmarks_test_base",
@@ -723,7 +725,6 @@ cuda_py_test(
     name = "remote_benchmarks_test",
     srcs = ["remote_benchmarks_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":benchmarks_test_base",
@@ -749,7 +750,6 @@ tf_py_test(
     name = "tape_test",
     srcs = ["tape_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":context",
@@ -769,7 +769,6 @@ cuda_py_test(
     name = "ops_test",
     srcs = ["ops_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":context",
         ":execute",
@@ -795,7 +794,7 @@ tf_py_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
+    tags = ["no_windows"],  # TODO(b/171756439)
     deps = [
         ":backprop",
         ":context",
@@ -813,7 +812,7 @@ tf_py_test(
 py_library(
     name = "imperative_grad",
     srcs = ["imperative_grad.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:unconnected_gradients",
@@ -824,7 +823,7 @@ py_library(
 py_library(
     name = "def_function",
     srcs = ["def_function.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -847,7 +846,7 @@ py_library(
 py_library(
     name = "lift_to_graph",
     srcs = ["lift_to_graph.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:framework_ops",
@@ -861,7 +860,6 @@ tf_py_test(
     size = "medium",
     srcs = ["lift_to_graph_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "lift_to_graph",
         "//tensorflow/python:framework_ops",
@@ -920,6 +918,7 @@ tf_xla_py_test(
     tags = [
         "no_mac",
         "no_pip",
+        "no_tfrt",  # TODO(b/177333820)
         "no_windows",
     ],
     use_xla_device = False,
@@ -959,7 +958,7 @@ tf_xla_py_test(
 py_library(
     name = "wrap_function",
     srcs = ["wrap_function.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -1007,14 +1006,14 @@ cuda_py_test(
 py_library(
     name = "remote",
     srcs = ["remote.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
-    ],
+    ] + tf_additional_rpc_deps(),
 )
 
 cuda_py_test(
@@ -1051,6 +1050,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "no_tfrt",  # TODO(b/171765113)
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -1071,6 +1071,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "no_tfrt",  # TODO(b/171765113)
         "notsan",  # TODO(b/170783249)
     ],
     deps = [

@@ -39,6 +39,7 @@ ifeq ($(TARGET), hexagon)
 
   PLATFORM_ARGS = \
     -DTF_LITE_MCU_DEBUG_LOG \
+    -DTF_LITE_USE_CTIME \
     -DHEXAGON_ASM \
     -DMALLOC_IN_STDLIB \
     -DPTHREAD_STUBS \

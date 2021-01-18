@@ -27,6 +27,7 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
+from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.platform import test
 
@@ -96,12 +97,23 @@ class ClusterCombinationTest(test.TestCase, parameterized.TestCase):
     # set to the main process.
     self.assertNotEqual(os.getenv("TF_CONFIG"), "")
 
-  def test_runner_creation(self):
-    cmb = combinations.NamedDistribution(
-        "Strategy1", lambda: None, has_chief=True, num_workers=2,
-        use_pool_runner=True)
-    self.assertIsNone(cmb._runner)
-    self.assertIsNotNone(cmb.runner)
+
+@combinations.generate(combinations.combine(num_workers=2))
+class ClusterCombinationTestEnvTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    # Note that test case fixtures are executed in both the main process and
+    # worker processes.
+    super().setUp()
+    if combinations.in_main_process():
+      combinations.env().tf_data_service_dispatcher = "localhost"
+
+  def testTfDataServiceDispatcher(self):
+    self.assertEqual(combinations.env().tf_data_service_dispatcher, "localhost")
+
+  def testUpdateEnvInWorker(self):
+    with self.assertRaises(ValueError):
+      combinations.env().tf_data_service_dispatcher = "localhost"
 
 
 # unittest.expectedFailure doesn't work with parameterized test methods, so we
@@ -161,6 +173,28 @@ class CombinationsOnClassMultiWorkerExpectedFailureTest(test.TestCase,
     resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
     # This should fail.
     self.assertIsNone(resolver.task_id)
+
+
+class TfFunctionTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          tf_function_1=combinations.tf_function,
+          tf_function_2=combinations.no_tf_function,
+          mode="eager",
+      ))
+  def testFunc(self, tf_function_1, tf_function_2):
+
+    @tf_function_1
+    def foo():
+      self.assertFalse(context.executing_eagerly())
+
+    @tf_function_2
+    def bar():
+      self.assertTrue(context.executing_eagerly())
+
+    foo()
+    bar()
 
 
 if __name__ == "__main__":

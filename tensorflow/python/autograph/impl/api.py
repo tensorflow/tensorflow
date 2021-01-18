@@ -167,31 +167,35 @@ class StackTraceMapper(tf_stack.StackTraceMapper):
   """Remaps generated code to code it originated from."""
 
   def __init__(self, converted_fn):
+    super().__init__()
     self._source_map = converted_fn.ag_source_map
+    # This may be called repeatedly: once on entry, by the superclass, then by
+    # each child context manager.
+    self._cached_map = None
 
   def get_effective_source_map(self):
-    effective_source_map = self._effective_source_map
-    if effective_source_map is None:
-      if self.parent is not None:
-        parent_map = self.parent.get_effective_source_map()
+    if self._cached_map is not None:
+      return self._cached_map
+
+    parent_map = self.parent.get_effective_source_map()
+
+    effective_source_map = {}
+    for loc, origin in self._source_map.items():
+      effective_source_map[(loc.filename, loc.lineno)] = (origin.loc.filename,
+                                                          origin.loc.lineno,
+                                                          origin.function_name)
+
+    for key, value in parent_map.items():
+      filename, lineno, _ = value
+      value_loc = origin_info.LineLocation(filename=filename, lineno=lineno)
+      if value_loc in self._source_map:
+        origin = self._source_map[value_loc]
+        effective_source_map[key] = (origin.loc.filename, origin.loc.lineno,
+                                     origin.function_name)
       else:
-        parent_map = {}
+        effective_source_map[key] = value
 
-      effective_source_map = {}
-      for loc, origin in self._source_map.items():
-        effective_source_map[(loc.filename, loc.lineno)] = (
-            origin.loc.filename, origin.loc.lineno, origin.function_name)
-
-      for key, value in parent_map.items():
-        filename, lineno, _ = value
-        value_loc = origin_info.LineLocation(filename=filename, lineno=lineno)
-        if value_loc in self._source_map:
-          origin = self._source_map[value_loc]
-          effective_source_map[key] = (
-              origin.loc.filename, origin.loc.lineno, origin.function_name)
-        else:
-          effective_source_map[key] = value
-      self._effective_source_map = effective_source_map
+    self._cached_map = effective_source_map
     return effective_source_map
 
 
@@ -205,30 +209,31 @@ class PyToTF(transpiler.PyToPy):
 
   def __init__(self):
     super(PyToTF, self).__init__()
-
-    # TODO(mdan): Move into core or replace with an actual importable module.
-    # Craft a module that exposes the external API as well as certain
-    # internal modules.
-    ag_internal = imp.new_module('autograph')
-    ag_internal.__dict__.update(inspect.getmodule(PyToTF).__dict__)
-    ag_internal.ConversionOptions = converter.ConversionOptions
-    ag_internal.STD = converter.STANDARD_OPTIONS
-    ag_internal.Feature = converter.Feature
-    ag_internal.utils = utils
-    ag_internal.FunctionScope = function_wrappers.FunctionScope
-    ag_internal.with_function_scope = function_wrappers.with_function_scope
-    # TODO(mdan): Add safeguards against name clashes.
-    # We don't want to create a submodule because we want the operators to be
-    # accessible as ag__.<operator>
-    ag_internal.__dict__.update(special_functions.__dict__)
-    ag_internal.__dict__.update(operators.__dict__)
-
-    self._extra_locals = {'ag__': ag_internal}
+    self._extra_locals = None
 
   def get_transformed_name(self, node):
     return 'tf__' + super(PyToTF, self).get_transformed_name(node)
 
   def get_extra_locals(self):
+    if self._extra_locals is None:
+      # TODO(mdan): Move into core or replace with an actual importable module.
+      # Craft a module that exposes the external API as well as certain
+      # internal modules.
+      ag_internal = imp.new_module('autograph')
+      ag_internal.__dict__.update(inspect.getmodule(PyToTF).__dict__)
+      ag_internal.ConversionOptions = converter.ConversionOptions
+      ag_internal.STD = converter.STANDARD_OPTIONS
+      ag_internal.Feature = converter.Feature
+      ag_internal.utils = utils
+      ag_internal.FunctionScope = function_wrappers.FunctionScope
+      ag_internal.with_function_scope = function_wrappers.with_function_scope
+      # TODO(mdan): Add safeguards against name clashes.
+      # We don't want to create a submodule because we want the operators to be
+      # accessible as ag__.<operator>
+      ag_internal.__dict__.update(special_functions.__dict__)
+      ag_internal.__dict__.update(operators.__dict__)
+
+      self._extra_locals = {'ag__': ag_internal}
     return self._extra_locals
 
   def get_caching_key(self, ctx):

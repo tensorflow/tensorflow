@@ -24,6 +24,7 @@ namespace llvm_ir {
 // name of the corresponding constant buffer. In particular, it replaces . and
 // - with _.
 string SanitizeConstantName(const HloInstruction& instr);
+string SanitizeConstantName(absl::string_view name);
 
 string ConstantHloToGlobalName(const HloInstruction& instr);
 

@@ -137,14 +137,20 @@ paths as follows.
 sh build_aar_with_docker.sh \
   --input_models=/a/b/model_one.tflite,/c/d/model_two.tflite \
   --target_archs=x86,x86_64,arm64-v8a,armeabi-v7a \
-  --checkpoint=master
+  --checkpoint=master \
+  [--cache_dir=<path to cache directory>]
 ```
 
 The `checkpoint` flag is a commit, a branch or a tag of the TensorFlow repo that
-you want to checkout before building the libraries. The above command will
-generate the AAR file `tensorflow-lite.aar` for TensorFlow Lite built-in and
-custom ops and optionally the AAR file `tensorflow-lite-select-tf-ops.aar` for
-Select TensorFlow ops in your current directory.
+you want to checkout before building the libraries; by default it is the latest
+release branch. The above command will generate the AAR file
+`tensorflow-lite.aar` for TensorFlow Lite built-in and custom ops and optionally
+the AAR file `tensorflow-lite-select-tf-ops.aar` for Select TensorFlow ops in
+your current directory.
+
+The --cache_dir specify the cache directory. If not provided, the script will
+create a directory named `bazel-build-cache` under current working directory for
+caching.
 
 ## Add AAR files to project
 

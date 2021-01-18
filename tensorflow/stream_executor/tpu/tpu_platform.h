@@ -66,6 +66,8 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   const tensorflow::tpu::TpuHostLocationExternal GetTpuHostLocation()
       const override;
 
+  TpuRuntimeVersion version() const override;
+
   bool Initialized() const override;
 
   Status Initialize(

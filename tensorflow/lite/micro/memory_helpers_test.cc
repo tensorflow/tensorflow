@@ -140,6 +140,10 @@ TF_LITE_MICRO_TEST(TestTypeSizeOf) {
   TF_LITE_MICRO_EXPECT_EQ(sizeof(int64_t), size);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteUInt64, &size));
+  TF_LITE_MICRO_EXPECT_EQ(sizeof(uint64_t), size);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           tflite::TfLiteTypeSizeOf(kTfLiteBool, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(bool), size);
 

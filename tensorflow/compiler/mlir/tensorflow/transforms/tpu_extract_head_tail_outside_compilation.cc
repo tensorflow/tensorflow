@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
@@ -131,7 +131,7 @@ llvm::SmallVector<Operation*, 4> FindOutsideCompiledOpsAtHead(
     const TF::SideEffectAnalysis& side_effect_analysis,
     tf_device::ClusterOp cluster) {
   const auto& analysis = side_effect_analysis.GetAnalysisForFunc(
-      cluster.getParentOfType<FuncOp>());
+      cluster->getParentOfType<FuncOp>());
   Region* cluster_region = &cluster.body();
   llvm::SmallSetVector<Operation*, 4> head_outside_compiled_ops;
 
@@ -227,7 +227,7 @@ void FindOutsideCompiledOpsAtTailAndClusterResults(
     llvm::SmallVectorImpl<Operation*>* tail_outside_compiled_ops,
     llvm::SmallVectorImpl<Value>* cluster_results) {
   const auto& analysis = side_effect_analysis.GetAnalysisForFunc(
-      cluster.getParentOfType<FuncOp>());
+      cluster->getParentOfType<FuncOp>());
   Region* cluster_region = &cluster.body();
   llvm::SmallSetVector<Operation*, 4> tail_outside_compiled_ops_set;
   Operation* terminator = cluster.GetBody().getTerminator();

@@ -65,6 +65,9 @@ class AntirectifierBenchmark(tf.test.Benchmark):
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=["sparse_categorical_accuracy"])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        "antirectifier", batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_antirectifier_bs_256(self):
@@ -79,6 +82,9 @@ class AntirectifierBenchmark(tf.test.Benchmark):
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=["sparse_categorical_accuracy"])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        "antirectifier", batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_antirectifier_bs_512(self):
@@ -93,6 +99,9 @@ class AntirectifierBenchmark(tf.test.Benchmark):
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=["sparse_categorical_accuracy"])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        "antirectifier", batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_antirectifier_bs_512_gpu_2(self):
@@ -112,6 +121,9 @@ class AntirectifierBenchmark(tf.test.Benchmark):
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=["sparse_categorical_accuracy"])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        "antirectifier", batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
 

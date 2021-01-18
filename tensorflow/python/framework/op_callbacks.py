@@ -170,7 +170,7 @@ def invoke_op_callbacks(op_type,
       eager execution and are non-eager `Tensor`s in the case of graph
       construction.
     op_name: Name of the op. Applicable if and only if this method is invoked
-      due to the graph construction of an op or the eager execution of of a
+      due to the graph construction of an op or the eager execution of a
       `FuncGraph`.
     graph: The graph involved (if any).
       - In the case if the eager execution of an op or FuncGraph, this is

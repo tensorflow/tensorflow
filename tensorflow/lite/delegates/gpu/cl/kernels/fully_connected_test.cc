@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/fully_connected.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/fully_connected.h"
 
 #include <vector>
 
@@ -21,12 +21,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 using ::testing::ElementsAreArray;
@@ -60,9 +58,11 @@ TEST_F(OpenCLOperationTest, FullyConnected) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       FullyConnected operation =
-          CreateFullyConnected(creation_context_.GetDeviceInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 1, 1, 2), &dst_tensor));
+          CreateFullyConnected(creation_context_.GetGpuInfo(), op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<FullyConnected>(std::move(operation)),
+          BHWC(1, 1, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {14.5f, 37.5f}))
           << "Failed using precision " << ToString(precision);
     }
@@ -104,9 +104,11 @@ TEST_F(OpenCLOperationTest, FullyConnectedLarge) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       FullyConnected operation =
-          CreateFullyConnected(creation_context_.GetDeviceInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 1, 1, 12), &dst_tensor));
+          CreateFullyConnected(creation_context_.GetGpuInfo(), op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<FullyConnected>(std::move(operation)),
+          BHWC(1, 1, 1, 12), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps),
@@ -153,9 +155,11 @@ TEST_F(OpenCLOperationTest, FullyConnectedExtraLarge) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       FullyConnected operation =
-          CreateFullyConnected(creation_context_.GetDeviceInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 1, 1, kOutputSize), &dst_tensor));
+          CreateFullyConnected(creation_context_.GetGpuInfo(), op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<FullyConnected>(std::move(operation)),
+          BHWC(1, 1, 1, kOutputSize), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), expected))
           << "Failed using precision " << ToString(precision);
     }

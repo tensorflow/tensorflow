@@ -21,7 +21,7 @@ from __future__ import print_function
 import collections
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import
-from tensorflow.core.protobuf.data.experimental import service_config_pb2
+from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.util.tf_export import tf_export
@@ -88,7 +88,8 @@ class DispatchServer(object):
 
   >>> dispatcher = tf.data.experimental.service.DispatchServer()
   >>> dispatcher_address = dispatcher.target.split("://")[1]
-  >>> worker = tf.data.experimental.service.WorkerServer(WorkerConfig(
+  >>> worker = tf.data.experimental.service.WorkerServer(
+  ...     tf.data.experimental.service.WorkerConfig(
   ...     dispatcher_address=dispatcher_address))
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(

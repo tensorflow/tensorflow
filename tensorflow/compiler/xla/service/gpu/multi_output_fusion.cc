@@ -217,9 +217,10 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent) {
         continue;
       }
       if (!ConsumeFuel(name(), [&] {
-            return absl::StrFormat("Not fusing %s and %s.", (*i)->name(),
-                                   (*j)->name());
+            return absl::StrFormat("Not fusing siblings %s and %s.",
+                                   (*i)->name(), (*j)->name());
           })) {
+        ++j;
         continue;
       }
       VLOG(2) << "Fuse siblings " << (*i)->name() << " and " << (*j)->name();

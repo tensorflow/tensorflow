@@ -374,6 +374,43 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
       self.assertLess(error, 1e-4)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class SegmentProdGradientTest(test.TestCase):
+
+  def _run_gradient_check(self, data, segment_ids):
+
+    def _segment_prod(x):
+      return math_ops.segment_prod(x, segment_ids)
+
+    err = gradient_checker_v2.max_error(
+        *gradient_checker_v2.compute_gradient(_segment_prod, [data]))
+    self.assertLess(err, 2e-4)
+
+  def testSegmentProdGradientWithoutOverlap(self):
+    data = constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1], [5, 6, 7, 8]],
+                                dtype=dtypes.float32)
+    segment_ids = constant_op.constant([0, 1, 2], dtype=dtypes.int64)
+    self._run_gradient_check(data, segment_ids)
+
+  def testSegmentProdGradientWithoutZeros(self):
+    data = constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1], [5, 6, 7, 8]],
+                                dtype=dtypes.float32)
+    segment_ids = constant_op.constant([0, 0, 1], dtype=dtypes.int64)
+    self._run_gradient_check(data, segment_ids)
+
+  def testSegmentProdGradientWithZeros(self):
+    data = constant_op.constant([[0, 2, 3, 4], [0, 0, 2, 0], [5, 0, 7, 0]],
+                                dtype=dtypes.float32)
+    segment_ids = constant_op.constant([0, 0, 1], dtype=dtypes.int64)
+    self._run_gradient_check(data, segment_ids)
+
+  def testSegmentProdGradientWithEmptySegment(self):
+    data = constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1], [5, 6, 7, 8]],
+                                dtype=dtypes.float32)
+    segment_ids = constant_op.constant([0, 0, 2], dtype=dtypes.int64)
+    self._run_gradient_check(data, segment_ids)
+
+
 class FloorModGradientTest(test.TestCase):
 
   @test_util.run_deprecated_v1

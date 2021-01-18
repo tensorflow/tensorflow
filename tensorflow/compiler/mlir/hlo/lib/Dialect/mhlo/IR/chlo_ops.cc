@@ -19,9 +19,9 @@ limitations under the License.
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
@@ -30,6 +30,20 @@ namespace chlo {
 template <typename T>
 static LogicalResult Verify(T op) {
   return success();
+}
+
+static constexpr float kF16MaxFiniteValue = 0x1.ffcP15;
+
+Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val) {
+  Type ty = getElementTypeOrSelf(val.getType());
+  if (ty.isF16()) {
+    return getConstantLike(b, loc, kF16MaxFiniteValue, val);
+  } else if (ty.isF32()) {
+    return getConstantLike(b, loc, std::numeric_limits<float>::max(), val);
+  } else if (ty.isF64()) {
+    return getConstantLike(b, loc, std::numeric_limits<double>::max(), val);
+  }
+  llvm_unreachable("unhandled type");
 }
 
 //===----------------------------------------------------------------------===//
@@ -190,18 +204,19 @@ LogicalResult BroadcastComplexOp::reifyReturnTypeShapes(
 void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
                                Value lhs, Value rhs,
                                DenseIntElementsAttr broadcast_dimensions,
-                               StringAttr comparison_direction) {
+                               StringAttr comparison_direction,
+                               StringAttr compare_type) {
   auto new_type = GetBroadcastType(lhs.getType(), rhs.getType(),
                                    builder.getI1Type(), broadcast_dimensions);
   build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
-        comparison_direction);
+        comparison_direction, compare_type);
 }
 
 LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-  Type element_type = IntegerType::get(1, context);
+  Type element_type = IntegerType::get(context, 1);
   return InferBroadcastBinaryOpReturnTypeComponents(context, location, operands,
                                                     attributes, element_type,
                                                     inferedReturnShapes);

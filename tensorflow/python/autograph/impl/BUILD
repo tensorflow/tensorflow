@@ -22,7 +22,7 @@ py_library(
         "api.py",
         "conversion.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python:platform",
@@ -54,7 +54,6 @@ tf_py_test(
 tf_py_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",

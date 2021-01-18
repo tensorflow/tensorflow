@@ -52,6 +52,7 @@ ProfilerServer::~ProfilerServer() {
   if (server_) {
     server_->Shutdown();
     server_->Wait();
+    LOG(INFO) << "Profiler server was shut down";
   }
 }
 

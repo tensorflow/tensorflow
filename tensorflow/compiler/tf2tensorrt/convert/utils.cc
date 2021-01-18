@@ -198,7 +198,8 @@ Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
       *trt_type = nvinfer1::DataType::kINT32;
       break;
     default:
-      return errors::Internal("Unsupported tensorflow type");
+      return errors::InvalidArgument("Unsupported tensorflow data type ",
+                                     DataTypeString(tf_type));
   }
   return Status::OK();
 }
@@ -215,7 +216,7 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
       *tf_type = DT_INT32;
       break;
     default:
-      return errors::Internal("Invalid TRT type");
+      return errors::InvalidArgument("Invalid TRT data type");
   }
   return Status::OK();
 }

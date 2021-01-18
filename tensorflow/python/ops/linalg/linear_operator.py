@@ -1153,7 +1153,7 @@ class LinearOperator(module.Module):
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
       if t is None or not (linear_operator_util.is_ref(t) or
-                           tensor_util.is_tensor(t)):
+                           tensor_util.is_tf_type(t)):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
     self._graph_parents = graph_parents
 

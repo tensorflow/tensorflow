@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -hlo-legalize-to-lhlo=results-escape-function=true -buffer-placement %s -o - | FileCheck %s
+// RUN: mlir-hlo-opt -hlo-legalize-to-lhlo -buffer-hoisting -buffer-deallocation %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @func_op_unranked_arg_result
 func @func_op_unranked_arg_result(%arg0: tensor<*xf32>) -> tensor<*xf32> {
@@ -17,7 +17,7 @@ func @dynamic_reshape_from_unranked(
   return %reshaped : tensor<?xf32>
 }
 // CHECK-SAME: ([[ARG:%.*]]: memref<*xf32>, [[SHAPE:%.*]]: memref<1xi32>)
-// CHECK-NEXT: reshape_memref_cast [[ARG]]([[SHAPE]])
+// CHECK-NEXT: memref_reshape [[ARG]]([[SHAPE]])
 // CHECK-SAME:   : (memref<*xf32>, memref<1xi32>) -> memref<?xf32>
 
 // -----
@@ -30,5 +30,5 @@ func @dynamic_reshape_to_unranked(
   return %reshaped : tensor<*xf32>
 }
 // CHECK-SAME: ([[ARG:%.*]]: memref<?xf32>, [[SHAPE:%.*]]: memref<?xi32>)
-// CHECK-NEXT: reshape_memref_cast [[ARG]]([[SHAPE]])
+// CHECK-NEXT: memref_reshape [[ARG]]([[SHAPE]])
 // CHECK-SAME:   : (memref<?xf32>, memref<?xi32>) -> memref<*xf32>

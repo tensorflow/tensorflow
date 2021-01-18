@@ -161,7 +161,7 @@ def serialize(layer):
 def deserialize(config, custom_objects=None):
   """Instantiates a layer from a config dictionary.
 
-  Arguments:
+  Args:
       config: dict of the form {'class_name': str, 'config': dict}
       custom_objects: dict mapping class names (or function names)
           of custom (non-Keras) objects to class/functions

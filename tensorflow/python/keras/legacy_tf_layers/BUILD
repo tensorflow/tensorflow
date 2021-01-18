@@ -24,7 +24,7 @@ py_library(
         "__init__.py",
         "base.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -34,7 +34,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/engine:base_layer",
-        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/training/tracking:base",
     ],
 )
@@ -42,6 +42,7 @@ py_library(
 py_library(
     name = "convolutional",
     srcs = ["convolutional.py"],
+    srcs_version = "PY3",
     deps = [
         ":layers_base",
         "//tensorflow/python:init_ops",
@@ -53,6 +54,7 @@ py_library(
 py_library(
     name = "core",
     srcs = ["core.py"],
+    srcs_version = "PY3",
     deps = [
         ":layers_base",
         "//tensorflow/python:init_ops",
@@ -64,6 +66,7 @@ py_library(
 py_library(
     name = "normalization",
     srcs = ["normalization.py"],
+    srcs_version = "PY3",
     deps = [
         ":layers_base",
         "//tensorflow/python:init_ops",
@@ -75,6 +78,7 @@ py_library(
 py_library(
     name = "pooling",
     srcs = ["pooling.py"],
+    srcs_version = "PY3",
     deps = [
         ":layers_base",
         "//tensorflow/python:util",
@@ -88,7 +92,6 @@ tf_py_test(
     srcs = ["base_test.py"],
     main = "base_test.py",
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":core",
         ":layers_base",
@@ -119,7 +122,6 @@ tf_py_test(
     srcs = ["core_test.py"],
     main = "core_test.py",
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":core",
         "//tensorflow/python:array_ops",
@@ -171,7 +173,6 @@ tf_py_test(
     main = "pooling_test.py",
     python_version = "PY3",
     tags = ["no_rocm"],
-    tfrt_enabled = True,
     deps = [
         ":pooling",
         "//tensorflow/python:array_ops",
@@ -189,7 +190,6 @@ cuda_py_test(
     main = "normalization_test.py",
     python_version = "PY3",
     shard_count = 10,
-    tfrt_enabled = True,
     deps = [
         ":convolutional",
         ":normalization",

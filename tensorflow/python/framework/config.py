@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import _pywrap_tensor_float_32_execution
 from tensorflow.python.eager import context
+from tensorflow.python.util import _pywrap_tensor_float_32_execution
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -80,6 +80,9 @@ def enable_tensor_float_32_execution(enabled):
   certain shapes are supported. Support for more input shapes and more ops may
   be added in the future. As a result, precision of float32 ops may decrease in
   minor versions of TensorFlow.
+
+  TensorFloat-32 is also used for some complex64 ops. Currently, TensorFloat-32
+  is used in fewer cases for complex64 as it is for float32.
 
   Args:
     enabled: Bool indicating whether to enable TensorFloat-32 execution.

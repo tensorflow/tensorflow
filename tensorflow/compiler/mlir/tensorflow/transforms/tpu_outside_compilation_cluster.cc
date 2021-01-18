@@ -124,32 +124,44 @@ class OutsideCompiledCluster {
   }
 
  private:
-  // Checks if it is safe for an op to be merged into this cluster.
+  // TODO(hinsu): Consider using GraphCycles data structure available in xla
+  // directory to avoid potentially full traversal for each new op and cluster
+  // pair.
+  // Checks if it is safe for `op` to be merged into this cluster.
   bool IsSafeToAdd(Operation* op,
                    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
-    if (closed_) return false;
-    // If the op is not marked for outside compilation it doesn't belong in a
-    // cluster.
-    if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
-      auto successors = side_effect_analysis.DirectControlSuccessors(op);
-      // If non outside compiled op with side effect successors is encountered,
-      // close this cluster to additions so that no cluster cyclic dependencies
-      // can be created.
-      if (!successors.empty()) {
-        closed_ = true;
-      }
-      return false;
-    }
-
     if (host_cluster_ops_.empty()) return true;
 
-    // Checks to see if there is data dependency between ops in
-    // `host_cluster_ops_` and `op`.
-    const bool contains_data_dependency = llvm::any_of(
-        op->getUsers(),
-        [&](Operation* user) { return host_cluster_ops_.contains(user); });
+    // If there is an intermediate data or side effect dependency between the op
+    // and ops in the cluster, it's not safe to add.
+    std::vector<Operation*> dependencies;
 
-    return contains_data_dependency;
+    // Materialize data dependencies as the llvm::concat doesn't support
+    // non-materialized iteration.
+    auto data_deps = llvm::to_vector<4>(op->getUsers());
+    llvm::SmallVector<Operation*, 4> control_deps =
+        side_effect_analysis.DirectControlSuccessors(op);
+    for (auto* dep : llvm::concat<Operation*>(data_deps, control_deps)) {
+      if (!host_cluster_ops_.contains(dep)) dependencies.push_back(dep);
+    }
+
+    llvm::SmallPtrSet<Operation*, 4> visited;
+    while (!dependencies.empty()) {
+      Operation* next_op = dependencies.back();
+      dependencies.pop_back();
+      if (visited.count(next_op)) continue;
+      visited.insert(next_op);
+
+      auto data_deps = llvm::to_vector<4>(next_op->getUsers());
+      llvm::SmallVector<Operation*, 4> control_deps =
+          side_effect_analysis.DirectControlSuccessors(next_op);
+      for (auto* dep : llvm::concat<Operation*>(data_deps, control_deps)) {
+        if (host_cluster_ops_.contains(dep)) return false;
+        dependencies.push_back(dep);
+      }
+    }
+
+    return true;
   }
 
   // `host_cluster_op_` stores a set of ops that will be grouped and computed
@@ -158,7 +170,6 @@ class OutsideCompiledCluster {
   // cluster.
   llvm::SmallPtrSet<Operation*, 8> host_cluster_ops_;
   std::string cluster_name_;
-  bool closed_ = false;  // Cluster is closed to further additions.
 };
 
 void TPUOutsideCompilationCluster::runOnFunction(
@@ -167,14 +178,15 @@ void TPUOutsideCompilationCluster::runOnFunction(
   int cluster_counter = 0;
 
   func.walk([&](tf_device::ClusterOp tpu_cluster) {
-    llvm::SmallVector<Operation*, 4> tpu_cluster_ops;
-    tpu_cluster_ops.reserve(tpu_cluster.getBody()->getOperations().size());
-
-    tpu_cluster.walk([&](Operation* op) { tpu_cluster_ops.emplace_back(op); });
+    llvm::SmallVector<Operation*, 4> outside_ops;
+    tpu_cluster.walk([&](Operation* op) {
+      if (op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+        outside_ops.emplace_back(op);
+    });
 
     // In order to cluster ops feeding results to the same operation, traverse
     // the ops in reverse order.
-    for (Operation* op : llvm::reverse(tpu_cluster_ops)) {
+    for (Operation* op : llvm::reverse(outside_ops)) {
       // Try to add the op to existing clusters.
       bool added = false;
       for (auto& cluster : clusters)

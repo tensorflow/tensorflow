@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
@@ -108,6 +107,28 @@ using ::tflite::gpu::metal::SingleOpModel;
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1, 2, 3, 4}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testReshape1x2x4To2x1x4 {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 2, 4);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 2, 1, 4);
+
+  ReshapeAttributes attr;
+  attr.new_shape = output.shape;
+
+  SingleOpModel model({ToString(OperationType::RESHAPE), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4, 5, 6, 7, 8}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({1, 2, 3, 4, 5, 6, 7, 8}, model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

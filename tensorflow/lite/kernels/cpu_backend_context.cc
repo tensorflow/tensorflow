@@ -24,6 +24,7 @@ limitations under the License.
 #include "public/gemmlowp.h"
 #include "ruy/context.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -35,7 +36,13 @@ const int kDefaultNumThreadpoolThreads = 1;
 
 namespace tflite {
 
-#ifdef TFLITE_HAVE_CPUINFO
+// Use weak symbols if possible to dispatch to deprecated paths.
+#if TFLITE_HAS_ATTRIBUTE_WEAK && !defined(__APPLE__)
+extern TFLITE_ATTRIBUTE_WEAK bool UseGemmlowpOnX86();
+#endif  // defined(TFLITE_HAS_ATTRIBUTE_WEAK) && !(__APPLE__)
+
+// TODO(b/138922878) Enable when Ruy builds on Apple.
+#if defined(TFLITE_HAVE_CPUINFO) && !defined(__APPLE__)
 CpuBackendContext::CpuInfo::~CpuInfo() {
   if (init_status_ == InitStatus::kInitialized) {
     cpuinfo_deinitialize();
@@ -142,6 +149,17 @@ void CpuBackendContext::SetUseCaching(bool flag) { use_caching_ = flag; }
 
 bool CpuBackendContext::HasAvxOrAbove() {
   return cpuinfo_.Avx() || cpuinfo_.Avx2Fma() || cpuinfo_.Avx512();
+}
+
+bool CpuBackendContext::PreferGemmlowpOnX86() {
+  bool use_gemmlowp_on_x86 = false;
+#if defined(TFLITE_X86_PLATFORM) && TFLITE_HAS_ATTRIBUTE_WEAK && \
+    !defined(__APPLE__)
+  if (::tflite::UseGemmlowpOnX86 != nullptr) {
+    use_gemmlowp_on_x86 = ::tflite::UseGemmlowpOnX86();
+  }
+#endif  // TFLITE_X86_PLATFORM && TFLITE_HAS_ATTRIBUTE_WEAK && !(__APPLE__)
+  return use_gemmlowp_on_x86 || !HasAvxOrAbove();
 }
 
 }  // namespace tflite

@@ -38,6 +38,16 @@ XlaExpression XlaExpression::Constant(Tensor value) {
   return e;
 }
 
+XlaExpression XlaExpression::ConstantResource(Tensor value,
+                                              XlaResource* resource) {
+  XlaExpression e;
+  e.kind_ = Kind::kResource;
+  e.dtype_ = DT_RESOURCE;
+  e.resource_ = resource;
+  e.constant_value_ = value;
+  return e;
+}
+
 XlaExpression XlaExpression::XlaOp(xla::XlaOp value, DataType dtype) {
   XlaExpression e;
   e.kind_ = Kind::kXlaOp;
@@ -83,7 +93,7 @@ xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
       case Kind::kConstant: {
         xla::BorrowingLiteral literal;
         TF_RETURN_IF_ERROR(
-            HostTensorToBorrowingLiteral(constant_value_, &literal));
+            HostTensorToBorrowingLiteral(*constant_value_, &literal));
         return xla::ConstantLiteral(builder, literal);
       }
       case Kind::kTensorList:
@@ -106,7 +116,7 @@ xla::StatusOr<Tensor> XlaExpression::ResolveDynamism(
   switch (kind()) {
     case Kind::kConstant: {
       // Constant values are considered static.
-      Tensor constant_false(DT_BOOL, constant_value().shape());
+      Tensor constant_false(DT_BOOL, constant_value()->shape());
       auto flat = constant_false.flat<bool>();
       for (int64 i = 0; i < flat.size(); ++i) flat(i) = false;
       return constant_false;
@@ -147,12 +157,11 @@ xla::StatusOr<absl::optional<Tensor>> XlaExpression::ResolveConstant(
     xla::Client* client, bool dynamic_dimension_is_minus_one) const {
   switch (kind()) {
     case Kind::kConstant:
-      return {constant_value()};
+    case Kind::kResource:
+      return constant_value();
     case Kind::kXlaOp:
       break;
     case Kind::kTensorList:
-      TF_FALLTHROUGH_INTENDED;
-    case Kind::kResource:
       TF_FALLTHROUGH_INTENDED;
     case Kind::kInvalid:
       return errors::InvalidArgument(
@@ -187,7 +196,12 @@ xla::StatusOr<absl::optional<Tensor>> XlaExpression::ResolveConstant(
 xla::StatusOr<TensorShape> XlaExpression::GetShape() const {
   switch (kind_) {
     case Kind::kConstant:
-      return constant_value().shape();
+      return constant_value()->shape();
+    case Kind::kResource:
+      if (constant_value()) {
+        return constant_value()->shape();
+      }
+      return TensorShape({});
     case Kind::kXlaOp: {
       TF_ASSIGN_OR_RETURN(xla::Shape xla_shape,
                           handle().builder()->GetShape(handle()));
@@ -196,8 +210,6 @@ xla::StatusOr<TensorShape> XlaExpression::GetShape() const {
       return shape;
     }
     case Kind::kTensorList:
-      return TensorShape({});
-    case Kind::kResource:
       return TensorShape({});
     case Kind::kInvalid:
       return errors::InvalidArgument(

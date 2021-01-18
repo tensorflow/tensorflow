@@ -14,7 +14,7 @@ exports_files(
 py_library(
     name = "parallel_device",
     srcs = ["parallel_device.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":saving",
         "//tensorflow/python:_pywrap_parallel_device",
@@ -26,7 +26,7 @@ py_library(
 py_library(
     name = "saving",
     srcs = ["saving.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow/python:framework_ops"],
 )
 

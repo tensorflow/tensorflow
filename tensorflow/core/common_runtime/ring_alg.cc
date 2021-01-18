@@ -278,12 +278,17 @@ void RingAlg::StartAbort(const Status& s) {
       status_.Update(s);
     }
   }
-  // If this is the initial entry to abort mode then invoke StartAbort
-  // on the CollectiveExecutor that invoked us.  That should start
-  // cancellation on all of the outstanding CollectiveRemoteAccess
-  // actions.
+  // If this is the initial entry to abort mode and it's not a cancellation,
+  // then invoke StartAbort on the CollectiveExecutor that invoked us.  That
+  // should start cancellation on all of the outstanding CollectiveRemoteAccess
+  // actions. If it's cancellation all pending send/recv should be cancelled as
+  // well and there's then no need to abort.
   if (abort_started) {
-    col_ctx_->col_exec->StartAbort(s);
+    if (col_ctx_->op_ctx->cancellation_manager() == nullptr ||
+        (!col_ctx_->op_ctx->cancellation_manager()->IsCancelled() &&
+         !col_ctx_->op_ctx->cancellation_manager()->IsCancelling())) {
+      col_ctx_->col_exec->StartAbort(s);
+    }
   }
 }
 

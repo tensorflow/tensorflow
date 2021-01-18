@@ -93,6 +93,7 @@ cc_library(
         "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",
         "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
+        "//tensorflow/core/profiler/utils:time_utils_impl",
     ],
     alwayslink = True,
 )

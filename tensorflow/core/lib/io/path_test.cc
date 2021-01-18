@@ -141,5 +141,14 @@ TEST(PathTest, CreateParseURI) {
 }
 #undef EXPECT_PARSE_URI
 
+TEST(PathTest, CommonPathPrefix) {
+  EXPECT_EQ(CommonPathPrefix({"/alpha/beta/c", "/alpha/beta/g"}),
+            "/alpha/beta/");
+  EXPECT_EQ(CommonPathPrefix({"/a/b/c", "/a/beta/gamma"}), "/a/");
+  EXPECT_EQ(CommonPathPrefix({}), "");
+  EXPECT_EQ(CommonPathPrefix({"/a/b/c", "", "/a/b/"}), "");
+  EXPECT_EQ(CommonPathPrefix({"alpha", "alphabeta"}), "");
+}
+
 }  // namespace io
 }  // namespace tensorflow

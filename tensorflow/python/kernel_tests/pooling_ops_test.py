@@ -1004,12 +1004,14 @@ class PoolingTest(test.TestCase):
     ]
 
     Config = collections.namedtuple(
-        "Config", ["use_gpu", "include_batch_in_index", "argmax"])
+        "Config", ["use_gpu", "include_batch_in_index", "argmax", "Targmax"])
     configs = [
-        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8]),
-        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17]),
-        Config(True, False, [0, 1, 3, 5, 0, 2, 6, 8]),
-        Config(True, True, [0, 1, 3, 5, 9, 11, 15, 17])
+        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8], dtypes.int64),
+        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17], dtypes.int64),
+        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8], dtypes.int32),
+        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17], dtypes.int32),
+        Config(True, False, [0, 1, 3, 5, 0, 2, 6, 8], dtypes.int64),
+        Config(True, True, [0, 1, 3, 5, 9, 11, 15, 17], dtypes.int64),
     ]
 
     for config in configs:
@@ -1019,7 +1021,7 @@ class PoolingTest(test.TestCase):
             t,
             ksize=[1, 2, 2, 1],
             strides=[1, 1, 1, 1],
-            Targmax=dtypes.int64,
+            Targmax=config.Targmax,
             padding="VALID",
             include_batch_in_index=config.include_batch_in_index)
         out, argmax = self.evaluate([out_op, argmax_op])

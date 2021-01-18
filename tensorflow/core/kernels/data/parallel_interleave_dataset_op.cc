@@ -219,6 +219,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         ParallelInterleaveDatasetOp::kDatasetType, params);
   }
 
+  int64 Cardinality() const override {
+    int64 n = input_->Cardinality();
+    if (n == kInfiniteCardinality) {
+      return n;
+    }
+    return kUnknownCardinality;
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return Status::OK();
@@ -999,7 +1007,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             absl::make_unique<std::vector<Tensor>>(std::move(inputs));
         status = MakeIteratorFromInputElement(
             ctx_.get(), this, *element->inputs, element->id,
-            *instantiated_captured_func_, prefix(), &element->iterator);
+            *instantiated_captured_func_, prefix(), &element->iterator,
+            model_node());
         if (!status.ok()) {
           element->inputs.reset();
           element->iterator.reset();
@@ -1291,7 +1300,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             reader->ReadScalar(iterator_name, kIdSuffix, &element->id));
         TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
             ctx, this, *element->inputs, element->id,
-            *instantiated_captured_func_.get(), prefix(), &iterator));
+            *instantiated_captured_func_.get(), prefix(), &iterator,
+            model_node()));
       }
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
       mutex_lock l(*mu_);
@@ -1307,7 +1317,20 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         mutex_lock l(*mu_);
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(prefix(), kCurrentElementsSize, &size));
-        DCHECK_EQ(current_elements_.size(), size);
+        if (current_elements_.size() != size) {
+          // This could mean two things: (1) the user created their checkpoint
+          // from a dataset with one cycle_length, then changed the cycle_length
+          // and tried to restore from the old checkpoint, or (2) the user set
+          // the cycle length to tf.data.AUTOTUNE, wrote the checkpoint from one
+          // machine, then tried to restore the checkpoint on another machine
+          // with a different CPU budget (causing autotune to pick a different
+          // cycle length).
+          return errors::FailedPrecondition(
+              "The iterator cycle length ", current_elements_.size(),
+              " is different from the cycle length to restore from the "
+              "checkpoint: ",
+              size);
+        }
       }
       if (size == 0) {
         return Status::OK();

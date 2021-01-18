@@ -264,10 +264,11 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
 
   def f(a, b):  # pylint: disable=missing-docstring
     # We can't assign to captured variable `axisa`, so make a new variable
-    axis_a = axisa
-    axis_b = axisb
-    axis_c = axisc
-    if axis is not None:
+    if axis is None:
+      axis_a = axisa
+      axis_b = axisb
+      axis_c = axisc
+    else:
       axis_a = axis
       axis_b = axis
       axis_c = axis

@@ -22,8 +22,9 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -40,7 +41,7 @@ StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
-    const std::vector<std::vector<int>>& input_shapes,
+    const std::vector<llvm::Optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
@@ -104,7 +105,17 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    bool upgrade_legacy = false);
+    MLIRImportOptions options);
+
+// Converts a TensorFlow V1 SavedModel stored in the directory with the given
+// `saved_model_dir` into a MLIR module. Creates MLIR entities into the
+// given MLIR `context`. This does not create session internally so it is faster
+// and does not perform any graph transformation.
+StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImportLite(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context,
+    MLIRImportOptions options);
 
 }  // namespace tensorflow
 

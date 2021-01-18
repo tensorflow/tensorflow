@@ -61,7 +61,7 @@ void OnAudioBufferFilledCallback(
 // device on MacOS.
 TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   // Set up the format of the audio - single channel, 32-bit float at 16KHz.
-  AudioStreamBasicDescription recordFormat = {0};
+  AudioStreamBasicDescription recordFormat = {};
   recordFormat.mSampleRate = kAudioSampleFrequency;
   recordFormat.mFormatID = kAudioFormatLinearPCM;
   recordFormat.mFormatFlags =

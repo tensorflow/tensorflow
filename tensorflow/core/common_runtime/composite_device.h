@@ -53,6 +53,8 @@ class CompositeDevice : public Device {
       const std::vector<string>& underlying_devices, const string& device_name,
       Status* status);
 
+  bool IsRemoteCallAllowed() const override { return false; }
+
  private:
   CompositeDevice(const DeviceAttributes& device_attributes,
                   const std::vector<string>& underlying_devices)

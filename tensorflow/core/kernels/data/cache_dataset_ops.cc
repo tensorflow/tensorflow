@@ -38,6 +38,8 @@ namespace data {
 /* static */ constexpr const char* const CacheDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const CacheDatasetOp::kOutputShapes;
 
+namespace {
+
 constexpr char kKeyStrFormat[] = "%%%zuzu_%%%zuzu";
 constexpr char kPaddingSizeStrFormat[] = "%zu";
 constexpr char kFileDatasetPrefix[] = "File";
@@ -57,6 +59,14 @@ constexpr char kCacheCompleted[] = "cache_completed";
 constexpr char kIndex[] = "index";
 constexpr char kImpl[] = "Impl";
 constexpr char kCacheDataset[] = "CacheDataset";
+constexpr char kIncompleteCacheErrorMessage[] =
+    "The calling iterator did not fully read the dataset being cached. In "
+    "order to avoid unexpected truncation of the dataset, the partially cached "
+    "contents of the dataset  will be discarded. This can happen if you have "
+    "an input pipeline similar to `dataset.cache().take(k).repeat()`. You "
+    "should use `dataset.take(k).cache().repeat()` instead.";
+
+}  // namespace
 
 class CacheDatasetOp::FileDatasetBase : public DatasetBase {
  public:
@@ -220,6 +230,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
 
       ~FileWriterIterator() override {
         if (!dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
+          LOG(WARNING) << kIncompleteCacheErrorMessage;
           std::vector<string> cache_files;
           Status s = dataset()->env_->GetMatchingPaths(
               strings::StrCat(filename_, "*"), &cache_files);
@@ -754,13 +765,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       ~MemoryWriterIterator() override {
         mutex_lock l(mu_);
         if (!temp_cache_.empty() && !cache_->IsCompleted()) {
-          LOG(WARNING)
-              << "The calling iterator did not fully read the dataset being "
-                 "cached. In order to avoid unexpected truncation of the "
-                 "dataset, the partially cached contents of the dataset "
-                 "will be discarded. This can happen if you have an input "
-                 "pipeline similar to `dataset.cache().take(k).repeat()`. "
-                 "You should use `dataset.take(k).cache().repeat()` instead.";
+          LOG(WARNING) << kIncompleteCacheErrorMessage;
           cache_->Reset();
         }
       }

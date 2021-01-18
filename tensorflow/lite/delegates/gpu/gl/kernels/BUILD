@@ -333,6 +333,7 @@ cc_test(
     srcs = ["mean_test.cc"],
     linkstatic = True,
     tags = [
+        "no_mac",  # TODO(b/171882090)
         "notap",
         "tflite_not_portable_ios",
     ],

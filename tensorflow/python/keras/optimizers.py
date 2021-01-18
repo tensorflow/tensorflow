@@ -50,7 +50,7 @@ def serialize(optimizer):
 def deserialize(config, custom_objects=None):
   """Inverse of the `serialize` function.
 
-  Arguments:
+  Args:
       config: Optimizer configuration dictionary.
       custom_objects: Optional dictionary mapping names (strings) to custom
         objects (classes and functions) to be considered during deserialization.
@@ -60,7 +60,7 @@ def deserialize(config, custom_objects=None):
   """
   # loss_scale_optimizer has a direct dependency of optimizer, import here
   # rather than top to avoid the cyclic dependency.
-  from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras.mixed_precision import loss_scale_optimizer  # pylint: disable=g-import-not-at-top
   all_classes = {
       'adadelta': adadelta_v2.Adadelta,
       'adagrad': adagrad_v2.Adagrad,
@@ -91,7 +91,7 @@ def deserialize(config, custom_objects=None):
 def get(identifier):
   """Retrieves a Keras Optimizer instance.
 
-  Arguments:
+  Args:
       identifier: Optimizer identifier, one of
           - String: name of an optimizer
           - Dictionary: configuration dictionary. - Keras Optimizer instance (it

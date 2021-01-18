@@ -24,7 +24,9 @@ import six
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.keras import losses as losses_mod
 from tensorflow.python.keras import metrics as metrics_mod
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
@@ -51,7 +53,7 @@ class Container(object):
     (2) Fill missing keys in a dict w/ `None`s.
     (3) Map a single item to all outputs.
 
-    Arguments:
+    Args:
       outputs: Model predictions.
       struct: Arbitrary nested structure (e.g. of labels, sample_weights,
         losses, or metrics).
@@ -72,7 +74,7 @@ class Container(object):
     NOTE: This method should only be called for Metrics / Losses, not for
     y_true / sample_weight.
 
-    Arguments:
+    Args:
       outputs: Model predictions.
       objects: Arbitrary nested structure (e.g. of losses or metrics)
 
@@ -167,7 +169,7 @@ class LossesContainer(Container):
                regularization_losses=None):
     """Computes the overall loss.
 
-    Arguments:
+    Args:
       y_true: An arbitrary structure of Tensors representing the ground truth.
       y_pred: An arbitrary structure of Tensors representing a Model's outputs.
       sample_weight: An arbitrary structure of Tensors representing the
@@ -208,7 +210,11 @@ class LossesContainer(Container):
         loss_metric_value *= ds_context.get_strategy().num_replicas_in_sync
 
       if batch_dim is None:
-        batch_dim = array_ops.shape(y_t)[0]
+        if tf_utils.is_ragged(y_t):
+          batch_dim = y_t.nrows()
+        else:
+          batch_dim = array_ops.shape(y_t)[0]
+
       if metric_obj is not None:
         metric_obj.update_state(loss_metric_value, sample_weight=batch_dim)
 
@@ -250,7 +256,7 @@ class LossesContainer(Container):
     Converts the user-supplied loss to a `Loss` object. Also allows
     `SUM_OVER_BATCH_SIZE` reduction to be used for this loss.
 
-    Arguments:
+    Args:
       loss: A string, function, or `Loss` object.
 
     Returns:
@@ -261,7 +267,9 @@ class LossesContainer(Container):
 
     loss = losses_mod.get(loss)
     if not isinstance(loss, losses_mod.Loss):
-      loss_name = loss.__name__
+      loss_name = get_custom_object_name(loss)
+      if loss_name is None:
+        raise ValueError('Loss should be a callable, found: {}'.format(loss))
       loss = losses_mod.LossFunctionWrapper(loss, name=loss_name)
     loss._allow_sum_over_batch_size = True  # pylint: disable=protected-access
     return loss
@@ -289,10 +297,24 @@ class MetricsContainer(Container):
 
   @property
   def metrics(self):
-    """Metrics created by this container."""
+    """All metrics in this container."""
     if not self._built:
       return []
     return self._metrics_in_order
+
+  @property
+  def unweighted_metrics(self):
+    """Metrics in this container that should not be passed `sample_weight`."""
+    if not self._built:
+      return None
+    return nest.flatten(self._metrics)
+
+  @property
+  def weighted_metrics(self):
+    """Metrics in this container that should be passed `sample_weight`."""
+    if not self._built:
+      return None
+    return nest.flatten(self._weighted_metrics)
 
   def build(self, y_pred, y_true):
     """One-time setup of metric objects."""
@@ -420,7 +442,7 @@ class MetricsContainer(Container):
   def _get_metric_object(self, metric, y_t, y_p):
     """Converts user-supplied metric to a `Metric` object.
 
-    Arguments:
+    Args:
       metric: A string, function, or `Metric` object.
       y_t: Sample of label.
       y_p: Sample of output.
@@ -466,11 +488,11 @@ class MetricsContainer(Container):
     if not isinstance(metric_obj, metrics_mod.Metric):
       if isinstance(metric, six.string_types):
         metric_name = metric
-      elif hasattr(metric, 'name'):
-        metric_name = metric.name  # TODO(omalleyt): Is this needed?
       else:
-        # function was passed.
-        metric_name = metric.__name__
+        metric_name = get_custom_object_name(metric)
+        if metric_name is None:
+          raise ValueError(
+              'Metric should be a callable, found: {}'.format(metric))
 
       metric_obj = metrics_mod.MeanMetricWrapper(metric_obj, name=metric_name)
 
@@ -517,7 +539,7 @@ def _create_pseudo_names(tensors, prefix):
   `[x, y]` becomes:
   `['output_1', 'output_2']`
 
-  Arguments:
+  Args:
     tensors: `Model`'s outputs or inputs.
     prefix: 'output_' for outputs, 'input_' for inputs.
 
@@ -562,7 +584,7 @@ def map_to_output_names(y_pred, output_names, struct):
   This mapping preserves backwards compatibility for `compile` and
   `fit`.
 
-  Arguments:
+  Args:
     y_pred: Sample outputs of the Model, to determine if this convenience
       feature should be applied (`struct` is returned unmodified if `y_pred`
       isn't a flat list).
@@ -638,3 +660,22 @@ def apply_mask(y_p, sw, mask):
     else:
       sw = mask
   return sw
+
+
+def get_custom_object_name(obj):
+  """Returns the name to use for a custom loss or metric callable.
+
+  Args:
+    obj: Custom loss of metric callable
+
+  Returns:
+    Name to use, or `None` if the object was not recognized.
+  """
+  if hasattr(obj, 'name'):  # Accept `Loss` instance as `Metric`.
+    return obj.name
+  elif hasattr(obj, '__name__'):  # Function.
+    return obj.__name__
+  elif hasattr(obj, '__class__'):  # Class instance.
+    return generic_utils.to_snake_case(obj.__class__.__name__)
+  else:  # Unrecognized object.
+    return None

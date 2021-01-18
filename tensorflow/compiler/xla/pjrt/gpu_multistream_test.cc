@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/pjrt/nvidia_gpu_device.h"
+#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -29,8 +29,8 @@ namespace {
 TEST(GpuMultiStream, Basics) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtClient> client,
-      GetNvidiaGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
-                         /*distributed_client=*/nullptr, /*node_id=*/0));
+      GetGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
+                   /*distributed_client=*/nullptr, /*node_id=*/0));
 
   PjRtDevice* device = client->local_devices().at(0);
 
@@ -93,11 +93,11 @@ TEST(GpuMultiStream, Basics) {
     options.untuple_result = true;
     TF_ASSERT_OK_AND_ASSIGN(
         auto out_buffers,
-        executable->Execute({in_buffer0.get(), in_buffer1.get()}, options));
+        executable->Execute({{in_buffer0.get(), in_buffer1.get()}}, options));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto out_literal, out_buffers[0]->ToLiteral());
+    TF_ASSERT_OK_AND_ASSIGN(auto out_literal, out_buffers[0][0]->ToLiteral());
     LiteralTestUtil::ExpectR1Equal<int32>(expected_outputs, *out_literal);
-    TF_ASSERT_OK_AND_ASSIGN(out_literal, out_buffers[1]->ToLiteral());
+    TF_ASSERT_OK_AND_ASSIGN(out_literal, out_buffers[0][1]->ToLiteral());
     LiteralTestUtil::ExpectR1Equal<int32>(expected_outputs, *out_literal);
   }
 }

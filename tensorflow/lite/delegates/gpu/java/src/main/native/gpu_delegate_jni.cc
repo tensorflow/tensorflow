@@ -23,9 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif  // __cplusplus
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
@@ -113,6 +111,4 @@ Java_org_tensorflow_lite_gpu_CompatibilityList_deleteCompatibilityList(
   delete compatibility_list;
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus

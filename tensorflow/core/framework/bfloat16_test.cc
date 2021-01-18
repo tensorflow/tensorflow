@@ -39,60 +39,60 @@ TEST(Bfloat16Test, Conversion) {
   }
 }
 
-static void BM_FloatToBFloat16(int iters) {
-  testing::StopTiming();
+void BM_FloatToBFloat16(::testing::benchmark::State& state) {
   static const int N = 32 << 20;
-  const int64 tot = static_cast<int64>(iters) * N;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
 
   float* inp = new float[N];
   bfloat16* out = new bfloat16[N];
 
-  testing::StartTiming();
-  while (iters--) {
+  for (auto s : state) {
     FloatToBFloat16(inp, out, N);
   }
+
+  const int64 tot = static_cast<int64>(state.iterations()) * N;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
+
   delete[] inp;
   delete[] out;
 }
 BENCHMARK(BM_FloatToBFloat16);
 
-static void BM_RoundFloatToBFloat16(int iters) {
-  testing::StopTiming();
+void BM_RoundFloatToBFloat16(::testing::benchmark::State& state) {
   static const int N = 32 << 20;
-  const int64 tot = static_cast<int64>(iters) * N;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
 
   float* inp = new float[N];
   bfloat16* out = new bfloat16[N];
 
-  testing::StartTiming();
-  while (iters--) {
+  for (auto s : state) {
     RoundFloatToBFloat16(inp, out, N);
     tensorflow::testing::DoNotOptimize(inp);
     tensorflow::testing::DoNotOptimize(out);
   }
+
+  const int64 tot = static_cast<int64>(state.iterations()) * N;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
+
   delete[] inp;
   delete[] out;
 }
 BENCHMARK(BM_RoundFloatToBFloat16);
 
-static void BM_BFloat16ToFloat(int iters) {
-  testing::StopTiming();
+void BM_BFloat16ToFloat(::testing::benchmark::State& state) {
   static const int N = 32 << 20;
-  const int64 tot = static_cast<int64>(iters) * N;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
 
   bfloat16* inp = new bfloat16[N];
   float* out = new float[N];
 
-  testing::StartTiming();
-  while (iters--) {
+  for (auto s : state) {
     BFloat16ToFloat(inp, out, N);
   }
+
+  const int64 tot = static_cast<int64>(state.iterations()) * N;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
+
   delete[] inp;
   delete[] out;
 }

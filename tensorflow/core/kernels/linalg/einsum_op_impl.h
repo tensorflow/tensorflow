@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/batch_matmul_op_impl.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/linalg/einsum_op.h"
+#include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -59,12 +59,10 @@ using LabelCounts = gtl::InlinedVector<int, 8>;
 using OperandLabelCounts = gtl::InlinedVector<LabelCounts, 2>;
 using LabelToDimSizes = gtl::InlinedVector<int64, 8>;
 
+// Dummy axis label used to denote an ellipsis in an input or output subscript.
 constexpr int kEllipsisLabel = -1;
 
 struct EinsumHelper {
-  // Dummy axis label used to denote an ellipsis in an input or output
-  // subscript.
-
   // Each dimension is categorized into exactly one of five types based on
   // whether its corresponding label is present in the input and/or the output
   // subscripts.
@@ -538,7 +536,7 @@ struct EinsumHelper {
     return CopyFrom(input, output_shape, output);
   }
 
-  // Contracts the inputs along the last axis. (or the second last if the
+  // Contracts the inputs along the last axis (or the second last if the
   // corresponding value of swap_free_and_contract is true). The batch
   // dimensions are broadcast to the output shape.
   // TODO(anudhyan): BatchMatMul might devolve into a component-wise
@@ -549,7 +547,7 @@ struct EinsumHelper {
   static Status ContractOperands(OpKernelContext* ctx,
                                  absl::Span<const Tensor> inputs,
                                  absl::Span<const bool> swap_free_and_contract,
-                                 bool use_autotune, Tensor* output) {
+                                 Tensor* output) {
     if (inputs.size() == 1)
       return CopyFrom(inputs[0], inputs[0].shape(), output);
     MatMulBCast bcast(inputs[0].shape().dim_sizes(),
@@ -583,7 +581,7 @@ struct EinsumHelper {
         ReshapeToRank3(*output, bcast.output_batch_size(), &output_reshaped));
     LaunchBatchMatMul<Device, T>::Launch(ctx, lhs, rhs, /*adj_x=*/false,
                                          /*adj_y=*/false, trans_x, trans_y,
-                                         bcast, use_autotune, &output_reshaped);
+                                         bcast, &output_reshaped);
     return Status::OK();
   }
 };
@@ -598,7 +596,6 @@ class EinsumOp : public OpKernel {
                equation_, &input_labels_, &output_labels_, &label_types_,
                &input_label_counts_, &output_label_counts_,
                &input_has_ellipsis_, &output_has_ellipsis_));
-    use_autotune_ = MatmulAutotuneEnable();
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -641,7 +638,7 @@ class EinsumOp : public OpKernel {
     Tensor contraction_output_reshaped;
     OP_REQUIRES_OK(ctx, EinsumHelper::ContractOperands<Device, T>(
                             ctx, inputs_reduced, swap_free_and_contract,
-                            use_autotune_, &contraction_output_reshaped));
+                            &contraction_output_reshaped));
 
     // Copy the batch labels from the contraction output. Recover the batch
     // shape, which may have been broadcasted.
@@ -739,7 +736,6 @@ class EinsumOp : public OpKernel {
   LabelCounts output_label_counts_;
   gtl::InlinedVector<bool, 2> input_has_ellipsis_;
   bool output_has_ellipsis_ = false;
-  bool use_autotune_;
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

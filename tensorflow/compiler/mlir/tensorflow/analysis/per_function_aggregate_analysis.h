@@ -21,8 +21,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {

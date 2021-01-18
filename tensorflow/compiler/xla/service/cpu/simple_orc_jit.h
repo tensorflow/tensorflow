@@ -71,6 +71,8 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       LLVMCompiler::ModuleHook post_optimization_hook,
       std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);
 
+  ~SimpleOrcJIT() override;
+
   const llvm::DataLayout& data_layout() const { return data_layout_; }
 
   const llvm::Triple& target_triple() const {

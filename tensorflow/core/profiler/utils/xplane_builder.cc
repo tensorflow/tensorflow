@@ -29,15 +29,21 @@ namespace profiler {
 
 XPlaneBuilder::XPlaneBuilder(XPlane* plane)
     : XStatsBuilder<XPlane>(plane, this), plane_(plane) {
-  for (auto& iter : *plane->mutable_event_metadata()) {
+  for (auto& id_and_metadata : *plane->mutable_event_metadata()) {
+    auto& metadata = id_and_metadata.second;
     last_event_metadata_id_ =
-        std::max<int64>(last_event_metadata_id_, iter.second.id());
-    event_metadata_by_name_.try_emplace(iter.second.name(), &iter.second);
+        std::max<int64>(last_event_metadata_id_, metadata.id());
+    if (!metadata.name().empty()) {
+      event_metadata_by_name_.try_emplace(metadata.name(), &metadata);
+    }
   }
-  for (auto& iter : *plane->mutable_stat_metadata()) {
+  for (auto& id_and_metadata : *plane->mutable_stat_metadata()) {
+    auto& metadata = id_and_metadata.second;
     last_stat_metadata_id_ =
-        std::max<int64>(last_stat_metadata_id_, iter.second.id());
-    stat_metadata_by_name_.try_emplace(iter.second.name(), &iter.second);
+        std::max<int64>(last_stat_metadata_id_, metadata.id());
+    if (!metadata.name().empty()) {
+      stat_metadata_by_name_.try_emplace(metadata.name(), &metadata);
+    }
   }
   for (XLine& line : *plane->mutable_lines()) {
     lines_by_id_.try_emplace(line.id(), &line);
@@ -50,11 +56,15 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(int64 metadata_id) {
   return &metadata;
 }
 
+XEventMetadata* XPlaneBuilder::CreateEventMetadata() {
+  return GetOrCreateEventMetadata(++last_event_metadata_id_);
+}
+
 XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(
     absl::string_view name) {
   XEventMetadata*& metadata = event_metadata_by_name_[name];
   if (metadata == nullptr) {
-    metadata = GetOrCreateEventMetadata(++last_event_metadata_id_);
+    metadata = CreateEventMetadata();
     metadata->set_name(std::string(name));
   }
   return metadata;
@@ -63,7 +73,7 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(
 XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(std::string&& name) {
   XEventMetadata*& metadata = event_metadata_by_name_[name];
   if (metadata == nullptr) {
-    metadata = GetOrCreateEventMetadata(++last_event_metadata_id_);
+    metadata = CreateEventMetadata();
     metadata->set_name(std::move(name));
   }
   return metadata;
@@ -75,10 +85,14 @@ XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(int64 metadata_id) {
   return &metadata;
 }
 
+XStatMetadata* XPlaneBuilder::CreateStatMetadata() {
+  return GetOrCreateStatMetadata(++last_stat_metadata_id_);
+}
+
 XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(absl::string_view name) {
   XStatMetadata*& metadata = stat_metadata_by_name_[name];
   if (metadata == nullptr) {
-    metadata = GetOrCreateStatMetadata(++last_stat_metadata_id_);
+    metadata = CreateStatMetadata();
     metadata->set_name(std::string(name));
   }
   return metadata;
@@ -87,7 +101,7 @@ XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(absl::string_view name) {
 XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(std::string&& name) {
   XStatMetadata*& metadata = stat_metadata_by_name_[name];
   if (metadata == nullptr) {
-    metadata = GetOrCreateStatMetadata(++last_stat_metadata_id_);
+    metadata = CreateStatMetadata();
     metadata->set_name(std::move(name));
   }
   return metadata;

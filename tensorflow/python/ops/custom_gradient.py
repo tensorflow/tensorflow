@@ -90,7 +90,7 @@ def custom_gradient(f=None):
   all the layers or functions originating from this layer.
 
   By chain rule we know that
-  `dy/dx = dy/x_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
+  `dy/dx = dy/dx_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
 
   In this case the gradient of our current function defined as 
   `dx_i/dx_i+1 = (1 - 1 / (1 + e))`. The upstream gradient `dy` would be
@@ -524,7 +524,7 @@ def recompute_grad(f):
         # Gradient calculation for reverse mode autodiff.
         variables = grad_kwargs.get("variables")
         with backprop.GradientTape() as t:
-          id_args = [gen_array_ops.identity(x) for x in args]
+          id_args = nest.map_structure(gen_array_ops.identity, args)
           t.watch(id_args)
           if variables is not None:
             t.watch(variables)

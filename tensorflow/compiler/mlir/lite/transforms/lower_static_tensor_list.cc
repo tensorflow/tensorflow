@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -35,14 +36,13 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -548,28 +548,34 @@ struct ConvertTensorListResize
     Type branch_args_type[] = {input_handle.getType(), input_shape.getType(),
                                size_diff.getType(), size.getType()};
     Type branch_result_type[] = {result_type};
-    auto func_type = FunctionType::get(branch_args_type, branch_result_type,
-                                       rewriter.getContext());
+    auto func_type = FunctionType::get(rewriter.getContext(), branch_args_type,
+                                       branch_result_type);
+
+    // Create functions in a higher scope before restoring the insertion point.
+    // Additionally, create the SymbolTable before further modifying the module.
+    auto original_point = rewriter.saveInsertionPoint();
+    rewriter.setInsertionPointAfter(op->getParentOfType<FuncOp>());
+    SymbolTable manager(op->getParentOfType<ModuleOp>());
 
     // Constructs `then_branch`, which is executed when `if_cond` evaluates to
     // true.
-    FuncOp then_branch_op = FuncOp::create(loc, "cond_true", func_type);
+    auto then_branch_op = rewriter.create<FuncOp>(loc, "cond_true", func_type);
     CreateCondTrueBranch(op, shape_dtype, result_type, then_branch_op,
                          &rewriter);
 
     // Constructs `else_branch`, which is executed when `if_cond` evaluates to
     // false.
-    FuncOp else_branch_op = FuncOp::create(loc, "cond_false", func_type);
+    auto else_branch_op = rewriter.create<FuncOp>(loc, "cond_false", func_type);
     CreateCondFalseBranch(loc, shape_dtype, result_type, else_branch_op,
                           &rewriter);
 
     // Inserts the two blocks' names into the symbol table held by the module.
     // Using SymbolTable will ensure that the inserted symbol names are
     // unique.
-    SymbolTable manager(op.getParentOfType<ModuleOp>());
     manager.insert(then_branch_op);
     manager.insert(else_branch_op);
 
+    rewriter.restoreInsertionPoint(original_point);
     rewriter.replaceOpWithNewOp<TF::IfOp>(
         op, result_type, if_cond,
         /*input=*/
@@ -589,8 +595,9 @@ struct ConvertTensorListResize
                             Type result_type, FuncOp branch_func,
                             ConversionPatternRewriter *rewriter) const {
     auto guard = OpBuilder::InsertionGuard(*rewriter);
-    Block *block = branch_func.addEntryBlock();
-    rewriter->setInsertionPointToStart(block);
+    Block *block =
+        rewriter->createBlock(&branch_func.getBody(), branch_func.begin(),
+                              branch_func.getType().getInputs());
 
     auto input_shape = block->getArgument(1);
     auto size_diff = block->getArgument(2);
@@ -628,8 +635,9 @@ struct ConvertTensorListResize
     // size, the else branch is executed.
     // Slice the first 'size' rows from the input tensorlist.
     auto guard = OpBuilder::InsertionGuard(*rewriter);
-    Block *block = branch_func.addEntryBlock();
-    rewriter->setInsertionPointToStart(block);
+    Block *block =
+        rewriter->createBlock(&branch_func.getBody(), branch_func.begin(),
+                              branch_func.getType().getInputs());
 
     Value scalar_zero = CreateI32SplatConst(loc, rewriter, {}, 0);
     Value vector_one = CreateI32SplatConst(loc, rewriter, {1}, 1);
@@ -746,10 +754,42 @@ Type VariantToUnrankedTensorType(Type type, Value value) {
   return type;
 }
 
+llvm::SmallSet<int, 4> GetTensorListArgumentsFromWhileOp(TF::WhileOp op) {
+  llvm::SmallSet<int, 4> set;
+  for (FuncOp func : {op.cond_function(), op.body_function()}) {
+    if (!func) continue;
+
+    for (auto arg_and_idx : llvm::enumerate(func.getArguments())) {
+      mlir::BlockArgument arg = arg_and_idx.value();
+      auto variant_ty =
+          getElementTypeOrSelf(arg.getType()).dyn_cast<TF::VariantType>();
+      if (!variant_ty) continue;
+
+      for (auto &op_operand : arg.getUses()) {
+        auto op = op_operand.getOwner();
+        if (llvm::isa<TF::TensorListGetItemOp>(op) ||
+            llvm::isa<TF::TensorListLengthOp>(op) ||
+            llvm::isa<TF::TensorListPushBackOp>(op) ||
+            llvm::isa<TF::TensorListReserveOp>(op) ||
+            llvm::isa<TF::TensorListSetItemOp>(op) ||
+            llvm::isa<TF::TensorListStackOp>(op) ||
+            llvm::isa<TF::TensorListResizeOp>(op)) {
+          set.insert(arg_and_idx.index());
+          break;
+        }
+      }
+    }
+  }
+  return set;
+}
+
 // Changes the function type of `cond_func` and `body_func` for the given While
 // op.
-LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
+LogicalResult UpdateFunctionTypes(TF::WhileOp op,
+                                  llvm::SmallSet<int, 4> tensor_list_args) {
+  int func_index = 0;
   for (FuncOp func : {op.cond_function(), op.body_function()}) {
+    ++func_index;
     if (!func) continue;
 
     FunctionType func_type = func.getType();
@@ -760,24 +800,39 @@ LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
     // tensor type if it's a variant type.
     SmallVector<Type, 8> updated_argument_types;
     updated_argument_types.reserve(num_inputs);
-    for (auto it : llvm::zip(func_type.getInputs(), op.getOperands()))
-      updated_argument_types.push_back(
-          VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
+    int i = 0;
+    for (auto it : llvm::zip(func_type.getInputs(), op.getOperands())) {
+      if (tensor_list_args.count(i)) {
+        updated_argument_types.push_back(
+            VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
+      } else {
+        updated_argument_types.push_back(std::get<0>(it));
+      }
+      ++i;
+    }
 
     // Change all DT_VARIANT result types in function results to unranked tensor
     // type with element type derived from the corresponding input operand. This
     // is correct because while body's inputs and results have the same type.
     SmallVector<Type, 8> updated_result_types;
     updated_result_types.reserve(num_results);
-    for (auto it : llvm::zip(func_type.getResults(), op.getOperands()))
-      updated_result_types.push_back(
-          VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
+    i = 0;
+    for (auto it : llvm::zip(func_type.getResults(), op.getOperands())) {
+      // Only update body's results.
+      if (func_index != 1 && tensor_list_args.count(i)) {
+        updated_result_types.push_back(
+            VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
+      } else {
+        updated_result_types.push_back(std::get<0>(it));
+      }
+      ++i;
+    }
 
     // Change `func`'s argument type to `unranked_argument_types`. If it
     // return types contain a `DT_VARIANT`, change it to the unranked type
     // derived from the corresponding argument.
-    func.setType(FunctionType::get(updated_argument_types, updated_result_types,
-                                   op.getContext()));
+    func.setType(FunctionType::get(op.getContext(), updated_argument_types,
+                                   updated_result_types));
 
     // Change the argument type for the first block.
     llvm::for_each(func.getArguments(), [&](BlockArgument &arg) {
@@ -793,18 +848,28 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
   LogicalResult matchAndRewrite(
       TF::WhileOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
+    // Find all Tensor List arugments.
+    auto tensor_list_args = GetTensorListArgumentsFromWhileOp(op);
+
     llvm::SmallVector<Type, 8> result_types;
     result_types.reserve(op.getNumOperands());
     // Change all DT_VARIANT result types to unranked tensor type.
-    for (auto it : llvm::zip(op.getResultTypes(), operands))
-      result_types.push_back(
-          VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
+    int i = 0;
+    for (auto it : llvm::zip(op.getResultTypes(), operands)) {
+      if (tensor_list_args.count(i)) {
+        result_types.push_back(
+            VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
+      } else {
+        result_types.push_back(std::get<0>(it));
+      }
+      ++i;
+    }
 
     // Create a new while op with new operands and updated result types.
     auto converted = rewriter.create<TF::WhileOp>(op.getLoc(), result_types,
                                                   operands, op.getAttrs());
     converted.removeAttr("T");
-    UpdateFunctionTypes(converted);
+    UpdateFunctionTypes(converted, tensor_list_args);
 
     rewriter.replaceOp(op, converted.getResults());
     return success();
@@ -899,7 +964,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
                   ConvertTensorListSetItem, ConvertTensorListStack,
                   ConvertTensorListResize, ConvertWhile, ConvertWhileRegion>(
       context);
-  return applyPartialConversion(func, target, patterns);
+  return applyPartialConversion(func, target, std::move(patterns));
 }
 
 void LowerStaticTensorListPass::runOnOperation() {

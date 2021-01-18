@@ -13,10 +13,8 @@
 // CHECK-LABEL: func @add
 func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK-NEXT:  %[[SUM0:.*]] = mhlo.add %arg0, %arg0 : tensor<2xi32>
-  // CHECK-NEXT:  %[[SUM1:.*]] = mhlo.add %[[SUM0]], %arg0 : tensor<2xi32>
-  // CHECK-NEXT:  return %[[SUM1]] : tensor<2xi32>
-  %0 = "tf.Add"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  %1 = "tf.AddV2"(%0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  // CHECK-NEXT:  return %[[SUM0]] : tensor<2xi32>
+  %1 = "tf.AddV2"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %1: tensor<2xi32>
 }
 
@@ -27,7 +25,7 @@ func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 func @broadcast_add(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   // CHECK-NEXT: %[[LHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-NEXT: mhlo.add %[[LHS_BCAST]], %arg1
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   return %0: tensor<1x2xi32>
 }
 
@@ -37,7 +35,7 @@ func @broadcast_add(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2x
 func @broadcast_multi_dim_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32> {
   // CHECK-NEXT: %[[LHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>}
   // CHECK-NEXT: mhlo.add %[[LHS_BCAST]], %arg1
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
   return %0: tensor<4x4x4x4xi32>
 }
 
@@ -50,12 +48,12 @@ func @add_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi3
   // CHECK-DAG:    %[[LHS_SHAPE:.+]] = shape.shape_of %arg0
   // CHECK-DAG:    %[[RHS_SHAPE:.+]] = shape.shape_of %arg1
   // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = shape.broadcast %[[LHS_SHAPE]], %[[RHS_SHAPE]] : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
-  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor_cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<2xindex>
+  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor.cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<2xindex>
   // CHECK-NEXT:   %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-NEXT:   %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
   // CHECK-NEXT:   %[[RESULT:.+]] = mhlo.add %[[LHS_BCAST]], %[[RHS_BCAST]] : tensor<?x?xi32>
   // CHECK-NEXT:   shape.assuming_yield %[[RESULT]]
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
   return %0: tensor<?x?xi32>
 }
 
@@ -64,7 +62,7 @@ func @add_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi3
 func @broadcast_add_unranked(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>) -> tensor<*xi32> {
   // CHECK: tf.Add
   // CHLO: chlo.broadcast_add %arg0, %arg1
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xi32>, tensor<*xi32>) -> tensor<*xi32>
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<1xi32>, tensor<*xi32>) -> tensor<*xi32>
   return %0: tensor<*xi32>
 }
 
@@ -176,6 +174,13 @@ func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   return %0: tensor<4xi32>
 }
 
+// CHECK-LABEL: func @bitwise_xor
+func @bitwise_xor(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK-NEXT: mhlo.xor
+  %0 = "tf.BitwiseXor"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %0: tensor<4xi32>
+}
+
 // CHECK-LABEL: func @bitwise_and
 func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK-NEXT: mhlo.and
@@ -212,7 +217,7 @@ func @equal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> 
   // NOT-CHECK-NEXT: shape.assuming %[[WITNESS]] -> (tensor<?xi1>) {
   // NOT-CHECK-DAG:    %[[LHS_SHAPE1:.+]] = shape.shape_of %arg0
   // NOT-CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = shape.broadcast %[[LHS_SHAPE1]], %[[RHS_SHAPE]] : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
-  // NOT-CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor_cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<1xindex>
+  // NOT-CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor.cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<1xindex>
   // NOT-CHECK-DAG:    %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // NOT-CHECK-DAG:    %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // NOT-CHECK-NEXT:   %[[RESULT:.+]] = "mhlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = "EQ"}
@@ -260,7 +265,15 @@ func @equal_incompatible_shape_both_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<
 // CHECK-LABEL: func @equal_unranked
 func @equal_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1> {
   // CHECK: "tf.Equal"
+  // CHLO: chlo.broadcast_compare %arg0, %arg1 {comparison_direction = "EQ"}
   %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
+}
+
+// CHECK-LABEL: func @equal_unsupported_type
+func @equal_unsupported_type(%arg0: tensor<*x!tf.string>, %arg1: tensor<*x!tf.string>) -> tensor<*xi1> {
+  // CHECK: "tf.Equal"
+  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*x!tf.string>, tensor<*x!tf.string>) -> tensor<*xi1>
   return %0: tensor<*xi1>
 }
 
@@ -301,7 +314,7 @@ func @greater_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi1
   // CHECK-DAG:    %[[LHS_SHAPE1:.+]] = shape.shape_of %arg0
   // CHECK-DAG:    %[[RHS_SHAPE1:.+]] = shape.shape_of %arg1
   // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = shape.broadcast %[[LHS_SHAPE1]], %[[RHS_SHAPE1]] : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
-  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor_cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<1xindex>
+  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor.cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<1xindex>
   // CHECK-DAG:    %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK-DAG:    %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK-NEXT:   "mhlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = "GT"}
@@ -312,6 +325,7 @@ func @greater_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi1
 // CHECK-LABEL: func @greater_uranked
 func @greater_uranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1> {
   // CHECK:  "tf.Greater"
+  // CHLO: chlo.broadcast_compare %arg0, %arg1 {comparison_direction = "GT"}
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
   return %0: tensor<*xi1>
 }

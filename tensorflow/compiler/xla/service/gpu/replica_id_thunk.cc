@@ -27,9 +27,11 @@ Status ReplicaIdThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.profiler->MakeScopedInstructionProfiler(profile_index());
 
   auto dest_addr = params.buffer_allocations->GetDeviceAddress(dest_);
+
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
   TF_ASSIGN_OR_RETURN(int replica_id,
-                      params.device_assn->ReplicaIdForDeviceOrdinal(
-                          params.stream->parent()->device_ordinal()));
+                      params.device_assn->ReplicaIdForDevice(global_device_id));
   params.stream->ThenMemset32(&dest_addr, replica_id, /*size=*/4);
   return Status::OK();
 }

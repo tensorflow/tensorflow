@@ -43,7 +43,11 @@ static const HloInstruction& InstrForConstantBufferAllocation(
 
 string SanitizeConstantName(const HloInstruction& instr) {
   CHECK_EQ(instr.opcode(), HloOpcode::kConstant);
-  string instr_name = instr.name();
+  return SanitizeConstantName(instr.name());
+}
+
+string SanitizeConstantName(absl::string_view name) {
+  std::string instr_name(name);
   for (char& c : instr_name) {
     // Having a hyphen or a dot in a global variable name can crash the LLVM PTX
     // backend.

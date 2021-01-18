@@ -25,6 +25,15 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 
 namespace tensorflow {
+namespace {
+void DeregisterCancellation(BufRendezvous::Hook* h) {
+  if (h->cancellation_manager != nullptr) {
+    h->cancellation_manager->DeregisterCallback(h->cancellation_token);
+    h->cancellation_manager = nullptr;
+    h->cancellation_token = CancellationManager::kInvalidToken;
+  }
+}
+}  // namespace
 
 BufRendezvous::~BufRendezvous() {
   mutex_lock l(mu_);
@@ -129,6 +138,7 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
     }
   } while (false);
   if (h) {
+    DeregisterCancellation(h);
     h->cons_cb(Status::OK(), h);
   }
   if (!providebuf_status.ok()) {
@@ -197,6 +207,7 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
     }
   } while (false);
   if (existing_hook) {
+    DeregisterCancellation(existing_hook);
     existing_hook->cons_cb(Status::OK(), existing_hook);
     return;
   }
@@ -230,9 +241,6 @@ void BufRendezvous::CancelHook(const string& key) {
 
 /*static*/
 void BufRendezvous::DoneWithHook(Hook* h) {
-  if (h->cancellation_manager != nullptr) {
-    h->cancellation_manager->DeregisterCallback(h->cancellation_token);
-  }
   h->prod_cb(Status::OK());
   delete h;
 }

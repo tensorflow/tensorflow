@@ -361,6 +361,7 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
             if (tree_id == 0 || node_id > 0) {
               past_trees_logit += tree_logit;
             }
+            example_debug_info.add_leaf_node_ids(node_id);
             ++tree_id;
             node_id = 0;
           } else {  // Add to proto.

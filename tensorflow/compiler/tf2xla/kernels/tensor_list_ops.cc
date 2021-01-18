@@ -154,7 +154,8 @@ class TensorListReserveOp : public XlaOpKernel {
             "XLA compilation requires a fixed tensor list size. Set the number "
             "of elements. This could also happen if you're using a TensorArray "
             "in a while loop that does not have its maximum_iteration set, you "
-            "can fix this by setting maximum_iteration to a suitable value."));
+            "can fix this by setting maximum_iteration to a suitable value.",
+            ctx->StackTrace()));
 
     // If element shape is compile time constant and it's not "unknown rank"
     // shape (-1), create an initialized TensorList. Otherwise create an
@@ -224,7 +225,8 @@ class EmptyTensorListOp : public XlaOpKernel {
                     "the max number of elements. This could also happen if "
                     "you're using a TensorArray in a while loop that does not "
                     "have its maximum_iteration set, you can fix this by "
-                    "setting maximum_iteration to a suitable value."));
+                    "setting maximum_iteration to a suitable value.",
+                    ctx->StackTrace()));
 
     if (dtype_ != DT_VARIANT) {
       // We are creating a non-nested TensorList.
@@ -292,7 +294,8 @@ class TensorListElementShapeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                errors::InvalidArgument("TensorList is not initialized",
+                                        ctx->StackTrace()));
 
     // Only non-nested TensorList is supported for now.
     bool is_nested;
@@ -348,7 +351,8 @@ class TensorListGetItemOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                errors::InvalidArgument("TensorList is not initialized",
+                                        ctx->StackTrace()));
 
     // Only non-nested TensorList is supported for now.
     bool is_nested;
@@ -386,7 +390,8 @@ class TensorListGatherOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                errors::InvalidArgument("TensorList is not initialized",
+                                        ctx->StackTrace()));
 
     // Only non-nested TensorList is supported for now.
     bool is_nested;
@@ -437,7 +442,8 @@ class TensorListStackOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                errors::InvalidArgument("TensorList is not initialized",
+                                        ctx->StackTrace()));
 
     // Only non-nested TensorList is supported for now.
     bool is_nested;
@@ -468,7 +474,8 @@ class TensorListConcatOp : public XlaOpKernel {
     bool is_initialized;
     OP_REQUIRES_OK(ctx, (IsTensorListInitialized(input, &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                errors::InvalidArgument("TensorList is not initialized",
+                                        ctx->StackTrace()));
 
     // Only non-nested TensorList is supported for now.
     bool is_nested;
@@ -666,7 +673,8 @@ class TensorListPopBackOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                errors::InvalidArgument("TensorList is not initialized",
+                                        ctx->StackTrace()));
 
     xla::XlaOp list = ctx->Input(0);
     xla::XlaOp list_result, element_result;

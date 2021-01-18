@@ -17,11 +17,13 @@ limitations under the License.
 
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -148,34 +150,20 @@ Status DataServiceDispatcherClient::RegisterDataset(GraphDef dataset,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::CreateJob(int64 dataset_id,
-                                              ProcessingMode processing_mode,
-                                              int64& job_client_id) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
-  CreateJobRequest req;
-  req.set_dataset_id(dataset_id);
-  req.set_processing_mode(ProcessingModeDef(processing_mode));
-  CreateJobResponse resp;
-  grpc::ClientContext client_ctx;
-  grpc::Status status = stub_->CreateJob(&client_ctx, req, &resp);
-  if (!status.ok()) {
-    return grpc_util::WrapError(
-        absl::StrCat("Failed to create job for dataset with id ", dataset_id),
-        status);
-  }
-  job_client_id = resp.job_client_id();
-  return Status::OK();
-}
-
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64 dataset_id, ProcessingMode processing_mode,
-    const std::string& job_name, int job_name_index, int64& job_client_id) {
+    const absl::optional<JobKey>& job_key, absl::optional<int64> num_consumers,
+    int64& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
   req.set_processing_mode(ProcessingModeDef(processing_mode));
-  req.set_job_name(job_name);
-  req.set_job_name_index(job_name_index);
+  if (job_key.has_value()) {
+    *req.mutable_job_key() = job_key.value();
+  }
+  if (num_consumers.has_value()) {
+    req.set_num_consumers(num_consumers.value());
+  }
   GetOrCreateJobResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetOrCreateJob(&client_ctx, req, &resp);
@@ -257,14 +245,36 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
 }
 
 Status DataServiceWorkerClient::GetElement(int64 task_id,
+                                           absl::optional<int64> consumer_index,
+                                           absl::optional<int64> round_index,
                                            CompressedElement& element,
                                            bool& end_of_sequence) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
+  {
+    mutex_lock l(mu_);
+    if (cancelled_) {
+      return errors::Cancelled("Client was cancelled.");
+    }
+  }
   GetElementRequest req;
   req.set_task_id(task_id);
+  if (consumer_index.has_value()) {
+    req.set_consumer_index(consumer_index.value());
+  }
+  if (round_index.has_value()) {
+    req.set_round_index(round_index.value());
+  }
   GetElementResponse resp;
   grpc::ClientContext ctx;
+  {
+    mutex_lock l(mu_);
+    active_contexts_.insert(&ctx);
+  }
   grpc::Status s = stub_->GetElement(&ctx, req, &resp);
+  {
+    mutex_lock l(mu_);
+    active_contexts_.erase(&ctx);
+  }
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get element", s);
   }
@@ -288,6 +298,14 @@ Status DataServiceWorkerClient::EnsureInitialized() {
   auto channel = grpc::CreateCustomChannel(address_, credentials, args);
   stub_ = WorkerService::NewStub(channel);
   return Status::OK();
+}
+
+void DataServiceWorkerClient::TryCancel() {
+  mutex_lock l(mu_);
+  cancelled_ = true;
+  for (const auto& ctx : active_contexts_) {
+    ctx->TryCancel();
+  }
 }
 
 Status CreateDataServiceDispatcherClient(

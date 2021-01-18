@@ -42,7 +42,7 @@ upper_tabs:
       - heading: "Text"
       - title: "Text classification with Model Maker"
         path: /lite/tutorials/model_maker_text_classification
-      - title: "Question Answer with Model Maker"
+      - title: "BERT Question Answer with Model Maker"
         path: /lite/tutorials/model_maker_question_answer
 
       - heading: "Microcontrollers"
@@ -110,7 +110,7 @@ upper_tabs:
       - heading: "Run Inference with metadata"
       - title: "Overview"
         path: /lite/inference_with_metadata/overview
-      - title: "Generate model interfaces with codegen"
+      - title: "Generate model interfaces using metadata"
         path: /lite/inference_with_metadata/codegen
       - title: "Integrate models with Task Library"
         path: /lite/inference_with_metadata/task_library/overview
@@ -147,10 +147,8 @@ upper_tabs:
         path: /lite/performance/nnapi
       - title: "Hexagon delegate"
         path: /lite/performance/hexagon_delegate
-        status: experimental
       - title: "Core ML delegate"
         path: /lite/performance/coreml_delegate
-        status: experimental
       - title: "Implementing a delegate"
         path: /lite/performance/implementing_delegate
         status: experimental
@@ -181,6 +179,9 @@ upper_tabs:
         path: /lite/guide/build_arm64
       - title: "Build for Raspberry Pi"
         path: /lite/guide/build_rpi
+      - title: "Build with CMake"
+        path: /lite/guide/build_cmake
+        status: experimental
       - title: "Reduce binary size"
         path: /lite/guide/reduce_binary_size
         status: experimental
@@ -215,8 +216,10 @@ upper_tabs:
         path: /lite/models/segmentation/overview
       - title: "Style transfer"
         path: /lite/models/style_transfer/overview
+      - title: "Super resolution"
+        path: /lite/models/super_resolution/overview
       - heading: "Text"
-      - title: "Question and answer"
+      - title: "BERT Question Answer"
         path: /lite/models/bert_qa/overview
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview

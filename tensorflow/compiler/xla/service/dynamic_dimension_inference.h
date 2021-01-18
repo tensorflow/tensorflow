@@ -51,8 +51,13 @@ class DynamicDimensionInference {
   HloInstruction* GetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
                                  int64 dim) const;
 
-  // Returns if current instruction contains any dynamic dimension. Recursively
-  // go into tuples.
+  // Returns dynamic sizes of all dimensions of `inst`'s leaf node at `index`.
+  // Static sizes are represented by nullptr.
+  std::vector<HloInstruction*> GetDynamicSizes(HloInstruction* inst,
+                                               const ShapeIndex& index) const;
+
+  // Returns if current instruction contains any dynamic dimension.
+  // Recursively go into tuples.
   bool HasDynamicDimension(HloInstruction* inst) const;
 
   // Forward dynamic dimension size at `dim` from `inst` to `new_inst`.

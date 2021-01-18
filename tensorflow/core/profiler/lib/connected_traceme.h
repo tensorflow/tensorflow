@@ -30,6 +30,7 @@ enum class ContextType : int {
   kTfExecutor,
   kSharedBatchScheduler,
   kPjRt,
+  kAdaptiveSharedBatchScheduler,
 };
 
 /*

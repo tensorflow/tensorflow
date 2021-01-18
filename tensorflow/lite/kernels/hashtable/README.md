@@ -45,7 +45,7 @@ Supported mapping type: string → int64, int64 → string
   <tr>
    <td rowspan="2" >tf.lookup.index_table_from_tensor
    </td>
-   <td rowspan="2" colspan="5" >Supported natively when num_oov_bukcets=0 and dtype=dtypes.string.
+   <td rowspan="2" colspan="5" >Supported natively when num_oov_buckets=0 and dtype=dtypes.string.
 <p>
 For the oov concept, you will need a <a href="https://www.tensorflow.org/lite/guide/ops_select" title="Select TensorFlow operators to use in TensorFlow Lite">Flex delegate</a>.
    </td>
@@ -77,8 +77,6 @@ tf.contrib.lookup.MutableDenseHashTable
    </td>
   </tr>
 </table>
-
-
 
 ## Python Sample code
 

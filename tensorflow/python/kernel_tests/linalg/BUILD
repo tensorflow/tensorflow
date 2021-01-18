@@ -27,7 +27,6 @@ cuda_py_test(
     name = "linear_operator_addition_test",
     size = "small",
     srcs = ["linear_operator_addition_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -66,7 +65,6 @@ cuda_py_test(
     name = "linear_operator_algebra_test",
     size = "small",
     srcs = ["linear_operator_algebra_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -151,7 +149,6 @@ cuda_py_test(
     srcs = ["linear_operator_circulant_test.py"],
     shard_count = 10,
     tags = [
-        "no_rocm",  # calls BLAS ops for complex types
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],

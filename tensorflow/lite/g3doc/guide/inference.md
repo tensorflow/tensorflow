@@ -85,9 +85,9 @@ information, please refer to the
 ### iOS Platform
 
 On iOS, TensorFlow Lite is available with native iOS libraries written in
-[Swift](https://www.tensorflow.org/code/tensorflow/lite/experimental/swift)
+[Swift](https://www.tensorflow.org/code/tensorflow/lite/swift)
 and
-[Objective-C](https://www.tensorflow.org/code/tensorflow/lite/experimental/objc).
+[Objective-C](https://www.tensorflow.org/code/tensorflow/lite/objc).
 You can also use
 [C API](https://www.tensorflow.org/code/tensorflow/lite/c/c_api.h)
 directly in Objective-C codes.
@@ -238,7 +238,7 @@ Java inference API, but planned extensions will make this possible.
 *Platform: iOS*
 
 The
-[Swift API](https://www.tensorflow.org/code/tensorflow/lite/experimental/swift)
+[Swift API](https://www.tensorflow.org/code/tensorflow/lite/swift)
 is available in `TensorFlowLiteSwift` Pod from Cocoapods.
 
 First, you need to import `TensorFlowLite` module.
@@ -292,7 +292,7 @@ do {
 *Platform: iOS*
 
 The
-[Objective-C API](https://www.tensorflow.org/code/tensorflow/lite/experimental/objc)
+[Objective-C API](https://www.tensorflow.org/code/tensorflow/lite/objc)
 is available in `TensorFlowLiteObjC` Pod from Cocoapods.
 
 First, you need to import `TensorFlowLite` module.

@@ -75,7 +75,7 @@ TEST(GroupEventsTest, GroupGpuTraceLegacyRootTest) {
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
   EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 3);
   EXPECT_EQ(device_plane_visitor.GetStatType(
-                device_plane->lines(0).events(0).stats(1)),
+                device_plane->lines(0).events(0).stats(1).metadata_id()),
             StatType::kGroupId);
   EXPECT_EQ(group_metadata_map.size(), 1);
   EXPECT_EQ(group_metadata_map.at(0).name, "train 123");
@@ -118,7 +118,7 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
   EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 3);
   EXPECT_EQ(device_plane_visitor.GetStatType(
-                device_plane->lines(0).events(0).stats(1)),
+                device_plane->lines(0).events(0).stats(1).metadata_id()),
             StatType::kGroupId);
   EXPECT_EQ(group_metadata_map.size(), 1);
   EXPECT_EQ(group_metadata_map.at(0).name, "train 123");
@@ -158,7 +158,7 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
   EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 3);
   EXPECT_EQ(device_plane_visitor.GetStatType(
-                device_plane->lines(0).events(0).stats(1)),
+                device_plane->lines(0).events(0).stats(1).metadata_id()),
             StatType::kGroupId);
   EXPECT_EQ(device_plane->lines(0).events(0).stats(1).int64_value(), 10);
   EXPECT_EQ(group_metadata_map.size(), 1);
@@ -289,14 +289,16 @@ TEST(GroupEventsTest, EagerOpTest) {
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
   const XEvent& eager_cpu_tf_op = host_plane->lines(0).events(3);
   EXPECT_EQ(eager_cpu_tf_op.stats_size(), 1);
-  EXPECT_EQ(host_plane_visitor.GetStatType(eager_cpu_tf_op.stats(0)),
-            StatType::kIsEager);
+  EXPECT_EQ(
+      host_plane_visitor.GetStatType(eager_cpu_tf_op.stats(0).metadata_id()),
+      StatType::kIsEager);
   EXPECT_EQ(eager_cpu_tf_op.stats(0).int64_value(), 1);
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
   const XEvent& eager_gpu_kernel = device_plane->lines(0).events(0);
   EXPECT_EQ(eager_gpu_kernel.stats_size(), 2);
-  EXPECT_EQ(device_plane_visitor.GetStatType(eager_gpu_kernel.stats(1)),
-            StatType::kIsEager);
+  EXPECT_EQ(
+      device_plane_visitor.GetStatType(eager_gpu_kernel.stats(1).metadata_id()),
+      StatType::kIsEager);
   EXPECT_EQ(eager_gpu_kernel.stats(1).int64_value(), 1);
 }
 
@@ -341,13 +343,13 @@ TEST(GroupEventsTest, FunctionOpTest) {
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
   const XEvent& cpu_tf_op = host_plane->lines(1).events(2);
   EXPECT_EQ(cpu_tf_op.stats_size(), 2);
-  EXPECT_EQ(host_plane_visitor.GetStatType(cpu_tf_op.stats(1)),
+  EXPECT_EQ(host_plane_visitor.GetStatType(cpu_tf_op.stats(1).metadata_id()),
             StatType::kIsEager);
   EXPECT_EQ(cpu_tf_op.stats(1).int64_value(), 0);
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
   const XEvent& gpu_kernel = device_plane->lines(0).events(0);
   EXPECT_EQ(gpu_kernel.stats_size(), 3);
-  EXPECT_EQ(device_plane_visitor.GetStatType(gpu_kernel.stats(2)),
+  EXPECT_EQ(device_plane_visitor.GetStatType(gpu_kernel.stats(2).metadata_id()),
             StatType::kIsEager);
   EXPECT_EQ(gpu_kernel.stats(2).int64_value(), 0);
 }

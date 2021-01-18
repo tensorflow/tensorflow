@@ -74,14 +74,20 @@ Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
   char* server_address_output = nullptr;
   auto cleanup = xla::MakeCleanup([&status, &server_address_output]() {
     TF_DeleteStatus(status);
-    tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(
-        server_address_output);
+    tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(server_address_output);
   });
   size_t server_address_output_size;
   *serving_port = -1;
-  tpu::ConfigApiFn()->TpuConfigurationApi_GetServerAddressAndPortFn(
-      &server_address_output_size, &server_address_output, serving_port,
-      status);
+
+  TpuConfigurationApi_GetServerAddressAndPort_Params params;
+  params.struct_size = TpuConfigurationApi_GetServerAddressAndPort_Params_SIZE;
+  params.priv = nullptr;
+  params.server_address_output_size = &server_address_output_size;
+  params.server_address_output = &server_address_output;
+  params.port_output = serving_port;
+  params.status = status;
+
+  tpu::OpsApiFn()->TpuConfigurationApi_GetServerAddressAndPortFn(&params);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
   *server_address =
       std::string(server_address_output, server_address_output_size);
@@ -98,7 +104,7 @@ TpuPodState::~TpuPodState() {
     VLOG(1) << "Shutting down Compilation Cache Service.";
     if (cache_service_->Shutdown(20)) {
       if (service_port_ >= 0) {
-        tpu::UtilApiFn()->TpuNetUtil_RecycleUnusedPortFn(service_port_);
+        tpu::OpsApiFn()->TpuNetUtil_RecycleUnusedPortFn(service_port_);
       }
     } else {
       LOG(ERROR)
@@ -150,13 +156,22 @@ Status ConstructTpuPodState(
 
   char* host_config_output = nullptr;
   auto host_config_cleanup = xla::MakeCleanup([&host_config_output]() {
-    tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(host_config_output);
+    tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(host_config_output);
   });
   size_t host_config_output_size;
-  tpu::ConfigApiFn()->ConfigureDistributedTpuOp_DoWorkFn(
-      num_devices_per_host.size(), num_devices_per_host.data(),
-      server_address.size(), server_address.data(), &host_config_output_size,
-      &host_config_output, status);
+
+  ConfigureDistributedTpuOp_DoWork_Params params;
+  params.struct_size = ConfigureDistributedTpuOp_DoWork_Params_SIZE;
+  params.priv = nullptr;
+  params.num_cores_per_host_size = num_devices_per_host.size();
+  params.num_cores_per_host = num_devices_per_host.data();
+  params.server_address_size = server_address.size();
+  params.server_address = server_address.data();
+  params.host_config_output_size = &host_config_output_size;
+  params.host_config_output = &host_config_output;
+  params.status = status;
+
+  tpu::OpsApiFn()->ConfigureDistributedTpuOp_DoWorkFn(&params);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
   *host_config_proto = std::string(host_config_output, host_config_output_size);
 

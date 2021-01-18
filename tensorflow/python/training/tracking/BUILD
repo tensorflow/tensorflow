@@ -19,7 +19,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "base",
     srcs = ["base.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -47,7 +47,7 @@ tf_py_test(
 py_library(
     name = "tracking",
     srcs = ["tracking.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":base",
         ":data_structures",
@@ -57,7 +57,6 @@ py_library(
 tf_py_test(
     name = "tracking_test",
     srcs = ["tracking_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":base",
         ":tracking",
@@ -68,13 +67,13 @@ tf_py_test(
 py_library(
     name = "layer_utils",
     srcs = ["layer_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "data_structures",
     srcs = ["data_structures.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":base",
         ":layer_utils",
@@ -104,7 +103,7 @@ tf_py_test(
 py_library(
     name = "graph_view",
     srcs = ["graph_view.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":base",
         ":tracking",
@@ -120,7 +119,7 @@ py_library(
 py_library(
     name = "util",
     srcs = ["util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":base",
         ":data_structures",
@@ -159,7 +158,6 @@ tf_py_test(
     name = "util_test",
     srcs = ["util_test.py"],
     tags = ["notsan"],  # b/74395663
-    tfrt_enabled = True,
     deps = [
         ":base",
         ":graph_view",
@@ -200,7 +198,6 @@ tf_py_test(
     tags = [
         "notsan",  # b/74395663
     ],
-    tfrt_enabled = True,
     deps = [
         ":tracking",
         ":util",
@@ -222,7 +219,7 @@ tf_py_test(
 py_library(
     name = "python_state",
     srcs = ["python_state.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":base",
     ],
@@ -243,7 +240,6 @@ tf_py_test(
 tf_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":util",
         "//tensorflow/python:framework_ops",

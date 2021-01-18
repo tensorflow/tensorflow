@@ -31,8 +31,17 @@ REGISTER6(BinaryOp, CPU, "AddV2", functor::add, int8, int16, uint32, complex64,
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER4(BinaryOp, GPU, "Add", functor::add, uint8, int64, complex64,
           complex128);
+
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER5(BinaryOp, GPU, "AddV2", functor::add, uint8, uint32, int64, complex64,
           complex128);
+#else
+// There is an MLIR generated kernel for int64
+REGISTER4(BinaryOp, GPU, "AddV2", functor::add, uint8, uint32, complex64,
+          complex128);
+#endif
+
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // !defined(__ANDROID_TYPES_SLIM__)

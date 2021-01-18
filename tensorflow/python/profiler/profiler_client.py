@@ -51,7 +51,7 @@ def trace(service_addr,
     logdir: Path to save profile data to, typically a TensorBoard log directory.
       This path must be accessible to both the client and server.
       e.g. logdir='gs://your_tb_dir'
-    duration_ms: Duration of tracing or monitoring in mliiseconds. Must be
+    duration_ms: Duration of tracing or monitoring in milliseconds. Must be
       greater than zero.
     worker_list: An optional TPU only configuration. The list of workers to
       profile in the current session.
@@ -65,46 +65,63 @@ def trace(service_addr,
     UnavailableError: If no trace event was collected.
 
   Example usage (CPU/GPU):
-  # Start a profiler server before your model runs.
+
   ```python
-  tf.profiler.experimental.server.start(6009)
-  # (Model code goes here).
-  # Send gRPC request to the profiler server to collect a trace of your model.
-  ```python
-  tf.profiler.experimental.client.trace('grpc://localhost:6009',
-                                        '/nfs/tb_log', 2000)
+    # Start a profiler server before your model runs.
+    tf.profiler.experimental.server.start(6009)
+    # (Model code goes here).
+    # Send gRPC request to the profiler server to collect a trace of your model.
+    tf.profiler.experimental.client.trace('grpc://localhost:6009',
+                                          '/nfs/tb_log', 2000)
+  ```
 
   Example usage (Multiple GPUs):
-  # E.g. your worker IP addresses are 10.0.0.2, 10.0.0.3, 10.0.0.4, and you
-  # would like to schedule start of profiling 1 second from now, for a duration
-  # of 2 seconds.
-  options['delay_ms'] = 1000
-  tf.profiler.experimental.client.trace(
-      'grpc://10.0.0.2:8466,grpc://10.0.0.3:8466,grpc://10.0.0.4:8466',
-      'gs://your_tb_dir',
-      2000,
-      options=options)
+
+  ```python
+    # E.g. your worker IP addresses are 10.0.0.2, 10.0.0.3, 10.0.0.4, and you
+    # would like to schedule start of profiling 1 second from now, for a
+    # duration of 2 seconds.
+    options['delay_ms'] = 1000
+    tf.profiler.experimental.client.trace(
+        'grpc://10.0.0.2:8466,grpc://10.0.0.3:8466,grpc://10.0.0.4:8466',
+        'gs://your_tb_dir',
+        2000,
+        options=options)
+  ```
 
   Example usage (TPU):
-  # Send gRPC request to a TPU worker to collect a trace of your model. A
-  # profiler service has been started in the TPU worker at port 8466.
+
   ```python
-  # E.g. your TPU IP address is 10.0.0.2 and you want to profile for 2 seconds.
-  tf.profiler.experimental.client.trace('grpc://10.0.0.2:8466',
-                                        'gs://your_tb_dir', 2000)
+    # Send gRPC request to a TPU worker to collect a trace of your model. A
+    # profiler service has been started in the TPU worker at port 8466.
+    # E.g. your TPU IP address is 10.0.0.2 and you want to profile for 2 seconds
+    # .
+    tf.profiler.experimental.client.trace('grpc://10.0.0.2:8466',
+                                          'gs://your_tb_dir', 2000)
+  ```
 
   Example usage (Multiple TPUs):
-  # Send gRPC request to a TPU pod to collect a trace of your model on multiple
-  # TPUs. A profiler service has been started in all the TPU workers at the
-  # port 8466.
+
   ```python
-  # E.g. your TPU IP addresses are 10.0.0.2, 10.0.0.3, 10.0.0.4, and you want to
-  # profile for 2 seconds.
-  tf.profiler.experimental.client.trace('grpc://10.0.0.2:8466',
-                                        'gs://your_tb_dir',
-                                        2000, '10.0.0.2,10.0.0.3,10.0.0.4')
+    # Send gRPC request to a TPU pod to collect a trace of your model on
+    # multiple TPUs. A profiler service has been started in all the TPU workers
+    # at the port 8466.
+    # E.g. your TPU IP addresses are 10.0.0.2, 10.0.0.3, 10.0.0.4, and you want
+    # to profile for 2 seconds.
+    tf.profiler.experimental.client.trace(
+        'grpc://10.0.0.2:8466',
+        'gs://your_tb_dir',
+        2000,
+        '10.0.0.2:8466,10.0.0.3:8466,10.0.0.4:8466')
+  ```
+
   Launch TensorBoard and point it to the same logdir you provided to this API.
-  $ tensorboard --logdir=/tmp/tb_log (or gs://your_tb_dir in the above examples)
+
+  ```shell
+    # logdir can be gs://your_tb_dir as in the above examples.
+    $ tensorboard --logdir=/tmp/tb_log
+  ```
+
   Open your browser and go to localhost:6006/#profile to view profiling results.
 
   """
@@ -136,12 +153,15 @@ def monitor(service_addr, duration_ms, level=1):
     A string of monitoring output.
 
   Example usage:
-  # Continuously send gRPC requests to the Cloud TPU to monitor the model
-  # execution.
-  ```python
-  for query in range(0, 100):
-    print(tf.profiler.experimental.client.monitor('grpc://10.0.0.2:8466', 1000))
 
+  ```python
+    # Continuously send gRPC requests to the Cloud TPU to monitor the model
+    # execution.
+
+    for query in range(0, 100):
+      print(
+        tf.profiler.experimental.client.monitor('grpc://10.0.0.2:8466', 1000))
+  ```
 
   """
   return _pywrap_profiler.monitor(

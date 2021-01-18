@@ -15,7 +15,8 @@ py_binary(
     deps = [
         ":modify_model_interface_constants",
         ":modify_model_interface_lib",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 

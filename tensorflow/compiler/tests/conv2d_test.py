@@ -847,6 +847,19 @@ class Conv2DBackpropFilterTest(xla_test.XLATestCase, parameterized.TestCase):
         data_format_dst=data_format,
         expected=[1, 2, 3, 6, 7, 14, 9, 18])
 
+  @parameterized.named_parameters(*DATA_FORMATS)
+  def testConv2DGroupedFilter(self, data_format):
+    expected_output = [1, 4, 3, 8, 5, 12, 7, 16]
+    self._VerifyValues(
+        input_sizes=[1, 2, 2, 2],
+        filter_sizes=[2, 2, 1, 2],
+        out_backprop_sizes=[1, 1, 1, 2],
+        strides=[1, 1],
+        padding="VALID",
+        data_format_src="NHWC",
+        data_format_dst=data_format,
+        expected=expected_output)
+
 
 if __name__ == "__main__":
   googletest.main()

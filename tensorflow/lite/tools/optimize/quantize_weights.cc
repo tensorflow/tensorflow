@@ -90,6 +90,7 @@ std::vector<int32_t> GetWeightInputIndices(const OperatorCodeT* op_code,
   } else if (builtin_op_code == BuiltinOperator_CONV_2D ||
              builtin_op_code == BuiltinOperator_DEPTHWISE_CONV_2D ||
              builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
+             builtin_op_code == BuiltinOperator_BATCH_MATMUL ||
              builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP) {
     return {1};
   } else if (builtin_op_code == BuiltinOperator_SVDF) {
@@ -145,6 +146,7 @@ bool IsHybridEvaluationOp(const OperatorT* op, const OperatorCodeT* op_code,
       return custom_op_info->second.is_hybrid;
     }
   } else if (builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
+             builtin_op_code == BuiltinOperator_BATCH_MATMUL ||
              builtin_op_code == BuiltinOperator_CONV_2D ||
              builtin_op_code == BuiltinOperator_SVDF ||
              builtin_op_code == BuiltinOperator_RNN ||
@@ -255,6 +257,10 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
           op->builtin_options.AsFullyConnectedOptions()
               ->asymmetric_quantize_inputs = use_updated_hybrid_scheme;
           break;
+        case BuiltinOperator_BATCH_MATMUL:
+          op->builtin_options.AsBatchMatMulOptions()
+              ->asymmetric_quantize_inputs = use_updated_hybrid_scheme;
+          break;
         case BuiltinOperator_LSTM:
           op->builtin_options.AsLSTMOptions()->asymmetric_quantize_inputs =
               use_updated_hybrid_scheme;
@@ -350,6 +356,8 @@ void UpdateInt8OperatorVersions(ModelT* model, bool use_updated_hybrid_scheme) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 5 : 2;
     } else if (op_code == BuiltinOperator_FULLY_CONNECTED) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 9 : 3;
+    } else if (op_code == BuiltinOperator_BATCH_MATMUL) {
+      model->operator_codes[i]->version = use_updated_hybrid_scheme ? 4 : 1;
     } else if (op_code == BuiltinOperator_SVDF) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 4 : 2;
     } else if (op_code == BuiltinOperator_DEPTHWISE_CONV_2D) {

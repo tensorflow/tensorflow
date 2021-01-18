@@ -24,7 +24,6 @@ limitations under the License.
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::inner_product_forward;
@@ -36,6 +35,13 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
+#ifdef INTEL_MKL_DNN_ONLY
+// Temporarily copying some definitions from mkl_cblas.h so the same code can
+// be used when calling oneDNN or CBLAS batchmatmul in mkl_batch_matmul_op.cc.
+typedef enum { CblasRowMajor, CblasColumnMajor } CBLAS_LAYOUT;
+#define MKL_INT int
+#endif
+
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
 struct MklDnnMatMulFwdParams {
   memory::dims src_dims;
@@ -44,6 +50,7 @@ struct MklDnnMatMulFwdParams {
   memory::dims dst_dims;
   MEMORY_FORMAT src_format;
   MEMORY_FORMAT weight_format;
+  MEMORY_FORMAT dst_format;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -54,13 +61,15 @@ struct MklDnnMatMulFwdParams {
   MklDnnMatMulFwdParams(memory::dims src_dims, memory::dims weight_dims,
                         memory::dims bias_dims, memory::dims dst_dims,
                         MEMORY_FORMAT src_format = MEMORY_FORMAT::any,
-                        MEMORY_FORMAT weight_format = MEMORY_FORMAT::any)
+                        MEMORY_FORMAT weight_format = MEMORY_FORMAT::any,
+                        MEMORY_FORMAT dst_format = MEMORY_FORMAT::any)
       : src_dims(src_dims),
         weight_dims(weight_dims),
         bias_dims(bias_dims),
         dst_dims(dst_dims),
         src_format(src_format),
-        weight_format(weight_format) {}
+        weight_format(weight_format),
+        dst_format(dst_format) {}
 };
 
 // With quantization, input, weight, bias, and output can have different types.
@@ -75,7 +84,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
  public:
   explicit MklDnnMatMulFwdPrimitive(
       const MklDnnMatMulFwdParams& matmulFwdParams)
-      : MklPrimitive(engine(ENGINE_CPU, 0)) {
+      : MklPrimitive(engine(engine::kind::cpu, 0)) {
     // Create matmul primitive
     if (context_.matmul_fwd == nullptr) {
       Setup(matmulFwdParams);
@@ -111,11 +120,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
 #endif  // ENABLE_MKLDNN_THREADPOOL
 
-#ifdef ENABLE_MKLDNN_V1
     execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
-#else
-    fwd_stream->submit(context_.fwd_primitives);
-#endif  // ENABLE_MKLDNN_V1
 
     // After execution, set data handle back
     context_.src_mem->set_data_handle(DummyData);
@@ -123,13 +128,6 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.bias_mem->set_data_handle(DummyData);
     context_.dst_mem->set_data_handle(DummyData);
   }
-
-#ifndef ENABLE_MKLDNN_V1
-  // In MKL-DNN v1.x, memory format tags only provide a partial description
-  // of the memory layout. Hence, these functions are disabled for v1.x.
-  memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
-  memory::format GetWeightMemoryFormat() const { return context_.weight_fmt; }
-#endif  // !ENABLE_MKLDNN_V1
 
   std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>
   GetPrimitiveDesc() const {
@@ -139,12 +137,6 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
  private:
   // Primitive reuse context for inner-product Fwd op
   struct MklDnnMatMulFwdContext {
-#ifndef ENABLE_MKLDNN_V1
-    // Expected memory format for this primitive instance
-    MEMORY_FORMAT src_fmt;
-    MEMORY_FORMAT weight_fmt;
-#endif  // !ENABLE_MKLDNN_V1
-
     // MKL-DNN memory.
     std::shared_ptr<mkldnn::memory> src_mem;
     std::shared_ptr<mkldnn::memory> weight_mem;
@@ -165,17 +157,10 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::primitive> matmul_fwd;
     std::vector<mkldnn::primitive> fwd_primitives;
 
-#ifdef ENABLE_MKLDNN_V1
     std::vector<std::unordered_map<int, memory>> net_args;
-#endif  // ENABLE_MKLDNN_V1
 
     MklDnnMatMulFwdContext()
-        :
-#ifndef ENABLE_MKLDNN_V1
-          src_fmt(MEMORY_FORMAT::any),
-          weight_fmt(MEMORY_FORMAT::any),
-#endif  // !ENABLE_MKLDNN_V1
-          src_mem(nullptr),
+        : src_mem(nullptr),
           weight_mem(nullptr),
           bias_mem(nullptr),
           dst_mem(nullptr),
@@ -185,8 +170,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           weight_md(nullptr),
           bias_md(nullptr),
           dst_md(nullptr),
-          matmul_fwd(nullptr) {
-    }
+          matmul_fwd(nullptr) {}
   };
 
   void Setup(const MklDnnMatMulFwdParams& matmul_fwd_params) {
@@ -202,11 +186,11 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
     context_.dst_md.reset(new memory::desc({matmul_fwd_params.dst_dims},
                                            MklDnnType<Toutput>(),
-                                           MEMORY_FORMAT::any));
+                                           matmul_fwd_params.dst_format));
 
     context_.bias_md.reset(new memory::desc({matmul_fwd_params.bias_dims},
                                             MklDnnType<Tbias>(),
-                                            MEMORY_FORMAT::any));
+                                            memory::format_tag::any));
     // Create an inner-product.
     context_.fwd_desc.reset(new inner_product_forward::desc(
         prop_kind::forward_inference, *context_.src_md, *context_.weight_md,
@@ -220,44 +204,52 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     mkldnn::post_ops post_ops;
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
-        if (post_op_param.name == "relu") {
+        if (post_op_param.name == "relu" || post_op_param.name == "leakyrelu") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, ALGORITHM::eltwise_relu, op_alpha,
-                                  op_beta);
+          post_ops.append_eltwise(op_scale, mkldnn::algorithm::eltwise_relu,
+                                  op_alpha, op_beta);
         } else if (post_op_param.name == "relu6") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, ALGORITHM::eltwise_bounded_relu,
+          post_ops.append_eltwise(op_scale,
+                                  mkldnn::algorithm::eltwise_bounded_relu,
                                   op_alpha, op_beta);
         } else if (post_op_param.name == "elu") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, ALGORITHM::eltwise_elu, op_alpha,
-                                  op_beta);
+          post_ops.append_eltwise(op_scale, mkldnn::algorithm::eltwise_elu,
+                                  op_alpha, op_beta);
         } else if (post_op_param.name == "tanh") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, ALGORITHM::eltwise_tanh, op_alpha,
-                                  op_beta);
+          post_ops.append_eltwise(op_scale, mkldnn::algorithm::eltwise_tanh,
+                                  op_alpha, op_beta);
         } else if (post_op_param.name == "output_scale") {
           DCHECK_EQ(post_op_param.param.size(), 1);
           std::vector<float> scales;
           scales.push_back(post_op_param.param[0]);
           post_ops_attr.set_output_scales(0, scales);
+        } else if (post_op_param.name == "sum") {
+          DCHECK_EQ(post_op_param.param.size(), 1);
+          float op_scale = post_op_param.param[0];
+          post_ops.append_sum(op_scale);
+
         } else {
           DCHECK((post_op_param.name == "relu") ||
                  (post_op_param.name == "relu6") ||
                  (post_op_param.name == "elu") ||
                  (post_op_param.name == "tanh") ||
+                 (post_op_param.name == "sum") ||
+                 (post_op_param.name == "leakyrelu") ||
                  (post_op_param.name == "output_scale"));
         }
       }
@@ -269,39 +261,24 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           *context_.fwd_desc, cpu_engine_));
     }
 
-#ifndef ENABLE_MKLDNN_V1
-    // Store the expected memory format.
-    context_.src_fmt = static_cast<mkldnn::memory::format>(
-        context_.fwd_pd.get()->src_primitive_desc().desc().data.format);
-
-    context_.weight_fmt = static_cast<mkldnn::memory::format>(
-        context_.fwd_pd.get()->weights_primitive_desc().desc().data.format);
-#endif  // !ENABLE_MKLDNN_V1
-
     // Create memory primitive based on dummy data
-    context_.src_mem.reset(new MEMORY_CONSTRUCTOR(
-        context_.fwd_pd.get()->PRIMITIVE_DESC_SRC, cpu_engine_, DummyData));
-    context_.weight_mem.reset(new MEMORY_CONSTRUCTOR(
-        context_.fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS, cpu_engine_, DummyData));
-    context_.dst_mem.reset(new MEMORY_CONSTRUCTOR(
-        context_.fwd_pd.get()->PRIMITIVE_DESC_DST, cpu_engine_, DummyData));
-    context_.bias_mem.reset(new MEMORY_CONSTRUCTOR_USING_MEM_PD(
-        matmul_fwd_params.bias_dims, Tbias, MEMORY_FORMAT::x, cpu_engine_,
-        DummyData));
+    context_.src_mem.reset(
+        new memory(context_.fwd_pd.get()->src_desc(), cpu_engine_, DummyData));
+    context_.weight_mem.reset(new memory(context_.fwd_pd.get()->weights_desc(),
+                                         cpu_engine_, DummyData));
+    context_.dst_mem.reset(
+        new memory(context_.fwd_pd.get()->dst_desc(), cpu_engine_, DummyData));
+    context_.bias_mem.reset(new memory({{matmul_fwd_params.bias_dims},
+                                        MklDnnType<Tbias>(),
+                                        memory::format_tag::x},
+                                       cpu_engine_, DummyData));
 
-#ifdef ENABLE_MKLDNN_V1
     // Create inner-product primitive.
     context_.matmul_fwd.reset(new inner_product_forward(*context_.fwd_pd));
     context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
                                  {MKLDNN_ARG_WEIGHTS, *context_.weight_mem},
                                  {MKLDNN_ARG_BIAS, *context_.bias_mem},
-                                 { MKLDNN_ARG_DST,
-                                   *context_.dst_mem }});
-#else
-    context_.matmul_fwd.reset(new inner_product_forward(
-        *context_.fwd_pd, *context_.src_mem, *context_.weight_mem,
-        *context_.bias_mem, *context_.dst_mem));
-#endif  // ENABLE_MKLDNN_V1
+                                 {MKLDNN_ARG_DST, *context_.dst_mem}});
 
     context_.fwd_primitives.push_back(*context_.matmul_fwd);
     return;
@@ -366,12 +343,17 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     // Generate keys for post-ops
     for (auto const& post_op_param : mkldnn_matmul_fwd_dims.post_op_params) {
       if (post_op_param.name == "relu" || post_op_param.name == "relu6" ||
-          post_op_param.name == "elu" || post_op_param.name == "tanh") {
+          post_op_param.name == "elu" || post_op_param.name == "tanh" ||
+          post_op_param.name == "leakyrelu") {
         DCHECK_EQ(post_op_param.param.size(), 3);
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
         key_creator.AddAsKey(post_op_param.param[1]);
         key_creator.AddAsKey(post_op_param.param[2]);
+      } else if (post_op_param.name == "sum") {
+        DCHECK_EQ(post_op_param.param.size(), 1);
+        key_creator.AddAsKey(post_op_param.name);
+        key_creator.AddAsKey(post_op_param.param[0]);
       } else if (post_op_param.name == "output_scale") {
         DCHECK_EQ(post_op_param.param.size(), 1);
         key_creator.AddAsKey(post_op_param.name);
@@ -408,9 +390,9 @@ class MklDnnMatMulOpBase : public OpKernel {
       OpKernelContext* context,
       const inner_product_forward::primitive_desc& mkldnn_matmul_prim_desc,
       const memory::dims& output_dims_mkl_order,
-      MKL_TENSOR_FORMAT output_tf_format, Tensor** output_tensor) {
+      MklTensorFormat output_tf_format, Tensor** output_tensor) {
     DCHECK(output_tensor);
-    auto dst_pd = mkldnn_matmul_prim_desc.PRIMITIVE_DESC_DST;
+    auto dst_pd = mkldnn_matmul_prim_desc.dst_desc();
 
     MklDnnShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(true);
@@ -455,15 +437,13 @@ class MklDnnMatMulOpBase : public OpKernel {
 
     // reorder and cache the weight
     weight.SetUsrMem(weight_md, &weight_tensor);
-    weight.CheckReorderToOpMem(
-        MEMORY_PD_WITHOUT_DATA(matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS,
-                               cpu_engine_),
-        context);
+    weight.CheckReorderToOpMem(matmul_fwd_pd.get()->weights_desc(), cpu_engine_,
+                               context);
     weight_data = static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
 
     Tensor* weight_tensor_ptr = nullptr;
 
-    size_t weight_size = matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS.get_size();
+    size_t weight_size = matmul_fwd_pd.get()->weights_desc().get_size();
     TensorShape weight_tf_shape;
     weight_tf_shape.AddDim(weight_size / sizeof(Tweight));
 
@@ -474,12 +454,8 @@ class MklDnnMatMulOpBase : public OpKernel {
     void* weight_oi_t_data = weight.GetTensorBuffer(weight_tensor_ptr);
     memcpy(weight_oi_t_data, weight_data, weight_size);
 
-// cache the memory descriptor
-#ifdef ENABLE_MKLDNN_V1
-    auto expected_md = GET_WEIGHTS_DESC_FROM_OP_PD(matmul_fwd_pd);
-#else
-    auto expected_md = GET_WEIGHTS_DESC_FROM_OP_PD(matmul_fwd_pd).desc();
-#endif
+    // cache the memory descriptor
+    auto expected_md = matmul_fwd_pd->weights_desc();
     Tensor* weight_md_tensor_ptr = nullptr;
     TensorShape weight_mkl_format;
     weight_mkl_format.AddDim(sizeof(expected_md) / sizeof(Tweight));
@@ -504,11 +480,7 @@ class MklDnnMatMulOpBase : public OpKernel {
     if (weight_md_t.flat<Tweight>().size()) {
       const memory::desc& stored_md =
           *(static_cast<memory::desc*>(weight_md_t.data()));
-#ifdef ENABLE_MKLDNN_V1
       if (stored_md == expected_md) {
-#else
-      if (stored_md.data.format == expected_md.data.format) {
-#endif
         return static_cast<Tweight*>(
             const_cast<Tweight*>(weight_t.flat<Tweight>().data()));
       }
@@ -516,7 +488,7 @@ class MklDnnMatMulOpBase : public OpKernel {
     return nullptr;
   }
 
-  engine cpu_engine_ = engine(ENGINE_CPU, 0);
+  engine cpu_engine_ = engine(engine::kind::cpu, 0);
 
  protected:
   // Tensor to save reordered weight
@@ -531,9 +503,6 @@ class MklDnnMatMulOpBase : public OpKernel {
   const int kInputIndexBias = 2;
   const int kOutputIndexDst = 0;
 };
-
-// MatMul support for bfloat16 and int8 types is introduced in DNNLv1.2.
-#ifdef ENABLE_MKLDNN_V1
 
 using mkldnn::matmul;
 
@@ -562,7 +531,7 @@ template <typename T>
 class MklMatMulPrimitive : public MklPrimitive {
  public:
   explicit MklMatMulPrimitive(const MklMatMulParams& params)
-      : MklPrimitive(engine(ENGINE_CPU, 0)) {
+      : MklPrimitive(engine(engine::kind::cpu, 0)) {
     // Create matmul primitive
     Setup(params);
   }
@@ -654,8 +623,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     matmul_primitive.reset(new mkldnn::matmul(*context_.prim_desc));
     context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.a_mem},
                                  {MKLDNN_ARG_WEIGHTS, *context_.b_mem},
-                                 { MKLDNN_ARG_DST,
-                                   *context_.c_mem }});
+                                 {MKLDNN_ARG_DST, *context_.c_mem}});
 
     context_.matmul_primitives.push_back(*matmul_primitive);
     return;
@@ -755,7 +723,6 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 }
 
 }  // anonymous namespace
-#endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow
 

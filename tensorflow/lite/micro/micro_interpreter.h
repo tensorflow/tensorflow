@@ -28,6 +28,10 @@ limitations under the License.
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
+// Copied from tensorflow/lite/version.h to avoid a dependency chain into
+// tensorflow/core.
+#define TFLITE_SCHEMA_VERSION (3)
+
 namespace tflite {
 
 namespace internal {

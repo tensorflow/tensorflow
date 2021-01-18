@@ -454,6 +454,7 @@ Node* Graph::CopyNode(const Node* node) {
     copy->MaybeCopyOnWrite();
     copy->props_->op_def = op_def;
   }
+  copy->SetStackTrace(node->GetStackTrace());
 
   return copy;
 }

@@ -116,7 +116,7 @@ class ProfilingCommandQueue : public CLCommandQueue {
 
   // will write index for fastest work_group among work_group_sizes
   absl::Status GetBestWorkGroupIndex(const CLKernel& kernel,
-                                     const DeviceInfo& device_info,
+                                     const GpuInfo& gpu_info,
                                      const std::vector<int3>& work_groups_count,
                                      const std::vector<int3>& work_group_sizes,
                                      int* index);

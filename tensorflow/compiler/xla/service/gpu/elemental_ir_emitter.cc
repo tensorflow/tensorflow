@@ -72,7 +72,8 @@ bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
     llvm::IRBuilder<>* b, NestedComputer compute_nested)
-    : ElementalIrEmitter(hlo_module_config, module, b),
+    : ElementalIrEmitter(module, b),
+      hlo_module_config_(hlo_module_config),
       compute_nested_(std::move(compute_nested)) {}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
@@ -91,7 +92,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
       for (int64 i = 0; i < operands.size(); ++i) {
         if (input_types[i] == F16) {
           converted_operands[i] =
-              FPCast(converted_operands[i], b_->getFloatTy());
+              FPCast(converted_operands[i], b()->getFloatTy());
           converted_input_types[i] = F32;
         }
       }
@@ -106,12 +107,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
                            PrimitiveType_Name(output_type));
   }
   const string& munged_callee =
-      ObtainDeviceFunctionName(funcid, output_type, b_);
+      ObtainDeviceFunctionName(funcid, output_type, b());
   llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
                                      converted_input_types, output_type)
                             .ValueOrDie();
   if (cast_result_to_fp16) {
-    result = FPCast(result, b_->getHalfTy());
+    result = FPCast(result, b()->getHalfTy());
   }
   return result;
 }
@@ -153,7 +154,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
 
   return EmitDeviceFunctionCall(
       callee_name, operands, input_types, output_type,
-      {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind}, b_);
+      {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind}, b());
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
@@ -168,7 +169,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
     return llvm_ir::EmitCallToIntrinsic(
         opcode == HloOpcode::kMaximum ? llvm::Intrinsic::maxnum
                                       : llvm::Intrinsic::minnum,
-        {lhs_value, rhs_value}, {lhs_value->getType()}, b_);
+        {lhs_value, rhs_value}, {lhs_value->getType()}, b());
   }
 
   switch (op->opcode()) {
@@ -275,19 +276,19 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   // This routine isn't numerically precise, but it's good enough for ML.
 
   // Upcast F16 to F32 if necessary.
-  llvm::Type* type = prim_type == F16 ? b_->getFloatTy() : value->getType();
+  llvm::Type* type = prim_type == F16 ? b()->getFloatTy() : value->getType();
   llvm::Value* input = FPCast(value, type);
 
   // If |value| >= kMaxValue, tanh() is set to -1.0 or 1.0.
   constexpr double kMaxValue = 20.0;
   auto max_value = llvm::ConstantFP::get(type, kMaxValue);
   llvm::Value* abs_value =
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {input}, {type}, b_);
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {input}, {type}, b());
 
-  llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
+  llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b(), input);
   auto one = llvm::ConstantFP::get(type, 1.0);
   auto one_with_sign = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::copysign,
-                                                    {one, input}, {type}, b_);
+                                                    {one, input}, {type}, b());
   return FPCast(Select(FCmpULT(abs_value, max_value), fast_tanh, one_with_sign),
                 value->getType(), "tanh");
 }
@@ -301,14 +302,14 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(
 
 llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
   llvm::Value* block_id = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b_),
-      b_->getIntNTy(128), /*isSigned=*/true, "block.id");
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b()),
+      b()->getIntNTy(128), /*isSigned=*/true, "block.id");
   llvm::Value* thread_id_in_block = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b_),
-      b_->getIntNTy(128), /*isSigned=*/true, "thread.id");
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b()),
+      b()->getIntNTy(128), /*isSigned=*/true, "thread.id");
   llvm::Value* threads_per_block = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockDimx, {}, {}, b_),
-      b_->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockDimx, {}, {}, b()),
+      b()->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
   return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
 }
 

@@ -36,7 +36,7 @@ class BaseWrapper(object):
   Warning: This class should not be used directly.
   Use descendant classes instead.
 
-  Arguments:
+  Args:
       build_fn: callable function or class instance
       **sk_params: model parameters & fitting parameters
 
@@ -79,7 +79,7 @@ class BaseWrapper(object):
   def check_params(self, params):
     """Checks for user typos in `params`.
 
-    Arguments:
+    Args:
         params: dictionary; the parameters to be checked
 
     Raises:
@@ -108,20 +108,20 @@ class BaseWrapper(object):
   def get_params(self, **params):  # pylint: disable=unused-argument
     """Gets parameters for this estimator.
 
-    Arguments:
+    Args:
         **params: ignored (exists for API compatibility).
 
     Returns:
         Dictionary of parameter names mapped to their values.
     """
-    res = copy.deepcopy(self.sk_params)
+    res = self.sk_params.copy()
     res.update({'build_fn': self.build_fn})
     return res
 
   def set_params(self, **params):
     """Sets the parameters of this estimator.
 
-    Arguments:
+    Args:
         **params: Dictionary of parameter names mapped to their values.
 
     Returns:
@@ -134,7 +134,7 @@ class BaseWrapper(object):
   def fit(self, x, y, **kwargs):
     """Constructs a new model with `build_fn` & fit the model to `(x, y)`.
 
-    Arguments:
+    Args:
         x : array-like, shape `(n_samples, n_features)`
             Training samples where `n_samples` is the number of samples
             and `n_features` is the number of features.
@@ -170,7 +170,7 @@ class BaseWrapper(object):
   def filter_sk_params(self, fn, override=None):
     """Filters `sk_params` and returns those in `fn`'s arguments.
 
-    Arguments:
+    Args:
         fn : arbitrary function
         override: dictionary, values to override `sk_params`
 
@@ -195,7 +195,7 @@ class KerasClassifier(BaseWrapper):
   def fit(self, x, y, **kwargs):
     """Constructs a new model with `build_fn` & fit the model to `(x, y)`.
 
-    Arguments:
+    Args:
         x : array-like, shape `(n_samples, n_features)`
             Training samples where `n_samples` is the number of samples
             and `n_features` is the number of features.
@@ -225,7 +225,7 @@ class KerasClassifier(BaseWrapper):
   def predict(self, x, **kwargs):
     """Returns the class predictions for the given test data.
 
-    Arguments:
+    Args:
         x: array-like, shape `(n_samples, n_features)`
             Test samples where `n_samples` is the number of samples
             and `n_features` is the number of features.
@@ -244,7 +244,7 @@ class KerasClassifier(BaseWrapper):
   def predict_proba(self, x, **kwargs):
     """Returns class probability estimates for the given test data.
 
-    Arguments:
+    Args:
         x: array-like, shape `(n_samples, n_features)`
             Test samples where `n_samples` is the number of samples
             and `n_features` is the number of features.
@@ -261,7 +261,7 @@ class KerasClassifier(BaseWrapper):
             (instead of `(n_sample, 1)` as in Keras).
     """
     kwargs = self.filter_sk_params(Sequential.predict_proba, kwargs)
-    probs = self.model.predict_proba(x, **kwargs)
+    probs = self.model.predict(x, **kwargs)
 
     # check if binary classification
     if probs.shape[1] == 1:
@@ -272,7 +272,7 @@ class KerasClassifier(BaseWrapper):
   def score(self, x, y, **kwargs):
     """Returns the mean accuracy on the given test data and labels.
 
-    Arguments:
+    Args:
         x: array-like, shape `(n_samples, n_features)`
             Test samples where `n_samples` is the number of samples
             and `n_features` is the number of features.
@@ -318,7 +318,7 @@ class KerasRegressor(BaseWrapper):
   def predict(self, x, **kwargs):
     """Returns predictions for the given test data.
 
-    Arguments:
+    Args:
         x: array-like, shape `(n_samples, n_features)`
             Test samples where `n_samples` is the number of samples
             and `n_features` is the number of features.
@@ -335,7 +335,7 @@ class KerasRegressor(BaseWrapper):
   def score(self, x, y, **kwargs):
     """Returns the mean loss on the given test data and labels.
 
-    Arguments:
+    Args:
         x: array-like, shape `(n_samples, n_features)`
             Test samples where `n_samples` is the number of samples
             and `n_features` is the number of features.

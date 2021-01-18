@@ -151,7 +151,7 @@ class AsyncExecuteNode : public EagerNode {
       GraphCollector* graph_collector,
       CancellationManager* cancellation_manager,
       absl::Span<TensorHandle*> retvals,
-      absl::optional<AbstractStackTrace> stack_trace)
+      absl::optional<ManagedStackTrace> stack_trace)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
@@ -233,7 +233,7 @@ class AsyncExecuteNode : public EagerNode {
   core::RefCountPtr<KernelAndDevice> kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
-  absl::optional<AbstractStackTrace> stack_trace_;
+  absl::optional<ManagedStackTrace> stack_trace_;
   absl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 

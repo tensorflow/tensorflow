@@ -47,7 +47,7 @@ TEST(OpVersionTest, OpversionMissing) {
       EXPECT_NE(runtime_version, "")
           << "Please add the version " << version << " of "
           << tflite::EnumNamesBuiltinOperator()[op_code]
-          << " runtime_version.cc";
+          << " to runtime_version.cc";
     }
   }
 }

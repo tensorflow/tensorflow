@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/strided_slice.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -57,8 +57,10 @@ TEST_F(OpenCLOperationTest, StridedSlice) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       StridedSlice operation = CreateStridedSlice(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<StridedSlice>(std::move(operation)),
+          BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(0.0f), {half(10.2f), half(10.4),
                                               half(20.2f), half(20.4)}));

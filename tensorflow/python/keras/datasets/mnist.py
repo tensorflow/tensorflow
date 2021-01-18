@@ -34,7 +34,7 @@ def load_data(path='mnist.npz'):
   [MNIST homepage](http://yann.lecun.com/exdb/mnist/).
 
 
-  Arguments:
+  Args:
       path: path where to cache the dataset locally
           (relative to `~/.keras/datasets`).
 

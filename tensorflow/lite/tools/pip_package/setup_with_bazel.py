@@ -42,6 +42,7 @@ setup(
     author_email='packages@tensorflow.org',
     license='Apache 2.0',
     include_package_data=True,
+    has_ext_modules=lambda: True,
     keywords='tflite tensorflow tensor machine learning',
     classifiers=[
         'Development Status :: 5 - Production/Stable',
@@ -54,6 +55,7 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
@@ -66,5 +68,4 @@ setup(
     package_data={'': ['*.so', '*.pyd']},
     install_requires=[
         'numpy >= 1.16.0',
-        'pybind11 >= 2.4.3',
     ])

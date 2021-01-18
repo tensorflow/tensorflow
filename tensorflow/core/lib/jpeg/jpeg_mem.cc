@@ -46,7 +46,7 @@ enum JPEGErrors {
 };
 
 // Prevent bad compiler behavior in ASAN mode by wrapping most of the
-// arguments in a struct struct.
+// arguments in a struct.
 class FewerArgsForCompiler {
  public:
   FewerArgsForCompiler(int datasize, const UncompressFlags& flags, int64* nwarn,
@@ -146,8 +146,8 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
     case 3:
       if (cinfo.jpeg_color_space == JCS_CMYK ||
           cinfo.jpeg_color_space == JCS_YCCK) {
-        // Always use cmyk for output in a 4 channel jpeg. libjpeg has a builtin
-        // decoder.  We will further convert to rgb below.
+        // Always use cmyk for output in a 4 channel jpeg. libjpeg has a
+        // built-in decoder.  We will further convert to rgb below.
         cinfo.out_color_space = JCS_CMYK;
       } else {
         cinfo.out_color_space = JCS_RGB;
@@ -623,7 +623,7 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
 
   JOCTET* buffer = nullptr;
 
-  // NOTE: for broader use xmp_metadata should be made a unicode string
+  // NOTE: for broader use xmp_metadata should be made a Unicode string
   CHECK(srcdata != nullptr);
   CHECK(output != nullptr);
   // This struct contains the JPEG compression parameters and pointers to

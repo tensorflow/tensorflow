@@ -1468,7 +1468,7 @@ TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinctUsedByTwoWhileLoops) {
   auto loop_init = builder.AddInstruction(
       HloInstruction::CreateTuple({iter_param, data_param, data_param}));
 
-  // Two while loops shares the same loop init tuple.
+  // Two while loops share the same loop init tuple.
   auto while_hlo1 = builder.AddInstruction(HloInstruction::CreateWhile(
       loop_state_shape, condition1, body1, loop_init));
   auto while_hlo2 = builder.AddInstruction(HloInstruction::CreateWhile(
@@ -2100,10 +2100,14 @@ std::unique_ptr<HloComputation> MakeBenchmarkWhileBody() {
   return builder.Build();
 }
 
-void BM_SequentialWhiles(int num_iters, int num_whiles) {
+void BM_SequentialWhiles(::testing::benchmark::State& state) {
+  const int num_whiles = state.range(0);
+
   // This benchmark constructs a chain of sequential while instructions.
-  tensorflow::testing::StopTiming();
-  for (int i = 0; i < num_iters; ++i) {
+  // Timer starts automatically at the first iteration of this loop
+  // and ends after the last one.
+  for (auto s : state) {
+    state.PauseTiming();
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsFromFlags());
     HloModule module("BM_SequentialWhiles", config);
@@ -2131,19 +2135,22 @@ void BM_SequentialWhiles(int num_iters, int num_whiles) {
 
     CopyInsertion copy_insertion;
 
-    tensorflow::testing::StartTiming();
+    state.ResumeTiming();
     ASSERT_IS_OK(copy_insertion.Run(&module).status());
-    tensorflow::testing::StopTiming();
+    state.PauseTiming();
 
     // The entry computation should have three copies, and each body has one.
     ASSERT_EQ(CountCopies(module), 3 + num_whiles);
+    state.ResumeTiming();
   }
 }
 
-void BM_ParallelWhiles(int num_iters, int num_whiles) {
+void BM_ParallelWhiles(::testing::benchmark::State& state) {
+  const int num_whiles = state.range(0);
+
   // This benchmark constructs a fan-out of parallel while instructions.
-  tensorflow::testing::StopTiming();
-  for (int i = 0; i < num_iters; ++i) {
+  for (auto s : state) {
+    state.PauseTiming();
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsFromFlags());
     HloModule module("BM_SequentialWhiles", config);
@@ -2182,9 +2189,9 @@ void BM_ParallelWhiles(int num_iters, int num_whiles) {
 
     CopyInsertion copy_insertion;
 
-    tensorflow::testing::StartTiming();
+    state.ResumeTiming();
     ASSERT_IS_OK(copy_insertion.Run(&module).status());
-    tensorflow::testing::StopTiming();
+    state.PauseTiming();
 
     // Each body receives of copy of two of the parameters (the corresponding
     // elements in the body are modified), and there is one copy in each body.
@@ -2209,14 +2216,15 @@ std::unique_ptr<HloComputation> MakeBenchmarkWhileBody(
   return builder.Build();
 }
 
-void BM_ManyElementTuple(int num_iters, const int num_tuple_inputs) {
-  tensorflow::testing::StopTiming();
+void BM_ManyElementTuple(::testing::benchmark::State& state) {
+  const int num_tuple_inputs = state.range(0);
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
   CopyInsertion copy_insertion;
   const Shape element_shape = ShapeUtil::MakeShape(F32, {});
   std::vector<HloInstruction*> tuple_params(num_tuple_inputs);
-  for (int i = 0; i < num_iters; ++i) {
+  for (auto s : state) {
+    state.PauseTiming();
     auto builder = HloComputation::Builder("BM_ParallelWhiles");
     HloModule module("BM_ManyElementTuple", config);
     for (int j = 0; j < num_tuple_inputs; ++j) {
@@ -2234,9 +2242,8 @@ void BM_ManyElementTuple(int num_iters, const int num_tuple_inputs) {
     builder.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(F32, {}), xla_while, 0));
     module.AddEntryComputation(builder.Build());
-    tensorflow::testing::StartTiming();
+    state.ResumeTiming();
     ASSERT_IS_OK(copy_insertion.Run(&module).status());
-    tensorflow::testing::StopTiming();
   }
 }
 

@@ -17,6 +17,9 @@
 #     ios_x86_64:
 #     ios_fat:
 #
+# Macosx options
+#     darwin_arm64:
+#
 # Compiler options:
 #     cuda_clang:             Use clang when building CUDA code.
 #     c++17:                  Build with C++17 options (links with libc++)
@@ -49,7 +52,6 @@
 #     rocm:         Build with AMD GPU support (rocm).
 #     mkl:          Enable full mkl support.
 #     tensorrt:     Enable Tensorrt support.
-#     ngraph:       Enable ngraph support.
 #     numa:         Enable numa using hwloc.
 #     noaws:        Disable AWS S3 storage support
 #     nogcp:        Disable GCS support.
@@ -135,6 +137,11 @@ build:ios_x86_64 --cpu=ios_x86_64
 build:ios_fat --config=ios
 build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 
+# Enables all the macos config options for macos_arm64
+build:macos_arm64 --config=macos
+build:macos_arm64 --apple_platform_type=macos
+build:macos_arm64 --cpu=darwin_arm64
+
 # Config to use a mostly-static build and disable modular op registration
 # support (this will revert to loading TensorFlow with RTLD_GLOBAL in Python).
 # By default, TensorFlow will build with a dependence on
@@ -145,10 +152,6 @@ build:monolithic --define framework_shared_object=false
 # nothing in a bazelrc will default to a monolithic build. The following line
 # opts in to modular op registration support by default.
 build --define framework_shared_object=true
-
-# Flags for open source build, always set to be true.
-build --define open_source_build=true
-test --define open_source_build=true
 
 # For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
 build --java_toolchain=//third_party/toolchains/java:tf_java_toolchain
@@ -220,7 +223,6 @@ build:rocm --define=using_rocm=true --define=using_rocm_hipcc=true
 build:rocm --action_env TF_NEED_ROCM=1
 
 # Options extracted from configure script
-build:ngraph --define=with_ngraph_support=true
 build:numa --define=with_numa_support=true
 
 # Options to disable default on features
@@ -278,6 +280,7 @@ build:c++1z_gcc --config=c++17_gcc
 build --enable_platform_specific_config
 build:android --noenable_platform_specific_config
 build:ios --noenable_platform_specific_config
+build:macos_arm64 --noenable_platform_specific_config
 
 # Suppress C++ compiler warnings, otherwise build logs become 10s of MBs.
 build:android --copt=-w
@@ -296,9 +299,11 @@ build:windows --host_copt=/D_USE_MATH_DEFINES
 build:linux --define=PREFIX=/usr
 build:linux --define=LIBDIR=$(PREFIX)/lib
 build:linux --define=INCLUDEDIR=$(PREFIX)/include
+build:linux --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 build:macos --define=PREFIX=/usr
 build:macos --define=LIBDIR=$(PREFIX)/lib
 build:macos --define=INCLUDEDIR=$(PREFIX)/include
+build:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
 # By default, build TF in C++ 14 mode.
@@ -475,20 +480,20 @@ build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_nvcc_py36
 build:rbe_gpu_linux       --config=rbe_linux_cuda_nvcc
 
 build:rbe_linux_cuda_clang_base --config=rbe_linux_cuda_base
-build:rbe_linux_cuda_clang_base --crosstool_top="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
-build:rbe_linux_cuda_clang_base --extra_toolchains="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cuda_clang_base --extra_execution_platforms="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
-build:rbe_linux_cuda_clang_base --host_platform="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
-build:rbe_linux_cuda_clang_base --platforms="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
-build:rbe_linux_cuda_clang_base --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda"
-build:rbe_linux_cuda_clang_base --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_tensorrt"
-build:rbe_linux_cuda_clang_base --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_nccl"
+build:rbe_linux_cuda_clang_base --crosstool_top="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda_clang_base --extra_toolchains="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cuda_clang_base --extra_execution_platforms="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_platform//:platform"
+build:rbe_linux_cuda_clang_base --host_platform="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_platform//:platform"
+build:rbe_linux_cuda_clang_base --platforms="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_platform//:platform"
+build:rbe_linux_cuda_clang_base --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda"
+build:rbe_linux_cuda_clang_base --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_tensorrt"
+build:rbe_linux_cuda_clang_base --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_nccl"
 build:rbe_linux_cuda_clang_base --define=using_cuda_clang=true
-build:rbe_linux_cuda_clang_py27 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python2.7"
-build:rbe_linux_cuda_clang_py35 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.5"
-build:rbe_linux_cuda_clang_py36 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.6"
-build:rbe_linux_cuda_clang_py37 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.7"
-build:rbe_linux_cuda_clang_py38 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.8"
+build:rbe_linux_cuda_clang_py27 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python2.7"
+build:rbe_linux_cuda_clang_py35 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python3.5"
+build:rbe_linux_cuda_clang_py36 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python3.6"
+build:rbe_linux_cuda_clang_py37 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python3.7"
+build:rbe_linux_cuda_clang_py38 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python3.8"
 
 # ROCm
 build:rbe_linux_rocm_base --config=rbe_linux
@@ -601,6 +606,10 @@ build:release_gpu_linux --crosstool_top=//third_party/toolchains/preconfig/ubunt
 build:release_windows_common --config=release_common
 build:release_windows_common --define=no_tensorflow_py_deps=true
 build:release_windows_common --announce_rc
+
+# First available in VS 16.4. Speeds Windows compile times by a lot. See
+# https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+build:release_windows_common --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions
 
 build:release_cpu_windows --config=release_windows_common
 

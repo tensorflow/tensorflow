@@ -4,7 +4,10 @@ load(
     "tflite_micro_cc_test",
 )
 
-licenses(["notice"])  # Apache 2.0
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "micro",
@@ -66,6 +69,7 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3ONLY",
     tags = [
+        "no_oss",  # TODO(b/174680668): Exclude python targets from OSS.
         "nomicro_static",  # TF dep incompatible w/ TF_LITE_STATIC_MEMORY.
         "noubsan",  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
     ],

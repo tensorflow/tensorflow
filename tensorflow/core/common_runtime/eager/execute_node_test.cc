@@ -68,7 +68,7 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &device_mgr, false, nullptr, nullptr);
+      &device_mgr, false, nullptr, nullptr);
 
   // Set a RemoteMgr to the EagerContext.
   auto remote_mgr = absl::make_unique<eager::RemoteMgr>(
@@ -105,7 +105,7 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
 
   std::vector<Device*> input_devices;
   for (auto* h : inputs) {
-    input_devices.push_back(absl::get<Device*>(h->DeviceOrHostCPU(*ctx)));
+    input_devices.push_back(h->DeviceOrHostCPU(*ctx));
   }
   const core::RefCountPtr<KernelAndDevice> kernel(
       new TestKernelAndDeviceFunc(std::move(input_devices), device0));

@@ -162,7 +162,7 @@ class ClusterCoordinatorMprTest(test.TestCase):
         if test_join:
           ps_coordinator.join()
         if test_schedule:
-          while ps_coordinator.cluster._closure_queue._error is None:
+          while ps_coordinator._cluster._closure_queue._error is None:
             time.sleep(1)
           ps_coordinator.schedule(worker_fn)
       except errors.UnavailableError:
@@ -208,6 +208,50 @@ class ClusterCoordinatorMprTest(test.TestCase):
     self.assertTrue(
         any("_test_translate_ps_failure_error ends properly" in msg
             for msg in mpr.join().stdout))
+
+  def test_numpy_fetched_after_worker_failure(self):
+
+    def fn(first_fetch_occurred_event, worker_terminated_event):
+      os.environ["GRPC_FAIL_FAST"] = "use_caller"
+
+      cluster_resolver = TFConfigClusterResolver()
+      if cluster_resolver.task_type != "chief":
+        utils.start_server(cluster_resolver, "grpc")
+      strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+          cluster_resolver)
+      ps_coordinator = coordinator_lib.ClusterCoordinator(strategy)
+
+      with strategy.scope():
+        v = variables.Variable(initial_value=0, dtype=dtypes.int32)
+
+      @def_function.function
+      def worker_fn():
+        return v + 1, v - 1
+
+      remote_value = ps_coordinator.schedule(worker_fn)
+      logging.info("result (1st fetch): %r", remote_value.fetch())
+      first_fetch_occurred_event.set()
+      worker_terminated_event.wait()
+      logging.info("result (2nd fetch): %r", remote_value.fetch())
+
+    manager = multi_process_runner.manager()
+    first_fetch_occurred_event = manager.Event()
+    worker_terminated_event = manager.Event()
+    mpr = multi_process_runner.MultiProcessRunner(
+        fn,
+        multi_worker_test_base.create_cluster_spec(
+            has_chief=True, num_workers=1, num_ps=1, has_eval=False),
+        args=(first_fetch_occurred_event, worker_terminated_event),
+        rpc_layer="grpc",
+        return_output=True,
+        use_dill_for_args=False)
+
+    mpr.start()
+    first_fetch_occurred_event.wait()
+    mpr.terminate("worker", 0)
+    worker_terminated_event.set()
+    self.assertTrue(
+        any("result (2nd fetch)" in msg for msg in mpr.join().stdout))
 
 
 if __name__ == "__main__":

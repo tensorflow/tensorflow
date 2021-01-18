@@ -107,6 +107,7 @@ void CollectiveRemoteAccessLocal::PostToPeer(
 }
 
 void CollectiveRemoteAccessLocal::CheckPeerHealth(const string& peer_task,
+                                                  int64 timeout_in_ms,
                                                   const StatusCallback& done) {
   // Assume local devices are always healthy.
   done(errors::Internal(

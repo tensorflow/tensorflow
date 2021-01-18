@@ -354,6 +354,20 @@ class SerializeKerasObjectTest(test.TestCase):
     expected_output = new_model.predict(input_data)
     self.assertAllEqual(output, expected_output)
 
+  def test_deserialize_unknown_object(self):
+
+    class CustomLayer(keras.layers.Layer):
+      pass
+
+    layer = CustomLayer()
+    config = keras.utils.generic_utils.serialize_keras_object(layer)
+    with self.assertRaisesRegexp(ValueError,
+                                 'passed to the `custom_objects` arg'):
+      keras.utils.generic_utils.deserialize_keras_object(config)
+    restored = keras.utils.generic_utils.deserialize_keras_object(
+        config, custom_objects={'CustomLayer': CustomLayer})
+    self.assertIsInstance(restored, CustomLayer)
+
 
 class SliceArraysTest(test.TestCase):
 

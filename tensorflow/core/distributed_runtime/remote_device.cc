@@ -50,6 +50,8 @@ class RemoteDevice : public Device {
 
   bool IsLocal() const override { return false; }
 
+  bool IsRemoteCallAllowed() const override { return true; }
+
  private:
   const string local_dev_name_;
 
@@ -143,7 +145,13 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
       }
     }
   };
-  wi->GetStatusAsync(&call->req, &call->resp, /*fail_fast=*/false, cb);
+  wi->GetStatusAsync(/*opts=*/nullptr, &call->req, &call->resp,
+                     /*fail_fast=*/false, cb);
+}
+
+std::unique_ptr<Device> NewRemoteDevice(Env* env,
+                                        DeviceAttributes device_attribute) {
+  return std::make_unique<RemoteDevice>(env, device_attribute);
 }
 
 }  // namespace tensorflow

@@ -300,6 +300,9 @@ void EagerExecutor::NotifyWaiters(uint64 id) {
     } else {
       upperbound_id = next_node_id_ - 1;
     }
+    if (upperbound_id < id) {
+      return;
+    }
     DVLOG(3) << "Notify node done: [id " << id << " to " << upperbound_id
              << "] ";
     // Note that we notify all waiting threads in case an error has

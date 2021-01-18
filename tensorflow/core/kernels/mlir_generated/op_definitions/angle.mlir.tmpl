@@ -1,4 +1,5 @@
-func @Angle(%arg0: tensor<?xcomplex<elem_type>>) -> tensor<?xelem_type> {
-  %0 = "tf.Angle"(%arg0) : (tensor<?xcomplex<elem_type>>) -> tensor<?xelem_type>
-  return %0 : tensor<?xelem_type>
+func @Angle_elem_type(%arg0: tensor<*xcomplex<elem_type>>)
+    -> tensor<*xelem_type> attributes {tf_entry, llvm.emit_c_interface} {
+  %0 = "tf.Angle"(%arg0) : (tensor<*xcomplex<elem_type>>) -> tensor<*xelem_type>
+  return %0 : tensor<*xelem_type>
 }
