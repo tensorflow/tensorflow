@@ -52,6 +52,7 @@ filegroup(
         "gpu_op_atan.cc",
         "gpu_op_ceil.cc",
         "gpu_op_complex.cc",
+        "gpu_op_complex_abs.cc",
         "gpu_op_conj.cc",
         "gpu_op_cos.cc",
         "gpu_op_cosh.cc",
@@ -118,6 +119,7 @@ tf_kernel_library(
         ":asinh_kernels",
         ":atan_kernels",
         ":ceil_kernels",
+        ":complex_abs_kernels",
         ":complex_kernels",
         ":conj_kernels",
         ":cos_kernels",
@@ -463,6 +465,15 @@ gen_kernel_library(
         "f64",
     ],
     unroll_factors = "2",
+)
+
+gen_kernel_library(
+    name = "complex_abs",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
 )
 
 gen_kernel_library(

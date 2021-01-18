@@ -115,6 +115,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
       /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
   pm.addNestedPass<mlir::FuncOp>(mlir::createTransformUnrankedHloPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLowerComplexPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
