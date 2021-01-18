@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,12 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/debug_log.h"
+// Reference implementation of timer functions.
 
-#if (HAS_LIB_RTOS_SUPPORT == 1)
-#include "rtos_printf.h"
-extern "C" void DebugLog(const char* s) { rtos_printf("%s", s); }
-#else
-#include <cstdio>
-extern "C" void DebugLog(const char* s) { printf("%s", s); }
+#include "tensorflow/lite/micro/micro_time.h"
+
+extern "C" {
+// These are headers from XMOS toolchain.
+#include <platform.h>
+#ifdef _TIME_H_
+#define _clock_defined
 #endif
+#include <xcore/hwtimer.h>
+}
+
+namespace tflite {
+
+int32_t ticks_per_second() { return PLATFORM_REFERENCE_HZ; }
+
+int32_t GetCurrentTimeTicks() {
+  hwtimer_t hwtimer = hwtimer_alloc();
+  int32_t ticks = hwtimer_get_time(hwtimer);
+  hwtimer_free(hwtimer);
+  return ticks;
+}
+
+}  // namespace tflite

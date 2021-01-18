@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,12 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/debug_log.h"
+#include "tensorflow/lite/experimental/micro/examples/mnist_digits/constants.h"
 
-#if (HAS_LIB_RTOS_SUPPORT == 1)
-#include "rtos_printf.h"
-extern "C" void DebugLog(const char* s) { rtos_printf("%s", s); }
-#else
-#include <cstdio>
-extern "C" void DebugLog(const char* s) { printf("%s", s); }
-#endif
+// This is a small number so that it's easy to read the logs
+const int kInferencesPerCycle = 20;
