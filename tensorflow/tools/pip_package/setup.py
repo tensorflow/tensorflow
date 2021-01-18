@@ -54,10 +54,10 @@ _VERSION = '2.9.0'
 # when building the pip package.
 project_name = 'tensorflow'
 if '--project_name' in sys.argv:
-project_name_idx = sys.argv.index('--project_name')
-project_name = sys.argv[project_name_idx + 1]
-sys.argv.remove('--project_name')
-sys.argv.pop(project_name_idx)
+  project_name_idx = sys.argv.index('--project_name')
+  project_name = sys.argv[project_name_idx + 1]
+  sys.argv.remove('--project_name')
+  sys.argv.pop(project_name_idx)
 
 # Returns standard if a tensorflow-* package is being built, and nightly if a
 # tf_nightly-* package is being built.
@@ -74,11 +74,11 @@ return nightly if 'tf_nightly' in project_name else standard
 # different versioning scheme (e.g., PVP), we use different bound specifier and
 # comment the versioning scheme.
 REQUIRED_PACKAGES = [
-  'absl-py >= 1.0.0',
-  'astunparse >= 1.6.0',
-  'flatbuffers >= 1.12',
-  # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
-  'gast >= 0.2.1, <= 0.4.0',
+    'absl-py >= 1.0.0',
+    'astunparse >= 1.6.0',
+    'flatbuffers >= 1.12',
+    # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
+    'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
     'keras_preprocessing >= 1.1.1', # 1.1.0 needs tensorflow==1.7
