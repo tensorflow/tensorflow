@@ -2691,13 +2691,23 @@ TEST_F(OpTest, ResizeBilinear) {
     std::vector<int64> in_dims = RandomDims(4, 4);
     std::vector<int64> out_dims = RandomDims(2, 2);
 
+    bool half_pixel_centers = Choose<bool>({false, true});
+    bool align_corners = Choose<bool>({false, true});
+    // half_pixel_centers and align_corners can not both be true.
+    if (half_pixel_centers) {
+      align_corners = false;
+    }
+
+    auto dtype = Choose<DataType>({DT_FLOAT, DT_DOUBLE});
+
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("ResizeBilinear")
-            .RandomInput(DT_FLOAT, in_dims)
+            .RandomInput(dtype, in_dims)
             .Input(test::AsTensor<int32>(
                 std::vector<int32>(out_dims.begin(), out_dims.end())))
-            .Attr("T", DT_FLOAT)
-            .Attr("align_corners", true));
+            .Attr("T", dtype)
+            .Attr("half_pixel_centers", half_pixel_centers)
+            .Attr("align_corners", align_corners));
   });
 }
 
@@ -2713,6 +2723,30 @@ TEST_F(OpTest, ResizeBilinearGrad) {
                          {in_dims[0], out_dims[0], out_dims[1], in_dims[3]})
             .Attr("T", DT_FLOAT)
             .Attr("align_corners", true));
+  });
+}
+
+TEST_F(OpTest, ResizeNearestNeighbor) {
+  Repeatedly([this]() {
+    std::vector<int64> in_dims = RandomDims(4, 4);
+    std::vector<int64> out_dims = RandomDims(2, 2);
+
+    bool half_pixel_centers = Choose<bool>({false, true});
+    bool align_corners = Choose<bool>({false, true});
+    // half_pixel_centers and align_corners can not both be true.
+    if (half_pixel_centers) {
+      align_corners = false;
+    }
+    auto dtype = Choose<DataType>({DT_FLOAT, DT_DOUBLE});
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ResizeNearestNeighbor")
+            .RandomInput(dtype, in_dims)
+            .Input(test::AsTensor<int32>(
+                std::vector<int32>(out_dims.begin(), out_dims.end())))
+            .Attr("T", dtype)
+            .Attr("half_pixel_centers", half_pixel_centers)
+            .Attr("align_corners", align_corners));
   });
 }
 

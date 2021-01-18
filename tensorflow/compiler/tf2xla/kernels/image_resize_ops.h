@@ -28,7 +28,6 @@ class ResizeNearestNeighborOp : public XlaOpKernel {
  protected:
   bool align_corners_ = true;
   bool half_pixel_centers_ = true;
-  bool is_kernel_bilinear_ = false;
 };
 
 class ResizeBilinearOp : public XlaOpKernel {
@@ -40,7 +39,6 @@ class ResizeBilinearOp : public XlaOpKernel {
  protected:
   bool align_corners_ = true;
   bool half_pixel_centers_ = true;
-  bool is_kernel_bilinear_ = true;
 };
 
 class ResizeBilinearGradOp : public XlaOpKernel {

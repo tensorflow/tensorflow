@@ -579,24 +579,205 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
   }
   ctx->SetOutput(0, input);
 }
+
+struct ResizeCommonParameter {
+  ResizeCommonParameter(XlaOpKernelContext* ctx) {
+    xla::XlaBuilder* builder = ctx->builder();
+
+    TensorShape input_shape = ctx->InputShape(0);
+    OP_REQUIRES(ctx, input_shape.dims() == 4,
+                errors::InvalidArgument("input must be 4-dimensional",
+                                        input_shape.DebugString()));
+    std::vector<int64> in_size = {input_shape.dim_size(1),
+                                  input_shape.dim_size(2)};
+    OP_REQUIRES(ctx, in_size[0] > 0 && in_size[1] > 0,
+                errors::InvalidArgument("input size must be positive, got [",
+                                        in_size[0], ",", in_size[1], "]"));
+
+    std::vector<int64> out_size;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &out_size));
+    OP_REQUIRES(ctx, out_size.size() == 2,
+                errors::InvalidArgument("output size must be length 2, got ",
+                                        out_size.size()));
+    OP_REQUIRES(ctx, out_size[0] > 0 && out_size[1] > 0,
+                errors::InvalidArgument("output size must be positive, got [",
+                                        out_size[0], ",", out_size[1], "]"));
+
+    batch_size = input_shape.dim_size(0);
+    channels = input_shape.dim_size(3);
+    input_height = in_size[0];
+    input_width = in_size[1];
+    output_height = out_size[0];
+    output_width = out_size[1];
+  }
+
+  int64 batch_size, channels;
+  int64 input_height, input_width;
+  int64 output_height, output_width;
+};
+
+xla::XlaOp CalculateResizeScale(xla::XlaBuilder* builder,
+                                const int64 output_size, const int64 input_size,
+                                bool align_corners) {
+  float scale = (align_corners && output_size > 1)
+                    ? (input_size - 1) / static_cast<float>(output_size - 1)
+                    : input_size / static_cast<float>(output_size);
+  return xla::ConstantR0<float>(builder, scale);
+}
+
+xla::XlaOp ScaleIndices(xla::XlaBuilder* builder,
+                        const xla::XlaOp& output_indices,
+                        const int64 output_size, const int64 input_size,
+                        bool half_pixel_centers, bool align_corners,
+                        bool bilinear_interpolation) {
+  xla::XlaOp scale =
+      CalculateResizeScale(builder, output_size, input_size, align_corners);
+  if (half_pixel_centers) {
+    xla::XlaOp half = xla::ConstantR0<float>(builder, 0.5);
+    xla::XlaOp input_indices = (output_indices + half) * scale;
+    return bilinear_interpolation ? input_indices - half : input_indices;
+  }
+  return output_indices * scale;
+}
+
+xla::XlaOp MakeNearestNeighborInputIndices(xla::XlaBuilder* builder,
+                                           const int64 output_size,
+                                           const int64 input_size,
+                                           bool half_pixel_centers,
+                                           bool align_corners) {
+  xla::XlaOp output_indices = xla::Iota(builder, xla::F32, output_size);
+  xla::XlaOp input_indices = ScaleIndices(
+      builder, output_indices, output_size, input_size, half_pixel_centers,
+      align_corners, /*bilinear_interpolation=*/false);
+  input_indices =
+      align_corners ? xla::Round(input_indices) : xla::Floor(input_indices);
+  input_indices = xla::ConvertElementType(input_indices, xla::S64);
+  xla::XlaOp input_size_minus_one =
+      xla::ConstantR0<int64>(builder, input_size - 1);
+  if (half_pixel_centers) {
+    xla::XlaOp zero = xla::ConstantR0<int64>(builder, 0);
+    return xla::Clamp(zero, input_indices, input_size_minus_one);
+  }
+  return xla::Min(input_indices, input_size_minus_one);
+}
+
+std::tuple<xla::XlaOp, xla::XlaOp, xla::XlaOp> MakeBilinearInputIndices(
+    xla::XlaBuilder* builder, const int64 output_size, const int64 input_size,
+    bool half_pixel_centers, bool align_corners) {
+  xla::XlaOp output_indices = xla::Iota(builder, xla::F32, output_size);
+  xla::XlaOp input_indices = ScaleIndices(
+      builder, output_indices, output_size, input_size, half_pixel_centers,
+      align_corners, /*bilinear_interpolation=*/true);
+  xla::XlaOp floor_input_indices = xla::Floor(input_indices);
+  xla::XlaOp ceil_input_indices = xla::Ceil(input_indices);
+  xla::XlaOp zero = xla::ConstantR0<int64>(builder, 0);
+  xla::XlaOp input_size_minus_one =
+      xla::ConstantR0<int64>(builder, input_size - 1);
+  xla::XlaOp lower =
+      xla::Max(xla::ConvertElementType(floor_input_indices, xla::S64), zero);
+  xla::XlaOp upper =
+      xla::Min(xla::ConvertElementType(ceil_input_indices, xla::S64),
+               input_size_minus_one);
+  xla::XlaOp lerp = input_indices - floor_input_indices;
+  return {lower, upper, lerp};
+}
+
+// Take two 1D indices and broadcast them into meshgrid-like indices.
+// This function is is equivalent to
+//
+//   indices = meshgrid(y_indices, x_indices)
+//   output = stack(indices, axis=-1)
+//
+xla::XlaOp MakeSpatialIndices(xla::XlaBuilder* builder, xla::XlaOp y_indices,
+                              xla::XlaOp x_indices, const int64 output_height,
+                              const int64 output_width) {
+  y_indices =
+      xla::BroadcastInDim(y_indices, {output_height, output_width, 1}, {0});
+  x_indices =
+      xla::BroadcastInDim(x_indices, {output_height, output_width, 1}, {1});
+  xla::XlaOp indices =
+      xla::ConcatInDim(builder, {y_indices, x_indices}, /*dimension=*/2);
+  return indices;
+}
+
+// Gather input of shape (batch_size, input_height, input_width, channels)
+// with y_indices of shape (output_height,)
+// and x_indices of shape (output_width,).
+// This function is equivalent to
+//
+//   indices = meshgrid(y_indices, x_indices, indexing="ij")
+//   output = input[:, indices[0], indices[1], :]
+//
+xla::XlaOp GatherWithSpatialIndices(
+    xla::XlaBuilder* builder, const xla::XlaOp& input,
+    const xla::XlaOp& y_indices, const xla::XlaOp& x_indices,
+    const int64 batch_size, const int64 output_height, const int64 output_width,
+    const int64 channels) {
+  xla::XlaOp indices = MakeSpatialIndices(builder, y_indices, x_indices,
+                                          output_height, output_width);
+  xla::GatherDimensionNumbers dim_numbers;
+  std::vector<int64> slice_sizes = {batch_size, 1, 1, channels};
+  dim_numbers.add_collapsed_slice_dims(1);
+  dim_numbers.add_collapsed_slice_dims(2);
+  dim_numbers.add_offset_dims(0);
+  dim_numbers.add_offset_dims(3);
+  dim_numbers.set_index_vector_dim(2);
+  dim_numbers.add_start_index_map(1);
+  dim_numbers.add_start_index_map(2);
+  // indices are always sorted because left pixel in resized image is also on
+  // the left side to right pixel in original image.
+  return xla::Gather(input, indices, dim_numbers, slice_sizes,
+                     /*indices_are_sorted=*/true);
+}
+
 }  // namespace
 
 ResizeNearestNeighborOp::ResizeNearestNeighborOp(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
-  OP_REQUIRES(
-      ctx, align_corners_ == true,
-      errors::Unimplemented("ResizeNearestNeighbor with align_corners=False "
-                            "is not yet implemented"));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
-  OP_REQUIRES(ctx, half_pixel_centers_ == false,
-              errors::Unimplemented(
-                  "ResizeNearestNeighbor with half_pixel_centers=True is "
-                  "not yet implemented"));
 }
 
+// We implement nearest neighbor resizing with indices transformation and
+// gathering.
+//
+// NumPy equivalent code can be described in the following.
+//
+// def resize_nearest_neighbor(input, output_size,
+//                             half_pixel_centers,
+//                             align_corners):
+//   batch_size, input_height, input_width = input.shape
+//   output_height, output_width = outut_size
+//   y_indices = scale_indices(input_height, output_height,
+//                             half_pixel_centers, align_corners)
+//   x_indices = scale_indices(input_width, output_width,
+//                             half_pixel_centers, align_corners)
+//   indices = meshgrid(y_indices, x_indices, indexing="ij")
+//   output = input[:, indices[0], indices[1], :]
+//   return output
+//
 void ResizeNearestNeighborOp::Compile(XlaOpKernelContext* ctx) {
-  GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
+  ResizeCommonParameter parameter(ctx);
+  // Return input directly when requested output size is equal to input size.
+  if (parameter.input_height == parameter.output_height &&
+      parameter.input_width == parameter.output_width) {
+    ctx->SetOutput(0, ctx->Input(0));
+    return;
+  }
+
+  xla::XlaBuilder* builder = ctx->builder();
+  // Manipulate 1-D spatial indices first and broadcast after scaling to avoid
+  // computation on large tensor.
+  xla::XlaOp y_indices = MakeNearestNeighborInputIndices(
+      builder, parameter.output_height, parameter.input_height,
+      half_pixel_centers_, align_corners_);
+  xla::XlaOp x_indices = MakeNearestNeighborInputIndices(
+      builder, parameter.output_width, parameter.input_width,
+      half_pixel_centers_, align_corners_);
+  xla::XlaOp output = GatherWithSpatialIndices(
+      builder, ctx->Input(0), y_indices, x_indices, parameter.batch_size,
+      parameter.output_height, parameter.output_width, parameter.channels);
+  ctx->SetOutput(0, output);
 }
 
 REGISTER_XLA_OP(Name("ResizeNearestNeighbor").CompileTimeConstantInput("size"),
@@ -606,14 +787,65 @@ ResizeBilinearOp::ResizeBilinearOp(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
-  OP_REQUIRES(
-      ctx, half_pixel_centers_ == false,
-      errors::Unimplemented("ResizeBilinear with half_pixel_centers=True is "
-                            "not yet implemented"));
 }
 
+// We implement bilinear resizing with indices transformation and
+// gathering. Similar to nearest neighbor but need to gather 4 times to collect
+// top-left, top-right, bottom-left and bottom-right in order to do bilinear
+// interpolation.
 void ResizeBilinearOp::Compile(XlaOpKernelContext* ctx) {
-  GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
+  ResizeCommonParameter parameter(ctx);
+  // ResizeBilinear always outputs float so cast input in advance.
+  xla::XlaOp input_f32 = ctx->input_type(0) == DT_FLOAT
+                             ? ctx->Input(0)
+                             : xla::ConvertElementType(ctx->Input(0), xla::F32);
+  // Return input directly when requested output size is equal to input size.
+  if (parameter.input_height == parameter.output_height &&
+      parameter.input_width == parameter.output_width) {
+    ctx->SetOutput(0, input_f32);
+    return;
+  }
+
+  xla::XlaBuilder* builder = ctx->builder();
+  // Manipulate 1-D spatial indices first and broadcast after scaling to avoid
+  // computation on large tensor.
+  xla::XlaOp top_indices, bottom_indices, y_lerp;
+  xla::XlaOp left_indices, right_indices, x_lerp;
+  std::tie(top_indices, bottom_indices, y_lerp) = MakeBilinearInputIndices(
+      builder, parameter.output_height, parameter.input_height,
+      half_pixel_centers_, align_corners_);
+  std::tie(left_indices, right_indices, x_lerp) = MakeBilinearInputIndices(
+      builder, parameter.output_width, parameter.input_width,
+      half_pixel_centers_, align_corners_);
+
+  xla::XlaOp top_left = GatherWithSpatialIndices(
+      builder, input_f32, top_indices, left_indices, parameter.batch_size,
+      parameter.output_height, parameter.output_width, parameter.channels);
+  xla::XlaOp top_right = GatherWithSpatialIndices(
+      builder, input_f32, top_indices, right_indices, parameter.batch_size,
+      parameter.output_height, parameter.output_width, parameter.channels);
+  xla::XlaOp bottom_left = GatherWithSpatialIndices(
+      builder, input_f32, bottom_indices, left_indices, parameter.batch_size,
+      parameter.output_height, parameter.output_width, parameter.channels);
+  xla::XlaOp bottom_right = GatherWithSpatialIndices(
+      builder, input_f32, bottom_indices, right_indices, parameter.batch_size,
+      parameter.output_height, parameter.output_width, parameter.channels);
+
+  // For each pixel, do the following things:
+  //
+  //  top = top_left + (top_right - top_left) * x_lerp
+  //  bottom = bottom_left + (bottom_right - bottom_left) * x_lerp
+  //  output = top + (bottom - top) * y_lerp
+  //
+  // We need to broadcast y_lerp and x_lerp because they are of shape
+  // (output_height,) and (output_width,) respectively.
+  xla::XlaOp top = top_left + xla::Mul(top_right - top_left, x_lerp,
+                                       /*broadcast_dimensions=*/{2});
+  xla::XlaOp bottom = bottom_left + xla::Mul(bottom_right - bottom_left, x_lerp,
+                                             /*broadcast_dimensions=*/{2});
+  xla::XlaOp output =
+      top + xla::Mul(bottom - top, y_lerp, /*broadcast_dimensions=*/{1});
+  ctx->SetOutput(0, output);
 }
 
 REGISTER_XLA_OP(Name("ResizeBilinear").CompileTimeConstantInput("size"),
