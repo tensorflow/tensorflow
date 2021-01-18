@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,9 +23,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
-namespace ops {
-namespace builtin {
-namespace cast {
+namespace {
+
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
@@ -132,13 +131,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
-}  // namespace cast
+}
 
 TfLiteRegistration* Register_CAST() {
   static TfLiteRegistration r = {nullptr, nullptr, cast::Prepare, cast::Eval};
   return &r;
 }
 
-}  // namespace builtin
-}  // namespace ops
 }  // namespace tflite
