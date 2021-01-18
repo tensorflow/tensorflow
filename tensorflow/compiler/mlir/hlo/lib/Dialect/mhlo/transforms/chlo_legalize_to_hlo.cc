@@ -20,6 +20,7 @@ limitations under the License.
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <numeric>
+#include <vector>
 
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -71,6 +72,63 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
         rewriter.create<tensor::CastOp>(loc, shape_ty, uncasted_shape);
     rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
         op, result_ty, constant, shape, rewriter.getI64TensorAttr({}));
+    return success();
+  }
+};
+
+Value MaterializePolynomialApproximation(
+    ConversionPatternRewriter &rewriter, Location loc, Value x,
+    const std::vector<float> &coefficients) {
+  Value poly = chlo::getConstantLike(rewriter, loc, 0.0, x);
+  for (float c : coefficients) {
+    poly = rewriter.create<mhlo::MulOp>(loc, x.getType(), poly, x);
+    poly = rewriter.create<mhlo::AddOp>(
+        loc, x.getType(), poly, chlo::getConstantLike(rewriter, loc, c, x));
+  }
+  return poly;
+}
+
+Value MaterializeErfApproximationF32(ConversionPatternRewriter &rewriter,
+                                     Location loc, Value operand) {
+  const std::vector<float> kAlpha{
+      -2.72614225801306e-10f, 2.77068142495902e-08f,  -2.10102402082508e-06f,
+      -5.69250639462346e-05f, -7.34990630326855e-04f, -2.95459980854025e-03f,
+      -1.60960333262415e-02f,
+  };
+  const std::vector<float> kBeta{
+      -1.45660718464996e-05f, -2.13374055278905e-04f, -1.68282697438203e-03f,
+      -7.37332916720468e-03f, -1.42647390514189e-02f,
+  };
+
+  // Clamp argument between -4 and 4.
+  Value lb = chlo::getConstantLike(rewriter, loc, -4.0, operand);
+  Value ub = chlo::getConstantLike(rewriter, loc, 4.0, operand);
+  Value x =
+      rewriter.create<mhlo::ClampOp>(loc, operand.getType(), lb, operand, ub);
+  Value x_sq = rewriter.create<mhlo::MulOp>(loc, x, x);
+
+  // Materialize polynomial approximation for x in [-4, 4].
+  Value alpha_poly =
+      MaterializePolynomialApproximation(rewriter, loc, x_sq, kAlpha);
+  Value beta_poly =
+      MaterializePolynomialApproximation(rewriter, loc, x_sq, kBeta);
+  Value mul_x_alpha_poly = rewriter.create<mhlo::MulOp>(loc, x, alpha_poly);
+  return rewriter.create<mhlo::DivOp>(loc, mul_x_alpha_poly, beta_poly);
+}
+
+struct ConvertErfOp : public OpConversionPattern<ErfOp> {
+  using OpConversionPattern<ErfOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      ErfOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    Type ty = getElementTypeOrSelf(op.getType());
+
+    // For now, we support only f32.
+    if (!ty.isF32()) return failure();
+
+    ErfOp::Adaptor transformed(operands);
+    rewriter.replaceOp(op, MaterializeErfApproximationF32(
+                               rewriter, op.getLoc(), transformed.operand()));
     return success();
   }
 };
@@ -226,7 +284,7 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
       context, patterns, 5);
 
   // Other patterns.
-  patterns->insert<ConvertConstantLikeOp>(context);
+  patterns->insert<ConvertConstantLikeOp, ConvertErfOp>(context);
 }
 
 }  // namespace chlo

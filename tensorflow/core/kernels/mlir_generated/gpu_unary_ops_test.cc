@@ -96,6 +96,7 @@ class GpuUnaryOpTest : public OpsTestBase {
             BaselineOutT (*baseline_callback)(BaselineT),
             const test::GpuOpsTestConfig& config) {
     // Prepare inputs and compute expected results.
+    CHECK(input.size() <= shape.num_elements());
     auto repeated_input =
         test::RepeatInputToMatchShape(input, shape.num_elements());
     absl::InlinedVector<OutT, 10> expected_output =
@@ -248,6 +249,17 @@ GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
 
 GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
                       test::GpuOpsTestConfig())
+
+/// Test `tf.Erf`.
+
+GENERATE_DEFAULT_TEST(Erf, DT_FLOAT, DT_FLOAT, std::erf,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Erf, DT_DOUBLE, DT_DOUBLE, std::erf,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Erf, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::erf,
+                        test::GpuOpsTestConfig())
 
 /// Test `tf.Exp`.
 

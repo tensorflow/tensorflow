@@ -134,6 +134,8 @@ class GpuBinaryOpTest : public OpsTestBase {
                        const test::GpuOpsTestConfig& config) {
     // Prepare inputs.
     int input_size = shape.num_elements();
+    CHECK(lhs_input.size() <= input_size && rhs_input.size() <= input_size &&
+          "expect input shape to hold all input values");
     auto repeated_lhs_input =
         test::RepeatInputToMatchShape(lhs_input, input_size);
     auto repeated_rhs_input =
@@ -165,6 +167,8 @@ class GpuBinaryOpTest : public OpsTestBase {
                      const test::GpuOpsTestConfig& config) {
     // Prepare inputs.
     TensorShape scalar_shape{};
+    CHECK(other_input.size() <= other_shape.num_elements() &&
+          "expect other input shape to hold all input values");
     auto repeated_other_input =
         test::RepeatInputToMatchShape(other_input, other_shape.num_elements());
 
