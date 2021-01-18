@@ -52,9 +52,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt32:
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context, "Positions of type '%s' are not supported by gather.",
-          TfLiteTypeGetName(positions->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Positions of type '%s' are not supported by gather.",
+                         TfLiteTypeGetName(positions->type));
       return kTfLiteError;
   }
 
