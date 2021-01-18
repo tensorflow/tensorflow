@@ -792,17 +792,26 @@ func @float_pow(%lhs: tensor<2x2xf32>,
 // CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @integer_pow
 func @integer_pow(%lhs: tensor<2x2xi32>,
-                %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
                     // CHECK: linalg.generic
   // CHECK: ^{{[a-z0-9_]*}}
   // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]*]]: i32
   // CHECK-SAME: %[[ARG1:[a-zA-Z0-9_]*]]: i32
   // CHECK: %[[UPPER:.*]] = index_cast %[[ARG1]]
-  // CHECK: %[[RESULT:.*]] = scf.for {{.*}} to %[[UPPER]]
+  // CHECK: %[[FOR_RESULT:.*]] = scf.for {{.*}} to %[[UPPER]]
   // CHECK-SAME: step %c1{{[a-zA-Z0-9_]*}}
   // CHECK-SAME: iter_args(%[[ITER:.*]] = %c1{{.*}}) -> (i32) {
   //   CHECK: %[[ACCUM:[a-zA-Z0-9_]*]] = muli %[[ARG0]], %[[ITER]]
   //   CHECK: scf.yield %[[ACCUM]]
+  // CHECK: %[[RHS_PARITY:.*]] = remi_signed %[[ARG1]], %c2
+  // CHECK: %[[RHS_EVEN:.*]] = cmpi eq, %[[RHS_PARITY]], %c0
+  // CHECK: %[[RHS_NEG:.*]] = cmpi slt, %[[ARG1]], %c0
+  // CHECK: %[[LHS_ONE:.*]] = cmpi eq, %[[ARG0]], %c1
+  // CHECK: %[[LHS_NEG_ONE:.*]] = cmpi eq, %[[ARG0]], %c-1
+  // CHECK: %[[VAL5:.*]] = select %[[LHS_ONE]], %c1_i32, %c0
+  // CHECK: %[[VAL6:.*]] = select %[[RHS_EVEN]], %c1{{.*}}, %c-1
+  // CHECK: %[[VAL7:.*]] = select %[[LHS_NEG_ONE]], %[[VAL6]], %[[VAL5]]
+  // CHECK: %[[RESULT:.*]] = select %[[RHS_NEG]], %[[VAL7]], %[[FOR_RESULT]]
   // CHECK: linalg.yield %[[RESULT]]
   %0 = "mhlo.power"(%lhs, %rhs) : (tensor<2x2xi32>,
                                    tensor<2x2xi32>) -> tensor<2x2xi32>

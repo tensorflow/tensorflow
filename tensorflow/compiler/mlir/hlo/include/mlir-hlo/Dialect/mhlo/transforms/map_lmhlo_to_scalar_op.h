@@ -556,23 +556,53 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::PowOp>(Location loc,
   assert(result_type.isa<::mlir::IntegerType>() &&
          "only float and integer `pow` is supported right now");
 
-  // There is no powi, so lower to a simple product. Note that HLO does not
-  // define semantics of negative exponents.
-  Value init = b->create<ConstantOp>(loc, b->getIntegerAttr(result_type, 1));
+  // There is no powi, so lower to a simple product.
+  Value neg_one =
+      b->create<ConstantOp>(loc, b->getIntegerAttr(result_type, -1));
+  Value zero = b->create<ConstantOp>(loc, b->getIntegerAttr(result_type, 0));
+  Value one = b->create<ConstantOp>(loc, b->getIntegerAttr(result_type, 1));
+  Value two = b->create<ConstantOp>(loc, b->getIntegerAttr(result_type, 2));
 
   Value lowerBound = b->create<ConstantIndexOp>(loc, 0);
   Value upperBound =
       b->create<IndexCastOp>(loc, adaptor.rhs(), b->getIndexType());
   Value step = b->create<ConstantIndexOp>(loc, 1);
-  return b
-      ->create<scf::ForOp>(
-          loc, lowerBound, upperBound, step, llvm::makeArrayRef(init),
-          [&](OpBuilder& b, Location l, Value v, ValueRange iters) {
-            Value prod =
-                b.create<::mlir::MulIOp>(l, adaptor.lhs(), iters.front());
-            b.create<scf::YieldOp>(l, prod);
-          })
-      .getResult(0);
+  Value for_result =
+      b->create<scf::ForOp>(
+           loc, lowerBound, upperBound, step, llvm::makeArrayRef(one),
+           [&](OpBuilder& b, Location l, Value v, ValueRange iters) {
+             Value prod =
+                 b.create<::mlir::MulIOp>(l, adaptor.lhs(), iters.front());
+             b.create<scf::YieldOp>(l, prod);
+           })
+          .getResult(0);
+
+  Value rhs_is_even =
+      b->create<CmpIOp>(loc, CmpIPredicate::eq,
+                        b->create<SignedRemIOp>(loc, adaptor.rhs(), two), zero);
+  Value rhs_is_negative =
+      b->create<CmpIOp>(loc, CmpIPredicate::slt, adaptor.rhs(), zero);
+  Value lhs_is_one =
+      b->create<CmpIOp>(loc, CmpIPredicate::eq, adaptor.lhs(), one);
+  Value lhs_is_neg_one =
+      b->create<CmpIOp>(loc, CmpIPredicate::eq, adaptor.lhs(), neg_one);
+
+  // The for_result is correct when the rhs is non-negative. When rhs is
+  // negative, we return 0 for integer, with the exception of lhs values of 1
+  // and -1 which have integer results for negative exponents. Specifically, the
+  // calulation is the following:
+  //
+  // - Return for_result if the rhs is not negative.
+  // - Return 1 or -1 depending on the parity of rhs when the lhs is -1.
+  // - Return 1 if lhs is 1.
+  // - Else return 0.
+  Value if_lhs_is_one = b->create<::mlir::SelectOp>(loc, lhs_is_one, one, zero);
+  Value if_lhs_is_neg_one = b->create<::mlir::SelectOp>(
+      loc, lhs_is_neg_one,
+      b->create<::mlir::SelectOp>(loc, rhs_is_even, one, neg_one),
+      if_lhs_is_one);
+  return b->create<::mlir::SelectOp>(loc, rhs_is_negative, if_lhs_is_neg_one,
+                                     for_result);
 }
 
 template <>
