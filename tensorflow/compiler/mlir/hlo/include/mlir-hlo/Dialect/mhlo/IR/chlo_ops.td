@@ -397,6 +397,20 @@ def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
   }];
 }
 
+def HLOClient_AtanhOp : HLOClient_UnaryElementwiseOp<"atanh", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Atanh operator";
+
+  let description = [{
+    Returns `Atanh(operand)` element-wise.
+
+    $$
+    \atanh(x) = 0.5 * log((1 + x) / (1 - x)) if abs(x) <= 1
+              = nan                          otherwise
+    $$
+  }];
+}
+
 def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj", [],
     HLO_FpOrComplexTensor> {
   let summary = "Conj operator";

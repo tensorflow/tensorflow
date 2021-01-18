@@ -175,6 +175,29 @@ def : Pat<(HLOClient_AtanOp $input),
     (HLO_ConstantLike<"1"> $input)
   )>;
 
+// Express `atanh` as follows:
+//   atanh(x) = 0.5 * log((1 + x) / (1 - x)) if abs(x) <= 1
+//   atanh(x) = nan                          otherwise
+def : Pat<(HLOClient_AtanhOp NonComplexElementType:$input),
+  (HLO_SelectOp
+    (HLO_CompareOp
+      (HLO_AbsOp $input),
+      (HLO_ConstantLike<"1"> $input),
+      HLO_COMPARISON_DIRECTION_GT,
+      (HLO_DEFAULT_COMPARISON_TYPE)
+    ),
+    (HLO_ConstantLike<"NAN"> $input),
+    (HLO_MulOp
+      (HLO_SubOp
+        (HLO_Log1pOp $input),
+        (HLO_Log1pOp
+          (HLO_NegOp $input)
+        )
+      ),
+      (HLO_ConstantLike<"0.5"> $input)
+    )
+  )>;
+
 // Express `conj` as
 //   conj(x) = (re(x), -im(x)).
 def : Pat<(HLOClient_ConjOp $v),

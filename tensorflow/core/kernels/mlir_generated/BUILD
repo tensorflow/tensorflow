@@ -50,6 +50,7 @@ filegroup(
         "gpu_op_asin.cc",
         "gpu_op_asinh.cc",
         "gpu_op_atan.cc",
+        "gpu_op_atanh.cc",
         "gpu_op_ceil.cc",
         "gpu_op_complex.cc",
         "gpu_op_complex_abs.cc",
@@ -118,6 +119,7 @@ tf_kernel_library(
         ":asin_kernels",
         ":asinh_kernels",
         ":atan_kernels",
+        ":atanh_kernels",
         ":ceil_kernels",
         ":complex_abs_kernels",
         ":complex_kernels",
@@ -341,6 +343,16 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "atan",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "atanh",
     tile_size = "256",
     types = [
         "f32",

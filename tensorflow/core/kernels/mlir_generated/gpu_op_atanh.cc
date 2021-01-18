@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/cwise_ops_common.h"
-#include "tensorflow/core/kernels/cwise_ops_gradients.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
 
 namespace tensorflow {
-REGISTER4(UnaryOp, CPU, "Atanh", functor::atanh, float, double, complex64,
-          complex128);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
-REGISTER2(UnaryOp, GPU, "Atanh", functor::atanh, float, double);
-#endif
-#endif
+GENERATE_AND_REGISTER_UNARY_KERNEL(Atanh, f32, DT_FLOAT, float);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Atanh, f64, DT_DOUBLE, double);
 
 }  // namespace tensorflow
