@@ -33,7 +33,7 @@ REGISTER4(BinaryOp, GPU, "Add", functor::add, uint8, int64, complex64,
           complex128);
 
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED)
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER5(BinaryOp, GPU, "AddV2", functor::add, uint8, uint32, int64, complex64,
           complex128);
 #else

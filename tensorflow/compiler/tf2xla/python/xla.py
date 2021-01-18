@@ -473,6 +473,7 @@ def _spmd_shard_to_full_shape_grad(op, grad):
 
 sort = gen_xla_ops.xla_sort
 key_value_sort = gen_xla_ops.xla_key_value_sort
+variadic_sort = gen_xla_ops.xla_variadic_sort
 while_loop = gen_xla_ops.xla_while
 dequantize = gen_xla_ops.xla_dequantize
 

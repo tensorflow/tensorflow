@@ -357,6 +357,7 @@ enum BuiltinOperator : int32 {
   CALL_ONCE = 129,
   BROADCAST_TO = 130,
   RFFT2D = 131,
+  CONV_3D = 132,
 }
 
 
@@ -467,6 +468,7 @@ union BuiltinOptions {
   CallOnceOptions,
   BroadcastToOptions,
   Rfft2dOptions,
+  Conv3DOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -485,6 +487,17 @@ table Conv2DOptions {
   stride_w:int;
   stride_h:int;
   fused_activation_function:ActivationFunctionType;
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
+}
+
+table Conv3DOptions {
+  padding:Padding;
+  stride_d:int;
+  stride_w:int;
+  stride_h:int;
+  fused_activation_function:ActivationFunctionType;
+  dilation_d_factor:int = 1;
   dilation_w_factor:int = 1;
   dilation_h_factor:int = 1;
 }
@@ -594,7 +607,7 @@ table ConcatenationOptions {
 
 table AddOptions {
   fused_activation_function:ActivationFunctionType;
-  // Parameters supported by version 4.
+  // Parameters supported by version 3.
   pot_scale_int16:bool = true;
 }
 

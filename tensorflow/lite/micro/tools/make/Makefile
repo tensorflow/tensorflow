@@ -1,3 +1,18 @@
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 ifneq (3.82,$(firstword $(sort $(MAKE_VERSION) 3.82)))
   $(error "Requires make version 3.82 or later (current is $(MAKE_VERSION))")
 endif
@@ -180,6 +195,7 @@ TARGET_TOOLCHAIN_ROOT :=
 # This default build is most suited for usual development and testing as is
 # highlighted by the discussion on this github pull request:
 # https://github.com/tensorflow/tensorflow/pull/42314#issuecomment-694360567
+BUILD_TYPE := default
 ifeq ($(BUILD_TYPE), debug)
 	# Specifying BUILD_TYPE=debug adds debug symbols to the binary (and makes it
 	# larger) and should be used to run a binary with gdb.
@@ -290,6 +306,7 @@ tensorflow/lite/micro/kernels/strided_slice_test.cc \
 tensorflow/lite/micro/kernels/sub_test.cc \
 tensorflow/lite/micro/kernels/svdf_test.cc \
 tensorflow/lite/micro/kernels/tanh_test.cc \
+tensorflow/lite/micro/kernels/transpose_conv_test.cc \
 tensorflow/lite/micro/kernels/unpack_test.cc \
 tensorflow/lite/micro/memory_planner/greedy_memory_planner_test.cc \
 tensorflow/lite/micro/memory_planner/linear_memory_planner_test.cc
@@ -303,6 +320,7 @@ tensorflow/lite/micro/kernels/circular_buffer.cc \
 tensorflow/lite/micro/kernels/comparisons.cc \
 tensorflow/lite/micro/kernels/concatenation.cc \
 tensorflow/lite/micro/kernels/conv.cc \
+tensorflow/lite/micro/kernels/conv_test_common.cc \
 tensorflow/lite/micro/kernels/depthwise_conv.cc \
 tensorflow/lite/micro/kernels/dequantize.cc \
 tensorflow/lite/micro/kernels/detection_postprocess.cc \
@@ -311,6 +329,7 @@ tensorflow/lite/micro/kernels/ethosu.cc \
 tensorflow/lite/micro/kernels/flexbuffers_generated_data.cc \
 tensorflow/lite/micro/kernels/floor.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
+tensorflow/lite/micro/kernels/fully_connected_common.cc \
 tensorflow/lite/micro/kernels/hard_swish.cc \
 tensorflow/lite/micro/kernels/kernel_runner.cc \
 tensorflow/lite/micro/kernels/kernel_util.cc \
@@ -339,6 +358,7 @@ tensorflow/lite/micro/kernels/sub.cc \
 tensorflow/lite/micro/kernels/svdf.cc \
 tensorflow/lite/micro/kernels/svdf_common.cc \
 tensorflow/lite/micro/kernels/tanh.cc \
+tensorflow/lite/micro/kernels/transpose_conv.cc \
 tensorflow/lite/micro/kernels/unpack.cc
 
 MICROLITE_TEST_HDRS := \
@@ -367,7 +387,6 @@ $(wildcard tensorflow/lite/micro/benchmarks/*model_data.h) \
 $(wildcard tensorflow/lite/micro/kernels/*.h) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.h) \
 LICENSE \
-tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
 tensorflow/lite/c/c_api_types.h \
 tensorflow/lite/c/common.h \
@@ -403,6 +422,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/mean.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h \
 tensorflow/lite/kernels/internal/reference/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
@@ -421,6 +441,7 @@ tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/tanh.h \
+tensorflow/lite/kernels/internal/reference/transpose_conv.h \
 tensorflow/lite/kernels/internal/cppmath.h \
 tensorflow/lite/kernels/internal/max.h \
 tensorflow/lite/kernels/internal/min.h \
@@ -433,8 +454,7 @@ tensorflow/lite/kernels/op_macros.h \
 tensorflow/lite/kernels/padding.h \
 tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/schema/schema_utils.h \
-tensorflow/lite/version.h
+tensorflow/lite/schema/schema_utils.h
 
 # TODO(b/165940489): Figure out how to avoid including fixed point
 # platform-specific headers.
@@ -522,8 +542,15 @@ endif
 # will be separating the project generation from the Makefile in the future.
 TARGETS_WITHOUT_MAKEFILES := \
 $(HOST_OS) \
-arduino \
-chre
+arduino
+
+# This specific string needs to be outputted for a test to be recognized as
+# having passed.
+TEST_PASS_STRING:='~~~ALL TESTS PASSED~~~'
+
+# ${TARGET}_makefile.inc can set this to true to allow it to defined a custom
+# implementation for `make test`. See bluepill_makefile as an example.
+TARGET_SPECIFIC_MAKE_TEST:=0
 
 ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
   include $(MAKEFILE_DIR)/targets/$(TARGET)_makefile.inc
@@ -561,7 +588,8 @@ ALL_SRCS := \
 	$(MICROLITE_TEST_SRCS)
 
 # Where compiled objects are stored.
-GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
+
+GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)_$(BUILD_TYPE)/
 OBJDIR := $(GENDIR)obj/
 BINDIR := $(GENDIR)bin/
 LIBDIR := $(GENDIR)lib/
@@ -628,7 +656,7 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	@test -f $(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $(TARGET)?'; exit 1)
-	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
+	$(TEST_SCRIPT) $< $(TEST_PASS_STRING)
 
 # snease: Add %.bin rule here since BINDIR is now defined
 # These are microcontroller-specific rules for converting the ELF output
@@ -644,7 +672,9 @@ $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET)
 $(foreach TEST_TARGET,$(filter tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
+ifeq ($(TARGET_SPECIFIC_MAKE_TEST),0)
 test: $(MICROLITE_TEST_TARGETS)
+endif
 
 # Just build the test targets
 build: $(MICROLITE_BUILD_TARGETS)

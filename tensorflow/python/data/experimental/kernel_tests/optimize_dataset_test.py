@@ -228,6 +228,22 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertDatasetProduces(dataset, expected_output=[[0]])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testOptimizationDifferentOrderOptionsCompareEqual(self):
+    with ops.Graph().as_default() as first_graph:
+      dataset = dataset_ops.Dataset.from_tensors(0)
+      dataset_ops._OptimizeDataset(dataset,
+                                   ["map_and_batch_fusion", "noop_elimination"],
+                                   [], [])
+
+    with ops.Graph().as_default() as second_graph:
+      dataset = dataset_ops.Dataset.from_tensors(0)
+      dataset_ops._OptimizeDataset(dataset,
+                                   ["noop_elimination", "map_and_batch_fusion"],
+                                   [], [])
+
+    self.assertEqual(first_graph.as_graph_def(), second_graph.as_graph_def())
+
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),

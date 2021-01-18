@@ -94,6 +94,7 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
 
 GPUResources TensorDescriptor::GetGPUResources() const {
   GPUResources resources;
+  resources.ints.push_back("slice_stride");
   if (HasAxis(Axis::WIDTH)) {
     resources.ints.push_back("width");
     resources.ints.push_back("width_div2");
@@ -163,7 +164,8 @@ GPUResources TensorDescriptor::GetGPUResources() const {
 }
 
 absl::Status TensorDescriptor::PerformSelector(
-    const std::string& selector, const std::vector<std::string>& args,
+    const GpuInfo& gpu_info, const std::string& selector,
+    const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Width") {
     *result = GetWidth();
@@ -175,7 +177,7 @@ absl::Status TensorDescriptor::PerformSelector(
     *result = "slices";
     return absl::OkStatus();
   } else if (selector == "SliceStride") {
-    *result = GetSliceStride();
+    *result = "slice_stride";
     return absl::OkStatus();
   } else if (selector == "Channels") {
     *result = "channels";
@@ -402,7 +404,7 @@ absl::Status TensorDescriptor::PerformGetPtrWithSliceOffsetSelector(
         "GetPtrWithSliceOffset require one argument(slice coordinate), but ",
         args.size(), " was passed"));
   }
-  *result = absl::StrCat("buffer + ", args[0], " * ", GetSliceStride());
+  *result = absl::StrCat("buffer + ", args[0], " * slice_stride");
   return absl::OkStatus();
 }
 
@@ -644,6 +646,35 @@ bool TensorDescriptor::HasAxis(Axis axis) const {
   return false;
 }
 
+int TensorDescriptor::GetWidthSize(BHWDC shape) const {
+  int width = shape.w;
+  auto it1 = state_vars_.find("ElementsX2");
+  if (it1 != state_vars_.end() && it1->second == "true") {
+    width /= 2;
+  }
+  auto it2 = state_vars_.find("ElementsX4");
+  if (it2 != state_vars_.end() && it2->second == "true") {
+    width /= 4;
+  }
+  auto it = state_vars_.find("BatchedWidth");
+  if (it != state_vars_.end() && it->second == "true") {
+    width *= shape.b;
+  }
+  return width;
+}
+
+int TensorDescriptor::GetSliceStrideSize(BHWDC shape) const {
+  if (IsBatchedWidth()) {
+    return GetWidthSize(shape) * shape.h;
+  } else {
+    if (HasAxis(Axis::BATCH)) {
+      return GetWidthSize(shape) * shape.h * shape.b;
+    } else {
+      return GetWidthSize(shape) * shape.h;
+    }
+  }
+}
+
 void TensorDescriptor::SetAddressMode(AddressMode mode) {
   if (mode == AddressMode::kZero) {
     state_vars_["TextureMode"] = "ZERO";
@@ -716,18 +747,6 @@ std::string TensorDescriptor::GetWidth() const {
     return "width_batched" + div;
   } else {
     return "width" + div;
-  }
-}
-
-std::string TensorDescriptor::GetSliceStride() const {
-  if (IsBatchedWidth()) {
-    return GetWidth() + " * height";
-  } else {
-    if (HasAxis(Axis::BATCH)) {
-      return GetWidth() + " * height * batch";
-    } else {
-      return GetWidth() + " * height";
-    }
   }
 }
 

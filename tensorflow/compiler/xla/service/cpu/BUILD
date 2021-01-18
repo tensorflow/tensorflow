@@ -169,7 +169,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:comparison_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
         "//tensorflow/compiler/xla:cpu_function_runtime",
-        "//tensorflow/compiler/xla/service:integral_upcaster",
+        "//tensorflow/compiler/xla/service:operand_upcaster",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",

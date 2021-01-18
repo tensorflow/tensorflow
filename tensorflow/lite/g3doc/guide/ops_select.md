@@ -261,15 +261,11 @@ TFLite builtin ops and 3 Tensorflow ops. For more details, please see the
     input/output types that are typically available in TensorFlow.
 *   Unsupported ops: Control flow ops and ops that require explicit
     initialization from resources, like `HashTableV2`, are not yet supported.
-*   Unsupported optimizations: If you apply an optimization known as
-    [post training quantization](../performance/post_training_quantization.md),
-    only the TensorFlow Lite ops will be quantized (or optimized), but the
-    TensorFlow ops will remain as float (or unoptimized).
 
-## Future plans
+## Updates
 
-The following is a list of improvements to this pipeline that are in progress:
-
-*   *Improved performance* - Work is being done to ensure TensorFlow Lite with
-    TensorFlow ops nicely cooperates with hardware accelerated delegates, for
-    example, NNAPI and GPU delegates.
+*   Version 2.5 (not yet officially released)
+    -   You can apply an optimization known as
+        [post training quantization](../performance/post_training_quantization.md)
+*   Version 2.4
+    -   Compatibility with hardware accelerated delegates has improved

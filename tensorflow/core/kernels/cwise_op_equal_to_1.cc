@@ -28,7 +28,7 @@ REGISTER_KERNEL_BUILDER(
     ApproximateEqualOp<CPUDevice, double>);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED)
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "Equal", functor::equal_to, float, Eigen::half, double,
           uint8);
 #else

@@ -83,7 +83,7 @@ using ::tensorflow::concat_split_util::Split;
 // A class encapsulating the state and logic for batching tensors.
 class BatchResource : public serving::BatchResourceBase {
  public:
-  static Status Create(int32 num_batch_threads, int32 max_batch_size,
+  static Status Create(int32 num_batch_threads, int32 max_execution_batch_size,
                        int32 batch_timeout_micros, int32 max_enqueued_batches,
                        const std::vector<int32>& allowed_batch_sizes,
                        FunctionLibraryRuntime::Handle fhandle,
@@ -96,7 +96,7 @@ class BatchResource : public serving::BatchResourceBase {
 
     resource->reset(new BatchResource(
         fhandle, std::move(batcher),
-        GetBatcherQueueOptions(num_batch_threads, max_batch_size,
+        GetBatcherQueueOptions(num_batch_threads, max_execution_batch_size,
                                batch_timeout_micros, max_enqueued_batches,
                                allowed_batch_sizes,
                                enable_large_batch_splitting),
@@ -116,8 +116,9 @@ class BatchResource : public serving::BatchResourceBase {
 
     resource->reset(new BatchResource(
         fhandle, std::move(batcher),
-        GetAdaptiveBatcherQueueOptions(max_batch_size, batch_timeout_micros,
-                                       max_enqueued_batches, true),
+        GetAdaptiveBatcherQueueOptions(
+            max_batch_size, batch_timeout_micros, max_enqueued_batches,
+            true /* enable large batch split */, allowed_batch_sizes),
         allowed_batch_sizes));
     return Status::OK();
   }
@@ -196,16 +197,21 @@ class BatchFunctionKernel : public AsyncOpKernel {
               kMinInflightBatchesLimit, kInitialInflightBatchesLimit,
               kBatchesToAverageOver});
 
-      // Use a shared shared pool across all models if adaptive shared batch
-      // scheduler is used.
+      // One scheduler instance contains a couple of queue instances,
+      // `batcher_queue_` is the key to find queue for this batch-op in the
+      // graph.
+      // Use `shared_name_` and name() as prefix for `batcher_queue_`.
+      // Note name() is unique per session (from session metadata).
+      batcher_queue_ = name() + "/" + shared_name_ + batcher_queue_;
+
       // `shared_name_` and `container_` is used to look up an instantiated
       // scheduler instance in `ComputeAsync`.
+      //
+      // Rewrite `container_` and `shared_name_` to a pre-defined constant so
+      // that a shared shared pool across all models if adaptive shared batch
+      // scheduler is used.
       container_ = "__adapative_container";
       shared_name_ = "__adaptive_global_shared_thread_pool";
-      // Use name to prevent collisions by default.
-      if (batcher_queue_.empty()) {
-        batcher_queue_ = name();
-      }
     }
 
     if (shared_name_.empty()) {
@@ -313,6 +319,10 @@ class BatchFunctionKernel : public AsyncOpKernel {
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.target = lib->device() == nullptr ? "" : lib->device()->name();
     opts.is_multi_device_function = true;
+    const ConfigProto* config = lib->config_proto();
+    if (config) {
+      opts.config_proto = *config;
+    }
 
     Device* cpu_device;
     TF_RETURN_IF_ERROR(lib->device_mgr()->LookupDevice("CPU:0", &cpu_device));
@@ -371,8 +381,10 @@ class BatchFunctionKernel : public AsyncOpKernel {
     return Status::OK();
   }
 
-  // Validates 'allowed_batch_sizes_'. The entries must increase monotonically,
-  // and the last one must equal 'max_batch_size_'.
+  // Validates 'allowed_batch_sizes_'. The entries must increase monotonically.
+  // If large batch split is not enabled, the last one must equal
+  // `max_batch_size_`. otherwise the last element must be smaller than or equal
+  // to `max_batch_size_`.
   Status ValidateAllowedBatchSizes() const {
     if (allowed_batch_sizes_.empty()) {
       return Status::OK();

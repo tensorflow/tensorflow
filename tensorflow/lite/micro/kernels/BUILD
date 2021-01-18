@@ -7,7 +7,10 @@ load(
     "micro_copts",
 )
 
-licenses(["notice"])  # Apache 2.0
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 config_setting(
     name = "xtensa_hifimini",
@@ -47,7 +50,9 @@ cc_library(
 
 cc_library(
     name = "fully_connected",
-    srcs = select({
+    srcs = [
+        "fully_connected_common.cc",
+    ] + select({
         "//conditions:default": [
             "fully_connected.cc",
         ],
@@ -132,6 +137,7 @@ cc_library(
         "sub.cc",
         "svdf_common.cc",
         "tanh.cc",
+        "transpose_conv.cc",
         "unpack.cc",
     ] + select({
         "//conditions:default": [
@@ -162,10 +168,11 @@ cc_library(
     ],
     deps = [
         ":activation_utils",
-        ":kernel_util",
         ":fixedpoint_utils",
+        ":kernel_util",
         ":micro_utils",
         ":xtensa",
+        "@flatbuffers",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
@@ -178,7 +185,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/micro:memory_helpers",
         "//tensorflow/lite/micro:micro_utils",
-        "@flatbuffers",
     ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
@@ -331,12 +337,30 @@ tflite_micro_cc_test(
     ],
 )
 
+cc_library(
+    name = "conv_test_common",
+    srcs = [
+        "conv_test_common.cc",
+    ],
+    hdrs = [
+        "conv_test.h",
+    ],
+    deps = [
+        ":kernel_runner",
+        ":micro_ops",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
 tflite_micro_cc_test(
     name = "conv_test",
     srcs = [
         "conv_test.cc",
     ],
     deps = [
+        ":conv_test_common",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",
@@ -651,6 +675,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/micro:debug_log",
     ],
 )
 
@@ -803,6 +828,21 @@ cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "transpose_conv_test",
+    srcs = [
+        "transpose_conv_test.cc",
+    ],
+    deps = [
+        ":conv_test_common",
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

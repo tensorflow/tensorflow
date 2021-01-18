@@ -32,19 +32,14 @@ Renode can be installed and used in a variety of ways, as documented
 [here](https://renode.readthedocs.io/en/latest/). For the purpose of Tensorflow
 Lite Micro, we make use of a portable version for Linux.
 
- 1. Download portable version of Renode for Linux:
+Portable renode wil be automatically installed when using the TfLite Micro
+Makefile to `tensorflow/lite/micro/tools/make/downloads/renode`.
 
-    ```
-    tensorflow/lite/micro/testing/download_renode.sh tensorflow/lite/micro/tools/make/downloads/renode
-    ```
+The Makefile internally calls the `renode_download.sh` script:
 
- 2. Install the Renode test dependencies
-
-    ```
-    pip3 install -r tensorflow/lite/micro/tools/make/downloads/renode/tests/requirements.txt
-    ```
-
-At this point in time you will be ready to run TFLM tests with Renode.
+```
+tensorflow/lite/micro/testing/renode_download.sh tensorflow/lite/micro/tools/make/downloads
+```
 
 # Running Unit Tests
 
@@ -75,8 +70,8 @@ failing.
 
 # Running a non-test Binary with Renode
 
-Renode can also be used to run and debug binaries interactively. 
-For example, to debug `kernel_addr_test` on Bluepill platform, run Renode:
+Renode can also be used to run and debug binaries interactively. For example,
+to debug `kernel_addr_test` on Bluepill platform, run Renode:
 
 ```
 tensorflow/lite/micro/tools/make/downloads/renode/renode

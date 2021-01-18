@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <numeric>
 
 #include "third_party/eigen3/Eigen/Core"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -1079,9 +1081,9 @@ static LogicalResult Verify(PReluOp op) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// This pattern matches and merges a tfl.reshape under the following
-/// condition:
-/// * The input's defining op is another tfl.reshape.
+// This pattern matches and merges a tfl.reshape under the following
+// condition:
+// * The input's defining op is another tfl.reshape.
 // TODO(antiagainst): This pattern probably should be moved to the peephole
 // category, after we have the infra for peephole passes.
 struct RemoveAdjacentReshape : public RewritePattern {
@@ -1105,6 +1107,43 @@ struct RemoveAdjacentReshape : public RewritePattern {
     //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
         op, thisOp.getType(), prevOp.getOperand(0), thisOp.getOperand(1));
+  }
+};
+
+// The kernel expects an 1-D tensor for the shape operand if it presents. If all
+// the dimensions are '1's except the last dimension, it will be reshaped to a
+// 1-D tensor.
+// Note that this pattern doesn't check or change the content of the shape
+// tensor.
+struct ConvertShapeTo1D : public OpRewritePattern<ReshapeOp> {
+  using OpRewritePattern<ReshapeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ReshapeOp reshape,
+                                PatternRewriter &rewriter) const override {
+    if (!reshape.shape().hasOneUse()) return failure();
+
+    DenseIntElementsAttr shape;
+    if (!matchPattern(reshape.shape(), m_Constant(&shape))) {
+      return failure();
+    }
+    // It is already a 1-D constant, no change.
+    auto old_shape = shape.getType().getShape();
+    if (old_shape.size() == 1) {
+      return failure();
+    }
+    // Verify all the leading dimensions are length one, except the last one.
+    for (auto it = ++old_shape.rbegin(); it != old_shape.rend(); ++it) {
+      if (*it != 1) {
+        reshape->emitError(
+            "Non-vector shape input is used, might cause runtime error");
+        return failure();
+      }
+    }
+    auto new_shape = shape.reshape(RankedTensorType::get(
+        {*old_shape.rbegin()}, shape.getType().getElementType()));
+    rewriter.replaceOpWithNewOp<TFL::ConstOp>(reshape.shape().getDefiningOp(),
+                                              new_shape);
+    return success();
   }
 };
 
@@ -1141,21 +1180,132 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  results.insert<RemoveAdjacentReshape>(context);
+  results.insert<RemoveAdjacentReshape, ConvertShapeTo1D>(context);
+}
+
+using ReshapeErrorHandler =
+    llvm::function_ref<LogicalResult(const llvm::Twine &)>;
+
+LogicalResult GetReshapeOutputType(Value input, Value shape,
+                                   ReshapeErrorHandler error_handler,
+                                   TensorType &output_ty) {
+  auto input_ty = input.getType().cast<TensorType>();
+  auto element_ty = input_ty.getElementType();
+  output_ty = UnrankedTensorType::get(element_ty);
+
+  auto shape_ty = shape.getType().dyn_cast<RankedTensorType>();
+  if (!shape_ty) return success();
+  if (shape_ty.getRank() != 1)
+    return error_handler(llvm::formatv(
+        "requires 'shape' to be rank 1, but got {0}", shape_ty.getRank()));
+
+  DenseIntElementsAttr shape_attr;
+  if (!matchPattern(shape, m_Constant(&shape_attr))) {
+    // If only shape of `shape` is known, return ranked but dynamic output
+    // shape.
+    if (shape_ty.hasStaticShape()) {
+      llvm::SmallVector<int64_t, 8> dynamic_shape(shape_ty.getDimSize(0),
+                                                  ShapedType::kDynamicSize);
+      output_ty = RankedTensorType::get(dynamic_shape, element_ty);
+    }
+    return success();
+  }
+
+  // Detect if reshape output shape is folded.
+  bool shape_ty_zero_dim = false;
+  int unknown_index = -1;
+  // The product of constant shape argument excluding unknown dimension.
+  int64_t shape_ty_size = 1;
+  llvm::SmallVector<int64_t, 8> output_ty_shape;
+  output_ty_shape.reserve(shape_attr.getNumElements());
+  for (const auto &dim : llvm::enumerate(shape_attr.getIntValues())) {
+    const int64_t size = dim.value().getSExtValue();
+    if (size == ShapedType::kDynamicSize) {
+      if (unknown_index != -1)
+        return error_handler(llvm::formatv(
+            "requires 'shape' to have at most one dynamic dimension, but got "
+            "multiple dynamic dimensions at indices {0} and {1}. You need to "
+            "set up the unspecified size(s) to avoid this problem, for example,"
+            "setting batch size in keras model or setting unspecified input "
+            "size(s) with fixed ones.",
+            unknown_index, dim.index()));
+
+      unknown_index = dim.index();
+    } else if (size == 0) {
+      shape_ty_zero_dim = true;
+    } else if (size > 0) {
+      shape_ty_size *= size;
+    } else {
+      return error_handler(
+          llvm::formatv("requires 'shape' to have dimensions greater than -1, "
+                        "but got {0} at index {1}",
+                        size, dim.index()));
+    }
+    output_ty_shape.push_back(size);
+  }
+
+  if (!input_ty.hasStaticShape()) {
+    output_ty = RankedTensorType::get(output_ty_shape, element_ty);
+    return success();
+  }
+
+  // Compute the value of the unknown dimension.
+  if (unknown_index != -1) {
+    // Compute number of elements in tensor shape.
+    int64_t input_ty_size = 1;
+    bool input_ty_zero_dim = false;
+    for (const auto &dim : input_ty.getShape()) {
+      if (dim > 0 || !shape_ty_zero_dim) {
+        input_ty_size *= dim;
+      } else {
+        input_ty_zero_dim = true;
+      }
+    }
+
+    const int64_t missing_dim = input_ty_size / shape_ty_size;
+    if (!input_ty_zero_dim && shape_ty_size * missing_dim != input_ty_size)
+      return error_handler(
+          llvm::formatv("requires 'input' number of elements be a multiple of "
+                        "{0}, but got {1}",
+                        shape_ty_size, input_ty_size));
+
+    // Set the unknown dimension such that total number of elements remain
+    // constant.
+    output_ty_shape[unknown_index] = missing_dim;
+  }
+
+  output_ty = RankedTensorType::get(output_ty_shape, element_ty);
+
+  return success();
 }
 
 static LogicalResult Verify(ReshapeOp op) {
-  auto shape = op.shape().getType().dyn_cast_or_null<mlir::RankedTensorType>();
-  if (!shape || !shape.hasRank()) return success();
-  if (shape.getNumDynamicDims() <= 1) return success();
+  auto error_handler = [&op](const llvm::Twine &message) -> LogicalResult {
+    return op.emitOpError() << message;
+  };
+  TensorType expected_ty;
+  if (failed(GetReshapeOutputType(op.input(), op.shape(), error_handler,
+                                  expected_ty)))
+    return failure();
 
-  op.emitError()
-      << "its shape value, " << shape
-      << ", is invalid because it has more than one dynamic dimensions. You "
-         "need to set up the unspecified size(s) to avoid this problem, for "
-         "example, setting batch size in keras model or setting unspecified "
-         "input size(s) with fixed ones.";
-  return failure();
+  auto output_ty = op.getType().dyn_cast<RankedTensorType>();
+  if (!output_ty) return success();
+  auto input_ty = op.input().getType().cast<TensorType>();
+  if (output_ty.hasStaticShape() && input_ty.hasStaticShape()) {
+    const int64_t output_ty_size = output_ty.getNumElements();
+    const int64_t input_ty_size = input_ty.getNumElements();
+    if (input_ty_size != output_ty_size)
+      return op.emitOpError() << "requires 'output' number of elements to "
+                                 "match 'input' number of elements, but got "
+                              << output_ty_size << " and " << input_ty_size;
+  }
+
+  if (!TF::AreCastCompatible({output_ty, expected_ty}))
+    return op.emitOpError()
+           << "requires 'output' type " << output_ty
+           << " to be cast compatible with expected type " << expected_ty;
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2333,6 +2483,22 @@ struct WhileResultOperandsMatchAndImplicitCapture
     auto &yield = *body_block.getTerminator();
     for (auto ba : body_block.getArguments()) {
       int arg_no = ba.getArgNumber();
+      // Skip removing resources that are not read-only variables.
+      if (getElementTypeOrSelf(ba.getType()).isa<TF::ResourceType>()) {
+        bool has_read_only_variables = true;
+        for (auto user : ba.getUsers()) {
+          // Ternimator ops, for example, tfl::yield op, should be ignored since
+          // the argument can be used for yielding as the `body` function result
+          // and that does not give any meaningful points to the decision
+          // whether the given arugment is a read-only variable or not.
+          if (user->hasTrait<OpTrait::IsTerminator>()) continue;
+          if (!llvm::isa<mlir::TF::ReadVariableOp>(user)) {
+            has_read_only_variables = false;
+            break;
+          }
+        }
+        if (!has_read_only_variables) continue;
+      }
       if (ba == yield.getOperand(arg_no)) {
         unchanged = false;
         auto value = while_op.getOperand(arg_no);

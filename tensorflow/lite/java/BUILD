@@ -16,6 +16,7 @@ exports_files([
     "src/testdata/add.bin",
     "src/testdata/add_unknown_dimensions.bin",
     "src/testdata/grace_hopper_224.jpg",
+    "src/testdata/mul_add_signature_def.bin",
     "src/testdata/tile_with_bool_input.bin",
     "AndroidManifest.xml",
     "proguard.flags",
@@ -262,6 +263,7 @@ java_test(
     data = [
         "src/testdata/add.bin",
         "src/testdata/add_unknown_dimensions.bin",
+        "src/testdata/mul_add_signature_def.bin",
         "src/testdata/tile_with_bool_input.bin",
         "//tensorflow/lite:testdata/dynamic_shapes.bin",
         "//tensorflow/lite:testdata/multi_add.bin",

@@ -31,7 +31,7 @@ tf_py_test(
     srcs = ["mnist_ops_test.py"],
     data = [":mnist_ops_mlir"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",  # TODO(b/170752141)
@@ -49,6 +49,7 @@ py_library(
     name = "mnist_train",
     srcs = ["mnist_train.py"],
     data = [":mnist_ops_mlir"],
+    srcs_version = "PY3",
     deps = [
         ":mnist_ops",
         ":mnist_ops_py",

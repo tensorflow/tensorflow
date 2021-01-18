@@ -399,7 +399,10 @@ filegroup(
         "op_segment.h",
         "partial_tensor_shape.h",
         "queue_interface.h",
+        "reader_base.cc",
+        "reader_base.h",
         "reader_interface.h",
+        "reader_op_kernel.h",
         "register_types_traits.h",
         "registration_options.h",
         "rendezvous.cc",
@@ -623,7 +626,10 @@ cc_library(
     name = "bfloat16",
     srcs = ["bfloat16.cc"],
     hdrs = ["bfloat16.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+    ],
     deps = [
         ":numeric_types",
         "//tensorflow/core/platform:byte_order",
@@ -666,6 +672,7 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
+        "//tensorflow/core/tfrt/utils:__subpackages__",
     ],
     deps = [
         ":bounds_check",
@@ -678,7 +685,9 @@ cc_library(
         "//tensorflow/core/lib/gtl:inlined_vector",
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/lib/strings:strcat",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
         "//tensorflow/core/util:overflow",
         "//third_party/eigen3",
     ],
@@ -753,6 +762,7 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/tfrt/utils:__subpackages__",
         "//tensorflow/core/util:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
@@ -1056,10 +1066,10 @@ tf_cc_test(
     size = "small",
     srcs = ["op_gen_lib_test.cc"],
     deps = [
-        ":op_gen_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:op_gen_lib",
     ],
 )
 
@@ -1109,7 +1119,6 @@ tf_cc_test(
     srcs = ["run_handler_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
-        ":tensor_testutil",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework_internal",
@@ -1119,6 +1128,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:matmul_op",
         "//third_party/eigen3",
@@ -1247,16 +1257,6 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
-    ],
-    deps = [
-        ":api_def_proto_cc",
-        ":op_def_proto_cc",
-        ":tensor",
-        "//tensorflow/core:core_stringpiece",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/lib/core:refcount",
-        "//tensorflow/core/lib/core:status",
     ],
 )
 

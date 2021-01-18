@@ -80,8 +80,16 @@ unique_void_ptr make_type_erased_array(size_t size) {
                          [](void* data) { delete[] static_cast<T*>(data); });
 }
 
-bool IsQuantized(const TfLiteTensor& tensor) {
-  if (tensor.type != kTfLiteInt8 && tensor.type != kTfLiteInt16) return false;
+bool InterpretAsQuantized(const TfLiteTensor& tensor) {
+  if (tensor.quantization.type == kTfLiteNoQuantization) return false;
+
+  // Quantized single-op models with uint8 input/output type are only used for
+  // EdgeTPU tests.
+  // EdgeTPU tests need to read the quantized values as-is to check for
+  // bit-exactness. As a result we don't interpret the tensor as quantized.
+  // TODO(b/176121243): Add an option to interpret uint8 buffers as
+  // non-quantized type and set if from the child class.
+  if (tensor.type == kTfLiteUInt8) return false;
 
   if (tensor.quantization.params != nullptr) {
     auto* quantization =
@@ -316,7 +324,7 @@ bool TfLiteDriver::DataExpectation::QuantizedCheck(bool verbose,
 
 bool TfLiteDriver::DataExpectation::Check(bool verbose,
                                           const TfLiteTensor& tensor) {
-  if (IsQuantized(tensor)) {
+  if (InterpretAsQuantized(tensor)) {
     return QuantizedCheck(verbose, tensor);
   }
 
@@ -549,7 +557,7 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       new DataExpectation(relative_threshold_, absolute_threshold_,
                           quantization_error_multiplier_));
 
-  if (IsQuantized(*tensor)) {
+  if (InterpretAsQuantized(*tensor)) {
     expected_output_[id]->SetData<float>(csv_values);
     return;
   }

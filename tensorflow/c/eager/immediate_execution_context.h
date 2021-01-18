@@ -183,6 +183,8 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual ImmediateExecutionTensorHandle* TFTensorHandleFromInterface(
       ImmediateExecutionTensorHandle* handle) = 0;
 
+  virtual std::vector<std::string> GetLoggedOpsTestonly() { return {}; }
+
   //===--------------------------------------------------------------------===//
   // Distributed runtime related functions.
   //===--------------------------------------------------------------------===//

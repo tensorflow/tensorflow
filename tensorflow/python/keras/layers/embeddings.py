@@ -57,7 +57,7 @@ class Embedding(Layer):
   >>> print(output_array.shape)
   (32, 10, 64)
 
-  Arguments:
+  Args:
     input_dim: Integer. Size of the vocabulary,
       i.e. maximum integer index + 1.
     output_dim: Integer. Dimension of the dense embedding.

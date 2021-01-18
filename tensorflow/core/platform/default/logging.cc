@@ -271,7 +271,7 @@ int64 MinLogLevelFromEnv() {
 #endif
 }
 
-int64 MinVLogLevelFromEnv() {
+int64 MaxVLogLevelFromEnv() {
   // We don't want to print logs during fuzzing as that would slow fuzzing down
   // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
   // return a value so that nothing is actually printed. Since VLOG uses <=
@@ -281,7 +281,7 @@ int64 MinVLogLevelFromEnv() {
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
   return 0;
 #else
-  const char* tf_env_var_val = getenv("TF_CPP_MIN_VLOG_LEVEL");
+  const char* tf_env_var_val = getenv("TF_CPP_MAX_VLOG_LEVEL");
   return LogLevelStrToInt(tf_env_var_val);
 #endif
 }
@@ -307,13 +307,13 @@ void LogMessage::GenerateLogMessage() {
   TFLogSinks::Instance().Send(TFLogEntry(severity_, fname_, line_, str()));
 }
 
-int64 LogMessage::MinVLogLevel() {
-  static int64 min_vlog_level = MinVLogLevelFromEnv();
-  return min_vlog_level;
+int64 LogMessage::MaxVLogLevel() {
+  static int64 max_vlog_level = MaxVLogLevelFromEnv();
+  return max_vlog_level;
 }
 
 bool LogMessage::VmoduleActivated(const char* fname, int level) {
-  if (level <= MinVLogLevel()) {
+  if (level <= MaxVLogLevel()) {
     return true;
   }
   static VmoduleMap* vmodules = VmodulesMapFromEnv();

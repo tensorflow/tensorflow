@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
+#include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -165,12 +165,8 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const int8_t* lhs_data,
     for (int i = 1; i < extended_lhs_shape.DimensionsCount() - 2; ++i) {
       num_weights_matrices *= extended_lhs_shape.Dims(i);
     }
-    memset(row_sums, 0, sizeof(int32_t) * lhs_rows * num_weights_matrices);
-    for (int j = 0; j < num_weights_matrices; ++j) {
-      tensor_utils::PortableReductionSumVector(
-          lhs_data + j * lhs_rows * accum_depth, row_sums + j * lhs_rows,
-          lhs_rows, accum_depth);
-    }
+    tensor_utils::ReductionSumVector(
+        lhs_data, row_sums, num_weights_matrices * lhs_rows, accum_depth);
     if (compute_row_sums) {
       *compute_row_sums = false;
     }

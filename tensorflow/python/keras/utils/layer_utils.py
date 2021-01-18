@@ -36,7 +36,7 @@ def get_source_inputs(tensor, layer=None, node_index=None):
   Output will always be a list of tensors
   (potentially with 1 element).
 
-  Arguments:
+  Args:
       tensor: The tensor to start from.
       layer: Origin layer of the tensor. Will be
           determined via tensor._keras_history if not provided.
@@ -94,7 +94,7 @@ def validate_string_arg(input_data,
 def count_params(weights):
   """Count the total number of scalars composing the weights.
 
-  Arguments:
+  Args:
       weights: An iterable containing the weights on which to compute params
 
   Returns:
@@ -111,7 +111,7 @@ def count_params(weights):
 def print_summary(model, line_length=None, positions=None, print_fn=None):
   """Prints a summary of a model.
 
-  Arguments:
+  Args:
       model: Keras model instance.
       line_length: Total length of printed lines
           (e.g. set this to adapt the display to different
@@ -196,7 +196,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   def print_layer_summary(layer):
     """Prints a summary for a single layer.
 
-    Arguments:
+    Args:
         layer: target layer.
     """
     try:
@@ -219,7 +219,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   def print_layer_summary_with_connections(layer):
     """Prints a summary for a single layer (including topological connections).
 
-    Arguments:
+    Args:
         layer: target layer.
     """
     try:
@@ -342,7 +342,7 @@ def convert_dense_weights_data_format(dense,
   followed by a `Dense` layer, the weights of that `Dense` layer
   should be updated to reflect the new dimension ordering.
 
-  Arguments:
+  Args:
       dense: The target `Dense` layer.
       previous_feature_map_shape: A shape tuple of 3 integers,
           e.g. `(512, 7, 7)`. The shape of the convolutional

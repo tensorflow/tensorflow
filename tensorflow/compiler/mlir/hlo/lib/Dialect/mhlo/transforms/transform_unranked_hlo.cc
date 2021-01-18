@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -49,9 +50,9 @@ namespace {
               sep fn(ShiftRightLogicalOp) sep fn(SubOp) sep fn(XorOp)
 
 // TODO(herhut): Generate these out of op definitions.
-#define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep)                         \
-  fn(AcosOp) sep fn(AtanOp) sep fn(ConjOp) sep fn(ErfOp) sep fn(ErfcOp) \
-      sep fn(SinhOp) sep fn(TanOp)
+#define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep)                           \
+  fn(AcosOp) sep fn(AsinOp) sep fn(AsinhOp) sep fn(AtanOp) sep fn(ConjOp) \
+      sep fn(CoshOp) sep fn(ErfOp) sep fn(ErfcOp) sep fn(SinhOp) sep fn(TanOp)
 
 template <typename OpTy>
 inline void AddLegalOpOnRankedTensor(ConversionTarget *target) {
@@ -228,7 +229,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
         loc, result_type, IsScalarTensor(rewriter, op, lhs), true);
     OpBuilder if_lhs_scalar_builder =
         if_op.getThenBodyBuilder(rewriter.getListener());
-    Value reshaped_lhs = if_lhs_scalar_builder.create<TensorCastOp>(
+    Value reshaped_lhs = if_lhs_scalar_builder.create<tensor::CastOp>(
         loc, RankedTensorType::get({}, lhs_type.getElementType()), lhs);
     Value if_lhs_scalar_result = if_lhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{reshaped_lhs, rhs},
@@ -247,7 +248,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
                                                  if_rhs_scalar_op.getResult(0));
     OpBuilder if_rhs_scalar_builder =
         if_rhs_scalar_op.getThenBodyBuilder(rewriter.getListener());
-    Value reshaped_rhs = if_rhs_scalar_builder.create<TensorCastOp>(
+    Value reshaped_rhs = if_rhs_scalar_builder.create<tensor::CastOp>(
         loc, RankedTensorType::get({}, lhs_type.getElementType()), rhs);
     Value if_rhs_scalar_result = if_rhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{lhs, reshaped_rhs},
@@ -345,12 +346,12 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     Value extended_lhs = if_builder.create<shape::BroadcastOp>(
         loc, unknown_rank_extent_tensor_type, lhs_shape, ranked_shape_val,
         nullptr);
-    Value extended_lhs_casted = if_builder.create<TensorCastOp>(
+    Value extended_lhs_casted = if_builder.create<tensor::CastOp>(
         loc, known_rank_extent_tensor_type, extended_lhs);
     Value extended_rhs = if_builder.create<shape::BroadcastOp>(
         loc, unknown_rank_extent_tensor_type, rhs_shape, ranked_shape_val,
         nullptr);
-    Value extended_rhs_casted = if_builder.create<TensorCastOp>(
+    Value extended_rhs_casted = if_builder.create<tensor::CastOp>(
         loc, known_rank_extent_tensor_type, extended_rhs);
 
     // 1. Reshape operands to the given rank (with the same number of elements)
@@ -372,7 +373,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     Value result = if_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type},
         ArrayRef<Value>{reshaped_lhs, reshaped_rhs}, op.getAttrs());
-    Value reshaped_result = if_builder.create<TensorCastOp>(
+    Value reshaped_result = if_builder.create<tensor::CastOp>(
         loc, UnrankedTensorType::get(result_element_type), result);
     if_builder.create<scf::YieldOp>(loc, reshaped_result);
   }
@@ -446,7 +447,8 @@ struct TransformUnrankedHloPass
     MLIRContext &ctx = getContext();
     ConversionTarget target(ctx);
     target.addLegalDialect<mhlo::MhloDialect, StandardOpsDialect,
-                           shape::ShapeDialect, scf::SCFDialect>();
+                           shape::ShapeDialect, scf::SCFDialect,
+                           tensor::TensorDialect>();
     target.addLegalOp<FuncOp>();
 #define ADD_LEGAL_MHLO(op) AddLegalOpOnRankedTensor<mhlo::op>(&target)
 #define ADD_LEGAL_CHLO(op) AddLegalOpOnRankedTensor<chlo::op>(&target)

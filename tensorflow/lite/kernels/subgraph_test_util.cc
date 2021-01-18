@@ -284,12 +284,14 @@ void SubgraphBuilder::BuildAccumulateLoopBodySubgraph(Subgraph* subgraph) {
   TfLiteAddParams* params =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   params->activation = kTfLiteActNone;
+  params->pot_scale_int16 = false;
   auto* add_reg = ops::builtin::Register_ADD();
   add_reg->builtin_code = kTfLiteBuiltinAdd;
   subgraph->AddNodeWithParameters({0, 4}, {2}, {}, nullptr, 0, params, add_reg,
                                   &node_index);
   params = reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   params->activation = kTfLiteActNone;
+  params->pot_scale_int16 = false;
   subgraph->AddNodeWithParameters({2, 1}, {3}, {}, nullptr, 0, params, add_reg,
                                   &node_index);
 }

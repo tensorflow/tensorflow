@@ -2116,10 +2116,14 @@ HloInstructionProto HloOutfeedInstruction::ToProto() const {
 
 std::vector<string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  if (outfeed_config_.empty()) {
-    return {};
+  std::vector<string> extra;
+  extra.push_back(StrCat("outfeed_shape=",
+                         ShapeUtil::HumanStringWithLayout(outfeed_shape_)));
+  if (!outfeed_config_.empty()) {
+    extra.push_back(
+        StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
   }
-  return {StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\"")};
+  return extra;
 }
 
 bool HloOutfeedInstruction::IdenticalSlowPath(

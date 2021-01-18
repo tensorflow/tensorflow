@@ -862,6 +862,33 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertEqual(out.shape[0], 50)
       self.assertEqual(out.shape[1], 2)
 
+  def testTfAssert(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x):
+        control_flow_ops.Assert(x == 1, ['Wrong value'])
+
+      f(constant_op.constant(1))
+
+  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
+                                 'support stack traces')
+  def testTensorArrayErrorMessage(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f():
+        ta = tensor_array_ops.TensorArray(
+            dtype=dtypes.float32,
+            size=2,
+            dynamic_size=True,
+            element_shape=(None,))
+        return ta.concat()  # EXPECTED_MESSAGE
+
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'EXPECTED_MESSAGE'):
+        f()
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

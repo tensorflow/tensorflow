@@ -67,6 +67,17 @@ StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
       makeStridedLinearLayoutMap(strides, /*offset=*/0, builder.getContext())};
 }
 
+template <typename T>
+void CopyDenseElementsBy(mlir::DenseElementsAttr data,
+                         std::vector<uint8>* output) {
+  output->resize(data.getNumElements() * sizeof(T));
+  int i = 0;
+  for (T element : data.getValues<T>()) {
+    std::memcpy(&(*output)[i], &element, sizeof(T));
+    i += sizeof(T);
+  }
+}
+
 }  // namespace
 
 StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
@@ -127,6 +138,75 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
       return tensorflow::errors::Internal(
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
   }
+}
+
+Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
+                                        std::vector<uint8>* output) {
+  mlir::Type element_type = data.getType().getElementType();
+
+  // TODO(hinsu): Support remaining XLA primitive types.
+  if (element_type.isInteger(1)) {
+    CopyDenseElementsBy<bool>(data, output);
+    return Status::OK();
+  }
+  if (element_type.isInteger(8)) {
+    CopyDenseElementsBy<uint8>(data, output);
+    return Status::OK();
+  }
+  if (element_type.isInteger(16)) {
+    CopyDenseElementsBy<uint16>(data, output);
+    return Status::OK();
+  }
+  if (element_type.isInteger(32)) {
+    CopyDenseElementsBy<uint32>(data, output);
+    return Status::OK();
+  }
+  if (element_type.isInteger(64)) {
+    CopyDenseElementsBy<uint64>(data, output);
+    return Status::OK();
+  }
+  if (element_type.isBF16()) {
+    CopyDenseElementsBy<bfloat16>(data, output);
+    return Status::OK();
+  }
+  if (element_type.isF16()) {
+    CopyDenseElementsBy<half>(data, output);
+    return Status::OK();
+  }
+  if (element_type.isF32()) {
+    CopyDenseElementsBy<float>(data, output);
+    return Status::OK();
+  }
+  if (element_type.isF64()) {
+    CopyDenseElementsBy<double>(data, output);
+    return Status::OK();
+  }
+  if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
+    if (complex_type.getElementType().isF32()) {
+      CopyDenseElementsBy<complex64>(data, output);
+      return Status::OK();
+    }
+    if (complex_type.getElementType().isF64()) {
+      CopyDenseElementsBy<complex128>(data, output);
+      return Status::OK();
+    }
+  }
+  return tensorflow::errors::Internal(
+      "Unsupported type in CopyDenseElementsDataToXlaFormat");
+}
+
+StatusOr<int> GetElementTypeBytes(mlir::Type type) {
+  if (type.isInteger(1)) {
+    return 1;
+  }
+  if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+    TF_ASSIGN_OR_RETURN(int bytes,
+                        GetElementTypeBytes(complex_type.getElementType()));
+    return bytes * 2;
+  }
+  int width = type.getIntOrFloatBitWidth();
+  TF_RET_CHECK(width % 8 == 0);
+  return width / 8;
 }
 
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
@@ -238,9 +318,9 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kSubtract;
   } else if (isa<mlir::mhlo::XorOp, mlir::lmhlo::XorOp>(op)) {
     return xla::HloOpcode::kXor;
-  } else if (isa<mlir::mhlo::InfeedOp, mlir::lmhlo::Infeed>(op)) {
+  } else if (isa<mlir::mhlo::InfeedOp, mlir::lmhlo::InfeedOp>(op)) {
     return xla::HloOpcode::kInfeed;
-  } else if (isa<mlir::mhlo::OutfeedOp, mlir::lmhlo::Outfeed>(op)) {
+  } else if (isa<mlir::mhlo::OutfeedOp, mlir::lmhlo::OutfeedOp>(op)) {
     return xla::HloOpcode::kOutfeed;
   } else if (isa<mlir::mhlo::SendOp>(op)) {
     return xla::HloOpcode::kSend;

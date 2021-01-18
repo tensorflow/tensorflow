@@ -6,7 +6,10 @@ load(
     "tflite_micro_cc_test",
 )
 
-licenses(["notice"])  # Apache 2.0
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "image_model_data",
@@ -32,7 +35,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":image_model_data",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",

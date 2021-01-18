@@ -114,6 +114,7 @@ filegroup(
         "gpu_managed_allocator.h",
         "gpu_process_state.h",
         "gpu_util.h",
+        "gpu_virtual_mem_allocator.h",
         "//tensorflow/core/common_runtime:gpu_runtime_headers",
         "//tensorflow/core/common_runtime/device:device_runtime_headers",
     ],
@@ -137,6 +138,7 @@ tf_cuda_library(
     cuda_deps = [
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/stream_executor/cuda:cuda_platform",
+        ":gpu_virtual_mem_allocator",
     ],
     deps = [
         ":gpu_bfc_allocator",
@@ -187,11 +189,37 @@ tf_cuda_library(
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
+        ":gpu_virtual_mem_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:bfc_allocator",
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
+    ],
+)
+
+tf_cuda_library(
+    name = "gpu_virtual_mem_allocator",
+    srcs = [
+        "gpu_virtual_mem_allocator.cc",
+    ],
+    hdrs = [
+        "gpu_virtual_mem_allocator.h",
+    ],
+    copts = tf_copts(),
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gpu_id",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/stream_executor:platform",
+        "//tensorflow/stream_executor:stream_executor_headers",
+        "//tensorflow/stream_executor/lib",
     ],
 )
 
@@ -401,5 +429,23 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/stream_executor:platform",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_virtual_mem_allocator_test",
+    size = "small",
+    srcs = ["gpu_virtual_mem_allocator_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_init",
+        ":gpu_virtual_mem_allocator",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/stream_executor/lib",
     ],
 )

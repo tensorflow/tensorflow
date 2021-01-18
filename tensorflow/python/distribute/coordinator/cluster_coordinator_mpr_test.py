@@ -162,7 +162,7 @@ class ClusterCoordinatorMprTest(test.TestCase):
         if test_join:
           ps_coordinator.join()
         if test_schedule:
-          while ps_coordinator.cluster._closure_queue._error is None:
+          while ps_coordinator._cluster._closure_queue._error is None:
             time.sleep(1)
           ps_coordinator.schedule(worker_fn)
       except errors.UnavailableError:

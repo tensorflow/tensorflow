@@ -127,11 +127,13 @@ class ParallelDevice {
 class ParallelTensor {
  public:
   // Construct a ParallelTensor from TensorHandles placed on the component
-  // devices of a ParallelDevice. Inspects `components` to determine a shape.
+  // devices of a ParallelDevice. If called, ParallelTensor::Shape inspects
+  // `components` to determine a shape.
   static std::unique_ptr<ParallelTensor> FromTensorHandles(
       const ParallelDevice& parallel_device,
       std::vector<TensorHandlePtr> components, TF_Status* status);
-  // Uses the provided shape without additional checks, which avoids blocking.
+  // Uses the provided shape without additional checks, which avoids blocking
+  // when ParallelTensor::Shape is called.
   static std::unique_ptr<ParallelTensor> FromTensorHandles(
       const ParallelDevice& parallel_device,
       std::vector<TensorHandlePtr> components, absl::Span<const int64> shape,
@@ -140,8 +142,13 @@ class ParallelTensor {
   size_t num_tensors() const { return tensors_.size(); }
   TFE_TensorHandle* tensor(size_t index) const { return tensors_[index].get(); }
 
-  // A generalization of the shapes of the underlying tensors.
-  const std::vector<int64_t>& shape() const { return shape_; }
+  // If the `shape` argument to `FromTensorHandles` is specified, returns that.
+  //
+  // Otherwise if all of the tensors have the same shape, returns that via the
+  // `shape` output argument. This blocks waiting for async tensors, may return
+  // a delayed bad status encountered during async execution, and will return a
+  // bad status unless all tensors have the same shape.
+  Status Shape(const std::vector<int64_t>** shape) const;
   TF_DataType dtype() const { return dtype_; }
 
  private:
@@ -150,12 +157,21 @@ class ParallelTensor {
                  absl::Span<const int64> shape, const TF_DataType dtype)
       : device_(device),
         tensors_(std::move(tensors)),
-        shape_(shape.begin(), shape.end()),
+        shape_(std::vector<int64_t>(shape.begin(), shape.end())),
+        dtype_(dtype) {}
+  ParallelTensor(const ParallelDevice& device,
+                 std::vector<TensorHandlePtr> tensors, const TF_DataType dtype)
+      : device_(device),
+        tensors_(std::move(tensors)),
+        shape_(absl::nullopt),
         dtype_(dtype) {}
 
   const ParallelDevice& device_;
   const std::vector<TensorHandlePtr> tensors_;
-  const std::vector<int64_t> shape_;
+  // Parallel tensors are immutable but compute their shape lazily unless it is
+  // provided on construction. The optional has a value if the lazy computation
+  // has been completed or the shape was provided on construction.
+  mutable absl::optional<std::vector<int64_t>> shape_;
   const TF_DataType dtype_;
 };
 

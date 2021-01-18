@@ -1792,7 +1792,7 @@ name=None))
 
     Args:
       map_func: A function mapping a dataset element to another dataset element.
-      num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
+      num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
@@ -4561,6 +4561,15 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     if optimization_configs is None:
       optimization_configs = []
+
+    # We sort the options here before embedding as constant tensors to ensure
+    # that serialization to NodeDef is determinstic.
+    if optimizations_enabled:
+      optimizations_enabled.sort()
+    if optimizations_disabled:
+      optimizations_disabled.sort()
+    if optimizations_default:
+      optimizations_default.sort()
 
     self._optimizations_enabled = convert.optional_param_to_tensor(
         argument_name="optimizations_enabled",

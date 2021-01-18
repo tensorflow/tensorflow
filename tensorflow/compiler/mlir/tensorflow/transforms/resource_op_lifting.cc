@@ -445,6 +445,7 @@ LogicalResult RegionResourceHoister::Analyze() {
 // Generates hoisted reads for all resources that need them just before the op.
 void RegionResourceHoister::GenerateHoistedReads() {
   OpBuilder builder(op_);
+  DictionaryAttr empty_attrs = builder.getDictionaryAttr({});
   for (auto& resource_it : GetResources()) {
     Value resource = resource_it.first;
     auto& info = resource_it.second;
@@ -452,7 +453,7 @@ void RegionResourceHoister::GenerateHoistedReads() {
     if (info.is_read) {
       Operation* read = builder.create<TF::ReadVariableOp>(
           op_->getLoc(), info.data_type, resource);
-      read->setAttrs(info.read_attrs);
+      read->setAttrs(info.read_attrs ? info.read_attrs : empty_attrs);
       info.hoisted_read = read->getResult(0);
     }
   }
@@ -785,9 +786,9 @@ void RemoveUnusedResourceArgumentsAndForwardedRetvals(
     }
   }
   func_op.eraseArguments(indices_to_erase);
-  func_op.setType(FunctionType::get(
-      new_types, llvm::to_vector<4>(return_op->getOperandTypes()),
-      func_op.getContext()));
+  func_op.setType(
+      FunctionType::get(func_op.getContext(), new_types,
+                        llvm::to_vector<4>(return_op->getOperandTypes())));
 }
 
 // Lifts reads/writes of resource arguments from func_op and changes its
@@ -841,10 +842,9 @@ LogicalResult LiftArgRetResourcesForFunction(
     assign_variable_op.erase();
   }
 
-  func_op.setType(
-      FunctionType::get(func_op.front().getArgumentTypes(),
-                        func_op.front().getTerminator()->getOperandTypes(),
-                        func_op.getContext()));
+  func_op.setType(FunctionType::get(
+      func_op.getContext(), func_op.front().getArgumentTypes(),
+      func_op.front().getTerminator()->getOperandTypes()));
 
   return success();
 }
@@ -1153,9 +1153,9 @@ LogicalResult HandlePartitionedCallOpCallee(
   auto new_return =
       builder.create<ReturnOp>(old_return->getLoc(), old_and_new_retvals);
   old_return->erase();
-  callee.setType(FunctionType::get(
-      callee.getType().getInputs(),
-      llvm::to_vector<4>(new_return.getOperandTypes()), callee.getContext()));
+  callee.setType(
+      FunctionType::get(callee.getContext(), callee.getType().getInputs(),
+                        llvm::to_vector<4>(new_return.getOperandTypes())));
   return success();
 }
 

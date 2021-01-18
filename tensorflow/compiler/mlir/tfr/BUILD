@@ -233,6 +233,7 @@ cc_library(
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//mlir:IR",
     ],
@@ -245,6 +246,7 @@ tf_py_test(
     srcs = ["integration/graph_decompose_test.py"],
     data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     python_version = "PY3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",  # TODO(b/170752141)
@@ -277,6 +279,7 @@ tf_py_test(
     srcs = ["integration/node_expansion_test.py"],
     data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     python_version = "PY3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",  # TODO(b/170752141)
@@ -310,13 +313,13 @@ tf_python_pybind_extension(
 py_library(
     name = "composite",
     srcs = ["python/composite.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "tfr_gen",
     srcs = ["python/tfr_gen.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
@@ -328,6 +331,7 @@ tf_py_test(
     size = "small",
     srcs = ["python/tfr_gen_test.py"],
     python_version = "PY3",
+    srcs_version = "PY3",
     tags = ["no_pip"],
     deps = [
         ":composite",
@@ -342,17 +346,18 @@ tf_py_test(
 py_library(
     name = "op_reg_gen",
     srcs = ["python/op_reg_gen.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "op_reg_gen_test",
     size = "small",
     srcs = ["python/op_reg_gen_test.py"],
     python_version = "PY3",
+    srcs_version = "PY3",
     tags = ["no_pip"],
     deps = [
         ":composite",
@@ -364,7 +369,7 @@ py_test(
 py_library(
     name = "test_utils",
     srcs = ["python/test_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],

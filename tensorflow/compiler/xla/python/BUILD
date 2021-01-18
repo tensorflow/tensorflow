@@ -34,6 +34,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "@pybind11",
     ],
 )
@@ -266,6 +267,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:status",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -322,6 +324,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "pmap_lib",
+    srcs = ["pmap_lib.cc"],
+    hdrs = ["pmap_lib.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":absl_casters",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:variant",
+        "@pybind11",
+    ],
+)
+
 tf_cc_test(
     name = "outfeed_receiver_test_cpu",
     size = "small",
@@ -329,13 +352,18 @@ tf_cc_test(
     deps = [
         ":outfeed_receiver",
         "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/pjrt:cpu_device",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -475,6 +503,7 @@ pybind_extension(
     deps = [
         ":dlpack",
         ":jax_jit",
+        ":pmap_lib",
         ":ops",
         ":profiler",
         ":py_client",

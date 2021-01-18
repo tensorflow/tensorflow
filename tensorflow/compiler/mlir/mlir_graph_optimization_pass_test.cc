@@ -28,11 +28,12 @@ using ::testing::Test;
 
 class MockMlirOptimizationPass : public MlirOptimizationPass {
  public:
-  // MOCK_METHOD does not work on Windows build, using MOCK_METHODX
+  // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
   // instead.
   MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD2(IsEnabled,
-                     bool(const ConfigProto& config_proto, const Graph& graph));
+  MOCK_CONST_METHOD3(IsEnabled,
+                     bool(const DeviceSet* device_set,
+                          const ConfigProto& config_proto, const Graph& graph));
   MOCK_METHOD3(Run, Status(const ConfigProto& config_proto,
                            mlir::ModuleOp module, const Graph& graph));
 };
@@ -44,14 +45,14 @@ class MlirGraphOptimizationPassTest : public Test {
 
     function_optimization_pass_ = MlirFunctionOptimizationPass(
         &MlirOptimizationPassRegistry::Global(),
-        [rollout_policy](const Graph& graph, absl::optional<ConfigProto>) {
+        [rollout_policy](const Graph&, absl::optional<ConfigProto>, bool) {
           return rollout_policy;
         });
 
     auto optimization_pass =
         std::make_unique<NiceMock<MockMlirOptimizationPass>>();
 
-    EXPECT_CALL(*optimization_pass, IsEnabled(_, _))
+    EXPECT_CALL(*optimization_pass, IsEnabled(_, _, _))
         .WillRepeatedly(Return(true));
     EXPECT_CALL(*optimization_pass, Run(_, _, _))
         .WillOnce(Return(pass_run_result));

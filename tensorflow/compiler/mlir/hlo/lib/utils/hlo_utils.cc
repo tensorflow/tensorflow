@@ -140,5 +140,11 @@ std::string LmhloToMhloOpName(llvm::StringRef op_name,
   return "";
 }
 
+bool IsSequenceStartingWith0(DenseIntElementsAttr attr) {
+  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
+    if (attr.getValue<IntegerAttr>(i).getInt() != i) return false;
+  return true;
+}
+
 }  // namespace hlo
 }  // namespace mlir

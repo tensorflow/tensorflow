@@ -117,7 +117,7 @@ struct TPUSpaceToDepthPass
 void UpdateFuncType(FuncOp func) {
   auto arg_types = func.front().getArgumentTypes();
   auto result_types = func.front().getTerminator()->getOperandTypes();
-  func.setType(FunctionType::get(arg_types, result_types, func.getContext()));
+  func.setType(FunctionType::get(func.getContext(), arg_types, result_types));
 }
 
 void HandleFuncOp(Operation* op) {
@@ -196,7 +196,7 @@ void HandleConv2DStride(TF::Conv2DOp conv2d) {
   MLIRContext* context = conv2d.getContext();
   SmallVector<int64_t, 4> values = {1, 1, 1, 1};
   auto attrs = llvm::map_range(values, [context](int64_t v) -> Attribute {
-    return IntegerAttr::get(IntegerType::get(64, context), v);
+    return IntegerAttr::get(IntegerType::get(context, 64), v);
   });
   // TODO(b/157276506): change type of strides to DenseElementsAttr
   auto strides = ArrayAttr::get(llvm::to_vector<4>(attrs), context);
@@ -351,7 +351,7 @@ void HandleConv2DBackPropFilter(TF::Conv2DBackpropFilterOp backprop,
   MLIRContext* context = backprop.getContext();
   SmallVector<int64_t, 4> values = {1, 1, 1, 1};
   auto attrs = llvm::map_range(values, [context](int64_t v) -> Attribute {
-    return IntegerAttr::get(IntegerType::get(64, context), APInt(64, v));
+    return IntegerAttr::get(IntegerType::get(context, 64), APInt(64, v));
   });
   auto strides = ArrayAttr::get(llvm::to_vector<4>(attrs), context);
 

@@ -112,6 +112,7 @@ do_pylint() {
 "^tensorflow/python/keras/engine/base_layer.py.*\[E1102.*not-callable "\
 "^tensorflow/python/keras/layers/preprocessing/.*\[E1102.*not-callable "\
 "^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/keras/legacy_tf_layers/base\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
 "^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
 "^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "\
@@ -210,7 +211,8 @@ do_pylint() {
   # C0326 bad-whitespace
   # W0611 unused-import
   # W0622 redefined-builtin
-  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  # W9015 missing-param-doc
+  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622|\[W9015)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
   while read -r LINE; do
@@ -377,6 +379,7 @@ do_external_licenses_check(){
   # Denylist
   echo ${MISSING_LICENSES_FILE}
   grep \
+    -e "@bazel_tools//platforms" \
     -e "@bazel_tools//third_party/" \
     -e "@bazel_tools//tools" \
     -e "@local" \
@@ -395,6 +398,7 @@ do_external_licenses_check(){
     -e "//third_party/mkl" \
     -e "//third_party/mkl_dnn" \
     -e "@bazel_tools//src" \
+    -e "@bazel_tools//platforms" \
     -e "@bazel_tools//tools/" \
     -e "@org_tensorflow//tensorflow" \
     -e "@com_google_absl//" \

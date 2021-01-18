@@ -32,6 +32,20 @@ static LogicalResult Verify(T op) {
   return success();
 }
 
+static constexpr float kF16MaxFiniteValue = 0x1.ffcP15;
+
+Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val) {
+  Type ty = getElementTypeOrSelf(val.getType());
+  if (ty.isF16()) {
+    return getConstantLike(b, loc, kF16MaxFiniteValue, val);
+  } else if (ty.isF32()) {
+    return getConstantLike(b, loc, std::numeric_limits<float>::max(), val);
+  } else if (ty.isF64()) {
+    return getConstantLike(b, loc, std::numeric_limits<double>::max(), val);
+  }
+  llvm_unreachable("unhandled type");
+}
+
 //===----------------------------------------------------------------------===//
 // BinaryOps
 //===----------------------------------------------------------------------===//
@@ -202,7 +216,7 @@ LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-  Type element_type = IntegerType::get(1, context);
+  Type element_type = IntegerType::get(context, 1);
   return InferBroadcastBinaryOpReturnTypeComponents(context, location, operands,
                                                     attributes, element_type,
                                                     inferedReturnShapes);

@@ -22,6 +22,7 @@ import threading
 import time
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -290,6 +291,34 @@ class BatchOpsTest(test.TestCase):
       worker_thread.join()
       self.assertEqual(thread_results[0], [10 + test_util.is_gpu_available()])
       self.assertEqual(main_results[0], [20 + test_util.is_gpu_available()])
+
+  def testSoftPlacement(self):
+    if context.executing_eagerly():
+      return
+
+    @batch_ops.batch_function(1, 10, 100000)
+    def computation(in_t):
+      with ops.device("/GPU:0"):
+        return in_t + 1.
+
+    inp = array_ops.placeholder(dtype=dtypes.float32, shape=[1])
+    result = computation(inp)
+
+    # With soft placement, the function will run even without a GPU
+    config = config_pb2.ConfigProto(allow_soft_placement=True)
+    with self.session(config=config) as sess:
+      sess.run([result], feed_dict={inp: [20.]})
+
+    # Without soft placement, the function fails without a GPU due to the
+    # addition explicitly being placed on the GPU
+    config.allow_soft_placement = False
+    with self.session(config=config) as sess:
+      if test_util.is_gpu_available():
+        sess.run([result], feed_dict={inp: [20.]})
+      else:
+        with self.assertRaisesRegex(InvalidArgumentError,
+                                    "Cannot assign a device for operation"):
+          sess.run([result], feed_dict={inp: [20.]})
 
   def testBatchFunctionOp(self):
     """Tests that the batch_function op works."""

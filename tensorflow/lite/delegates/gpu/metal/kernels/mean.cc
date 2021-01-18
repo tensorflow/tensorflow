@@ -40,16 +40,7 @@ std::string GetMeanCode(const int3& work_group_size) {
   const std::string wg_x = std::to_string(work_group_size.x);
   const std::string wg_y = std::to_string(work_group_size.y);
   std::string c = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    struct uniforms {
-      int4 src_size;
-      float4 inv_multipliers;
-    };
-
-    $0
-    kernel void ComputeFunction(
-                                $1
+    kernel void ComputeFunction($0
                                 uint tid[[thread_index_in_threadgroup]],
                                 uint3 tid3d[[thread_position_in_threadgroup]],
                                 uint3 gid[[thread_position_in_grid]]) {
@@ -57,21 +48,19 @@ std::string GetMeanCode(const int3& work_group_size) {
   int local_y = static_cast<int>(tid3d.y);
   int local_id = static_cast<int>(tid);
   int S = static_cast<int>(gid.z);
-  if (S >= params.src_size.z) return;
+  if (S >= args.dst_tensor.Slices()) return;
 )";
   c += "  threadgroup float4 accum[" +
        std::to_string(work_group_size.x * work_group_size.y) + "];\n";
   c += "  accum[local_id] = float4(0.0f);\n";
-  c += "  int src_offset = S * params.src_size.x * params.src_size.y;\n";
-  c += "  for (int s_y = local_y; s_y < params.src_size.y; s_y += " + wg_y +
-       ") {\n";
-  c += "    for (int s_x = local_x; s_x < params.src_size.x; s_x += " + wg_x +
-       ") {\n";
-  c += "      int src_index = src_offset + s_y * params.src_size.x + s_x;\n";
-  c += "      accum[local_id] += float4(src_tensor[src_index]);\n";
+  c += "  for (int s_y = local_y; s_y < args.src_tensor.Height(); s_y += " +
+       wg_y + ") {\n";
+  c += "    for (int s_x = local_x; s_x < args.src_tensor.Width(); s_x += " +
+       wg_x + ") {\n";
+  c += "      accum[local_id] += float4(args.src_tensor.Read(s_x, s_y, S));\n";
   c += "    }\n";
   c += "  }\n";
-  c += "  accum[local_id] *= params.inv_multipliers.x;\n";
+  c += "  accum[local_id] *= args.inv_multiplier_x;\n";
   c += "  threadgroup_barrier(mem_flags::mem_threadgroup);\n";
   const int total_size = work_group_size.x * work_group_size.y;
   int offset = 1;
@@ -91,11 +80,9 @@ std::string GetMeanCode(const int3& work_group_size) {
   for (int i = 1; i < reminder; ++i) {
     c += "  sum += accum[" + std::to_string(offset * i) + "];\n";
   }
-  c += "  FLT4 value = FLT4(sum * params.inv_multipliers.y);\n";
+  c += "  FLT4 value = FLT4(sum * args.inv_multiplier_y);\n";
   c += R"(
-  const int linear_index = static_cast<int>(gid.z);
-  $2
-  dst_tensor[linear_index] = value;
+  args.dst_tensor.Write(value, 0, 0, gid.z);
 }
 )";
   return c;
@@ -117,27 +104,20 @@ ComputeTaskDescriptor Mean(const OperationDef& definition,
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [work_group_size](const std::vector<BHWC>& src_shapes,
-                         const std::vector<BHWC>& dst_shapes) {
-         const auto& src_shape = src_shapes[0];
-         const int src_slices = DivideRoundUp(src_shape.c, 4);
-         struct uniforms {
-           int4 src_size;
-           float4 inv_multipliers;
-         };
-         uniforms params;
-         params.src_size = {src_shape.w, src_shape.h, src_slices, 0};
-         const double total_size = src_shape.w * src_shape.h;
-         const double size_0 = work_group_size.x * work_group_size.y;
-         const double size_1 = total_size / size_0;
-         params.inv_multipliers.x = 1.0 / size_1;
-         params.inv_multipliers.y = 1.0 / size_0;
-         const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&params);
-         return std::vector<uint8_t>(ptr, ptr + sizeof(uniforms));
-       }},
-  };
+  desc.args.AddFloat("inv_multiplier_x");
+  desc.args.AddFloat("inv_multiplier_y");
+
+  desc.update_function = {
+      [work_group_size](const std::vector<BHWC>& src_shapes,
+                        const std::vector<BHWC>& dst_shapes,
+                        ArgumentsBinder* args) -> absl::Status {
+        const double total_size = src_shapes[0].w * src_shapes[0].h;
+        const double size_0 = work_group_size.x * work_group_size.y;
+        const double size_1 = total_size / size_0;
+        RETURN_IF_ERROR(args->SetFloat("inv_multiplier_x", 1.0 / size_1));
+        RETURN_IF_ERROR(args->SetFloat("inv_multiplier_y", 1.0 / size_0));
+        return absl::OkStatus();
+      }};
 
   desc.resize_function = [work_group_size](
                              const std::vector<BHWC>& src_shapes,

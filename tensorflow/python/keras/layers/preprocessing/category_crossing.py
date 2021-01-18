@@ -63,7 +63,7 @@ class CategoryCrossing(base_preprocessing_layer.PreprocessingLayer):
            [b'b-e'],
            [b'c-f']], dtype=object)>
 
-  Arguments:
+  Args:
     depth: depth of input crossing. By default None, all inputs are crossed into
       one output. It can also be an int or tuple/list of ints. Passing an
       integer will create combinations of crossed outputs with depth up to that

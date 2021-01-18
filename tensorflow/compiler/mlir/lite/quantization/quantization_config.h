@@ -124,6 +124,10 @@ struct QuantizationSpecs {
         return 0;
     }
   }
+
+  // Whether add the NumericVerify ops to verify numbers before and after
+  // quantization.
+  bool verify_numeric = false;
 };
 
 // Parses the command line flag strings to the quantization specification for

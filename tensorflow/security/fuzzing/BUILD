@@ -5,6 +5,7 @@
 load(
     "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
     "tf_fuzz_target",
+    "tf_py_fuzz_target",
 )
 
 package(
@@ -24,6 +25,16 @@ tf_fuzz_target(
     srcs = ["status_group_fuzz.cc"],
     deps = [
         "//tensorflow/core/platform:status",
+    ],
+)
+
+tf_fuzz_target(
+    name = "bfloat16_fuzz",
+    srcs = ["bfloat16_fuzz.cc"],
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core/framework:bfloat16",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -116,4 +127,10 @@ tf_fuzz_target(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
     ],
+)
+
+tf_py_fuzz_target(
+    name = "constant_fuzz",
+    srcs = ["constant_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
 )

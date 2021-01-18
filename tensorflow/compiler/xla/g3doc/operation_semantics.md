@@ -393,7 +393,7 @@ Invokes a computation with the given arguments.
 | Arguments     | Type                   | Semantics                           |
 | ------------- | ---------------------- | ----------------------------------- |
 | `computation` | `XlaComputation`       | computation of type `T_0, T_1, ..., |
-:               :                        : T_N -> S` with N parameters of      :
+:               :                        : T_{N-1} -> S` with N parameters of  :
 :               :                        : arbitrary type                      :
 | `args`        | sequence of N `XlaOp`s | N arguments of arbitrary type       |
 
@@ -1850,19 +1850,25 @@ Applies a reduction function to one or more arrays in parallel.
 
 <b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
 
-| Arguments     | Type                  | Semantics                            |
-| ------------- | --------------------- | ------------------------------------ |
-| `operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.   |
-| `init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.  |
-| `computation` | `XlaComputation`      | computation of type `T_0, ..., T_N, T_0, ..., T_N ->` `Collate(T_0, ..., T_N)`. |
-| `dimensions`  | `int64` array         | unordered array of dimensions to reduce. |
+| Arguments     | Type                  | Semantics                        |
+| ------------- | --------------------- | -------------------------------- |
+| `operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ...,     |
+:               :                       : T_{N-1}`.                        :
+| `init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ...,    |
+:               :                       : T_{N-1}`.                        :
+| `computation` | `XlaComputation`      | computation of type `T_0, ...,   |
+:               :                       : T_{N-1}, T_0, ..., T_{N-1} ->`   :
+:               :                       : `Collate(T_0, ..., T_{N-1})`.    :
+| `dimensions`  | `int64` array         | unordered array of dimensions to |
+:               :                       : reduce.                          :
 
 Where:
 
-* N is required to be greater or equal to 1.
-* All input arrays must have the same dimensions.
-* If `N = 1`, `Collate(T)` is `T`.
-* If `N > 1`, `Collate(T_0, ..., T_N)` is a tuple of `N` elements of type `T`.
+*   N is required to be greater or equal to 1.
+*   All input arrays must have the same dimensions.
+*   If `N = 1`, `Collate(T)` is `T`.
+*   If `N > 1`, `Collate(T_0, ..., T_{N-1})` is a tuple of `N` elements of type
+    `T`.
 
 The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
 `T_i`, the dimensions of which are described below.

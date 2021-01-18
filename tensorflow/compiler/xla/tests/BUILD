@@ -626,7 +626,6 @@ xla_test(
     name = "conditional_test",
     srcs = ["conditional_test.cc"],
     shard_count = 2,
-    tags = ["no_rocm"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -665,7 +664,6 @@ xla_test(
     name = "scalar_computations_test",
     srcs = ["scalar_computations_test.cc"],
     shard_count = 32,
-    tags = ["no_rocm"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",
@@ -923,7 +921,6 @@ xla_test(
     srcs = ["dot_operation_test.cc"],
     shard_count = 20,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -957,7 +954,6 @@ xla_test(
     backends = ["gpu"],
     shard_count = 20,
     tags = [
-        "no_rocm",
         "optonly",
         # TODO(b/151340488): Timed out on 2020-03-12.
         "nozapfhahn",
@@ -1024,7 +1020,6 @@ xla_test(
     },
     shard_count = 20,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -1121,7 +1116,6 @@ xla_test(
     srcs = ["convolution_test.cc"],
     shard_count = 50,
     tags = [
-        "no_rocm",
         "optonly",
         # Timed out on 2020-07-18
         "nozapfhahn",
@@ -1514,7 +1508,6 @@ xla_test(
     srcs = ["reduce_test.cc"],
     shard_count = 31,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -1594,7 +1587,6 @@ xla_test(
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
     tags = [
-        "no_rocm",
         "nozapfhahn",
         "optonly",
     ],
@@ -2606,9 +2598,12 @@ xla_test(
     ],
     deps = [
         ":client_library_test_base",
+        ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

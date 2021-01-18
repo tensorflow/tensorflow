@@ -46,10 +46,10 @@ Operation* emitCallToPrint(Location loc, StringRef func_name, Value arg,
   if (!callee_func) {
     OpBuilder::InsertionGuard insertGuard(*b);
 
-    auto module = caller_func.getParentOfType<ModuleOp>();
+    auto module = caller_func->getParentOfType<ModuleOp>();
     b->setInsertionPointToStart(module.getBody());
-    auto func_type = FunctionType::get(arg.getType(), /*results=*/llvm::None,
-                                       b->getContext());
+    auto func_type = FunctionType::get(b->getContext(), arg.getType(),
+                                       /*results=*/llvm::None);
     callee_func = b->create<FuncOp>(module.getLoc(), func_name, func_type);
     callee_func.setPrivate();
   }
@@ -106,7 +106,7 @@ struct EmbedMemRefPrintsPass
     : public EmbedMemRefPrintsPassBase<EmbedMemRefPrintsPass> {
   void runOnFunction() override {
     FuncOp func = getFunction();
-    if (!func.getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName))
+    if (!func->getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName))
       return;
 
     Liveness liveness(func);

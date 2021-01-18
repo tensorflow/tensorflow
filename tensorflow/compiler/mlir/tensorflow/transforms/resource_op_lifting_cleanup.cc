@@ -184,9 +184,9 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
   // Patch up function types (with less number of return values and potentially
   // less number of arguments)
   for (FuncOp func : cloned_branches) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
 
   EliminateUnusedResults(op);
@@ -232,9 +232,9 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   // Patch up branch function types.
   for (FuncOp func : {cloned_cond, cloned_body}) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
   EliminateUnusedResults(op, &can_eliminate);
 }

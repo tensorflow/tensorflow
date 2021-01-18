@@ -157,7 +157,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Dynamically allocate per-channel quantization parameters.
   // TODO(#42883): This allocation is done even for non-int8 cases to get around
-  // a bug in kernel_utils.cc which incorrectly uses per_channel_output_shift in
+  // a bug in kernel_util.cc which incorrectly uses per_channel_output_shift in
   // non-int8 cases. Protect this section with a if (input->type == kTfLiteInt8)
   // when the issue is fixed.
   const int num_channels = filter->dims->data[kConvQuantizedDimension];

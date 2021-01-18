@@ -68,15 +68,40 @@ class Boundary {
 // and their properties are identical.
 // - Only the identical ops that won't share operands with other ops will
 // be moved out of conditional.
+// The cost model of the code motion optimization includes two components:
+// represented by the move_config_ and reuse_config_ arrays of the optimization.
+// The move_config_ array uses 1 vs 0 to dictate whether each Hlo Opcode, when
+// used with its first operand being another given Hlo Opcode, is allowed to
+// move across any conditional boundary; the reuse_config_ array uses an integer
+// to represent the force between each pair of HloOpcode regarding how
+// attractive it is to place these instructions together (both inside or outside
+// of a conditional). Both arrays use Hlo Opcode only to drive the
+// configuration, regardless of where the operations are located in the
+// module.
 class ConditionalCodeMotion : public HloModulePass {
  public:
   // If is_layout_sensitive is true, then the hoist process preserves layout
   // during identical comparison. Otherwise, layout is ignored.
+  // The search configuration is a single integer but is split into four parts:
+  // (sign, n, m, p), where n,m,p each occupy 8 bits and together make the 24
+  // bits at the end of the int32. For the sign part, if search_config is <0,
+  // the reuse_config_ cost model is modified (tuned); if search_config is >0,
+  // the move_config_ cost model is modified (tuned); if search_config == 0,
+  // the default cost model is used with no tuning. When tuning, the entries in
+  // the designated configuration array (move_config_ or reuse_config_) are
+  // flipped between 0 and another default integer, starting from the pth entry
+  // being queried by the optimization and repeated every nth time a new entry
+  // is visited, until a maximal of m entries have been changed. The tuning
+  // start over when optimizing a new model.
   explicit ConditionalCodeMotion(bool is_layout_sensitive,
-                                 bool pursue_full_conditional_code_motion)
+                                 bool pursue_full_conditional_code_motion,
+                                 int32 search_config = 0)
       : is_layout_sensitive_(is_layout_sensitive),
         pursue_full_conditional_code_motion_(
-            pursue_full_conditional_code_motion) {}
+            /*turn off special case if tuning*/
+            pursue_full_conditional_code_motion && search_config == 0),
+        search_config_(search_config) {}
+
   absl::string_view name() const override { return "conditional-code-motion"; }
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -109,6 +134,8 @@ class ConditionalCodeMotion : public HloModulePass {
  private:
   const bool is_layout_sensitive_;
   const bool pursue_full_conditional_code_motion_;
+  int32 search_config_;
+  std::vector<std::vector<int64>> move_config_, reuse_config_;
 
   StatusOr<bool> MoveInstructionOut(HloInstruction* conditional,
                                     std::vector<Boundary>& to_move_out,
@@ -116,6 +143,7 @@ class ConditionalCodeMotion : public HloModulePass {
   StatusOr<bool> MoveInstructionIn(HloInstruction* conditional,
                                    std::vector<Boundary>& to_move_in,
                                    std::vector<Boundary>& new_boundaries);
+  void SetDefaultMoveConfig();
 };
 }  // namespace conditional_opt
 

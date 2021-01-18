@@ -187,6 +187,13 @@ config_setting(
 )
 
 config_setting(
+    name = "darwin_arm64",
+    values = {
+        "cpu": "darwin_arm64",
+    },
+)
+
+config_setting(
     name = "freebsd",
     values = {
         "cpu": "freebsd",
@@ -207,14 +214,6 @@ config_setting(
     },
     values = {
         "cpu": "armeabi",
-    },
-)
-
-config_setting(
-    name = "tf_lite_static_memory",
-    values = {
-        "copt": "-DTF_LITE_STATIC_MEMORY",
-        "cpu": "k8",
     },
 )
 
@@ -449,21 +448,29 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/add.h",
+        "reference/add_n.h",
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
+        "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
         "reference/broadcast_to.h",
+        "reference/cast.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
         "reference/conv.h",
+        "reference/conv3d.h",
         "reference/densify.h",
+        "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
         "reference/div.h",
+        "reference/exp.h",
         "reference/fill.h",
         "reference/floor.h",
+        "reference/floor_div.h",
+        "reference/floor_mod.h",
         "reference/fully_connected.h",
         "reference/hard_swish.h",
         "reference/integer_ops/add.h",
@@ -476,7 +483,9 @@ cc_library(
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/tanh.h",
+        "reference/integer_ops/transpose_conv.h",
         "reference/l2normalization.h",
+        "reference/leaky_relu.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -492,16 +501,18 @@ cc_library(
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/space_to_depth.h",
+        "reference/space_to_batch_nd.h",
         "reference/strided_slice.h",
         "reference/sub.h",
         "reference/svdf.h",
         "reference/tanh.h",
+        "reference/transpose_conv.h",
     ] + select({
-        ":tf_lite_static_memory": [],
+        "//tensorflow/lite:tf_lite_static_memory": [],
         "//conditions:default": [
             "reference/integer_ops/dequantize.h",
             "reference/integer_ops/log_softmax.h",
-            "reference/integer_ops/transpose_conv.h",
             "reference/reference_ops.h",
             "reference/string_comparisons.h",
             "reference/sparse_ops/fully_connected.h",
@@ -509,13 +520,14 @@ cc_library(
     }),
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    # We are disabling parse_headers for the tf_lite_static_memory build to
-    # allow it to be consistent with the OSS bazel build. See b/175817116
-    # for more details.
-    features = select({
-        ":tf_lite_static_memory": ["-parse_headers"],
-        "//conditions:default": [],
-    }),
+    # We are disabling parse_headers for this header-only target so that the
+    # external and internal builds are consistent. The primary issue here is
+    # that parse_headers is not supported with bazel and the TFLM team would
+    # really like to have all build errors in shared Micro/Lite code be
+    # reproducible from the OSS build as well.
+    #
+    # See b/175817116 for more details.
+    features = ["-parse_headers"],
     deps = [
         ":common",
         ":compatibility",
@@ -553,22 +565,31 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/add.h",
+        "reference/add_n.h",
         "reference/arg_min_max.h",
+        "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
+        "reference/cast.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
         "reference/conv.h",
+        "reference/conv3d.h",
         "reference/densify.h",
+        "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
         "reference/div.h",
+        "reference/exp.h",
         "reference/fill.h",
         "reference/floor.h",
+        "reference/floor_div.h",
+        "reference/floor_mod.h",
         "reference/fully_connected.h",
         "reference/hard_swish.h",
         "reference/l2normalization.h",
+        "reference/leaky_relu.h",
         "reference/legacy_reference_ops.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
@@ -585,12 +606,23 @@ cc_library(
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/space_to_batch_nd.h",
+        "reference/space_to_depth.h",
         "reference/strided_slice.h",
         "reference/string_comparisons.h",
         "reference/sub.h",
         "reference/tanh.h",
+        "reference/transpose_conv.h",
     ],
     copts = tflite_copts(),
+    # We are disabling parse_headers for this header-only target so that the
+    # external and internal builds are consistent. The primary issue here is
+    # that parse_headers is not supported with bazel and the TFLM team would
+    # really like to have all build errors in shared Micro/Lite code be
+    # reproducible from the OSS build as well.
+    #
+    # See b/175817116 for more details.
+    features = ["-parse_headers"],
     deps = [
         ":common",
         ":compatibility",
@@ -627,7 +659,7 @@ cc_library(
         "portable_tensor.h",
         "tensor_ctypes.h",
     ] + select({
-        ":tf_lite_static_memory": [],
+        "//tensorflow/lite:tf_lite_static_memory": [],
         "//conditions:default": [
             "tensor.h",
         ],
@@ -648,7 +680,7 @@ cc_library(
         "portable_tensor.h",
         "tensor_ctypes.h",
     ] + select({
-        ":tf_lite_static_memory": [],
+        "//tensorflow/lite:tf_lite_static_memory": [],
         "//conditions:default": [
             "tensor.h",
         ],
@@ -787,6 +819,7 @@ cc_library(
             ":ios_armv7",
             ":ios_arm64",
             ":ios_arm64e",
+            ":darwin_arm64",
             ":raspberry_pi_with_neon",
         ): [":neon_tensor_utils"],
         (
@@ -803,7 +836,7 @@ cc_library(
             ":sse_tensor_utils",
         ],
         (
-            ":tf_lite_static_memory",
+            "//tensorflow/lite:tf_lite_static_memory",
             "//conditions:default",
         ): [":portable_tensor_utils"],
     }),

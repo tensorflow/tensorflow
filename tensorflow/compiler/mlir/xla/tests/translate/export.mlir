@@ -554,7 +554,7 @@ func @main(%data: tensor<3xi32>, %token: !mhlo.token) -> !mhlo.token {
 // CHECK:  ENTRY
 // CHECK:  [[DATA:%.*]] = s32[3] parameter(0)
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
-// CHECK:  ROOT %[[RESULT:.*]] = token[] outfeed(s32[3] [[DATA]], token[] [[TOKEN]]), outfeed_config="foobar"
+// CHECK:  ROOT %[[RESULT:.*]] = token[] outfeed(s32[3] [[DATA]], token[] [[TOKEN]]), outfeed_shape=s32[3]{0}, outfeed_config="foobar"
 
 // -----
 
@@ -1057,7 +1057,7 @@ func @main(%arg0: tensor<4xui8>) -> tensor<4xui8> {
 // CHECK:  HloModule
 func @main(%arg0: tensor<4xi32>) -> tensor<*xi32> {
   %0 = "mhlo.not"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
-  %1 = tensor_cast %0 : tensor<4xi32> to tensor<*xi32>
+  %1 = tensor.cast %0 : tensor<4xi32> to tensor<*xi32>
   return %1 : tensor<*xi32>
 }
 

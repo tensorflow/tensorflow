@@ -88,7 +88,8 @@ class DispatchServer(object):
 
   >>> dispatcher = tf.data.experimental.service.DispatchServer()
   >>> dispatcher_address = dispatcher.target.split("://")[1]
-  >>> worker = tf.data.experimental.service.WorkerServer(WorkerConfig(
+  >>> worker = tf.data.experimental.service.WorkerServer(
+  ...     tf.data.experimental.service.WorkerConfig(
   ...     dispatcher_address=dispatcher_address))
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(

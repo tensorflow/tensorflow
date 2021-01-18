@@ -43,6 +43,7 @@ gentbl(
         "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:TensorOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
     ],
 )
@@ -83,6 +84,7 @@ cc_library(
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
@@ -124,6 +126,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
@@ -144,6 +147,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:backend",
@@ -154,6 +158,8 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -249,6 +255,7 @@ cc_library(
     ],
     hdrs = ["mlir_hlo_to_hlo.h"],
     deps = [
+        ":attribute_exporter",
         ":type_to_shape",
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
@@ -275,6 +282,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
@@ -338,6 +346,24 @@ cc_library(
 )
 
 cc_library(
+    name = "attribute_exporter",
+    srcs = ["attribute_exporter.cc"],
+    hdrs = ["attribute_exporter.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/stream_executor:dnn",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "translate_cl_options",
     srcs = ["xla_mlir_translate_cl.cc"],
     hdrs = ["xla_mlir_translate_cl.h"],
@@ -369,6 +395,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Translation",
     ],
     alwayslink = 1,

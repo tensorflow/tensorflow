@@ -646,6 +646,7 @@ cc_library(
         "//tensorflow/core/kernels:sparse",
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:stateless_random_ops",
+        "//tensorflow/core/kernels:stateless_random_gamma_op",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",
@@ -1994,7 +1995,7 @@ transitive_hdrs(
     name = "headers",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        ":core_cpu",
+        ":core",
         ":framework",
         ":lib",
         ":protos_all_cc",

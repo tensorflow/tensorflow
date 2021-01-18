@@ -1074,7 +1074,7 @@ void CheckEachArray(const Model& model) {
     // Check name.  Either "name_with_suffix_8", "name_with_port:3", but not
     // "name_with_both:3_8".
     const std::string& name = array_entry.first;
-    auto colon_pos = name.find_first_of(":");
+    auto colon_pos = name.find_first_of(':');
     if (colon_pos != std::string::npos) {
       CHECK_EQ(name.substr(colon_pos + 1).find_first_not_of("0123456789"),
                std::string::npos)

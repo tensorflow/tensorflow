@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/add_test_util.h"
 
 using ::tflite::gpu::ElementwiseAttributes;
 using ::tflite::gpu::BHWC;
@@ -46,27 +47,32 @@ using ::tflite::gpu::metal::SingleOpModel;
   [super setUp];
 }
 
-- (void)testTwoInputTensorsOfTheSameShape {
-  TensorRef<BHWC> augend, addend, output;
-  augend.type = DataType::FLOAT32;
-  augend.ref = 0;
-  augend.shape = BHWC(1, 2, 2, 1);
+- (void)testThreeInputTensorsOfTheSameShape {
+  TensorRef<BHWC> a, b, c, output;
+  a.type = DataType::FLOAT32;
+  a.ref = 0;
+  a.shape = BHWC(1, 2, 2, 1);
 
-  addend.type = DataType::FLOAT32;
-  addend.ref = 1;
-  addend.shape = BHWC(1, 2, 2, 1);
+  b.type = DataType::FLOAT32;
+  b.ref = 1;
+  b.shape = BHWC(1, 2, 2, 1);
+
+  c.type = DataType::FLOAT32;
+  c.ref = 2;
+  c.shape = BHWC(1, 2, 2, 1);
 
   output.type = DataType::FLOAT32;
-  output.ref = 2;
+  output.ref = 3;
   output.shape = BHWC(1, 2, 2, 1);
 
   ElementwiseAttributes attr;
-  SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {augend, addend}, {output});
+  SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {a, b, c}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {-2.0, 0.2, 0.7, 0.8}));
   XCTAssertTrue(model.PopulateTensor(1, {0.1, 0.2, 0.3, 0.5}));
+  XCTAssertTrue(model.PopulateTensor(2, {2.1, 1.2, 3.3, 4.5}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  status = CompareVectors({-1.9, 0.4, 1.0, 1.3}, model.GetOutput(0), 1e-6f);
+  status = CompareVectors({0.2, 1.6, 4.3, 5.8}, model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
@@ -115,6 +121,24 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status =
       CompareVectors({11.0, 22.0, 13.0, 24.0, 15.0, 26.0, 17.0, 28.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testAddTwoEqualTensors {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+  auto status = AddTwoEqualTensorsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testAddFirstTensorHasMoreChannelsThanSecond {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+  auto status = AddFirstTensorHasMoreChannelsThanSecondTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testAddFirstTensorHasLessChannelsThanSecond {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+  auto status = AddFirstTensorHasLessChannelsThanSecond(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

@@ -132,7 +132,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       bool distribute_vars, bool allow_xla_spmd_partition,
       bool replicate_inputs_outputs_by_default_for_xla_spmd,
       bool enable_cross_replica_sharding_mirrored_variables,
-      bool enable_automatic_model_parallelism);
+      bool enable_automatic_model_parallelism, bool enable_xla_param_broadcast);
 
   Status Run(const GraphOptimizationPassOptions& options) override;
 
@@ -588,6 +588,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   static bool replicate_inputs_outputs_by_default_for_xla_spmd_;
   static bool enable_cross_replica_sharding_mirrored_variables_;
   static bool enable_automatic_model_parallelism_;
+  static bool enable_xla_param_broadcast_;
 };
 
 }  // namespace tensorflow

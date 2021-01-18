@@ -60,7 +60,7 @@ def load_data(path='reuters.npz',
   to encode any unknown word.
 
 
-  Arguments:
+  Args:
       path: where to cache the data (relative to `~/.keras/dataset`).
       num_words: integer or None. Words are
           ranked by how often they occur (in the training set) and only
@@ -155,7 +155,7 @@ def load_data(path='reuters.npz',
 def get_word_index(path='reuters_word_index.json'):
   """Retrieves a dict mapping words to their index in the Reuters dataset.
 
-  Arguments:
+  Args:
       path: where to cache the data (relative to `~/.keras/dataset`).
 
   Returns:

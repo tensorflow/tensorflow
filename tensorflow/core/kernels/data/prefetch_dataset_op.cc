@@ -299,14 +299,22 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     data::TraceMeMetadata GetTraceMeMetadata() const override {
       int64 limit = -1, size = -1;
+      data::TraceMeMetadata result;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {
         limit = buffer_limit();
         size = buffer_.size();
+        if (!buffer_.empty()) {
+          std::vector<std::string> shapes(buffer_.front().value.size());
+          for (const auto& component : buffer_.front().value) {
+            shapes.push_back(component.shape().DebugString());
+          }
+          result.push_back(std::make_pair("next_element_shapes",
+                                          absl::StrJoin(shapes, ",")));
+        }
         mu_->unlock();
       }
-      data::TraceMeMetadata result;
       result.push_back(std::make_pair(
           "buffer_limit",
           strings::Printf("%lld", static_cast<long long>(limit))));

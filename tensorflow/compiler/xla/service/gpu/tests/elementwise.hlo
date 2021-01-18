@@ -2911,11 +2911,11 @@
 // CHECK:         %[[VAL_2690:.*]] = bitcast i8* %[[VAL_2688]] to [100 x [200 x float]]*
 // CHECK:         %[[VAL_2691:.*]] = getelementptr inbounds i8, i8* %[[VAL_2692:.*]], i64 0
 // CHECK:         %[[VAL_2693:.*]] = bitcast i8* %[[VAL_2691]] to [100 x [200 x float]]*
-// CHECK:         %[[VAL_2694:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !94
-// CHECK:         %[[VAL_2695:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !95
-// CHECK:         %[[VAL_2696:.*]] = mul nuw nsw i32 %[[VAL_2694]], 128
+// CHECK:         %[[VAL_2694:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !90
+// CHECK:         %[[VAL_2695:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !91
+// CHECK:         %[[VAL_2696:.*]] = mul nuw nsw i32 %[[VAL_2694]], 256
 // CHECK:         %[[VAL_2697:.*]] = add nuw nsw i32 %[[VAL_2696]], %[[VAL_2695]]
-// CHECK:         %[[VAL_2698:.*]] = icmp ult i32 %[[VAL_2697]], 163840
+// CHECK:         %[[VAL_2698:.*]] = icmp ult i32 %[[VAL_2697]], 5120
 // CHECK:         call void @llvm.assume(i1 %[[VAL_2698]])
 // CHECK:         %[[VAL_2699:.*]] = mul nuw nsw i32 %[[VAL_2697]], 4
 // CHECK:         %[[VAL_2700:.*]] = udiv i32 %[[VAL_2699]], 1

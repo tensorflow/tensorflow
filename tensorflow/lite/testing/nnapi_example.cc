@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/testing/tflite_driver.h"
 
 std::string dirname(const std::string& s) {
-  return s.substr(0, s.find_last_of("/"));
+  return s.substr(0, s.find_last_of('/'));
 }
 
 bool Interpret(const char* examples_filename, bool use_nnapi) {

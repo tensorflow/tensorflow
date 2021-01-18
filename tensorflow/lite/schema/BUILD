@@ -42,6 +42,7 @@ py_library(
         "schema_v3.fbs",
         "@flatbuffers//:flatc",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",

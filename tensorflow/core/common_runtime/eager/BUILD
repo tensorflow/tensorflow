@@ -4,8 +4,8 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_test_mkl",
-    "tf_copts",
     "tf_cuda_library",
+    "tf_mkl_kernel_library",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -124,6 +124,7 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/c/eager:immediate_execution_context",
             "//tensorflow/c/eager:immediate_execution_tensor_handle",
+            "//tensorflow/c/eager:immediate_execution_operation",
             "//tensorflow/core/lib/core:status",
         ],
     }),
@@ -132,10 +133,16 @@ tf_cuda_library(
 tf_cc_test(
     name = "custom_device_test",
     srcs = ["custom_device_test.cc"],
+    tags = [
+        # "Not found: 'AssignVariableOp'"
+        "no_windows",
+    ],
     deps = [
         ":context",
         ":core",
         ":custom_device",
+        ":eager_operation",
+        ":placement_utils",
         ":tensor_handle",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -228,6 +235,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_builder",
+        ":custom_device",
         ":context",
         ":eager_executor",
         ":kernel_and_device",
@@ -518,10 +526,9 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_mkl_kernel_library(
     name = "mkl_eager_op_rewrite",
     srcs = ["mkl_eager_op_rewrite.cc"],
-    copts = tf_copts(allow_exceptions = True),
     deps = [
         ":eager_op_rewrite_registry",
         "//tensorflow/core:all_kernels",
@@ -632,6 +639,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        ":custom_device",
         ":attr_builder",
         ":eager_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",

@@ -27,7 +27,7 @@ REGISTER_KERNEL_BUILDER(
     Name("Conj").Device(DEVICE_GPU).TypeConstraint<Variant>("T"),
     UnaryVariantOp<GPUDevice, CONJ_VARIANT_UNARY_OP>);
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED)
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER_KERNEL_BUILDER(
     Name("Conj").Device(DEVICE_GPU).TypeConstraint<complex64>("T"),
     UnaryOp<GPUDevice, functor::conj<complex64>>);

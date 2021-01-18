@@ -132,7 +132,7 @@ def pad_sequences(sequences, maxlen=None, dtype='int32',
          [2, 3],
          [5, 6]], dtype=int32)
 
-  Arguments:
+  Args:
       sequences: List of sequences (each sequence is a list of integers).
       maxlen: Optional Int, maximum length of all sequences. If not provided,
           sequences will be padded to the length of the longest individual

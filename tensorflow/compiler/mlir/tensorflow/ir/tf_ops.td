@@ -865,16 +865,35 @@ Example:
     Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
   );
 
-  TF_DerivedOperandOrResultHandleTypeAttr dtype =
-    TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
-  TF_DerivedOperandOrResultHandleShapeAttr shape =
-    TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
+  let verifier = [{
+    // VarHandleOp requires the resource handle supply a single subtype from
+    // which to derive the dtype and shape attributes.
+    if (resource_type().getSubtypes().size() != 1) {
+      return emitOpError(
+          "must have exactly one subtype in the result resource type");
+    }
+
+    return success();
+  }];
+
+  DerivedTypeAttr dtype = DerivedTypeAttr<
+      "return getElementTypeOrSelf(resource_subtype());">;
+  DerivedAttr shape = DerivedAttr<
+      "ShapedType",
+      "return resource_subtype().cast<ShapedType>();",
+      [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
   let extraClassDeclaration = [{
     // TF_ResourceHandleAllocatorInterface:
     ResourceHandleValueAndId GetResourceHandleValueAndId(
       llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
       int64_t &next_id);
+
+    TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
+
+    ResourceType resource_type() {
+      return getElementTypeOrSelf(resource()).cast<TF::ResourceType>();
+    }
   }];
 }
 
@@ -2042,5 +2061,48 @@ argument "ref" in addition to returning the results.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TPUPartitionedInputOp : TF_Op<"TPUPartitionedInput", [NoSideEffect]> {
+  let summary = [{
+An op that groups a list of partitioned inputs together. This op
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+
+    DefaultValuedAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_TPUPartitionedOutputOp : TF_Op<"TPUPartitionedOutput", [NoSideEffect]> {
+  let summary = [{
+An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
+  }];
+
+  let description = [{
+outputs outside the XLA computation.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$inputs,
+
+    DefaultValuedAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr num_splits = TF_DerivedResultSizeAttr<0>;
+}
 
 #endif // TF_OPS

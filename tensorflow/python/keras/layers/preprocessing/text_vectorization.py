@@ -118,7 +118,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
        ["another", "string", "to", "split"]]`. This makes the callable site
        natively compatible with `tf.strings.split()`.
 
-  Arguments:
+  Args:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       contains 1 OOV token, so the effective number of tokens is `(max_tokens -
@@ -400,7 +400,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     Overrides the default adapt method to apply relevant preprocessing to the
     inputs before passing to the combiner.
 
-    Arguments:
+    Args:
       data: The data to train on. It can be passed either as a tf.data Dataset,
         as a NumPy array, a string tensor, or as a list of texts.
       reset_state: Optional argument specifying whether to clear the state of
@@ -485,7 +485,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     vocabulary data is already present in the layer, this method will replace
     it.
 
-    Arguments:
+    Args:
       vocab: An array of string tokens, or a path to a file containing one
         token per line.
       df_data: An array of document frequency data. Only necessary if the layer

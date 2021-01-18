@@ -40,10 +40,7 @@ xla::StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<uint32_t> tile_sizes = {16, 64},
     llvm::ArrayRef<uint32_t> unroll_factors = {},
     bool embed_memref_prints = false, bool generate_fatbin = true,
-    bool print_ptx = false);
-
-// Extracts gpu_binary from the converted module.
-xla::StatusOr<std::string> ExtractGpuBinary(mlir::ModuleOp module);
+    bool print_ptx = false, bool enable_ftz = false);
 
 }  // namespace kernel_gen
 }  // namespace tensorflow

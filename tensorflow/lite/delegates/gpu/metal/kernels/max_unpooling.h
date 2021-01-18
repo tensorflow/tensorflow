@@ -27,7 +27,7 @@ namespace gpu {
 namespace metal {
 
 ComputeTaskDescriptor MaxUnpooling(const OperationDef& definition,
-                                   const MaxUnpooling2DAttributes& params);
+                                   const MaxUnpooling2DAttributes& attr);
 
 }  // namespace metal
 }  // namespace gpu

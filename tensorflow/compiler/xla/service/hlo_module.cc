@@ -447,6 +447,8 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     module_config.set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
+    module_config.set_broadcast_replicated_params(
+        execution_options->broadcast_replicated_parameters_via_collectives());
     if (execution_options->has_device_assignment()) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                           DeviceAssignment::Deserialize(
@@ -593,6 +595,22 @@ int64 HloModule::instruction_count() const {
     n += computation->instruction_count();
   }
   return n;
+}
+
+std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
+    const absl::flat_hash_set<HloComputation*>& allow_list) const {
+  std::vector<HloComputation*> filtered_post_order(allow_list.size());
+  auto post_order = this->MakeComputationPostOrder();
+
+  int filtered_idx = 0;
+  for (auto& computation : post_order) {
+    if (allow_list.contains(computation)) {
+      filtered_post_order[filtered_idx] = computation;
+      filtered_idx += 1;
+    }
+  }
+
+  return filtered_post_order;
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {

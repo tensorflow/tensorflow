@@ -4,6 +4,21 @@
 // CHECK-LABEL: func @element_wise
 func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
                    %result: memref<2x2xf32>) {
+  "lmhlo.power"(%lhs, %rhs, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = powf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @element_wise
+func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
+                   %result: memref<2x2xf32>) {
   "lmhlo.add"(%lhs, %rhs, %result)
       : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
@@ -54,7 +69,7 @@ func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[CMP:.*]] = cmpf "olt", %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[CMP:.*]] = cmpf olt, %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
@@ -69,7 +84,7 @@ func @maxi(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[CMP:.*]] = cmpi "sgt", %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[CMP:.*]] = cmpi sgt, %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
@@ -134,7 +149,7 @@ func @is_finte(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   %[[POS_INF:.+]] = constant 0x7F800000 : f32
 // CHECK-NEXT:   %[[ABS_X:.+]] = absf %[[OPERAND_IN]] : f32
-// CHECK-NEXT:   %[[RESULT:.+]] = cmpf "one", %[[ABS_X]], %[[POS_INF]] : f32
+// CHECK-NEXT:   %[[RESULT:.+]] = cmpf one, %[[ABS_X]], %[[POS_INF]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -148,7 +163,7 @@ func @float_cmp(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: i1):
-// CHECK-NEXT:   %[[RESULT:.*]] = cmpf "oeq", %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpf oeq, %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -162,7 +177,7 @@ func @int_cmp(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i1):
-// CHECK-NEXT:   %[[RESULT:.*]] = cmpi "slt", %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpi slt, %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -370,7 +385,7 @@ func @absi(%input: memref<2x2xi32>,
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   %[[L0:.*]] = constant 0 : i32
-// CHECK-NEXT:   %[[L1:.*]] = cmpi "sge", %[[OPERAND_IN]], %[[L0]] : i32
+// CHECK-NEXT:   %[[L1:.*]] = cmpi sge, %[[OPERAND_IN]], %[[L0]] : i32
 // CHECK-NEXT:   %[[L2:.*]] = subi %[[L0]], %[[OPERAND_IN]] : i32
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[L1]], %[[OPERAND_IN]], %[[L2]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
@@ -594,8 +609,12 @@ func @sign(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[CST:.*]] = constant 1.000000e+00 : f32
-// CHECK-NEXT:   %[[RESULT:.*]] = copysign %[[CST]], %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[CST_0:.*]] = constant 0.000000e+00 : f32
+// CHECK-NEXT:   %[[NE_0:.*]] = cmpf one, %[[OPERAND_IN]], %[[CST_0]] : f32
+// CHECK-NEXT:   %[[NE_0_FLOAT:.*]] = uitofp %[[NE_0]] : i1 to f32
+// CHECK-NEXT:   %[[SIGN:.*]] = copysign %[[NE_0_FLOAT]], %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[CMP:.*]] = cmpf uno, %[[OPERAND_IN]], %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[OPERAND_IN]], %[[SIGN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -607,8 +626,12 @@ func @sign_bf16(%input: memref<2x2xbf16>, %result: memref<2x2xbf16>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: bf16, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[CST:.*]] = constant 1.000000e+00 : bf16
-// CHECK-NEXT:   %[[RESULT:.*]] = copysign %[[CST]], %[[OPERAND_IN]] : bf16
+// CHECK-NEXT:   %[[CST_0:.*]] = constant 0.000000e+00 : bf16
+// CHECK-NEXT:   %[[NE_0:.*]] = cmpf one, %[[OPERAND_IN]], %[[CST_0]] : bf16
+// CHECK-NEXT:   %[[NE_0_FLOAT:.*]] = uitofp %[[NE_0]] : i1 to bf16
+// CHECK-NEXT:   %[[SIGN:.*]] = copysign %[[NE_0_FLOAT]], %[[OPERAND_IN]] : bf16
+// CHECK-NEXT:   %[[CMP:.*]] = cmpf uno, %[[OPERAND_IN]], %[[OPERAND_IN]] : bf16
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[OPERAND_IN]], %[[SIGN]] : bf16
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : bf16
 
 // -----
@@ -623,7 +646,7 @@ func @sign_i16(%input: memref<2x2xi16>, %result: memref<2x2xi16>) {
 // CHECK-NEXT:   %[[C0:.*]] = constant 0 : i16
 // CHECK-NEXT:   %[[C15:.*]] = constant 15 : i16
 // CHECK-NEXT:   %[[C1:.*]] = constant 1 : i16
-// CHECK-NEXT:   %[[CMP:.*]] = cmpi "eq", %[[OPERAND_IN]], %[[C0]] : i16
+// CHECK-NEXT:   %[[CMP:.*]] = cmpi eq, %[[OPERAND_IN]], %[[C0]] : i16
 // CHECK-NEXT:   %[[ASHR:.*]] = shift_right_signed %[[OPERAND_IN]], %[[C15]] : i16
 // CHECK-NEXT:   %[[OR:.*]] = or %[[ASHR]], %[[C1]] : i16
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[C0]], %[[OR]] : i16

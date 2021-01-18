@@ -42,23 +42,26 @@ class HloSharding {
  public:
   // Creates a trivial sharding that replicates a maximal tile across all
   // devices.
-  static HloSharding Replicate() {
-    return HloSharding(/*manual=*/false, /*replicated=*/true);
+  static HloSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
+    return HloSharding(/*manual=*/false, /*replicated=*/true, metadata);
   }
 
   // Creates a sharding that represents the op is manually partitioned.
-  static HloSharding Manual() {
-    return HloSharding(/*manual=*/true, /*replicated=*/false);
+  static HloSharding Manual(absl::Span<const OpMetadata> metadata = {}) {
+    return HloSharding(/*manual=*/true, /*replicated=*/false, metadata);
   }
 
   // Creates a sharding that emulates device placement; a tile shape equal to
   // the input shape (one tile) assigned to a single device.
-  static HloSharding AssignDevice(int64 device_id);
+  static HloSharding AssignDevice(int64 device_id,
+                                  absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding which splits a shape into tiles amongst the devices
   // specified by `tile_assignment`.
-  static HloSharding Tile(const Array<int64>& tile_assignment) {
-    return HloSharding(tile_assignment);
+  static HloSharding Tile(const Array<int64>& tile_assignment,
+                          absl::Span<const OpMetadata> metadata = {}) {
+    return HloSharding(tile_assignment, /*replicate_on_last_tile_dim=*/false,
+                       metadata);
   }
 
   // Creates a new sharding where data is replicated within each replication
@@ -66,17 +69,20 @@ class HloSharding {
   // group_tile_assignment. Replication group members will be sorted.
   static HloSharding PartialTile(
       const Array<int64>& group_tile_assignment,
-      absl::Span<const absl::Span<const int64>> replication_groups);
+      absl::Span<const absl::Span<const int64>> replication_groups,
+      absl::Span<const OpMetadata> metadata = {});
 
   // Creates a partially replicated tiled sharding with device-level tile
   // assignment, where the last dimension is the additional replication
   // dimension. Replication group members will be sorted.
   static HloSharding PartialTile(
-      const Array<int64>& tile_assignment_last_dim_replicate);
+      const Array<int64>& tile_assignment_last_dim_replicate,
+      absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding which splits a one-dimensional input shape into
   // `num_tiles` tiles.
-  static HloSharding Tile1D(const Shape& input_shape, int64 num_tiles);
+  static HloSharding Tile1D(const Shape& input_shape, int64 num_tiles,
+                            absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding for a tuple type. The given ShapeTree must have
   // elements for every leaf shape contained in the tuple.
@@ -108,7 +114,7 @@ class HloSharding {
 
   // Note that this string canonically has outer curly braces, e.g.
   // "{replicated}".
-  string ToString() const;
+  string ToString(bool include_metadata = false) const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
   Status Validate(const Shape& shape, int64 num_devices) const;
@@ -263,36 +269,44 @@ class HloSharding {
   // Gets the number of tiles. If it has partial replication, this will not
   // equal the device count.
   int64 NumTiles() const;
+  // Like NumTiles() but considers only some specific dimensions passed as
+  // argument
+  int64 NumTiles(absl::Span<const int64> dims) const;
 
  private:
-  explicit HloSharding(bool manual, bool replicated)
+  explicit HloSharding(bool manual, bool replicated,
+                       absl::Span<const OpMetadata> metadata)
       : replicated_(replicated),
         maximal_(replicated),
         tuple_(false),
         manual_(manual),
         tile_assignment_({0}),
-        replicate_on_last_tile_dim_(false) {}
+        replicate_on_last_tile_dim_(false),
+        metadata_(metadata.begin(), metadata.end()) {}
   // device_id values:
   // -2: magic number to mean unassigned device, used by spatial partitioning
   // -1: the id of the host
   //  0 or positive: the id of a device
   // NOTE(dimvar): -1 is needed for outside compilation. It can be removed once
   // we have fully switched to the side-effect tokens.
-  explicit HloSharding(int64 device_id)
+  explicit HloSharding(int64 device_id, absl::Span<const OpMetadata> metadata)
       : replicated_(false),
         maximal_(true),
         tuple_(false),
         manual_(false),
         tile_assignment_({1}, device_id),
-        replicate_on_last_tile_dim_(false) {}
+        replicate_on_last_tile_dim_(false),
+        metadata_(metadata.begin(), metadata.end()) {}
   explicit HloSharding(const Array<int64>& tile_assignment,
-                       bool replicate_on_last_tile_dim = false)
+                       bool replicate_on_last_tile_dim,
+                       absl::Span<const OpMetadata> metadata = {})
       : replicated_(false),
         maximal_(false),
         tuple_(false),
         manual_(false),
         tile_assignment_(tile_assignment),
-        replicate_on_last_tile_dim_(replicate_on_last_tile_dim) {}
+        replicate_on_last_tile_dim_(replicate_on_last_tile_dim),
+        metadata_(metadata.begin(), metadata.end()) {}
   explicit HloSharding(const std::vector<HloSharding>& tuple_shardings)
       : replicated_(false),
         maximal_(false),
@@ -342,6 +356,12 @@ class HloSharding {
   // shape rank, and the added last dimension represents the subgroups of
   // replications, i.e., elements in slice [..., :] will be replicated.
   bool replicate_on_last_tile_dim_;
+  // This field is used to track the source of this sharding, usually derived
+  // from instructions. Multple metadata may be populated if sharding is
+  // combined with other shardings. Metadata are to not be populated when
+  // tuple_ == true and instead metadata should be set on individual tuple
+  // elements.
+  std::vector<OpMetadata> metadata_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);

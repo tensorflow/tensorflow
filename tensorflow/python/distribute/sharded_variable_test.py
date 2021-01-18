@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
@@ -299,6 +300,19 @@ class ShardedVariableTest(test.TestCase):
 
     # Continue using root.train for training
     self.assertAllEqual([3., 2.], root.train([0, 1]).numpy())
+
+  def test_load_raises_error(self):
+    root = tracking.AutoTrackable()
+    v1 = variables_lib.Variable([3.])
+    v2 = variables_lib.Variable([2.])
+    root.v = sharded_variable.ShardedVariable([v1, v2])
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save.save(root, save_dir)
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, 'Loading `ShardedVariable` is not supported'):
+      load.load(save_dir)
 
   def test_validation_errors(self):
     with self.assertRaisesRegex(ValueError, 'Expected a list of '):

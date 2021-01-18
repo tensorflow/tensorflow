@@ -90,6 +90,49 @@ absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString
   return absl::OkStatus();
 }
 
+int PixelFormatToSizeInBytes(MTLPixelFormat pixel_format) {
+  if (pixel_format == MTLPixelFormatRGBA32Uint ||
+      pixel_format == MTLPixelFormatRGBA32Sint ||
+      pixel_format == MTLPixelFormatRGBA32Float) {
+    return 16;
+  } else if (pixel_format == MTLPixelFormatRGBA16Unorm ||
+             pixel_format == MTLPixelFormatRGBA16Snorm ||
+             pixel_format == MTLPixelFormatRGBA16Uint ||
+             pixel_format == MTLPixelFormatRGBA16Sint ||
+             pixel_format == MTLPixelFormatRGBA16Float) {
+    return 8;
+  } else if (pixel_format == MTLPixelFormatRGBA8Unorm ||
+             pixel_format == MTLPixelFormatRGBA8Snorm ||
+             pixel_format == MTLPixelFormatRGBA8Uint ||
+             pixel_format == MTLPixelFormatRGBA8Sint) {
+    return 4;
+  }
+  return -1;
+}
+
+MTLPixelFormat DataTypeToRGBAPixelFormat(DataType type, bool normalized) {
+  switch (type) {
+    case DataType::FLOAT32:
+      return MTLPixelFormatRGBA32Float;
+    case DataType::FLOAT16:
+      return MTLPixelFormatRGBA16Float;
+    case DataType::INT8:
+      return normalized ? MTLPixelFormatRGBA8Snorm : MTLPixelFormatRGBA8Sint;
+    case DataType::UINT8:
+      return normalized ? MTLPixelFormatRGBA8Unorm : MTLPixelFormatRGBA8Uint;
+    case DataType::INT16:
+      return normalized ? MTLPixelFormatRGBA16Snorm : MTLPixelFormatRGBA16Sint;
+    case DataType::UINT16:
+      return normalized ? MTLPixelFormatRGBA16Unorm : MTLPixelFormatRGBA16Uint;
+    case DataType::INT32:
+      return MTLPixelFormatRGBA32Sint;
+    case DataType::UINT32:
+      return MTLPixelFormatRGBA32Uint;
+    default:
+      return MTLPixelFormatInvalid;
+  }
+}
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

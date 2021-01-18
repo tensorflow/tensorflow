@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // TF:llvm-project
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
@@ -119,7 +120,7 @@ void MatchAndRewrite(WhileOp whileOp) {
   auto tensorIndexType = RankedTensorType::get({}, b.getIndexType());
   auto getAsIndex = [&](Value val) {
     auto loc = whileOp.getLoc();
-    return b.create<ExtractElementOp>(
+    return b.create<tensor::ExtractOp>(
         loc, b.create<IndexCastOp>(loc, tensorIndexType, val), ValueRange());
   };
 

@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/nms_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/perception_ops_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -61,6 +62,7 @@ constexpr char kTFAPIImplements[] = "tf.api_implements";
 constexpr char kTFTextAPIPrefix[] = "tftext:";
 constexpr char kCustomSSDPostprocessing[] = "TFLite_Detection_PostProcess";
 constexpr char kTfNMSPadded[] = "non_max_suppression_padded_v2";
+constexpr char kCustomMaxUnpooling[] = "addons:MaxUnpooling2D";
 
 using mlir::TF::FuncAttr;
 
@@ -292,6 +294,12 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     ConvertSSDPostProcessFunc convert_ssd_postprocess(func, attr);
     if (failed(convert_ssd_postprocess.VerifySignature()) ||
         failed(convert_ssd_postprocess.RewriteFunc())) {
+      return signalPassFailure();
+    }
+  } else if (api_name == kCustomMaxUnpooling) {
+    ConvertMaxUnpoolingFunc max_unpooling(func, attr);
+    if (failed(max_unpooling.VerifySignature()) ||
+        failed(max_unpooling.RewriteFunc())) {
       return signalPassFailure();
     }
   }

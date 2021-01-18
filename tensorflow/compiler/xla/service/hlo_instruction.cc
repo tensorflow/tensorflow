@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -2024,15 +2025,11 @@ bool HloInstruction::IdenticalInternal(
     return false;
   }
 
-  // Two AllReduces are Identical if they have the same channel_id.
-  // Their operands don't have to be Identical.
-  if (!IsCrossModuleAllReduce()) {
-    // Use an explicit loop rather than ContainerEquals, because copying
-    // around std::functions may be too expensive in some cases.
-    for (size_t i = 0; i < operands().size(); ++i) {
-      if (!eq_operands(operand(i), other.operand(i))) {
-        return false;
-      }
+  // Use an explicit loop rather than ContainerEquals, because copying around
+  // std::functions may be too expensive in some cases.
+  for (size_t i = 0; i < operands().size(); ++i) {
+    if (!eq_operands(operand(i), other.operand(i))) {
+      return false;
     }
   }
 
@@ -2542,7 +2539,7 @@ string PrintName(const string& name, bool print_ids) {
   if (print_ids) {
     return name;
   } else {
-    auto dot_position = name.find_first_of(".");
+    auto dot_position = name.find_first_of('.');
     return name.substr(0, dot_position);
   }
 }
@@ -2896,7 +2893,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   }
 
   if (has_sharding()) {
-    extra.push_back(StrCat("sharding=", sharding().ToString()));
+    extra.push_back(
+        StrCat("sharding=", sharding().ToString(options.print_metadata())));
   }
   if (!frontend_attributes_.map().empty()) {
     extra.push_back(StrCat("frontend_attributes=",
@@ -3682,28 +3680,6 @@ string PaddingConfigToString(const PaddingConfig& padding) {
             out, dim.edge_padding_low(), "_", dim.edge_padding_high(),
             has_interior_padding ? StrCat("_", dim.interior_padding()) : "");
       });
-}
-
-string OpMetadataToString(const OpMetadata& metadata) {
-  std::vector<string> result;
-  if (!metadata.op_type().empty()) {
-    result.push_back(StrCat("op_type=\"", CEscape(metadata.op_type()), "\""));
-  }
-  if (!metadata.op_name().empty()) {
-    result.push_back(StrCat("op_name=\"", CEscape(metadata.op_name()), "\""));
-  }
-  if (!metadata.source_file().empty()) {
-    result.push_back(
-        StrCat("source_file=\"", CEscape(metadata.source_file()), "\""));
-  }
-  if (metadata.source_line() != 0) {
-    result.push_back(StrCat("source_line=", metadata.source_line()));
-  }
-  if (!metadata.profile_type().empty()) {
-    result.push_back(StrCat("profile_type={",
-                            absl::StrJoin(metadata.profile_type(), ","), "}"));
-  }
-  return StrJoin(result, " ");
 }
 
 string RandomDistributionToString(const RandomDistribution& distribution) {

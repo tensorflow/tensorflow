@@ -367,7 +367,6 @@ py_strict_library(
 tf_py_test(
     name = "save_test",
     srcs = ["save_test.py"],
-    tags = ["no_rocm"],
     deps = [
         ":loader",
         ":save",
@@ -387,7 +386,7 @@ py_library(
     srcs = [
         "load.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":function_deserialization",
         ":load_options",

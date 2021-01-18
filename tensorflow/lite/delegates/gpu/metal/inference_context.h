@@ -22,54 +22,50 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-/// Stages of model preprocessing:
-/// 1. Operations' initialization. All operations are initialized and added into
-///    model. Every operation is represented as a vector of
-///    ComputeTaskDescriptors.
-/// 2. Model compilation. Global list of ComputeTaskDescriptors is transformed
-///    into the sorted list of sets of descriptors. A set can be transformed
-///    later into a single GPU task.
-/// 3. GPU compute tasks generation. Shader code generation happens here.
-/// 4. Intermediate resource allocation.
-/// Inference.
+struct MetalNode {
+  ComputeTask task;
+  std::vector<ValueId> inputs;
+  std::vector<ValueId> outputs;
+
+  // Mostly for debug purposes.
+  std::string name;
+
+  MetalNode() = default;
+
+  MetalNode(MetalNode&& node) = default;
+  MetalNode& operator=(MetalNode&& node) = default;
+  MetalNode(const MetalNode&) = delete;
+  MetalNode& operator=(const MetalNode&) = delete;
+};
 
 class InferenceContext {
  public:
+  struct CreateInferenceInfo {
+    CalculationsPrecision precision;
+    TensorStorageType storage_type;
+    ModelHints hints;
+  };
+
   InferenceContext() = default;
-  /// Compiles model: groups operations to be fused; validates model structure.
-  /// @param device Used to create resources: shaders, buffers. Also the device
-  /// is used in
-  ///             consecutive call setInputDimensions().
-  /// @param model Contains ordered vector of shader programs ready to be
-  /// compiled for GPU and
-  ///             with all supplementary buffers data.
-  /// @param inputBufferIDs IDs must match the input of added operations.
-  /// @param outputBufferIDs IDs must match the output of added operations.
-  /// @param runtimeOptions Options are used to specify data/calculations
-  /// precision.
-  /// @return Status signals whether model is compiled successfully or not.
-  /// @discussion Previously added operations are distilled into sorted list of
-  /// sets of
-  ///             ComputeTaskDescriptors, which can be fused into a single GPU
-  ///             task.
-  absl::Status CompileModelWithDevice(id<MTLDevice> device,
-                                      const CompiledModel& compiled_model,
-                                      const std::vector<ValueId>& input_ids,
-                                      const std::vector<ValueId>& output_ids,
-                                      CalculationsPrecision precision);
+
+  absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
+                             const GraphFloat32& graph,
+                             id<MTLDevice> device_id);
 
   /// Inserts all GPU compute tasks into the command encoder.
   /// @param inputOutputBuffers Must be created and passed into the method
@@ -110,21 +106,83 @@ class InferenceContext {
       const std::map<ValueId, id<MTLBuffer>>& in_out_buffers, int flush_period);
 
  private:
-  absl::Status AllocateTensors(id<MTLDevice> device);
-  absl::Status AllocateMemoryForBuffers(id<MTLDevice> device);
+  absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
+                       CalculationsPrecision precision);
+
+  void ReserveGraphTensors(const CreateInferenceInfo& create_info,
+                           const GpuInfo& gpu_info, const GraphFloat32& graph);
+
+  absl::Status CompileModelWithDevice(MetalDevice* device);
+
+  absl::Status Merge();
+  absl::Status AllocateTensors(MetalDevice* device);
+  absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   void BindTensorsToOperations();
   MetalSpatialTensor* GetTensor(ValueId tensor_id);
   void GetUsages(std::map<ValueId, int2>* usages);
   void UpdatePreallocatedTensors(
       const std::map<ValueId, id<MTLBuffer>>& preallocated);
 
-  std::vector<ComputeTask> compute_tasks_;
+  struct DummyTensor {
+    BHWC shape;
+    TensorDescriptor descriptor;
+
+    bool operator==(const DummyTensor& b) const {
+      return shape == b.shape && descriptor == b.descriptor;
+    }
+  };
+
+  class TensorReserver {
+   public:
+    TensorReserver() : next_(0) {}
+    ValueId Add(const DummyTensor& dummy) {
+      reservations_[next_] = dummy;
+      return next_++;
+    }
+    void Add(ValueId id, const DummyTensor& dummy) {
+      reservations_[id] = dummy;
+    }
+    void SetNext(ValueId id) { next_ = id; }
+    DummyTensor Get(ValueId id) { return reservations_[id]; }
+
+    std::vector<std::pair<ValueId, TensorDescriptor>> GetTensorDescs() const {
+      std::vector<std::pair<ValueId, TensorDescriptor>> result;
+      for (auto& v : reservations_) {
+        TensorDescriptor desc = v.second.descriptor;
+        desc.shape.b = v.second.shape.b;
+        desc.shape.h = v.second.shape.h;
+        desc.shape.w = v.second.shape.w;
+        desc.shape.d = 1;
+        desc.shape.c = v.second.shape.c;
+        result.push_back({v.first, desc});
+      }
+      return result;
+    }
+
+    void Add(const std::vector<std::pair<ValueId, TensorDescriptor>>& tensors) {
+      for (auto& v : tensors) {
+        DummyTensor dummy;
+        dummy.descriptor = v.second;
+        dummy.shape.b = v.second.shape.b;
+        dummy.shape.h = v.second.shape.h;
+        dummy.shape.w = v.second.shape.w;
+        dummy.shape.c = v.second.shape.c;
+        Add(v.first, dummy);
+      }
+    }
+
+   private:
+    absl::flat_hash_map<ValueId, DummyTensor> reservations_;
+    ValueId next_;
+  };
+  TensorReserver tensor_reserver_;
+
+  std::vector<MetalNode> nodes_;
   // contains indexes of compute_tasks_
   std::vector<int> task_ids_with_preallocated_tensors_;
   std::vector<ValueId> input_ids_;
   std::vector<ValueId> output_ids_;
   CalculationsPrecision precision_;
-  std::map<ValueId, BHWC> tensor_shapes_;
   std::map<ValueId, MetalSpatialTensor> preallocated_tensors_;
 
   std::map<ValueId, int> graph_ids_to_shared_buffer_tensors_;

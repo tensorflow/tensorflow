@@ -50,7 +50,7 @@ void UpdateFuncType(FuncOp func) {
   if (llvm::makeArrayRef(return_types) == func_type.getResults()) return;
 
   auto updated_type =
-      FunctionType::get(func_type.getInputs(), return_types, func.getContext());
+      FunctionType::get(func.getContext(), func_type.getInputs(), return_types);
   func.setType(updated_type);
 }
 

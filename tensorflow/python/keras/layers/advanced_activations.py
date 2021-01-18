@@ -64,7 +64,7 @@ class LeakyReLU(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     alpha: Float >= 0. Negative slope coefficient. Default to 0.3.
 
   """
@@ -108,7 +108,7 @@ class PReLU(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     alpha_initializer: Initializer function for the weights.
     alpha_regularizer: Regularizer for the weights.
     alpha_constraint: Constraint for the weights.
@@ -200,7 +200,7 @@ class ELU(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     alpha: Scale for the negative factor.
   """
 
@@ -241,7 +241,7 @@ class ThresholdedReLU(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     theta: Float >= 0. Threshold location of activation.
   """
 
@@ -303,12 +303,13 @@ class Softmax(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     axis: Integer, or list of Integers, axis along which the softmax
       normalization is applied.
   Call arguments:
     inputs: The inputs, or logits to the softmax layer.
-    mask: A boolean mask of the same shape as `inputs`. Defaults to `None`.
+    mask: A boolean mask of the same shape as `inputs`. Defaults to `None`. The
+      mask specifies 1 to keep and 0 to mask.
 
   Returns:
     softmaxed output with the same shape as `inputs`.
@@ -321,7 +322,7 @@ class Softmax(Layer):
 
   def call(self, inputs, mask=None):
     if mask is not None:
-      # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
+      # Since mask is 1.0 for positions we want to keep and 0.0 for
       # masked positions, this operation will create a tensor which is 0.0 for
       # positions we want to attend and -1e.9 for masked positions.
       adder = (1.0 - math_ops.cast(mask, inputs.dtype)) * (
@@ -389,7 +390,7 @@ class ReLU(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     max_value: Float >= 0. Maximum activation value. Default to None, which
       means unlimited.
     negative_slope: Float >= 0. Negative slope coefficient. Default to 0.

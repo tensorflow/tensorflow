@@ -575,16 +575,16 @@ def LHLO_CholeskyOp: LHLO_Op<"cholesky", [SameOperandsElementType]>, BASE_HLO_Ch
   );
 }
 
-def LHLO_Infeed: LHLO_Op<"infeed", []>, BASE_HLO_InfeedOp {
+def LHLO_InfeedOp: LHLO_Op<"infeed", []>, BASE_HLO_InfeedOp {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     DefaultValuedAttr<StrAttr, "">:$config
   );
 }
 
-def LHLO_Outfeed: LHLO_Op<"outfeed", []> {
+def LHLO_OutfeedOp: LHLO_Op<"outfeed", []> {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
     DefaultValuedAttr<StrAttr, "">:$config
   );
 }

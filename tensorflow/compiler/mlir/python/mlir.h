@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/tf_status.h"
 
 namespace tensorflow {
@@ -30,17 +31,18 @@ namespace tensorflow {
 // This is an early experimental API, ideally we should return a wrapper object
 // around a Python binding to the MLIR module.
 std::string ImportGraphDef(const std::string &proto,
-                           const std::string &pass_pipeline, TF_Status *status);
+                           const std::string &pass_pipeline,
+                           bool show_debug_info, TF_Status *status);
 
 // Simple wrapper to support tf.mlir.experimental.convert_function.
-// Load FunctionDef and FunctionDefLibrary (binary or textual proto format),
-// convert to MLIR, and (optionally) optimize the module before returning it as
-// a string.
+// Load FunctionDef (binary or textual proto format), convert to MLIR, and
+// (optionally) optimize the module before returning it as a string.
 // This is an early experimental API, ideally we should return a wrapper object
 // around a Python binding to the MLIR module.
 std::string ImportFunction(const std::string &functiondef_proto,
-                           const std::string &functiondef_library_proto,
-                           const std::string &pass_pipeline, TF_Status *status);
+                           const std::string &pass_pipeline,
+                           bool show_debug_info, TFE_Context *context,
+                           TF_Status *status);
 
 // Load a SavedModel and return a textual MLIR string corresponding to it.
 //

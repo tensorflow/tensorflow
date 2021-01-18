@@ -27,7 +27,7 @@ ARG CENTOS_VERSION=8
 
 # Enable both PowerTools and EPEL otherwise some packages like hdf5-devel fail to install
 RUN dnf install -y 'dnf-command(config-manager)' && \
-    dnf config-manager --set-enabled PowerTools && \
+    dnf config-manager --set-enabled powertools && \
     dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-"${CENTOS_VERSION}".noarch.rpm && \
     dnf clean all
 
@@ -40,6 +40,7 @@ RUN yum update -y && \
         git \
         hdf5-devel \
         java-1.8.0-openjdk \
+        java-1.8.0-openjdk-devel \
         java-1.8.0-openjdk-headless \
         libcurl-devel \
         make \
@@ -82,7 +83,7 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/bin/python
 
 # Install bazel
-ARG BAZEL_VERSION=3.1.0
+ARG BAZEL_VERSION=3.7.2
 RUN mkdir /bazel && \
     curl -fSsL -o /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
     curl -fSsL -o /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \

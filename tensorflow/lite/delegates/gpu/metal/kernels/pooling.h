@@ -27,7 +27,7 @@ namespace gpu {
 namespace metal {
 
 ComputeTaskDescriptor Pooling(const OperationDef& definition,
-                              const Pooling2DAttributes& params,
+                              const Pooling2DAttributes& attr,
                               bool generate_indices);
 
 }  // namespace metal

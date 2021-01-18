@@ -74,6 +74,37 @@ void CompareNumericalAndAutodiffGradients(
   }
 }
 
+void CheckTensorValue(AbstractTensorHandle* t, absl::Span<const float> manuals,
+                      absl::Span<const int64_t> dims, double abs_error) {
+  TF_Tensor* analytical_tensor;
+  auto s = GetValue(t, &analytical_tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  int64_t num_elem_analytical = 1;
+  auto num_dims_analytical = TF_NumDims(analytical_tensor);
+  ASSERT_EQ(dims.size(), num_dims_analytical);
+  for (int j = 0; j < num_dims_analytical; j++) {
+    auto dim_analytical = TF_Dim(analytical_tensor, j);
+    ASSERT_EQ(dims[j], dim_analytical);
+    num_elem_analytical *= dim_analytical;
+  }
+
+  float* danalytical = new float[num_elem_analytical]{0};
+  memcpy(&danalytical[0], TF_TensorData(analytical_tensor),
+         TF_TensorByteSize(analytical_tensor));
+
+  for (int64_t j = 0; j < num_elem_analytical; j++) {
+    if (abs_error == 0) {
+      ASSERT_EQ(manuals[j], danalytical[j]);
+    } else {
+      ASSERT_NEAR(manuals[j], danalytical[j], abs_error);
+    }
+  }
+
+  TF_DeleteTensor(analytical_tensor);
+  delete[] danalytical;
+}
+
 }  // namespace internal
 }  // namespace gradients
 }  // namespace tensorflow

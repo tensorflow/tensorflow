@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_WORKER_IMPL_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
@@ -85,6 +86,8 @@ class DataServiceWorkerImpl {
   mutex mu_;
   // Information about tasks, keyed by task ids.
   absl::flat_hash_map<int64, std::unique_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
+  // Ids of tasks that have finished.
+  absl::flat_hash_set<int64> finished_tasks_ TF_GUARDED_BY(mu_);
   // Completed tasks which haven't yet been communicated to the dispatcher.
   absl::flat_hash_set<int64> pending_completed_tasks_ TF_GUARDED_BY(mu_);
   bool cancelled_ TF_GUARDED_BY(mu_) = false;

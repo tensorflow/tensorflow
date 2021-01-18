@@ -863,6 +863,7 @@ cc_library(
         "transforms/bridge.cc",
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
+        "transforms/cluster_ops_by_policy_pass.cc",
         "transforms/cluster_outlining.cc",
         "transforms/cluster_tf_ops_pass.cc",
         "transforms/collection_ops_util.cc",
@@ -933,6 +934,7 @@ cc_library(
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_outside_compilation_cluster.cc",
         "transforms/tpu_parallel_execute_sink_resource_write.cc",
+        "transforms/tpu_resource_partitioning.cc",
         "transforms/tpu_resource_read_for_write.cc",
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",
@@ -1011,6 +1013,7 @@ cc_library(
         "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
@@ -1080,8 +1083,15 @@ cc_library(
     srcs = ["translate/upgrade_graph.cc"],
     hdrs = ["translate/upgrade_graph.h"],
     deps = [
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -1105,6 +1115,7 @@ cc_library(
         ":export_tf_dialect_op",
         ":export_utils",
         ":mangling_util",
+        ":mlir_import_options",
         ":mlir_roundtrip_flags",
         ":tensorflow",
         ":tensorflow_attributes",
@@ -1539,6 +1550,11 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir_import_options",
+    hdrs = ["translate/mlir_import_options.h"],
+)
+
+cc_library(
     name = "translate_lib",
     srcs = ["translate/tf_mlir_translate.cc"],
     hdrs = ["translate/tf_mlir_translate.h"],
@@ -1547,6 +1563,7 @@ cc_library(
         ":error_util",
         ":import_utils",
         ":mangling_util",
+        ":mlir_import_options",
         ":mlir_roundtrip_flags",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:reader",

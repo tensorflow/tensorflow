@@ -2704,7 +2704,8 @@ XlaOp XlaBuilder::AllGather(XlaOp operand, int64 all_gather_dimension,
                             int64 shard_count,
                             absl::Span<const ReplicaGroup> replica_groups,
                             const absl::optional<ChannelHandle>& channel_id,
-                            const absl::optional<Layout>& layout) {
+                            const absl::optional<Layout>& layout,
+                            const absl::optional<bool> use_global_device_ids) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
@@ -2724,6 +2725,9 @@ XlaOp XlaBuilder::AllGather(XlaOp operand, int64 all_gather_dimension,
     }
     if (channel_id.has_value()) {
       instr.set_channel_id(channel_id->handle());
+    }
+    if (use_global_device_ids.has_value()) {
+      instr.set_use_global_device_ids(use_global_device_ids.value());
     }
 
     TF_ASSIGN_OR_RETURN(
@@ -4549,10 +4553,11 @@ XlaOp AllGather(const XlaOp operand, int64 all_gather_dimension,
                 int64 shard_count,
                 absl::Span<const ReplicaGroup> replica_groups,
                 const absl::optional<ChannelHandle>& channel_id,
-                const absl::optional<Layout>& layout) {
+                const absl::optional<Layout>& layout,
+                const absl::optional<bool> use_global_device_ids) {
   return operand.builder()->AllGather(operand, all_gather_dimension,
                                       shard_count, replica_groups, channel_id,
-                                      layout);
+                                      layout, use_global_device_ids);
 }
 
 XlaOp CrossReplicaSum(const XlaOp operand,

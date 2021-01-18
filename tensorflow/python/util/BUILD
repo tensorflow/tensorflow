@@ -39,6 +39,15 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+py_strict_library(
+    name = "core",
+    deps = [
+        ":tf_decorator",
+        ":tf_export",
+        ":tf_stack",
+    ],
+)
+
 # TODO(mdan): Move this utility outside of TF.
 cc_library(
     name = "kernel_registry",
@@ -73,6 +82,7 @@ tf_python_pybind_extension(
     hdrs = ["util.h"],
     module_name = "_pywrap_utils",
     deps = [
+        "//tensorflow/core/platform:platform_port",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -319,7 +329,6 @@ tf_py_test(
     name = "tf_stack_test",
     srcs = ["tf_stack_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],  # TODO(b/175726972)
     deps = [
         ":tf_export",
         ":tf_stack",
@@ -405,7 +414,7 @@ py_library(
         ],
     ),
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
@@ -451,6 +460,7 @@ py_library(
     name = "nest_test_main_lib",
     testonly = True,
     srcs = ["nest_test.py"],
+    srcs_version = "PY3",
     deps = [
         ":util",
         "//tensorflow/python:array_ops",
@@ -510,7 +520,7 @@ tf_py_test(
 py_library(
     name = "tf_should_use",
     srcs = ["tf_should_use.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":util",
         "//tensorflow/python:framework_ops",
@@ -544,7 +554,7 @@ tf_py_test(
 py_library(
     name = "example_parser_configuration",
     srcs = ["example_parser_configuration.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -566,12 +576,35 @@ tf_py_test(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "fast_module_type",
+    srcs = ["fast_module_type.cc"],
+    module_name = "fast_module_type",
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "fast_module_type_test",
+    srcs = ["fast_module_type_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":fast_module_type",
+        "//tensorflow/python:platform",
+    ],
+)
+
 tf_py_test(
     name = "module_wrapper_test",
     size = "small",
     srcs = ["module_wrapper_test.py"],
     python_version = "PY3",
     deps = [
+        ":fast_module_type",
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/tools/compatibility:all_renames_v2",

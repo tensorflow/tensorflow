@@ -44,7 +44,7 @@ TfLiteStatus QuantizeModel(
     const std::unordered_set<std::string>& operator_names,
     bool disable_per_channel, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
-    tflite::ErrorReporter* error_reporter) {
+    tflite::ErrorReporter* error_reporter, bool verify_numeric) {
   // TODO(b/142502494): remove this restriction by improving the `emit_adaptor`
   // flag
   if (input_type != output_type) {
@@ -91,8 +91,10 @@ TfLiteStatus QuantizeModel(
     quant_specs.inference_type = input_tf_type;
   }
 
+  quant_specs.verify_numeric = verify_numeric;
+
   pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
-  pm.addPass(TFL::CreateQuantizePass());
+  pm.addPass(TFL::CreateQuantizePass(verify_numeric));
   pm.addPass(TFL::CreatePostQuantizePass(emit_adaptor));
 
   if (failed(pm.run(module.get()))) {

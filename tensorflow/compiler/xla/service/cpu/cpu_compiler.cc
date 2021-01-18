@@ -102,10 +102,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
-#include "tensorflow/compiler/xla/service/integral_upcaster.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
+#include "tensorflow/compiler/xla/service/operand_upcaster.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
@@ -271,7 +271,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
 
-  pipeline.AddPass<IntegralUpcaster>();
+  pipeline.AddPass<OperandUpcaster>();
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
@@ -295,6 +295,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
+  // Convert BF16 operations to F32 operations so that the CPU backend can
+  // support BF16 operations without directly implementing a BF16 lowering for
+  // most ops.
+  pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
   // After canonicalization, there may be more batch dots that can be
   // simplified.
   pipeline.AddPass<BatchDotSimplification>();
@@ -403,8 +407,6 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pass.AddPass<HloDCE>();
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }
-
-  pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
 
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =

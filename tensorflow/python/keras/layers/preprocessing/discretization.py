@@ -55,7 +55,7 @@ def summarize(values, epsilon):
   If the target num_bins is larger than the size of values, the whole array is
   returned (with weights of 1).
 
-  Arguments:
+  Args:
       values: 1-D `np.ndarray` to be summarized.
       epsilon: A `'float32'` that determines the approxmiate desired precision.
 
@@ -87,7 +87,7 @@ def compress(summary, epsilon):
   Taking the difference of the cumulative weights from the previous bin's
   cumulative weight will give the new weight for that bin.
 
-  Arguments:
+  Args:
       summary: 2-D `np.ndarray` summary to be compressed.
       epsilon: A `'float32'` that determines the approxmiate desired precision.
 
@@ -115,7 +115,7 @@ def merge_summaries(prev_summary, next_summary, epsilon):
   Given two summaries of distinct data, this function merges (and compresses)
   them to stay within `epsilon` error tolerance.
 
-  Arguments:
+  Args:
       prev_summary: 2-D `np.ndarray` summary to be merged with `next_summary`.
       next_summary: 2-D `np.ndarray` summary to be merged with `prev_summary`.
       epsilon: A `'float32'` that determines the approxmiate desired precision.

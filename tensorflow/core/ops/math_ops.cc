@@ -954,6 +954,8 @@ REGISTER_OP("_FusedMatMul")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //
     .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ---------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
     // --------------------------------------------- //
     .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(

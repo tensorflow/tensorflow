@@ -7,11 +7,12 @@ load(
     "tf_cc_shared_object",
     "tf_cc_test",
 )
+load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 def tflite_copts():
-    """Defines compile time flags."""
+    """Defines common compile time flags for TFLite libraries."""
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
@@ -44,7 +45,28 @@ def tflite_copts():
         ],
     })
 
-    return copts
+    return copts + tflite_copts_extra()
+
+def tflite_copts_warnings():
+    """Defines common warning flags used primarily by internal TFLite libraries."""
+
+    # TODO(b/155906820): Include with `tflite_copts()` after validating clients.
+
+    return select({
+        clean_dep("//tensorflow:windows"): [
+            # We run into trouble on Windows toolchains with warning flags,
+            # as mentioned in the comments below on each flag.
+            # We could be more aggressive in enabling supported warnings on each
+            # Windows toolchain, but we compromise with keeping BUILD files simple
+            # by limiting the number of config_setting's.
+        ],
+        "//conditions:default": [
+            "-Wall",
+            # TensorFlow is C++14 at the moment. This flag ensures that we warn
+            # on any code that isn't C++14. Not supported by MSVC.
+            "-Wc++14-compat",
+        ],
+    })
 
 EXPORTED_SYMBOLS = clean_dep("//tensorflow/lite/java/src/main/native:exported_symbols.lds")
 LINKER_SCRIPT = clean_dep("//tensorflow/lite/java/src/main/native:version_script.lds")
@@ -435,7 +457,7 @@ def generated_test_models_successful(conversion_mode):
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
-    return ["toco-flex", "forward-compat", ""]
+    return ["toco-flex", "forward-compat", "", "mlir-quant"]
 
 def common_test_args_for_generated_models(conversion_mode, failing):
     """Returns test args for generated model tests.
@@ -635,6 +657,8 @@ def gen_zip_test(
         flags += " --ignore_converter_errors --run_with_flex"
     elif conversion_mode == "forward-compat":
         flags += " --make_forward_compat_test"
+    elif conversion_mode == "mlir-quant":
+        flags += " --mlir_quantizer"
     if test_name.startswith(merged_test_model_name() + "_"):
         flags += flags_for_merged_test_models(test_name, conversion_mode)
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -133,7 +134,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::ErfcOp>(),
     TypeID::get<TF::ErfinvOp>(),
     TypeID::get<TF::ErfOp>(),
-    TypeID::get<TF::Expm1Op>(),
     TypeID::get<TF::ExtractImagePatchesOp>(),
     TypeID::get<TF::FFT2DOp>(),
     TypeID::get<TF::FFT3DOp>(),
@@ -193,6 +193,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::PadOp>(),
     TypeID::get<TF::ParameterizedTruncatedNormalOp>(),
     TypeID::get<TF::PlaceholderWithDefaultOp>(),
+    TypeID::get<TF::PolygammaOp>(),
+    TypeID::get<TF::PopulationCountOp>(),
     TypeID::get<TF::PowOp>(),
     // TODO(hinsu): Canonicalize QuantizeAndDequantize and
     // QuantizeAndDequantizeV2 to QuantizeAndDequantizeV3 by converting
@@ -270,7 +272,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
     TypeID::get<TF::XlaSortOp>(),
-    TypeID::get<TF::XlaSvdOp>()
+    TypeID::get<TF::XlaSvdOp>(),
+    TypeID::get<TF::ZetaOp>()
   };
   // clang-format on
 
@@ -407,6 +410,13 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
     }
   }
 
+  for (const auto& attr : op_->getAttrs()) {
+    if (attr.second.isa<SymbolRefAttr>()) {
+      return op_->emitRemark()
+             << "ops with symbol references are not supported";
+    }
+  }
+
   auto nodedef_or = tensorflow::ConvertTFDialectOpToNodeDef(
       op_, name_mapper_.GetUniqueName(op_), /*ignore_unregistered_attrs=*/true);
   if (!nodedef_or.ok()) {
@@ -518,8 +528,8 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
     auto value = hlo_builder_.GetValue(expr->handle());
     mlir::OpResult old_result = op_->getResult(i);
     if (value.getType() != old_result.getType()) {
-      value =
-          hlo_builder_.create<mlir::TensorCastOp>(value, old_result.getType());
+      value = hlo_builder_.create<mlir::tensor::CastOp>(old_result.getType(),
+                                                        value);
     }
     values.push_back(value);
   }

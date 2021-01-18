@@ -15,7 +15,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "ragged",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["nofixdeps"],
     deps = [
         ":ragged_array_ops",
@@ -47,7 +47,7 @@ py_library(
 py_library(
     name = "ragged_array_ops",
     srcs = ["ragged_array_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_functional_ops",
         ":ragged_math_ops",
@@ -67,7 +67,7 @@ py_library(
 py_library(
     name = "ragged_batch_gather_ops",
     srcs = ["ragged_batch_gather_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_gather_ops",
         ":ragged_tensor",
@@ -84,7 +84,7 @@ py_library(
     srcs = [
         "ragged_batch_gather_with_default_op.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_array_ops",
         ":ragged_dispatch",
@@ -103,7 +103,7 @@ py_library(
 py_library(
     name = "ragged_concat_ops",
     srcs = ["ragged_concat_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_array_ops",
         ":ragged_gather_ops",
@@ -120,7 +120,7 @@ py_library(
 py_library(
     name = "ragged_conversion_ops",
     srcs = ["ragged_conversion_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_tensor",
         "//tensorflow/python:dtypes",
@@ -130,6 +130,7 @@ py_library(
 py_library(
     name = "ragged_factory_ops",
     srcs = ["ragged_factory_ops.py"],
+    srcs_version = "PY3",
     deps = [
         ":ragged_tensor",
         ":ragged_tensor_value",
@@ -146,7 +147,7 @@ py_library(
 py_library(
     name = "ragged_functional_ops",
     srcs = ["ragged_functional_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_config",
         ":ragged_tensor",
@@ -161,7 +162,7 @@ py_library(
 py_library(
     name = "ragged_gather_ops",
     srcs = ["ragged_gather_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_array_ops",
         ":ragged_tensor",
@@ -177,7 +178,7 @@ py_library(
 py_library(
     name = "ragged_getitem",
     srcs = ["ragged_getitem.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_gather_ops",
         ":ragged_math_ops",
@@ -193,7 +194,7 @@ py_library(
 py_library(
     name = "ragged_math_ops",
     srcs = ["ragged_math_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_functional_ops",
         ":ragged_tensor",
@@ -214,7 +215,7 @@ py_library(
 py_library(
     name = "ragged_operators",
     srcs = ["ragged_operators.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_getitem",
         ":ragged_tensor",
@@ -226,7 +227,7 @@ py_library(
 py_library(
     name = "ragged_ops",
     srcs = ["ragged_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
@@ -255,7 +256,7 @@ py_library(
 py_library(
     name = "ragged_string_ops",
     srcs = ["ragged_string_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_array_ops",
         ":ragged_math_ops",
@@ -271,7 +272,7 @@ py_library(
 py_library(
     name = "ragged_squeeze_op",
     srcs = ["ragged_squeeze_op.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_tensor",
         ":ragged_util",
@@ -287,13 +288,13 @@ py_library(
 py_library(
     name = "ragged_config",
     srcs = ["ragged_config.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "row_partition",
     srcs = ["row_partition.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":segment_id_ops",
         "//tensorflow/python:array_ops",
@@ -315,7 +316,7 @@ py_library(
 py_library(
     name = "ragged_tensor",
     srcs = ["ragged_tensor.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_config",
         ":ragged_tensor_value",
@@ -345,7 +346,7 @@ py_library(
 py_library(
     name = "ragged_tensor_shape",
     srcs = ["ragged_tensor_shape.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_array_ops",
         ":ragged_config",
@@ -365,7 +366,7 @@ py_library(
 py_library(
     name = "ragged_tensor_value",
     srcs = ["ragged_tensor_value.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//third_party/py/numpy",
@@ -375,7 +376,7 @@ py_library(
 py_library(
     name = "ragged_util",
     srcs = ["ragged_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -389,7 +390,7 @@ py_library(
 py_library(
     name = "ragged_where_op",
     srcs = ["ragged_where_op.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_concat_ops",
         ":ragged_functional_ops",
@@ -404,7 +405,7 @@ py_library(
 py_library(
     name = "segment_id_ops",
     srcs = ["segment_id_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_util",
         "//tensorflow/python:array_ops",
@@ -421,7 +422,7 @@ py_library(
 py_library(
     name = "ragged_map_ops",
     srcs = ["ragged_map_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_config",
         ":ragged_tensor",
@@ -444,7 +445,7 @@ py_library(
 py_library(
     name = "ragged_dispatch",
     srcs = ["ragged_dispatch.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
@@ -474,7 +475,7 @@ py_library(
 py_library(
     name = "ragged_tensor_test_ops",
     srcs = ["ragged_tensor_test_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bitwise_ops",
@@ -1104,7 +1105,6 @@ py_test(
     srcs = ["ragged_map_fn_op_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",

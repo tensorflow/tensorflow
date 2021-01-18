@@ -24,15 +24,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-namespace xla {
+namespace jax {
 
 // Describes the abstract shape and dtype of an argument.
 struct ArgSignature {
-  ArgSignature(PrimitiveType dtype, absl::Span<const int64> shape,
+  ArgSignature(xla::PrimitiveType dtype, absl::Span<const int64> shape,
                bool weak_type)
       : dtype(dtype), shape(shape.begin(), shape.end()), weak_type(weak_type) {}
   // This is the XLA dtype of the object.
-  const PrimitiveType dtype;
+  const xla::PrimitiveType dtype;
   const absl::InlinedVector<int64, 4> shape;
   // JAX arguments can be of weak type, if and only if they are Python scalars
   // or `DeviceArray` values such that `aval.weak_type` is true.
@@ -66,7 +66,7 @@ struct CallSignature {
     // To avoid comparing strings, we intern the kwargs strings.
     // The compilation cache holds a reference to all the keys.
     pybind11::handle key;
-    PyTreeDef value_treedef;
+    xla::PyTreeDef value_treedef;
     bool operator==(const KwargEntry& other) const {
       return key.ptr() == other.key.ptr() &&
              value_treedef == other.value_treedef;
@@ -78,13 +78,13 @@ struct CallSignature {
   // order of their argnum index.
   std::vector<pybind11::object> static_args;
   // A PyTreeDef for each positional dynamic (i.e. not static) argument.
-  std::vector<PyTreeDef> dynamic_positional_args_treedef;
+  std::vector<xla::PyTreeDef> dynamic_positional_args_treedef;
   // Keyword arguments. Sorted by the keyword name.
   std::vector<KwargEntry> keyword_args;
   // Shape and dtype for both the dynamic positional arguments and the keyword
   // arguments (sorted by keyword name).
   std::vector<ArgSignature> dynamic_args_signatures;
-  PjRtDevice* device;
+  xla::PjRtDevice* device;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
@@ -132,23 +132,28 @@ struct ParsedArgumentsAsBuffers {
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
-Status ParseArguments(const pybind11::args& args,
-                      const pybind11::kwargs& py_kwargs,
-                      absl::Span<int const> static_argnums,
-                      ParsedArgumentsAsBuffers& arguments);
+xla::Status ParseArguments(const pybind11::args& args,
+                           const pybind11::kwargs& py_kwargs,
+                           absl::Span<int const> static_argnums,
+                           ParsedArgumentsAsBuffers& arguments);
 
 struct DevicePutResult {
-  explicit DevicePutResult(PjRtBuffer* b, bool weak_type)
+  explicit DevicePutResult(xla::PjRtBuffer* b, bool weak_type)
       : buffer(b), weak_type(weak_type), owned_buffer(nullptr) {}
-  DevicePutResult(std::unique_ptr<PjRtBuffer> new_buffer, bool weak_type)
+  DevicePutResult(std::unique_ptr<xla::PjRtBuffer> new_buffer, bool weak_type)
       : buffer(new_buffer.get()),
         weak_type(weak_type),
         owned_buffer(std::move(new_buffer)) {}
 
-  PjRtBuffer* buffer;
+  xla::PjRtBuffer* buffer;
   bool weak_type;
-  std::unique_ptr<PjRtBuffer> owned_buffer;
+  std::unique_ptr<xla::PjRtBuffer> owned_buffer;
 };
+
+// Returns the ArgSignature associated with an argument. Returns an error if
+// the argument is not supported.
+xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
+                                                bool jax_enable_x64);
 
 // Moves a device-like object to be on device.
 // - If the object is already on device, `owned_buffer` will be nullptr.
@@ -156,15 +161,17 @@ struct DevicePutResult {
 //   `owned_buffer`.
 // In all cases, `buffer` will point to the already existing or newly created
 // buffer.
-// If `obj` is not convertible to a `PjRtBuffer` from C++, an error will be
+// If `obj` is not convertible to a `xla::PjRtBuffer` from C++, an error will be
 // returned; float0 dtype and `_DeviceArray` with non-trivial LazyExpr are not
 // supported yet.
-StatusOr<DevicePutResult> DevicePut(pybind11::handle obj, PjRtDevice* to_device,
-                                    bool jax_enable_x64, PyClient& pyclient);
+xla::StatusOr<DevicePutResult> DevicePut(pybind11::handle arg,
+                                         xla::PjRtDevice* to_device,
+                                         bool jax_enable_x64,
+                                         xla::PyClient& pyclient);
 
 // The function to call in `xla.cc` to add the bindings for this module.
 void BuildJaxjitSubmodule(pybind11::module& m);
 
-}  // namespace xla
+}  // namespace jax
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_

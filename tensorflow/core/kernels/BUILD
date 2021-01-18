@@ -16,8 +16,8 @@ load(
 )
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
+    "if_mlir_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
-    "if_mlir_unranked_kernels_enabled",
 )
 
 # buildifier: disable=same-origin-load
@@ -3347,7 +3347,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_op",
     copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]) +
-            if_mlir_unranked_kernels_enabled(if_true = ["-DMLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED=1"]),
+            if_mlir_experimental_kernels_enabled(if_true = ["-DMLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
     deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
 )
@@ -3551,6 +3551,7 @@ tf_cuda_cc_test(
         ":ops_util",
         ":quantized_ops",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:client_session",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -4442,6 +4443,16 @@ tf_kernel_library(
         "//tensorflow/core/framework:bounds_check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
+    ],
+)
+
+tf_kernel_library(
+    name = "stateless_random_gamma_op",
+    prefix = "stateless_random_gamma_op",
+    deps = [
+        ":stateless_random_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -5787,7 +5798,6 @@ filegroup(
         "gather_functor_batched.h",
         "gather_nd_op.cc",
         "gather_nd_op.h",
-        "gather_nd_op_cpu_impl.h",
         "gather_nd_op_cpu_impl_0.cc",
         "gather_nd_op_cpu_impl_1.cc",
         "gather_nd_op_cpu_impl_2.cc",
@@ -5824,7 +5834,6 @@ filegroup(
         "shape_ops.h",
         "slice_op.cc",
         "slice_op.h",
-        "slice_op_cpu_impl.h",
         "slice_op_cpu_impl_1.cc",
         "slice_op_cpu_impl_2.cc",
         "slice_op_cpu_impl_3.cc",
@@ -5841,7 +5850,6 @@ filegroup(
         "split_v_op.cc",
         "strided_slice_op.cc",
         "strided_slice_op.h",
-        "strided_slice_op_impl.h",
         "strided_slice_op_inst_0.cc",
         "strided_slice_op_inst_1.cc",
         "strided_slice_op_inst_2.cc",
@@ -5899,7 +5907,6 @@ filegroup(
         "dilation_ops.h",
         "fake_quant_ops_functor.h",
         "fused_batch_norm_op.h",
-        "gemm_functors.h",
         "initializable_lookup_table.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
@@ -5907,6 +5914,7 @@ filegroup(
         "lookup_table_op.h",
         "lookup_util.h",
         "list_kernels.h",
+        "map_kernels.h",
         "maxpooling_op.h",
         "mfcc.h",
         "mfcc_dct.h",
@@ -5926,7 +5934,6 @@ filegroup(
         "save_restore_tensor.h",
         "scan_ops.h",
         "scatter_nd_op.h",
-        "scatter_nd_op_cpu_impl.h",
         "segment_reduction_ops.h",
         "segment_reduction_ops_impl.h",
         "softplus_op.h",
@@ -5934,15 +5941,17 @@ filegroup(
         "spacetobatch_functor.h",
         "spacetodepth_op.h",
         "spectrogram.h",
+        "stateless_random_gamma_op.h",
         "stateless_random_ops.h",
         "stateless_random_ops_v2.h",
+        "sparse_fill_empty_rows_op.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
         "string_to_hash_bucket_fast_op.h",
         "tensor_array.h",
         "tensor_list.h",
+        "tensor_map.h",
         "tile_functor.h",
-        "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
         "topk_op.h",
         "training_op_helpers.h",
@@ -6003,6 +6012,7 @@ filegroup(
         "cwise_op_add_1.cc",
         "cwise_op_add_2.cc",
         "cwise_op_atan.cc",
+        "cwise_op_atan2.cc",
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
@@ -6131,6 +6141,7 @@ filegroup(
         "lookup_table_op.cc",
         "lookup_util.cc",
         "lrn_op.cc",
+        "map_kernels.cc",
         "maxpooling_op.cc",
         "mfcc.cc",
         "mfcc_dct.cc",
@@ -6187,6 +6198,7 @@ filegroup(
         "segment_reduction_ops_impl_4.cc",
         "segment_reduction_ops_impl_5.cc",
         "session_ops.cc",
+        "set_kernels.cc",
         "softplus_op.cc",
         "softsign_op.cc",
         "spacetobatch_functor.cc",
@@ -6201,6 +6213,7 @@ filegroup(
         "stack.cc",
         "stack.h",
         "stack_ops.cc",
+        "stateless_random_gamma_op.cc",
         "stateless_random_ops.cc",
         "stateless_random_ops_v2.cc",
         "string_join_op.cc",
@@ -6215,6 +6228,7 @@ filegroup(
         "tensor_array.cc",
         "tensor_array_ops.cc",
         "tensor_list.cc",
+        "tensor_map.cc",
         "tile_functor_cpu.h",
         "tile_functor_cpu_bfloat16.cc",
         "tile_functor_cpu_bool.cc",
@@ -6357,7 +6371,6 @@ filegroup(
             "remote_fused_graph_execute_op.*",
             "remote_fused_graph_rewriter_transform.*",
             "fixed_length_record_reader_op.*",
-            "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
             "summary_interface.*",
@@ -6415,6 +6428,8 @@ cc_library(
         "manual",
         "notap",
     ],
+    # These headers are not self-contained, so should be included in textual_hdrs only.
+    textual_hdrs = ANDROID_TEXTUAL_HDRS,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:portable_gif_internal",

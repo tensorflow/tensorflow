@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
@@ -568,7 +570,21 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
     done->store(true);
   });
 
-  OP_REQUIRES_OK(ctx, ComputeInternal(ctx));
+  Status compile_status = ComputeInternal(ctx);
+  string status_payload;
+  // Construct payload if compile_status is not ok and there's no payload for
+  // compilation yet.
+  if (!compile_status.ok() &&
+      compile_status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+          .empty()) {
+    tpu::CompilationResultProto proto;
+    proto.set_status_code(compile_status.code());
+    proto.set_status_error_message(compile_status.error_message());
+    status_payload = proto.SerializeAsString();
+  }
+  OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
+                                TpuCompileInterface::kTpuCompileErrorPayloadKey,
+                                status_payload, compile_status);
 }
 
 Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
@@ -788,6 +804,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     }
     SerializeToTString(proto, &output.scalar<tstring>()());
     ctx->set_output(0, output);
+    status.SetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey,
+                      output.scalar<tstring>()());
   }
 
   if (status.ok()) {
@@ -841,7 +859,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
       }
     }
   }
-  return Status::OK();
+  return status;
 }
 }  // namespace tpu
 }  // namespace tensorflow

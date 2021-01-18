@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -58,6 +60,27 @@ void AddCanonicalizationPatterns(MLIRContext* context,
                                  OwningRewritePatternList* patterns) {
   for (auto* op : context->getRegisteredOperations())
     op->getCanonicalizationPatterns(*patterns, context);
+}
+
+// Adds the list of ops that are supported on TPU through constant folding which
+// may depend on the inputs shapes not known at this point. Such ops may not
+// have any legalization or canonicalization patterns but shouldn't be marked
+// for outside compilation.
+//
+// TODO(b/177523289): Remove manual handling once we support constant folding
+// and shape inference through the computation on the host side.
+void AddSupportedOpsUsingFolding(MLIRContext* context,
+                                 llvm::DenseSet<OperationName>* supported_ops) {
+  llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
+      OperationName(TF::BroadcastArgsOp::getOperationName(), context),
+      OperationName(TF::BroadcastGradientArgsOp::getOperationName(), context),
+      OperationName(TF::ConcatOffsetOp::getOperationName(), context),
+      OperationName(TF::EmptyOp::getOperationName(), context),
+      OperationName(TF::ListDiffOp::getOperationName(), context),
+      OperationName(TF::RangeOp::getOperationName(), context),
+  };
+
+  supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
 }
 
 // TODO(b/159128666): Check the control flow legalization passes instead once
@@ -198,6 +221,9 @@ LogicalResult MarkUncompilableOps(
   int outside_compiled_cluster_counter = 0;
   block->walk([&](Operation* op) {
     if (!IsSupportedOp(*op, supported_ops, tf_dialect)) {
+      VLOG(3) << "Cloud TPU: Op " << op->getName().getStringRef().str()
+              << " isn't compilable, adding outside_compilation attr. "
+                 "This op will automatically be placed on CPU.";
       op->setAttr(
           kXlaOutsideCompilationAttr,
           StringAttr::get(
@@ -254,6 +280,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
         if (root_kind.hasValue()) supported_ops.insert(root_kind.getValue());
       });
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
+  AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
   AddRewrittenCompositeOps(module.getContext(), &supported_ops);
 

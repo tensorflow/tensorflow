@@ -158,6 +158,48 @@ bool VerifyModel(const void* buf, size_t len) {
   return tflite::VerifyModelBuffer(verifier);
 }
 
+// Helper method that fetches the tensor index based on SignatureDef details
+// from either inputs or outputs.
+// Returns -1 if invalid names are passed.
+int GetTensorIndexForSignature(JNIEnv* env, jstring signature_tensor_name,
+                               jstring method_name,
+                               tflite::Interpreter* interpreter,
+                               bool is_input) {
+  // Fetch name strings.
+  const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
+  const char* signature_input_name_ptr =
+      env->GetStringUTFChars(signature_tensor_name, nullptr);
+  // Lookup if the input is valid.
+  const auto& signature_list =
+      (is_input ? interpreter->signature_inputs(method_name_ptr)
+                : interpreter->signature_outputs(method_name_ptr));
+  const auto& tensor = signature_list.find(signature_input_name_ptr);
+  // Release the memory before returning.
+  env->ReleaseStringUTFChars(method_name, method_name_ptr);
+  env->ReleaseStringUTFChars(signature_tensor_name, signature_input_name_ptr);
+  return tensor == signature_list.end() ? -1 : tensor->second;
+}
+
+jobjectArray GetSignatureInputsOutputsList(
+    const std::map<std::string, uint32_t>& input_output_list, JNIEnv* env) {
+  jclass string_class = env->FindClass("java/lang/String");
+  if (string_class == nullptr) {
+    ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                   "Internal error: Can not find java/lang/String class to get "
+                   "SignatureDef names.");
+    return nullptr;
+  }
+
+  jobjectArray names = env->NewObjectArray(input_output_list.size(),
+                                           string_class, env->NewStringUTF(""));
+  int i = 0;
+  for (const auto& input : input_output_list) {
+    env->SetObjectArrayElement(names, i++,
+                               env->NewStringUTF(input.first.c_str()));
+  }
+  return names;
+}
+
 }  // namespace
 
 extern "C" {
@@ -224,6 +266,74 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_hasUnresolvedFlexOp(
     }
   }
   return JNI_FALSE;
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureDefNames(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return nullptr;
+  jclass string_class = env->FindClass("java/lang/String");
+  if (string_class == nullptr) {
+    ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                   "Internal error: Can not find java/lang/String class to get "
+                   "SignatureDef names.");
+    return nullptr;
+  }
+  const auto& signature_defs = interpreter->signature_def_names();
+  jobjectArray names = static_cast<jobjectArray>(env->NewObjectArray(
+      signature_defs.size(), string_class, env->NewStringUTF("")));
+  for (int i = 0; i < signature_defs.size(); ++i) {
+    env->SetObjectArrayElement(names, i,
+                               env->NewStringUTF(signature_defs[i]->c_str()));
+  }
+  return names;
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureInputs(
+    JNIEnv* env, jclass clazz, jlong handle, jstring method_name) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return nullptr;
+  const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
+  const jobjectArray signature_inputs = GetSignatureInputsOutputsList(
+      interpreter->signature_inputs(method_name_ptr), env);
+  // Release the memory before returning.
+  env->ReleaseStringUTFChars(method_name, method_name_ptr);
+  return signature_inputs;
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureOutputs(
+    JNIEnv* env, jclass clazz, jlong handle, jstring method_name) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return nullptr;
+  const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
+  const jobjectArray signature_outputs = GetSignatureInputsOutputsList(
+      interpreter->signature_outputs(method_name_ptr), env);
+  // Release the memory before returning.
+  env->ReleaseStringUTFChars(method_name, method_name_ptr);
+  return signature_outputs;
+}
+
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndexFromSignature(
+    JNIEnv* env, jclass clazz, jlong handle, jstring signature_input_name,
+    jstring method_name) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return -1;
+  return GetTensorIndexForSignature(env, signature_input_name, method_name,
+                                    interpreter, /*is_input=*/true);
+}
+
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndexFromSignature(
+    JNIEnv* env, jclass clazz, jlong handle, jstring signature_output_name,
+    jstring method_name) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return -1;
+  return GetTensorIndexForSignature(env, signature_output_name, method_name,
+                                    interpreter, /*is_input=*/false);
 }
 
 JNIEXPORT jint JNICALL
