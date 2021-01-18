@@ -385,6 +385,7 @@ gen_kernel_library(
     name = "erf",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
     ],
     unroll_factors = "4",
