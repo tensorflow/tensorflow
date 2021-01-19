@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -120,6 +121,10 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #endif  // GOOGLE_CUDA
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -1111,7 +1116,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     if (call.call_target_name() == "SliceToDynamic") {
       return EmitSliceToDynamicFromMlir(input);
     }
-    return ThunkEmitter(this).HandleCustomCall(custom_call);
+    return EmitCustomCallThunkFromMlir(input);
   }
 
   if (isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(input.op)) {
@@ -1566,6 +1571,39 @@ Status IrEmitterUnnested::EmitCholeskyThunkFromMlir(MlirEmitterInput input) {
   return Status::OK();
 }
 #endif  // GOOGLE_CUDA
+
+Status IrEmitterUnnested::EmitCustomCallThunkFromMlir(MlirEmitterInput input) {
+  auto custom_call = ::mlir::cast<mlir::lmhlo::CustomCallOp>(input.op);
+  const std::string call_target_name = custom_call.call_target_name().str();
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      call_target_name, std::string(platform_name()));
+  if (call_target) {
+    std::vector<BufferAllocation::Slice> operands;
+    for (mlir::Value arg : custom_call.args()) {
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+                          GetAllocationSliceForMlir(arg));
+      operands.push_back(arg_slice);
+    }
+
+    std::vector<BufferAllocation::Slice> results;
+    for (mlir::Value output : custom_call.output()) {
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                          GetAllocationSliceForMlir(output));
+      results.push_back(output_slice);
+    }
+
+    AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
+        input.thunk_info, call_target, std::move(operands), std::move(results),
+        custom_call.backend_config().str()));
+    return Status::OK();
+  }
+#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+  return Unimplemented("No registered implementation for custom call to \"%s\"",
+                       call_target_name);
+}
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
   return ThunkEmitter(this).HandleFft(fft);
