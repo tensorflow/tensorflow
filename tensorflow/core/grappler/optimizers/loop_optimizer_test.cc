@@ -841,25 +841,29 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
       EXPECT_EQ(node.input(0), "id3");
       EXPECT_EQ(node.input(1), "id4");
     } else if (node.name() == "switch1") {
-      // The node can be replaced by Identity
+      // The node can be replaced by Identity with control_dependency
       EXPECT_EQ(node.op(), "Identity");
-      ASSERT_EQ(node.input_size(), 1);
+      ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "v_in");
+      EXPECT_EQ(node.input(1), "^ctrl1");
     } else if (node.name() == "switch2") {
-      // The node can be replaced by Identity
+      // The node can be replaced by Identity with control_dependency
       EXPECT_EQ(node.op(), "Identity");
-      ASSERT_EQ(node.input_size(), 1);
+      ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "v_in");
+      EXPECT_EQ(node.input(1), "^ctrl2");
     } else if (node.name() == "switch3") {
-      // The node can be replaced by Identity
+      // The node can be replaced by Identity with control_dependency
       EXPECT_EQ(node.op(), "Identity");
-      ASSERT_EQ(node.input_size(), 1);
+      ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "v_in");
+      EXPECT_EQ(node.input(1), "^ctrl3");
     } else if (node.name() == "switch4") {
-      // The node can be replaced by Identity
+      // The node can be replaced by Identity with control_dependency
       EXPECT_EQ(node.op(), "Identity");
-      ASSERT_EQ(node.input_size(), 1);
+      ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "v_in");
+      EXPECT_EQ(node.input(1), "^ctrl4");
     } else if (node.name() == "switch5") {
       // The node should remain unchanged
       EXPECT_EQ(node.op(), "Switch");
@@ -926,8 +930,9 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition2) {
       EXPECT_EQ(node.input(0), "sub1");
     } else if (node.name() == "switch1") {
       EXPECT_EQ(node.op(), "Identity");
-      ASSERT_EQ(node.input_size(), 1);
+      ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "v_in");
+      EXPECT_EQ(node.input(1), "^ctrl1");
     }
   }
 }

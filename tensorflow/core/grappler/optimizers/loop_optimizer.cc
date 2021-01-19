@@ -759,9 +759,8 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 }
 
 Status LoopOptimizer::RemoveDeadBranches(
-    const std::unordered_set<string>& nodes_to_preserve,
-    const NodeMap& node_map, const absl::flat_hash_set<string>& feed_nodes,
-    GraphDef* optimized_graph) {
+    const std::unordered_set<string>& nodes_to_preserve, NodeMap& node_map,
+    const absl::flat_hash_set<string>& feed_nodes, GraphDef* optimized_graph) {
   std::unordered_set<const NodeDef*> dead_nodes;
   std::unordered_map<NodeDef*, std::set<int>> dead_merge_inputs;
   absl::flat_hash_set<GraphView::OutputPort> identity_switches;
@@ -945,9 +944,12 @@ Status LoopOptimizer::RemoveDeadBranches(
     NodeDef* sw_node = const_cast<NodeDef*>((id_switch.node));
     int dead_port_id = id_switch.port_id;
 
-    // Switch nodes where predicate are not known constants are not optimized.
+    // Switch node where pred is not a constant, is not optimized.
     // TODO(intel-tf): For that case, enable optimization only if safe.
-    if (IsReallyConstant(*node_map.GetNode(sw_node->input(1)), feed_nodes)) {
+    // TODO(intel-tf): need to check for RefSwitch and replace RefSwitch with
+    // RefIdentity
+    NodeDef* pred = node_map.GetNode(sw_node->input(1));
+    if (IsReallyConstant(*pred, feed_nodes) && sw_node->op() == "Switch") {
       // From the dead_port_id, get the live port id, so we can correct
       // input names of consumers. When switch will be replaced with Identity,
       // it will have only 1 output versus 2 outputs of a Switch node
@@ -959,19 +961,25 @@ Status LoopOptimizer::RemoveDeadBranches(
 
       // Get consumers of live port and update the input names
       auto consumers = node_map.GetOutputs(sw_node->name());
-
       for (auto* consumer : consumers) {
         for (int i = 0; i < consumer->input_size(); ++i) {
           if (consumer->input(i) == live_output_name) {
             consumer->set_input(i, sw_node->name());
+            node_map.UpdateInput(consumer->name(), live_output_name,
+                                 sw_node->name());
           }
         }
       }
 
       VLOG(3) << "Switch node before cleanup: " << sw_node->DebugString();
-      // remove input[1] and change node from switch to identity
+      // change node from Switch to Identity and add a control dependency to
+      // this Identity op
       auto* inputs = sw_node->mutable_input();
-      inputs->RemoveLast();
+
+      const string ctrl_dep = ConstantFolding::AddControlDependency(
+          pred->name(), optimized_graph, &node_map);
+      node_map.UpdateInput(sw_node->name(), pred->name(), ctrl_dep);
+      sw_node->set_input(1, ctrl_dep);
       sw_node->set_op("Identity");
       VLOG(3) << "Switch node after cleanup: " << sw_node->DebugString();
     }
