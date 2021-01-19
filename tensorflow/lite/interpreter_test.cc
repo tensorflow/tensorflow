@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -37,45 +38,13 @@ limitations under the License.
 
 namespace tflite {
 
-// InterpreterTest is a friend of Interpreter, so it can access context_.
-class InterpreterTest : public ::testing::Test {
- public:
-  template <typename Delegate>
-  static TfLiteStatus ModifyGraphWithDelegate(
-      Interpreter* interpreter, std::unique_ptr<Delegate> delegate) {
-    return interpreter->ModifyGraphWithDelegate(std::move(delegate));
-  }
-
- protected:
-  TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
-
-  std::vector<Interpreter::TfLiteDelegatePtr>*
-  mutable_lazy_delegate_providers() {
-    return &interpreter_.lazy_delegate_providers_;
-  }
-
-  bool HasDelegates() { return interpreter_.HasDelegates(); }
-
-  void BuildSignature(const std::string& method_name, const std::string& key,
-                      const std::map<std::string, uint32_t>& inputs,
-                      const std::map<std::string, uint32_t>& outputs) {
-    Interpreter::SignatureDef signature;
-    signature.inputs = inputs;
-    signature.outputs = outputs;
-    signature.method_name = method_name;
-    signature.signature_def_key = key;
-    interpreter_.SetSignatureDef({signature});
-  }
-
-  Interpreter interpreter_;
-};
-
 namespace ops {
 namespace builtin {
 TfLiteRegistration* Register_PADV2();
 TfLiteRegistration* Register_NEG();
 }  // namespace builtin
 }  // namespace ops
+
 namespace {
 
 using ::testing::IsEmpty;
