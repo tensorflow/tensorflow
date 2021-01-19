@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/status.h"
@@ -448,7 +449,7 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
       TF_ASSIGN_OR_RETURN(auto dtype,
                           xla::DtypeToPrimitiveType(aval.attr("dtype")));
       return ArgSignature(dtype,
-                          py::cast<std::vector<int64>>(aval.attr("shape")),
+                          py::cast<std::vector<xla::int64>>(aval.attr("shape")),
                           py::cast<py::bool_>(aval.attr("weak_type")));
     };
     // ShardedDeviceArray is covered by the MRO fallback on _DeviceArray.
@@ -473,19 +474,21 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
           TF_ASSIGN_OR_RETURN(dtype, xla::DtypeToPrimitiveType(raw_dtype));
         }
         // We need the reinterpret_cast for the OSS version to build.
-        return ArgSignature(dtype,
-                            absl::MakeConstSpan(reinterpret_cast<const int64*>(
-                                                    numpy_array.shape()),
-                                                numpy_array.ndim()),
-                            /*weak_type=*/false);
+        return ArgSignature(
+            dtype,
+            absl::MakeConstSpan(
+                reinterpret_cast<const xla::int64*>(numpy_array.shape()),
+                numpy_array.ndim()),
+            /*weak_type=*/false);
       }
       TF_ASSIGN_OR_RETURN(auto dtype,
                           xla::DtypeToPrimitiveType(numpy_array.dtype()));
-      return ArgSignature(dtype,
-                          absl::MakeConstSpan(reinterpret_cast<const int64*>(
-                                                  numpy_array.shape()),
-                                              numpy_array.ndim()),
-                          /*weak_type=*/false);
+      return ArgSignature(
+          dtype,
+          absl::MakeConstSpan(
+              reinterpret_cast<const xla::int64*>(numpy_array.shape()),
+              numpy_array.ndim()),
+          /*weak_type=*/false);
     };
     const auto numpy = py::module::import("numpy");
     const auto& ndarray = numpy.attr("ndarray");
@@ -574,7 +577,7 @@ DevicePutResult HandleBool(py::handle h, xla::PjRtDevice* to_device,
 DevicePutResult HandleInt(py::handle obj, xla::PjRtDevice* to_device,
                           bool jax_enable_x64, xla::PyClient& pyclient) {
   if (jax_enable_x64) {
-    return DevicePutResult(ConvertToScalarBuffer<int64, py::int_>(
+    return DevicePutResult(ConvertToScalarBuffer<xla::int64, py::int_>(
                                obj, pyclient.pjrt_client(), to_device),
                            /*weak_type=*/true);
   } else {
@@ -671,7 +674,7 @@ DevicePutResult HandleBufferFromPyval(py::handle h, xla::PjRtDevice* to_device,
 DevicePutResult HandleNpBool(py::handle h, xla::PjRtDevice* to_device,
                              bool jax_enable_x64, xla::PyClient& pyclient) {
   if (jax_enable_x64) {
-    return DevicePutResult(ConvertToScalarBuffer<int64, py::int_>(
+    return DevicePutResult(ConvertToScalarBuffer<xla::int64, py::int_>(
                                h, pyclient.pjrt_client(), to_device),
                            /*weak_type=*/false);
   } else {
