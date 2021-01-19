@@ -742,9 +742,7 @@ tf_cuda_cc_test(
         "c_api_test.cc",
     ],
     tags = [
-        "noguitar",  # TODO(b/155445984): flaky
-        #"guitar",
-        "notap",  # TODO(b/156981931): flaky
+        "guitar",
         "multi_gpu",
     ],
     deps = [
