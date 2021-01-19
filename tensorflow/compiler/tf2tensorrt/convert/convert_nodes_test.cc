@@ -7027,66 +7027,22 @@ NodeDef MakePadNodeDef(std::string name, DataType dtype) {
   return pad.operation.node()->def();
 }
 
-template <typename CType>
 struct PadTestParams {
   std::vector<int> input_dims;
   std::vector<int> pad_dims;
-  std::vector<CType> input_values;
+  std::vector<int> pad_values;
+  std::vector<float> input_values;
   std::vector<int> expected_output_dims;
-  std::vector<CType> expected_output_values;
+  std::vector<float> expected_output_values;
+  Status status;
 };
 
-template <DataType dtype>
-void TestConvertPad(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
-
-  std::vector<PadTestParams<CType>> params{
-      {
-          /*input_dims=*/{1, 2, 1},  // H, W, C
-          /*pad_dims=*/{4, 2},       // #dims, {pad_before, pad_after}
-          /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
-          /*expected_output_dims=*/{2, 3, 1},  // H, W, C
-          /*expected_output_values=*/
-          CastTestVector<float, CType>({0.0, 0.0, 0.0, 2.0f, -1.0f, 0.0}),
-      },
-  };
-
-  for (int i = 0; i < params.size(); ++i) {
-    test->Reset();
-    // Create pad node.
-    NodeDef node_def = MakePadNodeDef("my_pad", dtype);
-    // Create input tensor
-    nvinfer1::DataType trt_type;
-    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
-    test->AddTestTensor("input", params[i].input_dims, /*batch_size=*/1,
-                        /*trt_dtype=*/trt_type);
-    // Create output size.
-    test->AddTestWeights<int32>("padding", params[i].pad_dims,
-                                {0, 0, 1, 0, 0, 1, 0, 0});
-    test->RunValidationAndConversion(node_def);
-
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(test->GetTensorOrWeights("padding", &output));
-
-    // Create input data for tensors.
-    const DataVec input_data{
-        {"input", test->AsTensor<CType>(params[i].input_values)}};
-    DataVec output_data{
-        {"my_pad", test->ConstructTensor<CType>(
-                       params[i].expected_output_values.size())}};
-
-    TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
-    ExpectArrayAlmostEqual(params[i].expected_output_values,
-                           GetSpanForData<CType>(output_data[0]), CType(1e-5));
-  }
-}
-
-TEST_F(OpConverterTest, ConvertPad) {
+TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
   {
     // First input is weight, should fail.
     Reset();
-    NodeDef node_def = MakePadNodeDef("my_pad", DT_FLOAT);
-    AddTestWeights<float>("input", {1, 2}, {1, 2});
+    NodeDef node_def = MakePadNodeDef("my_pad", tf_type_);
+    AddTestWeights("input", {1, 2}, {1, 2}, tf_type_);
     AddTestWeights<int>("padding", {1, 2}, {1, 2});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"tensor\" for Pad must be a "
@@ -7095,20 +7051,18 @@ TEST_F(OpConverterTest, ConvertPad) {
   {
     // padding is a tensor, should fail.
     Reset();
-    NodeDef node_def = MakePadNodeDef("my_pad", DT_FLOAT);
+    NodeDef node_def = MakePadNodeDef("my_pad", tf_type_);
     AddTestTensor("input", {1, 2});
     AddTestTensor("padding", {1, 2});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"paddings\" for Pad must be a "
                                "constant");
   }
-  TestConvertPad<DT_FLOAT>(this);
-  TestConvertPad<DT_HALF>(this);
   {
     // Make sure that ranges are inferred across a Pad.
     Reset();
-    NodeDef node_def = MakePadNodeDef("my_pad", DT_FLOAT);
-    AddTestTensor("input", {1, 2, 1});
+    NodeDef node_def = MakePadNodeDef("my_pad", tf_type_);
+    AddTestTensor("input", {1, 1, 2, 1});
     AddTestWeights<int>("padding", {4, 2}, {0, 0, 1, 0, 0, 1, 0, 0});
     TRT_TensorOrWeights input;
     TRT_TensorOrWeights output;
@@ -7122,8 +7076,117 @@ TEST_F(OpConverterTest, ConvertPad) {
     EXPECT_EQ(5.0f, ranges[input.tensor()]);
     EXPECT_EQ(5.0f, ranges[output.tensor()]);
   }
-}
 
+  std::vector<PadTestParams> params{
+      // 1 padding dim
+      {
+          /*input_dims=*/{1, 1, 3, 2},  // N, H, W, C
+          /*pad_dims=*/{4, 2},          // #dims, {pad_before, pad_after}
+          /*pad_values*/ {0, 0, 0, 0, 0, 1, 0, 0},
+          /*input_values=*/{1, 2, 3, 4, 5, 6},
+          /*expected_output_dims=*/{1, 1, 4, 2},  // N, H, W, C
+          /*expected_output_values=*/
+          {1, 2, 3, 4, 5, 6, 0, 0},
+      },
+      {
+          /*input_dims=*/{1, 1, 3, 2},  // N, H, W, C
+          /*pad_dims=*/{4, 2},          // #dims, {pad_before, pad_after}
+          /*pad_values*/ {0, 0, 0, 0, 0, 0, 0, 1},
+          /*input_values=*/{1, 2, 3, 4, 5, 6},
+          /*expected_output_dims=*/{1, 1, 3, 3},  // N, H, W, C
+          /*expected_output_values=*/
+          {1, 2, 0, 3, 4, 0, 5, 6, 0},
+      },
+      {
+          /*input_dims=*/{1, 1, 3, 2},  // N, H, W, C
+          /*pad_dims=*/{4, 2},          // #dims, {pad_before, pad_after}
+          /*pad_values*/ {0, 0, 1, 0, 0, 0, 0, 0},
+          /*input_values=*/{1, 2, 3, 4, 5, 6},
+          /*expected_output_dims=*/{1, 2, 3, 2},  // N, H, W, C
+          /*expected_output_values=*/
+          {0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6},
+      },
+      // 2 padding dims
+      {
+          /*input_dims=*/{1, 1, 2, 1},  // N, H, W, C
+          /*pad_dims=*/{4, 2},          // #dims, {pad_before, pad_after}
+          /*pad_values*/ {0, 0, 1, 0, 0, 1, 0, 0},
+          /*input_values=*/{2.0f, -1.0f},
+          /*expected_output_dims=*/{1, 2, 3, 1},  // N, H, W, C
+          /*expected_output_values=*/
+          {0.0, 0.0, 0.0, 2.0f, -1.0f, 0.0},
+      },
+      PadTestParams{
+          /*input_dims=*/{1, 1, 2, 2},  // N, H, W, C
+          /*pad_dims=*/{4, 2},          // #dims, {pad_before, pad_after}
+          /*pad_values*/ {0, 0, 1, 0, 0, 1, 0, 0},
+          /*input_values=*/{2, -1, 3., 4},
+          /*expected_output_dims=*/{1, 2, 3, 2},  // N, H, W, C
+          /*expected_output_values=*/
+          {0, 0, 0, 0, 0, 0, 2, -1, 3, 4, 0, 0},
+      },
+      PadTestParams{
+          /*input_dims=*/{1, 1, 2, 1, 2},  // N, C, H, W, D
+          /*pad_dims=*/{5, 2},             // #dims, {pad_before, pad_after}
+          /*pad_values*/ {0, 0, 1, 0, 0, 1, 0, 0, 0, 0},
+          /*input_values=*/{2, -1, 3., 4},
+          /*expected_output_dims=*/{1, 2, 3, 1, 2},  // N, H, W, C
+          /*expected_output_values=*/
+          {0, 0, 0, 0, 0, 0, 2, -1, 3, 4, 0, 0},
+      },
+      PadTestParams{
+          /*input_dims=*/{1, 1, 2, 1, 2},  // N, C, H, W, D
+          /*pad_dims=*/{5, 2},             // #dims, {pad_before, pad_after}
+          /*pad_values*/ {0, 0, 0, 1, 0, 0, 1, 1, 0, 0},
+          /*input_values=*/{2, -1, 3., 4},
+          /*expected_output_dims=*/{1, 2, 2, 3, 2},  // N, H, W, C
+          /*expected_output_values=*/
+          {0., 0., 2., -1., 0., 0., 0., 0., 3., 4., 0., 0.,
+           0., 0., 0., 0.,  0., 0., 0., 0., 0., 0., 0., 0},
+      },
+      PadTestParams{
+          /*input_dims=*/{1, 1, 2, 1},  // N, H, W, C
+          /*pad_dims=*/{4, 2},          // #dims, {pad_before, pad_after}
+          /*pad_values*/ {1, 0, 0, 0, 0, 1, 0, 0},
+          /*input_values=*/{2.0f, -1.0f},
+          /*expected_output_dims=*/{2, 1, 3, 1},  // N, H, W, C
+          /*expected_output_values=*/{0.0, 0.0, 0.0, 2.0f, -1.0f, 0.0},
+          trt_mode_ == TrtTestMode::kImplicitBatch
+              ? errors::InvalidArgument("Padding layer does not support "
+                                        "padding on batch dimension")
+              : Status::OK()},
+      PadTestParams{
+          /*input_dims=*/{1, 1, 2, 1},  // N, H, W, C
+          /*pad_dims=*/{4, 2},          // #dims, {pad_before, pad_after}
+          /*pad_values*/ {0, 0, 1, 0, 0, 1, 1, 1},
+          /*input_values=*/{2.0f, -1.0f},
+          /*expected_output_dims=*/{},  // N, H, W, C
+          /*expected_output_values=*/{},
+          errors::InvalidArgument("Padding layer does not support padding on "
+                                  "> 2")},
+      PadTestParams{
+          /*input_dims=*/{1, 2, 2},  // N, H, W
+          /*pad_dims=*/{3, 2},       // #dims, {pad_before, pad_after}
+          /*pad_values*/ {0, 0, 1, 0, 0, 1},
+          /*input_values=*/{2, -1, 3., 4},
+          /*expected_output_dims=*/{1, 3, 3},  // N, H, W, C
+          /*expected_output_values=*/
+          {0., 0., 0., 2., -1., 0., 3., 4., 0.},
+          errors::InvalidArgument("Convertpad requires at least 4D input, at "
+                                  "my_pad")}};
+
+  for (auto p : params) {
+    Reset();
+    // Create pad node.
+    NodeDef node_def = MakePadNodeDef("my_pad", tf_type_);
+    // Create input tensor.
+    AddTestTensor("input", p.input_dims, p.input_values);
+    // Create output size.
+    AddTestWeights<int32>("padding", p.pad_dims, p.pad_values);
+    TestOpConverter("my_pad", node_def, p.expected_output_dims, p.status,
+                    p.status, ElementsAreArray(p.expected_output_values));
+  }
+}
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
