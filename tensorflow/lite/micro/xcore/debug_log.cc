@@ -17,8 +17,10 @@ limitations under the License.
 
 #if (HAS_LIB_RTOS_SUPPORT == 1)
 #include "rtos_printf.h"
+__attribute__((weak))
 extern "C" void DebugLog(const char* s) { rtos_printf("%s", s); }
 #else
 #include <cstdio>
+__attribute__((weak))
 extern "C" void DebugLog(const char* s) { printf("%s", s); }
 #endif
