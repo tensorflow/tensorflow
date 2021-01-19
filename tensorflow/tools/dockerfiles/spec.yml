@@ -421,6 +421,7 @@ slice_sets:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=20.04
               - PYTHON=python3.7
+              - DEBIAN_FRONTEND="noninteractive"
 
     ubuntu-devel-onednn:
         - add_to_name: "-16.04-devel"

@@ -1370,4 +1370,7 @@ def trace_off():
     context.context().disable_run_metadata()
 
   if profiler:
-    _profiler.stop()
+    try:
+      _profiler.stop()
+    except _profiler.ProfilerNotRunningError:
+      pass
