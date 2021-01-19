@@ -1172,9 +1172,17 @@ bool PlaceOpsOnTPU(Node* node) {
   return true;
 }
 
+xla::OpMetadata CreateOpMetadataFromNode(const Node& node) {
+  xla::OpMetadata metadata;
+  metadata.set_op_type(node.type_string());
+  metadata.set_op_name(node.name());
+  return metadata;
+}
+
 // Validate sharding configuration derived from XlaSharding attribute.
 // Infer the core id from the OpSharding, if necessary.
 Status ParseAndValidateSharding(const xla::OpSharding& sharding,
+                                const Node& node,
                                 const int num_cores_per_replica,
                                 int64* inferred_core_id,
                                 absl::optional<xla::OpSharding>* result) {
@@ -1203,7 +1211,9 @@ Status ParseAndValidateSharding(const xla::OpSharding& sharding,
 
       if (result_value_serialized != sharding_serialized) {
         // We see different shardings, assign to core 0.
-        result->emplace(xla::sharding_builder::AssignDevice(0));
+        auto core_zero_sharding = xla::sharding_builder::AssignDevice(0);
+        *core_zero_sharding.add_metadata() = CreateOpMetadataFromNode(node);
+        result->emplace(core_zero_sharding);
       }
     }
   }
@@ -1232,7 +1242,8 @@ ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
   // If |node| has `device` attribute or is a XlaSharding op,
   // return the parsed OpSharding.
   TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
-                      ParseShardingFromDevice(node, num_cores_per_replica));
+                      ParseShardingFromDevice(node, num_cores_per_replica,
+                                              /*add_metadata=*/true));
   if (sharding.has_value()) return sharding;
 
   // XlaShardingOp may be followed by an identity or followed by identity
@@ -1244,9 +1255,10 @@ ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
        potential_nodes_with_input_sharding) {
     if (maybe_node_with_sharding_info->type_string() != "XlaSharding") continue;
 
-    TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding_config,
-                        ParseShardingFromDevice(*maybe_node_with_sharding_info,
-                                                num_cores_per_replica));
+    TF_ASSIGN_OR_RETURN(
+        absl::optional<xla::OpSharding> sharding_config,
+        ParseShardingFromDevice(*maybe_node_with_sharding_info,
+                                num_cores_per_replica, /*add_metadata=*/true));
     if (sharding_config.has_value()) return sharding_config;
   }
   return sharding;
@@ -1273,8 +1285,9 @@ Status ParseAndValidateShardingFromNeighbors(
       absl::optional<xla::OpSharding> sharding,
       ParseInputShardingFromAdjacentNode(num_cores_per_replica, neighbor_node));
   if (sharding.has_value()) {
-    TF_RETURN_IF_ERROR(ParseAndValidateSharding(
-        *sharding, num_cores_per_replica, inferred_core_id, result));
+    TF_RETURN_IF_ERROR(ParseAndValidateSharding(*sharding, neighbor_node,
+                                                num_cores_per_replica,
+                                                inferred_core_id, result));
     return Status::OK();
   }
 
@@ -1295,8 +1308,9 @@ Status ParseAndValidateShardingFromNeighbors(
           absl::optional<xla::OpSharding> sharding,
           ParseInputShardingFromAdjacentNode(num_cores_per_replica, *e->dst()));
       if (sharding.has_value()) {
-        TF_RETURN_IF_ERROR(ParseAndValidateSharding(
-            *sharding, num_cores_per_replica, inferred_core_id, result));
+        TF_RETURN_IF_ERROR(ParseAndValidateSharding(*sharding, *e->dst(),
+                                                    num_cores_per_replica,
+                                                    inferred_core_id, result));
         return Status::OK();
       }
     }
@@ -1775,7 +1789,8 @@ static Status ValidateCoreNumbers(const Graph& graph,
                                   int num_cores_per_replica) {
   for (Node* n : graph.nodes()) {
     TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
-                        ParseShardingFromDevice(*n, num_cores_per_replica));
+                        ParseShardingFromDevice(*n, num_cores_per_replica,
+                                                /*add_metadata=*/true));
   }
   return Status::OK();
 }
@@ -1930,8 +1945,9 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       Node* input_node;
       TF_RETURN_IF_ERROR(replicate_node->input_node(i, &input_node));
       if (input_node->type_string() == kTPUPartitionedInput) {
-        TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> parsed_sharding,
-                            GetShardingFromNodeDef(input_node->def()));
+        TF_ASSIGN_OR_RETURN(
+            absl::optional<xla::OpSharding> parsed_sharding,
+            GetShardingFromNodeDef(input_node->def(), /*add_metadata=*/true));
         if (!parsed_sharding.has_value())
           return errors::InvalidArgument("Missing _XlaSharding attr from: ",
                                          input_node->DebugString());
@@ -1946,8 +1962,9 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       Node* input_node;
       TF_RETURN_IF_ERROR(replicate_node->input_node(i, &input_node));
       if (input_node->type_string() == kVarHandleOp) {
-        TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> parsed_sharding,
-                            GetShardingFromNodeDef(input_node->def()));
+        TF_ASSIGN_OR_RETURN(
+            absl::optional<xla::OpSharding> parsed_sharding,
+            GetShardingFromNodeDef(input_node->def(), /*add_metadata=*/true));
         if (parsed_sharding.has_value()) {
           sharding = parsed_sharding;
           VLOG(1) << "Arg " << i << " parsed sharding information from "
@@ -1988,6 +2005,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
         }
         sharding = xla::sharding_builder::AssignDevice(*assigned_core);
       }
+      *sharding->add_metadata() = CreateOpMetadataFromNode(*replicate_node);
     } else if (sharding->type() == xla::OpSharding::MAXIMAL) {
       assigned_core = sharding->tile_assignment_devices(0);
     } else if (sharding->type() != xla::OpSharding::REPLICATED &&
@@ -2036,12 +2054,14 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
 
     TF_ASSIGN_OR_RETURN(
         absl::optional<xla::OpSharding> sharding,
-        ParseShardingFromEdgeSource(*edge, num_cores_per_replica));
+        ParseShardingFromEdgeSource(*edge, num_cores_per_replica,
+                                    /*add_metadata=*/true));
 
     if (partitioned_output_nodes.contains(i)) {
       Node* output_node = partitioned_output_nodes[i];
-      TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> parsed_sharding,
-                          GetShardingFromNodeDef(output_node->def()));
+      TF_ASSIGN_OR_RETURN(
+          absl::optional<xla::OpSharding> parsed_sharding,
+          GetShardingFromNodeDef(output_node->def(), /*add_metadata=*/true));
       if (parsed_sharding.has_value()) {
         sharding = parsed_sharding;
         VLOG(1) << "Retval " << i << " parsed sharding information from "
@@ -2079,6 +2099,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
         }
         sharding = xla::sharding_builder::AssignDevice(*assigned_core);
       }
+      *sharding->add_metadata() = CreateOpMetadataFromNode(*replicate_node);
     }
     if (assigned_core.has_value()) {
       retvals[i]->set_assigned_device_name(CoreDeviceLabel(*assigned_core));
