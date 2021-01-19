@@ -90,6 +90,12 @@ absl::Status ComputeTask::AddTask(ComputeTask* task) {
   if (task_desc_ && task->task_desc_) {
     return task_desc_->AddTask(task->task_desc_.get());
   }
+  if (task_desc_ && task->operation_) {
+    return task_desc_->AddOperation(task->operation_.get());
+  }
+  if (operation_ && task->operation_) {
+    return operation_->AddOperation(task->operation_.get());
+  }
   return absl::UnimplementedError(
       "Not implemented this combination of task fusion");
 }
