@@ -31,22 +31,18 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
-
-  // TODO(ahentz): these two checks would make the new implementation
-  // incompatible with some existing models, where params is not specified. It
-  // is OK not to have them because toco would have set input and output types
-  // to match the parameters.
-  // auto* params = reinterpret_cast<TfLiteCastParams*>(node->builtin_data);
-  // TF_LITE_ENSURE_EQ(context, input->type, params->in_data_type);
-  // TF_LITE_ENSURE_EQ(context, output->type, params->out_data_type);
-
-  return context->ResizeTensor(context, output,
-                               TfLiteIntArrayCopy(input->dims));
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
+  TF_LITE_ENSURE_EQ(context, output->bytes, input->bytes);
+  TF_LITE_ENSURE_EQ(context, output->dims->size, input->dims->size);
+  for (int i = 0; i < output->dims->size; ++i) {
+    TF_LITE_ENSURE_EQ(context, output->dims->data[i], input->dims->data[i]);
+  }
+  return kTfLiteOk;
 }
 
 template <typename FromT, typename ToT>
@@ -133,9 +129,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }
 }  // namespace
 
-TfLiteRegistration* Register_CAST() {
-  static TfLiteRegistration r = {nullptr, nullptr, cast::Prepare, cast::Eval};
-  return &r;
+TfLiteRegistration Register_CAST() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace tflite
