@@ -158,7 +158,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["adadelta_test.py"],
     shard_count = 4,
-    tags = ["no_rocm"],
     # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",
@@ -239,7 +238,6 @@ cuda_py_test(
     srcs = ["optimizer_v2_test.py"],
     shard_count = 8,
     tags = [
-        "no_rocm",
         "no_windows",
     ],
     deps = [
@@ -297,7 +295,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["rmsprop_test.py"],
     shard_count = 2,
-    tags = ["no_rocm"],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],

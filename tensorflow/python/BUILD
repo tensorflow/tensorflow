@@ -3103,7 +3103,6 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_gpu",
-        "no_rocm",
         "no_windows",
     ],
     deps = [
