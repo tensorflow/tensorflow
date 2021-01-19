@@ -112,12 +112,13 @@ class InferenceContext {
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
                            const GpuInfo& gpu_info, const GraphFloat32& graph);
 
-  absl::Status CompileModelWithDevice(MetalDevice* device);
+  absl::Status CompileOperations(MetalDevice* device);
 
   absl::Status Merge();
   absl::Status AllocateTensors(MetalDevice* device);
   absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   void BindTensorsToOperations();
+  absl::Status UpdateParams(const GpuInfo& gpu_info);
   MetalSpatialTensor* GetTensor(ValueId tensor_id);
   void GetUsages(std::map<ValueId, int2>* usages);
   void UpdatePreallocatedTensors(

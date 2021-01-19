@@ -200,7 +200,6 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     RETURN_IF_ERROR(CreateTensor(device_.device(), src_shape,
                                  op_def.src_tensors[i], &src[i]));
     RETURN_IF_ERROR(src[i].WriteData(src_cpu[i]));
-    operation->SetSrc(&src[i], i);
   }
 
   std::vector<MetalSpatialTensor> dst(dst_cpu.size());
@@ -212,7 +211,6 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     }
     RETURN_IF_ERROR(CreateTensor(device_.device(), dst_shape,
                                  op_def.dst_tensors[i], &dst[i]));
-    operation->SetDst(&dst[i], i);
   }
 
   std::vector<BHWC> src_shapes;
@@ -230,13 +228,19 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
 
   ComputeTask gpu_task;
   gpu_task.Init(std::move(operation));
-  RETURN_IF_ERROR(gpu_task.CompileOp(&device_));
-  RETURN_IF_ERROR(gpu_task.UpdateOpParams());
+  RETURN_IF_ERROR(gpu_task.Compile(&device_));
+  for (int i = 0; i < src_cpu.size(); ++i) {
+    gpu_task.SetSrcTensor(&src[i], i);
+  }
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    gpu_task.SetDstTensor(&dst[i], i);
+  }
+  RETURN_IF_ERROR(gpu_task.UpdateOperationParams());
 
   id<MTLCommandQueue> command_queue = [device_.device() newCommandQueue];
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-  gpu_task.EncodeOpWithEncoder(encoder);
+  gpu_task.Encode(encoder);
   [encoder endEncoding];
   [command_buffer commit];
   [command_buffer waitUntilCompleted];
@@ -286,20 +290,20 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
 
   ComputeTask gpu_task;
   gpu_task.Init(std::move(operation));
-  RETURN_IF_ERROR(gpu_task.Compile(op_def.precision, &device_));
-  RETURN_IF_ERROR(
-      gpu_task.UpdateParams(device_.GetInfo(), src_shapes, dst_sizes));
+  RETURN_IF_ERROR(gpu_task.Compile(&device_));
   for (int i = 0; i < src_cpu.size(); ++i) {
-    gpu_task.SetSrcTensor(src[i], i);
+    gpu_task.SetSrcTensor(&src[i], i);
   }
   for (int i = 0; i < dst_cpu.size(); ++i) {
-    gpu_task.SetDstTensor(dst[i], i);
+    gpu_task.SetDstTensor(&dst[i], i);
   }
+  RETURN_IF_ERROR(
+      gpu_task.UpdateParams(device_.GetInfo(), src_shapes, dst_sizes));
 
   id<MTLCommandQueue> command_queue = [device_.device() newCommandQueue];
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-  gpu_task.EncodeWithEncoder(encoder);
+  gpu_task.Encode(encoder);
   [encoder endEncoding];
   [command_buffer commit];
   [command_buffer waitUntilCompleted];
