@@ -2558,9 +2558,14 @@ class FunctionSpec(object):
           args[-1] += "={}".format(self._fullargspec.kwonlydefaults[arg_name])
     return "{}({})".format(self._name, ", ".join(args))
 
+  def _to_tensor_or_tensor_spec(self, x):
+    return (x if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec))
+            else ops.convert_to_tensor(x))
+
   def _convert_variables_to_tensors(self, args, kwargs):
-    args = [ops.convert_to_tensor(x) for x in args]
-    kwargs = {kw: ops.convert_to_tensor(x) for kw, x in kwargs.items()}
+    args = [self._to_tensor_or_tensor_spec(x) for x in args]
+    kwargs = {kw: self._to_tensor_or_tensor_spec(x)
+              for kw, x in kwargs.items()}
     return tuple(args), kwargs
 
   def _convert_annotated_args_to_tensors(self, args, kwargs):
@@ -2573,32 +2578,23 @@ class FunctionSpec(object):
       # See
       # https://docs.python.org/3/library/inspect.html#inspect.getfullargspec
       if i < len(self._fullargspec.args):
-        arg_annotation = self._fullargspec.annotations.get(
-            self._fullargspec.args[i])
-        # TODO(rahulkamat): Change to TensorLike (here ans below).
-        if arg_annotation == ops.Tensor:
-          args[i] = ops.convert_to_tensor(arg)
+        annotation_key = self._fullargspec.args[i]
       else:
-        varargs_annotation = self._fullargspec.annotations.get(
-            self._fullargspec.varargs)
-        if varargs_annotation == ops.Tensor:
-          args[i] = ops.convert_to_tensor(arg)
+        annotation_key = self._fullargspec.varargs
+      arg_annotation = self._fullargspec.annotations.get(annotation_key, None)
+
+      # TODO(rahulkamat): Change to TensorLike (here ans below)
+      if arg_annotation == ops.Tensor:
+        args[i] = self._to_tensor_or_tensor_spec(arg)
 
     for kw, v in kwargs.items():
-      if kw in self._fullargspec.kwonlyargs:
-        kwonlyarg_annotation = self._fullargspec.annotations.get(kw)
-        if kwonlyarg_annotation == ops.Tensor:
-          kwargs[kw] = ops.convert_to_tensor(v)
-      elif self._fullargspec.varkw is not None:
-        varkw_annotation = self._fullargspec.annotations.get(
-            self._fullargspec.varkw)
-        if kw in self._fullargspec.args:
-          arg_annotation = self._fullargspec.annotations.get(kw)
-          if arg_annotation == ops.Tensor:
-            kwargs[kw] = ops.convert_to_tensor(v)
-        elif varkw_annotation == ops.Tensor:
-          kwargs[kw] = ops.convert_to_tensor(v)
-
+      if kw in self._fullargspec.kwonlyargs or kw in self._fullargspec.args:
+        annotation_key = kw
+      else:
+        annotation_key = self._fullargspec.varkw
+      kwarg_annotation = self._fullargspec.annotations.get(annotation_key, None)
+      if kwarg_annotation == ops.Tensor:
+        kwargs[kw] = self._to_tensor_or_tensor_spec(v)
     return tuple(args), kwargs
 
   def canonicalize_function_inputs(self, *args, **kwargs):
@@ -3057,8 +3053,10 @@ class Function(object):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
 
     Args:
-      *args: inputs to specialize on.
-      **kwargs: inputs to specialize on.
+      *args: inputs to specialize on. Can be concrete values (e.g. 1)
+         or `tf.Tensor` or `tf.TensorSpec`.
+      **kwargs: keyword inputs to specialize on. Concrete values (e.g. 1)
+         or `tf.Tensor` or `tf.TensorSpec`.
     """
     graph_function = self._get_concrete_function_garbage_collected(
         *args, **kwargs)
