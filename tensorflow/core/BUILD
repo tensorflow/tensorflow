@@ -525,9 +525,12 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps =
+        # copybara:uncomment_begin
+        # if_mobile(["@nsync//:nsync_cpp"]) +
+        # copybara:uncomment_end_uncomment_begin
+        # ["@nsync//:nsync_cpp"] +
+        # copybara:comment_end
         [
-            "@nsync//:nsync_cpp",
-        ] + [
             "//third_party/eigen3",
             "//tensorflow/core/platform:dynamic_annotations",
             "//tensorflow/core/platform:platform_port",

@@ -124,7 +124,12 @@ def gen_api_init_files(
             " --compat_init_template=$(location %s)" % compat_init_template
         )
 
+    # copybara:uncomment_begin(configurable API loading)
+    # native.vardef("TF_API_INIT_LOADING", "default")
+    # loading_flag = " --loading=$(TF_API_INIT_LOADING)"
+    # copybara:uncomment_end_and_comment_begin
     loading_flag = " --loading=default"
+    # copybara:comment_end
 
     native.genrule(
         name = name,
