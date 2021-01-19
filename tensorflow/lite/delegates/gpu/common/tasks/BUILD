@@ -55,6 +55,20 @@ cc_library(
 )
 
 cc_library(
+    name = "concat_test_util",
+    testonly = 1,
+    srcs = ["concat_test_util.cc"],
+    hdrs = ["concat_test_util.h"],
+    deps = [
+        ":concat_xy",
+        ":concat_z",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "conv_buffer_1x1",
     srcs = ["conv_buffer_1x1.cc"],
     hdrs = ["conv_buffer_1x1.h"],
