@@ -1,0 +1,18 @@
+op {
+  graph_op_name: "EncodeRaw"
+  in_arg {
+    name: "tensor"
+    description: <<END
+A Tensor with at least one dimension. The first dimension will be
+treated as batch dimension and each sample in the batch will
+be encoded into a string of bytes.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A string Tensor whose shape is equal to the first dimension of tensor.
+END
+  }
+  summary: "Encode tensor into a batch of byte strings."
+}

@@ -1337,6 +1337,10 @@ tf_module {
     argspec: "args=[\'sizes\', \'values\', \'field_names\', \'message_type\', \'descriptor_source\', \'name\'], varargs=None, keywords=None, defaults=[\'local://\', \'None\'], "
   }
   member_method {
+    name: "EncodeRaw"
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "EncodeWav"
     argspec: "args=[\'audio\', \'sample_rate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
