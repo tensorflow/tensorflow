@@ -561,6 +561,19 @@ cc_library(
 )
 
 cc_library(
+    name = "resize",
+    srcs = ["resize.cc"],
+    hdrs = ["resize.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+    ],
+)
+
+cc_library(
     name = "softmax",
     srcs = ["softmax.cc"],
     hdrs = ["softmax.h"],
@@ -650,15 +663,15 @@ cc_library(
 )
 
 cc_library(
-    name = "resize",
-    srcs = ["resize.cc"],
-    hdrs = ["resize.h"],
+    name = "transpose_test_util",
+    testonly = 1,
+    srcs = ["transpose_test_util.cc"],
+    hdrs = ["transpose_test_util.h"],
     deps = [
+        ":transpose",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
     ],
 )
 
