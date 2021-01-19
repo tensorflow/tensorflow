@@ -1787,7 +1787,7 @@ cc_library(
 tf_cc_test(
     name = "buffer_comparator_test",
     srcs = if_cuda_is_configured(["buffer_comparator_test.cc"]),
-    tags = ["no_rocm"] + tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/core:test_main",
         "//tensorflow/compiler/xla:shape_util",
