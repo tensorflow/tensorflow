@@ -469,7 +469,8 @@ class Interpreter {
   /// Returns one of the following four status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
-  /// delegate. The Interpreter has been restored to its pre-delegation state.
+  /// delegate, or the delegate parameter was null. The Interpreter has been
+  /// restored to its pre-delegation state.
   /// NOTE: This undoes all delegates previously applied to the Interpreter.
   /// 3. kTfLiteApplicationError : Delegation failed to be applied due to the
   /// incompatibility with the TfLite runtime, e.g., the model graph is already

@@ -1488,6 +1488,11 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(),
                                        "ModifyGraphWithDelegate");
 
+  if (delegate == nullptr) {
+    ReportError("Null delegate.");
+    return kTfLiteDelegateError;
+  }
+
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
