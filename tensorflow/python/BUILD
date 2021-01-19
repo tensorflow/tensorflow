@@ -2023,6 +2023,7 @@ cuda_py_test(
     tags = [
         "noasan",
         "optonly",
+        "no_rocm",
     ],
     deps = [
         ":array_ops",

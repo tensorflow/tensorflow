@@ -829,7 +829,6 @@ tf_cuda_cc_test(
     args = ["--heap_check=local"],
     tags = [
         "no_windows",
-        "no_rocm",
     ],
     deps = [
         ":c_api_remote_test_util",
