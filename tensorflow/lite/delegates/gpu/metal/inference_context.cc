@@ -136,6 +136,7 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(AllocateTensors(&metal_device));
   BindTensorsToOperations();
   RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
+  RETURN_IF_ERROR(Tune(TuningType::kFast, &metal_device));
   return absl::OkStatus();
 }
 
@@ -464,6 +465,14 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
           shared_buffers_[buffer_index], shape, descriptor);
       created_tensors[tensor_index] = true;
     }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::Tune(TuningType tuning_type,
+                                    MetalDevice* device) {
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.task.Tune(tuning_type, device));
   }
   return absl::OkStatus();
 }

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -322,6 +323,28 @@ void ComputeTask::SetDstTensor(MetalSpatialTensor* tensor, int index) {
     auto status = metal_args_.SetObjectRef(
         operation_->dst_tensors_names_[index], *tensor);
   }
+}
+
+absl::Status ComputeTask::Tune(TuningType tuning_type, MetalDevice* device) {
+  if (!operation_) {
+    // Tune supported only in GPUOperation
+    return absl::OkStatus();
+  }
+  std::vector<int3> possible_work_groups;
+  KernelInfo kernel_info;
+  kernel_info.max_work_group_size = [program_ maxTotalThreadsPerThreadgroup];
+  kernel_info.private_memory_size = 0;
+  operation_->GetPossibleKernelWorkGroups(tuning_type, device->GetInfo(),
+                                          kernel_info, &possible_work_groups);
+  if (possible_work_groups.empty()) {
+    return absl::NotFoundError(
+        "Can not found work_group size to launch kernel");
+  }
+  operation_->work_group_size_ = possible_work_groups[0];
+  operation_->work_groups_count_ = GetWorkGroupsCount(
+      operation_->grid_dimension_, operation_->grid_size_,
+      operation_->work_group_size_, operation_->work_group_launch_order_);
+  return absl::OkStatus();
 }
 
 }  // namespace metal

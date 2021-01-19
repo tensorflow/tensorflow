@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
@@ -75,6 +76,8 @@ class ComputeTask {
   void SetSrcTensor(MetalSpatialTensor* tensor, int index);
 
   void SetDstTensor(MetalSpatialTensor* tensor, int index);
+
+  absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
  private:
   absl::Status CompileTask(MetalDevice* device);
