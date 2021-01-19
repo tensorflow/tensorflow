@@ -1126,14 +1126,6 @@ TfLiteStatus ParseDepthwiseConv2D(const Operator* op,
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
-TfLiteStatus ParseExpandDims(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
-                             void**) {
-  return kTfLiteOk;
-}
-
-// We have this parse function instead of directly returning kTfLiteOk from the
-// switch-case in ParseOpData because this function is used as part of the
-// selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseDequantize(const Operator*, ErrorReporter*,
                              BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
@@ -1167,6 +1159,14 @@ TfLiteStatus ParseEqual(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseExp(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                       void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseExpandDims(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
+                             void**) {
   return kTfLiteOk;
 }
 
