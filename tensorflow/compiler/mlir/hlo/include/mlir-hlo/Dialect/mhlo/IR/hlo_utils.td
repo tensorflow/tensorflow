@@ -30,9 +30,6 @@ class ConstantSplat<string value> : NativeCodeCall<
 class HLO_ConstantLike<string value> : NativeCodeCall<
     "chlo::getConstantLike($_builder, $_loc, " # value # ", $0)">;
 
-def HLO_ConstantLikeMaxFiniteValue : NativeCodeCall<
-    "chlo::getConstantLikeMaxFiniteValue($_builder, $_loc, $0)">;
-
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 def BinBroadcastDimensions : NativeCodeCall<

@@ -1,5 +1,0 @@
-func @Asinh_elem_type(%arg0: tensor<*xelem_type>)
-    -> tensor<*xelem_type> attributes {tf_entry, llvm.emit_c_interface} {
-  %0 = "tf.Asinh"(%arg0) : (tensor<*xelem_type>) -> tensor<*xelem_type>
-  return %0 : tensor<*xelem_type>
-}

@@ -584,7 +584,6 @@ def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (ConstantLikeMatcher Elements
 
 foreach Mapping = [
                    [TF_AbsOp, HLO_AbsOp],
-                   [TF_AsinhOp, HLOClient_AsinhOp],
                    [TF_AcosOp, HLOClient_AcosOp],
                    [TF_AsinOp, HLOClient_AsinOp],
                    [TF_AtanOp, HLOClient_AtanOp],

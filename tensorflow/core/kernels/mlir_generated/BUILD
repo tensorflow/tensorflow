@@ -49,7 +49,6 @@ filegroup(
     srcs = [
         "gpu_op_acos.cc",
         "gpu_op_asin.cc",
-        "gpu_op_asinh.cc",
         "gpu_op_atan.cc",
         "gpu_op_atanh.cc",
         "gpu_op_ceil.cc",
@@ -121,7 +120,6 @@ tf_kernel_library(
         ":abs_kernels",
         ":acos_kernels",
         ":asin_kernels",
-        ":asinh_kernels",
         ":atan_kernels",
         ":atanh_kernels",
         ":ceil_kernels",
@@ -339,16 +337,6 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "asin",
-    tile_size = "256",
-    types = [
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "asinh",
     tile_size = "256",
     types = [
         "f32",
