@@ -120,7 +120,8 @@ Status MlirFunctionOptimizationPass::Run(
   // Skip conversion from Graph to MLIR if none of the passes are enabled.
   const bool is_enabled =
       llvm::any_of(registry_->passes(), [&](auto& pass_registration) -> bool {
-        return pass_registration.pass->IsEnabled(config_proto, **graph);
+        return pass_registration.pass->IsEnabled(&device_set, config_proto,
+                                                 **graph);
       });
 
   if (!is_enabled) {
@@ -251,7 +252,8 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   const bool is_enabled =
       absl::c_any_of(registry_->passes(), [&](auto& pass_registration) -> bool {
         return pass_registration.pass->IsEnabled(
-            options.session_options->config, **options.graph);
+            options.device_set, options.session_options->config,
+            **options.graph);
       });
 
   if (!is_enabled) {

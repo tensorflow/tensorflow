@@ -30,11 +30,28 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
+
+struct MetalNode {
+  ComputeTask task;
+  std::vector<ValueId> inputs;
+  std::vector<ValueId> outputs;
+
+  // Mostly for debug purposes.
+  std::string name;
+
+  MetalNode() = default;
+
+  MetalNode(MetalNode&& node) = default;
+  MetalNode& operator=(MetalNode&& node) = default;
+  MetalNode(const MetalNode&) = delete;
+  MetalNode& operator=(const MetalNode&) = delete;
+};
 
 class InferenceContext {
  public:
@@ -47,7 +64,8 @@ class InferenceContext {
   InferenceContext() = default;
 
   absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
-                             const GraphFloat32& graph, id<MTLDevice> device);
+                             const GraphFloat32& graph,
+                             id<MTLDevice> device_id);
 
   /// Inserts all GPU compute tasks into the command encoder.
   /// @param inputOutputBuffers Must be created and passed into the method
@@ -88,28 +106,17 @@ class InferenceContext {
       const std::map<ValueId, id<MTLBuffer>>& in_out_buffers, int flush_period);
 
  private:
-  struct CompiledModel {
-    std::vector<NodeDescriptor> nodes;
-  };
-
   absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
-                       CalculationsPrecision precision,
-                       CompiledModel* compiled_model);
+                       CalculationsPrecision precision);
 
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
                            const GpuInfo& gpu_info, const GraphFloat32& graph);
 
-  absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
-                                     const std::vector<ValueId>& output_buffers,
-                                     const CompiledModel& input_model,
-                                     CompiledModel* output_model);
+  absl::Status CompileModelWithDevice(MetalDevice* device);
 
-  absl::Status CompileModelWithDevice(id<MTLDevice> device,
-                                      const CompiledModel& compiled_model);
-
-  absl::Status Merge(CompiledModel* model);
-  absl::Status AllocateTensors(id<MTLDevice> device);
-  absl::Status AllocateMemoryForBuffers(id<MTLDevice> device);
+  absl::Status Merge();
+  absl::Status AllocateTensors(MetalDevice* device);
+  absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   void BindTensorsToOperations();
   MetalSpatialTensor* GetTensor(ValueId tensor_id);
   void GetUsages(std::map<ValueId, int2>* usages);
@@ -170,7 +177,7 @@ class InferenceContext {
   };
   TensorReserver tensor_reserver_;
 
-  std::vector<ComputeTask> compute_tasks_;
+  std::vector<MetalNode> nodes_;
   // contains indexes of compute_tasks_
   std::vector<int> task_ids_with_preallocated_tensors_;
   std::vector<ValueId> input_ids_;

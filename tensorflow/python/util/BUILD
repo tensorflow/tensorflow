@@ -414,7 +414,7 @@ py_library(
         ],
     ),
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
@@ -460,6 +460,7 @@ py_library(
     name = "nest_test_main_lib",
     testonly = True,
     srcs = ["nest_test.py"],
+    srcs_version = "PY3",
     deps = [
         ":util",
         "//tensorflow/python:array_ops",
@@ -519,7 +520,7 @@ tf_py_test(
 py_library(
     name = "tf_should_use",
     srcs = ["tf_should_use.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":util",
         "//tensorflow/python:framework_ops",
@@ -553,7 +554,7 @@ tf_py_test(
 py_library(
     name = "example_parser_configuration",
     srcs = ["example_parser_configuration.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",

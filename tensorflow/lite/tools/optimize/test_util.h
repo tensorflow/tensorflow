@@ -63,6 +63,9 @@ extern const char* kConstInputAddModel;
 // 10] as output.
 extern const char* kFloatConcatMax5Max10Max10;
 
+// Test model with broadcast_to op.
+extern const char* kModelWithBroadcastToOp;
+
 // Test model with a custom op.
 extern const char* kModelWithCustomOp;
 

@@ -435,6 +435,7 @@ class _CoordinatedClosureQueue(object):
 
     # Condition indicating that an item becomes available in queue (not empty).
     self._closures_queued_condition = threading.Condition(self._queue_lock)
+    self._should_process_closures = True
 
     # Condition indicating that a queue slot becomes available (not full).
     # Note that even with "infinite" queue size, there is still a "practical"
@@ -467,6 +468,11 @@ class _CoordinatedClosureQueue(object):
     # We don't use a reader/writer's lock on purpose to reduce the complexity
     # of the code.
     self._put_wait_lock = threading.Lock()
+
+  def stop(self):
+    with self._queue_lock:
+      self._should_process_closures = False
+      self._closures_queued_condition.notifyAll()
 
   def _cancel_all_closures(self):
     """Clears the queue and sets remaining closures cancelled error.
@@ -527,9 +533,11 @@ class _CoordinatedClosureQueue(object):
   def get(self, timeout=None):
     """Return a closure from the queue to be executed."""
     with self._queue_lock:
-      while self._queue.empty():
+      while self._queue.empty() and self._should_process_closures:
         if not self._closures_queued_condition.wait(timeout=timeout):
           return None
+      if not self._should_process_closures:
+        return None
       closure = self._queue.get(block=False)
       self._queue_free_slot_condition.notify()
       self._inflight_closure_count += 1
@@ -620,7 +628,7 @@ class WorkerPreemptionHandler(object):
                      name="WorkerPreemptionHandler",
                      daemon=True).start()
 
-  def _mark_finished(self):
+  def stop(self):
     """Ensure the worker preemption thread is closed."""
     self._should_preemption_thread_run = False
     with self._cluster_update_lock:
@@ -729,11 +737,16 @@ class Worker(object):
     self.failure_handler = cluster.failure_handler
     self._cluster = cluster
     self._resource_remote_value_refs = []
+    self._should_worker_thread_run = True
 
     # Worker threads need to start after `Worker`'s initialization.
     threading.Thread(target=self._process_queue,
                      name="WorkerClosureProcessingLoop-%d" % self.worker_index,
                      daemon=True).start()
+
+  def stop(self):
+    """Ensure the worker thread is closed."""
+    self._should_worker_thread_run = False
 
   def _set_resources_aborted(self):
     # TODO(yuefengz): maybe we can query whether a tensor is valid or not
@@ -748,6 +761,7 @@ class Worker(object):
 
   def _process_closure(self, closure):
     """Runs a closure with preemption handling."""
+    assert closure is not None
     try:
       with self._cluster.failure_handler.wait_on_failure(
           on_failure_fn=lambda: self._cluster._closure_queue.put_back(closure),  # pylint: disable=protected-access
@@ -786,8 +800,10 @@ class Worker(object):
   def _process_queue(self):
     """Function running in a thread to process closure queues."""
     self._maybe_delay()
-    while True:
+    while self._should_worker_thread_run:
       closure = self._cluster._closure_queue.get()  # pylint: disable=protected-access
+      if not self._should_worker_thread_run or closure is None:
+        return
       self._process_closure(closure)
 
   def _create_resource(self, function, args=None, kwargs=None):
@@ -881,6 +897,14 @@ class Cluster(object):
         Worker(i, w, self) for i, w in enumerate(worker_device_strings)
     ]
     self._strategy = strategy
+
+  def stop(self):
+    """Stop worker, worker preemption threads, and the closure queue."""
+    self.failure_handler.stop()
+
+    for worker in self.workers:
+      worker.stop()
+    self._closure_queue.stop()
 
   def _record_and_ignore_transient_ps_failure(self, e):
     """Records potential PS failures and return if failure should be ignored."""
@@ -1007,8 +1031,7 @@ class ClusterCoordinator(object):
     self._cluster = Cluster(strategy)
 
   def __del__(self):
-    # TODO(xingliu): Stop the worker threads.
-    self._cluster.failure_handler._mark_finished()
+    self._cluster.stop()
 
   @property
   def strategy(self):

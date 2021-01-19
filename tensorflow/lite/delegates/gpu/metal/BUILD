@@ -73,7 +73,7 @@ objc_library(
         "Metal",
     ],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )
@@ -113,6 +113,7 @@ objc_library(
         ":common",
         ":compute_task_descriptor",
         ":metal_arguments",
+        ":metal_device",
         ":metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:precision",
@@ -120,6 +121,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -166,6 +168,7 @@ objc_library(
     deps = [
         ":compute_task",
         ":compute_task_descriptor",
+        ":metal_device",
         ":metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/common:memory_management",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -183,6 +186,24 @@ objc_library(
 )
 
 objc_library(
+    name = "linear_storage",
+    srcs = ["linear_storage.cc"],
+    hdrs = ["linear_storage.h"],
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+    ],
+    sdk_frameworks = ["Metal"],
+    deps = [
+        ":gpu_object",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
+    ],
+)
+
+objc_library(
     name = "metal_arguments",
     srcs = ["metal_arguments.cc"],
     hdrs = ["metal_arguments.h"],
@@ -193,13 +214,29 @@ objc_library(
     deps = [
         ":buffer",
         ":gpu_object",
+        ":linear_storage",
+        ":metal_device",
         ":metal_spatial_tensor",
+        ":texture2d",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:arguments",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common/task:util",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+objc_library(
+    name = "metal_device",
+    srcs = ["metal_device.cc"],
+    hdrs = ["metal_device.h"],
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+    ],
+    sdk_frameworks = ["Metal"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
     ],
 )
 
@@ -236,6 +273,38 @@ objc_library(
 )
 
 objc_library(
+    name = "texture2d",
+    srcs = ["texture2d.cc"],
+    hdrs = ["texture2d.h"],
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+    ],
+    sdk_frameworks = ["Metal"],
+    deps = [
+        ":common",
+        ":gpu_object",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+objc_library(
+    name = "texture2d_test_lib",
+    testonly = 1,
+    srcs = ["texture2d_test.mm"],
+    sdk_frameworks = [
+        "XCTest",
+        "Metal",
+    ],
+    deps = [
+        ":texture2d",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+objc_library(
     name = "TestBinary",
     testonly = 1,
     srcs = ["host.m"],
@@ -267,6 +336,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:buffer_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:common_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor_test.mm",
+        "//tensorflow/lite/delegates/gpu/metal:texture2d_test.mm",
     ],
     hdrs = [
     ],
@@ -278,6 +348,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
+        "//tensorflow/lite/delegates/gpu/metal:texture2d",
         "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
         "@com_google_absl//absl/memory",
     ],

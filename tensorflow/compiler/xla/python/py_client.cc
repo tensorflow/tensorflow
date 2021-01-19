@@ -54,6 +54,17 @@ std::vector<ClientAndPtr<PjRtDevice>> PyClient::LocalDevices() {
   return devices;
 }
 
+std::vector<ClientAndPtr<PyBuffer>> PyClient::LiveBuffers() {
+  CHECK(PyGILState_Check());
+  std::vector<ClientAndPtr<PyBuffer>> buffers;
+  for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
+    if (!buffer->is_deleted()) {
+      buffers.push_back(WrapWithClient(shared_from_this(), buffer));
+    }
+  }
+  return buffers;
+}
+
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
 PyClient::GetDefaultDeviceAssignment(int num_replicas, int num_partitions) {
   TF_ASSIGN_OR_RETURN(
@@ -107,7 +118,9 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
 
   absl::optional<CastToArrayResult> c = CastToArray(argument);
   if (!c) {
-    return InvalidArgument("from_python argument must be an array.");
+    return InvalidArgument(
+        "from_python argument must be an array, got value %s",
+        py::cast<std::string>(py::repr(argument)));
   }
 
   std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =

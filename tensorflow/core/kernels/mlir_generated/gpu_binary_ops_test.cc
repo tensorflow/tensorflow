@@ -134,6 +134,8 @@ class GpuBinaryOpTest : public OpsTestBase {
                        const test::GpuOpsTestConfig& config) {
     // Prepare inputs.
     int input_size = shape.num_elements();
+    CHECK(lhs_input.size() <= input_size && rhs_input.size() <= input_size &&
+          "expect input shape to hold all input values");
     auto repeated_lhs_input =
         test::RepeatInputToMatchShape(lhs_input, input_size);
     auto repeated_rhs_input =
@@ -165,6 +167,8 @@ class GpuBinaryOpTest : public OpsTestBase {
                      const test::GpuOpsTestConfig& config) {
     // Prepare inputs.
     TensorShape scalar_shape{};
+    CHECK(other_input.size() <= other_shape.num_elements() &&
+          "expect other input shape to hold all input values");
     auto repeated_other_input =
         test::RepeatInputToMatchShape(other_input, other_shape.num_elements());
 
@@ -469,6 +473,25 @@ GENERATE_DEFAULT_TESTS(BitwiseXor,
 GENERATE_DEFAULT_TESTS(BitwiseXor,
                        /*test_name=*/Int64, int64, int64, baseline_bitwise_xor)
 
+/// Test `tf.Complex`.
+
+template <typename T>
+std::complex<T> baseline_complex(T lhs, T rhs) {
+  return std::complex<T>(lhs, rhs);
+}
+
+GENERATE_DEFAULT_TESTS_2(
+    Complex,
+    /*test_name=*/C64, float, float, std::complex<float>, std::complex<float>,
+    test::DefaultInput<float>(), test::DefaultInput<float>(), baseline_complex,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().AddTout())
+GENERATE_DEFAULT_TESTS_2(
+    Complex,
+    /*test_name=*/C128, double, double, std::complex<double>,
+    std::complex<double>, test::DefaultInput<double>(),
+    test::DefaultInput<double>(), baseline_complex,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().AddTout())
+
 /// Test `tf.Div`.
 
 template <typename T>
@@ -540,6 +563,27 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorDiv,
     /*test_name=*/Double, double, double, test::DefaultInput<double>(),
     test::DefaultInputNonZero<double>(), baseline_floor_div);
+
+/// Test `tf.RealDiv`.
+
+template <typename T>
+T baseline_real_div(T lhs, T rhs) {
+  return lhs / rhs;
+}
+
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Half, Eigen::half, Eigen::half,
+    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
+    baseline_real_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Float, float, float, test::DefaultInput<float>(),
+    test::DefaultInputNonZero<float>(), baseline_real_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Double, double, double, test::DefaultInput<double>(),
+    test::DefaultInputNonZero<double>(), baseline_real_div);
 
 /// Test `tf.Greater`.
 

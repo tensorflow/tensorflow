@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_GPU_OPS_TEST_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_GPU_OPS_TEST_UTIL_H_
 
+#include <iostream>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -148,7 +150,7 @@ template <typename T,
                            bool> = true>
 absl::InlinedVector<T, 10> DefaultInputLessThanBitwidth() {
   auto max_shift = sizeof(T) * 8 - 1;
-  absl::InlinedVector<T, 10> v(max_shift);
+  absl::InlinedVector<T, 10> v;
   for (auto i = 0; i < max_shift; ++i) v.push_back(i);
   return v;
 }
@@ -166,8 +168,9 @@ template <typename T, std::enable_if_t<
                           llvm::is_one_of<T, Eigen::half, float, double>::value,
                           bool> = true>
 absl::InlinedVector<T, 10> DefaultInput() {
-  return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1,
-                                   0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
+  return InputAsVector<T, double>({-18.0, -9.0, -0.7, -0.5, -0.3, -0.2, -0.1,
+                                   -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5,
+                                   0.7, 0.9, 18.0});
 }
 
 template <typename T,

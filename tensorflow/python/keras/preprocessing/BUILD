@@ -21,6 +21,7 @@ py_library(
     srcs = [
         "__init__.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":image",
         ":sequence",
@@ -37,6 +38,7 @@ py_library(
         "image.py",
         "image_dataset.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
@@ -50,6 +52,7 @@ py_library(
     srcs = [
         "sequence.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras/utils:data_utils",
@@ -61,6 +64,7 @@ py_library(
     srcs = [
         "timeseries.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -76,6 +80,7 @@ py_library(
         "text.py",
         "text_dataset.py",
     ],
+    srcs_version = "PY3",
     deps = ["//tensorflow/python:util"],
 )
 

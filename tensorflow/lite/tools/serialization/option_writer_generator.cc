@@ -82,6 +82,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteWhileParams",
                                       "TfLiteCumsumParams",
                                       "TfLiteCallOnceParams",
+                                      "TfLiteConv3DParams",
                                       nullptr};
 }  // namespace
 
@@ -273,14 +274,17 @@ void GenerateImportForResizeBilinearOp(FILE* fp) {
 // Reshape Op infers output shape either from Parameter or from shape tensor
 // that's is an additional input. When we have this additional shape tensor as
 // input we don't have the parameter present in this layer. In case of more than
-// one input we import an empty vector for the parameters.
+// one input and the shape parameter does not have a valid value, we import an
+// empty vector for the parameters.
 void GenerateImportForReshapeOp(FILE* fp) {
   fprintf(fp,
           "  case BuiltinOperator_RESHAPE:  {\n"
           "    const auto* params = reinterpret_cast<const "
           "TfLiteReshapeParams*>(builtin_op_data);\n"
           "    flatbuffers::Offset<void> union_type;\n"
-          "    if (node.inputs->size > 1) {\n"
+          "    if (node.inputs->size > 1 && (params->num_dimensions <= 0 || "
+          "params->num_dimensions > TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT))"
+          " {\n"
           "      union_type = CreateReshapeOptions(*fbb).Union();\n"
           "    } else {\n"
           "      auto val0 = fbb->CreateVector(std::vector<int>(params->shape, "
@@ -331,10 +335,14 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
       elem_name = "stride_width";
     else if (elem_name == "stride_h")
       elem_name = "stride_height";
+    else if (elem_name == "stride_d")
+      elem_name = "stride_depth";
     else if (elem_name == "dilation_h_factor")
       elem_name = "dilation_height_factor";
     else if (elem_name == "dilation_w_factor")
       elem_name = "dilation_width_factor";
+    else if (elem_name == "dilation_d_factor")
+      elem_name = "dilation_depth_factor";
     else if (elem_name == "idx_out_type")
       elem_name = "index_out_type";
 

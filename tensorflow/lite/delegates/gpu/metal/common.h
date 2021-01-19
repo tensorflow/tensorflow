@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -44,7 +44,8 @@ absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString
                                   NSDictionary<NSString*, NSString*>* macros,
                                   id<MTLComputePipelineState>* program);
 
-GpuInfo CreateGpuInfoFromMetalDevice(id<MTLDevice> device);
+int PixelFormatToSizeInBytes(MTLPixelFormat pixel_format);
+MTLPixelFormat DataTypeToRGBAPixelFormat(DataType type, bool normalized = false);
 
 }  // namespace metal
 }  // namespace gpu

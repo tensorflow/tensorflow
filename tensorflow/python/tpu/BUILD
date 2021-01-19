@@ -122,7 +122,7 @@ py_library(
         "tpu_estimator.py",
         "util.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":async_checkpoint",
         ":feature_column",
@@ -155,7 +155,7 @@ py_library(
 py_library(
     name = "functional",
     srcs = ["functional.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//visibility:public",
     ],
@@ -180,7 +180,7 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -196,7 +196,7 @@ py_library(
         "__init__.py",
         "api.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -476,6 +476,7 @@ pytype_library(
 py_library(
     name = "tpu_name_util",
     srcs = ["tpu_name_util.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/util:tf_export",
     ],
@@ -697,6 +698,7 @@ tpu_py_test(
 # NOTE this target should only be depended on by the tpu_test_wrapper macro.
 py_library(
     name = "tpu_test_deps",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:client_testlib"],
 )

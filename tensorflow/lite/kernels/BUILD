@@ -538,6 +538,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:types",
     ],
 )
 
@@ -559,6 +560,7 @@ BUILTIN_KERNEL_SRCS = [
     "comparisons.cc",
     "concatenation.cc",
     "conv.cc",
+    "conv3d.cc",
     "cumsum.cc",
     "densify.cc",
     "depth_to_space.cc",
@@ -1068,6 +1070,21 @@ cc_test(
     size = "small",
     srcs = ["conv_test.cc"],
     tags = ["tflite_nnapi"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "conv3d_test",
+    size = "small",
+    srcs = ["conv3d_test.cc"],
     deps = [
         ":test_main",
         ":test_util",

@@ -128,6 +128,10 @@ const tensorflow::tpu::TpuHostLocationExternal TpuPlatform::GetTpuHostLocation()
       tpu::ExecutorApiFn()->TpuPlatform_GetHostLocationFn(platform_));
 }
 
+TpuRuntimeVersion TpuPlatform::version() const {
+  return tpu::ExecutorApiFn()->TpuPlatform_GetRuntimeVersionFn(platform_);
+}
+
 void TpuPlatform::InsertEvent(stream_executor::internal::EventInterface* key,
                               SE_Event* val) {
   tensorflow::mutex_lock lock(event_map_mu_);

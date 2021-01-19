@@ -41,6 +41,9 @@ tensorflow::ServerDef GetServerDef(const std::string& job_name, int num_tasks) {
   return server_def;
 }
 
+namespace tensorflow {
+namespace parallel_device {
+
 TEST(PARALLEL_DEVICE, TestRemoteBasic) {
   std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
       TFE_NewContextOptions(), TFE_DeleteContextOptions);
@@ -145,3 +148,5 @@ TEST(PARALLEL_DEVICE, TestAsyncCopyOff) {
   worker_server1.release();
   worker_server2.release();
 }
+}  // namespace parallel_device
+}  // namespace tensorflow

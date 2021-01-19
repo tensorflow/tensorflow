@@ -405,6 +405,24 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
       outputs = self.device.unpack(packed_outputs)
     self.assertAllClose([16., 16.], outputs)
 
+  def test_different_shapes(self):
+    with self.device:
+      x = self.device.pack(
+          [constant_op.constant([1., 2.]),
+           constant_op.constant([5.])])
+      y = x * 2.
+    with self.assertRaisesRegex(Exception,
+                                "components do not all have the same shape"):
+      y.shape  # pylint: disable=pointless-statement
+    self.assertAllClose([[2., 4.], [10.]], self.device.unpack(y))
+
+    different_axes = self.device.pack(
+        [constant_op.constant([1., 2.]),
+         constant_op.constant([[5.]])])
+    with self.assertRaisesRegex(Exception,
+                                "components do not all have the same shape"):
+      different_axes.shape  # pylint: disable=pointless-statement
+
 
 class LayerTests(_VirtualDeviceTestCase):
 

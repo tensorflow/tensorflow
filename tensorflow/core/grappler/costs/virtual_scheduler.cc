@@ -498,7 +498,12 @@ Status SchedulerState::Init(const GrapplerItem* item,
       const string in_device = DeviceName(input_node);
       const auto input_node_port_num = NodePosition(input_node_name);
 
-      if (curr_node_device == in_device) {
+      // Control dependencies should be treated as high priority. Current
+      // Channel device doesn't model a separate virual channel for control v/s
+      // data transfers. So in the interim, it may be okay to let control
+      // dependencies magically flow across devices bypassing the channel
+      // device.
+      if (curr_node_device == in_device || IsControlInput(input_node_name)) {
         // Same device: connect input_node and curr_node directly.
         curr_node_state.inputs.push_back(
             std::make_pair(input_node, input_node_port_num));

@@ -297,6 +297,7 @@ void MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
     auto recv_at_host = CreateRecvAtHostOp(
         builder, op.getLoc(), host_operand_types, compilation_key,
         device_ordinal, args_communication_key);
+    auto original_op_block = op.getBlock();
     op.moveAfter(recv_at_host);
     op.removeAttr(Identifier::get(kDeviceAttr, op.getContext()));
     if (!external_outputs.empty()) {
@@ -309,7 +310,8 @@ void MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
     auto replace_operand_usage = [&](OpOperand& operand) {
       return insertion_point->getParentRegion()->isAncestor(
                  operand.getOwner()->getParentRegion()) ||
-             HasOutsideCompilationAncestor(operand.getOwner());
+             (HasOutsideCompilationAncestor(operand.getOwner()) &&
+              original_op_block == operand.getOwner()->getBlock());
     };
     if (external_operands.empty()) {
       recv_at_host->erase();

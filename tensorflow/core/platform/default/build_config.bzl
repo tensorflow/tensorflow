@@ -586,9 +586,6 @@ def tf_additional_lib_hdrs():
         ],
     })
 
-def tf_additional_env_hdrs():
-    return []
-
 def tf_additional_all_protos():
     return [clean_dep("//tensorflow/core:protos_all")]
 

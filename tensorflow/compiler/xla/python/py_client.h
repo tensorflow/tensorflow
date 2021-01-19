@@ -106,6 +106,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
 
+  std::vector<ClientAndPtr<PyBuffer>> LiveBuffers();
+
   StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
   GetDefaultDeviceAssignment(int num_replicas, int num_partitions);
 

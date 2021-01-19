@@ -25,15 +25,59 @@ from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 
-# TODO(joshl/psv): Update references to ReductionV2 to point to its
-# new location.
-ReductionV2 = loss_reduction.ReductionV2
-keras_export('keras.losses.Reduction', v1=[])(loss_reduction.ReductionV2)
+@keras_export('keras.losses.Reduction', v1=[])
+class ReductionV2(object):
+  """Types of loss reduction.
+
+  Contains the following values:
+
+  * `AUTO`: Indicates that the reduction option will be determined by the usage
+     context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When
+     used with `tf.distribute.Strategy`, outside of built-in training loops such
+     as `tf.keras` `compile` and `fit`, we expect reduction value to be
+     `SUM` or `NONE`. Using `AUTO` in that case will raise an error.
+  * `NONE`: Weighted losses with one dimension reduced (axis=-1, or axis
+     specified by loss function). When this reduction type used with built-in
+     Keras training loops like `fit`/`evaluate`, the unreduced vector loss is
+     passed to the optimizer but the reported loss will be a scalar value.
+  * `SUM`: Scalar sum of weighted losses.
+  * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
+     This reduction type is not supported when used with
+     `tf.distribute.Strategy` outside of built-in training loops like `tf.keras`
+     `compile`/`fit`.
+
+     You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
+     ```
+     with strategy.scope():
+       loss_obj = tf.keras.losses.CategoricalCrossentropy(
+           reduction=tf.keras.losses.Reduction.NONE)
+       ....
+       loss = tf.reduce_sum(loss_obj(labels, predictions)) *
+           (1. / global_batch_size)
+     ```
+
+  Please see the [custom training guide](
+  https://www.tensorflow.org/tutorials/distribute/custom_training) for more
+  details on this.
+  """
+
+  AUTO = 'auto'
+  NONE = 'none'
+  SUM = 'sum'
+  SUM_OVER_BATCH_SIZE = 'sum_over_batch_size'
+
+  @classmethod
+  def all(cls):
+    return (cls.AUTO, cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
+
+  @classmethod
+  def validate(cls, key):
+    if key not in cls.all():
+      raise ValueError('Invalid Reduction Key %s.' % key)
 
 
 def remove_squeezable_dimensions(

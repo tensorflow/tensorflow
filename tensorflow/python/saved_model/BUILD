@@ -386,7 +386,7 @@ py_library(
     srcs = [
         "load.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":function_deserialization",
         ":load_options",
