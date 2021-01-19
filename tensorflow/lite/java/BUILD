@@ -242,6 +242,8 @@ java_test(
     javacopts = JAVACOPTS,
     tags = [
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+        # TODO(b/121204962): Re-enable test after fixing leaks when constructor exception thrown.
+        "noasan",
     ],
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
     visibility = ["//visibility:private"],
