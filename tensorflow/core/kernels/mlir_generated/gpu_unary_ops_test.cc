@@ -342,21 +342,61 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX64, DT_FLOAT, baseline_imag,
 GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
                       test::GpuOpsTestConfig().AddTout().NoBufferReuse())
 
+/// Test `tf.IsFinite`.
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsFinite, DT_FLOAT, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<float>(), std::isfinite,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsFinite, DT_DOUBLE, DT_DOUBLE, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<double>(), std::isfinite,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsFinite, DT_HALF, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<Eigen::half>(), std::isfinite,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
 /// Test `tf.IsInf`.
 
-GENERATE_DEFAULT_TEST_2(
-    IsInf, DT_FLOAT, DT_FLOAT, DT_BOOL, DT_BOOL, std::isinf,
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsInf, DT_FLOAT, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<float>(), std::isinf,
     test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 
 // Workaround for gcc bug, it would fail with "unresolved overloaded function
 // type" if passing std::isinf with type double. So we use type float for
 // comparing expected values.
-GENERATE_DEFAULT_TEST_2(
-    IsInf, DT_DOUBLE, DT_FLOAT, DT_BOOL, DT_BOOL, std::isinf,
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsInf, DT_DOUBLE, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<double>(), std::isinf,
     test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 
-GENERATE_DEFAULT_TEST_2(
-    IsInf, DT_HALF, DT_FLOAT, DT_BOOL, DT_BOOL, std::isinf,
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsInf, DT_HALF, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<Eigen::half>(), std::isinf,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+/// Test `tf.IsNan`.
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsNan, DT_FLOAT, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroInfAndNanInput<float>(), std::isnan,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+// Workaround for gcc bug, it would fail with "unresolved overloaded function
+// type" if passing std::isnan with type double. So we use type float for
+// comparing expected values.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsNan, DT_DOUBLE, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroInfAndNanInput<double>(), std::isnan,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsNan, DT_HALF, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroInfAndNanInput<Eigen::half>(), std::isnan,
     test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 
 /// Test `tf.Log`.

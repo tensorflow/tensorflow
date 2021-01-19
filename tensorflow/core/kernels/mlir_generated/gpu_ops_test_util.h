@@ -92,7 +92,7 @@ template <typename T, std::enable_if_t<
 absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
   return InputAsVector<T, double>({-std::numeric_limits<double>::infinity(),
                                    -0.1, -0.0, 0.0, 0.1,
-                                   std::numeric_limits<float>::infinity()});
+                                   std::numeric_limits<double>::infinity()});
 }
 
 template <typename T,
@@ -102,6 +102,15 @@ absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
   return InputAsVector<T, T>({std::numeric_limits<T>::min(),
                               std::numeric_limits<T>::min() + 1, -1, 0, 1,
                               std::numeric_limits<T>::max()});
+}
+
+template <typename T>
+absl::InlinedVector<T, 10> NearZeroInfAndNanInput() {
+  return InputAsVector<T, double>({-std::numeric_limits<double>::quiet_NaN(),
+                                   -std::numeric_limits<double>::infinity(),
+                                   -0.1, -0.0, 0.0, 0.1,
+                                   std::numeric_limits<double>::infinity(),
+                                   std::numeric_limits<double>::quiet_NaN()});
 }
 
 template <typename T, std::enable_if_t<
