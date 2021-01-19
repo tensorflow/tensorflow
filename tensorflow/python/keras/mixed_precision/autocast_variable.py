@@ -57,12 +57,11 @@ class AutoCastVariable(variables.Variable, core.Tensor):
   called.
   """
 
-  def __init__(self, variable, op=None):
+  def __init__(self, variable):
     """Creates an AutoCastVariable instance.
 
     Args:
       variable: A floating-point resource variable to wrap.
-      op: Optional operation of this variable.
 
     Raises:
       ValueError: If `variable` is not a floating-point resource variable
@@ -74,7 +73,11 @@ class AutoCastVariable(variables.Variable, core.Tensor):
       raise ValueError('variable must be a floating point variable but has '
                        'type: %s' % variable.dtype.name)
     self._variable = variable
-    self._op = op
+    # 'delegate' means AutoCastVariable.op return self._variable.op, which will
+    # raise an AttributeError in Eager (as intended). If set to any other value,
+    # AutoCastVariable.op returns that value instead, which is used to set the
+    # op attribute in AutoCastVariable.assign().
+    self._op = 'delegate'
 
   def _should_cast(self):
     """Returns True if this variable should be casted when accessed."""
@@ -199,10 +202,18 @@ class AutoCastVariable(variables.Variable, core.Tensor):
                            use_locking=None,
                            name=None,
                            read_value=True):
+    # TODO(b/146181571): This logic can be simplified once
+    # DistributedVariable.assign returns a DistributedVariable. Currently for
+    # MirroredStrategy, it returns a Mirrored value.
     if ops.executing_eagerly_outside_functions():
       assign_op = update_fn(value, use_locking, name, False)
       if read_value:
-        return create_autocast_variable(self._variable, op=assign_op)
+        # We create a new AutoCastVariable with the same underlying tf.Variable.
+        # The new AutoCastVariable is identical except the 'op' attribute is
+        # defined. This matches the behavior of tf.Variable.assign.
+        var = create_autocast_variable(self._variable)
+        var._op = assign_op  # pylint:disable=protected-access
+        return var
       return assign_op
 
     # Fallback to wrapping the returned variable in graph mode if possible
@@ -298,9 +309,9 @@ class AutoCastVariable(variables.Variable, core.Tensor):
 
   @property
   def op(self):
-    if self._op is not None:
-      return self._op
-    return self._variable.op
+    if self._op == 'delegate':
+      return self._variable.op
+    return self._op
 
   def _as_graph_element(self):
     graph_element = self._variable._as_graph_element()  # pylint:disable=protected-access
@@ -469,7 +480,7 @@ ops.register_tensor_conversion_function(AutoCastVariable,
                                         AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
 
 
-def create_autocast_variable(variable, op=None):
+def create_autocast_variable(variable):
   """Creates an AutoCastVariable that wraps another variable.
 
   This typically just returns `AutoCastVariable(variable)`. But, if the variable
@@ -481,14 +492,13 @@ def create_autocast_variable(variable, op=None):
 
   Args:
     variable: A floating-point resource variable to wrap.
-    op: Optional operation of this variable.
 
   Returns:
     An AutoCastVariable that wraps the variable.
   """
   if not isinstance(variable, (distribute_values.DistributedVariable,
                                ps_distribute_values.AggregatingVariable)):
-    return AutoCastVariable(variable, op=op)
+    return AutoCastVariable(variable)
 
   class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
     """An AutoCastVariable that also subclasses from variable.__class__.
@@ -511,7 +521,7 @@ def create_autocast_variable(variable, op=None):
              ).format(v=self)
       # pylint: enable=missing-format-attribute
 
-  return AutoCastDistributedVariable(variable, op=op)
+  return AutoCastDistributedVariable(variable)
 
 
 class enable_auto_cast_variables(object):  # pylint:disable=invalid-name
