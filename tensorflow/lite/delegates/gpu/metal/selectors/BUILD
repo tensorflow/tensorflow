@@ -40,6 +40,7 @@ cc_library(
     hdrs = ["subgraph.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
     ],

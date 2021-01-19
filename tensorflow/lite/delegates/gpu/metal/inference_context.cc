@@ -228,7 +228,11 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
       MetalNode metal_node;
-      metal_node.task.Init(std::move(gpu_op.operation));
+      if (gpu_op.task_desc) {
+        metal_node.task.Init(std::move(gpu_op.task_desc));
+      } else {
+        metal_node.task.Init(std::move(gpu_op.operation));
+      }
       metal_node.inputs.resize(gpu_op.input_ids.size());
       for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
         int id = gpu_op.input_ids[j];
