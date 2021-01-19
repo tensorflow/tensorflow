@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -121,10 +122,6 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #endif  // GOOGLE_CUDA
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -1576,7 +1573,6 @@ Status IrEmitterUnnested::EmitCustomCallThunkFromMlir(MlirEmitterInput input) {
   auto custom_call = ::mlir::cast<mlir::lmhlo::CustomCallOp>(input.op);
   const std::string call_target_name = custom_call.call_target_name().str();
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name, std::string(platform_name()));
   if (call_target) {
@@ -1599,8 +1595,6 @@ Status IrEmitterUnnested::EmitCustomCallThunkFromMlir(MlirEmitterInput input) {
         custom_call.backend_config().str()));
     return Status::OK();
   }
-#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
   return Unimplemented("No registered implementation for custom call to \"%s\"",
                        call_target_name);
 }

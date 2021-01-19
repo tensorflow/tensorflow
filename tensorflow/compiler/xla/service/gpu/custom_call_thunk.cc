@@ -19,7 +19,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/errors.h"
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -36,11 +39,6 @@ CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, void* call_target,
 
 Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   // gpu_stream is CUstream or e.g. the equivalent type in ROCm.
-  auto gpu_stream = se::gpu::AsGpuStreamValue(params.stream);
-  using call_type = void (*)(decltype(gpu_stream), void** /*buffers*/,
-                             const char* /*opaque*/, size_t /*opaque_len*/);
-  auto typed_call_target = reinterpret_cast<call_type>(call_target_);
-
   std::vector<void*> buffers;
   buffers.reserve(operands_.size() + results_.size());
   for (const std::vector<BufferAllocation::Slice>& slices :
@@ -53,8 +51,18 @@ Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
     }
   }
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  auto gpu_stream = se::gpu::AsGpuStreamValue(params.stream);
+  using call_type = void (*)(decltype(gpu_stream), void** /*buffers*/,
+                             const char* /*opaque*/, size_t /*opaque_len*/);
+  auto typed_call_target = reinterpret_cast<call_type>(call_target_);
   typed_call_target(gpu_stream, buffers.data(), opaque_.data(), opaque_.size());
   return Status::OK();
+#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return Unavailable(
+      "Custom calls on GPU are not supported in this configuration. Please "
+      "build with --config=cuda or --config=rocm");
+#endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 }  // namespace gpu
