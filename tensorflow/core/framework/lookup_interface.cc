@@ -83,10 +83,17 @@ Status LookupInterface::CheckFindArguments(const Tensor& key,
                                            const Tensor& default_value) {
   TF_RETURN_IF_ERROR(CheckKeyAndValueTypes(key, default_value));
   TF_RETURN_IF_ERROR(CheckKeyShape(key.shape()));
-  if (default_value.shape() != value_shape()) {
+  TensorShape fullsize_value_shape = key.shape();
+  for (int i = 0; i < key_shape().dims(); ++i) {
+    fullsize_value_shape.RemoveDim(fullsize_value_shape.dims() - 1);
+  }
+  fullsize_value_shape.AppendShape(value_shape());
+  if (default_value.shape() != value_shape() &&
+      default_value.shape() != fullsize_value_shape) {
     return errors::InvalidArgument(
-        "Expected shape ", value_shape().DebugString(),
-        " for default value, got ", default_value.shape().DebugString());
+        "Expected shape ", value_shape().DebugString(), " or ",
+        fullsize_value_shape.DebugString(), " for default value, got ",
+        default_value.shape().DebugString());
   }
   return Status::OK();
 }
