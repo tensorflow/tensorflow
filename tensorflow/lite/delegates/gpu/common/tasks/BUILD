@@ -611,6 +611,19 @@ cc_library(
 )
 
 cc_library(
+    name = "strided_slice_test_util",
+    testonly = 1,
+    srcs = ["strided_slice_test_util.cc"],
+    hdrs = ["strided_slice_test_util.h"],
+    deps = [
+        ":strided_slice",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "transpose",
     srcs = ["transpose.cc"],
     hdrs = ["transpose.h"],
