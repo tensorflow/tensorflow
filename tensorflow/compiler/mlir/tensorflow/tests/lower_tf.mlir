@@ -395,9 +395,12 @@ func @fake_quant_with_min_max_vars(%arg0 : tensor<?x?xf32>, %arg1 : tensor<f32>,
 func @SoftmaxCrossEntropyWithLogits(%features: tensor<2x3xf32>, %labels: tensor<2x3xf32>) -> (tensor<2xf32>, tensor<2x3xf32>) {
   // CHECK-DAG: %[[NEG_LABELS:.*]] = "tf.Neg"(%[[LABELS]]) : (tensor<2x3xf32>) -> tensor<2x3xf32>
   // CHECK-DAG: %[[LOG_SOFTMAX:.*]] = "tf.LogSoftmax"(%[[FEATURES]]) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  // CHECK-DAG: %[[LOSS_INP:.*]] = "tf.Mul"(%[[NEG_LABELS]], %[[LOG_SOFTMAX]]) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK-DAG: %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[IS_LABEL_ZERO:.*]] = "tf.Equal"(%[[NEG_LABELS]], %[[ZERO]]) {incompatible_shape_error = true} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xi1>
+  // CHECK-DAG: %[[LOSS_INP:.*]] = "tf.Mul"(%[[LOG_SOFTMAX]], %[[NEG_LABELS]]) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK-DAG: %[[SAFE_LOSS_INP:.*]] = "tf.SelectV2"(%[[IS_LABEL_ZERO]], %[[ZERO]], %[[LOSS_INP]]) : (tensor<2x3xi1>, tensor<f32>, tensor<2x3xf32>) -> tensor<2x3xf32>
   // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi64>} : () -> tensor<1xi64>
-  // CHECK-DAG: %[[LOSS:.*]] = "tf.Sum"(%[[LOSS_INP]], %[[AXIS]]) {keep_dims = false} : (tensor<2x3xf32>, tensor<1xi64>) -> tensor<2xf32>
+  // CHECK-DAG: %[[LOSS:.*]] = "tf.Sum"(%[[SAFE_LOSS_INP]], %[[AXIS]]) {keep_dims = false} : (tensor<2x3xf32>, tensor<1xi64>) -> tensor<2xf32>
   // CHECK-DAG: %[[SOFTMAX:.*]] = "tf.Softmax"(%[[FEATURES]]) : (tensor<2x3xf32>) -> tensor<2x3xf32>
   // CHECK-DAG: %[[BACKPROP:.*]] = "tf.Sub"(%[[SOFTMAX]], %[[LABELS]]) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
   // CHECK: return %[[LOSS]], %[[BACKPROP]]
@@ -505,7 +508,7 @@ func @tanhgrad_float(%y : tensor<*xf32>, %dy: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: func @tanhgrad_complex
 // CHECK-SAME: (%[[Y:.*]]: tensor<*xcomplex<f32>>, %[[DY:.*]]: tensor<*xcomplex<f32>>)
 func @tanhgrad_complex(%y : tensor<*xcomplex<f32>>, %dy: tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>> {
-  // CHECK: tf.TanhGrad
+  // CHECK-NOT: tf.TanhGrad
   %0 = "tf.TanhGrad"(%y, %dy) : (tensor<*xcomplex<f32>>, tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>>
 
   return %0 : tensor<*xcomplex<f32>>
@@ -945,4 +948,35 @@ func @xlogy(%lhs: tensor<*xf32>, %rhs: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.Xlogy"(%lhs, %rhs) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   // CHECK: return %[[RESULT]]
   return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: size_to_prod_shape_i32
+func @size_to_prod_shape_i32(%arg0 : tensor<1x?x2x3xf32>) -> tensor<i32> {
+  %0 = "tf.Size"(%arg0) : (tensor<1x?x2x3xf32>) -> tensor<i32>
+  return %0 : tensor<i32>
+  // CHECK: %[[CONSTANT:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%arg0) : (tensor<1x?x2x3xf32>) -> tensor<4xi32>
+  // CHECK: %[[PROD:.*]] = "tf.Prod"(%[[SHAPE]], %[[CONSTANT]]) {keep_dims = false} : (tensor<4xi32>, tensor<i32>) -> tensor<i32>
+  // CHECK: return %[[PROD]]
+}
+
+// CHECK-LABEL: size_to_prod_shape_i64
+func @size_to_prod_shape_i64(%arg0 : tensor<1x?x2x3xf32>) -> tensor<i64> {
+  %0 = "tf.Size"(%arg0) : (tensor<1x?x2x3xf32>) -> tensor<i64>
+  return %0 : tensor<i64>
+  // CHECK: %[[CONSTANT:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
+  // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%arg0) : (tensor<1x?x2x3xf32>) -> tensor<4xi64>
+  // CHECK: %[[PROD:.*]] = "tf.Prod"(%[[SHAPE]], %[[CONSTANT]]) {keep_dims = false} : (tensor<4xi64>, tensor<i64>) -> tensor<i64>
+  // CHECK: return %[[PROD]]
+}
+
+// CHECK-LABEL: func @expm1
+// CHECK-SAME: (%[[X:.*]]: tensor<*xf32>)
+func @expm1(%x: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[EXP:.*]] = "tf.Exp"(%[[X]]) : (tensor<*xf32>) -> tensor<*xf32>
+  // CHECK: %[[RESULT:.*]] = "tf.Sub"(%[[EXP]], %[[ONE]]) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+  %0 = "tf.Expm1" (%x) : (tensor<*xf32>) -> tensor<*xf32>
+  // CHECK: return %[[RESULT]]
+  return %0: tensor<*xf32>
 }

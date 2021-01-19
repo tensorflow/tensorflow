@@ -46,12 +46,12 @@ ComputeTaskDescriptor PReLU(const OperationDef& definition,
     desc.args.AddFloat("clip", attr.clip);
     desc.shader_source =
         R"(
-  value = FLT4(clamp(value, FLT4(0.0f), FLT4(args.clip)) + args.alpha.Read(gid.z) * min(FLT4(0.0f), value));
+  in_out_value = FLT4(clamp(in_out_value, FLT4(0.0f), FLT4(args.clip)) + args.alpha.Read(S_COORD) * min(FLT4(0.0f), in_out_value));
 )";
   } else {
     desc.shader_source =
         R"(
-  value = FLT4(max(FLT4(0.0f), value) + args.alpha.Read(gid.z) * min(FLT4(0.0f), value));
+  in_out_value = FLT4(max(FLT4(0.0f), in_out_value) + args.alpha.Read(S_COORD) * min(FLT4(0.0f), in_out_value));
 )";
   }
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
@@ -79,12 +79,12 @@ ComputeTaskDescriptor PReLUFull(const OperationDef& definition,
     desc.args.AddFloat("clip", attr.clip);
     desc.shader_source =
         R"(
-  value = FLT4(clamp(value, FLT4(0.0f), FLT4(args.clip)) + args.alpha.Read(gid.x, gid.y, gid.z) * min(FLT4(0.0f), value));
+  in_out_value = FLT4(clamp(in_out_value, FLT4(0.0f), FLT4(args.clip)) + args.alpha.Read(X_COORD, Y_COORD, S_COORD) * min(FLT4(0.0f), in_out_value));
 )";
   } else {
     desc.shader_source =
         R"(
-  value = FLT4(max(FLT4(0.0f), value) + args.alpha.Read(gid.x, gid.y, gid.z) * min(FLT4(0.0f), value));
+  in_out_value = FLT4(max(FLT4(0.0f), in_out_value) + args.alpha.Read(X_COORD, Y_COORD, S_COORD) * min(FLT4(0.0f), in_out_value));
 )";
   }
   TensorDescriptor alpha_desc{definition.GetDataType(),

@@ -252,6 +252,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass();
 // Creates a pass that outlines regions of tf_device.launch operations.
 std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
 
+// Creates a pass that clusters ops into tf_device::ClusterOp regions
+// according to a policy specified by the pass options.
+std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass();
+
 // A pass that decomposes composite resource operations into primitive ones like
 // ReadVariableOp, AssignVariableOp and other computations to facilitate
 // transformations like resource op lifting.
@@ -365,11 +369,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
 // attribute value in a tf_device.launch op with host device assignment.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateOutsideCompiledToHostLaunchPass();
-
-// Creates a pass that groups outside compiled operations (CPU ops inside TPU
-// cluster) into clusters that can be extracted and run on the CPU.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUOutsideCompilationClusterPass();
 
 // Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
 // at head/tail of TPU cluster to run before/after TPU computation.

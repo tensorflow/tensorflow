@@ -91,7 +91,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
         getSizeInBytes(loc, memref_type.getElementType(), rewriter);
 
     // Convert `output_index` or set it to -1 if the attribute is missing.
-    Type llvmInt32Type = LLVM::LLVMIntegerType::get(rewriter.getContext(), 32);
+    Type llvmInt32Type = IntegerType::get(rewriter.getContext(), 32);
     Value output_index = rewriter.create<LLVM::ConstantOp>(
         loc, llvmInt32Type,
         rewriter.getI32IntegerAttr(tf_alloc_op.output_index().hasValue()
@@ -126,8 +126,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
   StringRef GetFuncName() const override { return kCInterfaceAlloc; }
 
   Type GetFuncType() const override {
-    Type llvm_i32_type =
-        LLVM::LLVMIntegerType::get(getDialect().getContext(), 32);
+    Type llvm_i32_type = IntegerType::get(getDialect().getContext(), 32);
     Type llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
     Type llvm_void_ptr_type = getVoidPtrType();
     return LLVM::LLVMFunctionType::get(
@@ -179,8 +178,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
   std::pair<Value, Value> ConvertI32ArrayAttrToStackAllocatedArray(
       Location loc, llvm::Optional<ArrayAttr> attr,
       ConversionPatternRewriter *rewriter) const {
-    Type llvm_i32_type =
-        LLVM::LLVMIntegerType::get(getDialect().getContext(), 32);
+    Type llvm_i32_type = IntegerType::get(getDialect().getContext(), 32);
     Type llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
 
     // If the attribute is missing or empty, set the element count to 0 and
@@ -276,9 +274,8 @@ class ReportErrorOpConverter
   StringRef GetFuncName() const override { return kCInterfaceReportError; }
   Type GetFuncType() const override {
     MLIRContext *ctx = &getTypeConverter()->getContext();
-    auto i8_ptr_type =
-        LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(ctx, 8));
-    auto i32_type = LLVM::LLVMIntegerType::get(ctx, 32);
+    auto i8_ptr_type = LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+    auto i32_type = IntegerType::get(ctx, 32);
     return LLVM::LLVMFunctionType::get(
         getVoidType(), {getVoidPtrType(), i32_type, i8_ptr_type});
   }
@@ -308,11 +305,11 @@ class ReportErrorOpConverter
 
       MLIRContext *ctx = &getTypeConverter()->getContext();
       Value c0 = builder.create<LLVM::ConstantOp>(
-          loc, LLVM::LLVMIntegerType::get(ctx, 64),
+          loc, IntegerType::get(ctx, 64),
           builder.getIntegerAttr(builder.getIndexType(), 0));
       return builder.create<LLVM::GEPOp>(
-          loc, LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(ctx, 8)),
-          globalPtr, ValueRange{c0, c0});
+          loc, LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8)), globalPtr,
+          ValueRange{c0, c0});
     }
     return LLVM::createGlobalString(loc, builder, global_name, generated_error,
                                     LLVM::Linkage::Internal);

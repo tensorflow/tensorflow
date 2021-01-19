@@ -41,6 +41,8 @@ class ImagePreprocessingDistributionTest(
     preprocessing_test_utils.PreprocessingLayerTest):
 
   def test_distribution(self, distribution):
+    if "CentralStorage" in type(distribution).__name__:
+      self.skipTest("Does not work with CentralStorageStrategy yet.")
     # TODO(b/159738418): large image input causes OOM in ubuntu multi gpu.
     np_images = np.random.random((32, 32, 32, 3)).astype(np.float32)
     image_dataset = dataset_ops.Dataset.from_tensor_slices(np_images).batch(

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
 
 #import <XCTest/XCTest.h>
 
@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/relu_test_util.h"
 
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
@@ -39,7 +40,10 @@ using ::tflite::gpu::metal::SingleOpModel;
 @interface ReLUTest : XCTestCase
 @end
 
-@implementation ReLUTest
+@implementation ReLUTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+}
+
 - (void)setUp {
   [super setUp];
 }
@@ -101,6 +105,26 @@ TensorRef<BHWC> GetTensorRef(int ref) {
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({-3.0, 0.0, 2.0, 6.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testReLUNoClipNoAlpha {
+  auto status = ReLUNoClipNoAlphaTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testReLUClip {
+  auto status = ReLUClipTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testReLUAlpha {
+  auto status = ReLUAlphaTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testReLUAlphaClip {
+  auto status = ReLUAlphaClipTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

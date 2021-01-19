@@ -134,6 +134,8 @@ class GpuBinaryOpTest : public OpsTestBase {
                        const test::GpuOpsTestConfig& config) {
     // Prepare inputs.
     int input_size = shape.num_elements();
+    CHECK(lhs_input.size() <= input_size && rhs_input.size() <= input_size &&
+          "expect input shape to hold all input values");
     auto repeated_lhs_input =
         test::RepeatInputToMatchShape(lhs_input, input_size);
     auto repeated_rhs_input =
@@ -165,6 +167,8 @@ class GpuBinaryOpTest : public OpsTestBase {
                      const test::GpuOpsTestConfig& config) {
     // Prepare inputs.
     TensorShape scalar_shape{};
+    CHECK(other_input.size() <= other_shape.num_elements() &&
+          "expect other input shape to hold all input values");
     auto repeated_other_input =
         test::RepeatInputToMatchShape(other_input, other_shape.num_elements());
 
@@ -356,8 +360,8 @@ class GpuBinaryOpTest : public OpsTestBase {
 
 #define GENERATE_DEFAULT_TESTS(op_name, test_name, T, OutT, baseline_callback) \
   GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, T, OutT, OutT,               \
-                           test::DefaultInput<T>(#op_name),                    \
-                           test::DefaultInput<T>(#op_name), baseline_callback, \
+                           test::DefaultInput<T>(), test::DefaultInput<T>(),   \
+                           baseline_callback,                                  \
                            test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
 #define GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(                  \
@@ -373,15 +377,53 @@ T baseline_add(T lhs, T rhs) {
   return lhs + rhs;
 }
 
-GENERATE_DEFAULT_TESTS(AddV2,
-                       /*test_name=*/Half, Eigen::half, Eigen::half,
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Half, Eigen::half, Eigen::half,
                        baseline_add)
-GENERATE_DEFAULT_TESTS(AddV2,
-                       /*test_name=*/Float, float, float, baseline_add)
-GENERATE_DEFAULT_TESTS(AddV2,
-                       /*test_name=*/Double, double, double, baseline_add)
-GENERATE_DEFAULT_TESTS(AddV2,
-                       /*test_name=*/Int64, int64, int64, baseline_add)
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Float, float, float, baseline_add)
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Double, double, double,
+                       baseline_add)
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int64, int64, int64, baseline_add)
+
+/// Test `tf.Atan2`.
+
+// Prevent the undefined case (0, 0) with non-zero rhs values.
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/FloatRhsNonZero, float, float, test::DefaultInput<float>(),
+    test::DefaultInputNonZero<float>(), std::atan2);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/DoubleRhsNonZero, double, double,
+    test::DefaultInput<double>(), test::DefaultInputNonZero<double>(),
+    std::atan2);
+
+// Prevent the undefined case (0, 0) with non-zero lhs values.
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/FloatLhsNonZero, float, float,
+    test::DefaultInputNonZero<float>(), test::DefaultInput<float>(),
+    std::atan2);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/DoubleLhsNonZero, double, double,
+    test::DefaultInputNonZero<double>(), test::DefaultInput<double>(),
+    std::atan2);
+
+// Test some particularly interesting cases.
+TEST_F(GpuBinaryOpTest, Atan2FloatSpecialCases) {
+  TestEqualShapes<float, float, float, float>(
+      "Atan2", /*shape=*/{20},
+      test::InputAsVector<float>({1, 1, 1, 0, -1, -1, -1, 0}),
+      test::InputAsVector<float>({1, 0, -1, -1, -1, 0, 1, 1}), std::atan2,
+      test::GpuOpsTestConfig().ExpectStrictlyEqual());
+}
+TEST_F(GpuBinaryOpTest, Atan2DoubleSpecialCases) {
+  TestEqualShapes<double, double, double, double>(
+      "Atan2", /*shape=*/{20},
+      test::InputAsVector<double>({1, 1, 1, 0, -1, -1, -1, 0}),
+      test::InputAsVector<double>({1, 0, -1, -1, -1, 0, 1, 1}), std::atan2,
+      test::GpuOpsTestConfig().ExpectStrictlyEqual());
+}
 
 /// Test `tf.BitwiseAnd`.
 
@@ -431,6 +473,25 @@ GENERATE_DEFAULT_TESTS(BitwiseXor,
 GENERATE_DEFAULT_TESTS(BitwiseXor,
                        /*test_name=*/Int64, int64, int64, baseline_bitwise_xor)
 
+/// Test `tf.Complex`.
+
+template <typename T>
+std::complex<T> baseline_complex(T lhs, T rhs) {
+  return std::complex<T>(lhs, rhs);
+}
+
+GENERATE_DEFAULT_TESTS_2(
+    Complex,
+    /*test_name=*/C64, float, float, std::complex<float>, std::complex<float>,
+    test::DefaultInput<float>(), test::DefaultInput<float>(), baseline_complex,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().AddTout())
+GENERATE_DEFAULT_TESTS_2(
+    Complex,
+    /*test_name=*/C128, double, double, std::complex<double>,
+    std::complex<double>, test::DefaultInput<double>(),
+    test::DefaultInput<double>(), baseline_complex,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().AddTout())
+
 /// Test `tf.Div`.
 
 template <typename T>
@@ -441,23 +502,23 @@ T baseline_div(T lhs, T rhs) {
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Div,
     /*test_name=*/Half, Eigen::half, Eigen::half,
-    test::DefaultInput<Eigen::half>("Div"),
-    test::DefaultInputNonZero<Eigen::half>(), baseline_div);
+    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
+    baseline_div);
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Div,
-    /*test_name=*/Float, float, float, test::DefaultInput<float>("Div"),
+    /*test_name=*/Float, float, float, test::DefaultInput<float>(),
     test::DefaultInputNonZero<float>(), baseline_div);
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Div,
-    /*test_name=*/Double, double, double, test::DefaultInput<double>("Div"),
+    /*test_name=*/Double, double, double, test::DefaultInput<double>(),
     test::DefaultInputNonZero<double>(), baseline_div);
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Div,
-    /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>("Div"),
+    /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
     test::DefaultInputNonZero<int16>(), baseline_div);
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Div,
-    /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>("Div"),
+    /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputNonZero<int64>(), baseline_div);
 
 /// Test `tf.Equal`.
@@ -489,13 +550,40 @@ Eigen::half baseline_floor_div(Eigen::half lhs, Eigen::half rhs) {
   return static_cast<Eigen::half>(std::floor(static_cast<float>(lhs / rhs)));
 }
 
-GENERATE_DEFAULT_TESTS(FloorDiv,
-                       /*test_name=*/Half, Eigen::half, Eigen::half,
-                       baseline_floor_div)
-GENERATE_DEFAULT_TESTS(FloorDiv,
-                       /*test_name=*/Float, float, float, baseline_floor_div)
-GENERATE_DEFAULT_TESTS(FloorDiv,
-                       /*test_name=*/Double, double, double, baseline_floor_div)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Half, Eigen::half, Eigen::half,
+    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
+    baseline_floor_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Float, float, float, test::DefaultInput<float>(),
+    test::DefaultInputNonZero<float>(), baseline_floor_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Double, double, double, test::DefaultInput<double>(),
+    test::DefaultInputNonZero<double>(), baseline_floor_div);
+
+/// Test `tf.RealDiv`.
+
+template <typename T>
+T baseline_real_div(T lhs, T rhs) {
+  return lhs / rhs;
+}
+
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Half, Eigen::half, Eigen::half,
+    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
+    baseline_real_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Float, float, float, test::DefaultInput<float>(),
+    test::DefaultInputNonZero<float>(), baseline_real_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Double, double, double, test::DefaultInput<double>(),
+    test::DefaultInputNonZero<double>(), baseline_real_div);
 
 /// Test `tf.Greater`.
 
@@ -544,14 +632,18 @@ T baseline_left_shift(T lhs, T rhs) {
   return lhs << rhs;
 }
 
-GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int8, int8, int8,
-                       baseline_left_shift)
-GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int16, int16, int16,
-                       baseline_left_shift)
-GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int32, int32, int32,
-                       baseline_left_shift)
-GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int64, int64, int64,
-                       baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int8, int8, int8, test::DefaultInput<int8>(),
+    test::DefaultInputLessThanBitwidth<int8>(), baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
+    test::DefaultInputLessThanBitwidth<int16>(), baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int32, int32, int32, test::DefaultInput<int32>(),
+    test::DefaultInputLessThanBitwidth<int32>(), baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
+    test::DefaultInputLessThanBitwidth<int64>(), baseline_left_shift)
 
 /// Test `tf.Less`.
 
@@ -594,10 +686,8 @@ bool baseline_logical_and(bool lhs, bool rhs) { return lhs && rhs; }
 
 GENERATE_DEFAULT_TESTS_2(LogicalAnd, /*test_name=*/Bool, /*T=*/bool,
                          /*BaselineT=*/bool, /*OutT=*/bool,
-                         /*BaselineOutT=*/bool,
-                         test::DefaultInput<bool>("LogicalAnd"),
-                         test::DefaultInput<bool>("LogicalAnd"),
-                         baseline_logical_and,
+                         /*BaselineOutT=*/bool, test::DefaultInput<bool>(),
+                         test::DefaultInput<bool>(), baseline_logical_and,
                          test::GpuOpsTestConfig().ExpectStrictlyEqual().NoT())
 
 /// Test `tf.LogicalOr`.
@@ -606,10 +696,8 @@ bool baseline_logical_or(bool lhs, bool rhs) { return lhs || rhs; }
 
 GENERATE_DEFAULT_TESTS_2(LogicalOr, /*test_name=*/Bool, /*T=*/bool,
                          /*BaselineT=*/bool, /*OutT=*/bool,
-                         /*BaselineOutT=*/bool,
-                         test::DefaultInput<bool>("LogicalOr"),
-                         test::DefaultInput<bool>("LogicalOr"),
-                         baseline_logical_or,
+                         /*BaselineOutT=*/bool, test::DefaultInput<bool>(),
+                         test::DefaultInput<bool>(), baseline_logical_or,
                          test::GpuOpsTestConfig().ExpectStrictlyEqual().NoT())
 
 /// Test `tf.Mul`.
@@ -656,14 +744,22 @@ T baseline_right_shift(T lhs, T rhs) {
   return lhs >> rhs;
 }
 
-GENERATE_DEFAULT_TESTS(RightShift,
-                       /*test_name=*/Int8, int8, int8, baseline_right_shift)
-GENERATE_DEFAULT_TESTS(RightShift,
-                       /*test_name=*/Int16, int16, int16, baseline_right_shift)
-GENERATE_DEFAULT_TESTS(RightShift,
-                       /*test_name=*/Int32, int32, int32, baseline_right_shift)
-GENERATE_DEFAULT_TESTS(RightShift,
-                       /*test_name=*/Int64, int64, int64, baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int8, int8, int8, test::DefaultInput<int8>(),
+    test::DefaultInputLessThanBitwidth<int8>(), baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
+    test::DefaultInputLessThanBitwidth<int16>(), baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int32, int32, int32, test::DefaultInput<int32>(),
+    test::DefaultInputLessThanBitwidth<int32>(), baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
+    test::DefaultInputLessThanBitwidth<int64>(), baseline_right_shift)
 
 /// Test `tf.Sub`.
 

@@ -553,6 +553,22 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
                                                 int64_t zero_point,
                                                 int64_t storage_min = -128,
                                                 int64_t storage_max = 127);
+
+// Extrace min and max values from the DenseFPElementsAttr, and stores them into
+// `mins` and `maxs`. When mins and maxs are extracted per-channel, `dim_size`
+// is number of channels and `slice_size` is the size of slice per each channel.
+// When `symmetric` is true, the range is expanded to [-M, M].
+void ExtractMinMaxFromAttr(DenseFPElementsAttr values, int dim_size,
+                           int slice_size, bool symmetric,
+                           SmallVector<double, 4>& mins,
+                           SmallVector<double, 4>& maxs);
+
+// Returns the quantized type for the
+// input_type/min/max/storag_type_width/narrow_range.
+Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
+                      ArrayRef<double> max, int quant_dim,
+                      int storage_type_width, bool narrow_range,
+                      bool is_signed);
 }  // namespace quant
 }  // namespace mlir
 

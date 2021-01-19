@@ -31,8 +31,12 @@ ifneq ($(filter ethos-u,$(ALL_TAGS)),)
     CMSIS_DEFAULT_DOWNLOAD_PATH := $(MAKEFILE_DIR)/downloads/cmsis
     CMSIS_PATH := $(CMSIS_DEFAULT_DOWNLOAD_PATH)
     ifeq ($(CMSIS_PATH), $(CMSIS_DEFAULT_DOWNLOAD_PATH))
-        $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
+      DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/cmsis_download.sh ${MAKEFILE_DIR}/downloads)
+      ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+        $(error Something went wrong with the CMSIS download: $(DOWNLOAD_RESULT))
+      endif
     endif
+
     THIRD_PARTY_CC_HDRS += $(CMSIS_PATH)/CMSIS/Core/Include/cmsis_compiler.h
 
     INCLUDES += -I$(ETHOSU_DRIVER_PATH)/include \

@@ -144,10 +144,13 @@ class MlirUnrankedOp : public OpKernel {
 
 #define MLIR_FUNCTION(tf_op, mlir_type) _mlir_ciface_##tf_op##_##mlir_type
 
-#define REGISTER_KERNEL(tf_op, mlir_type, data_type)                  \
+#define REGISTER_ALIASED_KERNEL(tf_op, mlir_op, mlir_type, data_type) \
   REGISTER_KERNEL_BUILDER(                                            \
       Name(#tf_op).Device(DEVICE_GPU).TypeConstraint<data_type>("T"), \
-      MlirUnranked##tf_op##mlir_type##Op);
+      MlirUnranked##mlir_op##mlir_type##Op);
+
+#define REGISTER_KERNEL(tf_op, mlir_type, data_type) \
+  REGISTER_ALIASED_KERNEL(tf_op, tf_op, mlir_type, data_type)
 
 #define REGISTER_COMPLEX_KERNEL(tf_op, mlir_type, data_type, input_data_type) \
   REGISTER_KERNEL_BUILDER(Name(#tf_op)                                        \

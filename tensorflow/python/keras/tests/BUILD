@@ -165,7 +165,7 @@ py_library(
     srcs = [
         "model_architectures.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/keras",
     ],
@@ -187,7 +187,7 @@ tf_py_test(
 py_library(
     name = "model_subclassing_test_util",
     srcs = ["model_subclassing_test_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/keras",
     ],
@@ -482,6 +482,6 @@ tf_xla_py_test(
 py_library(
     name = "get_config_samples",
     srcs = ["get_config_samples.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [],
 )

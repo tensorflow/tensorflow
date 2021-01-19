@@ -262,11 +262,6 @@ void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                            result);
 }
 
-void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                          float* batch_vector) {
-  PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
-}
-
 void Sub1Vector(const float* vector, int v_size, float* result) {
   PortableSub1Vector(vector, v_size, result);
 }

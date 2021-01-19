@@ -8,6 +8,16 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+package_group(
+    name = "friends",
+    includes = [
+        "//tensorflow:internal",
+    ],
+    packages = [
+        "//third_party/py/jax/...",
+    ],
+)
+
 cc_library(
     name = "worker_thread",
     srcs = ["worker_thread.cc"],
@@ -274,10 +284,12 @@ cc_library(
     name = "cpu_device",
     srcs = ["cpu_device.cc"],
     hdrs = ["cpu_device.h"],
+    visibility = [":friends"],
     deps = [
         ":pjrt_stream_executor_client",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:platform_util",
         "@com_google_absl//absl/strings",
     ],

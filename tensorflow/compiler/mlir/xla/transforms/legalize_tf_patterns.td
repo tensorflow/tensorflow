@@ -91,6 +91,8 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
 foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
+                         [TF_Atan2Op, HLOClient_BroadcastAtan2Op],
+                         [TF_ComplexOp, HLOClient_BroadcastComplexOp],
                          [TF_DivOp, HLOClient_BroadcastDivOp],
                          [TF_LeftShiftOp, HLOClient_BroadcastShiftLeftOp],
                          [TF_MaximumOp, HLOClient_BroadcastMaxOp],
@@ -109,8 +111,6 @@ def LowerRightShiftSigned :
 
 // TODO(hinsu): Lower unsigned types to HLO_ShiftRightLogical once the HLO op
 // supports unsigned integers.
-
-def : Pat<(TF_ComplexOp $r, $i), (HLO_ComplexOp $r, $i)>;
 
 // Performs a substitution of FloorDiv, pseudo code below:
 //
@@ -585,8 +585,11 @@ def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (ConstantLikeMatcher Elements
 foreach Mapping = [
                    [TF_AbsOp, HLO_AbsOp],
                    [TF_AcosOp, HLOClient_AcosOp],
+                   [TF_AsinOp, HLOClient_AsinOp],
                    [TF_AtanOp, HLOClient_AtanOp],
+                   [TF_AtanhOp, HLOClient_AtanhOp],
                    [TF_CeilOp, HLO_CeilOp],
+                   [TF_CoshOp, HLOClient_CoshOp],
                    [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_ConjOp, HLOClient_ConjOp],
                    [TF_CosOp, HLO_CosOp],
@@ -616,7 +619,7 @@ foreach Mapping = [
 
 // TODO(bixia): Lower Cast with a Complex type source operand or with
 // Truncate=True for floating point value conversions.
-def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),
+def : Pat<(TF_CastOp HLO_PredIntOrFpTensor:$arg, ConstBoolAttrFalse),
           (HLO_ConvertOp $arg)>;
 
 def : Pat<(TF_TransposeOp:$res $arg, (ConstantLikeMatcher ElementsAttr:$permutation)),
@@ -635,8 +638,8 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
 def : Pat<(TF_SignOp $x), (HLO_SignOp $x)>;
 
 def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
-  "getElementTypeOrSelf($0.getType()).isSignlessIntOrFloat() && "
-  "getElementTypeOrSelf($1.getType()).isSignlessIntOrFloat() && "
+  "getElementTypeOrSelf($0.getType()).isIntOrFloat() && "
+  "getElementTypeOrSelf($1.getType()).isIntOrFloat() && "
   "getElementTypeOrSelf($0.getType()).getIntOrFloatBitWidth() == "
   "getElementTypeOrSelf($1.getType()).getIntOrFloatBitWidth()">,
   "element types must be integers or floats of same width">;

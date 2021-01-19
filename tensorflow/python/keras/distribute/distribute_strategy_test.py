@@ -60,6 +60,7 @@ from tensorflow.python.keras.distribute.strategy_combinations import tpu_strateg
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -67,7 +68,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
@@ -2068,9 +2068,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           ],
           mode=['graph', 'eager'],
           reduction=[
-              loss_reduction.ReductionV2.AUTO,
-              loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE,
-              loss_reduction.ReductionV2.SUM
+              losses_utils.ReductionV2.AUTO,
+              losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+              losses_utils.ReductionV2.SUM
           ]))
   def test_distribution_strategy_with_loss_reduction_types(
       self, distribution, reduction):
@@ -2573,7 +2573,7 @@ class TestDistributionStrategyWithMultipleAddLossAndMetricCalls(
           optimizer=keras.optimizers.adam_v2.Adam(1e-4),
           loss=keras.losses.SparseCategoricalCrossentropy(
               from_logits=True,
-              reduction=loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE),
+              reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE),
           metrics=[
               keras.metrics.SparseCategoricalAccuracy(),
               keras.metrics.SparseCategoricalCrossentropy(from_logits=True),

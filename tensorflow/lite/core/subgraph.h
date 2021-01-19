@@ -552,7 +552,8 @@ class Subgraph {
   // Returns one of the following status codes:
   // 1. kTfLiteOk: Delegation succeeded
   // 2. kTfLiteDelegateError: Delegation failed due to an error *in the
-  // delegate*. The Subgraph has been restored to its pre-delegation state.
+  // delegate*, or the delegate parameter was null. The Subgraph has been
+  // restored to its pre-delegation state.
   // NOTE: This reverts all delegates previously applied to the Subgraph.
   // 3. kTfLiteApplicationError : Delegation failed to be applied due to the
   // incompatibility with the TfLite runtime, e.g., the model graph is already

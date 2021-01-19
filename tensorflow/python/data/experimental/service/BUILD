@@ -25,6 +25,7 @@ tf_python_pybind_extension(
 py_library(
     name = "server_lib",
     srcs = ["server_lib.py"],
+    srcs_version = "PY3",
     visibility = [
         "//visibility:public",
     ],
@@ -48,7 +49,7 @@ tf_py_test(
 py_library(
     name = "service",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":server_lib",
         "//tensorflow/python/data/experimental/ops:data_service_ops",

@@ -502,8 +502,10 @@ int64 Product(absl::Span<const int64> xs);
 //         b[j_k] × b[j_k + 1] × ... × b[j_(k+1) - 1]
 // where `CommonFactors(a, b)[CommonFactors(a, b).size - 1] = (a.size, b.size)`
 //
-// If the given shapes have non-zero size, returns the bounds of the shortest
-// possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
+// If input and output are the same, return {(0, 0), {1, 1}, ... {a.size,
+// b.size}}, otherwise if the given shapes have non-zero size, returns the
+// bounds of the shortest possible such subsequences; else, returns `{(0, 0),
+// (a.size, b.size)}`.
 absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
     absl::Span<const int64> a, absl::Span<const int64> b);
 

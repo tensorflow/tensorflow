@@ -29,9 +29,9 @@ ComputeTaskDescriptor QuantizeAndDequantize(
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   desc.shader_source = R"(
-  value = clamp(value, FLT4(args.qmin), FLT4(args.qmax));
-  value = (value - FLT4(args.qmin)) / FLT4(args.qscale);
-  value = round(value) * FLT4(args.qscale) + FLT4(args.qmin);)";
+  in_out_value = clamp(in_out_value, FLT4(args.qmin), FLT4(args.qmax));
+  in_out_value = (in_out_value - FLT4(args.qmin)) / FLT4(args.qscale);
+  in_out_value = round(in_out_value) * FLT4(args.qscale) + FLT4(args.qmin);)";
   desc.args.AddFloat("qmax", attr.max);
   desc.args.AddFloat("qmin", attr.min);
   desc.args.AddFloat("qscale", attr.scale);

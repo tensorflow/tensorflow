@@ -56,6 +56,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mlir_gpu_test_base",
+    testonly = True,
+    srcs = ["mlir_gpu_test_base.cc"],
+    hdrs = ["mlir_gpu_test_base.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
+        "//tensorflow/compiler/xla/service/gpu:target_constants",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core/common_runtime/gpu:gpu_init",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+    ],
+)
+
+tf_cc_test(
+    name = "mlir_sorting_test",
+    srcs = ["mlir_sorting_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":mlir_gpu_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_cc_test(
     name = "gemm_rewrite_test",
     srcs = [

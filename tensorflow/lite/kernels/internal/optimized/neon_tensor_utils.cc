@@ -52,6 +52,7 @@ namespace {
 constexpr int kFloatValuesPerNeonVector = 4;
 constexpr int kInt16ValuesPerNeonVector = 8;
 constexpr int kInt8ValuesPerNeonVector = 16;
+constexpr int kNeonVectorAlignment = 4;
 
 template <int PerNeonSize>
 inline int RoundDownVectors(int size) {
@@ -233,10 +234,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
 // contains 4 bytes from each of 4 vectors.
 const int8_t* ShuffleVectors(const int8_t* vectors, const int n_batch,
                              const int m_cols, void** shuffled_vectors_free) {
-  const int kWeightsPerUint32 = 4;
-
   int8* shuffled_vectors = reinterpret_cast<int8*>(aligned_alloc(
-      kWeightsPerUint32, n_batch * m_cols, shuffled_vectors_free));
+      kNeonVectorAlignment, n_batch * m_cols, shuffled_vectors_free));
 
   for (int i = 0; i < n_batch; i += 4) {
     int8* shuffled_vectors_ptr = shuffled_vectors + (i * m_cols);
@@ -264,11 +263,11 @@ const int8_t* ShuffleVectors(const int8_t* vectors, const int n_batch,
           "st4 {v0.s, v1.s, v2.s, v3.s}[2], [%[shuffled_vectors_ptr]], #16\n"
           "st4 {v0.s, v1.s, v2.s, v3.s}[3], [%[shuffled_vectors_ptr]], #16\n"
 
-          : [ unshuffled_vec0_ptr ] "+r"(unshuffled_vec0_ptr),
-            [ unshuffled_vec1_ptr ] "+r"(unshuffled_vec1_ptr),
-            [ unshuffled_vec2_ptr ] "+r"(unshuffled_vec2_ptr),
-            [ unshuffled_vec3_ptr ] "+r"(unshuffled_vec3_ptr),
-            [ shuffled_vectors_ptr ] "+r"(shuffled_vectors_ptr)
+          : [unshuffled_vec0_ptr] "+r"(unshuffled_vec0_ptr),
+            [unshuffled_vec1_ptr] "+r"(unshuffled_vec1_ptr),
+            [unshuffled_vec2_ptr] "+r"(unshuffled_vec2_ptr),
+            [unshuffled_vec3_ptr] "+r"(unshuffled_vec3_ptr),
+            [shuffled_vectors_ptr] "+r"(shuffled_vectors_ptr)
           :
           : "v0", "v1", "v2", "v3", "cc", "memory");
     }
@@ -581,8 +580,6 @@ void DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
     const int8_t* vectors, const float* scaling_factors, int n_batch,
     float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* row_sums) {
-  const int kWeightsPerUint32 = 4;
-
   // Round to the nearest multiple of 4.
   int batch_round_up = n_batch;
   if (n_batch % 4 != 0) {
@@ -593,14 +590,14 @@ void DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
   void* padded_vectors_free;
   const int padded_vectors_size = batch_round_up * m_cols;
   int8_t* padded_vectors = reinterpret_cast<int8_t*>(aligned_alloc(
-      kWeightsPerUint32, padded_vectors_size, &padded_vectors_free));
+      kNeonVectorAlignment, padded_vectors_size, &padded_vectors_free));
   memset(padded_vectors, 0, padded_vectors_size);
 
   void* padded_result_free;
   const int result_size = n_batch * m_rows * sizeof(float);
   const int padded_result_size = batch_round_up * m_rows * sizeof(float);
   float* padded_result = reinterpret_cast<float*>(aligned_alloc(
-      kWeightsPerUint32, padded_result_size, &padded_result_free));
+      kNeonVectorAlignment, padded_result_size, &padded_result_free));
   memcpy(padded_result, result, result_size);
   memset(reinterpret_cast<char*>(padded_result) + result_size, 0,
          padded_result_size - result_size);
@@ -612,7 +609,7 @@ void DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
   void* padded_scaling_factors_free;
   const int padded_scaling_factors_size = batch_round_up * sizeof(float);
   float* padded_scaling_factors = reinterpret_cast<float*>(
-      aligned_alloc(kWeightsPerUint32, padded_scaling_factors_size,
+      aligned_alloc(kNeonVectorAlignment, padded_scaling_factors_size,
                     &padded_scaling_factors_free));
   TFLITE_CHECK_LE(n_batch * sizeof(float), padded_scaling_factors_size);
   TFLITE_CHECK_LE(batch_round_up * sizeof(float), padded_scaling_factors_size);
@@ -623,7 +620,7 @@ void DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
     void* padded_input_offset_free;
     const int padded_input_offset_size = batch_round_up * sizeof(int32_t);
     int32_t* padded_input_offset = reinterpret_cast<int32_t*>(
-        aligned_alloc(kWeightsPerUint32, padded_input_offset_size,
+        aligned_alloc(kNeonVectorAlignment, padded_input_offset_size,
                       &padded_input_offset_free));
     TFLITE_CHECK_LE(n_batch * sizeof(int32_t), padded_input_offset_size);
     TFLITE_CHECK_LE(batch_round_up * sizeof(int32_t), padded_input_offset_size);
@@ -730,14 +727,10 @@ void NeonMatrixBatchVectorMultiplyImpl(const int8_t* input, const int32_t* bias,
                                        int32_t n_batch, int32_t n_input,
                                        int32_t n_output, int32_t output_zp,
                                        int32_t* scratch) {
-  static const int kWeightsPerUint32 = 4;
-  static const int kWeightsPerNeonLane = 16;
-  // Assuming *matrix is kWeightsPerUint32-byte aligned,
-  // every row of the matrix is also
-  // kWeightsPerUint32-byte aligned as long as cols is
-  // a multiple of kWeightsPerUint32. The assumption
-  // is currently satisfied by TFLite's 16-byte memory
-  // alignment scheme.
+  // Assuming *matrix is kNeonVectorAlignment-byte aligned, every row of the
+  // matrix is also kNeonVectorAlignment-byte aligned as long as cols is a
+  // multiple of kNeonVectorAlignment. The assumption is currently satisfied by
+  // TFLite's 16-byte memory alignment scheme.
   //
   // Otherwise, we allocate an aligned memory block and set
   // a flag to later copy rows from matrix to the block
@@ -745,23 +738,26 @@ void NeonMatrixBatchVectorMultiplyImpl(const int8_t* input, const int32_t* bias,
   bool unaligned = false;
   int8_t* aligned_row = nullptr;
   void* aligned_row_free = nullptr;
-  if ((n_input & (kWeightsPerUint32 - 1)) != 0) {
+  if ((n_input & (kNeonVectorAlignment - 1)) != 0) {
     unaligned = true;
-    aligned_row = (int8_t*)aligned_alloc(kWeightsPerUint32, n_input,  // NOLINT
-                                         &aligned_row_free);
+    aligned_row =
+        (int8_t*)aligned_alloc(kNeonVectorAlignment, n_input,  // NOLINT
+                               &aligned_row_free);
   }
   void* aligned_vec_free = nullptr;
   int8_t* aligned_vec =
-      (int8_t*)aligned_alloc(kWeightsPerUint32, n_input,  // NOLINT
+      (int8_t*)aligned_alloc(kNeonVectorAlignment, n_input,  // NOLINT
                              &aligned_vec_free);
 
-  // If m_cols is not at least kWeightsPerNeonLane, we cannot use the main
+  // If m_cols is not at least kInt8ValuesPerNeonVector, we cannot use the main
   // vectorized loop, and we need to process sequentially. postamble_half_start
   // shows the start index where this should happen. Between postamble_start and
-  // postamble_half_start we can still process kWeightsPerNeonLane >> 1 in a
+  // postamble_half_start we can still process kInt8ValuesPerNeonVector/2 in a
   // vectorized form.
-  const int postamble_half_start = n_input & ~(kWeightsPerNeonLane - 1);
-  const int postamble_start = n_input & ~((kWeightsPerNeonLane >> 1) - 1);
+  const int postamble_half_start =
+      RoundDownVectors<kInt8ValuesPerNeonVector>(n_input);
+  const int postamble_start =
+      RoundDownVectors<(kInt8ValuesPerNeonVector / 2)>(n_input);
 
   for (int batch = 0; batch < n_batch; ++batch) {
     // Copy the vector data to an aligned vector.
@@ -781,12 +777,12 @@ void NeonMatrixBatchVectorMultiplyImpl(const int8_t* input, const int32_t* bias,
 
       // For every block of 16 8-bit elements.
       int col = 0;
-      for (; col < postamble_half_start; col += kWeightsPerNeonLane) {
+      for (; col < postamble_half_start; col += kInt8ValuesPerNeonVector) {
         // Load 16 8-bit values from the row and vector, each, to operate on.
         // Here the assumption is that each buffer is 4-byte aligned. Otherwise,
         // performance may suffer significantly.
         TFLITE_DCHECK_EQ(  // NOLINT
-            (uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1), 0);
+            (uintptr_t)(&row_ptr[col]) & (kNeonVectorAlignment - 1), 0);
         const int8x16_t s1_8x16 = vld1q_s8((const int8_t*)(aligned_vec + col));
         const int8x16_t s2_8x16 = vld1q_s8((const int8_t*)(row_ptr + col));
         // Multiply the low bits (i.e. the lower 8 8bit numbers in the
@@ -812,12 +808,12 @@ void NeonMatrixBatchVectorMultiplyImpl(const int8_t* input, const int32_t* bias,
         // Here the assumption is that each buffer is 4-bytes aligned.
         // Otherwise, performance may suffer significantly.
         TFLITE_DCHECK_EQ(  // NOLINT
-            (uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1), 0);
+            (uintptr_t)(&row_ptr[col]) & (kNeonVectorAlignment - 1), 0);
         const int8x8_t s1_8x8 = vld1_s8((const int8_t*)(aligned_vec + col));
         const int8x8_t s2_8x8 = vld1_s8((const int8_t*)(row_ptr + col));
         const int16x8_t prod_16x8 = vmull_s8(s1_8x8, s2_8x8);
         dotprod_32x4 = vpadalq_s16(dotprod_32x4, prod_16x8);
-        col += (kWeightsPerNeonLane >> 1);
+        col += (kInt8ValuesPerNeonVector >> 1);
       }
       // Add the 4 intermediate sum values to get the final dot-prod value for
       // this row.
@@ -1053,14 +1049,10 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
   }
 #endif  // __aarch64__
 
-  static const int kWeightsPerUint32 = 4;
-  static const int kWeightsPerNeonLane = 16;
-  // Assuming *matrix is kWeightsPerUint32-byte aligned,
-  // every row of the matrix is also
-  // kWeightsPerUint32-byte aligned as long as cols is
-  // a multiple of kWeightsPerUint32. The assumption
-  // is currently satisfied by TFLite's 16-byte memory
-  // alignment scheme.
+  // Assuming *matrix is kNeonVectorAlignment-byte aligned, every row of the
+  // matrix is also kNeonVectorAlignment-byte aligned as long as cols is a
+  // multiple of kNeonVectorAlignment. The assumption is currently satisfied by
+  // TFLite's 16-byte memory alignment scheme.
   //
   // Otherwise, we allocate an aligned memory block and set
   // a flag to later copy rows from matrix to the block
@@ -1068,23 +1060,26 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
   bool unaligned = false;
   int8_t* aligned_row = nullptr;
   void* aligned_row_free = nullptr;
-  if ((m_cols & (kWeightsPerUint32 - 1)) != 0) {
+  if ((m_cols & (kNeonVectorAlignment - 1)) != 0) {
     unaligned = true;
-    aligned_row = (int8_t*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
-                                         &aligned_row_free);
+    aligned_row =
+        (int8_t*)aligned_alloc(kNeonVectorAlignment, m_cols,  // NOLINT
+                               &aligned_row_free);
   }
   void* aligned_vec_free = nullptr;
   int8_t* aligned_vec =
-      (int8_t*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
+      (int8_t*)aligned_alloc(kNeonVectorAlignment, m_cols,  // NOLINT
                              &aligned_vec_free);
 
-  // If m_cols is not at least kWeightsPerNeonLane, we cannot use the main
+  // If m_cols is not at least kInt8ValuesPerNeonVector, we cannot use the main
   // vectorized loop, and we need to process sequentially. postamble_half_start
   // shows the start index where this should happen. Between postamble_start and
-  // postamble_half_start we can still process kWeightsPerNeonLane >> 1 in a
+  // postamble_half_start we can still process kInt8ValuesPerNeonVector/2 in a
   // vectorized form.
-  const int postamble_half_start = m_cols & ~(kWeightsPerNeonLane - 1);
-  const int postamble_start = m_cols & ~((kWeightsPerNeonLane >> 1) - 1);
+  const int postamble_half_start =
+      RoundDownVectors<kInt8ValuesPerNeonVector>(m_cols);
+  const int postamble_start =
+      RoundDownVectors<(kInt8ValuesPerNeonVector / 2)>(m_cols);
 
   for (int batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
@@ -1108,12 +1103,12 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
 
       // For every block of 16 8-bit elements.
       int col = 0;
-      for (; col < postamble_half_start; col += kWeightsPerNeonLane) {
+      for (; col < postamble_half_start; col += kInt8ValuesPerNeonVector) {
         // Load 16 8-bit values from the row and vector, each, to operate on.
         // Here the assumption is that each buffer is 4-byte aligned. Otherwise,
         // performance may suffer significantly.
         TFLITE_DCHECK_EQ(  // NOLINT
-            (uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1), 0);
+            (uintptr_t)(&row_ptr[col]) & (kNeonVectorAlignment - 1), 0);
         const int8x16_t s1_8x16 = vld1q_s8((const int8_t*)(aligned_vec + col));
         const int8x16_t s2_8x16 = vld1q_s8((const int8_t*)(row_ptr + col));
         // Multiply the low bits (i.e. the lower 8 8bit numbers in the
@@ -1139,12 +1134,12 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
         // Here the assumption is that each buffer is 4-bytes aligned.
         // Otherwise, performance may suffer significantly.
         TFLITE_DCHECK_EQ(  // NOLINT
-            (uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1), 0);
+            (uintptr_t)(&row_ptr[col]) & (kNeonVectorAlignment - 1), 0);
         const int8x8_t s1_8x8 = vld1_s8((const int8_t*)(aligned_vec + col));
         const int8x8_t s2_8x8 = vld1_s8((const int8_t*)(row_ptr + col));
         const int16x8_t prod_16x8 = vmull_s8(s1_8x8, s2_8x8);
         dotprod_32x4 = vpadalq_s16(dotprod_32x4, prod_16x8);
-        col += (kWeightsPerNeonLane >> 1);
+        col += (kInt8ValuesPerNeonVector >> 1);
       }
       // Add the 4 intermediate sum values to get the final dot-prod value for
       // this row.
@@ -1213,13 +1208,13 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
 void NeonMatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
                                         int32_t n_row, int32_t n_col,
                                         int32_t* output) {
-  static const int kWeightsPerNeonLane = 16;
   // Processing multiple rows at the same time actually makes it slower. :(
   for (int i = 0; i < n_row; ++i) {
     int32x4_t row_sum = vdupq_n_s32(0);
     int j = 0;
     const int8_t* row_ptr = matrix + i * n_col;
-    for (; j <= n_col - kWeightsPerNeonLane; j += kWeightsPerNeonLane) {
+    for (; j <= n_col - kInt8ValuesPerNeonVector;
+         j += kInt8ValuesPerNeonVector) {
       const int8x16_t input_value = vld1q_s8(row_ptr + j);
       int16x8_t temp = vmovl_s8(vget_low_s8(input_value));
       temp = vaddw_s8(temp, vget_high_s8(input_value));
@@ -1255,28 +1250,28 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
   }
 #endif  // __aarch64__
 
-  static const int kWeightsPerUint32 = 4;
-  static const int kWeightsPerNeonLane = 16;
   bool unaligned = false;
   int8_t* aligned_row = nullptr;
   void* aligned_row_free = nullptr;
-  if ((m_cols & (kWeightsPerUint32 - 1)) != 0) {
+  if ((m_cols & (kNeonVectorAlignment - 1)) != 0) {
     unaligned = true;
-    aligned_row = (int8_t*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
-                                         &aligned_row_free);
+    aligned_row =
+        (int8_t*)aligned_alloc(kNeonVectorAlignment, m_cols,  // NOLINT
+                               &aligned_row_free);
   }
   void* aligned_vec_free = nullptr;
   int8_t* aligned_vec =
-      (int8_t*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
+      (int8_t*)aligned_alloc(kNeonVectorAlignment, m_cols,  // NOLINT
                              &aligned_vec_free);
 
-  const int postamble_half_start = m_cols & ~(kWeightsPerNeonLane - 1);
-  const int postamble_start = m_cols & ~((kWeightsPerNeonLane >> 1) - 1);
+  const int postamble_half_start =
+      RoundDownVectors<kInt8ValuesPerNeonVector>(m_cols);
+  const int postamble_start =
+      RoundDownVectors<(kInt8ValuesPerNeonVector / 2)>(m_cols);
 
   int32_t* row_sums_ptr = row_sums;
   if (row_sums == nullptr) {
     row_sums_ptr = static_cast<int32_t*>(malloc(sizeof(int32_t) * m_rows));
-    memset(row_sums_ptr, 0, sizeof(int32_t) * m_rows);
     NeonReductionSumVector(matrix, row_sums_ptr, m_rows, m_cols);
   }
 
@@ -1303,12 +1298,12 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
 
       // For every block of 16 8-bit elements.
       int col = 0;
-      for (; col < postamble_half_start; col += kWeightsPerNeonLane) {
+      for (; col < postamble_half_start; col += kInt8ValuesPerNeonVector) {
         // Load 16 8-bit values from the row and vector, each, to operate on.
         // Here the assumption is that each buffer is 4-byte aligned. Otherwise,
         // performance may suffer significantly.
         TFLITE_DCHECK_EQ(  // NOLINT
-            (uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1), 0);
+            (uintptr_t)(&row_ptr[col]) & (kNeonVectorAlignment - 1), 0);
         const int8x16_t s1_8x16 = vld1q_s8((const int8_t*)(aligned_vec + col));
         const int8x16_t s2_8x16 = vld1q_s8((const int8_t*)(row_ptr + col));
         // Multiply the low bits (i.e. the lower 8 8bit numbers in the
@@ -1332,12 +1327,12 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
         // Here the assumption is that each buffer is 4-bytes aligned.
         // Otherwise, performance may suffer significantly.
         TFLITE_DCHECK_EQ(  // NOLINT
-            (uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1), 0);
+            (uintptr_t)(&row_ptr[col]) & (kNeonVectorAlignment - 1), 0);
         const int8x8_t s1_8x8 = vld1_s8((const int8_t*)(aligned_vec + col));
         const int8x8_t s2_8x8 = vld1_s8((const int8_t*)(row_ptr + col));
         const int16x8_t prod_16x8 = vmull_s8(s1_8x8, s2_8x8);
         dotprod_32x4 = vpadalq_s16(dotprod_32x4, prod_16x8);
-        col += (kWeightsPerNeonLane >> 1);
+        col += (kInt8ValuesPerNeonVector >> 1);
       }
 
       int32_t dotprod = AccumulateNeonLane(dotprod_32x4);
@@ -1385,7 +1380,6 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   }
 
   if (compute_row_sums == nullptr || *compute_row_sums) {
-    memset(row_sums, 0, sizeof(int32_t) * m_rows);
     NeonReductionSumVector(matrix, row_sums, m_rows, m_cols);
     if (compute_row_sums) {
       *compute_row_sums = false;
@@ -1900,7 +1894,7 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate1x4(
     const float* __restrict__ matrix, const int32_t* __restrict__ segments,
     const int32_t* __restrict__ indices, int m_rows, int m_cols,
     const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
-  const int kBlockSize = 4;
+  constexpr int kBlockSize = kFloatValuesPerNeonVector;
   TFLITE_DCHECK_EQ(m_cols % kBlockSize, 0);
 
   for (int batch = 0; batch < n_batch; batch++) {
@@ -1930,8 +1924,8 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
     float* __restrict__ result) {
-  const int kBlockSize = 16;
-  const int kNeonVectorsPerBlock = 4;
+  constexpr int kNeonVectorsPerBlock = 4;
+  constexpr int kBlockSize = kNeonVectorsPerBlock * kFloatValuesPerNeonVector;
   TFLITE_DCHECK_EQ(  // NOLINT
       m_cols % kBlockSize, 0);
 
@@ -1979,14 +1973,12 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
   }
 #endif  // __aarch64__
 
-  const int kWeightsPerUint32 = 4;
-  const int kWeightsPerNeonLane = 16;
-  const int kBlockSize = kWeightsPerNeonLane;
+  constexpr int kBlockSize = kInt8ValuesPerNeonVector;
   TFLITE_DCHECK_EQ(  // NOLINT
       m_cols % kBlockSize, 0);
   void* aligned_vec_free = nullptr;
   int8_t* aligned_vec =
-      (int8_t*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
+      (int8_t*)aligned_alloc(kNeonVectorAlignment, m_cols,  // NOLINT
                              &aligned_vec_free);
 
   for (int batch = 0; batch < n_batch; ++batch) {
@@ -2010,7 +2002,7 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
           // Here the assumption is that each buffer is 4-byte aligned.
           // Otherwise, performance may suffer significantly.
           TFLITE_DCHECK_EQ(  // NOLINT
-              (uintptr_t)(&row_ptr) & (kWeightsPerUint32 - 1), 0);
+              (uintptr_t)(&row_ptr) & (kNeonVectorAlignment - 1), 0);
           const int8x16_t s1_8x16 =
               vld1q_s8((const int8_t*)(aligned_vec + col_index));
           const int8x16_t s2_8x16 = vld1q_s8((const int8_t*)(row_ptr));
@@ -2081,7 +2073,7 @@ void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result) {
 
 namespace {
 
-#if __aarch64__
+#ifdef __aarch64__
 inline bool IsAllZero(const int8x16_t v_s8x16) {
   const uint32_t u32 = vmaxvq_u32(vreinterpretq_u32_s8(v_s8x16));
   return !u32;
@@ -2157,18 +2149,17 @@ bool NeonIsZeroVector(const int8_t* vector, int v_size) {
 void NeonVectorScalarMultiply(const int8_t* vector, const int v_size,
                               const float scale, float* result) {
   // Here the assumption is that each buffer is 4-byte aligned.
-  const int kWeightsPerUint32 = 4;
-  TFLITE_CHECK_EQ((intptr_t)(&vector[0]) & (kWeightsPerUint32 - 1), 0);
-  // If v_size is not divisible by kWeightsPerNeonLane, we cannot use the main
-  // vectorized loop, and we need to process sequentially. postamble_start shows
-  // the start index where this should happen.
-  const int kWeightsPerNeonLane = 16;
-  const int postamble_start = v_size - (v_size & (kWeightsPerNeonLane - 1));
+  TFLITE_CHECK_EQ((intptr_t)(&vector[0]) & (kNeonVectorAlignment - 1), 0);
+  // If v_size is not divisible by kInt8ValuesPerNeonVector, we cannot use the
+  // main vectorized loop, and we need to process sequentially. postamble_start
+  // shows the start index where this should happen.
+  const int postamble_start =
+      RoundDownVectors<kInt8ValuesPerNeonVector>(v_size);
 
   // Create a vector of 4 floats with the scale value.
   const float32x4_t scale_f32x4 = vdupq_n_f32(scale);
   int v = 0;
-  for (; v < postamble_start; v += kWeightsPerNeonLane) {
+  for (; v < postamble_start; v += kInt8ValuesPerNeonVector) {
     // Load int8 values, sixteen at a time.
     const int8x16_t v_i8x16 = vld1q_s8(vector + v);
     // Split it into two components of size eight.
@@ -2199,7 +2190,7 @@ void NeonVectorScalarMultiply(const int8_t* vector, const int v_size,
     vst1q_f32(result + v + 12, v3_f32x4);
   }
 
-  if (v_size - postamble_start >= (kWeightsPerNeonLane >> 1)) {
+  if (v_size - postamble_start >= (kInt8ValuesPerNeonVector >> 1)) {
     // Load eight int8 values, if there is at least eight remaining.
     const int8x8_t v_i8x8 = vld1_s8(vector + v);
     // Convert them to int16 first.
@@ -2216,7 +2207,7 @@ void NeonVectorScalarMultiply(const int8_t* vector, const int v_size,
     // Store the results.
     vst1q_f32(result + v, v0_f32x4);
     vst1q_f32(result + v + 4, v1_f32x4);
-    v += (kWeightsPerNeonLane >> 1);
+    v += (kInt8ValuesPerNeonVector >> 1);
   }
 
   // Postamble loop.
@@ -2242,10 +2233,12 @@ inline int32x4_t RoundToNearest(const float32x4_t input) {
 #endif
 }
 
+// Note: this function caps minimum and maximum at zero, unlike the true
+// minmax_element. This is intentional.
 inline void NeonMinMax(const float* values, const int size, float* min,
                        float* max) {
   const int postamble_start = RoundDownVectors<kFloatValuesPerNeonVector>(size);
-  double rmin = 0.0, rmax = 0.0;
+  float rmin = 0.0f, rmax = 0.0f;
   int i = 0;
   if (postamble_start) {
     float32x4_t min_f32x4 = vld1q_f32(values);
@@ -2256,25 +2249,28 @@ inline void NeonMinMax(const float* values, const int size, float* min,
       min_f32x4 = vminq_f32(min_f32x4, value0_f32x4);
       max_f32x4 = vmaxq_f32(max_f32x4, value0_f32x4);
     }
+#ifdef __aarch64__
+    rmin = std::min(rmin, vminvq_f32(min_f32x4));
+    rmax = std::max(rmax, vmaxvq_f32(max_f32x4));
+#else
     float32x2_t min_f32x2 =
         vmin_f32(vget_low_f32(min_f32x4), vget_high_f32(min_f32x4));
     float32x2_t max_f32x2 =
         vmax_f32(vget_low_f32(max_f32x4), vget_high_f32(max_f32x4));
     min_f32x2 = vpmin_f32(min_f32x2, min_f32x2);
-    const float fmin = vget_lane_f32(min_f32x2, 0);
-    rmin = rmin < fmin ? rmin : fmin;
     max_f32x2 = vpmax_f32(max_f32x2, max_f32x2);
-    const float fmax = vget_lane_f32(max_f32x2, 0);
-    rmax = rmax > fmax ? rmax : fmax;
-    *min = rmin;
-    *max = rmax;
+    rmin = std::min(rmin, vget_lane_f32(min_f32x2, 0));
+    rmax = std::max(rmax, vget_lane_f32(max_f32x2, 0));
+#endif  // __aarch64__
   }
   if (i < size) {
     const auto minmax =
         std::minmax_element(values + postamble_start, values + size);
-    *min = rmin < *minmax.first ? rmin : *minmax.first;
-    *max = rmax > *minmax.second ? rmax : *minmax.second;
+    rmin = std::min(rmin, *minmax.first);
+    rmax = std::max(rmax, *minmax.second);
   }
+  *min = rmin;
+  *max = rmax;
 }
 
 void NeonSymmetricQuantizeFloats(const float* values, const int size,
@@ -2291,7 +2287,7 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
 void NeonSymmetricQuantizeFloats(const float* values, const int size,
                                  int8_t* quantized_values, float min, float max,
                                  float* scaling_factor) {
-  const int kScale = 127;
+  constexpr int kScale = 127;
   const float range = std::max(std::abs(min), std::abs(max));
   if (range == 0) {
     memset(quantized_values, 0, size * sizeof(int8_t));
@@ -2301,7 +2297,8 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
   *scaling_factor = range / kScale;
   const float scaling_factor_inv = kScale / range;
 
-  const int postamble_start = size & ~(2 * kFloatValuesPerNeonVector - 1);
+  const int postamble_start =
+      RoundDownVectors<(2 * kFloatValuesPerNeonVector)>(size);
 
   // Vectorized constants.
   const float32x4_t q_factor_f32x4 = vmovq_n_f32(scaling_factor_inv);
@@ -2348,7 +2345,7 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
 void NeonAsymmetricQuantizeFloats(const float* values, const int size,
                                   int8_t* quantized_values,
                                   float* scaling_factor, int32_t* offset) {
-  float rmin = 0.0, rmax = 0.0;
+  float rmin, rmax;
   NeonMinMax(values, size, &rmin, &rmax);
 
   const int32_t kMinScale = -128;
@@ -2384,7 +2381,8 @@ void NeonAsymmetricQuantizeFloats(const float* values, const int size,
     *offset = nudged_zero_point;
   }
 
-  const int postamble_start = size & ~(2 * kFloatValuesPerNeonVector - 1);
+  const int postamble_start =
+      RoundDownVectors<(2 * kFloatValuesPerNeonVector)>(size);
   const float scaling_factor_inv =
       *scaling_factor == 0 ? 0 : 1.0 / *scaling_factor;
   const float32x4_t q_factor_f32x4 = vmovq_n_f32(scaling_factor_inv);
@@ -2454,7 +2452,6 @@ float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
 
 void NeonReductionSumVector(const float* input_vector, float* output_vector,
                             int output_size, int reduction_size) {
-  const float* input_vector_ptr = input_vector;
   for (int o = 0; o < output_size; o++) {
     // If v_size is not divisible by the vector size, then we need to process
     // the final few elements sequentially. postamble_start shows the start
@@ -2464,44 +2461,43 @@ void NeonReductionSumVector(const float* input_vector, float* output_vector,
     float32x4_t sum_f32x4 = vmovq_n_f32(0.0);
     int r = 0;
     for (; r < postamble_start; r += kFloatValuesPerNeonVector) {
-      float32x4_t v1_f32x4 = vld1q_f32(input_vector_ptr + r);
+      float32x4_t v1_f32x4 = vld1q_f32(input_vector + r);
       sum_f32x4 = vaddq_f32(sum_f32x4, v1_f32x4);
     }
-    output_vector[o] += AccumulateNeonLane(sum_f32x4);
-    input_vector_ptr += postamble_start;
-
+    float sum = AccumulateNeonLane(sum_f32x4);
     // Postamble loop.
     for (; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
+      sum += input_vector[r];
     }
+    output_vector[o] = sum;
+    input_vector += reduction_size;
   }
 }
 
 void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                             const int output_size, const int reduction_size) {
-  constexpr int kWeightsPerNeonLane = 16;
-  const int postamble_half_start = reduction_size & ~(kWeightsPerNeonLane - 1);
+  const int postamble_half_start =
+      RoundDownVectors<kInt8ValuesPerNeonVector>(reduction_size);
   const int postamble_start =
-      reduction_size & ~((kWeightsPerNeonLane >> 1) - 1);
+      RoundDownVectors<(kInt8ValuesPerNeonVector / 2)>(reduction_size);
   for (int o = 0; o < output_size; ++o) {
-    // Get the address of the first element of the row.
-    int8_t* row_ptr = (int8_t*)input_vector + o * reduction_size;  // NOLINT
     int32x4_t sum_32x4 = vmovq_n_s32(0);
     int r = 0;
-    for (; r < postamble_half_start; r += kWeightsPerNeonLane) {
-      const int8x16_t s2_8x16 = vld1q_s8((const int8_t*)(row_ptr + r));
+    for (; r < postamble_half_start; r += kInt8ValuesPerNeonVector) {
+      const int8x16_t s2_8x16 = vld1q_s8(input_vector + r);
       sum_32x4 = vpadalq_s16(sum_32x4, vpaddlq_s8(s2_8x16));
     }
     if (r < postamble_start) {
-      const int8x8_t s2_8x8 = vld1_s8((const int8_t*)(row_ptr + r));
+      const int8x8_t s2_8x8 = vld1_s8(input_vector + r);
       sum_32x4 = vpadalq_s16(sum_32x4, vmovl_s8(s2_8x8));
-      r += (kWeightsPerNeonLane >> 1);
+      r += (kInt8ValuesPerNeonVector >> 1);
     }
     int32_t sum = AccumulateNeonLane(sum_32x4);
     for (; r < reduction_size; ++r) {
-      sum += row_ptr[r];
+      sum += input_vector[r];
     }
-    output_vector[o] += sum;
+    output_vector[o] = sum;
+    input_vector += reduction_size;
   }
 }
 

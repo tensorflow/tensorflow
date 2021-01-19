@@ -20,7 +20,6 @@ namespace tensorflow {
 REGISTER4(UnaryOp, CPU, "Asinh", functor::asinh, float, double, complex64,
           complex128);
 
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER2(UnaryOp, GPU, "Asinh", functor::asinh, float, double);
 #endif

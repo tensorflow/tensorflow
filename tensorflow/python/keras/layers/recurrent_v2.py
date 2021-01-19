@@ -37,7 +37,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import sysconfig
@@ -419,19 +418,6 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     if _use_new_code():
       self._defun_wrapper = _DefunWrapper(time_major, go_backwards, 'gru')
 
-  def build(self, input_shape):
-    super(GRU, self).build(input_shape)
-
-    if not all(isinstance(v, resource_variable_ops.ResourceVariable)
-               for v in self.weights):
-      # Non-resource variables, such as DistributedVariables and
-      # AutoCastVariables, do not work properly with the implementation
-      # selector, which is used when cuDNN is used. However, by chance, such
-      # variables happen to work in LSTM, so this check is only needed for GRU.
-      # TODO(b/136512020): Make non-resource variables work with the
-      # implementation selector.
-      self._could_use_gpu_kernel = False
-
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
     # into the layer, it is padded and the row lengths are used for masking.
@@ -641,11 +627,7 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask,
 def gpu_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
             go_backwards, sequence_lengths):
   """GRU with CuDNN implementation which is only available for GPU."""
-  if not time_major and mask is None:
-    inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
-    seq_axis, batch_axis = (0, 1)
-  else:
-    seq_axis, batch_axis = (0, 1) if time_major else (1, 0)
+  seq_axis, batch_axis = (0, 1) if time_major else (1, 0)
   # For init_h, cuDNN expects one more dim of num_layers before or after batch
   # dim for time major or batch major inputs respectively
   init_h = array_ops.expand_dims(init_h, axis=seq_axis)
@@ -676,40 +658,35 @@ def gpu_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
 
   if mask is not None:
     sequence_lengths = calculate_sequence_by_mask(mask, time_major)
-
-  if sequence_lengths is not None:
-    if go_backwards:
-      # Three reversals are required. E.g.,
-      # normal input = [1, 2, 3, 0, 0]  # where 0 need to be masked
-      # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
-      # output_from_cudnn = [6, 5, 4, 0, 0]
-      # expected_output = [0, 0, 6, 5 ,4]
-      inputs = array_ops.reverse_sequence_v2(
-          inputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
-    outputs, h, _, _, _ = gen_cudnn_rnn_ops.CudnnRNNV3(
-        input=inputs,
-        input_h=init_h,
-        input_c=0,
-        params=params,
-        is_training=True,
-        rnn_mode='gru',
-        sequence_lengths=sequence_lengths,
-        time_major=time_major)
-    if go_backwards:
-      outputs = array_ops.reverse_sequence_v2(
-          outputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
-      outputs = array_ops.reverse(outputs, axis=[seq_axis])
   else:
-    if go_backwards:
-      # Reverse axis 0 since the input is already convert to time major.
-      inputs = array_ops.reverse(inputs, axis=[0])
-    outputs, h, _, _ = gen_cudnn_rnn_ops.CudnnRNN(
-        input=inputs, input_h=init_h, input_c=0, params=params,
-        is_training=True, rnn_mode='gru')
+    input_shape = math_ops.cast(array_ops.shape(inputs), dtypes.int32)
+    timesteps = input_shape[seq_axis]
+    batches = input_shape[batch_axis]
+    sequence_lengths = array_ops.fill([batches], timesteps)
+
+  if go_backwards:
+    # Three reversals are required. E.g.,
+    # normal input = [1, 2, 3, 0, 0]  # where 0 need to be masked
+    # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
+    # output_from_cudnn = [6, 5, 4, 0, 0]
+    # expected_output = [0, 0, 6, 5 ,4]
+    inputs = array_ops.reverse_sequence_v2(
+        inputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
+  outputs, h, _, _, _ = gen_cudnn_rnn_ops.CudnnRNNV3(
+      input=inputs,
+      input_h=init_h,
+      input_c=0,
+      params=params,
+      is_training=True,
+      rnn_mode='gru',
+      sequence_lengths=sequence_lengths,
+      time_major=time_major)
+  if go_backwards:
+    outputs = array_ops.reverse_sequence_v2(
+        outputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
+    outputs = array_ops.reverse(outputs, axis=[seq_axis])
 
   last_output = outputs[-1]
-  if not time_major and mask is None:
-    outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
   h = array_ops.squeeze(h, axis=seq_axis)
 
   # In the case of variable length input, the cudnn kernel will fill zeros for
@@ -718,8 +695,7 @@ def gpu_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
   # get the final effect output instead just 0s at the last timestep.
   # In order to mimic the default keras behavior, we copy the final h state as
   # the last_output, since it is numerically same as the output.
-  if mask is not None:
-    last_output = h
+  last_output = h
 
   return last_output, outputs, h, _runtime(_RUNTIME_GPU)
 
@@ -1456,11 +1432,7 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
     runtime: Constant string tensor which indicate real runtime hardware. This
       value is for testing purpose and should not be used by user.
   """
-  if not time_major and mask is None:
-    inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
-    seq_axis, batch_axis = (0, 1)
-  else:
-    seq_axis, batch_axis = (0, 1) if time_major else (1, 0)
+  seq_axis, batch_axis = (0, 1) if time_major else (1, 0)
   # For init_h and init_c, cuDNN expects one more dim of num_layers before or
   # after batch dim for time major or batch major inputs respectively
   init_h = array_ops.expand_dims(init_h, axis=seq_axis)
@@ -1493,43 +1465,35 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
 
   if mask is not None:
     sequence_lengths = calculate_sequence_by_mask(mask, time_major)
-
-  if sequence_lengths is not None:
-    if go_backwards:
-      # Three reversals are required. E.g.,
-      # normal input = [1, 2, 3, 0, 0]  # where 0 need to be masked
-      # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
-      # output_from_cudnn = [6, 5, 4, 0, 0]
-      # expected_output = [0, 0, 6, 5 ,4]
-      inputs = array_ops.reverse_sequence_v2(
-          inputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
-    outputs, h, c, _, _ = gen_cudnn_rnn_ops.CudnnRNNV3(
-        input=inputs,
-        input_h=init_h,
-        input_c=init_c,
-        params=params,
-        is_training=True,
-        rnn_mode='lstm',
-        sequence_lengths=sequence_lengths,
-        time_major=time_major)
-    if go_backwards:
-      outputs = array_ops.reverse_sequence_v2(
-          outputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
-      outputs = array_ops.reverse(outputs, axis=[seq_axis])
   else:
-    # # Fill the array with shape [batch] with value of max timesteps.
-    # sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
-    #                                  array_ops.shape(inputs)[0])
-    if go_backwards:
-      # Reverse axis 0 since the input is already convert to time major.
-      inputs = array_ops.reverse(inputs, axis=[0])
-    outputs, h, c, _ = gen_cudnn_rnn_ops.CudnnRNN(
-        input=inputs, input_h=init_h, input_c=init_c, params=params,
-        is_training=True, rnn_mode='lstm')
+    input_shape = math_ops.cast(array_ops.shape(inputs), dtypes.int32)
+    timesteps = input_shape[seq_axis]
+    batches = input_shape[batch_axis]
+    sequence_lengths = array_ops.fill([batches], timesteps)
+
+  if go_backwards:
+    # Three reversals are required. E.g.,
+    # normal input = [1, 2, 3, 0, 0]  # where 0 need to be masked
+    # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
+    # output_from_cudnn = [6, 5, 4, 0, 0]
+    # expected_output = [0, 0, 6, 5 ,4]
+    inputs = array_ops.reverse_sequence_v2(
+        inputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
+  outputs, h, c, _, _ = gen_cudnn_rnn_ops.CudnnRNNV3(
+      input=inputs,
+      input_h=init_h,
+      input_c=init_c,
+      params=params,
+      is_training=True,
+      rnn_mode='lstm',
+      sequence_lengths=sequence_lengths,
+      time_major=time_major)
+  if go_backwards:
+    outputs = array_ops.reverse_sequence_v2(
+        outputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
+    outputs = array_ops.reverse(outputs, axis=[seq_axis])
 
   last_output = outputs[-1]
-  if not time_major and mask is None:
-    outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
   h = array_ops.squeeze(h, axis=seq_axis)
   c = array_ops.squeeze(c, axis=seq_axis)
 
@@ -1539,8 +1503,7 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   # get the final effect output instead just 0s at the last timestep.
   # In order to mimic the default keras behavior, we copy the final h state as
   # the last_output, since it is numerically same as the output.
-  if mask is not None:
-    last_output = h
+  last_output = h
   return last_output, outputs, h, c, _runtime(_RUNTIME_GPU)
 
 

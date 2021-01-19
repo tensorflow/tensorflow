@@ -11,7 +11,6 @@ ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "fusion_f1 hifi4"))
 
   PLATFORM_FLAGS = \
     -DNNLIB_V2 \
-    -DXTENSA_NNLIB_MAX_SCRATCH_SIZE=70*1024 \
     -Wno-shadow
 
   CCFLAGS += $(PLATFORM_FLAGS)

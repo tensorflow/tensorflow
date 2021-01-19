@@ -19,6 +19,7 @@ cc_library(
     ],
     compatible_with = [],
     deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -26,7 +27,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:semaphore",
         "//tensorflow/compiler/xla/python/tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:direct_tpu_driver",
@@ -76,7 +77,7 @@ py_library(
     srcs = [
         "tpu_client.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_client_extension",

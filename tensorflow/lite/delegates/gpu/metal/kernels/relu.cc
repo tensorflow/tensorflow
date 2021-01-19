@@ -35,12 +35,13 @@ ComputeTaskDescriptor ReLU(const OperationDef& definition,
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   const std::string min_func =
-      attr.alpha == 0 ? "FLT4(0.0f)" : "min(value * args.alpha, 0.0f)";
+      attr.alpha == 0 ? "FLT4(0.0f)" : "min(in_out_value * args.alpha, 0.0f)";
   if (attr.clip != 0.0) {
-    desc.shader_source =
-        "value = FLT4(clamp(value, " + min_func + ", FLT4(args.clip)));";
+    desc.shader_source = "in_out_value = FLT4(clamp(in_out_value, " + min_func +
+                         ", FLT4(args.clip)));";
   } else {
-    desc.shader_source = "value = FLT4(max(value, " + min_func + "));";
+    desc.shader_source =
+        "in_out_value = FLT4(max(in_out_value, " + min_func + "));";
   }
   desc.args.AddFloat("alpha", attr.alpha);
   desc.args.AddFloat("clip", attr.clip);

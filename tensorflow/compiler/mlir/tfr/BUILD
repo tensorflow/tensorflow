@@ -233,6 +233,7 @@ cc_library(
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//mlir:IR",
     ],

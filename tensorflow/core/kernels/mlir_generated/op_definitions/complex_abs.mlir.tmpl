@@ -1,0 +1,5 @@
+func @ComplexAbs_elem_type(%arg0: tensor<*xcomplex<elem_type>>)
+    -> tensor<*xelem_type> attributes {tf_entry, llvm.emit_c_interface} {
+  %0 = "tf.ComplexAbs"(%arg0) : (tensor<*xcomplex<elem_type>>) -> tensor<*xelem_type>
+  return %0 : tensor<*xelem_type>
+}

@@ -7,7 +7,7 @@ package(
 py_library(
     name = "v2_compat",
     srcs = ["v2_compat.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:control_flow_v2_toggles",
@@ -20,7 +20,7 @@ py_library(
 py_library(
     name = "compat",
     srcs = ["compat.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:util",

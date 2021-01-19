@@ -68,6 +68,8 @@ class GpuVirtualMemAllocator : public SubAllocator {
   // this free function should never be invoked.
   void Free(void* ptr, size_t num_bytes) override;
 
+  bool SupportsCoalescing() const override { return true; }
+
  private:
   GpuVirtualMemAllocator(const std::vector<Visitor>& alloc_visitors,
                          const std::vector<Visitor>& free_visitors,

@@ -8,7 +8,7 @@ package(
 py_library(
     name = "input_data",
     srcs = ["input_data.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python:framework",
@@ -21,7 +21,7 @@ py_library(
 py_library(
     name = "rnn",
     srcs = ["rnn.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python:op_hint",
@@ -36,7 +36,7 @@ py_library(
 py_library(
     name = "rnn_cell",
     srcs = ["rnn_cell.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python:op_hint",
@@ -140,7 +140,7 @@ py_test(
 
 py_library(
     name = "tflite_lstm_ops",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":rnn",

@@ -1781,21 +1781,22 @@ Optional<std::string> Translator::TranslateInternal() {
 
   if (first_failed_func != -1) {
     std::string failed_flex_ops_summary =
-        GetOpsSummary(failed_flex_ops_, /*summary_title=*/"Flex");
+        GetOpsSummary(failed_flex_ops_, /*summary_title=*/"TF Select");
     std::string failed_custom_ops_summary =
         GetOpsSummary(failed_custom_ops_, /*summary_title=*/"Custom");
     std::string err;
     if (!failed_flex_ops_.empty())
       err +=
-          "Some ops are not supported by the native TFLite runtime, you can "
+          "\nSome ops are not supported by the native TFLite runtime, you can "
           "enable TF kernels fallback using TF Select. See instructions: "
-          "https://www.tensorflow.org/lite/guide/ops_select" +
-          failed_flex_ops_summary;
+          "https://www.tensorflow.org/lite/guide/ops_select \n" +
+          failed_flex_ops_summary + "\n";
     if (!failed_custom_ops_.empty())
       err +=
-          "Some ops in the model are custom ops, See instructions to implement "
-          "custom ops: https://www.tensorflow.org/lite/guide/ops_custom" +
-          failed_custom_ops_summary;
+          "\nSome ops in the model are custom ops, "
+          "See instructions to implement "
+          "custom ops: https://www.tensorflow.org/lite/guide/ops_custom \n" +
+          failed_custom_ops_summary + "\n";
 
     auto& failed_region = named_regions[first_failed_func];
     return failed_region.second->getParentOp()->emitError()

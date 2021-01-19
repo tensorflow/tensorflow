@@ -77,8 +77,20 @@ def if_nvcc(a):
         "//conditions:default": [],
     })
 
+# In Google builds, this corresponds to whether `--config=cuda` has been
+# specified. In OSS, this corresponds to whether the environment contains
+# TF_NEED_CUDA=1, which is in turn triggered by --config=using_cuda through
+# .bazelrc, which is again triggered by --config=cuda.
+#
+# In other words, --config=cuda is sufficient for this function to return
+# x both for Google and OSS builds. But for OSS builds it is not necessary.
+# We are working on a plan to clean up this complicated setup.
 def if_cuda_is_configured_compat(x):
+    # copybara:uncomment_begin(--config=cuda is necessary and sufficient)
+    # return if_cuda(x)
+    # copybara:uncomment_end_and_comment_begin
     return if_cuda_is_configured(x)
+    # copybara:comment_end
 
 def if_xla_available(if_true, if_false = []):
     return select({
@@ -446,6 +458,7 @@ def _rpath_linkopts(name):
     return select({
         clean_dep("//tensorflow:macos"): [
             "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
+            "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text",
         ],
         clean_dep("//tensorflow:windows"): [],
         "//conditions:default": [
@@ -1685,7 +1698,7 @@ def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], comp
 
 def tf_custom_op_library_additional_deps():
     return [
-        "@com_google_protobuf//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",  # copybara:comment
         clean_dep("//third_party/eigen3"),
         clean_dep("//tensorflow/core:framework_headers_lib"),
     ] + if_windows([clean_dep("//tensorflow/python:pywrap_tensorflow_import_lib")])
@@ -1695,10 +1708,14 @@ def tf_custom_op_library_additional_deps():
 # exporting symbols from _pywrap_tensorflow.dll on Windows.
 def tf_custom_op_library_additional_deps_impl():
     return [
+        # copybara:comment_begin
         "@com_google_protobuf//:protobuf",
         "@nsync//:nsync_cpp",
+        # copybara:comment_end
+
         # for //third_party/eigen3
         clean_dep("//third_party/eigen3"),
+
         # for //tensorflow/core:framework_headers_lib
         clean_dep("//tensorflow/core:framework"),
         clean_dep("//tensorflow/core:reader_base"),
@@ -1823,6 +1840,14 @@ def py_strict_binary(name, **kwargs):
 def py_strict_library(name, **kwargs):
     native.py_library(name = name, **kwargs)
 
+# Placeholder to use until bazel supports pytype_strict_binary.
+def pytype_strict_binary(name, **kwargs):
+    native.py_binary(name = name, **kwargs)
+
+# Placeholder to use until bazel supports pytype_strict_library.
+def pytype_strict_library(name, **kwargs):
+    native.py_library(name = name, **kwargs)
+
 # Placeholder to use until bazel supports py_strict_test.
 def py_strict_test(name, **kwargs):
     py_test(name = name, **kwargs)
@@ -1920,21 +1945,24 @@ def pywrap_tensorflow_macro(
 
     if not version_script:
         version_script = select({
-            "@local_config_cuda//cuda:darwin": clean_dep("//tensorflow:tf_exported_symbols.lds"),
+            "//tensorflow:macos": clean_dep("//tensorflow:tf_exported_symbols.lds"),
             "//conditions:default": clean_dep("//tensorflow:tf_version_script.lds"),
         })
     vscriptname = name + "_versionscript"
     _append_init_to_versionscript(
         name = vscriptname,
         is_version_script = select({
-            "@local_config_cuda//cuda:darwin": False,
+            "//tensorflow:macos": False,
             "//conditions:default": True,
         }),
         module_name = module_name,
         template_file = version_script,
     )
     extra_linkopts = select({
-        "@local_config_cuda//cuda:darwin": [
+        clean_dep("//tensorflow:macos"): [
+            # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
+            # not being exported.  There should be a better way to deal with this.
+            "-Wl,-w",
             "-Wl,-exported_symbols_list,$(location %s.lds)" % vscriptname,
         ],
         clean_dep("//tensorflow:windows"): [],
@@ -1944,9 +1972,6 @@ def pywrap_tensorflow_macro(
         ],
     })
     extra_deps += select({
-        "@local_config_cuda//cuda:darwin": [
-            "%s.lds" % vscriptname,
-        ],
         clean_dep("//tensorflow:windows"): [],
         "//conditions:default": [
             "%s.lds" % vscriptname,
@@ -2578,7 +2603,10 @@ def pybind_extension(
             ],
         }),
         linkopts = linkopts + _rpath_linkopts(name) + select({
-            "@local_config_cuda//cuda:darwin": [
+            clean_dep("//tensorflow:macos"): [
+                # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
+                # not being exported.  There should be a better way to deal with this.
+                "-Wl,-w",
                 "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
             ],
             clean_dep("//tensorflow:windows"): [],

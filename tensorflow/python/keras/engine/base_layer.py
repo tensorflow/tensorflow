@@ -73,7 +73,6 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # p
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -2877,11 +2876,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
     for val in nest.flatten(value, expand_composites=True):
-      # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
-      # no longer return True for isinstance Variable checks.
       if not isinstance(val, tf_variables.Variable):
-        continue
-      if isinstance(val, resource_variable_ops._UnreadVariable):  # pylint: disable=protected-access
         continue
 
       # Users may add extra weights/variables

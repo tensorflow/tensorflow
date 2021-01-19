@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import warnings
 
 from absl.testing import parameterized
@@ -555,6 +556,16 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.assertRaisesOpError(""):
       self.getDatasetOutput(dataset)
+
+  def testNamedTupleStructure(self):
+    Foo = collections.namedtuple("Foo", ["a", "b"])
+    x = Foo(a=3, b="test")
+    dataset = dataset_ops.Dataset.from_tensors(x)
+    dataset = dataset_ops.Dataset.from_tensor_slices([dataset, dataset])
+    self.assertEqual(
+        str(dataset.element_spec),
+        "DatasetSpec(Foo(a=TensorSpec(shape=(), dtype=tf.int32, name=None), "
+        "b=TensorSpec(shape=(), dtype=tf.string, name=None)), TensorShape([]))")
 
 
 if __name__ == "__main__":

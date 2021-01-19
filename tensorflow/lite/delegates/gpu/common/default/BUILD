@@ -8,6 +8,7 @@ cc_library(
     srcs = ["custom_parsers.cc"],
     hdrs = ["//tensorflow/lite/delegates/gpu/common:custom_parsers.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:operation_parser",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",

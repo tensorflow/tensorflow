@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/concat_test_util.h"
 
 using ::tflite::gpu::Axis;
 using ::tflite::gpu::BHWC;
@@ -40,7 +41,10 @@ using ::tflite::gpu::metal::SingleOpModel;
 @interface ConcatTest : XCTestCase
 @end
 
-@implementation ConcatTest
+@implementation ConcatTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+}
+
 - (void)setUp {
   [super setUp];
 }
@@ -148,4 +152,25 @@ using ::tflite::gpu::metal::SingleOpModel;
   status = CompareVectors({1, 2, 3, 4, 5, 6}, model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
+
+- (void)testConcatWidth {
+  auto status = ConcatWidthTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConcatHeight {
+  auto status = ConcatHeightTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConcatChannels {
+  auto status = ConcatChannelsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConcatChannelsAlignedx4 {
+  auto status = ConcatChannelsAlignedx4Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 @end

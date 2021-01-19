@@ -22,6 +22,7 @@ tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
 tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
+tensorflow/opensource_only/BUILD
 tensorflow/python/autograph/core/config.py
 tensorflow/python/eager/benchmarks_test_base.py
 tensorflow/python/framework/tfrt_utils.py

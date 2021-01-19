@@ -20,7 +20,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:add",
+        "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -55,8 +55,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:concat_xy",
-        "//tensorflow/lite/delegates/gpu/common/tasks:concat_z",
+        "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -266,7 +265,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
+        "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -288,6 +287,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected",
+        "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -409,7 +409,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
+        "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -426,8 +426,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize",
-        "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -546,7 +545,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth",
+        "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -563,7 +562,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice",
+        "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -580,7 +579,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:transpose",
+        "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

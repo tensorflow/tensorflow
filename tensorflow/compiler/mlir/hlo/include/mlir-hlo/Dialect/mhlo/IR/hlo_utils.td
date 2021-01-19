@@ -43,4 +43,8 @@ def BinBroadcastDimensionsNonEmpty : NativeCodeCall<
 class GetScalarOfType<int value> : NativeCodeCall<
   "hlo::GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
+// Constraint that Attr has values [0, 1, ...].
+def IdentityBroadcastDims : AttrConstraint<
+    CPred<"hlo::IsSequenceStartingWith0($_self)">>;
+
 #endif // HLO_UTILS

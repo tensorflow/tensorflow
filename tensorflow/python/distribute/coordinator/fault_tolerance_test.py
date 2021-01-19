@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import os
 import threading
 import time
@@ -47,6 +48,8 @@ from tensorflow.python.training import server_lib
 
 _RPC_ERROR_FROM_WORKER = "GRPC error information from remote target /job:worker"
 _RPC_ERROR_FROM_PS = "GRPC error information from remote target /job:ps"
+_WORKER_PREEMPTION_THREAD_NAME = "WorkerPreemptionHandler"
+_WORKER_THREAD_PREFIX = "WorkerClosureProcessingLoop"
 
 
 class Model(object):
@@ -127,6 +130,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
   def tearDown(self):
     super(BaseFaultToleranceTest, self).tearDown()
     self._cluster.stop()
+    self._cluster = None
 
   def _restart(self, downtime_secs, job):
     """Kills `job` (index: 0) and restarts it after `downtime_secs`.
@@ -151,6 +155,55 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     restart_thread = threading.Thread(target=_restart_fn)
     restart_thread.start()
     return restart_thread
+
+  def _ensure_threads_closed(self):
+    """Ensures worker and preemption threads are closed."""
+
+    def _get_running_threads():
+      """Returns a set of all running thread names."""
+      running_threads = set()
+      for thread in threading.enumerate():
+        if thread.name is not None:
+          running_threads.add(thread.name)
+      return running_threads
+
+    def _has_thread(prefix, running_threads):
+      """Returns whether any 'running_threads' is prefixed with 'prefix'."""
+      for thread in running_threads:
+        if thread.startswith(prefix):
+          return True
+      return False
+
+    # Worker and preemption threads should exist before releasing
+    # ClusterCoordinator.
+    running_threads = _get_running_threads()
+    self.assertTrue(_has_thread(_WORKER_THREAD_PREFIX, running_threads))
+    self.assertIn(_WORKER_PREEMPTION_THREAD_NAME, running_threads)
+
+    # Wait for threads to close.
+    self.cluster_coord = None
+    gc.collect()
+    time.sleep(1)
+
+    # Verify thread names.
+    running_threads = _get_running_threads()
+    self.assertNotIn(_WORKER_PREEMPTION_THREAD_NAME, running_threads)
+    self.assertFalse(_has_thread(_WORKER_THREAD_PREFIX, running_threads))
+
+  def _create_model_and_run_indefinitely(self):
+    model = Model(self.cluster_coord)
+    model.do_infinite_step.assign(True)
+    model.schedule_training_functions(10)
+    # Model does infinite training step, so at this moment, we expect to have
+    # `self.num_workers` infinite closures inflight, and `10-self.num_workers`
+    # closures in the queue.
+    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count <
+           self.num_workers):
+      time.sleep(0.1)
+    return model
+
+  def testClusterCoordinatorDestroyed(self):
+    self._ensure_threads_closed()
 
   def testWorkerPreemptionBetweenFunctions(self):
     model = Model(self.cluster_coord)
@@ -346,19 +399,13 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
       if isinstance(e, errors.AbortedError):
         self.assertIn("RecvTensor expects a different device incarnation",
                       str(e))
+      self._ensure_threads_closed()
 
   def testTwoWorkersPreempted(self):
     if self.num_workers < 2:
       self.skipTest("Worker number is less than 2.")
-    model = Model(self.cluster_coord)
-    model.do_infinite_step.assign(True)
-    model.schedule_training_functions(10)
+    model = self._create_model_and_run_indefinitely()
 
-    # Model does infinite training step, so at this moment, we expect to have 2
-    # infinite closures inflight, and 8 closures in the queue.
-    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count
-           < 2):
-      time.sleep(0.1)
     self.assertFalse(self.cluster_coord.done())
     self._cluster.kill_task("worker", 0)
     self._cluster.kill_task("worker", 1)
@@ -375,16 +422,8 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     self.assertGreaterEqual(model.iterations.numpy(), 10)
 
   def testWorkerContinuousFailure(self):
-    model = Model(self.cluster_coord)
-    model.do_infinite_step.assign(True)
-    model.schedule_training_functions(10)
+    model = self._create_model_and_run_indefinitely()
 
-    # Model does infinite training step, so at this moment, we expect to have
-    # `self.num_workers` infinite closures inflight, and `10-self.num_workers`
-    # closures in the queue.
-    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count
-           < self.num_workers):
-      time.sleep(0.1)
     self.assertFalse(self.cluster_coord.done())
     self._cluster.kill_task("worker", 0)
     time.sleep(2)
@@ -438,6 +477,24 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     # TODO(b/153888707): enable the following two tests.
     # self.testTwoWorkersPreempted()
     # self.testWorkerContinuousFailure()
+
+  def testJoinRaisesUnavailableErrorAtPsFailure(self):
+    self._create_model_and_run_indefinitely()
+    self._cluster.kill_task("ps", 0)
+    while self.cluster_coord._cluster._closure_queue._error is None:
+      time.sleep(1)
+    with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
+                            errors.FailedPreconditionError)):
+      self.cluster_coord.join()
+
+  def testScheduleRaisesUnavailableErrorAtPsFailure(self):
+    self._create_model_and_run_indefinitely()
+    self._cluster.kill_task("ps", 0)
+    while self.cluster_coord._cluster._closure_queue._error is None:
+      time.sleep(1)
+    with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
+                            errors.FailedPreconditionError)):
+      self.cluster_coord.schedule(def_function.function(lambda: None))
 
 
 class MultiWorkerFaultToleranceTest(BaseFaultToleranceTest, test.TestCase):

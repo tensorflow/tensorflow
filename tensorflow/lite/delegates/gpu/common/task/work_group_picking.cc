@@ -250,6 +250,10 @@ bool XY128RequiresMoreWorkGroupsThenXY128Linear(int width, int height) {
 void GetPossibleWorkGroups(TuningType tuning_type, const GpuInfo& gpu_info,
                            const KernelInfo& kernel_info, const int3& grid,
                            std::vector<int3>* work_groups) {
+  if (gpu_info.IsApiMetal()) {
+    work_groups->push_back({8, 8, 1});
+    return;
+  }
   switch (tuning_type) {
     case TuningType::kFast:
       work_groups->push_back(
@@ -268,6 +272,10 @@ void GetPossibleWorkGroups(TuningType tuning_type, const GpuInfo& gpu_info,
 void GetPossibleWorkGroupsConv(TuningType tuning_type, const GpuInfo& gpu_info,
                                const KernelInfo& kernel_info, const int3& grid,
                                std::vector<int3>* work_groups) {
+  if (gpu_info.IsApiMetal()) {
+    work_groups->push_back({8, 8, 1});
+    return;
+  }
   switch (tuning_type) {
     case TuningType::kFast: {
       int max_z_size = 16;

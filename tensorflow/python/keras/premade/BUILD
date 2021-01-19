@@ -22,7 +22,7 @@ py_library(
         "linear.py",
         "wide_deep.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",

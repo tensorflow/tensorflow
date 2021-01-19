@@ -84,7 +84,8 @@ class GpuUnaryOpTest : public OpsTestBase {
     if (config.expect_strictly_equal) {
       test::ExpectEqual(expected_tensor, *GetOutput(0));
     } else {
-      test::ExpectClose(expected_tensor, *GetOutput(0));
+      test::ExpectClose(expected_tensor, *GetOutput(0), kAbsoluteTolerance,
+                        kRelativeTolerance);
     }
   }
 
@@ -95,6 +96,7 @@ class GpuUnaryOpTest : public OpsTestBase {
             BaselineOutT (*baseline_callback)(BaselineT),
             const test::GpuOpsTestConfig& config) {
     // Prepare inputs and compute expected results.
+    CHECK(input.size() <= shape.num_elements());
     auto repeated_input =
         test::RepeatInputToMatchShape(input, shape.num_elements());
     absl::InlinedVector<OutT, 10> expected_output =
@@ -106,6 +108,9 @@ class GpuUnaryOpTest : public OpsTestBase {
   }
 
  private:
+  constexpr static double kAbsoluteTolerance = 0.001;
+  constexpr static double kRelativeTolerance = 0.001;
+
   template <typename T, typename BaselineT, typename OutT,
             typename BaselineOutT>
   absl::InlinedVector<OutT, 10> ComputeExpectedOutput(
@@ -132,7 +137,7 @@ class GpuUnaryOpTest : public OpsTestBase {
                                 baseline_callback, config)                   \
   GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(                        \
       op_name, InT, BaselineT, OutT, BaselineOutT,                           \
-      test::DefaultInput<NativeT>(#op_name), baseline_callback, config)
+      test::DefaultInput<NativeT>(), baseline_callback, config)
 
 #define GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(        \
     op_name, InT, OutT, input_values, baseline_callback, config) \
@@ -175,6 +180,46 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
     test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.Acos`.
+
+// Test only values in the function domain. The othweise returned nan value
+// fails comparison for equality.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Acos, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
+    std::acos, test::GpuOpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
+    std::acos, test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
+/// Test `tf.Asin`.
+
+// Test only values in the function domain. The othweise returned nan value
+// fails comparison for equality.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Asin, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
+    std::asin, test::GpuOpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Asin, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
+    std::asin, test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
+/// Test `tf.Atan`.
+
+GENERATE_DEFAULT_TEST(Atan, DT_FLOAT, DT_FLOAT, std::atan,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Atan, DT_DOUBLE, DT_DOUBLE, std::atan,
+                      test::GpuOpsTestConfig())
+
+/// Test `tf.Atanh`.
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Atanh, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
+    std::atanh, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Atanh, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
+    std::atanh, test::GpuOpsTestConfig())
+
 /// Test `tf.Ceil`.
 
 GENERATE_DEFAULT_TEST(Ceil, DT_FLOAT, DT_FLOAT, std::ceil,
@@ -185,6 +230,20 @@ GENERATE_DEFAULT_TEST(Ceil, DT_DOUBLE, DT_DOUBLE, std::ceil,
 
 GENERATE_DEFAULT_TEST_2(Ceil, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::ceil,
                         test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
+/// Test `tf.ComplexAbs`.
+
+template <typename T>
+typename T::value_type baseline_complex_abs(T x) {
+  return std::abs(x);
+}
+
+GENERATE_DEFAULT_TEST(ComplexAbs, DT_COMPLEX64, DT_FLOAT, baseline_complex_abs,
+                      test::GpuOpsTestConfig().AddTout().NoBufferReuse())
+
+GENERATE_DEFAULT_TEST(ComplexAbs, DT_COMPLEX128, DT_DOUBLE,
+                      baseline_complex_abs,
+                      test::GpuOpsTestConfig().AddTout().NoBufferReuse())
 
 /// Test `tf.Conj`.
 
@@ -210,6 +269,25 @@ GENERATE_DEFAULT_TEST(Cos, DT_DOUBLE, DT_DOUBLE, std::cos,
 GENERATE_DEFAULT_TEST_2(Cos, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cos,
                         test::GpuOpsTestConfig())
 
+/// Test `tf.Cosh`.
+
+GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
+                      test::GpuOpsTestConfig())
+
+/// Test `tf.Erf`.
+
+GENERATE_DEFAULT_TEST(Erf, DT_FLOAT, DT_FLOAT, std::erf,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Erf, DT_DOUBLE, DT_DOUBLE, std::erf,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Erf, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::erf,
+                        test::GpuOpsTestConfig())
+
 /// Test `tf.Exp`.
 
 GENERATE_DEFAULT_TEST(Exp, DT_FLOAT, DT_FLOAT, std::exp,
@@ -219,6 +297,17 @@ GENERATE_DEFAULT_TEST(Exp, DT_DOUBLE, DT_DOUBLE, std::exp,
                       test::GpuOpsTestConfig())
 
 GENERATE_DEFAULT_TEST_2(Exp, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::exp,
+                        test::GpuOpsTestConfig())
+
+/// Test `tf.Expm1`.
+
+GENERATE_DEFAULT_TEST(Expm1, DT_FLOAT, DT_FLOAT, std::expm1,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Expm1, DT_DOUBLE, DT_DOUBLE, std::expm1,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Expm1, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::expm1,
                         test::GpuOpsTestConfig())
 
 /// Test `tf.Floor`.
@@ -245,36 +334,62 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX64, DT_FLOAT, baseline_imag,
 GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
                       test::GpuOpsTestConfig().AddTout().NoBufferReuse())
 
+/// Test `tf.IsFinite`.
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsFinite, DT_FLOAT, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<float>(), std::isfinite,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsFinite, DT_DOUBLE, DT_DOUBLE, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<double>(), std::isfinite,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsFinite, DT_HALF, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<Eigen::half>(), std::isfinite,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
 /// Test `tf.IsInf`.
 
-// TODO(b/162575339): The tests currently still fails with CUDA_ILLEGAL_ADDRESS
-// when Test with unranked kernels.
-TEST_F(GpuUnaryOpTest, DISABLED_IsInfFloat) {
-  Test<float, float, bool, bool>(
-      /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<float>("IsInf"),
-      /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual());
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsInf, DT_FLOAT, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<float>(), std::isinf,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 
-TEST_F(GpuUnaryOpTest, DISABLED_IsInfDouble) {
-  // Workaround for gcc bug, it would fail with "unresolved overloaded function
-  // type" if passing std::isinf with type double. So we use type float for
-  // comparing expected values.
-  Test<double, float, bool, bool>(
-      /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<double>("IsInf"),
-      /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual());
-}
+// Workaround for gcc bug, it would fail with "unresolved overloaded function
+// type" if passing std::isinf with type double. So we use type float for
+// comparing expected values.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsInf, DT_DOUBLE, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<double>(), std::isinf,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 
-TEST_F(GpuUnaryOpTest, DISABLED_IsInfHalf) {
-  Test<Eigen::half, float, bool, bool>(
-      /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<Eigen::half>("IsInf"),
-      /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual());
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsInf, DT_HALF, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroAndExtremeInput<Eigen::half>(), std::isinf,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+/// Test `tf.IsNan`.
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsNan, DT_FLOAT, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroInfAndNanInput<float>(), std::isnan,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+// Workaround for gcc bug, it would fail with "unresolved overloaded function
+// type" if passing std::isnan with type double. So we use type float for
+// comparing expected values.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsNan, DT_DOUBLE, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroInfAndNanInput<double>(), std::isnan,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    IsNan, DT_HALF, DT_FLOAT, DT_BOOL, DT_BOOL,
+    test::NearZeroInfAndNanInput<Eigen::half>(), std::isnan,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 
 /// Test `tf.Log`.
 
@@ -289,6 +404,21 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     Log, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
     test::DefaultInputGreaterThanZero<Eigen::half>(), std::log,
+    test::GpuOpsTestConfig())
+
+/// Test `tf.Log1p`.
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Log1p, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterThanZero<float>(),
+    std::log1p, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Log1p, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterThanZero<double>(),
+    std::log1p, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Log1p, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputGreaterThanZero<Eigen::half>(), std::log1p,
     test::GpuOpsTestConfig())
 
 /// Test `tf.LogicalNot`

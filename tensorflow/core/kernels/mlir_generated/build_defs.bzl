@@ -192,7 +192,7 @@ def gen_kernel_library(name, types, tile_size, tags = [], unroll_factors = None,
                     "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
                     "$(location {name}_{type}.mlir)".format(name = name, type = type),
                 ],
-                size = "small",
+                size = "medium",
                 data = [
                     ":{name}_{type}.mlir".format(name = name, type = type),
                     "//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel",
