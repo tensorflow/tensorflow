@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth_test_util.h"
 
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
@@ -39,7 +40,9 @@ using ::tflite::gpu::metal::SingleOpModel;
 @interface SpaceToDepthTest : XCTestCase
 @end
 
-@implementation SpaceToDepthTest
+@implementation SpaceToDepthTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+}
 
 - (void)testTensorShape1x2x2x1BlockSize2 {
   const TensorRef<BHWC> input = {.type = DataType::FLOAT32, .shape = BHWC(1, 2, 2, 1), .ref = 0};
@@ -147,6 +150,26 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertEqual(actual[13], expected[13]);
   XCTAssertEqual(actual[14], expected[14]);
   XCTAssertEqual(actual[15], expected[15]);
+}
+
+- (void)testSpaceToDepthTensorShape1x2x2x1BlockSize2 {
+  auto status = SpaceToDepthTensorShape1x2x2x1BlockSize2Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSpaceToDepthTensorShape1x2x2x2BlockSize2 {
+  auto status = SpaceToDepthTensorShape1x2x2x2BlockSize2Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSpaceToDepthTensorShape1x2x2x3BlockSize2 {
+  auto status = SpaceToDepthTensorShape1x2x2x3BlockSize2Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSpaceToDepthTensorShape1x4x4x1BlockSize2 {
+  auto status = SpaceToDepthTensorShape1x4x4x1BlockSize2Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 @end

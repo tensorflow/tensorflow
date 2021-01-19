@@ -599,6 +599,19 @@ cc_library(
 )
 
 cc_library(
+    name = "space_to_depth_test_util",
+    testonly = 1,
+    srcs = ["space_to_depth_test_util.cc"],
+    hdrs = ["space_to_depth_test_util.h"],
+    deps = [
+        ":space_to_depth",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "strided_slice",
     srcs = ["strided_slice.cc"],
     hdrs = ["strided_slice.h"],

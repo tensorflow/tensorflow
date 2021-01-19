@@ -733,6 +733,7 @@ objc_library(
     deps = [
         ":space_to_depth",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
     ],
 )
 
@@ -912,6 +913,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
