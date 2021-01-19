@@ -216,10 +216,12 @@ REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_CPU),
                         ReadVariablesOp);
 
-REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_DEFAULT),
-                        ReadVariableOp);
-REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_DEFAULT),
-                        ReadVariablesOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ReadVariableOp").Device(DEVICE_DEFAULT).HostMemory("resource"),
+    ReadVariableOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_ReadVariablesOp").Device(DEVICE_DEFAULT).HostMemory("resources"),
+    ReadVariablesOp);
 
 VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
@@ -259,8 +261,6 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
-REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_DEFAULT),
-                        VarHandleOp);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
@@ -299,6 +299,27 @@ REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
                         ResourceHandlesOp<Var>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#define REGISTER_DEFAULT_KERNELS(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                 \
+                              .Device(DEVICE_DEFAULT)         \
+                              .HostMemory("resource")         \
+                              .TypeConstraint<type>("dtype"), \
+                          VarHandleOp)
+TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int64(REGISTER_DEFAULT_KERNELS);
+TF_CALL_variant(REGISTER_DEFAULT_KERNELS);
+TF_CALL_uint32(REGISTER_DEFAULT_KERNELS);
+#undef REGISTER_DEFAULT_KERNELS
+
+REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("resources")
+                            .TypeConstraint("dtypes",
+                                            {DT_INT64, DT_COMPLEX64,
+                                             DT_COMPLEX128, DT_HALF, DT_FLOAT,
+                                             DT_DOUBLE, DT_BOOL, DT_VARIANT}),
+                        ResourceHandlesOp<Var>);
 
 REGISTER_KERNEL_BUILDER(
     Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
@@ -609,8 +630,6 @@ class VarIsInitializedOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_CPU),
                         VarIsInitializedOp);
-REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_DEFAULT),
-                        VarIsInitializedOp);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
@@ -619,6 +638,12 @@ REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
                             .HostMemory("is_initialized"),
                         IsResourceInitialized<Var>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("resource")
+                            .HostMemory("is_initialized"),
+                        IsResourceInitialized<Var>);
 
 template <typename Device, typename T, typename Index>
 class ResourceGatherOp : public OpKernel {

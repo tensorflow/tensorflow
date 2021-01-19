@@ -47,19 +47,6 @@ REGISTER_KERNEL_BUILDER(Name("DebugGradientIdentity").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("DebugGradientRefIdentity").Device(DEVICE_CPU),
                         IdentityOp);
 
-REGISTER_KERNEL_BUILDER(
-    Name("Identity").Device(DEVICE_DEFAULT).TypeConstraint("T", DT_STRING),
-    IdentityOp);
-REGISTER_KERNEL_BUILDER(
-    Name("Identity").Device(DEVICE_DEFAULT).TypeConstraint<Variant>("T"),
-    IdentityOp);
-REGISTER_KERNEL_BUILDER(Name("Identity")
-                            .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<ResourceHandle>("T")
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        IdentityOp);
-
 #define REGISTER_GPU_KERNEL(type)                                           \
   REGISTER_KERNEL_BUILDER(                                                  \
       Name("Identity").Device(DEVICE_GPU).TypeConstraint<type>("T"),        \
@@ -112,6 +99,7 @@ REGISTER_GPU_KERNEL(bool);
                           IdentityOp)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
+REGISTER_DEFAULT_KERNEL(Variant);
 REGISTER_DEFAULT_KERNEL(bool);
 
 #undef REGISTER_DEFAULT_KERNEL
@@ -182,6 +170,9 @@ REGISTER_GPU_HOST_KERNEL(ResourceHandle);
                           IdentityOp)
 
 REGISTER_DEFAULT_HOST_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(tstring);
+REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
+
 #undef REGISTER_DEFAULT_HOST_KERNEL
 
 }  // namespace tensorflow
