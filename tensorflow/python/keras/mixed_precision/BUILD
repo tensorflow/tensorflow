@@ -280,7 +280,7 @@ cuda_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "layer_correctness_test",
     size = "medium",
     srcs = ["layer_correctness_test.py"],
