@@ -1008,6 +1008,7 @@ class ComparisonOpTest(test.TestCase):
         dtypes_lib.qint16,
         dtypes_lib.quint8,
         dtypes_lib.quint16,
+        dtypes_lib.qint32,
     ]
     x = np.asarray([0, 1, 2, 3, 4])
     y = np.asarray([0, 1, 2, 3, 4])
