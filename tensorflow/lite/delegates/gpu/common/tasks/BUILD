@@ -329,6 +329,19 @@ cc_library(
 )
 
 cc_library(
+    name = "fully_connected_test_util",
+    testonly = 1,
+    srcs = ["fully_connected_test_util.cc"],
+    hdrs = ["fully_connected_test_util.h"],
+    deps = [
+        ":fully_connected",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "lstm",
     srcs = ["lstm.cc"],
     hdrs = ["lstm.h"],

@@ -288,6 +288,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected",
+        "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
