@@ -127,8 +127,6 @@ class PackOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_PACK);
 TF_CALL_QUANTIZED_TYPES(REGISTER_PACK);
-TF_CALL_qint16(REGISTER_PACK);
-TF_CALL_quint16(REGISTER_PACK);
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION)
 // Primarily used for SavedModel support on mobile.
