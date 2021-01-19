@@ -2672,6 +2672,7 @@ cuda_py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
+        "no_cuda_asan",  # b/177916286
         "no_pip",
         "nomac",
     ],
