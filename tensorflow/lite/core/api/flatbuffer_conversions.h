@@ -135,6 +135,9 @@ TfLiteStatus ParseFullyConnected(const Operator* op,
                                  BuiltinDataAllocator* allocator,
                                  void** builtin_data);
 
+TfLiteStatus ParseGather(const Operator* op, ErrorReporter* error_reporter,
+                         BuiltinDataAllocator* allocator, void** builtin_data);
+
 TfLiteStatus ParseGatherNd(const Operator* op, ErrorReporter* error_reporter,
                            BuiltinDataAllocator* allocator, void** builtin_data);
 

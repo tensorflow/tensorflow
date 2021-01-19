@@ -1213,6 +1213,25 @@ TfLiteStatus ParseFullyConnected(const Operator* op,
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseGather(const Operator* op, ErrorReporter* error_reporter,
+                         BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteGatherParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  params->axis = 0;
+  if (const auto* gather_params = op->builtin_options_as_GatherOptions()) {
+    params->axis = gather_params->axis();
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseGatherNd(const Operator*, ErrorReporter*,
                            BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
