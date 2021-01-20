@@ -2611,6 +2611,11 @@ xla::StatusOr<Node*> CreatePerHostDummyArgs(const InferredShape& raw_var_shape,
   DataType dtype;
   TF_RETURN_IF_ERROR(GetNodeAttr(var_read->def(), "dtype", &dtype));
 
+  if (!(dtype == DT_FLOAT || dtype == DT_BFLOAT16 || dtype == DT_INT32 ||
+        dtype == DT_BOOL)) {
+    return var_read;
+  }
+
   TensorShape var_shape;
   if (!raw_var_shape.handle_shape.AsTensorShape(&var_shape) &&
       !raw_var_shape.shape.AsTensorShape(&var_shape)) {
@@ -2643,12 +2648,10 @@ xla::StatusOr<Node*> CreatePerHostDummyArgs(const InferredShape& raw_var_shape,
   tensor_proto.set_dtype(dtype);
   if (dtype == DT_FLOAT) {
     tensor_proto.add_float_val(0.0f);
-  } else if (dtype == DT_BFLOAT16 || dtype == DT_HALF) {
+  } else if (dtype == DT_BFLOAT16) {
     tensor_proto.add_half_val(0);
-  } else if (dtype == DT_INT32 || dtype == DT_INT16 || dtype == DT_INT8) {
+  } else if (dtype == DT_INT32) {
     tensor_proto.add_int_val(0);
-  } else if (dtype == DT_INT64) {
-    tensor_proto.add_int64_val(0);
   } else if (dtype == DT_BOOL) {
     tensor_proto.add_bool_val(false);
   } else {
