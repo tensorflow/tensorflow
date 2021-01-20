@@ -46,7 +46,6 @@ py_test(
     tags = [
         "no_oss_py2",
         "no_pip",
-        "no_rocm",
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",
