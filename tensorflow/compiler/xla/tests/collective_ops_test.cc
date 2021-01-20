@@ -755,9 +755,10 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim0) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   for (const Literal& result : results) {
     LiteralTestUtil::ExpectR1Equal<uint32>({10, 15, 11, 16, 12, 17, 13, 18},
@@ -770,7 +771,7 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1) {
   ENTRY test_computation {
     id = u32[] replica-id()
     id2 = u32[2, 1] broadcast(id), dimensions={}
-    a0 = u32[2, 1] constant({10}, {15})
+    a0 = u32[2, 1] constant({{10}, {15}})
     a1 = u32[2, 1] add(id2, a0)
     allgather = u32[2, 4] all-gather(a1), dimensions={1}
     ROOT out = u32[8] reshape(allgather)
@@ -781,9 +782,10 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   for (const Literal& result : results) {
     LiteralTestUtil::ExpectR1Equal<uint32>({10, 15, 11, 16, 12, 17, 13, 18},
