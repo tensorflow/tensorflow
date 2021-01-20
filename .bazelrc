@@ -38,6 +38,9 @@
 #     monolithic:       Build all TF C++ code into a single shared object.
 #     dynamic_kernels:  Try to link all kernels dynamically (experimental).
 #     libc++:           Link against libc++ instead of stdlibc++
+#     asan:             Build with the clang address sanitizer
+#     msan:             Build with the clang memory sanitizer
+#     ubsan:            Build with the clang undefined behavior sanitizer
 #
 #
 # TF version options;
@@ -619,3 +622,33 @@ build:release_gpu_linux_cuda_10_1 --config=release_gpu_linux
 build:release_gpu_linux_cuda_10_1 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-10.1"
 build:release_gpu_linux_cuda_10_1 --action_env=TF_CUDA_VERSION="10"
 build:release_gpu_linux_cuda_10_1 --action_env=TF_CUDNN_VERSION="7"
+
+# Address sanitizer
+# CC=clang bazel build --config asan
+build:asan --strip=never
+build:asan --copt -fsanitize=address
+build:asan --copt -DADDRESS_SANITIZER
+build:asan --copt -g
+build:asan --copt -O3
+build:asan --copt -fno-omit-frame-pointer
+build:asan --linkopt -fsanitize=address
+
+# Memory sanitizer
+# CC=clang bazel build --config asan
+build:msan --strip=never
+build:msan --copt -fsanitize=memory
+build:msan --copt -DADDRESS_SANITIZER
+build:msan --copt -g
+build:msan --copt -O3
+build:msan --copt -fno-omit-frame-pointer
+build:msan --linkopt -fsanitize=memory
+
+# Undefined Behavior Sanitizer
+# CC=clang bazel build --config asan
+build:ubsan --strip=never
+build:ubsan --copt -fsanitize=undefined
+build:ubsan --copt -g
+build:ubsan --copt -O3
+build:ubsan --copt -fno-omit-frame-pointer
+build:ubsan --linkopt -fsanitize=undefined
+build:ubsan --linkopt -lubsan
