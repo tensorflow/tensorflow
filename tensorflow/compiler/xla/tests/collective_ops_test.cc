@@ -770,7 +770,7 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1) {
   ENTRY test_computation {
     id = u32[] replica-id()
     id2 = u32[2, 1] broadcast(id), dimensions={}
-    a0 = u32[2, 1] constant({{10, 15}})
+    a0 = u32[2, 1] constant({10}, {15})
     a1 = u32[2, 1] add(id2, a0)
     allgather = u32[2, 4] all-gather(a1), dimensions={1}
     ROOT out = u32[8] reshape(allgather)
