@@ -639,6 +639,7 @@ cc_test(
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
+        "testdata/while_op_with_forwarding_input.bin",
     ],
     tags = [
         "tflite_not_portable",
@@ -647,6 +648,7 @@ cc_test(
     deps = [
         ":framework",
         ":interpreter_test_util",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/testing:util",
