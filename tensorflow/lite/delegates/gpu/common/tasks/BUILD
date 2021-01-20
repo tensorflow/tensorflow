@@ -574,6 +574,20 @@ cc_library(
 )
 
 cc_library(
+    name = "reshape_test_util",
+    testonly = 1,
+    srcs = ["reshape_test_util.cc"],
+    hdrs = ["reshape_test_util.h"],
+    deps = [
+        ":reshape",
+        ":reshapex4",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "resize",
     srcs = ["resize.cc"],
     hdrs = ["resize.h"],

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshape_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -36,10 +37,13 @@ using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
 
-@interface ReshapeTest : XCTestCase
+@interface ReshapeMetalTest : XCTestCase
 @end
 
-@implementation ReshapeTest
+@implementation ReshapeMetalTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+}
+
 - (void)setUp {
   [super setUp];
 }
@@ -152,6 +156,16 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(std::string(status.message()).find("Only identical batch dimension is supported") !=
                     std::string::npos,
                 @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testReshape {
+  auto status = ReshapeTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testReshapex4 {
+  auto status = Reshapex4Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 @end
