@@ -206,6 +206,17 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::acos, test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.Acosh`.
+
+// TODO(herhut): Give this better input once TF testing also supports NaN.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Acosh, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterEqualOne<float>(),
+    std::acosh, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Acosh, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterEqualOne<double>(),
+    std::acosh, test::GpuOpsTestConfig())
+
 /// Test `tf.Asin`.
 
 // Test only values in the function domain. The othweise returned nan value

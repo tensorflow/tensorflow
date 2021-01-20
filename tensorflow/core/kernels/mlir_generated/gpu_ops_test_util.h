@@ -116,6 +116,15 @@ absl::InlinedVector<T, 10> NearZeroInfAndNanInput() {
 template <typename T, std::enable_if_t<
                           llvm::is_one_of<T, Eigen::half, float, double>::value,
                           bool> = true>
+absl::InlinedVector<T, 10> DefaultInputGreaterEqualOne() {
+  return test::InputAsVector<T, double>(
+      {18.0, 9.0, 1.0, std::numeric_limits<T>::max(), 42.0, 2.0, 1.0,
+       std::sqrt(std::numeric_limits<T>::max()), 9.0, 18.0});
+}
+
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
 absl::InlinedVector<T, 10> DefaultInputGreaterThanZero() {
   return test::InputAsVector<T, double>({18.0, 9.0, 1e-6, 1.0, 0.1, 1e-6, 0.1,
                                          0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
