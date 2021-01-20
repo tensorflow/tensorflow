@@ -28,6 +28,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -112,6 +115,14 @@ absl::Status MergeNodes(MetalNode* src, MetalNode* dst) {
   return dst->task.AddTask(&src->task);
 }
 }  // namespace
+
+absl::Status InferenceContext::InitFromGraphWithTransforms(
+    const CreateInferenceInfo& create_info, GraphFloat32* graph,
+    id<MTLDevice> device_id) {
+  RETURN_IF_ERROR(RunGraphTransforms(graph));
+  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, device_id));
+  return absl::OkStatus();
+}
 
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
@@ -541,6 +552,24 @@ void InferenceContext::UpdatePreallocatedTensors(
       }
     }
   }
+}
+
+absl::Status RunGraphTransforms(GraphFloat32* graph) {
+  auto merge_padding_transform = NewMergePaddingWithAdd();
+  auto add_bias_transform = NewAddBias();
+  auto pooling_to_reduce_op = NewGlobalPoolingToReduceOp();
+  ModelTransformer transformer(graph, /*reporter=*/nullptr);
+  if (!transformer.Apply("add_bias", add_bias_transform.get())) {
+    return absl::InternalError("Invalid add_bias transform");
+  }
+  if (!transformer.Apply("merge_padding", merge_padding_transform.get())) {
+    return absl::InternalError("Invalid merge_padding transform");
+  }
+  if (!transformer.Apply("global pooling to mean",
+                         pooling_to_reduce_op.get())) {
+    return absl::InternalError("Invalid global pooling to mean transform");
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace metal

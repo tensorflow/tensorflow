@@ -64,9 +64,18 @@ class InferenceContext {
 
   InferenceContext() = default;
 
+  // IMPORTANT: If InitFromGraph used, RunGraphTransforms must be applied for
+  // this graph upfront, otherwise not guaranteed correct behavior
   absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
                              const GraphFloat32& graph,
                              id<MTLDevice> device_id);
+
+  // Applies specific transformations to the graph before the
+  // initialization. These transformations are either impossible or useless in
+  // other backends.
+  absl::Status InitFromGraphWithTransforms(
+      const CreateInferenceInfo& create_info, GraphFloat32* graph,
+      id<MTLDevice> device_id);
 
   /// Inserts all GPU compute tasks into the command encoder.
   /// @param inputOutputBuffers Must be created and passed into the method
@@ -194,6 +203,9 @@ class InferenceContext {
       shared_buffer_tensors_;  // use references to memory
                                // from _sharedBuffers
 };
+
+// Runs specific transforms for the graph.
+absl::Status RunGraphTransforms(GraphFloat32* graph);
 
 }  // namespace metal
 }  // namespace gpu

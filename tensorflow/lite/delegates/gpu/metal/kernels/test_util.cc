@@ -87,7 +87,8 @@ absl::Status SingleOpModel::Invoke() {
   create_info.storage_type = TensorStorageType::BUFFER;
   InferenceContext inference_context;
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  RETURN_IF_ERROR(inference_context.InitFromGraph(create_info, graph_, device));
+  RETURN_IF_ERROR(inference_context.InitFromGraphWithTransforms(
+      create_info, &graph_, device));
 
   std::map<ValueId, BHWC> input_dimensions;
   std::map<ValueId, id<MTLBuffer>> input_buffers;
