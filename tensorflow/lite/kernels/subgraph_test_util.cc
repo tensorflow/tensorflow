@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 
@@ -444,6 +445,137 @@ void SubgraphBuilder::BuildCallOnceAndReadVariableSubgraph(Subgraph* subgraph) {
       ::tflite::ops::custom::Register_READ_VARIABLE(), &node_index);
 }
 
+void SubgraphBuilder::BuildLessEqualCondSubgraphWithDynamicTensor(
+    Subgraph* subgraph, int rhs) {
+  const int kStringInput1 = 0;
+  const int kStringInput2 = 1;
+  const int kIntegerInput = 2;
+  const int kOutput = 3;
+  const int kConstRhs = 4;
+  const int kTensorCount = 5;
+
+  // kIntegerInput(2) --> +------------+
+  //                      | LESS_EQUAL | --> kOutput(3)
+  //     kConstRhs(4) --> +------------+
+  //
+  // kStringInput1(0) --> (unused)
+  // kStringInput2(1) --> (unused)
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kStringInput1, kStringInput2, kIntegerInput}),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
+
+  SetupTensor(subgraph, kStringInput1, kTfLiteString);
+  SetupTensor(subgraph, kStringInput2, kTfLiteString);
+  SetupTensor(subgraph, kIntegerInput, kTfLiteInt32);
+  SetupTensor(subgraph, kOutput, kTfLiteBool);
+
+  auto* le_reg = ops::builtin::Register_LESS_EQUAL();
+  le_reg->builtin_code = kTfLiteBuiltinLessEqual;
+
+  CreateConstantInt32Tensor(subgraph, kConstRhs, {1}, {rhs});
+  int node_index;
+  subgraph->AddNodeWithParameters({kIntegerInput, kConstRhs}, {kOutput}, {},
+                                  nullptr, 0, nullptr, le_reg, &node_index);
+}
+
+void SubgraphBuilder::BuildBodySubgraphWithDynamicTensor(Subgraph* subgraph) {
+  const int kStringInput1 = 0;
+  const int kStringInput2 = 1;
+  const int kIntegerInput = 2;
+  const int kStringOutput1 = 0;  // Forwarded of the `kStringInput1` tensor.
+  const int kStringOutput2 = 4;
+  const int kIntegerOutput = 5;
+  const int kConst = 6;
+  const int kTensorCount = 7;
+
+  // Construct a graph like this:
+  //   %5 = tf.Add(%2, 1)
+  //   %4 = tf.Fill(%0, %5)
+  //   yield(%0, %4, %5)
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kStringInput1, kStringInput2, kIntegerInput}),
+            kTfLiteOk);
+  ASSERT_EQ(
+      subgraph->SetOutputs({kStringOutput1, kStringOutput2, kIntegerOutput}),
+      kTfLiteOk);
+
+  SetupTensor(subgraph, kStringInput1, kTfLiteString);
+  SetupTensor(subgraph, kStringInput2, kTfLiteString);
+  SetupTensor(subgraph, kIntegerInput, kTfLiteInt32);
+  SetupTensor(subgraph, kStringOutput1, kTfLiteString);
+  SetupTensor(subgraph, kStringOutput2, kTfLiteString);
+  SetupTensor(subgraph, kIntegerOutput, kTfLiteInt32);
+  SetupTensor(subgraph, kConst, kTfLiteInt32);
+
+  TfLiteAddParams* add_params =
+      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  add_params->activation = kTfLiteActNone;
+
+  auto* add_reg = ops::builtin::Register_ADD();
+  add_reg->builtin_code = kTfLiteBuiltinAdd;
+
+  CreateConstantInt32Tensor(subgraph, kConst, {1}, {1});
+  int node_index;
+  subgraph->AddNodeWithParameters({kIntegerInput, kConst}, {kIntegerOutput}, {},
+                                  nullptr, 0, add_params, add_reg, &node_index);
+
+  auto* fill_reg = ops::builtin::Register_FILL();
+  fill_reg->builtin_code = kTfLiteBuiltinFill;
+  subgraph->AddNodeWithParameters({kIntegerOutput, kStringInput1},
+                                  {kStringOutput2}, {}, nullptr, 0, nullptr,
+                                  fill_reg, &node_index);
+}
+
+void SubgraphBuilder::BuildWhileSubgraphWithDynamicTensor(Subgraph* subgraph) {
+  const int kStringInput1 = 0;
+  const int kStringInput2 = 1;
+  const int kIntegerInput = 2;
+  const int kStringOutput1 = 3;
+  const int kStringOutput2 = 4;
+  const int kIntegerOutput = 5;
+  const int kTensorCount = 6;
+
+  // Create a while op with 2 string tensor and 1 integer tensor.
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kStringInput1, kStringInput2, kIntegerInput}),
+            kTfLiteOk);
+  ASSERT_EQ(
+      subgraph->SetOutputs({kStringOutput1, kStringOutput2, kIntegerOutput}),
+      kTfLiteOk);
+
+  SetupTensor(subgraph, kStringInput1, kTfLiteString);
+  SetupTensor(subgraph, kStringInput2, kTfLiteString);
+  SetupTensor(subgraph, kIntegerInput, kTfLiteInt32);
+  SetupTensor(subgraph, kStringOutput1, kTfLiteString);
+  SetupTensor(subgraph, kStringOutput2, kTfLiteString);
+  SetupTensor(subgraph, kIntegerOutput, kTfLiteInt32);
+
+  TfLiteWhileParams* params =
+      reinterpret_cast<TfLiteWhileParams*>(malloc(sizeof(TfLiteWhileParams)));
+  params->cond_subgraph_index = 1;
+  params->body_subgraph_index = 2;
+  auto* while_reg = ops::builtin::Register_WHILE();
+  while_reg->builtin_code = kTfLiteBuiltinWhile;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(
+      {kStringInput1, kStringInput2, kIntegerInput},
+      {kStringOutput1, kStringOutput2, kIntegerOutput}, {}, nullptr, 0, params,
+      while_reg, &node_index);
+}
+
 void SubgraphBuilder::CreateConstantInt32Tensor(Subgraph* subgraph,
                                                 int tensor_index,
                                                 const std::vector<int>& shape,
@@ -475,6 +607,38 @@ void FillIntTensor(TfLiteTensor* tensor, const std::vector<int32_t>& data) {
   }
 }
 
+void FillScalarStringTensor(TfLiteTensor* tensor, const std::string& data) {
+  StringRef str_ref;
+  str_ref.str = data.c_str();
+  str_ref.len = data.size();
+  DynamicBuffer buf;
+  buf.AddString(str_ref);
+  buf.WriteToTensor(tensor, /*new_shape=*/TfLiteIntArrayCreate(0));
+}
+
+void CheckScalarStringTensor(const TfLiteTensor* tensor,
+                             const std::string& data) {
+  ASSERT_EQ(tensor->dims->size, 0);
+  ASSERT_EQ(tensor->type, kTfLiteString);
+  StringRef str_ref = GetString(tensor, 0);
+  EXPECT_EQ(std::string(str_ref.str, str_ref.len), data);
+}
+
+void CheckStringTensor(const TfLiteTensor* tensor,
+                       const std::vector<int>& shape,
+                       const std::vector<std::string>& data) {
+  ASSERT_EQ(tensor->dims->size, shape.size());
+  for (int i = 0; i < tensor->dims->size; ++i) {
+    ASSERT_EQ(tensor->dims->data[i], shape[i]);
+  }
+  ASSERT_EQ(tensor->type, kTfLiteString);
+  int count = GetStringCount(tensor);
+  ASSERT_EQ(count, data.size());
+  for (int i = 0; i < count; ++i) {
+    StringRef str_ref = GetString(tensor, i);
+    EXPECT_EQ(std::string(str_ref.str, str_ref.len), data[i]);
+  }
+}
 void CheckIntTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
                     const std::vector<int32_t>& data) {
   ASSERT_EQ(tensor->dims->size, shape.size());
