@@ -19,7 +19,6 @@ package(
 cc_library(
     name = "kernels",
     deps = [
-        ":concat",
         ":conv",
         ":depthwise_conv",
         ":fully_connected",
@@ -60,27 +59,12 @@ ios_unit_test(
     deps = [":add_test_lib"],
 )
 
-cc_library(
-    name = "concat",
-    srcs = ["concat.cc"],
-    hdrs = ["concat.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-    ],
-)
-
 objc_library(
     name = "concat_test_lib",
     testonly = 1,
     srcs = ["concat_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":concat",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
     ],
