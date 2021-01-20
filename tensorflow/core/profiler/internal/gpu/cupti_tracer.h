@@ -87,6 +87,7 @@ class CuptiTracer {
   bool IsAvailable() const;
   bool NeedRootAccess() const { return need_root_access_; }
 
+  // Returns a boolean telling whether the CUPTI tracer was enabled.
   bool Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
   void Disable();
 
