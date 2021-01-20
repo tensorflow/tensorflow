@@ -1,6 +1,6 @@
 # Release 2.4.1
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+This release removes the AVX2 requirement from TF 2.4.0.
 
 # Release 2.4.0
 
