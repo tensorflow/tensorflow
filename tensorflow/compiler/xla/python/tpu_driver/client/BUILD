@@ -36,7 +36,6 @@ cc_library(
         "//tensorflow/compiler/xla/python/tpu_driver:recording_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:env",

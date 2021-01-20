@@ -23,7 +23,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/core/platform/threadpool.h"
+
+namespace stream_executor {
+
+// Forward-declared to avoid StreamExecutor dependency.
+class DeviceMemoryAllocator;
+
+}  // namespace stream_executor
 
 namespace xla {
 
