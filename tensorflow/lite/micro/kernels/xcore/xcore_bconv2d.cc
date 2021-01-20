@@ -276,7 +276,7 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
 
 static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
                                                      const TfLiteTensor *tensor,
-                                                     int scratch_idx) {
+                                                     int &scratch_idx) {
   if (!is_ram_address((uintptr_t)tensor->data.data)) {
     return context->RequestScratchBufferInArena(context, tensor->bytes,
                                                 &scratch_idx);
