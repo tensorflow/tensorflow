@@ -70,7 +70,6 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       entry_computation_profile_index_(params.entry_computation_profile_index),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
-  CHECK(has_module());
 #if TENSORFLOW_USE_ROCM
   // ROCm uses hsaco hashes to distinguish between modules.
   // Bad things happen if multiple modules with identical code are loaded.
@@ -80,7 +79,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   // workaround for a bug in ROCm 3.3 hipModuleLoadData
   binary_.reserve(binary_.size() + 256);
 #endif
-  GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
+  GpuDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
                                              debug_buffer_assignment_);
 }
 
