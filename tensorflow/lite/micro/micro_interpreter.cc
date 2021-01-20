@@ -177,49 +177,6 @@ void MicroInterpreter::Init(tflite::Profiler* profiler) {
   initialization_status_ = kTfLiteOk;
 }
 
-void MicroInterpreter::CorrectTensorEndianness(TfLiteEvalTensor* tensorCorr) {
-  int32_t tensorSize = 1;
-  for (int d = 0; d < tensorCorr->dims->size; ++d)
-    tensorSize *= reinterpret_cast<const int32_t*>(tensorCorr->dims->data)[d];
-
-  switch (tensorCorr->type) {
-    case TfLiteType::kTfLiteFloat32:
-      CorrectTensorDataEndianness(tensorCorr->data.f, tensorSize);
-      break;
-    case TfLiteType::kTfLiteFloat16:
-      CorrectTensorDataEndianness(tensorCorr->data.f16, tensorSize);
-      break;
-    case TfLiteType::kTfLiteInt64:
-      CorrectTensorDataEndianness(tensorCorr->data.i64, tensorSize);
-      break;
-    case TfLiteType::kTfLiteUInt64:
-      CorrectTensorDataEndianness(tensorCorr->data.u64, tensorSize);
-      break;
-    case TfLiteType::kTfLiteInt32:
-      CorrectTensorDataEndianness(tensorCorr->data.i32, tensorSize);
-      break;
-    case TfLiteType::kTfLiteInt16:
-      CorrectTensorDataEndianness(tensorCorr->data.i16, tensorSize);
-      break;
-    case TfLiteType::kTfLiteComplex64:
-      CorrectTensorDataEndianness(tensorCorr->data.c64, tensorSize);
-      break;
-    case TfLiteType::kTfLiteComplex128:
-      CorrectTensorDataEndianness(tensorCorr->data.c128, tensorSize);
-      break;
-    default:
-      // Do nothing for other data types.
-      break;
-  }
-}
-
-template <class T>
-void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
-  for (int32_t i = 0; i < size; ++i) {
-    data[i] = flatbuffers::EndianScalar(data[i]);
-  }
-}
-
 TfLiteStatus MicroInterpreter::AllocateTensors() {
   if (allocator_.StartModelAllocation(model_, op_resolver_,
                                       &node_and_registrations_,
