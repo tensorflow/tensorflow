@@ -19,19 +19,14 @@ package(
 cc_library(
     name = "kernels",
     deps = [
-        ":add",
         ":concat",
         ":conv",
         ":depthwise_conv",
-        ":elementwise",
         ":fully_connected",
         ":max_unpooling",
         ":mean",
         ":padding",
         ":pooling",
-        ":prelu",
-        ":quantize_and_dequantize",
-        ":relu",
         ":reshape",
         ":resize",
         ":slice",
@@ -42,27 +37,12 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "add",
-    srcs = ["add.cc"],
-    hdrs = ["add.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/types:variant",
-    ],
-)
-
 objc_library(
     name = "add_test_lib",
     testonly = 1,
     srcs = ["add_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":add",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
     ],
@@ -209,28 +189,12 @@ ios_unit_test(
     deps = [":depthwise_conv_test_lib"],
 )
 
-cc_library(
-    name = "elementwise",
-    srcs = ["elementwise.cc"],
-    hdrs = ["elementwise.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:convert",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "elementwise_test_lib",
     testonly = 1,
     srcs = ["elementwise_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":elementwise",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
     ],
@@ -439,27 +403,12 @@ ios_unit_test(
     deps = [":pooling_test_lib"],
 )
 
-cc_library(
-    name = "prelu",
-    srcs = ["prelu.cc"],
-    hdrs = ["prelu.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:convert",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "prelu_test_lib",
     testonly = 1,
     srcs = ["prelu_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":prelu",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
     ],
@@ -477,26 +426,12 @@ ios_unit_test(
     deps = [":prelu_test_lib"],
 )
 
-cc_library(
-    name = "quantize_and_dequantize",
-    srcs = ["quantize_and_dequantize.cc"],
-    hdrs = ["quantize_and_dequantize.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-    ],
-)
-
 objc_library(
     name = "quantize_and_dequantize_test_lib",
     testonly = 1,
     srcs = ["quantize_and_dequantize_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":quantize_and_dequantize",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -505,7 +440,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "//tensorflow/lite/kernels/internal:quantization_util",
     ],
 )
 
@@ -521,27 +455,12 @@ ios_unit_test(
     deps = [":quantize_and_dequantize_test_lib"],
 )
 
-cc_library(
-    name = "relu",
-    srcs = ["relu.cc"],
-    hdrs = ["relu.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "relu_test_lib",
     testonly = 1,
     srcs = ["relu_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":relu",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
     ],
@@ -942,7 +861,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
-        "//tensorflow/lite/kernels/internal:quantization_util",
     ],
 )
 

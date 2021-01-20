@@ -24,22 +24,22 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/add.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/concat.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mean.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/prelu.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/quantize_and_dequantize.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
@@ -79,32 +79,6 @@ std::unique_ptr<ComputeTaskDescriptor> SelectConvolutionTransposed(
     auto gpu_op = ConvolutionTransposed(op_def, attr, gpu_info);
     return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
   }
-}
-
-std::unique_ptr<ComputeTaskDescriptor> SelectQuantizeAndDequantize(
-    const OperationDef& op_def, const QuantizeAndDequantizeAttributes& attr) {
-  auto gpu_op = QuantizeAndDequantize(op_def, attr);
-  return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-}
-
-std::unique_ptr<ComputeTaskDescriptor> SelectPReLU(
-    const OperationDef& op_def, const BHWC& src_shape,
-    const PReLUAttributes& attr) {
-  auto alpha = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
-  if (alpha) {
-    auto gpu_op = PReLU(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-  }
-  auto alpha3d = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
-  if (!alpha3d) {
-    return {};
-  }
-  if (alpha3d->shape.h != src_shape.h || alpha3d->shape.w != src_shape.w ||
-      alpha3d->shape.c != src_shape.c) {
-    return {};
-  }
-  auto gpu_op = PReLUFull(op_def, attr);
-  return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
 }
 
 std::unique_ptr<ComputeTaskDescriptor> SelectReshape(
@@ -256,29 +230,36 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
   auto op_type = OperationTypeFromString(node.operation.type);
   switch (op_type) {
     case OperationType::ADD: {
-      if (inputs.size() == 1) {
-        if (node.operation.attributes.has_value()) {
-          auto attr =
-              absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-          auto gpu_op = ElementwiseWithOneInputAndConstantArguent(
-              op_def, op_type, attr.param);
-          gpu_operation->task_desc =
-              absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-        } else {
-          return absl::UnimplementedError(
-              "Missing attributes for single input op: " + node.operation.type);
+      if (inputs.size() == 2 &&
+          (inputs[0]->tensor.shape.c == inputs[1]->tensor.shape.c ||
+           inputs[1]->tensor.shape.c == 1)) {
+        GPUOperation operation =
+            CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
+        gpu_operation->operation =
+            absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
+      } else if (inputs.size() >= 2) {
+        auto output = outputs[0];
+        std::vector<int> channels(inputs.size());
+        for (int i = 0; i < inputs.size(); ++i) {
+          channels[i] = inputs[i]->tensor.shape.c;
         }
-      } else if (inputs.size() == 2) {
-        auto gpu_op =
-            ElementwiseWithTwoInputs(op_def, inputs[1]->tensor.shape, op_type);
-        gpu_operation->task_desc =
-            absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      } else {  // more than 2 inputs
-        auto gpu_op = Add(op_def);
-        gpu_operation->task_desc =
-            absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+        GPUOperation operation =
+            CreateAdd(op_def, channels, output->tensor.shape.c);
+        gpu_operation->operation =
+            absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
+      } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
+        auto attr =
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
+        GPUOperation operation =
+            CreateElementwise(gpu_info, op_def, op_type, attr);
+        gpu_operation->operation =
+            absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
       }
-      break;
+      return absl::UnimplementedError(absl::StrCat(
+          "No support of ", node.operation.type, " with this parameters"));
     }
     case OperationType::CONCAT: {
       std::vector<BHWC> input_shapes;
@@ -361,26 +342,6 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
           absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
       break;
     }
-    case OperationType::MUL:
-      if (inputs.size() == 1) {
-        if (node.operation.attributes.has_value()) {
-          auto attr =
-              absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-          auto gpu_op = ElementwiseWithOneInputAndConstantArguent(
-              op_def, op_type, attr.param);
-          gpu_operation->task_desc =
-              absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-        } else {
-          return absl::UnimplementedError(
-              "Missing attributes for single input op: " + node.operation.type);
-        }
-      } else if (inputs.size() == 2) {
-        auto gpu_op =
-            ElementwiseWithTwoInputs(op_def, inputs[1]->tensor.shape, op_type);
-        gpu_operation->task_desc =
-            absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      }
-      break;
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node.operation.attributes);
       if (attr.appended.b != 0 || attr.prepended.b != 0) {
@@ -415,24 +376,24 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       break;
     }
     case OperationType::PRELU: {
-      const auto src_shape = inputs[0]->tensor.shape;
-      gpu_operation->task_desc = SelectPReLU(
-          op_def, src_shape,
-          absl::any_cast<PReLUAttributes>(node.operation.attributes));
-      break;
+      auto attr = absl::any_cast<PReLUAttributes>(node.operation.attributes);
+      gpu_operation->operation =
+          absl::make_unique<GPUOperation>(CreatePReLU(gpu_info, op_def, attr));
+      return absl::OkStatus();
     }
     case OperationType::RELU: {
-      auto gpu_op = ReLU(
-          op_def, absl::any_cast<ReLUAttributes>(node.operation.attributes));
-      gpu_operation->task_desc =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      auto attr = absl::any_cast<ReLUAttributes>(node.operation.attributes);
+      gpu_operation->operation =
+          absl::make_unique<GPUOperation>(CreateReLU(op_def, attr));
+      return absl::OkStatus();
     }
-    case OperationType::QUANTIZE_AND_DEQUANTIZE:
-      gpu_operation->task_desc = SelectQuantizeAndDequantize(
-          op_def, absl::any_cast<QuantizeAndDequantizeAttributes>(
-                      node.operation.attributes));
-      break;
+    case OperationType::QUANTIZE_AND_DEQUANTIZE: {
+      auto attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
+          node.operation.attributes);
+      gpu_operation->operation = absl::make_unique<GPUOperation>(
+          CreateQuantizeAndDequantize(op_def, attr));
+      return absl::OkStatus();
+    }
     case OperationType::RESHAPE: {
       const auto src_shape = inputs[0]->tensor.shape;
       gpu_operation->task_desc = SelectReshape(
@@ -484,36 +445,43 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::SQRT:
     case OperationType::SQUARE:
     case OperationType::TANH: {
-      auto gpu_op = ElementwiseWithOneInput(op_def, op_type);
-      gpu_operation->task_desc =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      GPUOperation operation =
+          CreateElementwiseOneInput(gpu_info, op_def, op_type);
+      gpu_operation->operation =
+          absl::make_unique<GPUOperation>(std::move(operation));
+      return absl::OkStatus();
     }
     case OperationType::DIV:
+    case OperationType::EQUAL:
+    case OperationType::GREATER:
+    case OperationType::GREATER_EQUAL:
+    case OperationType::LESS:
+    case OperationType::LESS_EQUAL:
     case OperationType::MAXIMUM:
     case OperationType::MINIMUM:
+    case OperationType::MUL:
+    case OperationType::NOT_EQUAL:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB: {
-      if (inputs.size() == 1) {
-        if (node.operation.attributes.has_value()) {
-          auto attr =
-              absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-          auto gpu_op = ElementwiseWithOneInputAndConstantArguent(
-              op_def, op_type, attr.param);
-          gpu_operation->task_desc =
-              absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-        } else {
-          return absl::UnimplementedError(
-              "Missing attributes for single input op: " + node.operation.type);
-        }
-      } else if (inputs.size() == 2) {
-        auto gpu_op =
-            ElementwiseWithTwoInputs(op_def, inputs[1]->tensor.shape, op_type);
-        gpu_operation->task_desc =
-            absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+      if (inputs.size() == 2) {
+        GPUOperation operation =
+            CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
+        gpu_operation->operation =
+            absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
+      } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
+        auto attr =
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
+        GPUOperation operation =
+            CreateElementwise(gpu_info, op_def, op_type, attr);
+        gpu_operation->operation =
+            absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
       }
-    } break;
+      return absl::UnimplementedError(absl::StrCat(
+          "No support of ", node.operation.type, " with this parameters"));
+    }
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
     case OperationType::BATCHED_MATMUL:
@@ -525,13 +493,6 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::REDUCE_MINIMUM:
     case OperationType::REDUCE_PRODUCT:
     case OperationType::REDUCE_SUM:
-    // comparison operations
-    case OperationType::LESS:
-    case OperationType::LESS_EQUAL:
-    case OperationType::EQUAL:
-    case OperationType::NOT_EQUAL:
-    case OperationType::GREATER:
-    case OperationType::GREATER_EQUAL:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
       return absl::UnimplementedError("Unsupported op: " + node.operation.type);

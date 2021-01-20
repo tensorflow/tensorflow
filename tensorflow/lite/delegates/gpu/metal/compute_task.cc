@@ -88,9 +88,6 @@ bool ComputeTask::IsLinkable() const {
 }
 
 absl::Status ComputeTask::AddTask(ComputeTask* task) {
-  if (task_desc_ && task->task_desc_) {
-    return task_desc_->AddTask(task->task_desc_.get());
-  }
   if (task_desc_ && task->operation_) {
     return task_desc_->AddOperation(task->operation_.get());
   }
