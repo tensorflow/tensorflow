@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -133,6 +134,13 @@ std::unique_ptr<ComputeTaskDescriptor> SelectSpaceToDepth(
     const OperationDef& op_def, const SpaceToDepthAttributes& attr) {
   auto gpu_op = SpaceToDepth(op_def, attr);
   return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+}
+
+void SelectTranspose(const TransposeAttributes& attr,
+                     const OperationDef& op_def,
+                     std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreateTranspose(op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 std::unique_ptr<ComputeTaskDescriptor> SelectWinograd4x4To36(
@@ -452,6 +460,12 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
           op_def,
           absl::any_cast<SpaceToDepthAttributes>(node.operation.attributes));
       break;
+    case OperationType::TRANSPOSE: {
+      auto attr =
+          absl::any_cast<TransposeAttributes>(node.operation.attributes);
+      SelectTranspose(attr, op_def, &gpu_operation->operation);
+      return absl::OkStatus();
+    }
     case OperationType::ABS:
     case OperationType::COPY:
     case OperationType::COS:
@@ -515,7 +529,6 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::REDUCE_PRODUCT:
     case OperationType::REDUCE_SUM:
     case OperationType::SPACE_TO_BATCH:
-    case OperationType::TRANSPOSE:
       return absl::UnimplementedError("Unsupported op: " + node.operation.type);
     default:
       return SelectDefault(gpu_info, op_def, inputs, outputs, node,
