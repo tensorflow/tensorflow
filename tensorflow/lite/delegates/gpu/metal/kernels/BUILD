@@ -641,6 +641,7 @@ objc_library(
     deps = [
         ":softmax",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
     ],
 )
 
@@ -885,6 +886,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",

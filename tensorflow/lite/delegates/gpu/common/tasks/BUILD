@@ -626,6 +626,19 @@ cc_library(
 )
 
 cc_library(
+    name = "softmax_test_util",
+    testonly = 1,
+    srcs = ["softmax_test_util.cc"],
+    hdrs = ["softmax_test_util.h"],
+    deps = [
+        ":softmax",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "space_to_depth",
     srcs = ["space_to_depth.cc"],
     hdrs = ["space_to_depth.h"],
