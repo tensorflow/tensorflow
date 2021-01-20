@@ -154,19 +154,23 @@ TfLiteStatus EvalQuantizedInt8CEVA(TfLiteContext* context, TfLiteNode* node,
   int weights_shape_DimensionsCount =
       tflite::micro::GetTensorShape(filter).DimensionsCount();
   int* weights_shape_DimsData =
-      (int*)tflite::micro::GetTensorShape(filter).DimsData();
+      const_cast<int*>(tflite::micro::GetTensorShape(filter).DimsData());
   int bias_shape_DimensionsCount =
       tflite::micro::GetTensorShape(bias).DimensionsCount();
   int output_shape_DimensionsCount =
       tflite::micro::GetTensorShape(output).DimensionsCount();
   int* output_shape_DimsData =
-      (int*)tflite::micro::GetTensorShape(output).DimsData();
+      const_cast<int*>(tflite::micro::GetTensorShape(output).DimsData());
 
   void* params = (void*)&op_params;
-  int8_t* inputp = (int8_t*)tflite::micro::GetTensorData<int8_t>(input);
-  int8_t* filterp = (int8_t*)tflite::micro::GetTensorData<int8_t>(filter);
-  int32_t* biasp = (int32_t*)tflite::micro::GetTensorData<int32_t>(bias);
-  int8_t* outputp = (int8_t*)tflite::micro::GetTensorData<int8_t>(output);
+  int8_t* inputp =
+      const_cast<int8_t*>(tflite::micro::GetTensorData<int8_t>(input));
+  int8_t* filterp =
+      const_cast<int8_t*>(tflite::micro::GetTensorData<int8_t>(filter));
+  int32_t* biasp =
+      const_cast<int32_t*>(tflite::micro::GetTensorData<int32_t>(bias));
+  int8_t* outputp =
+      const_cast<int8_t*>(tflite::micro::GetTensorData<int8_t>(output));
 #ifdef MCPS_MEASUREMENT
   int batches = output_shape_DimsData[0];
   int output_depth = weights_shape_DimsData[weights_shape_DimensionsCount - 2];
@@ -276,19 +280,22 @@ TfLiteStatus EvalFloatCEVA(TfLiteContext* context, TfLiteNode* node,
   int weights_shape_DimensionsCount =
       tflite::micro::GetTensorShape(filter).DimensionsCount();
   int* weights_shape_DimsData =
-      (int*)tflite::micro::GetTensorShape(filter).DimsData();
+      const_cast<int*>(tflite::micro::GetTensorShape(filter).DimsData());
   int bias_shape_DimensionsCount =
       tflite::micro::GetTensorShape(bias).DimensionsCount();
   int output_shape_DimensionsCount =
       tflite::micro::GetTensorShape(output).DimensionsCount();
   int* output_shape_DimsData =
-      (int*)tflite::micro::GetTensorShape(output).DimsData();
+      const_cast<int*>(tflite::micro::GetTensorShape(output).DimsData());
 
   void* params = (void*)&op_params;
-  float* inputp = (float*)tflite::micro::GetTensorData<float>(input);
-  float* filterp = (float*)tflite::micro::GetTensorData<float>(filter);
-  float* biasp = (float*)tflite::micro::GetTensorData<float>(bias);
-  float* outputp = (float*)tflite::micro::GetTensorData<float>(output);
+  float* inputp =
+      const_cast<float*>(tflite::micro::GetTensorData<float>(input));
+  float* filterp =
+      const_cast<float*>(tflite::micro::GetTensorData<float>(filter));
+  float* biasp = const_cast<float*>(tflite::micro::GetTensorData<float>(bias));
+  float* outputp =
+      const_cast<float*>(tflite::micro::GetTensorData<float>(output));
 
 #ifdef MCPS_MEASUREMENT
   int batches = 1;
