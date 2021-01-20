@@ -31,6 +31,7 @@ namespace data {
 namespace {
 constexpr const char kParallelEpochs[] = "parallel_epochs";
 constexpr const char kDistributedEpoch[] = "distributed_epoch";
+
 }  // namespace
 
 Status ParseProcessingMode(const std::string& s, ProcessingMode& mode) {
@@ -57,11 +58,13 @@ std::string ProcessingModeToString(ProcessingMode mode) {
 }
 
 Status DataServiceDispatcherClient::WorkerHeartbeat(
-    const std::string& worker_address, const std::vector<int64>& current_tasks,
-    std::vector<TaskDef>& new_tasks, std::vector<int64>& tasks_to_delete) {
+    const std::string& worker_address, const std::string& transfer_address,
+    const std::vector<int64>& current_tasks, std::vector<TaskDef>& new_tasks,
+    std::vector<int64>& tasks_to_delete) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerHeartbeatRequest req;
   req.set_worker_address(worker_address);
+  req.set_transfer_address(transfer_address);
   for (int64 task : current_tasks) {
     req.add_current_tasks(task);
   }
@@ -244,69 +247,112 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
   return Status::OK();
 }
 
+class GrpcDataTransferClient : public DataTransferClient {
+ public:
+  GrpcDataTransferClient(std::shared_ptr<grpc::ChannelCredentials> credentials,
+                         std::string address) {
+    grpc::ChannelArguments args;
+    args.SetMaxReceiveMessageSize(-1);
+    auto channel = grpc::CreateCustomChannel(address, credentials, args);
+    stub_ = WorkerService::NewStub(channel);
+  }
+
+  Status GetElement(int64 task_id, absl::optional<int64> consumer_index,
+                    absl::optional<int64> round_index,
+                    CompressedElement& element,
+                    bool& end_of_sequence) override {
+    {
+      mutex_lock l(mu_);
+      if (cancelled_) {
+        return errors::Cancelled("Client was cancelled.");
+      }
+    }
+    GetElementRequest req;
+    req.set_task_id(task_id);
+    if (consumer_index.has_value()) {
+      req.set_consumer_index(consumer_index.value());
+    }
+    if (round_index.has_value()) {
+      req.set_round_index(round_index.value());
+    }
+    GetElementResponse resp;
+    grpc::ClientContext ctx;
+    {
+      mutex_lock l(mu_);
+      active_contexts_.insert(&ctx);
+    }
+    grpc::Status s = stub_->GetElement(&ctx, req, &resp);
+    {
+      mutex_lock l(mu_);
+      active_contexts_.erase(&ctx);
+    }
+    if (!s.ok()) {
+      return grpc_util::WrapError("Failed to get element", s);
+    }
+    end_of_sequence = resp.end_of_sequence();
+    if (!end_of_sequence) {
+      element = std::move(*resp.mutable_compressed_element());
+    }
+    return Status::OK();
+  }
+
+  void TryCancel() override {
+    mutex_lock l(mu_);
+    cancelled_ = true;
+    for (const auto& ctx : active_contexts_) {
+      ctx->TryCancel();
+    }
+  }
+
+ private:
+  mutex mu_;
+  std::unique_ptr<WorkerService::Stub> stub_;
+  // Set of all currently active clients contexts. Used to support
+  // cancellation.
+  absl::flat_hash_set<::grpc::ClientContext*> active_contexts_ GUARDED_BY(mu_);
+  // Indicates that the client has been cancelled, so no further requests should
+  // be accepted.
+  bool cancelled_ GUARDED_BY(mu_) = false;
+};
+
+class GrpcTransferClientRegistrar {
+ public:
+  GrpcTransferClientRegistrar() {
+    DataTransferClient::Register(
+        "grpc", [](DataTransferClient::Config config,
+                   std::unique_ptr<DataTransferClient>* out) {
+          std::shared_ptr<grpc::ChannelCredentials> credentials;
+          TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
+              config.protocol, &credentials));
+          *out = std::make_unique<GrpcDataTransferClient>(credentials,
+                                                          config.address);
+          return Status::OK();
+        });
+  }
+};
+static GrpcTransferClientRegistrar registrar;
+
 Status DataServiceWorkerClient::GetElement(int64 task_id,
                                            absl::optional<int64> consumer_index,
                                            absl::optional<int64> round_index,
                                            CompressedElement& element,
                                            bool& end_of_sequence) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  {
-    mutex_lock l(mu_);
-    if (cancelled_) {
-      return errors::Cancelled("Client was cancelled.");
-    }
-  }
-  GetElementRequest req;
-  req.set_task_id(task_id);
-  if (consumer_index.has_value()) {
-    req.set_consumer_index(consumer_index.value());
-  }
-  if (round_index.has_value()) {
-    req.set_round_index(round_index.value());
-  }
-  GetElementResponse resp;
-  grpc::ClientContext ctx;
-  {
-    mutex_lock l(mu_);
-    active_contexts_.insert(&ctx);
-  }
-  grpc::Status s = stub_->GetElement(&ctx, req, &resp);
-  {
-    mutex_lock l(mu_);
-    active_contexts_.erase(&ctx);
-  }
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get element", s);
-  }
-  end_of_sequence = resp.end_of_sequence();
-  if (!end_of_sequence) {
-    element = std::move(*resp.mutable_compressed_element());
-  }
-  return Status::OK();
+  return client_->GetElement(task_id, consumer_index, round_index, element,
+                             end_of_sequence);
 }
 
 Status DataServiceWorkerClient::EnsureInitialized() {
   mutex_lock l(mu_);
-  if (stub_) {
+  if (client_) {
     return Status::OK();
   }
-  std::shared_ptr<grpc::ChannelCredentials> credentials;
-  TF_RETURN_IF_ERROR(
-      CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
-  grpc::ChannelArguments args;
-  args.SetMaxReceiveMessageSize(-1);
-  auto channel = grpc::CreateCustomChannel(address_, credentials, args);
-  stub_ = WorkerService::NewStub(channel);
+  TF_RETURN_IF_ERROR(DataTransferClient::Build(
+      transfer_protocol_, {protocol_, address_}, &client_));
   return Status::OK();
 }
 
-void DataServiceWorkerClient::TryCancel() {
-  mutex_lock l(mu_);
-  cancelled_ = true;
-  for (const auto& ctx : active_contexts_) {
-    ctx->TryCancel();
-  }
-}
+void DataServiceWorkerClient::TryCancel() { client_->TryCancel(); }
 
 Status CreateDataServiceDispatcherClient(
     const std::string& address, const std::string& protocol,
@@ -320,8 +366,10 @@ Status CreateDataServiceDispatcherClient(
 
 Status CreateDataServiceWorkerClient(
     const std::string& address, const std::string& protocol,
+    const std::string& transfer_protocol,
     std::unique_ptr<DataServiceWorkerClient>& out) {
-  auto client = absl::make_unique<DataServiceWorkerClient>(address, protocol);
+  auto client = absl::make_unique<DataServiceWorkerClient>(address, protocol,
+                                                           transfer_protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
   out = std::move(client);
   return Status::OK();

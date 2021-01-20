@@ -217,6 +217,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     }
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
+    update.mutable_register_worker()->set_transfer_address(
+        request->transfer_address());
     TF_RETURN_IF_ERROR(Apply(update));
     TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
     TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, correct_tasks));
@@ -584,6 +586,9 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   create_task->set_task_id(task_id);
   create_task->set_job_id(job->job_id);
   create_task->set_worker_address(worker_address);
+  std::shared_ptr<const Worker> worker;
+  TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
+  create_task->set_transfer_address(worker->transfer_address);
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
   return Status::OK();
@@ -686,6 +691,7 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
+    task_info->set_transfer_address(task->transfer_address);
     task_info->set_task_id(task->task_id);
     task_info->set_job_id(job->job_id);
   }

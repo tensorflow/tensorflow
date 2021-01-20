@@ -27,6 +27,7 @@ message RegisterDatasetUpdate {
 
 message RegisterWorkerUpdate {
   string worker_address = 1;
+  string transfer_address = 2;
 }
 
 message NamedJobKeyDef {
@@ -71,6 +72,7 @@ message CreateTaskUpdate {
   int64 task_id = 1;
   int64 job_id = 2;
   string worker_address = 4;
+  string transfer_address = 6;
 }
 
 message FinishTaskUpdate {

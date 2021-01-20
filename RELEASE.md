@@ -30,6 +30,8 @@
         for synchronous training workloads where example sizes vary. With strict
         round robin reads, users can guarantee that consumers get similar-sized
         examples in the same step.
+    *   tf.data service supports custom data transfer protocols (other than
+        gRPC).
 
 ## Bug Fixes and Other Changes
 
