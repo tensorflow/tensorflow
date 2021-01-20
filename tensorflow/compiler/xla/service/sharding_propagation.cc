@@ -590,6 +590,9 @@ bool InferGatherParallelShardingFromOperands(
     HloSharding replicate_non_parallel_dims =
         hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
             operand_sharding, index_non_parallel_dims);
+    if (replicate_non_parallel_dims.IsTileMaximal()) {
+      return replicate_non_parallel_dims;
+    }
     if (replicate_non_parallel_dims.ReplicateOnLastTileDim()) {
       output_tile_dims.push_back(
           replicate_non_parallel_dims.tile_assignment().dimensions().back());
