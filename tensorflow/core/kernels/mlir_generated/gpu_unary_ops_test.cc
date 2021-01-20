@@ -217,6 +217,14 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Asin, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::asin, test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.Asinh`.
+
+GENERATE_DEFAULT_TEST(Asinh, DT_FLOAT, DT_FLOAT, std::asinh,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Asinh, DT_DOUBLE, DT_DOUBLE, std::asinh,
+                      test::GpuOpsTestConfig())
+
 /// Test `tf.Atan`.
 
 GENERATE_DEFAULT_TEST(Atan, DT_FLOAT, DT_FLOAT, std::atan,

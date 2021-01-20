@@ -372,6 +372,18 @@ def HLOClient_AsinOp : HLOClient_UnaryElementwiseOp<"asin", [],
   }];
 }
 
+def HLOClient_AsinhOp : HLOClient_UnaryElementwiseOp<"asinh", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Asinh operation";
+
+  let description = [{
+    Returns `Asinh(operand)` element-wise.
+
+    $$
+    \asinh(x) = log(x + sqrt(x^2 + 1))
+    $$
+  }];
+}
 def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
     HLO_FpOrComplexTensor> {
   let summary = "Atan operator";
