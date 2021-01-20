@@ -21,7 +21,6 @@ limitations under the License.
 #include <math.h>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -129,7 +129,8 @@ class MklRequantizePerChannelOp : public OpKernel {
           ReorderPd(cpu_engine_, input_mem_prim->get_desc(), cpu_engine_,
                     output_mem_prim->get_desc(), reorder_attr);
       std::shared_ptr<stream> reorder_stream;
-      reorder_stream.reset(CreateStream(ctx, cpu_engine_));
+      MklDnnThreadPool eigen_tp(ctx);
+      reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine_));
       std::unordered_map<int, mkldnn::memory> reorder_args = {
           {MKLDNN_ARG_FROM, *input_mem_prim},
           {MKLDNN_ARG_TO, *output_mem_prim}};

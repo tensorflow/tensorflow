@@ -223,13 +223,11 @@ inline bool array_cmp(const T* a1, const T* a2, size_t size) {
   return true;
 }
 
-inline mkldnn::stream* CreateStream(OpKernelContext* ctx,
+inline mkldnn::stream* CreateStream(MklDnnThreadPool* eigen_tp,
                                     const engine& engine) {
 #ifdef ENABLE_MKLDNN_THREADPOOL
   stream_attr tp_stream_attr(engine::kind::cpu);
-  if (ctx != nullptr) {
-    auto eigen_tp =
-        MklDnnThreadPoolWrapper::GetInstance().CreateThreadPoolPtr(ctx);
+  if (eigen_tp != nullptr) {
     tp_stream_attr.set_threadpool(eigen_tp);
     stream* tp_stream =
         new stream(engine, stream::flags::default_flags, tp_stream_attr);
@@ -612,12 +610,18 @@ inline void ExecutePrimitive(const std::vector<primitive>& net,
                              OpKernelContext* context = nullptr) {
   DCHECK(net_args);
   DCHECK_EQ(net.size(), net_args->size());
-  stream* cpu_stream = CreateStream(context, cpu_engine);
+  std::unique_ptr<stream> cpu_stream;
+  MklDnnThreadPool eigen_tp;
+  if (context != nullptr) {
+    eigen_tp = MklDnnThreadPool(context);
+    cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
+  } else {
+    cpu_stream.reset(CreateStream(nullptr, cpu_engine));
+  }
   for (size_t i = 0; i < net.size(); ++i) {
     net.at(i).execute(*cpu_stream, net_args->at(i));
   }
   cpu_stream->wait();
-  delete cpu_stream;
 }
 template <typename T>
 inline Status ConvertMklToTF(OpKernelContext* context,
@@ -1495,7 +1499,13 @@ class MklDnnData {
       reorder_memory_ = new memory(op_md, engine);
       auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
       std::shared_ptr<stream> cpu_stream;
-      cpu_stream.reset(CreateStream(context, prim->GetEngine()));
+      MklDnnThreadPool eigen_tp;
+      if (context != nullptr) {
+        eigen_tp = MklDnnThreadPool(context);
+        cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
+      } else {
+        cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));
+      }
       std::vector<primitive> net;
       net.push_back(*(prim->GetPrimitive()));
       std::vector<MemoryArgsMap> net_args;
@@ -1556,7 +1566,13 @@ class MklDnnData {
       reorder_memory_ = new memory(op_md, engine, reorder_data_handle);
       auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
       std::shared_ptr<stream> cpu_stream;
-      cpu_stream.reset(CreateStream(context, prim->GetEngine()));
+      MklDnnThreadPool eigen_tp;
+      if (context != nullptr) {
+        eigen_tp = MklDnnThreadPool(context);
+        cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
+      } else {
+        cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));
+      }
       std::vector<primitive> net;
       net.push_back(*(prim->GetPrimitive()));
       std::vector<MemoryArgsMap> net_args;
@@ -1662,7 +1678,13 @@ class MklDnnData {
     net_args.push_back(
         {{MKLDNN_ARG_FROM, *reorder_memory_}, {MKLDNN_ARG_TO, *user_memory_}});
     std::shared_ptr<stream> cpu_stream;
-    cpu_stream.reset(CreateStream(ctx, prim->GetEngine()));
+    MklDnnThreadPool eigen_tp;
+    if (ctx != nullptr) {
+      eigen_tp = MklDnnThreadPool(ctx);
+      cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
+    } else {
+      cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));
+    }
     execute_primitives(net, cpu_stream, net_args);
   }
 };

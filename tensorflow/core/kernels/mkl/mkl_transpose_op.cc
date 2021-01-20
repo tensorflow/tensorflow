@@ -144,7 +144,8 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
 
     std::vector<primitive> net;
     auto* prim = FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem());
-    transpose_stream.reset(CreateStream(context, prim->GetEngine()));
+    MklDnnThreadPool eigen_tp(context);
+    transpose_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
     in.SetUsrMemDataHandle(&in_tensor, transpose_stream);
     out.SetUsrMemDataHandle(out_tensor, transpose_stream);
     net.push_back(*(prim->GetPrimitive()));

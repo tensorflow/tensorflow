@@ -25,7 +25,6 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -144,7 +144,8 @@ class BatchMatMulMkl : public OpKernel {
             *params, false /* value for do_not_cache */);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
-    cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+    MklDnnThreadPool eigen_tp(ctx);
+    cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
     matmul_prim->Execute(lhs.flat<Scalar>().data(), rhs.flat<Scalar>().data(),
                          out->flat<Scalar>().data(), cpu_stream);
   }

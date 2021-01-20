@@ -18,7 +18,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::prop_kind;
 using mkldnn::softmax_forward;
@@ -298,7 +298,8 @@ class MklSoftmaxOp : public OpKernel {
       const T* src_data = src_tensor.flat<T>().data();
       T* dst_data = reinterpret_cast<T*>(output_tensor->flat<T>().data());
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, softmax_fwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, softmax_fwd->GetEngine()));
       softmax_fwd->Execute(src_data, dst_data, fwd_cpu_stream);
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
