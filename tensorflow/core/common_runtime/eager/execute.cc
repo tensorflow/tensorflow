@@ -664,7 +664,8 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
     ExecuteNode node(&ctx, *inputs, remote_func_params, kernel, graph_collector,
                      op->GetCancellationManager(),
-                     {retvals, static_cast<size_t>(num_outputs)});
+                     {retvals, static_cast<size_t>(num_outputs)},
+                     op->GetStackTrace());
     Status s = executor.SyncExecute(&node);
     // We release the inputs AFTER executing the operation in sync mode since
     // ExecuteNode does not increment the reference count and thus does not have
@@ -1106,7 +1107,8 @@ Status EagerKernelExecute(
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
     const core::RefCountPtr<KernelAndDevice>& kernel,
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,
-    absl::Span<TensorHandle*> retvals) {
+    absl::Span<TensorHandle*> retvals,
+    const absl::optional<ManagedStackTrace>& stack_trace) {
   profiler::TraceMe activity("EagerKernelExecute",
                              profiler::TraceMeLevel::kInfo);
   std::vector<EagerKernelRet> outputs(1);
@@ -1121,7 +1123,8 @@ Status EagerKernelExecute(
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
   TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
-                                 cancellation_manager, remote_func_params));
+                                 cancellation_manager, remote_func_params,
+                                 stack_trace));
   if (graph_collector != nullptr) {
     CollectGraphs(ctx);
   }

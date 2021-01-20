@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
@@ -131,7 +132,8 @@ class KernelAndDevice : public core::RefCounted {
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      const absl::optional<ManagedStackTrace>& stack_trace) = 0;
 
   // Execute kernel asynchronously when applicable. Different from `Run` which
   // blocks the caller thread and waits for the execution of the op/function,
@@ -203,11 +205,12 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Status Init(const bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
-  Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-             std::vector<EagerKernelRet>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
+  Status Run(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      const absl::optional<ManagedStackTrace>& stack_trace) override;
 
   void RunAsync(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
@@ -217,7 +220,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
       StatusCallback done) override {
     // Trivial async implementation on top of the sync version
     done(Run(step_container, inputs, outputs, cancellation_manager,
-             remote_func_params));
+             remote_func_params, {}));
   }
 
   const OpKernel* kernel() const override { return kernel_.get(); }
@@ -291,11 +294,12 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   Status Init(const bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
-  Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-             std::vector<EagerKernelRet>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
+  Status Run(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      const absl::optional<ManagedStackTrace>& stack_trace) override;
 
   void RunAsync(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,

@@ -980,7 +980,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
 
   TF_ASSERT_OK(kernel->Run(/*step_container=*/nullptr, inputs, &outputs,
                            /*cancellation_manager=*/nullptr,
-                           /*remote_func_params=*/absl::nullopt));
+                           /*remote_func_params=*/absl::nullopt,
+                           /*stack_trace=*/absl::nullopt));
 
   CheckOutputsAndClose(outputs, op_id);
 }
