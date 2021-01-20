@@ -60,6 +60,58 @@ def : Pat<(HLOClient_AcosOp NonComplexElementType:$input),
     (HLO_ConstantLike<"M_PI"> $input)
   )>;
 
+// Expand acosh to MHLO dialect as follows:
+//   acosh(x) = log(x + sqrt(x^2 - 1))      if x >= -1
+//            = log(x + sqrt((x+1)*(x-1)))
+//   acosh(x) = nan                         if x < -1
+//
+// If x^2 will overflow, we approximate sqrt(x^2 - 1) == x and compute as
+// log(2*x) = log(2) + log(x).  (Note this works because negative x never
+// overflows; x < -1 simply yields nan.
+def : Pat<(HLOClient_AcoshOp NonComplexElementType:$input),
+  (HLO_SelectOp
+    (HLO_CompareOp
+      $input,
+      (HLO_ConstantLike<"-1"> $input),
+      HLO_COMPARISON_DIRECTION_LT,
+      (HLO_DEFAULT_COMPARISON_TYPE)
+    ),
+    (HLO_ConstantLike<"NAN"> $input),
+    (HLO_SelectOp
+      (HLO_CompareOp
+        $input,
+        (HLO_SqrtOp
+          (HLO_ConstantLikeMaxFiniteValue $input)
+        ),
+        HLO_COMPARISON_DIRECTION_GE,
+        (HLO_DEFAULT_COMPARISON_TYPE)
+      ),
+      (HLO_AddOp
+        (HLO_LogOp $input),
+        (HLO_LogOp
+          (HLO_ConstantLike<"2"> $input)
+        )
+      ),
+      (HLO_LogOp
+        (HLO_AddOp
+          $input,
+          (HLO_SqrtOp
+            (HLO_MulOp
+              (HLO_AddOp
+                (HLO_ConstantLike<"1"> $input),
+                $input
+              ),
+              (HLO_AddOp
+                (HLO_ConstantLike<"-1"> $input),
+                $input
+              )
+            )
+          )
+        )
+      )
+    )
+  )>;
+
 // Expand asin to MHLO dialect as follows:
 //   asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
 def : Pat<(HLOClient_AsinOp NonComplexElementType:$input),

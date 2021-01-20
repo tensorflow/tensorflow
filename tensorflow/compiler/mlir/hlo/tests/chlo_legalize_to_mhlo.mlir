@@ -171,3 +171,31 @@ func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
   %1 = "chlo.erf"(%arg) : (tensor<f16>) -> tensor<f16>
   return %1 : tensor<f16>
 }
+
+// CHECK-LABEL: @acosh
+// CHECK-SAME: %[[ARG:.*]]: tensor<f16>
+func @acosh(%arg: tensor<f16>) -> tensor<f16> {
+  // CHECK: %[[MINUSONE:.*]] = mhlo.constant dense<-1.000000e+00>
+  // CHECK: %[[CMP:.*]] = "mhlo.compare"(%[[ARG]], %[[MINUSONE]]) {comparison_direction = "LT"}
+  // CHECK: %[[MAX:.*]] = mhlo.constant dense<6.550400e+04>
+  // CHECK: %[[SQRTMAX:.*]] = "mhlo.sqrt"(%[[MAX]])
+  // CHECK: %[[OVERFLOW:.*]] = "mhlo.compare"(%[[ARG]], %[[SQRTMAX]]) {comparison_direction = "GE"}
+  // CHECK: %[[LOGARG:.*]] = "mhlo.log"(%[[ARG]])
+  // CHECK: %[[TWO:.*]] = mhlo.constant dense<2.000000e+00>
+  // CHECK: %[[LOGTWO:.*]] = "mhlo.log"(%[[TWO]])
+  // CHECK: %[[OFLRES:.*]] = mhlo.add %[[LOGARG]], %[[LOGTWO]]
+  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK: %[[ARGPONE:.*]] = mhlo.add %[[ONE]], %[[ARG]]
+  // CHECK: %[[MINUSONE2:.*]] = mhlo.constant dense<-1.000000e+00>
+  // CHECK: %[[ARGMONE:.*]] = mhlo.add %[[MINUSONE2]], %[[ARG]]
+  // CHECK: %[[MUL:.*]] = mhlo.multiply %[[ARGPONE]], %[[ARGMONE]]
+  // CHECK: %[[SQRT:.*]] = "mhlo.sqrt"(%[[MUL]])
+  // CHECK: %[[APSQRT:.*]] = mhlo.add %[[ARG]], %[[SQRT]]
+  // CHECK: %[[LOGAPMUL:.*]] = "mhlo.log"(%[[APSQRT]])
+  // CHECK: %[[SEL1:.*]] = "mhlo.select"(%[[OVERFLOW]], %[[OFLRES]], %[[LOGAPMUL]])
+  // CHECK: %[[NAN:.*]] = mhlo.constant dense<0x7E00>
+  // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[CMP]], %[[NAN]], %[[SEL1]])
+  // CHECK: return %[[RESULT]]
+  %1 = "chlo.acosh"(%arg) : (tensor<f16>) -> tensor<f16>
+  return %1 : tensor<f16>
+}
