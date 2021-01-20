@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstring>
 #include <unordered_map>
 
+#include "absl/debugging/leak_check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
@@ -4297,6 +4298,7 @@ void MakeEagerContextThreadLocalData(PyObject* py_eager_context,
                                      PyObject* device_spec) {
   DCheckPyGilState();
   if (eager_context_thread_local_data_defaults == nullptr) {
+    absl::LeakCheckDisabler disabler;
     eager_context_thread_local_data_defaults =
         new EagerContextThreadLocalDataDefaultsMap();
   }
