@@ -10085,6 +10085,14 @@ func DataServiceDatasetTaskRefreshIntervalHintMs(value int64) DataServiceDataset
 	}
 }
 
+// DataServiceDatasetDataTransferProtocol sets the optional data_transfer_protocol attribute to value.
+// If not specified, defaults to ""
+func DataServiceDatasetDataTransferProtocol(value string) DataServiceDatasetAttr {
+	return func(m optionalAttr) {
+		m["data_transfer_protocol"] = value
+	}
+}
+
 // Creates a dataset that reads data from the tf.data service.
 func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, job_name tf.Output, max_outstanding_requests tf.Output, iteration_counter tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -49127,6 +49135,14 @@ type DataServiceDatasetV2Attr func(optionalAttr)
 func DataServiceDatasetV2TaskRefreshIntervalHintMs(value int64) DataServiceDatasetV2Attr {
 	return func(m optionalAttr) {
 		m["task_refresh_interval_hint_ms"] = value
+	}
+}
+
+// DataServiceDatasetV2DataTransferProtocol sets the optional data_transfer_protocol attribute to value.
+// If not specified, defaults to ""
+func DataServiceDatasetV2DataTransferProtocol(value string) DataServiceDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["data_transfer_protocol"] = value
 	}
 }
 
