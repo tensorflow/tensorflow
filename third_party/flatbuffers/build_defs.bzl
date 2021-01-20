@@ -320,6 +320,7 @@ def _gen_flatbuffer_srcs_impl(ctx):
                 src.path,
             ],
             progress_message = "Generating flatbuffer files for {}:".format(src),
+            use_default_shell_env = True,
         )
     return [
         DefaultInfo(files = depset(outputs)),
