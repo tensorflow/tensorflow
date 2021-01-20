@@ -894,75 +894,102 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
   LogicalResult matchAndRewrite(
       mhlo::GatherOp gather_op, ArrayRef<Value> args,
       ConversionPatternRewriter &rewriter) const final {
-    if (!CanConvert(gather_op)) {
-      return failure();
-    }
+    Value operand = gather_op.operand();
+    Value start_indices = gather_op.start_indices();
 
-    // Converts mhlo.gather to tf.Gather followed by tf.Reshape (because
-    // mhlo.gather might collapse dimensions).
-    ShapedType operand_type = gather_op.operand().getType().cast<ShapedType>();
-    ShapedType start_indices_type =
-        gather_op.start_indices().getType().cast<ShapedType>();
-    ShapedType tf_gather_type = RankedTensorType::get(
-        start_indices_type.getShape(), operand_type.getElementType());
-    auto axis_type =
-        RankedTensorType::get(/*shape=*/{1},
-                              /*elementType=*/rewriter.getI32Type());
-    auto axis_op = rewriter.create<ConstantOp>(
-        gather_op->getLoc(), axis_type,
-        SplatElementsAttr::get(axis_type, rewriter.getI32IntegerAttr(0)));
-    auto tf_gather_op = rewriter.create<TF::GatherV2Op>(
-        gather_op->getLoc(), tf_gather_type, gather_op.operand(),
-        gather_op.start_indices(), axis_op.getResult());
-    ConstantOp shape = ShapeToConst(rewriter, gather_op.getResult());
-    rewriter.replaceOpWithNewOp<TF::ReshapeOp>(
-        gather_op.getOperation(), gather_op.getResult().getType(),
-        tf_gather_op.output(), shape.getResult());
-    return success();
-  }
-
-  // Returns true if the mhlo::GatherOp can be converted to tf::GatherOp.
-  bool CanConvert(mhlo::GatherOp gather_op) const {
     // Can only convert with static shaped gather.
-    ShapedType operand_type = gather_op.operand().getType().cast<ShapedType>();
-    ShapedType start_indices_type =
-        gather_op.start_indices().getType().cast<ShapedType>();
+    ShapedType operand_type = operand.getType().cast<ShapedType>();
+    ShapedType start_indices_type = start_indices.getType().cast<ShapedType>();
     ShapedType result_type = gather_op.getResult().getType().cast<ShapedType>();
     if (!operand_type.hasStaticShape() ||
         !start_indices_type.hasStaticShape() || !result_type.hasStaticShape()) {
-      return false;
-    }
-    // For now, only support gathering from 1d vector.
-    if (operand_type.getRank() != 1) {
-      return false;
+      return failure();
     }
 
-    // offset_dims is not supported by tf.Gather.
-    DenseIntElementsAttr offset_dims =
-        gather_op.dimension_numbers().offset_dims();
-    if (offset_dims.size() > 0) {
-      return false;
+    // If index_vector_dim == start_indices.rank() then insert the implicit
+    // extra dimension into start_indices to normalize everything to
+    // index_vector_dim == start_indices.rank() - 1.
+    int64_t index_vector_dim =
+        gather_op.dimension_numbers().index_vector_dim().getInt();
+    if (index_vector_dim == start_indices_type.getRank()) {
+      llvm::SmallVector<int64_t, 4> new_start_indices_shape(
+          start_indices_type.getShape().begin(),
+          start_indices_type.getShape().end());
+      new_start_indices_shape.push_back(1);
+      start_indices_type = RankedTensorType::get(
+          new_start_indices_shape, start_indices_type.getElementType());
+      start_indices = rewriter.create<mhlo::ReshapeOp>(
+          gather_op.getLoc(), start_indices_type, start_indices);
+    } else if (index_vector_dim != start_indices_type.getRank() - 1) {
+      // If index_vector_dim isn't the last dimension in start_indices then it
+      // isn't supported yet.
+      // TODO(tberghammer): Transpose start_indices to support this usecase.
+      return rewriter.notifyMatchFailure(
+          gather_op,
+          "Index vector dim isn't the last dimension in start indices.");
     }
 
-    // Returns true if the `attr` is a splat integer equals to `value`.
-    const auto is_splat_integer = [](DenseIntElementsAttr attr, int64_t value) {
-      return attr.isSplat() &&
-             attr.getSplatValue<APInt>().getSExtValue() == value;
-    };
-
-    // non-zero start_index_map is not supported by tf.Gather.
-    DenseIntElementsAttr start_index_map =
-        gather_op.dimension_numbers().start_index_map();
-    if (!is_splat_integer(start_index_map, /*value=*/0)) {
-      return false;
+    // Verify that start_index_map and collapsed_slice_dims are both an iota
+    // with the same number of elements as the last dimension of start_indices.
+    auto start_index_map = gather_op.dimension_numbers().start_index_map();
+    auto collapsed_slice_dims =
+        gather_op.dimension_numbers().collapsed_slice_dims();
+    if (!IsIota(start_index_map, start_indices_type.getShape().back()) ||
+        !IsIota(collapsed_slice_dims, start_indices_type.getShape().back())) {
+      // TODO(tberghammer): Transform start_indices to support non-standard
+      // start_index_maps.
+      return rewriter.notifyMatchFailure(
+          gather_op,
+          "Unsupported start index map and/or collapsed slice dims.");
     }
 
-    // slice_sizes > 1 is not supported by tf.Gather.
-    DenseIntElementsAttr slice_sizes = gather_op.slice_sizes();
-    if (!is_splat_integer(slice_sizes, /*value=*/1)) {
-      return false;
+    // Verify that slice_sizes is 1 for the indexed dimensions and the full
+    // shape for the rest of the dimensions.
+    auto slice_sizes = gather_op.slice_sizes();
+    int64_t index = 0;
+    for (int64_t s : slice_sizes.getValues<int64_t>()) {
+      if (index < start_indices_type.getShape().back()) {
+        if (s != 1) {
+          return rewriter.notifyMatchFailure(gather_op,
+                                             "Unsupported slice sizes.");
+        }
+      } else {
+        if (s != operand_type.getShape()[index]) {
+          return rewriter.notifyMatchFailure(gather_op,
+                                             "Unsupported slice sizes.");
+        }
+      }
+      ++index;
     }
 
+    // Verify that offset_dims are the tailing dimensions in the output tensor.
+    auto offset_dims = gather_op.dimension_numbers().offset_dims();
+    int64_t offset = start_indices_type.getRank() - 1;
+    for (int64_t o : offset_dims.getValues<int64_t>()) {
+      if (o != offset) {
+        return rewriter.notifyMatchFailure(gather_op,
+                                           "Unsupported offset dims.");
+      }
+      ++offset;
+    }
+
+    rewriter.replaceOpWithNewOp<TF::GatherNdOp>(gather_op, result_type, operand,
+                                                start_indices);
+    return success();
+  }
+
+ private:
+  // Check that `attr` is an R1 iota with integer element type starting from `0`
+  // with `size` number of values.
+  bool IsIota(const DenseIntElementsAttr &attr, int64_t size) const {
+    if (!attr.getType().getElementType().isa<IntegerType>()) return false;
+    if (attr.getType().getRank() != 1) return false;
+    if (attr.getNumElements() != size) return false;
+    int64_t iota = 0;
+    for (auto s : attr.getIntValues()) {
+      if (s != iota) return false;
+      ++iota;
+    }
     return true;
   }
 };
