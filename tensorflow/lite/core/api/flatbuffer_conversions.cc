@@ -217,6 +217,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseExp(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_EXPAND_DIMS: {
+      return ParseExpandDims(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_FILL: {
       return ParseFill(op, error_reporter, allocator, builtin_data);
     }
@@ -790,7 +794,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_ELU:
     case BuiltinOperator_EMBEDDING_LOOKUP:
     case BuiltinOperator_EQUAL:
-    case BuiltinOperator_EXPAND_DIMS:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_MATRIX_DIAG:
     case BuiltinOperator_MATRIX_SET_DIAG:
@@ -1156,6 +1159,14 @@ TfLiteStatus ParseEqual(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseExp(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                       void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseExpandDims(const Operator*, ErrorReporter*,
+                             BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 

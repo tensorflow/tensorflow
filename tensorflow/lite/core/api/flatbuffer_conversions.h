@@ -124,6 +124,10 @@ TfLiteStatus ParseEqual(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseExp(const Operator* op, ErrorReporter* error_reporter,
                       BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseExpandDims(const Operator* op, ErrorReporter* error_reporter,
+                             BuiltinDataAllocator* allocator,
+                             void** builtin_data);
+
 TfLiteStatus ParseFill(const Operator* op, ErrorReporter* error_reporter,
                        BuiltinDataAllocator* allocator, void** builtin_data);
 
