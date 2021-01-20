@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
 #include "absl/base/casts.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -83,6 +86,64 @@ Status PyBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
   return buffer_->BlockHostUntilReady();
+}
+
+Status PyBuffer::CopyToHostAsync() {
+  if (!buffer_->IsOnCpu() && !host_value_) {
+    host_value_ = std::make_shared<HostValue>();
+    host_value_->value = std::make_shared<Literal>(buffer_->on_host_shape());
+    buffer_->ToLiteral(host_value_->value.get(),
+                       [host_value{host_value_}](Status status) {
+                         host_value->status = std::move(status);
+                         host_value->ready.Notify();
+                       });
+  }
+  return Status::OK();
+}
+
+StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
+  if (buffer_->IsDeleted()) {
+    return InvalidArgument("DeviceArray has been deleted.");
+  }
+  TF_RET_CHECK(buffer_->on_device_shape().IsArray());
+  // On CPU, we can return the value in a zero-copy way.
+  if (buffer_->IsOnCpu()) {
+    TF_ASSIGN_OR_RETURN(
+        py::dtype dtype,
+        PrimitiveTypeToDtype(buffer_->on_host_shape().element_type()));
+    // Objects that must be kept alive while the array is alive.
+    struct Hold {
+      py::object buffer;
+      std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
+          external_reference_hold;
+    };
+    auto hold = std::make_unique<Hold>();
+    TF_ASSIGN_OR_RETURN(hold->external_reference_hold,
+                        buffer_->AcquireExternalReference());
+    hold->buffer = py::reinterpret_borrow<py::object>(this_obj);
+    void* data = hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
+    py::capsule hold_capsule(hold.release(),
+                             [](void* h) { delete static_cast<Hold*>(h); });
+    py::array array(dtype, buffer_->on_host_shape().dimensions(),
+                    ByteStridesForShape(buffer_->on_host_shape()), data,
+                    hold_capsule);
+    array.attr("flags").attr("writeable") = Py_False;
+    {
+      py::gil_scoped_release gil;
+      TF_RETURN_IF_ERROR(buffer_->BlockHostUntilReady());
+    }
+    return array;
+  }
+
+  TF_RETURN_IF_ERROR(CopyToHostAsync());
+  if (!host_value_->ready.HasBeenNotified()) {
+    py::gil_scoped_release gil;
+    host_value_->ready.WaitForNotification();
+  }
+  TF_RETURN_IF_ERROR(host_value_->status);
+  TF_ASSIGN_OR_RETURN(py::object array, LiteralToPython(host_value_->value));
+  array.attr("flags").attr("writeable") = Py_False;
+  return array;
 }
 
 // TODO(zhangqiaorjc): Delete UnsafeBufferPointer.

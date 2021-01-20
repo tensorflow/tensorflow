@@ -68,25 +68,6 @@ bool IsOptimizedBuild() {
 #endif  // NDEBUG
 }
 
-StatusOr<py::object> BufferToPython(PyBuffer* buffer, py::handle& buffer_obj) {
-  GlobalPyRefManager()->CollectGarbage();
-  if (buffer->buffer()->IsOnCpu() &&
-      buffer->buffer()->on_device_shape().IsArray() &&
-      buffer->buffer()->on_device_shape().element_type() != BF16) {
-    py::object out =
-        py::reinterpret_steal<py::object>(PyArray_FROM_O(buffer_obj.ptr()));
-    CHECK(out.ptr() != nullptr) << buffer->buffer()->on_host_shape().ToString(
-        /*print_layout=*/true);
-    return out;
-  }
-  std::shared_ptr<Literal> literal;
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(literal, buffer->buffer()->ToLiteral());
-  }
-  return LiteralToPython(std::move(literal));
-}
-
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
@@ -328,20 +309,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("ndim", &PyBuffer::ndim)
       .def_property_readonly(
           "_value",
-          [](py::handle buffer_obj) -> pybind11::object {
+          [](py::handle buffer_obj) -> StatusOr<pybind11::object> {
+            GlobalPyRefManager()->CollectGarbage();
             PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
-            if (buffer->is_deleted()) {
-              throw std::runtime_error("DeviceArray has been deleted.");
-            }
-            py::object npy_value_ = buffer->GetNpyValue();
-            if (npy_value_.is_none()) {
-              npy_value_ = BufferToPython(buffer, buffer_obj).ValueOrDie();
-              // TODO(jblspiau): Change `LiteralToPython` to return a
-              // `py::array`, so we can set more easily the attribute.
-              npy_value_.attr("flags").attr("writeable") = Py_False;
-              buffer->SetNpyValue(npy_value_);
-            }
-            return npy_value_;
+            return buffer->AsNumPyArray(buffer_obj);
           })
       .def("copy_to_device", &PyBuffer::CopyToDevice)
       .def("on_device_size_in_bytes", &PyBuffer::OnDeviceSizeInBytes)
@@ -359,7 +330,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("to_py",
            [](py::handle buffer_obj) {
              PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
-             return BufferToPython(buffer, buffer_obj);
+             return buffer->AsNumPyArray(buffer_obj);
            })
       .def("xla_shape", &PyBuffer::shape)
       .def_property_readonly("client", &PyBuffer::client)
