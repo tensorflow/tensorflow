@@ -74,6 +74,7 @@ filegroup(
         "gpu_op_sign.cc",
         "gpu_op_sin.cc",
         "gpu_op_sqrt.cc",
+        "gpu_op_tan.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -145,6 +146,7 @@ tf_kernel_library(
         ":sign_kernels",
         ":sin_kernels",
         ":sqrt_kernels",
+        ":tan_kernels",
         ":tanh_kernels",
         ":gpu_ops_base",
         "//third_party/eigen3",
@@ -703,5 +705,6 @@ gen_kernel_library(
     for name in [
         "cos",
         "sin",
+        "tan",
     ]
 ]

@@ -539,6 +539,17 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     test::DefaultInputGreaterOrEqualToZero<Eigen::half>(), std::sqrt,
     test::GpuOpsTestConfig())
 
+/// Test `tf.Tan`.
+
+GENERATE_DEFAULT_TEST(Tan, DT_FLOAT, DT_FLOAT, std::tan,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Tan, DT_DOUBLE, DT_DOUBLE, std::tan,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Tan, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::tan,
+                        test::GpuOpsTestConfig())
+
 /// Test `tf.Tanh`.
 
 GENERATE_DEFAULT_TEST(Tanh, DT_FLOAT, DT_FLOAT, std::tanh,
