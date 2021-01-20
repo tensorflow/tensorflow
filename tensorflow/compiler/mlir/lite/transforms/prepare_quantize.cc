@@ -377,18 +377,20 @@ void PrepareQuantizePass::runOnFunction() {
         ctx);
     // Convert quant stats to int8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.insert<PrepareQuantStats>(bit_width, false, true, ctx);
+    patterns_2.insert<PrepareQuantStats>(bit_width, false, true,
+                                         quant_specs_.legacy_float_scale, ctx);
   } else {
     // Convert quant stats to uint8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.insert<PrepareQuantStats>(bit_width, false, false, ctx);
+    patterns_2.insert<PrepareQuantStats>(bit_width, false, false,
+                                         quant_specs_.legacy_float_scale, ctx);
   }
 
   if (quant_specs_.post_training_quantization) {
     patterns_2.insert<ConvertLstmStatsToQDQs<LSTMOp>>(ctx, quant_specs_);
     patterns_2.insert<ConvertLstmStatsToQDQs<UnidirectionalSequenceLSTMOp>>(
         ctx, quant_specs_);
-    patterns_2.insert<ConvertSvdfStatsToQDQs>(ctx);
+    patterns_2.insert<ConvertSvdfStatsToQDQs>(ctx, quant_specs_);
   }
   applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 
@@ -398,7 +400,7 @@ void PrepareQuantizePass::runOnFunction() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, infer_tensor_range);
+      GetOpQuantSpec, infer_tensor_range, quant_specs_.legacy_float_scale);
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }

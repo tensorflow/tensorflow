@@ -49,7 +49,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass();
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
-    bool verify_numeric = false);
+    bool verify_numeric = false, bool legacy_float_scale = false);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
