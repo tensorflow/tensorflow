@@ -101,7 +101,7 @@ struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
     Type indexTy = rewriter.getIndexType();
     Value numElements =
         rewriter.create<shape::NumElementsOp>(loc, indexTy, shape);
-    Value flatShape = rewriter.create<TensorFromElementsOp>(loc, numElements);
+    Value flatShape = rewriter.create<tensor::FromElementsOp>(loc, numElements);
 
     // Flatten operands.
     SmallVector<Value, 3> flatOperands;
@@ -176,7 +176,7 @@ struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
         rewriter.create<shape::ShapeOfOp>(loc, lhs_is_scalar ? rhs : lhs);
     Value num_elements = rewriter.create<shape::NumElementsOp>(loc, shape);
     Value size_tensor =
-        rewriter.create<TensorFromElementsOp>(loc, num_elements);
+        rewriter.create<tensor::FromElementsOp>(loc, num_elements);
     Value reshaped = rewriter.create<mhlo::DynamicReshapeOp>(
         loc, RankedTensorType::get({-1}, scalar_element_type),
         lhs_is_scalar ? rhs : lhs, size_tensor);

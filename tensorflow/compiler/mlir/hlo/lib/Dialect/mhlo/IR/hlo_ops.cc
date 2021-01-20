@@ -58,6 +58,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 
 namespace mlir {
 #include "hlo_patterns.cc.inc"
@@ -3064,6 +3065,7 @@ MhloDialect::MhloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();
+  context->loadDialect<tensor::TensorDialect>();
 }
 
 Type MhloDialect::parseType(DialectAsmParser& parser) const {
@@ -3111,7 +3113,7 @@ LogicalResult deriveShapeFromFirstOperand(
     }
   }
   *reifiedReturnShapes = SmallVector<Value, 1>{
-      builder->create<TensorFromElementsOp>(loc, shape_values)};
+      builder->create<tensor::FromElementsOp>(loc, shape_values)};
   return success();
 }
 

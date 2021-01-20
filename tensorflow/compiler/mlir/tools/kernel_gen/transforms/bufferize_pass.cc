@@ -170,8 +170,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     target.addLegalOp<FuncOp, ModuleOp, ModuleTerminatorOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<DynamicTensorFromElementsOp, tensor::ExtractOp,
-                        TensorFromElementsOp, tensor::CastOp, TensorLoadOp,
+    target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
+                        tensor::FromElementsOp, tensor::CastOp, TensorLoadOp,
                         TensorToMemrefOp>();
     BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
