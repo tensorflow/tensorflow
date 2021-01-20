@@ -585,7 +585,6 @@ StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
         emitter->ir_emitter_context_->buffer_assignment(), *hlo_computation,
         emitter->mlir_scratch_module_->get());
     TF_RETURN_IF_ERROR(emitter->lhlo_scratch_emitter_->Initialize());
-    TF_RETURN_IF_ERROR(emitter->EmitConstants(*hlo_computation, true));
   }
   return std::move(emitter);
 }
@@ -773,7 +772,6 @@ Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
 }
 
 Status IrEmitterUnnested::HandleConstant(HloInstruction* constant) {
-  return Status::OK();
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(constant));
   return EmitConstant(input);
 }
@@ -787,7 +785,7 @@ Status IrEmitterUnnested::EmitConstant(MlirEmitterInput mlir_input) {
   auto literal = global.initial_value()->dyn_cast<mlir::DenseElementsAttr>();
   TF_RET_CHECK(literal);
 
-  const bool should_emit_initializer = literal.getType().getNumElements() > 1;
+  const bool should_emit_initializer = literal.getType().getNumElements() <= 1;
 
   TF_ASSIGN_OR_RETURN(int element_bytes,
                       GetElementTypeBytes(literal.getType().getElementType()));
