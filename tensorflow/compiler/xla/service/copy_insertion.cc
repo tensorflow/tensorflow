@@ -880,7 +880,9 @@ class CopyRemover {
       VLOG(2) << "Empty uses for " << *a.value;
       return ordering_.IsDefinedBefore(*a.value, *b.value);
     }
-    return ordering_.UsesBeforeValueDefinition(a.uses, *b.value, dataflow_);
+    return absl::c_all_of(a.uses, [&](const HloUse* use) {
+      return ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_);
+    });
   }
 
   // Returns whether 'node' is the last node in its list.
