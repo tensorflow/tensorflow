@@ -136,10 +136,11 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
   const auto status = LookupResource(ctx, handle, &variable);
   OP_REQUIRES(ctx, status.ok(),
               errors::FailedPrecondition(
-                  "Error while reading resource variable ", handle.name(),
-                  " from Container: ", handle.container(),
-                  ". This could mean that the variable was uninitialized. ",
-                  status.ToString()));
+                  "Could not find variable ", handle.name(), ". ",
+                  "This could mean that the variable has been deleted. ",
+                  "In TF1, it can also mean the variable is uninitialized. ",
+                  "Debug info: container=", handle.container(),
+                  ", status=", status.ToString()));
 
   tf_shared_lock ml(*variable->mu());
   // We're acquiring a reference to the underlying buffer while
