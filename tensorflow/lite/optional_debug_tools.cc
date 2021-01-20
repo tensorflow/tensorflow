@@ -14,8 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/optional_debug_tools.h"
 
-#include "tensorflow/lite/c/common.h"
+#include <stddef.h>
+#include <stdio.h>
+
+#include <utility>
+#include <vector>
+
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
 
 void PrintIntVector(const std::vector<int>& v) {

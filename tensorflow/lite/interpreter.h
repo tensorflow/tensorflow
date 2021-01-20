@@ -18,6 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +28,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
@@ -35,14 +39,18 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
 
 class InterpreterTest;  // Class for friend declarations.
+
 namespace delegates {
 class InterpreterUtils;  // Class for friend declarations.
+
 namespace test_utils {
 class TestDelegate;  // Class for friend declarations.
 }  // namespace test_utils

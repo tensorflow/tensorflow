@@ -15,14 +15,19 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SUBGRAPH_H_
 #define TENSORFLOW_LITE_CORE_SUBGRAPH_H_
 
+#include <stdarg.h>
+#include <stddef.h>
+
 #include <cstdint>
 #include <cstdlib>
 #include <map>
+#include <memory>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"

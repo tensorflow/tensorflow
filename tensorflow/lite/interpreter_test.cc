@@ -15,26 +15,31 @@ limitations under the License.
 
 #include "tensorflow/lite/interpreter.h"
 
+#include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
+#include <map>
 #include <memory>
+#include <new>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
-#include "tensorflow/lite/version.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 
