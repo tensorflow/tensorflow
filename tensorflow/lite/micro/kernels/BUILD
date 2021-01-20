@@ -107,6 +107,7 @@ cc_library(
         "hard_swish.cc",
         "add.cc",
         "arg_min_max.cc",
+        "cast.cc",
         "ceil.cc",
         "circular_buffer.cc",
         "comparisons.cc",

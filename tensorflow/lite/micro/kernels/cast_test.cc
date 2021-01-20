@@ -75,7 +75,7 @@ TF_LITE_MICRO_TEST(CastComplex64ToComplex64) {
   const float golden[] = {
            std::complex<float>(1.0f, 11.0f), std::complex<float>(2.0f, 12.0f),
            std::complex<float>(3.0f, 13.0f), std::complex<float>(4.0f, 14.0f),
-           std::complex<float>(5.0f, 15.0f),
+           std::complex<float>(4.0f, 19.0f),
            std::complex<float>(6.0f, 16.0f)};
   tflite::testing::TestCastComplex64ToComplex64(input_dims, input_values, golden, output_data);
 }
