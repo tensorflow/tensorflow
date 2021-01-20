@@ -1,3 +1,7 @@
+# Release 2.4.1
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.4.0
 
 ## Major Features and Improvements
