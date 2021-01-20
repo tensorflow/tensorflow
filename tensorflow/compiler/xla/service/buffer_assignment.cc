@@ -838,11 +838,11 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allocate_buffers_for_constants, BufferAssigner::Colorer colorer,
-    const absl::flat_hash_set<HloOpcode>& reuse_checker,
+    const absl::flat_hash_set<HloOpcode>& must_not_live_out,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
     std::unique_ptr<PresetAssignments> preset_assignments) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
-                          reuse_checker, std::move(preset_assignments));
+                          must_not_live_out, std::move(preset_assignments));
   return assigner.CreateAssignment(
       module, std::move(hlo_ordering), std::move(buffer_size),
       std::move(color_alignment), std::move(can_share_buffer));
