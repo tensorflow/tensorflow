@@ -91,8 +91,8 @@ class GpuUnaryOpTest : public OpsTestBase {
 
   template <typename T, typename BaselineT, typename OutT,
             typename BaselineOutT>
-  void Test(const std::string op_name, const TensorShape& shape,
-            absl::InlinedVector<T, 10> input,
+  void Test(const std::string& op_name, const TensorShape& shape,
+            const absl::InlinedVector<T, 10>& input,
             BaselineOutT (*baseline_callback)(BaselineT),
             const test::GpuOpsTestConfig& config) {
     // Prepare inputs and compute expected results.
@@ -104,6 +104,16 @@ class GpuUnaryOpTest : public OpsTestBase {
             repeated_input, baseline_callback);
 
     RunAndExpectResult<T, OutT>(op_name, shape, repeated_input, expected_output,
+                                config);
+  }
+
+  template <typename T, typename OutT>
+  void TestEmptyShape(const std::string& op_name,
+                      const test::GpuOpsTestConfig& config) {
+    TensorShape shape{0, 1, 2};
+    absl::InlinedVector<T, 10> empty_input = {};
+    absl::InlinedVector<OutT, 10> expected_output = {};
+    RunAndExpectResult<T, OutT>(op_name, shape, empty_input, expected_output,
                                 config);
   }
 
@@ -155,6 +165,11 @@ class GpuUnaryOpTest : public OpsTestBase {
     Test<NativeT, NativeBaselineT, NativeOutT, NativeBaselineOutT>(           \
         #op_name, test::DefaultInputShape(), input_values, baseline_callback, \
         config);                                                              \
+  }                                                                           \
+  TEST_F(GpuUnaryOpTest, op_name##InT##EmptyShape) {                          \
+    using NativeT = EnumToDataType<InT>::Type;                                \
+    using NativeOutT = EnumToDataType<OutT>::Type;                            \
+    TestEmptyShape<NativeT, NativeOutT>(#op_name, config);                    \
   }
 
 /// Test `tf.Abs`.
