@@ -530,6 +530,22 @@ class Conv2DBackpropInputTest(xla_test.XLATestCase, parameterized.TestCase):
         data_format_dst=data_format,
         expected=[5, 0, 11, 0, 0, 0, 17, 0, 23])
 
+  @parameterized.named_parameters(*DATA_FORMATS)
+  def testConv2DGroupedFilter(self, data_format):
+    expected_output = [
+        5, 17, 29, 25, 53, 81, 41, 53, 65, 109, 137, 165, 77, 89, 101, 193, 221,
+        249, 113, 125, 137, 277, 305, 333
+    ]
+    self._VerifyValues(
+        input_sizes=[1, 2, 2, 6],
+        filter_sizes=[2, 2, 3, 4],
+        out_backprop_sizes=[1, 1, 1, 4],
+        strides=[1, 1],
+        padding="VALID",
+        data_format_src="NHWC",
+        data_format_dst=data_format,
+        expected=expected_output)
+
 
 class Conv2DBackpropFilterTest(xla_test.XLATestCase, parameterized.TestCase):
 
