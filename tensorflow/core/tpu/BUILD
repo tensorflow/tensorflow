@@ -94,6 +94,7 @@ cc_library(
     name = "tpu_defs",
     srcs = ["tpu_defs.cc"],
     hdrs = ["tpu_defs.h"],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core:protos_all_cc"],
 )
 
@@ -151,9 +152,7 @@ cc_library(
         ":tpu_compilation_device",
         ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
-        ":tpu_node_device",
         ":tpu_ops_c_api_hdrs",
-        ":tpu_system_device",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/stream_executor/tpu:tpu_computation_placer",
@@ -198,49 +197,6 @@ cc_library(
     name = "tpu_executor_init_fns",
     hdrs = ["tpu_executor_init_fns.inc"],
     visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "tpu_node_device",
-    srcs = ["tpu_node_device.cc"],
-    hdrs = ["tpu_node_device.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_api",
-        ":tpu_defs",
-        ":tpu_node_device_util",
-        "//tensorflow/compiler/jit:xla_device",
-        "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_options",
-        "//tensorflow/stream_executor/tpu:c_api_conversions",
-        "//tensorflow/stream_executor/tpu:status_helper",
-        "//tensorflow/stream_executor/tpu:tpu_node_context",
-        "//tensorflow/stream_executor/tpu:tpu_platform_interface",
-        "//tensorflow/stream_executor/tpu:tpu_stream_interface",
-    ],
-)
-
-cc_library(
-    name = "tpu_system_device",
-    srcs = ["tpu_system_device.cc"],
-    hdrs = ["tpu_system_device.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":virtual_device",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:session_options",
-        "//tensorflow/stream_executor/tpu:tpu_executor_base",
-    ],
 )
 
 cc_library(
@@ -329,8 +285,6 @@ cc_library(
     deps = [
         ":tpu_api_dlsym_initializer",
         ":tpu_compilation_device",
-        ":tpu_node_device",
-        ":tpu_system_device",
         "//tensorflow/core/tpu:tpu_on_demand_compiler",
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/core/tpu/ops",

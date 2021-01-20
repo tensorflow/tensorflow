@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/tpu/tpu_node_device.h"
+#include "tensorflow/compiler/jit/xla_tpu_device.h"
 
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
@@ -32,9 +32,11 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_node_device_util.h"
+#include "tensorflow/core/tpu/virtual_device.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_node_context.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream_interface.h"
 
@@ -314,7 +316,7 @@ Status TpuNodeDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   int device_count = platform->VisibleDeviceCount();
 
   for (int i = 0; i < device_count; ++i) {
-    const string device_name = strings::StrCat("/physical_device:TPU:", i);
+    const string device_name = absl::StrCat("/physical_device:TPU:", i);
     devices->push_back(device_name);
   }
 
@@ -393,6 +395,52 @@ Status TpuNodeDeviceFactory::CreateDevices(
   return Status::OK();
 }
 
+class TpuSystemDeviceFactory : public DeviceFactory {
+ public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override;
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<std::unique_ptr<Device>>* devices) override;
+};
+
+Status TpuSystemDeviceFactory::ListPhysicalDevices(
+    std::vector<string>* devices) {
+  int device_count = 0;
+  TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));
+  if (device_count == 0) {
+    VLOG(1) << "Host has no TPUs, not creating a TPU_SYSTEM device";
+    return Status::OK();
+  }
+
+  devices->push_back("/physical_device:TPU_SYSTEM:0");
+
+  return Status::OK();
+}
+
+Status TpuSystemDeviceFactory::CreateDevices(
+    const SessionOptions& options, const string& name_prefix,
+    std::vector<std::unique_ptr<Device>>* devices) {
+  int device_count = 0;
+  TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));
+  if (device_count == 0) {
+    VLOG(1) << "Host has no TPUs, not creating a TPU_SYSTEM device";
+    return Status::OK();
+  }
+
+  int64 memory_limit;
+  TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpuMemoryLimit(&memory_limit));
+
+  // Creates a device that represents a TPU distributed system.
+  const DeviceAttributes attrs = Device::BuildDeviceAttributes(
+      absl::StrCat(name_prefix, "/device:", DEVICE_TPU_SYSTEM, ":", 0),
+      DeviceType(DEVICE_TPU_SYSTEM), Bytes(memory_limit), DeviceLocality(),
+      absl::StrCat("device: ", DEVICE_TPU_SYSTEM, " device"));
+  devices->push_back(absl::make_unique<VirtualDevice>(options.env, attrs));
+  VLOG(1) << "Created TPU_SYSTEM device. This host has " << device_count
+          << " TPUs";
+
+  return Status::OK();
+}
+
 }  // namespace
 
 void RegisterTpuDeviceToDeviceCopy() {
@@ -410,12 +458,29 @@ void RegisterTpuNodeDevice(
   tpu_use_substreams_for_cross_tpu_device_transfers_flag =
       tpu_use_substreams_for_cross_tpu_device_transfers;
 
-  REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_TPU_NODE, TpuNodeDeviceFactory);
-
   REGISTER_XLA_LAUNCH_KERNEL(DEVICE_TPU_NODE, XlaLocalLaunchOp, kTpuAllTypes);
   REGISTER_XLA_COMPILE_KERNEL(DEVICE_TPU_NODE, XlaCompileOp, kTpuAllTypes);
   REGISTER_XLA_RUN_KERNEL(DEVICE_TPU_NODE, XlaRunOp, kTpuAllTypes);
   REGISTER_XLA_DEVICE_KERNELS(DEVICE_TPU_NODE, kTpuAllTypes);
+  REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_TPU_NODE, TpuNodeDeviceFactory);
 }
+
+void RegisterTpuSystemDevice() {
+  REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_TPU_SYSTEM, TpuSystemDeviceFactory);
+}
+
+#if !defined(PLATFORM_GOOGLE)
+
+// We automatically register this if we are building for open source. For
+// Google platforms, we initialize these devices in other places.
+
+REGISTER_XLA_LAUNCH_KERNEL(DEVICE_TPU_NODE, XlaLocalLaunchOp, kTpuAllTypes);
+REGISTER_XLA_COMPILE_KERNEL(DEVICE_TPU_NODE, XlaCompileOp, kTpuAllTypes);
+REGISTER_XLA_RUN_KERNEL(DEVICE_TPU_NODE, XlaRunOp, kTpuAllTypes);
+REGISTER_XLA_DEVICE_KERNELS(DEVICE_TPU_NODE, kTpuAllTypes);
+REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_TPU_NODE, TpuNodeDeviceFactory);
+REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_TPU_SYSTEM, TpuSystemDeviceFactory);
+
+#endif  // PLATFORM_GOOGLE
 
 }  // namespace tensorflow

@@ -5,6 +5,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     default_visibility = [
         "//learning/brain/experimental/dtensor:__subpackages__",
+        "//tensorflow/compiler/jit:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/profiler/internal/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
