@@ -167,11 +167,11 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
         // We are currently processing a file, so try to skip reading
         // the next (num_to_skip - *num_skipped) record.
         if (reader_) {
-          int num_skipped_once;
+          int last_num_skipped;
           Status s =
               reader_->SkipRecords(num_to_skip - *num_skipped,
-                                   &num_skipped_once);
-          *num_skipped += num_skipped_once;
+                                   &last_num_skipped);
+          *num_skipped += last_num_skipped;
           if (s.ok()) {
             *end_of_sequence = false;
             return Status::OK();
