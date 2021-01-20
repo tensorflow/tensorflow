@@ -34,8 +34,7 @@ GPUcudaMallocAsyncAllocator::GPUcudaMallocAsyncAllocator(
     PlatformGpuId platform_gpu_id, size_t pool_size,
     bool reserve_memory, bool compute_stats)
     : cuda_stream_(nullptr),
-      name_(absl::StrCat("gpu_async_", platform_gpu_id.value())),
-      pool_(nullptr) {
+      name_(absl::StrCat("gpu_async_", platform_gpu_id.value())) {
   stream_exec_ =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                 platform_gpu_id).ValueOrDie();
@@ -43,7 +42,9 @@ GPUcudaMallocAsyncAllocator::GPUcudaMallocAsyncAllocator(
 #if CUDA_VERSION < 11020
   LOG(FATAL) << "TF_GPU_ALLOCATOR=cuda_malloc_async need CUDA 11.2 or higher to compile.";
 #else
-
+  // Initialized here as it only exist if compiled with a recent
+  // enough CUDA.
+  pool_ = nullptr;
   // WAR an CUDA 11.2 driver bug for multiple-GPU. It currently
   // request that the context on GPU 0 is initialized. Which isn't the
   // case for TF+horovod.
@@ -81,7 +82,7 @@ GPUcudaMallocAsyncAllocator::GPUcudaMallocAsyncAllocator(
           << platform_gpu_id.value() << " with pool size of: "
           << pool_size << " this ptr: " << this;
   cerr = cudaMemPoolSetAttribute(pool_, cudaMemPoolAttrReleaseThreshold,
-                                 (void*)&pool_size);
+                                 reinterpret_cast<void*>(&pool_size));
   if (compute_stats) {
     stats_.bytes_limit = static_cast<int64>(pool_size);
   } // If not set, it means we do not compute stats.
@@ -126,8 +127,8 @@ void* GPUcudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                << " See previous errors.";
   }
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
-  void* rv = 0;
-  cudaError_t res = cudaMallocFromPoolAsync(&rv, num_bytes, pool_, cuda_stream_);
+  void* ptr = 0;
+  cudaError_t res = cudaMallocFromPoolAsync(&ptr, num_bytes, pool_, cuda_stream_);
   if (res != cudaSuccess) {
     size_t free, total;
     cudaMemGetInfo(&free, &total);
@@ -146,10 +147,10 @@ void* GPUcudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
         std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
     stats_.largest_alloc_size =
         std::max<std::size_t>(stats_.largest_alloc_size, num_bytes);
-    size_map_[rv] = num_bytes;
+    size_map_[ptr] = num_bytes;
   }
-  VLOG(10) << Name() << " Allocated " << num_bytes << " at " << rv;
-  return rv;
+  VLOG(10) << Name() << " Allocated " << num_bytes << " at " << ptr;
+  return ptr;
 #endif
 }
 void GPUcudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
