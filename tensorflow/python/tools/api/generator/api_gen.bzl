@@ -139,7 +139,7 @@ def gen_api_init_files(
             root_init_template_flag + " --apidir=$(@D)" + output_dir +
             " --apiname=" + api_name + " --apiversion=" + str(api_version) +
             compat_api_version_flags + " " + compat_init_template_flags +
-            loading_flag + " --package=" + ",".join(packages) +
+            loading_flag + " --packages=" + ",".join(packages) +
             " --output_package=" + output_package +
             " --use_relative_imports=True $(OUTS)"
         ),
