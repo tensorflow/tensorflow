@@ -93,9 +93,9 @@ class Functional(training_lib.Model):
 
   Args:
     inputs: List of input tensors (must be created via `tf.keras.Input()`).
-    outputs: List of outputs tensors.
+    outputs: List of output tensors.
     name: String, optional. Name of the model.
-    trainable: Boolean, whether the model's variables should be trainable.
+    trainable: Boolean, optional. If the model's variables should be trainable.
   """
 
   # See tf.Module for the usage of this property.
@@ -108,7 +108,7 @@ class Functional(training_lib.Model):
   ))
 
   @trackable.no_automatic_dependency_tracking
-  def __init__(self, inputs=None, outputs=None, name=None, trainable=True,
+  def __init__(self, inputs, outputs, name=None, trainable=True,
                **kwargs):
     # This is used by the Model class, since we have some logic to swap the
     # class in the __new__ method, which will lead to __init__ get invoked
