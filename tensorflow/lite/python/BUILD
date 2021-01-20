@@ -96,7 +96,6 @@ py_library(
 
 py_library(
     name = "test_util",
-    testonly = 1,
     srcs = ["test_util.py"],
     srcs_version = "PY3",
     deps = [
