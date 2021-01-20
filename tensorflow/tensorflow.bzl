@@ -271,7 +271,11 @@ def if_nccl(if_true, if_false = []):
 def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""
     return select({
-        str(Label("//tensorflow:with_tpu_support")): if_true,
+        # copybara:uncomment_begin(different config setting in OSS)
+        # "//tools/cc_target_os:gce": if_true,
+        # copybara:uncomment_end_and_comment_begin
+        clean_dep("//tensorflow:with_tpu_support"): if_true,
+        # copybara:comment_end
         "//conditions:default": if_false,
     })
 
@@ -376,8 +380,13 @@ def tf_copts(
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
     return select({
+        # copybara:uncomment_begin
+        # "//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
+        # "//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        # copybara:uncomment_end_and_comment_begin
         "@org_tensorflow//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
         "@org_tensorflow//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        # copybara:comment_end
         "//conditions:default": [],
     })
 
