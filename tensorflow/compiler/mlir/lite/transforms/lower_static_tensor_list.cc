@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -343,14 +344,60 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
 
     Value element_shape = operands[0];
     Type shape_dtype = getElementTypeOrSelf(element_shape.getType());
-    // If the `element_shape` is a scalar, we know that it's dynamic shape
-    // and returns an error.
+    // If the `element_shape` is a scalar, we try to acquire its shape by
+    // looking at the first `TensorListSetItemOp` writing to this tensor list.
+    // Here we assume that the element_shape won't be changed before calling
+    // the first `TensorListSetItemOp`.
     if (auto shaped_type = element_shape.getType().dyn_cast<ShapedType>()) {
       if (shaped_type.getRank() == 0) {
-        op.emitError(
-            "requires element_shape to be 1D tensor during TF Lite "
-            "transformation pass");
-        return failure();
+        bool element_shape_acquired = false;
+        auto uses = op.getResult().getUses();
+        for (auto &use : llvm::make_early_inc_range(uses)) {
+          if (TF::TensorListSetItemOp set_op =
+                  llvm::dyn_cast<TF::TensorListSetItemOp>(use.getOwner())) {
+            element_shape = rewriter.create<TF::ShapeOp>(
+                op.getLoc(), RankedTensorType::get({-1}, shape_dtype),
+                set_op.item());
+            element_shape_acquired = true;
+          } else if (TF::WhileOp while_op =
+                         llvm::dyn_cast<TF::WhileOp>(use.getOwner())) {
+            // Tensorlist is passed into a while loop, check inside the body
+            // function.
+            auto inside_uses = while_op.body_function()
+                                   .getArgument(use.getOperandNumber())
+                                   .getUses();
+            for (auto &inside_use : llvm::make_early_inc_range(inside_uses)) {
+              if (TF::TensorListSetItemOp set_op =
+                      llvm::dyn_cast<TF::TensorListSetItemOp>(
+                          inside_use.getOwner())) {
+                if (auto shaped_type =
+                        set_op.item().getType().dyn_cast<ShapedType>()) {
+                  if (shaped_type.hasStaticShape()) {
+                    RankedTensorType type = RankedTensorType::get(
+                        {shaped_type.getRank()}, rewriter.getIntegerType(32));
+                    SmallVector<Attribute, 4> shape_attr;
+                    for (int64_t dim : shaped_type.getShape()) {
+                      shape_attr.push_back(rewriter.getI32IntegerAttr(dim));
+                    }
+                    DenseElementsAttr attr =
+                        DenseElementsAttr::get(type, shape_attr);
+                    element_shape =
+                        rewriter.create<ConstantOp>(op.getLoc(), type, attr);
+                    element_shape_acquired = true;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          if (element_shape_acquired) break;
+        }
+        if (!element_shape_acquired) {
+          op.emitError(
+              "requires element_shape to be 1D tensor during TF Lite "
+              "transformation pass");
+          return failure();
+        }
       }
     }
 
@@ -395,14 +442,16 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
     int64_t result_rank = -1;  // -1 means unknown result rank.
     Type element_dtype = op.element_dtype();
     Type result_type = UnrankedTensorType::get(element_dtype);
+    Value leading_dim = GetNumElements(op, operands, &rewriter);
     if (auto element_type =
             op.element_type().template dyn_cast<RankedTensorType>()) {
       result_rank = element_type.getRank() + 1;
-      // If element type is ranked, then result type will have unknown leading
-      // dimension and element shape for the following dimensions.
-      //
-      // Note: leading dim is not inferred here even when it is a constant.
-      SmallVector<int64_t, 4> result_shape = {-1};
+      int64_t leading_dim_v = -1;
+      ElementsAttr element_attr;
+      if (matchPattern(leading_dim, m_Constant(&element_attr))) {
+        leading_dim_v = element_attr.getValue<IntegerAttr>(0).getInt();
+      }
+      SmallVector<int64_t, 4> result_shape = {leading_dim_v};
       ArrayRef<int64_t> shape = element_type.getShape();
       result_shape.append(shape.begin(), shape.end());
       result_type = RankedTensorType::get(result_shape, element_dtype);
@@ -417,7 +466,6 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
     Location loc = op.getLoc();
     // Add number of elements as the prefix to the element shape to get shape of
     // the output tensor.
-    Value leading_dim = GetNumElements(op, operands, &rewriter);
     Value scalar_zero = CreateI32SplatConst(loc, &rewriter, {}, 0);
     auto list_shape = rewriter.create<TF::ConcatOp>(
         loc, shape_type, scalar_zero,
@@ -444,6 +492,10 @@ struct ConvertTensorListReserve
     Value scalar_zero = CreateI32SplatConst(op.getLoc(), rewriter, {}, 0);
     Type shape_dtype = getElementTypeOrSelf(op.element_shape().getType());
     Value num_elements = operands[1];
+    IntegerAttr attr;
+    if (matchPattern(num_elements, m_Constant(&attr))) {
+      return CreateI32SplatConst(op.getLoc(), rewriter, {1}, attr.getInt());
+    }
     return rewriter->create<TF::ExpandDimsOp>(
         op.getLoc(), RankedTensorType::get({1}, shape_dtype), num_elements,
         scalar_zero);
