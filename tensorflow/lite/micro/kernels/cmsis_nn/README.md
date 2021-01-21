@@ -1,6 +1,6 @@
 # Info
 
-To use CMSIS-NN optimized kernels instead of reference kernel add TAGS=cmsis-nn
+To use CMSIS-NN optimized kernels instead of reference kernel add TAGS=cmsis_nn
 to the make line. Some micro architectures have optimizations (M4 or higher),
 others don't. The kernels that doesn't have optimization for a certain micro
 architecture fallback to use TFLu reference kernels.
@@ -14,7 +14,7 @@ more details, please read
 A simple way to compile a binary with CMSIS-NN optimizations.
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn \
+make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis_nn \
 TARGET=sparkfun_edge person_detection_int8_bin
 ```
 
@@ -24,7 +24,7 @@ Using mbed you'll be able to compile for the many different targets supported by
 mbed. Here's an example on how to do that. Start by generating an mbed project.
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn \
+make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis_nn \
 generate_person_detection_mbed_project
 ```
 

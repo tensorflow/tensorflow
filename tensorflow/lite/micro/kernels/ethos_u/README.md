@@ -1,6 +1,8 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 # Info
 
-To use Ethos-U kernel add TAGS="ethos-u" to the make line. A tflite file
+To use Ethos-U kernel add CO_PROCESSOR=ethos_u to the make line. A tflite file
 compiled by ARM's offline tool Vela is required for it to work. Armclang 6.14 is
 required as compiler as well.
 
@@ -39,6 +41,6 @@ makefile.
 Compile a binary with Ethos-U kernel.
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile network_tester_test TAGS="ethos-u" \
+make -f tensorflow/lite/micro/tools/make/Makefile network_tester_test CO_PROCESSOR=ethos_u \
 TARGET=<ethos_u_enabled_target> NETWORK_MODEL=<ethos_u_enabled_tflite>
 ```

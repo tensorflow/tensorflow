@@ -134,21 +134,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   RuntimeShape input_shape = GetTensorShape(input);
   RuntimeShape output_shape = GetTensorShape(output);
 
-  // Initialize cmsis-nn input dimensions
+  // Initialize cmsis_nn input dimensions
   cmsis_nn_dims input_dims;
   input_dims.n = MatchingDim(input_shape, 0, output_shape, 0);
   input_dims.h = input->dims->data[1];
   input_dims.w = input->dims->data[2];
   input_dims.c = input_shape.Dims(3);
 
-  // Initialize cmsis-nn filter dimensions
+  // Initialize cmsis_nn filter dimensions
   cmsis_nn_dims filter_dims;
   filter_dims.n = output_shape.Dims(3);
   filter_dims.h = filter->dims->data[1];
   filter_dims.w = filter->dims->data[2];
   filter_dims.c = input_dims.c;
 
-  // Initialize cmsis-nn output dimensions
+  // Initialize cmsis_nn output dimensions
   cmsis_nn_dims output_dims;
   output_dims.n = input_dims.n;
   output_dims.h = output->dims->data[1];
@@ -177,7 +177,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   data->output_zero_point = output->params.zero_point;
 
   if (input->type == kTfLiteInt8) {
-    // Initialize cmsis-nn convolution parameters
+    // Initialize cmsis_nn convolution parameters
     cmsis_nn_conv_params conv_params;
     conv_params.input_offset = -input->params.zero_point;
     conv_params.output_offset = output->params.zero_point;
@@ -255,7 +255,7 @@ TfLiteStatus EvalQuantizedPerChannel(
   // implementation when dilation is supported in the optimized implementation
   // by CMSIS-NN.
   if (conv_params.dilation.h == 1 && conv_params.dilation.w == 1) {
-    // Initialize cmsis-nn convolution parameters
+    // Initialize cmsis_nn convolution parameters
     conv_params.input_offset = -data.input_zero_point;
     conv_params.output_offset = data.output_zero_point;
     conv_params.stride.h = params->stride_height;
@@ -265,7 +265,7 @@ TfLiteStatus EvalQuantizedPerChannel(
     conv_params.activation.min = data.output_activation_min;
     conv_params.activation.max = data.output_activation_max;
 
-    // Initialize cmsis-nn per channel quantization parameters
+    // Initialize cmsis_nn per channel quantization parameters
     cmsis_nn_per_channel_quant_params quant_params;
     quant_params.multiplier =
         const_cast<int32_t*>(data.per_channel_output_multiplier);
@@ -288,7 +288,7 @@ TfLiteStatus EvalQuantizedPerChannel(
       TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
     }
 
-    // Initialize cmsis-nn dimensions
+    // Initialize cmsis_nn dimensions
     // Input
     cmsis_nn_dims input_dims;
     input_dims.n = batch_size;
@@ -317,14 +317,14 @@ TfLiteStatus EvalQuantizedPerChannel(
     output_dims.w = output_shape.Dims(2);
     output_dims.c = output_depth;
 
-    // Initialize cmsis-nn context
+    // Initialize cmsis_nn context
     cmsis_nn_context ctx;
     ctx.buf = nullptr;
     ctx.size = 0;
 
     if (data.buffer_idx > -1) {
       ctx.buf = context->GetScratchBuffer(context, data.buffer_idx);
-      // Note: ctx.size is currently not used in cmsis-nn.
+      // Note: ctx.size is currently not used in cmsis_nn.
       // The buffer should be allocated in the Prepare function through
       // arm_convolve_wrapper_s8_get_buffer_size
     }

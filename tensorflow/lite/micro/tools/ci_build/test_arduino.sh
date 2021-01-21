@@ -28,7 +28,7 @@ source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 
 TARGET=arduino
-OPTIMIZED_KERNEL_DIR=cmsis-nn
+OPTIMIZED_KERNEL_DIR=cmsis_nn
 
 # TODO(b/143715361): parallel builds do not work with generated files right now.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile \
