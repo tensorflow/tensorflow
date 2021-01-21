@@ -20,17 +20,9 @@ from __future__ import print_function
 from os import path
 from os import makedirs
 import shutil
-# import time
 import tempfile
-
-# import numpy as np
-
-# from tensorflow.python.client import session
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
-# from tensorflow.python.framework import errors
-# from tensorflow.python.framework import ops
-# from tensorflow.python.platform import test
 
 
 class ListFilesBenchmark(benchmark_base.DatasetBenchmarkBase):
@@ -67,41 +59,6 @@ class ListFilesBenchmark(benchmark_base.DatasetBenchmarkBase):
         num_elements=num_elements,
         name='nested_directory(%d*%d)' % (width, depth)
     )
-
-    # deltas = []
-    # iters = 3
-    # for _ in range(iters):
-    #   with ops.Graph().as_default():
-    #     dataset = dataset_ops.Dataset.list_files(patterns)
-    #     options = dataset_ops.Options()
-    #     options.experimental_optimization.apply_default_optimizations = False
-    #     dataset = dataset.with_options(options)
-    #     next_element = dataset.make_one_shot_iterator().get_next()
-    #     with session.Session() as sess:
-    #       sub_deltas = []
-    #       while True:
-    #         try:
-    #           start = time.time()
-    #           sess.run(next_element)
-    #           end = time.time()
-    #           sub_deltas.append(end - start)
-    #         except errors.OutOfRangeError:
-    #           break
-    #       deltas.append(sub_deltas)
-    # median_deltas = np.median(deltas, axis=0)
-    # self.report_benchmark(
-    #     iters=iters,
-    #     wall_time=np.sum(median_deltas),
-    #     extras={
-    #         'read first file:':
-    #             median_deltas[0],
-    #         'read second file:':
-    #             median_deltas[1],
-    #         'avg time for reading %d more filenames:' %
-    #         (len(median_deltas) - 2):
-    #             np.average(median_deltas[2:])
-    #     },
-    #     name='nested_directory(%d*%d)' % (width, depth))
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
