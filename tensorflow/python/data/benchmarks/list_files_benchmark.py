@@ -30,7 +30,7 @@ from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
 # from tensorflow.python.framework import errors
 # from tensorflow.python.framework import ops
-from tensorflow.python.platform import test
+# from tensorflow.python.platform import test
 
 
 class ListFilesBenchmark(benchmark_base.DatasetBenchmarkBase):
@@ -106,4 +106,4 @@ class ListFilesBenchmark(benchmark_base.DatasetBenchmarkBase):
 
 
 if __name__ == '__main__':
-  test.main()
+  benchmark_base.test.main()
