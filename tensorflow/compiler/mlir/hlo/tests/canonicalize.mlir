@@ -603,7 +603,7 @@ func @dynamic_reshape_of_dynamic_reshape(%arg0: tensor<?xf16>, %shape: tensor<?x
   %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf16>, tensor<?xindex>) -> tensor<*xf16>
   %1 = shape.shape_of %0 : tensor<*xf16> -> tensor<?xindex>
   %2 = shape.num_elements %1 : tensor<?xindex> -> index
-  %3 = tensor_from_elements %2 : tensor<1xindex>
+  %3 = tensor.from_elements %2 : tensor<1xindex>
   %4 = "mhlo.dynamic_reshape"(%0, %3) : (tensor<*xf16>, tensor<1xindex>) -> tensor<?xf16>
   return %4 : tensor<?xf16>
 }

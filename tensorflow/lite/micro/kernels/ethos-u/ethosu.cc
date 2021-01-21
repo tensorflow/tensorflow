@@ -93,7 +93,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Get addresses to weights/scratch/input data
   for (i = 1; i < node->inputs->size; ++i) {
     tensor = context->GetEvalTensor(context, node->inputs->data[i]);
-    base_addrs[num_tensors] = reinterpret_cast<uint64_t>(tensor->data.uint8);
+    base_addrs[num_tensors] =
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(tensor->data.uint8));
     size_t byte_size = 1;
     for (int k = 0; k < tensor->dims->size; k++) {
       byte_size = byte_size * tensor->dims->data[k];
@@ -105,7 +106,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Get addresses to output data
   for (i = 0; i < node->outputs->size; ++i) {
     tensor = context->GetEvalTensor(context, node->outputs->data[i]);
-    base_addrs[num_tensors] = reinterpret_cast<uint64_t>(tensor->data.uint8);
+    base_addrs[num_tensors] =
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(tensor->data.uint8));
     size_t byte_size = 1;
     for (int k = 0; k < tensor->dims->size; k++) {
       byte_size = byte_size * tensor->dims->data[k];

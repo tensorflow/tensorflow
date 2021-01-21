@@ -196,9 +196,27 @@ using namespace metal;
   header += struct_desc + "\n";
   *code = header + *code;
   std::string arguments = GetListOfArgs(/*buffer_offset*/ 0);
-  if (code->find("GLOBAL_ID_") != std::string::npos) {
+  const bool use_global_id = code->find("GLOBAL_ID_") != std::string::npos;
+  const bool use_local_id = code->find("LOCAL_ID_") != std::string::npos;
+  const bool use_group_id = code->find("GROUP_ID_") != std::string::npos;
+  const bool use_group_size = code->find("GROUP_SIZE_") != std::string::npos;
+  if (use_global_id) {
     AppendArgument("uint3 reserved_gid[[thread_position_in_grid]]", &arguments);
-  } else if (!arguments.empty()) {
+  }
+  if (use_local_id) {
+    AppendArgument("uint3 reserved_lid[[thread_position_in_threadgroup]]",
+                   &arguments);
+  }
+  if (use_group_id) {
+    AppendArgument("uint3 reserved_group_id[[threadgroup_position_in_grid]]",
+                   &arguments);
+  }
+  if (use_group_size) {
+    AppendArgument("uint3 reserved_group_size[[threads_per_threadgroup]]",
+                   &arguments);
+  }
+  if (!use_global_id && !use_local_id && !use_group_id && !use_group_size &&
+      !arguments.empty()) {
     arguments += ",\n";
   }
   *code = absl::Substitute(*code, arguments);

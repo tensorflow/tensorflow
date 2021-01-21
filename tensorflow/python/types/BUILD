@@ -26,7 +26,7 @@ py_strict_library(
         "distribute.py",
         "internal.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:types_whitelist",
@@ -44,7 +44,7 @@ py_strict_library(
     srcs = [
         "doc_typealias.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],

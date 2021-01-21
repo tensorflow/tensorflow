@@ -861,7 +861,8 @@ StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
       DenseElementsAttr initial_value,
       CreateDenseElementsAttrFromLiteral(const_instr->literal(), builder_));
 
-  std::string constant_name = xla::llvm_ir::ConstantHloToGlobalName(*instr);
+  std::string constant_name = xla::llvm_ir::ConstantNameToGlobalName(
+      xla::llvm_ir::SanitizeConstantName(instr->name()));
 
   // Insert the global memref at the top level.
   {

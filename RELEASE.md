@@ -30,6 +30,8 @@
         for synchronous training workloads where example sizes vary. With strict
         round robin reads, users can guarantee that consumers get similar-sized
         examples in the same step.
+    *   tf.data service supports custom data transfer protocols (other than
+        gRPC).
 
 ## Bug Fixes and Other Changes
 
@@ -50,6 +52,10 @@
     *   Exposing `tf.data.experimental.ExternalStatePolicy`, which can be used
         to control how external state should be handled during dataset
         serialization or iterator checkpointing.
+    *   Changing `tf.data.experimental.save` to store the type specification of
+        the dataset elements. This avoids the need for explicitly specifying the
+        `element_spec` argument of `tf.data.experimental.load` when loading the
+        previously saved dataset.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.

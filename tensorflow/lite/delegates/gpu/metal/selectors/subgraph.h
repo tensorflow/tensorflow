@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 
@@ -28,7 +29,8 @@ namespace gpu {
 namespace metal {
 
 struct GPUOperationWithRefs {
-  std::unique_ptr<ComputeTaskDescriptor> operation;
+  std::unique_ptr<ComputeTaskDescriptor> task_desc = nullptr;
+  std::unique_ptr<GPUOperation> operation = nullptr;
 
   // input and output ids can be positive or negative.
   // if we have positive id, we will use preallocated tensor from GraphFloat32
@@ -42,9 +44,9 @@ struct GPUOperationsSubgraph {
   std::vector<std::pair<BHWC, TensorDescriptor>> new_tensors;
 };
 
-std::unique_ptr<ComputeTaskDescriptor>* InitSingleOpSubgraph(
-    const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
-    GPUOperationsSubgraph* gpu_subgraph);
+GPUOperationWithRefs* InitSingleOpSubgraph(const std::vector<Value*>& inputs,
+                                           const std::vector<Value*>& outputs,
+                                           GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace metal
 }  // namespace gpu

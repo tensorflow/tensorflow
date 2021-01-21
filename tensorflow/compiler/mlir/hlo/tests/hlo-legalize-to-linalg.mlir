@@ -33,7 +33,7 @@ func @integer_add(%lhs: tensor<2x2xi32>,
 func @complex_add(%lhs: tensor<2x2xcomplex<f32>>,
                   %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
   // CHECK: linalg.generic
-  // CHECK: addcf
+  // CHECK: complex.add
   %0 = "mhlo.add"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
       tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
   return %0 : tensor<2x2xcomplex<f32>>
@@ -128,7 +128,7 @@ func @integer_sub(%lhs: tensor<2x2xi32>,
 func @complex_sub(%lhs: tensor<2x2xcomplex<f32>>,
                   %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
   // CHECK: linalg.generic
-  // CHECK: subcf
+  // CHECK: complex.sub
   %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
       tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
   return %0 : tensor<2x2xcomplex<f32>>
@@ -608,6 +608,19 @@ func @reshape_multiple_collapse
 
 // -----
 
+// CHECK-LABEL: func @convert_i1_to_f32
+func @convert_i1_to_f32(%input: tensor<2x2xi1>) -> tensor<2x2xf32> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xi1>) -> tensor<2x2xf32>
+  return %result : tensor<2x2xf32>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i1, %{{.*}}: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = uitofp %[[OPERAND_IN]] : i1 to f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @convert_i32_to_f32
 func @convert_i32_to_f32(%input: tensor<2x2xi32>) -> tensor<2x2xf32> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xf32>
@@ -849,7 +862,7 @@ func @dot_matmul(%arg0: tensor<2x3xf32>,
   return %0 : tensor<2x?xf32>
 }
 // CHECK: func @dot_matmul(%[[ARG0:.*]]: tensor<2x3xf32>, %[[ARG1:.*]]: tensor<3x?xf32>)
-// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: %[[INIT:.*]] = tensor.generate
 // CHECK: linalg.matmul
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xf32>, tensor<3x?xf32>)
 // CHECK-SAME: outs(%[[INIT]] : tensor<2x?xf32>)
@@ -863,7 +876,7 @@ func @dot_matvec(%arg0: tensor<?x3xf32>,
   return %0 : tensor<?xf32>
 }
 // CHECK: func @dot_matvec(%[[ARG0:.*]]: tensor<?x3xf32>, %[[ARG1:.*]]: tensor<3xf32>)
-// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: %[[INIT:.*]] = tensor.generate
 // CHECK: linalg.matvec
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x3xf32>, tensor<3xf32>)
 // CHECK-SAME: outs(%[[INIT]] : tensor<?xf32>)
@@ -876,7 +889,7 @@ func @dot_dot(%arg0: tensor<?xf32>,
   return %0 : tensor<f32>
 }
 // CHECK: func @dot_dot(%[[ARG0:.*]]: tensor<?xf32>, %[[ARG1:.*]]: tensor<?xf32>)
-// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: %[[INIT:.*]] = tensor.generate
 // CHECK: linalg.dot
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?xf32>, tensor<?xf32>)
 // CHECK-SAME: outs(%[[INIT]] : tensor<f32>)
@@ -897,7 +910,7 @@ func @dot_general(%arg0: tensor<?x?x3xf32>,
   return %0 : tensor<?x?x?xf32>
 }
 // CHECK: func @dot_general(%[[ARG0:.*]]: tensor<?x?x3xf32>, %[[ARG1:.*]]: tensor<?x3x?xf32>)
-// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: %[[INIT:.*]] = tensor.generate
 // CHECK: linalg.batch_matmul
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x3xf32>, tensor<?x3x?xf32>)
 // CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?xf32>)

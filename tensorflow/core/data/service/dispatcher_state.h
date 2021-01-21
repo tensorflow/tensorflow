@@ -69,9 +69,12 @@ class DispatcherState {
 
   // A worker registered with the dispatcher.
   struct Worker {
-    explicit Worker(const std::string& address) : address(address) {}
+    explicit Worker(const std::string& address,
+                    const std::string& transfer_address)
+        : address(address), transfer_address(transfer_address) {}
 
     const std::string address;
+    const std::string transfer_address;
   };
 
   // A key for identifying a named job. The key contains a user-specified name,
@@ -128,12 +131,17 @@ class DispatcherState {
 
   struct Task {
     explicit Task(int64 task_id, const std::shared_ptr<Job>& job,
-                  const std::string& worker_address)
-        : task_id(task_id), job(job), worker_address(worker_address) {}
+                  const std::string& worker_address,
+                  const std::string& transfer_address)
+        : task_id(task_id),
+          job(job),
+          worker_address(worker_address),
+          transfer_address(transfer_address) {}
 
     const int64 task_id;
     const std::shared_ptr<Job> job;
     const std::string worker_address;
+    const std::string transfer_address;
     bool finished = false;
   };
 

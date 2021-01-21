@@ -267,6 +267,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_riscv64",
+    values = {"cpu": "riscv64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "debug",
     values = {
         "compilation_mode": "dbg",
@@ -833,12 +839,12 @@ tf_cc_shared_object(
     per_os_targets = True,
     soversion = VERSION,
     visibility = ["//visibility:public"],
-    # add win_def_file for tensorflow
+    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
         "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
+    # copybara:comment_end
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
@@ -866,12 +872,12 @@ tf_cc_shared_object(
     per_os_targets = True,
     soversion = VERSION,
     visibility = ["//visibility:public"],
-    # add win_def_file for tensorflow_cc
+    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
         "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
+    # copybara:comment_end
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
         "//tensorflow:tf_version_script.lds",

@@ -404,6 +404,18 @@ func @ceil(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @convert_i1_to_f32
+func @convert_i1_to_f32(%input: memref<2x2xi1>, %result: memref<2x2xf32>) {
+  "lmhlo.convert"(%input, %result) : (memref<2x2xi1>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i1, %[[RESULT_OUT:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = uitofp %[[OPERAND_IN]] : i1 to f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @convert_i32_to_f32
 func @convert_i32_to_f32(%input: memref<2x2xi32>, %result: memref<2x2xf32>) {
   "lmhlo.convert"(%input, %result) : (memref<2x2xi32>, memref<2x2xf32>) -> ()
@@ -688,7 +700,7 @@ func @complex(%real: memref<2x2xf32>,
 }
 // CHECK:      linalg.generic
 // CHECK-NEXT: ^bb0(%[[RE:.*]]: f32, %[[IM:.*]]: f32, %[[CP:.*]]: complex<f32>):
-// CHECK-NEXT:   %[[RESULT:.*]] = create_complex %[[RE]], %[[IM]] : complex<f32>
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.create %[[RE]], %[[IM]] : complex<f32>
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
 
 // -----
@@ -702,7 +714,7 @@ func @real(%cplx: memref<2x2xcomplex<f32>>,
 }
 // CHECK:      linalg.generic
 // CHECK-NEXT: ^bb0(%[[CPLX_IN:.*]]: complex<f32>, %[[REAL_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[REAL:.*]] = re %[[CPLX_IN:.*]] : complex<f32>
+// CHECK-NEXT:   %[[REAL:.*]] = complex.re %[[CPLX_IN:.*]] : complex<f32>
 // CHECK-NEXT:   linalg.yield %[[REAL]] : f32
 
 // -----
@@ -716,7 +728,7 @@ func @imag(%cplx: memref<2x2xcomplex<f32>>,
 }
 // CHECK:      linalg.generic
 // CHECK-NEXT: ^bb0(%[[CPLX_IN:.*]]: complex<f32>, %[[IMAG_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[IMAG:.*]] = im %[[CPLX_IN:.*]] : complex<f32>
+// CHECK-NEXT:   %[[IMAG:.*]] = complex.im %[[CPLX_IN:.*]] : complex<f32>
 // CHECK-NEXT:   linalg.yield %[[IMAG]] : f32
 
 // -----

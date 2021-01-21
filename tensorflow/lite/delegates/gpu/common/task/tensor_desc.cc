@@ -201,7 +201,7 @@ absl::Status TensorDescriptor::PerformSelector(
     *result = "";
     return absl::OkStatus();
   } else if (selector == "Read") {
-    return PerformReadSelector(args, template_args, result);
+    return PerformReadSelector(gpu_info, args, template_args, result);
   } else if (selector == "Write") {
     return PerformWriteSelector(args, result);
   } else if (selector == "WriteLinear") {
@@ -221,7 +221,7 @@ absl::Status TensorDescriptor::PerformSelector(
 }
 
 absl::Status TensorDescriptor::PerformReadSelector(
-    const std::vector<std::string>& args,
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   DataType read_as_type = data_type;
   if (!template_args.empty()) {
@@ -236,7 +236,7 @@ absl::Status TensorDescriptor::PerformReadSelector(
   if (args.size() == 1) {  // function overload for 1D linear types.
     if (storage_type == TensorStorageType::BUFFER ||
         storage_type == TensorStorageType::IMAGE_BUFFER) {
-      *result = Read(read_as_type, args[0]);
+      *result = Read(gpu_info, read_as_type, args[0]);
       return absl::OkStatus();
     } else {
       return absl::InvalidArgumentError(
@@ -254,8 +254,8 @@ absl::Status TensorDescriptor::PerformReadSelector(
     return absl::NotFoundError("Unrecognized Read selector");
   }
 
-  *result =
-      Read(read_as_type, GetGlobalAddressNoDeclaration(xc, yc, zc, sc, bc));
+  *result = Read(gpu_info, read_as_type,
+                 GetGlobalAddressNoDeclaration(xc, yc, zc, sc, bc));
   return absl::OkStatus();
 }
 
@@ -312,7 +312,8 @@ absl::Status TensorDescriptor::PerformWriteLinearSelector(
   return absl::OkStatus();
 }
 
-std::string TensorDescriptor::Read(DataType read_as_type,
+std::string TensorDescriptor::Read(const GpuInfo& gpu_info,
+                                   DataType read_as_type,
                                    const std::string& global_address) const {
   const std::string read_as =
       read_as_type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
@@ -330,9 +331,20 @@ std::string TensorDescriptor::Read(DataType read_as_type,
       if (read_as_type == data_type) {
         return absl::StrCat("buffer[", global_address, "]");
       } else {
-        const std::string conversion = read_as_type == DataType::FLOAT16
-                                           ? "convert_half4"
-                                           : "convert_float4";
+        std::string conversion;
+        if (gpu_info.IsApiMetal()) {
+          if (read_as_type == DataType::FLOAT16) {
+            conversion = "half4";
+          } else if (read_as_type == DataType::FLOAT32) {
+            conversion = "float4";
+          }
+        } else if (gpu_info.IsApiOpenCl()) {
+          if (read_as_type == DataType::FLOAT16) {
+            conversion = "convert_half4";
+          } else if (read_as_type == DataType::FLOAT32) {
+            conversion = "convert_float4";
+          }
+        }
         return absl::StrCat(conversion, "(buffer[", global_address, "])");
       }
     case TensorStorageType::TEXTURE_2D:

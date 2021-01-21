@@ -42,9 +42,17 @@ exports_files([
         ),
     },
     conversion_mode = conversion_mode,
-    data = [
-        ":zip_%s" % test_name,
-    ],
+    # copybara:uncomment_begin(no special handling for Android in OSS)
+    # data = select({
+    # "//tensorflow:android": [],
+    # "//conditions:default": [
+    # ":zip_%s" % test_name,
+    # "//third_party/unzip",
+    # ],
+    # }),
+    # copybara:uncomment_end_and_comment_begin
+    data = [":zip_%s" % test_name],
+    # copybara:comment_end
     shard_count = 20,
     test_args = args + select({
         "//tensorflow:android": [],
@@ -144,7 +152,7 @@ py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":generate_examples_lib",
         ":toco_convert",

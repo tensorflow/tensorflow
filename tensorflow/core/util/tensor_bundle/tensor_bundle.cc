@@ -836,7 +836,7 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
                             entry_copy.shape().ShortDebugString());
   }
 
-  *entry = entry_copy;
+  entry->Swap(&entry_copy);
   return Status::OK();
 }
 

@@ -125,7 +125,7 @@ def tf_xla_py_test(
             py_test(
                 name = updated_name,
                 srcs = srcs,
-                srcs_version = "PY2AND3",
+                srcs_version = "PY3",
                 args = backend_args,
                 main = "{}.py".format(name) if main == None else main,
                 data = data + backend_data,

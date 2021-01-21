@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -3064,6 +3065,7 @@ MhloDialect::MhloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();
+  context->loadDialect<tensor::TensorDialect>();
 }
 
 Type MhloDialect::parseType(DialectAsmParser& parser) const {
@@ -3111,7 +3113,7 @@ LogicalResult deriveShapeFromFirstOperand(
     }
   }
   *reifiedReturnShapes = SmallVector<Value, 1>{
-      builder->create<TensorFromElementsOp>(loc, shape_values)};
+      builder->create<tensor::FromElementsOp>(loc, shape_values)};
   return success();
 }
 

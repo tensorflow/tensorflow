@@ -133,10 +133,6 @@ tf_cuda_library(
 tf_cc_test(
     name = "custom_device_test",
     srcs = ["custom_device_test.cc"],
-    tags = [
-        # "Not found: 'AssignVariableOp'"
-        "no_windows",
-    ],
     deps = [
         ":context",
         ":core",
@@ -148,6 +144,8 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/kernels:resource_variable_ops",
+        "//tensorflow/core/ops:resource_variable_ops_op_lib",
     ],
 )
 

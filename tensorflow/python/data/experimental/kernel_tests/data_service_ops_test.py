@@ -804,6 +804,40 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     id_2 = data_service_ops.register_dataset(cluster.target, ds_2)
     self.assertNotEqual(id_1.numpy(), id_2.numpy())
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testDistributedEpochOnZippedDataset(self):
+    ds_1 = dataset_ops.Dataset.range(10)
+    ds_2 = dataset_ops.Dataset.range(10)
+    cluster = self.create_cluster(num_workers=1)
+
+    ds_3 = dataset_ops.Dataset.zip((ds_1, ds_2))
+    ds_3 = self.make_distributed_dataset(
+        ds_3, cluster, processing_mode="distributed_epoch")
+
+    error_regex = "Cannot create a split provider for dataset " + \
+        "of type ZipDataset"
+    with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
+      self.getDatasetOutput(ds_3, requires_initialization=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDistributedEpochOnDistributedDataset(self):
+    cluster_1 = self.create_cluster(num_workers=1)
+    cluster_2 = self.create_cluster(num_workers=1)
+    num_sizes = 10
+    size_repeats = 5
+    numbers = [1 * i for i in range(num_sizes)] * size_repeats
+    ds = dataset_ops.Dataset.from_tensor_slices(numbers)
+    ds = self.make_distributed_dataset(
+        ds, cluster_1, processing_mode="parallel_epochs")
+    ds = ds.map(lambda x: x + 1)
+    ds = self.make_distributed_dataset(
+        ds, cluster_2, processing_mode="distributed_epoch")
+
+    error_regex = "Cannot create a split provider for dataset " + \
+        "of type DataServiceDataset"
+    with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
+      self.getDatasetOutput(ds, requires_initialization=True)
+
   @combinations.generate(test_base.eager_only_combinations())
   def testTwoLevelDistribute(self):
     cluster_1_size = 3

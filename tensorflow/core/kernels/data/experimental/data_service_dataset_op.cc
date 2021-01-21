@@ -51,6 +51,8 @@ namespace data {
 /* static */ constexpr const char* const DataServiceDatasetOp::kProcessingMode;
 /* static */ constexpr const char* const DataServiceDatasetOp::kAddress;
 /* static */ constexpr const char* const DataServiceDatasetOp::kProtocol;
+/* static */ constexpr const char* const
+    DataServiceDatasetOp::kDataTransferProtocol;
 /* static */ constexpr const char* const DataServiceDatasetOp::kJobName;
 /* static */ constexpr const char* const DataServiceDatasetOp::kConsumerIndex;
 /* static */ constexpr const char* const DataServiceDatasetOp::kNumConsumers;
@@ -80,8 +82,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, int op_version, int64 dataset_id,
           ProcessingMode processing_mode, const std::string& address,
-          const std::string& protocol, const std::string& job_name,
-          absl::optional<int64> consumer_index,
+          const std::string& protocol,
+          const std::string& data_transfer_protocol,
+          const std::string& job_name, absl::optional<int64> consumer_index,
           absl::optional<int64> num_consumers, int64 max_outstanding_requests,
           int64 task_refresh_interval_ms, IterationCounter* iteration_counter,
           bool owns_resource, ResourceHandle iteration_counter_handle,
@@ -93,6 +96,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         processing_mode_(processing_mode),
         address_(address),
         protocol_(protocol),
+        data_transfer_protocol_(data_transfer_protocol),
         job_name_(job_name),
         consumer_index_(consumer_index),
         num_consumers_(num_consumers),
@@ -164,6 +168,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(protocol_, &protocol));
     inputs.push_back(protocol);
 
+    AttrValue data_transfer_protocol;
+    b->BuildAttrValue(data_transfer_protocol_, &data_transfer_protocol);
+
     Node* job_name;
     TF_RETURN_IF_ERROR(b->AddScalar(job_name_, &job_name));
     inputs.push_back(job_name);
@@ -195,11 +202,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     b->BuildAttrValue(task_refresh_interval_ms_,
                       &task_refresh_interval_hint_ms);
 
-    TF_RETURN_IF_ERROR(
-        b->AddDataset(this, inputs,
-                      {std::make_pair(kTaskRefreshIntervalHintMs,
-                                      task_refresh_interval_hint_ms)},
-                      output));
+    TF_RETURN_IF_ERROR(b->AddDataset(
+        this, inputs,
+        {std::make_pair(kTaskRefreshIntervalHintMs,
+                        task_refresh_interval_hint_ms),
+         std::make_pair(kDataTransferProtocol, data_transfer_protocol)},
+        output));
     return Status::OK();
   }
 
@@ -459,8 +467,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         TaskInfo& task_info = it->second;
         std::unique_ptr<DataServiceWorkerClient> worker;
-        Status s = CreateDataServiceWorkerClient(task_info.worker_address(),
-                                                 dataset()->protocol_, worker);
+        Status s = CreateDataServiceWorkerClient(
+            task_info.transfer_address(), dataset()->protocol_,
+            dataset()->data_transfer_protocol_, worker);
         if (!s.ok()) {
           status_ = s;
           get_next_cv_.notify_all();
@@ -743,6 +752,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const ProcessingMode processing_mode_;
   const tstring address_;
   const tstring protocol_;
+  const tstring data_transfer_protocol_;
   const tstring job_name_;
   const absl::optional<int64> consumer_index_;
   const absl::optional<int64> num_consumers_;
@@ -765,6 +775,11 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
   }
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  if (ctx->HasAttr(kDataTransferProtocol)) {
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr(kDataTransferProtocol, &data_transfer_protocol_));
+  }
+  if (data_transfer_protocol_.empty()) data_transfer_protocol_ = "grpc";
   auto& op_name = ctx->def().op();
   if (op_name == kDataServiceDatasetV1) {
     op_version_ = 1;
@@ -859,11 +874,12 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       errors::InvalidArgument(kMaxOutstandingRequests, " must be positive or ",
                               model::kAutotune));
 
-  *output = new Dataset(
-      ctx, op_version_, dataset_id, processing_mode, address, protocol,
-      job_name, consumer_index, num_consumers, max_outstanding_requests,
-      task_refresh_interval_hint_ms_, iteration_counter, owns_resource,
-      iteration_counter_handle, output_types_, output_shapes_);
+  *output = new Dataset(ctx, op_version_, dataset_id, processing_mode, address,
+                        protocol, data_transfer_protocol_, job_name,
+                        consumer_index, num_consumers, max_outstanding_requests,
+                        task_refresh_interval_hint_ms_, iteration_counter,
+                        owns_resource, iteration_counter_handle, output_types_,
+                        output_shapes_);
 }
 
 REGISTER_KERNEL_BUILDER(Name("DataServiceDataset").Device(DEVICE_CPU),

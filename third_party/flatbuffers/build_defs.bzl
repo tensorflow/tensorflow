@@ -447,7 +447,7 @@ def flatbuffer_py_library(
         srcs = [
             ":{}".format(concat_py_srcs),
         ],
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         deps = deps + [
             "@flatbuffers//:runtime_py",
         ],

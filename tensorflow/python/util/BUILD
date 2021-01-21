@@ -244,7 +244,7 @@ py_strict_library(
     name = "tf_export",
     srcs = ["tf_export.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":tf_decorator",
@@ -272,7 +272,7 @@ py_strict_library(
         "tf_inspect.py",
     ],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
         # TODO(mdan): Remove these dependencies.
@@ -289,7 +289,7 @@ py_strict_library(
 py_strict_library(
     name = "tf_stack",
     srcs = ["tf_stack.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     # TODO(mdan): Remove public visibility.
     visibility = ["//visibility:public"],
     deps = [

@@ -337,6 +337,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       numpy.testing.assert_equal(r1.eval(), [3.])
       numpy.testing.assert_equal(r2.eval(), [3., 3.])
 
+  def testImplementsWorksWithTensorSpec(self):
+    v = def_function.function(
+        experimental_implements='func')(lambda x, y: x + y)
+    v = v.get_concrete_function(
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32))
+    x = v(1., 2.)
+    self.assertEqual(x.numpy(), 3.)
+
   def testImplementsAttributeAsNameAttrList(self):
     implements_attr = (
         'name: "embedding_matmul" attr {   key: "key1"   value {     i: 2   } '
@@ -4148,6 +4157,46 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled(x=2, y=2, z=4)  # No retrace - change in args and **kwargs
     enabled(x=2, y=2, z=4, u=5)  # Retrace - change in **kwargs
     self.assertEqual(trace_count[0], 3)
+
+  def testFollowTypeHintsWithTensorSpec(self):
+    def func(x: ops.Tensor, y):
+      return x + y
+    v = def_function.function(experimental_follow_type_hints=True)(func)
+    v = v.get_concrete_function(
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32), 3)
+    x = v(constant_op.constant(1.), 3)
+    self.assertEqual(x.numpy(), 4.)
+
+  def testFollowTypeHintsTraceWithKwArgsAndNoVarKws(self):
+    trace_count = [0]
+
+    def func(a: int, b: ops.Tensor,
+             x: ops.Tensor = 0, y: int = 1):
+      del a, b, y
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(0, 0, x=1, y=2)
+    enabled(0, 0, x=2, y=2,)  # No retrace, since only tensor changed
+    self.assertEqual(trace_count[0], 1)
+
+    # Pass args as keyword args.
+    enabled(a=0, b=0, x=2, y=2,)  # No retrace, args are the same
+    self.assertEqual(trace_count[0], 1)
+
+    enabled(a=1, b=0, x=2, y=2,)  # Retrace, since non-tensor arg changed
+    self.assertEqual(trace_count[0], 2)
+
+    enabled(a=1, b=2, x=2, y=2)  # No retrace, since only tensor changed
+    self.assertEqual(trace_count[0], 2)
+
+    trace_count[0] = 0
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
+    disabled(x=1, y=2)
+    disabled(x=2, y=2,)  # Retrace
+    self.assertEqual(trace_count[0], 2)
 
   def testFollowTypeHintsTraceWithArgsEqualsTypedKwargs(self):
     trace_count = [0]

@@ -141,7 +141,7 @@ py_test(
     size = "medium",
     srcs = ["generate2_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
         # No reason to run sanitizers or fastbuild for this test.

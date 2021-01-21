@@ -191,6 +191,23 @@ func @tensorlistReserveConstantUnknownElementShapeDim(%arg0: tensor<i32>, %arg1:
 // CHECK:      return [[RESULT]] : tensor<?x7xf32>
 }
 
+func @tensorlistReserveUnknownElementShape(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<2xf32>) -> tensor<*xf32> {
+  %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<!tf.variant<tensor<*xf32>>>
+  %1 = "tf.TensorListSetItem"(%0, %arg2, %arg3) : (tensor<!tf.variant<tensor<*xf32>>>, tensor<i32>, tensor<2xf32>) -> tensor<!tf.variant<tensor<2xf32>>>
+  %cst = constant dense<-1> : tensor<i32>
+  %2 = "tf.TensorListStack"(%1, %cst) : (tensor<!tf.variant<tensor<2xf32>>>, tensor<i32>) -> tensor<*xf32>
+  return %2 : tensor<*xf32>
+
+// CHECK-LABEL: tensorlistReserveUnknownElementShape
+// CHECK-DAG:  [[SHAPE:%[0-9]+]] = "tf.Shape"(%arg3) : (tensor<2xf32>) -> tensor<?xi32>
+// CHECK-DAG:  [[CST:%.*]] = constant dense<0> : tensor<i32>
+// CHECK-DAG:  [[EXPAND_DIM:%[0-9]+]] = "tf.ExpandDims"(%arg1, [[CST]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:  [[CST0:%.*]] = constant dense<0> : tensor<i32>
+// CHECK-DAG:  [[FINAL_SHAPE:%[0-9]+]] = "tf.Concat"([[CST0]], [[EXPAND_DIM]], [[SHAPE]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK-DAG:  [[CST1:%.*]] = constant dense<0.000000e+00> : tensor<f32>
+// CHECK:  [[FILL:%[0-9]+]] = "tf.Fill"([[FINAL_SHAPE]], [[CST1]]) : (tensor<?xi32>, tensor<f32>) -> tensor<*xf32>
+}
+
 func @EmptyTensorList(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?x?x?xf32> {
   %0 = "tf.EmptyTensorList"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x?x?xf32>>>
   %1 = "tf.TensorListGetItem"(%0, %arg2, %arg0) : (tensor<!tf.variant<tensor<?x?x?xf32>>>, tensor<i32>, tensor<3xi32>) -> tensor<?x?x?xf32>
@@ -202,8 +219,8 @@ func @EmptyTensorList(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i3
 // CHECK-DAG:  [[ZERO:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[SHAPE:%.*]] = "tf.Concat"([[ZERO]], [[DIM0]], [[ELEM_SHAPE]]) : (tensor<i32>, tensor<1xi32>, tensor<3xi32>) -> tensor<4xi32>
 // CHECK-DAG:  [[VALUES:%.*]] = constant dense<0.000000e+00> : tensor<f32>
-// CHECK:      [[LIST:%.*]] = "tf.Fill"([[SHAPE]], [[VALUES]]) : (tensor<4xi32>, tensor<f32>) -> tensor<?x?x?x?xf32>
-// CHECK:      [[RESULT:%.*]] = "tf.Gather"([[LIST]], [[IDX]]) {validate_indices = true} : (tensor<?x?x?x?xf32>, tensor<i32>) -> tensor<?x?x?xf32>
+// CHECK:      [[LIST:%.*]] = "tf.Fill"([[SHAPE]], [[VALUES]]) : (tensor<4xi32>, tensor<f32>) -> tensor<0x?x?x?xf32>
+// CHECK:      [[RESULT:%.*]] = "tf.Gather"([[LIST]], [[IDX]]) {validate_indices = true} : (tensor<0x?x?x?xf32>, tensor<i32>) -> tensor<?x?x?xf32>
 // CHECK:      return [[RESULT]] : tensor<?x?x?xf32>
 }
 

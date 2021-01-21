@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 
+#include "llvm/ADT/APFloat.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir/IR/Attributes.h"
@@ -32,18 +33,16 @@ static LogicalResult Verify(T op) {
   return success();
 }
 
-static constexpr float kF16MaxFiniteValue = 0x1.ffcP15;
-
 Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val) {
+  auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
+  return getConstantLike(
+      b, loc, llvm::APFloat::getLargest(ty.getFloatSemantics()), val);
+}
+
+Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
+                      Value val) {
   Type ty = getElementTypeOrSelf(val.getType());
-  if (ty.isF16()) {
-    return getConstantLike(b, loc, kF16MaxFiniteValue, val);
-  } else if (ty.isF32()) {
-    return getConstantLike(b, loc, std::numeric_limits<float>::max(), val);
-  } else if (ty.isF64()) {
-    return getConstantLike(b, loc, std::numeric_limits<double>::max(), val);
-  }
-  llvm_unreachable("unhandled type");
+  return b.create<ConstantLikeOp>(loc, b.getFloatAttr(ty, constant), val);
 }
 
 //===----------------------------------------------------------------------===//

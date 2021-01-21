@@ -1098,8 +1098,8 @@ class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
         rewriter, loc, adaptor.lhs(), adaptor.rhs(), shaped_type, op_type);
     auto zero_attr = rewriter.getZeroAttr(shaped_type.getElementType());
     Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
-    auto init_tensor = rewriter.create<DynamicTensorFromElementsOp>(
-        loc, result_type, dyn_shape);
+    auto init_tensor =
+        rewriter.create<tensor::GenerateOp>(loc, result_type, dyn_shape);
     {
       OpBuilder::InsertionGuard guard(rewriter);
       SmallVector<Type, 4> arg_types(shaped_type.getRank(),
@@ -1107,7 +1107,7 @@ class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
       Region& region = init_tensor.body();
       Block* block = rewriter.createBlock(&region, region.begin(), arg_types);
       rewriter.setInsertionPointToEnd(block);
-      rewriter.create<YieldOp>(loc, zero);
+      rewriter.create<tensor::YieldOp>(loc, zero);
     }
     linalg::LinalgOp linalg_op;
     switch (op_type) {
@@ -1194,8 +1194,8 @@ class DotGeneralOpOnTensorsConversion
         rewriter, loc, adaptor.lhs(), adaptor.rhs(), shaped_type);
     auto zero_attr = rewriter.getZeroAttr(shaped_type.getElementType());
     Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
-    auto init_tensor = rewriter.create<DynamicTensorFromElementsOp>(
-        loc, result_type, dyn_shape);
+    auto init_tensor =
+        rewriter.create<tensor::GenerateOp>(loc, result_type, dyn_shape);
     {
       OpBuilder::InsertionGuard guard(rewriter);
       SmallVector<Type, 4> arg_types(shaped_type.getRank(),
@@ -1203,7 +1203,7 @@ class DotGeneralOpOnTensorsConversion
       Region& region = init_tensor.body();
       Block* block = rewriter.createBlock(&region, region.begin(), arg_types);
       rewriter.setInsertionPointToEnd(block);
-      rewriter.create<YieldOp>(loc, zero);
+      rewriter.create<tensor::YieldOp>(loc, zero);
     }
     auto linalg_op = rewriter.create<linalg::BatchMatmulOp>(
         loc, /*resultTensorTypes=*/TypeRange{result_type},
@@ -1298,8 +1298,8 @@ struct LhloLegalizeToLinalgPass
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           AffineDialect>();
+    target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
+                           StandardOpsDialect, AffineDialect>();
 
     auto func = getFunction();
     populateLHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -1312,14 +1312,16 @@ struct LhloLegalizeToLinalgPass
 struct HloLegalizeToLinalgPass
     : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<linalg::LinalgDialect, scf::SCFDialect>();
+    registry.insert<linalg::LinalgDialect, scf::SCFDialect,
+                    complex::ComplexDialect>();
   }
 
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           tensor::TensorDialect, scf::SCFDialect>();
+    target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
+                           StandardOpsDialect, tensor::TensorDialect,
+                           scf::SCFDialect>();
 
     auto func = getFunction();
     mhlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);

@@ -169,6 +169,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
+  // Filter weights will always be symmetric quantized since we only support
+  // int8 quantization.
+  TFLITE_DCHECK(filter->params.zero_point == 0);
+
+  TFLITE_DCHECK(GetTensorShape(output).DimensionsCount() == 2);
+
   return CalculateOpData(context, params->activation, input->type, input,
                          filter, bias, output, data);
 }
@@ -196,6 +202,36 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                  tflite::micro::GetTensorData<int32_t>(bias),
                  tflite::micro::GetTensorShape(output),
                  tflite::micro::GetTensorData<int8_t>(output));
+#elif defined(FUSION_F1)
+  const RuntimeShape& output_shape = tflite::micro::GetTensorShape(output);
+  const int num_batches = output_shape.Dims(0);
+  const int output_depth = output_shape.Dims(1);
+
+  const RuntimeShape& filter_shape = tflite::micro::GetTensorShape(filter);
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+
+  FullyConnectedParams op_params = FullyConnectedParamsQuantized(data);
+  for (int b = 0; b < num_batches; ++b) {
+    TF_LITE_ENSURE_EQ(
+        context,
+        xa_nn_fully_connected_sym8sxasym8s_asym8s(
+            (tflite::micro::GetTensorData<int8_t>(output) + b * output_depth),
+            tflite::micro::GetTensorData<int8_t>(filter),
+            (tflite::micro::GetTensorData<int8_t>(input) + b * accum_depth),
+            tflite::micro::GetTensorData<int32_t>(bias), accum_depth,
+            output_depth, op_params.input_offset, op_params.output_multiplier,
+            op_params.output_shift, op_params.output_offset),
+        0);
+  }
+
+  int8_t* output_arr = tflite::micro::GetTensorData<int8_t>(output);
+  TF_LITE_ENSURE_EQ(context,
+                    xa_nn_vec_activation_min_max_8_8(
+                        output_arr, output_arr, data.output_activation_min,
+                        data.output_activation_max, num_batches * output_depth),
+                    0);
+  return kTfLiteOk;
 #else
   reference_integer_ops::FullyConnected(
       FullyConnectedParamsQuantized(data), tflite::micro::GetTensorShape(input),

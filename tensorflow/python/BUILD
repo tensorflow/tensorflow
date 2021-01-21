@@ -1653,7 +1653,7 @@ py_test(
     srcs = ["framework/composite_tensor_test.py"],
     main = "framework/composite_tensor_test.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":composite_tensor",
         ":framework",
@@ -1863,7 +1863,7 @@ py_test(
     name = "test_combinations_test",
     srcs = ["framework/test_combinations_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":framework_test_combinations_lib",
         "//tensorflow/python/eager:test",
@@ -2003,7 +2003,7 @@ py_test(
     name = "functional_ops_test",
     srcs = ["ops/functional_ops_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":client_testlib",
         ":dtypes",
@@ -2669,9 +2669,10 @@ cuda_py_test(
     size = "small",
     srcs = ["ops/batch_ops_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
+        "no_cuda_asan",  # b/177916286
         "no_pip",
         "nomac",
     ],
@@ -4630,7 +4631,7 @@ py_test(
     name = "op_selector_test",
     srcs = ["ops/op_selector_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":client_testlib",
         ":constant_op",
@@ -5195,11 +5196,12 @@ py_library(
 pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
-    # add win_def_file for pywrap_tensorflow
+    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
+    # copybara:comment_end
     deps = [
         ":bfloat16_lib",
         ":cost_analyzer_lib",
@@ -5866,7 +5868,7 @@ py_test(
     name = "ops/array_ops_test",
     srcs = ["ops/array_ops_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6428,7 +6430,7 @@ py_binary(
         "grappler/cost_analyzer_tool.py",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":cost_analyzer",
         ":framework_for_generated_wrappers",
@@ -6737,7 +6739,7 @@ py_binary(
         "grappler/graph_analyzer.py",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":_pywrap_graph_analyzer",
         ":framework_for_generated_wrappers",
@@ -6791,7 +6793,7 @@ py_test(
     name = "tf2_test",
     srcs = ["framework/tf2_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":client_testlib",
         ":framework_combinations",

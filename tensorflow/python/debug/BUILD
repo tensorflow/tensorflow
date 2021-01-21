@@ -207,7 +207,7 @@ py_binary(
     name = "grpc_tensorflow_server",
     srcs = ["lib/grpc_tensorflow_server.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":grpc_tensorflow_server_lib"],
 )
 
@@ -482,7 +482,7 @@ py_binary(
     name = "offline_analyzer",
     srcs = ["cli/offline_analyzer.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":offline_analyzer_lib"],
 )
 
@@ -524,7 +524,7 @@ py_binary(
     name = "debug_fibonacci",
     srcs = ["examples/v1/debug_fibonacci.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":debug_fibonacci_lib"],
 )
 
@@ -532,7 +532,7 @@ py_binary(
     name = "debug_fibonacci_v2",
     srcs = ["examples/v2/debug_fibonacci_v2.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":debug_fibonacci_lib"],
 )
 
@@ -555,7 +555,7 @@ py_binary(
     name = "debug_errors",
     srcs = ["examples/v1/debug_errors.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":debug_errors_lib"],
 )
 
@@ -574,7 +574,7 @@ py_binary(
     name = "debug_mnist",
     srcs = ["examples/debug_mnist.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":debug_mnist_lib"],
 )
 
@@ -582,7 +582,7 @@ py_binary(
     name = "debug_mnist_v1",
     srcs = ["examples/v1/debug_mnist_v1.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":debug_mnist_lib"],
 )
 
@@ -590,7 +590,7 @@ py_binary(
     name = "debug_mnist_v2",
     srcs = ["examples/v2/debug_mnist_v2.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":debug_mnist_lib"],
 )
 
@@ -612,7 +612,7 @@ py_binary(
     name = "debug_tflearn_iris",
     srcs = ["examples/v1/debug_tflearn_iris.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":debug_tflearn_iris_lib"],
 )
 
@@ -631,7 +631,7 @@ py_binary(
     name = "debug_keras",
     srcs = ["examples/v1/debug_keras.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":debug_keras_lib"],
 )
 
@@ -651,7 +651,7 @@ py_test(
     size = "small",
     srcs = ["lib/common_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":common",
         "//tensorflow/python:client",
@@ -666,7 +666,7 @@ py_test(
     size = "medium",
     srcs = ["lib/debug_events_monitors_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",  # b/142475891
     ],
@@ -688,7 +688,7 @@ py_test(
     size = "medium",
     srcs = ["lib/debug_events_writer_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",  # b/142475891
     ],
@@ -707,7 +707,7 @@ py_test(
     size = "small",
     srcs = ["lib/debug_graphs_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_graphs",
         "//tensorflow/python:client_testlib",
@@ -720,7 +720,7 @@ py_test(
     size = "small",
     srcs = ["lib/debug_data_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_data",
         "//tensorflow/core:protos_all_py",
@@ -820,7 +820,7 @@ py_test(
     size = "small",
     srcs = ["lib/debug_utils_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_utils",
         "//tensorflow/core:protos_all_py",
@@ -840,7 +840,7 @@ py_test(
     size = "small",
     srcs = ["lib/source_utils_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",
     ],
@@ -870,7 +870,7 @@ py_test(
     size = "small",
     srcs = ["lib/source_remote_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",
         "oss_serial",
@@ -897,7 +897,7 @@ py_test(
     size = "medium",
     srcs = ["wrappers/framework_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_rocm"],
     deps = [
         ":debug_data",
@@ -923,7 +923,7 @@ py_test(
     size = "small",
     srcs = ["lib/profiling_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":profiling",
         "//tensorflow/core:protos_all_py",
@@ -937,7 +937,7 @@ py_test(
     size = "small",
     srcs = ["cli/curses_ui_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",
     ],
@@ -958,7 +958,7 @@ py_test(
     size = "small",
     srcs = ["cli/readline_ui_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":cli_config",
         ":debugger_cli_common",
@@ -1118,7 +1118,7 @@ py_test(
     size = "small",
     srcs = ["cli/debugger_cli_common_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python:framework_test_lib",
@@ -1134,7 +1134,7 @@ py_test(
     size = "small",
     srcs = ["cli/cli_config_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":cli_config",
         "//tensorflow/python:framework_test_lib",
@@ -1148,7 +1148,7 @@ py_test(
     size = "small",
     srcs = ["cli/command_parser_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":command_parser",
         "//tensorflow/python:framework_test_lib",
@@ -1161,7 +1161,7 @@ py_test(
     size = "small",
     srcs = ["cli/tensor_format_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":cli_test_utils",
         ":debug_data",
@@ -1179,7 +1179,7 @@ py_test(
     size = "small",
     srcs = ["cli/cli_shared_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":cli_shared",
         ":debugger_cli_common",
@@ -1199,7 +1199,7 @@ py_test(
         "cli/evaluator_test.py",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_data",
         ":evaluator",
@@ -1252,7 +1252,7 @@ py_test(
     size = "small",
     srcs = ["cli/profile_analyzer_cli_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debugger_cli_common",
         ":profile_analyzer_cli",
@@ -1361,7 +1361,7 @@ py_test(
     size = "small",
     srcs = ["wrappers/dumping_wrapper_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":debug_data",
         ":dumping_wrapper",
@@ -1384,7 +1384,7 @@ py_test(
     size = "small",
     srcs = ["wrappers/local_cli_wrapper_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":cli_shared",
         ":debugger_cli_common",
@@ -1412,7 +1412,7 @@ py_test(
     size = "small",
     srcs = ["wrappers/disk_usage_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":dumping_wrapper",
         ":hooks",

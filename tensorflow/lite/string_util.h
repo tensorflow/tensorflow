@@ -41,6 +41,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_STRING_UTIL_H_
 #define TENSORFLOW_LITE_STRING_UTIL_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"

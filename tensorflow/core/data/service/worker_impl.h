@@ -41,7 +41,8 @@ class DataServiceWorkerImpl {
   // constructor because the worker may be binding to port `0`, in which case
   // the address isn't known until the worker has started and decided which port
   // to bind to.
-  Status Start(const std::string& worker_address);
+  Status Start(const std::string& worker_address,
+               const std::string& transfer_address);
 
   // See worker.proto for API documentation.
 
@@ -81,6 +82,7 @@ class DataServiceWorkerImpl {
   const experimental::WorkerConfig config_;
   // The worker's own address.
   std::string worker_address_;
+  std::string transfer_address_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 
   mutex mu_;

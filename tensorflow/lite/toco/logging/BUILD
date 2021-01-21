@@ -82,7 +82,7 @@ py_test(
         "//tensorflow/lite/toco/logging/testdata:toco_tflite_graph.dot",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":gen_html",
         ":toco_conversion_log_proto_py",

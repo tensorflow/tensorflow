@@ -54,7 +54,7 @@ py_test(
     size = "small",
     srcs = ["upgrade_schema_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
         "no_oss",

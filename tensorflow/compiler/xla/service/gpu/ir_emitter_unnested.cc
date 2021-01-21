@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -66,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -583,7 +585,6 @@ StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
         emitter->ir_emitter_context_->buffer_assignment(), *hlo_computation,
         emitter->mlir_scratch_module_->get());
     TF_RETURN_IF_ERROR(emitter->lhlo_scratch_emitter_->Initialize());
-    TF_RETURN_IF_ERROR(emitter->EmitConstants(*hlo_computation, true));
   }
   return std::move(emitter);
 }
@@ -771,7 +772,6 @@ Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
 }
 
 Status IrEmitterUnnested::HandleConstant(HloInstruction* constant) {
-  return Status::OK();
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(constant));
   return EmitConstant(input);
 }
@@ -785,7 +785,7 @@ Status IrEmitterUnnested::EmitConstant(MlirEmitterInput mlir_input) {
   auto literal = global.initial_value()->dyn_cast<mlir::DenseElementsAttr>();
   TF_RET_CHECK(literal);
 
-  const bool should_emit_initializer = literal.getType().getNumElements() > 1;
+  const bool should_emit_initializer = literal.getType().getNumElements() <= 1;
 
   TF_ASSIGN_OR_RETURN(int element_bytes,
                       GetElementTypeBytes(literal.getType().getElementType()));
@@ -1111,7 +1111,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     if (call.call_target_name() == "SliceToDynamic") {
       return EmitSliceToDynamicFromMlir(input);
     }
-    return ThunkEmitter(this).HandleCustomCall(custom_call);
+    return EmitCustomCallThunkFromMlir(input);
   }
 
   if (isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(input.op)) {
@@ -1566,6 +1566,36 @@ Status IrEmitterUnnested::EmitCholeskyThunkFromMlir(MlirEmitterInput input) {
   return Status::OK();
 }
 #endif  // GOOGLE_CUDA
+
+Status IrEmitterUnnested::EmitCustomCallThunkFromMlir(MlirEmitterInput input) {
+  auto custom_call = ::mlir::cast<mlir::lmhlo::CustomCallOp>(input.op);
+  const std::string call_target_name = custom_call.call_target_name().str();
+
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      call_target_name, std::string(platform_name()));
+  if (call_target) {
+    std::vector<BufferAllocation::Slice> operands;
+    for (mlir::Value arg : custom_call.args()) {
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+                          GetAllocationSliceForMlir(arg));
+      operands.push_back(arg_slice);
+    }
+
+    std::vector<BufferAllocation::Slice> results;
+    for (mlir::Value output : custom_call.output()) {
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                          GetAllocationSliceForMlir(output));
+      results.push_back(output_slice);
+    }
+
+    AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
+        input.thunk_info, call_target, std::move(operands), std::move(results),
+        custom_call.backend_config().str()));
+    return Status::OK();
+  }
+  return Unimplemented("No registered implementation for custom call to \"%s\"",
+                       call_target_name);
+}
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
   return ThunkEmitter(this).HandleFft(fft);

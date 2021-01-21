@@ -497,11 +497,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteral;
-  StatusOr<std::shared_ptr<Literal>> ToLiteral(
-      bool discard_cached_copy, absl::optional<xla::Layout> layout) override;
-
-  using PjRtBuffer::CopyToHostAsync;
-  Status CopyToHostAsync(absl::optional<xla::Layout> layout) override;
+  void ToLiteral(MutableLiteralBase* literal,
+                 std::function<void(Status)> on_ready) override;
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
@@ -558,16 +555,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
  private:
   friend class PjRtClient;
-  // The cached value of the buffer on the host, produced either from a call to
-  // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
-  // the host, it persists Delete() is called or the PjRtBuffer is destroyed.
-  struct HostValue {
-    absl::Notification ready;
-    // status and value are valid for reading only after `ready` has been
-    // notified.
-    Status status;
-    std::shared_ptr<Literal> value;
-  };
 
   // Blocks in mu_.Await until there are no more usage holds.
   void WaitForOutstandingUsageHolds() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -598,14 +585,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   // successfully donated to an execution.
   void ConfirmDonation(TrackedDeviceBuffer* device_buffer);
 
-  // Initiates a copy of the buffer to the host. Does not block waiting for
-  // the transfer to complete. A host value is returned and if
-  // `discard_cached_copy` is false stored in an internal buffer so that future
-  // transfers don't have to transfer the data from host again. If a layout is
-  // passed then a literal of this layout will be returned and possibly cached.
-  StatusOr<std::shared_ptr<HostValue>> CopyToHostAsyncInternal(
-      bool discard_cached_copy, absl::optional<xla::Layout> layout);
-
   // Drops a hold without taking any other action. Does a sanity check that
   // buffer==device_buffer_ or device_buffer_==nullptr.
   void DropHold(ScopedHold::Type type, TrackedDeviceBuffer* buffer);
@@ -624,9 +603,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
   mutable absl::Mutex mu_;
   std::shared_ptr<TrackedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
-  absl::flat_hash_map<xla::Layout, std::shared_ptr<HostValue>> host_values_
-      TF_GUARDED_BY(mu_);
-  std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ TF_GUARDED_BY(mu_);
   // Semaphore used to ensure there is only one outstanding donation hold.

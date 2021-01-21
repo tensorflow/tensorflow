@@ -3695,6 +3695,33 @@ func @conv2d_backprop_input(
   return %result : tensor<100x28x28x1xf32>
 }
 
+// CHECK-LABEL: @conv2d_backprop_input_grouped
+func @conv2d_backprop_input_grouped(
+    %filter: tensor<2x2x5x21xf32>,
+    %out_backprop: tensor<5x2x2x21xf32>
+  ) -> tensor<5x3x3x15xf32> {
+  %input_sizes = "tf.Const" () { value = dense<[5, 3, 3, 15]> : tensor<4xi32> } : () -> tensor<4xi32>
+
+  // Verify filter transformation for grouped convolution.
+
+  // CHECK: %[[RESHAPE:.*]] = "mhlo.reshape"(%arg0) : (tensor<2x2x5x21xf32>) -> tensor<2x2x5x3x7xf32>
+  // CHECK: %[[TRANSPOSE:.*]] = "mhlo.transpose"(%[[RESHAPE]])
+  // CHECK-SAME: permutation = dense<[0, 1, 3, 2, 4]>
+  // CHECK-SAME: (tensor<2x2x5x3x7xf32>) -> tensor<2x2x3x5x7xf32>
+  // CHECK: "mhlo.reshape"(%[[TRANSPOSE]]) : (tensor<2x2x3x5x7xf32>) -> tensor<2x2x15x7xf32>
+
+  %result = "tf.Conv2DBackpropInput"(%input_sizes, %filter, %out_backprop) {
+    data_format = "NHWC",
+    dilations = [1, 1, 1, 1],
+    explicit_paddings = [],
+    padding = "VALID",
+    strides = [1, 1, 1, 1],
+    use_cudnn_on_gpu = true
+  } : (tensor<4xi32>, tensor<2x2x5x21xf32>, tensor<5x2x2x21xf32>) -> tensor<5x3x3x15xf32>
+  return %result : tensor<5x3x3x15xf32>
+}
+
+
 // CHECK-LABEL: @conv3d_backprop_input
 func @conv3d_backprop_input(%filter: tensor<3x3x3x1x6xf32>, %out_backprop: tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32> {
   // CHECK: %[[REV_FILTER:.*]] = "mhlo.reverse"(%arg0) {dimensions = dense<[0, 1, 2]> : tensor<3xi64>}

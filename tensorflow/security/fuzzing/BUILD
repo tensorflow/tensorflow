@@ -134,3 +134,9 @@ tf_py_fuzz_target(
     srcs = ["constant_fuzz.py"],
     tags = ["notap"],  # Run in OSS only.
 )
+
+tf_py_fuzz_target(
+    name = "raggedCountSparseOutput_fuzz",
+    srcs = ["raggedCountSparseOutput_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+)
