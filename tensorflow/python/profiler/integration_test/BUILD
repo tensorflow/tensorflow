@@ -21,7 +21,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",
-        "no_rocm",
     ],
     deps = [
         ":mnist_testing_utils",
