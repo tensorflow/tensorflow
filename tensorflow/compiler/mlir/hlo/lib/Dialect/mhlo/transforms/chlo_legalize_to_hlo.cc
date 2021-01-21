@@ -96,6 +96,8 @@ Value MaterializePolynomialApproximation(ConversionPatternRewriter &rewriter,
 // This implementation is based on Cephes.
 Value MaterializeErfcApproximationF64ForMagnituteGEOne(
     ConversionPatternRewriter &rewriter, Location loc, Value x) {
+  assert(x.getType().cast<ShapedType>().getElementType().isF64() &&
+         "expect f64 element type");
   const double kMaxlog = 7.09782712893383996843E2;
   const std::vector<double> kErfcPCoefficients{
       2.46196981473530512524E-10, 5.64189564831068821977E-1,
@@ -177,6 +179,8 @@ Value MaterializeErfcApproximationF64ForMagnituteGEOne(
 // This implementation is based on Cephes.
 Value MaterializeErfApproximationF64ForMagnituteLEOne(
     ConversionPatternRewriter &rewriter, Location loc, Value x) {
+  assert(x.getType().cast<ShapedType>().getElementType().isF64() &&
+         "expect f64 element type");
   const std::vector<double> kErfTCoefficients{
       9.60497373987051638749E0, 9.00260197203842689217E1,
       2.23200534594684319226E3, 7.00332514112805075473E3,
@@ -200,7 +204,7 @@ Value MaterializeErfApproximationF64ForMagnituteLEOne(
 // This implementation is based on Cephes.
 Value MaterializeErfApproximationF64(ConversionPatternRewriter &rewriter,
                                      Location loc, Value x) {
-  assert(x.getType().cast<RankedTensorType>().getElementType().isF64() &&
+  assert(x.getType().cast<ShapedType>().getElementType().isF64() &&
          "expect f64 element type");
 
   // Rely on erf approximation for |x| < 1
@@ -224,10 +228,36 @@ Value MaterializeErfApproximationF64(ConversionPatternRewriter &rewriter,
                                          erfc_based_approx);
 }
 
+Value MaterializeErfcApproximationF64(ConversionPatternRewriter &rewriter,
+                                      Location loc, Value x) {
+  assert(x.getType().cast<ShapedType>().getElementType().isF64() &&
+         "expect f64 element type");
+
+  // Rely on erfc approximation for |x| >= 1
+  //   erfc(x) = erfc_approx(x)
+  Value erfc_approx =
+      MaterializeErfcApproximationF64ForMagnituteGEOne(rewriter, loc, x);
+
+  // Rely on erf approximation for |x| < 1 and materialize erfc as
+  //   erfc(x) = 1 - erf_approx(x)
+  Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
+  Value erf_approx =
+      MaterializeErfApproximationF64ForMagnituteLEOne(rewriter, loc, x);
+  Value erf_based_approx = rewriter.create<mhlo::SubOp>(loc, one, erf_approx);
+
+  // Materialize approximation selection based on argument.
+  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
+  const StringAttr kLT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
+  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(loc, abs_x, one, kLT);
+  return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, erf_based_approx,
+                                         erfc_approx);
+}
+
 // This is the same approximation as used in Eigen.
 Value MaterializeErfApproximationF32(ConversionPatternRewriter &rewriter,
                                      Location loc, Value operand) {
-  assert(operand.getType().cast<RankedTensorType>().getElementType().isF32() &&
+  assert(operand.getType().cast<ShapedType>().getElementType().isF32() &&
          "expect f32 element type");
   const std::vector<float> kAlpha{
       -2.72614225801306e-10f, 2.77068142495902e-08f,  -2.10102402082508e-06f,
@@ -264,7 +294,7 @@ struct ConvertErfOp : public OpConversionPattern<ErfOp> {
     Location loc = op.getLoc();
     ErfOp::Adaptor transformed(operands);
     Value x = transformed.operand();
-    Type ty = x.getType().cast<RankedTensorType>().getElementType();
+    Type ty = x.getType().cast<ShapedType>().getElementType();
 
     // For now, we support only f64, f32, and f16.
     if (!ty.isF64() && !ty.isF32() && !ty.isF16()) return failure();
@@ -288,6 +318,24 @@ struct ConvertErfOp : public OpConversionPattern<ErfOp> {
     }
 
     rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+struct ConvertErfcOp : public OpConversionPattern<ErfcOp> {
+  using OpConversionPattern<ErfcOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      ErfcOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    ErfcOp::Adaptor transformed(operands);
+    Value x = transformed.operand();
+    Type ty = x.getType().cast<ShapedType>().getElementType();
+
+    // For now, we support only f64.
+    if (!ty.isF64()) return failure();
+
+    rewriter.replaceOp(op, MaterializeErfcApproximationF64(rewriter, loc, x));
     return success();
   }
 };
@@ -443,7 +491,7 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
       context, patterns, 5);
 
   // Other patterns.
-  patterns->insert<ConvertConstantLikeOp, ConvertErfOp>(context);
+  patterns->insert<ConvertConstantLikeOp, ConvertErfOp, ConvertErfcOp>(context);
 }
 
 }  // namespace chlo
