@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
@@ -104,6 +105,11 @@ std::unique_ptr<ComputeTaskDescriptor> SelectConvolutionTransposed(
     auto gpu_op = ConvolutionTransposed(op_def, attr, gpu_info);
     return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
   }
+}
+
+std::unique_ptr<GPUOperation> SelectLSTM(const OperationDef& op_def,
+                                         const GpuInfo& gpu_info) {
+  return absl::make_unique<GPUOperation>(CreateLSTM(op_def, gpu_info));
 }
 
 std::unique_ptr<ComputeTaskDescriptor> SelectReshape(
@@ -360,6 +366,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
           absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
       break;
     }
+    case OperationType::LSTM: {
+      gpu_operation->operation = SelectLSTM(op_def, gpu_info);
+      return absl::OkStatus();
+    }
     case OperationType::MAX_UNPOOLING_2D: {
       auto gpu_op = MaxUnpooling(
           op_def,
@@ -527,7 +537,6 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::BATCH_TO_SPACE:
     case OperationType::BATCHED_MATMUL:
     case OperationType::CONSTANT:
-    case OperationType::LSTM:
     // TODO(b/162763635): implement MeanStddevNormalization for Metal.
     case OperationType::MEAN_STDDEV_NORMALIZATION:
     case OperationType::REDUCE_MAXIMUM:
