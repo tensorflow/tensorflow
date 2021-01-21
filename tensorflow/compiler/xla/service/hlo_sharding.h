@@ -233,6 +233,13 @@ class HloSharding {
   // type, sub shardings will have no metadata.
   HloSharding WithoutMetadata() const;
 
+  // Returns a copy of the sharding with specified metadata. If metadata is
+  // already present, that metadata will not be replaced unless `overwrite` is
+  // set to true. If sharding is of tuple type, sub shardings metadata will be
+  // assigned instead.
+  HloSharding WithMetadata(absl::Span<const OpMetadata> metadata,
+                           bool overwrite) const;
+
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
            manual_ == other.manual_ &&

@@ -657,11 +657,30 @@ absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
   return tuple_elements_.front();
 }
 
+HloSharding HloSharding::WithMetadata(absl::Span<const OpMetadata> metadata,
+                                      bool overwrite) const {
+  auto assign_metadata = [&](HloSharding& sharding) {
+    if (sharding.metadata_.empty() || overwrite) {
+      sharding.metadata_.assign(metadata.begin(), metadata.end());
+    }
+  };
+
+  HloSharding sharding = *this;
+  if (sharding.IsTuple()) {
+    for (HloSharding& sub_sharding : sharding.tuple_elements()) {
+      assign_metadata(sub_sharding);
+    }
+  } else {
+    assign_metadata(sharding);
+  }
+  return sharding;
+}
+
 HloSharding HloSharding::WithoutMetadata() const {
   HloSharding sharding = *this;
   sharding.metadata_.clear();
-  for (auto& element : sharding.tuple_elements()) {
-    element.metadata_.clear();
+  for (HloSharding& sub_sharding : sharding.tuple_elements()) {
+    sub_sharding.metadata_.clear();
   }
   return sharding;
 }

@@ -435,12 +435,116 @@ INSTANTIATE_TEST_SUITE_P(ParseHloString, HloParseShardingWithMetadataTest,
                          ::testing::Values(std::vector<OpMetadata>(),
                                            SingleMetadata(), ListMetadata()));
 
+TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
+  {
+    HloSharding sharding = HloSharding::Replicate();
+    auto sharding_new_metadata =
+        sharding.WithMetadata(SingleMetadata(), /*overwrite=*/false);
+    ASSERT_EQ(sharding_new_metadata.metadata().length(), 1);
+    EXPECT_TRUE(protobuf_util::ProtobufEquals(
+        sharding_new_metadata.metadata().front(), SingleMetadata().front()));
+  }
+
+  {
+    HloSharding sharding = HloSharding::AssignDevice(7, SingleMetadata());
+    auto sharding_new_metadata =
+        sharding.WithMetadata(ListMetadata(), /*overwrite=*/false);
+    ASSERT_EQ(sharding_new_metadata.metadata().length(), 1);
+    EXPECT_TRUE(protobuf_util::ProtobufEquals(
+        sharding.metadata().front(), sharding_new_metadata.metadata().front()));
+  }
+
+  {
+    HloSharding sharding = HloSharding::Tuple(
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                   ShapeUtil::MakeShape(U32, {7, 25}),
+                                   ShapeUtil::MakeShape(S32, {9, 11})}),
+        {HloSharding::Replicate(SingleMetadata()),
+         HloSharding::Tile(Array2D<int64>({{3, 5}})),
+         HloSharding::AssignDevice(3, SingleMetadata())});
+    auto sharding_new_metadata =
+        sharding.WithMetadata(ListMetadata(), /*overwrite=*/false);
+    EXPECT_TRUE(sharding_new_metadata.metadata().empty());
+    ASSERT_TRUE(sharding_new_metadata.IsTuple());
+    ASSERT_EQ(sharding_new_metadata.tuple_elements().size(), 3);
+
+    ASSERT_EQ(sharding_new_metadata.tuple_elements()[0].metadata().size(), 1);
+    EXPECT_TRUE(protobuf_util::ProtobufEquals(
+        sharding_new_metadata.tuple_elements()[0].metadata().front(),
+        SingleMetadata().front()));
+
+    ASSERT_EQ(sharding_new_metadata.tuple_elements()[1].metadata().size(), 2);
+    for (int i = 0; i < 2; ++i) {
+      EXPECT_TRUE(protobuf_util::ProtobufEquals(
+          sharding_new_metadata.tuple_elements()[1].metadata()[i],
+          ListMetadata()[i]));
+    }
+
+    ASSERT_EQ(sharding_new_metadata.tuple_elements()[2].metadata().size(), 1);
+    EXPECT_TRUE(protobuf_util::ProtobufEquals(
+        sharding_new_metadata.tuple_elements()[2].metadata().front(),
+        SingleMetadata().front()));
+  }
+}
+
+TEST_F(HloShardingTest, WithMetadataOverwrite) {
+  {
+    HloSharding sharding = HloSharding::Replicate();
+    auto sharding_new_metadata =
+        sharding.WithMetadata(SingleMetadata(), /*overwrite=*/true);
+    ASSERT_EQ(sharding_new_metadata.metadata().length(), 1);
+    EXPECT_TRUE(protobuf_util::ProtobufEquals(
+        sharding_new_metadata.metadata().front(), SingleMetadata().front()));
+  }
+
+  {
+    HloSharding sharding = HloSharding::AssignDevice(7, SingleMetadata());
+    auto sharding_new_metadata =
+        sharding.WithMetadata(ListMetadata(), /*overwrite=*/true);
+    ASSERT_EQ(sharding_new_metadata.metadata().length(), 2);
+    for (int i = 0; i < 2; ++i) {
+      EXPECT_TRUE(protobuf_util::ProtobufEquals(
+          sharding_new_metadata.metadata()[i], ListMetadata()[i]));
+    }
+  }
+
+  {
+    HloSharding sharding = HloSharding::Tuple(
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                   ShapeUtil::MakeShape(U32, {7, 25}),
+                                   ShapeUtil::MakeShape(S32, {9, 11})}),
+        {HloSharding::Replicate(SingleMetadata()),
+         HloSharding::Tile(Array2D<int64>({{3, 5}})),
+         HloSharding::AssignDevice(3, SingleMetadata())});
+    auto sharding_new_metadata =
+        sharding.WithMetadata(ListMetadata(), /*overwrite=*/true);
+    EXPECT_TRUE(sharding_new_metadata.metadata().empty());
+    ASSERT_TRUE(sharding_new_metadata.IsTuple());
+    ASSERT_EQ(sharding_new_metadata.tuple_elements().size(), 3);
+
+    for (const auto& sub_sharding : sharding_new_metadata.tuple_elements()) {
+      ASSERT_EQ(sub_sharding.metadata().size(), 2);
+      for (int i = 0; i < 2; ++i) {
+        EXPECT_TRUE(protobuf_util::ProtobufEquals(sub_sharding.metadata()[i],
+                                                  ListMetadata()[i]));
+      }
+    }
+  }
+}
+
 TEST_F(HloShardingTest, WithoutMetadata) {
+  {
+    HloSharding sharding = HloSharding::Replicate();
+    auto sharding_no_metadata = sharding.WithoutMetadata();
+    EXPECT_TRUE(sharding_no_metadata.metadata().empty());
+  }
+
   {
     HloSharding sharding = HloSharding::AssignDevice(7, SingleMetadata());
     auto sharding_no_metadata = sharding.WithoutMetadata();
     EXPECT_TRUE(sharding_no_metadata.metadata().empty());
   }
+
   {
     HloSharding sharding = HloSharding::Tuple(
         ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
@@ -452,6 +556,7 @@ TEST_F(HloShardingTest, WithoutMetadata) {
     auto sharding_no_metadata = sharding.WithoutMetadata();
     EXPECT_TRUE(sharding_no_metadata.metadata().empty());
     ASSERT_TRUE(sharding_no_metadata.IsTuple());
+    EXPECT_EQ(sharding_no_metadata.tuple_elements().size(), 3);
     for (const auto& sub_sharding : sharding_no_metadata.tuple_elements()) {
       EXPECT_TRUE(sub_sharding.metadata().empty());
     }
