@@ -28,7 +28,6 @@ cc_library(
         ":pooling",
         ":reshape",
         ":resize",
-        ":slice",
         ":softmax",
         ":transpose_conv",
         ":winograd",
@@ -561,28 +560,12 @@ ios_unit_test(
     deps = [":reshape_test_lib"],
 )
 
-cc_library(
-    name = "slice",
-    srcs = ["slice.cc"],
-    hdrs = ["slice.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "slice_test_lib",
     testonly = 1,
     srcs = ["slice_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":slice",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
     ],

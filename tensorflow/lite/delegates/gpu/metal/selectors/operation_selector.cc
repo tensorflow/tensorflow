@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
@@ -135,6 +135,12 @@ void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
                         std::unique_ptr<GPUOperation>* ptr) {
   GPUOperation operation = CreateSpaceToDepth(op_def, attr);
   *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+}
+
+void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
+                        std::unique_ptr<GPUOperation>* ptr) {
+  StridedSlice operation = CreateStridedSlice(op_def, attr);
+  *ptr = absl::make_unique<StridedSlice>(std::move(operation));
 }
 
 void SelectTranspose(const TransposeAttributes& attr,
@@ -440,11 +446,9 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       break;
     }
     case OperationType::SLICE: {
-      auto gpu_op = Slice(
-          op_def, absl::any_cast<SliceAttributes>(node.operation.attributes));
-      gpu_operation->task_desc =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      auto attr = absl::any_cast<SliceAttributes>(node.operation.attributes);
+      SelectStridedSlice(attr, op_def, &gpu_operation->operation);
+      return absl::OkStatus();
     }
     case OperationType::SOFTMAX: {
       auto attr = absl::any_cast<SoftmaxAttributes>(node.operation.attributes);
