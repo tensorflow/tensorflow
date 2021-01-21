@@ -20,7 +20,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import functools
-from typing import Any, Dict, Callable, List, Optional, Text, Tuple
+from typing import Any, Dict, Callable, Iterable, List, Optional, Text, Tuple, Union
 
 from absl import logging
 
@@ -229,7 +229,6 @@ class TPUEmbedding(tracking.AutoTrackable):
   model = model_fn(...)
   embedding = tf.tpu.experimental.embedding.TPUEmbedding(
       feature_config=feature_config,
-      batch_size=1024,
       optimizer=tf.tpu.experimental.embedding.SGD(0.1))
   checkpoint = tf.train.Checkpoint(model=model, embedding=embedding)
   checkpoint.restore(...)
@@ -244,7 +243,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
   def __init__(
       self,
-      feature_config: Any,
+      feature_config: Union[tpu_embedding_v2_utils.FeatureConfig, Iterable],  # pylint:disable=g-bare-generic
       optimizer: Optional[tpu_embedding_v2_utils._Optimizer],  # pylint:disable=protected-access
       pipeline_execution_with_tensor_core: bool = False):
     """Creates the TPUEmbedding mid level API object.
