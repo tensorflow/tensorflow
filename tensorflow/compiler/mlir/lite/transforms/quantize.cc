@@ -88,8 +88,10 @@ struct TFLFullQuantization
 };
 
 struct LegacyQuantizePass : public OpRewritePattern<QuantizeOp> {
+  // This pattern should be applied before existing quantize pattern in
+  // `quantize_patterns.td`, so the benefit is set to some value larger than 1.
   explicit LegacyQuantizePass(MLIRContext* context)
-      : OpRewritePattern<QuantizeOp>(context) {}
+      : OpRewritePattern<QuantizeOp>(context, /*benefit=*/10) {}
   LogicalResult matchAndRewrite(QuantizeOp op,
                                 PatternRewriter& rewriter) const override {
     DenseFPElementsAttr attr;
@@ -127,9 +129,7 @@ void QuantizePass::runOnFunction() {
   auto func = getFunction();
   auto* ctx = func.getContext();
   if (legacy_float_scale) {
-    OwningRewritePatternList legacy_patterns;
-    legacy_patterns.insert<LegacyQuantizePass>(ctx);
-    applyPatternsAndFoldGreedily(func, std::move(legacy_patterns));
+    patterns.insert<LegacyQuantizePass>(ctx);
   }
   TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<TFLFullQuantization>(
