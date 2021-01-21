@@ -301,7 +301,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return strategy.experimental_local_results(
           strategy.run(step_fn, args=(next(iterator),)))
 
-    with self.assertRaises(errors.InternalError):
+    with self.assertRaises(errors.InvalidArgumentError):
       logging.info(train_fn(iterator))
 
   def test_computation_on_subset_cores(self, enable_packed_var):
