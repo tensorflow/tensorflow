@@ -21,6 +21,7 @@ import time
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -60,6 +61,20 @@ class DatasetBenchmarkBase(test.Benchmark):
     options.experimental_optimization.apply_default_optimizations = (
         apply_default_optimizations)
     dataset = dataset.with_options(options)
+
+    if context.executing_eagerly():
+      deltas = []
+      iterator = iter(dataset)
+      for _ in range(iters):
+        if warmup:
+          next(iterator)
+        start = time.time()
+        for _ in range(num_elements - 1):
+          next(iterator)
+        end = time.time()
+        deltas.append(end - start)
+      return np.median(deltas) / float(num_elements)
+
     # NOTE: We use `dataset.skip()` to perform the iterations in C++, avoiding
     # the overhead of multiple `session.run()` calls. Note that this relies on
     # the underlying implementation of `skip`: if it is optimized in the future,
