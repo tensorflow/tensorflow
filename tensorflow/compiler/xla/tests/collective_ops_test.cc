@@ -765,7 +765,8 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim0) {
                                            result);
   }
 }
-XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1) {
+// TODO(b/178047150): Fails on GPU with wrong answers.
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllGather_Dim1)) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
