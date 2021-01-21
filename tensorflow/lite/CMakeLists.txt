@@ -264,6 +264,7 @@ if(TFLITE_ENABLE_GPU)
   list(APPEND TFLITE_DELEGATES_GPU_SRCS
     ${TFLITE_SOURCE_DIR}/delegates/gpu/api.cc
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
+    ${TFLITE_SOURCE_DIR}/experimental/acceleration/compatibility/android_info.cc
     ${TFLITE_DELEGATES_GPU_CL_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS}
