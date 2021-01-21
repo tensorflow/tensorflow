@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-prepare-tf=tfl-allow-bf16-type-legalization=true %s | FileCheck %s
+// RUN: tf-opt -tfl-prepare-tf=tfl-allow-bf16-and-f16-type-legalization=true %s | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
@@ -21,6 +21,13 @@ func @depthwise_conv_2d_bf16(%arg0 : tensor<256x32x32x3xbf16>, %arg1 : tensor<3x
   %0 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]} : (tensor<256x32x32x3xbf16>, tensor<3x3x3x4xf32>) -> tensor<256x30x30x12xbf16>
   return %0 : tensor<256x30x30x12xbf16>
   // CHECK: "tfl.depthwise_conv_2d"
+}
+
+// CHECK-LABEL: conv_2d_f16
+func @conv_2d_f16(%arg0 : tensor<256x32x32x3xf16>, %arg1 : tensor<3x3x3x16xf16>) -> tensor<256x8x7x16xf16> {
+  %0 = "tf.Conv2D"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]} : (tensor<256x32x32x3xf16>, tensor<3x3x3x16xf16>) -> tensor<256x8x7x16xf16>
+  return %0 : tensor<256x8x7x16xf16>
+  // CHECK: "tfl.conv_2d"
 }
 
 }
