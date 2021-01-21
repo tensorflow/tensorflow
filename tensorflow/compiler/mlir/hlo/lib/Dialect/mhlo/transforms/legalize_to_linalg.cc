@@ -1298,8 +1298,8 @@ struct LhloLegalizeToLinalgPass
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           AffineDialect>();
+    target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
+                           StandardOpsDialect, AffineDialect>();
 
     auto func = getFunction();
     populateLHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -1312,14 +1312,16 @@ struct LhloLegalizeToLinalgPass
 struct HloLegalizeToLinalgPass
     : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<linalg::LinalgDialect, scf::SCFDialect>();
+    registry.insert<linalg::LinalgDialect, scf::SCFDialect,
+                    complex::ComplexDialect>();
   }
 
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           tensor::TensorDialect, scf::SCFDialect>();
+    target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
+                           StandardOpsDialect, tensor::TensorDialect,
+                           scf::SCFDialect>();
 
     auto func = getFunction();
     mhlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);

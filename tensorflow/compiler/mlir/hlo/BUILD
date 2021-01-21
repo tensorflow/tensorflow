@@ -583,6 +583,7 @@ cc_library(
         ":lhlo",
         ":map_hlo_to_lhlo_op",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",

@@ -33,7 +33,7 @@ func @integer_add(%lhs: tensor<2x2xi32>,
 func @complex_add(%lhs: tensor<2x2xcomplex<f32>>,
                   %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
   // CHECK: linalg.generic
-  // CHECK: addcf
+  // CHECK: complex.add
   %0 = "mhlo.add"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
       tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
   return %0 : tensor<2x2xcomplex<f32>>
@@ -128,7 +128,7 @@ func @integer_sub(%lhs: tensor<2x2xi32>,
 func @complex_sub(%lhs: tensor<2x2xcomplex<f32>>,
                   %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
   // CHECK: linalg.generic
-  // CHECK: subcf
+  // CHECK: complex.sub
   %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
       tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
   return %0 : tensor<2x2xcomplex<f32>>

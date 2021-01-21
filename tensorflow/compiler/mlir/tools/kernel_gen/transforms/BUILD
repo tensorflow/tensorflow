@@ -95,6 +95,8 @@ cc_library(
         ":tf_framework_legalize_to_llvm",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:ComplexDialect",
+        "@llvm-project//mlir:ComplexToLLVM",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Analysis",

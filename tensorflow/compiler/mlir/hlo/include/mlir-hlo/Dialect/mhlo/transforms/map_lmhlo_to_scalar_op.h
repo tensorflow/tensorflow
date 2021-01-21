@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -41,7 +42,7 @@ template <>
 struct LhloToScalarOp<lmhlo::AddOp> {
   using FOp = ::mlir::AddFOp;
   using IOp = ::mlir::AddIOp;
-  using COp = ::mlir::AddCFOp;
+  using COp = ::mlir::complex::AddOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::CompareOp> {
@@ -67,7 +68,7 @@ template <>
 struct LhloToScalarOp<lmhlo::SubOp> {
   using FOp = ::mlir::SubFOp;
   using IOp = ::mlir::SubIOp;
-  using COp = ::mlir::SubCFOp;
+  using COp = ::mlir::complex::SubOp;
 };
 
 // Alias for the map from LHLO binary op type to STD floating-point op type.
@@ -261,8 +262,8 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::ComplexOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
     OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<CreateComplexOp>{}(loc, result_types, args,
-                                                       b);
+  return MapLhloOpToStdScalarOpImpl<complex::CreateOp>{}(loc, result_types,
+                                                         args, b);
 }
 
 template <>
@@ -270,7 +271,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::RealOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<ReOp>{}(loc, result_types, args, b);
+  return MapLhloOpToStdScalarOpImpl<complex::ReOp>{}(loc, result_types, args,
+                                                     b);
 }
 
 template <>
@@ -278,7 +280,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ImagOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<ImOp>{}(loc, result_types, args, b);
+  return MapLhloOpToStdScalarOpImpl<complex::ImOp>{}(loc, result_types, args,
+                                                     b);
 }
 
 template <>
