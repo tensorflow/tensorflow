@@ -3415,6 +3415,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
+        ":ComplexDialect",
         ":ConversionPassIncGen",
         ":GPUDialect",
         ":Pass",
@@ -4179,7 +4180,10 @@ cc_library(
 cc_binary(
     name = "tools/libcuda-runtime-wrappers.so",
     linkshared = True,
-    deps = [":tools/libcuda-runtime-wrappers"],
+    deps = [
+        ":mlir_runner_utils",
+        ":tools/libcuda-runtime-wrappers",
+    ],
 )
 
 cc_library(
