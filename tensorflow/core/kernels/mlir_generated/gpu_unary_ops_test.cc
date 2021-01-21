@@ -398,6 +398,26 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX64, DT_FLOAT, baseline_imag,
 GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
                       test::GpuOpsTestConfig().AddTout().NoBufferReuse())
 
+/// Test `tf.Invert`.
+
+/// Reference implementation.
+template <typename T>
+T baseline_invert(T x) {
+  return ~x;
+}
+
+GENERATE_DEFAULT_TEST(Invert, DT_INT8, DT_INT8, baseline_invert,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Invert, DT_INT16, DT_INT16, baseline_invert,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Invert, DT_INT32, DT_INT32, baseline_invert,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Invert, DT_INT64, DT_INT64, baseline_invert,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.IsFinite`.
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
