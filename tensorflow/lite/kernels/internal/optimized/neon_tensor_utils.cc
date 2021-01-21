@@ -2573,6 +2573,120 @@ void NeonVectorBatchVectorCwiseProductAccumulate(
   }
 }
 
+void NeonMeanStddevNormalization(const float* __restrict__ input_vector,
+                                 float* __restrict__ output_vector, int v_size,
+                                 int n_batch) {
+  constexpr int kBlockSize = kFloatValuesPerNeonVector * 4;
+
+  for (int batch = 0; batch < n_batch; ++batch) {
+    // Calculate sum
+    float32x4_t sum_f32x4_0 = vdupq_n_f32(0.0f);
+    float32x4_t sum_f32x4_1 = vdupq_n_f32(0.0f);
+    float32x4_t sum_f32x4_2 = vdupq_n_f32(0.0f);
+    float32x4_t sum_f32x4_3 = vdupq_n_f32(0.0f);
+    int i = 0;
+    for (; i <= v_size - kBlockSize; i += kBlockSize) {
+      const float32x4_t input_f32x4_0 =
+          vld1q_f32(input_vector + i + 0 * kFloatValuesPerNeonVector);
+      const float32x4_t input_f32x4_1 =
+          vld1q_f32(input_vector + i + 1 * kFloatValuesPerNeonVector);
+      const float32x4_t input_f32x4_2 =
+          vld1q_f32(input_vector + i + 2 * kFloatValuesPerNeonVector);
+      const float32x4_t input_f32x4_3 =
+          vld1q_f32(input_vector + i + 3 * kFloatValuesPerNeonVector);
+      sum_f32x4_0 = vaddq_f32(sum_f32x4_0, input_f32x4_0);
+      sum_f32x4_1 = vaddq_f32(sum_f32x4_1, input_f32x4_1);
+      sum_f32x4_2 = vaddq_f32(sum_f32x4_2, input_f32x4_2);
+      sum_f32x4_3 = vaddq_f32(sum_f32x4_3, input_f32x4_3);
+    }
+    sum_f32x4_0 = vaddq_f32(sum_f32x4_0, sum_f32x4_2);
+    sum_f32x4_1 = vaddq_f32(sum_f32x4_1, sum_f32x4_3);
+    sum_f32x4_0 = vaddq_f32(sum_f32x4_0, sum_f32x4_1);
+    float sum = AccumulateNeonLane(sum_f32x4_0);
+    for (; TFLITE_UNLIKELY(i < v_size); ++i) {
+      sum += input_vector[i];
+    }
+    // Calculate mean
+    const float mean = sum / v_size;
+    const float32x4_t mean_f32x4 = vdupq_n_f32(mean);
+    // Calculate sum of squared differences
+    float32x4_t sum_diff_sq_f32x4_0 = vdupq_n_f32(0.0f);
+    float32x4_t sum_diff_sq_f32x4_1 = vdupq_n_f32(0.0f);
+    float32x4_t sum_diff_sq_f32x4_2 = vdupq_n_f32(0.0f);
+    float32x4_t sum_diff_sq_f32x4_3 = vdupq_n_f32(0.0f);
+    i = 0;
+    for (; i <= v_size - kBlockSize; i += kBlockSize) {
+      const float32x4_t input_f32x4_0 =
+          vld1q_f32(input_vector + i + 0 * kFloatValuesPerNeonVector);
+      const float32x4_t input_f32x4_1 =
+          vld1q_f32(input_vector + i + 1 * kFloatValuesPerNeonVector);
+      const float32x4_t input_f32x4_2 =
+          vld1q_f32(input_vector + i + 2 * kFloatValuesPerNeonVector);
+      const float32x4_t input_f32x4_3 =
+          vld1q_f32(input_vector + i + 3 * kFloatValuesPerNeonVector);
+      const float32x4_t diff_f32x4_0 = vsubq_f32(input_f32x4_0, mean_f32x4);
+      const float32x4_t diff_f32x4_1 = vsubq_f32(input_f32x4_1, mean_f32x4);
+      const float32x4_t diff_f32x4_2 = vsubq_f32(input_f32x4_2, mean_f32x4);
+      const float32x4_t diff_f32x4_3 = vsubq_f32(input_f32x4_3, mean_f32x4);
+      sum_diff_sq_f32x4_0 =
+          vmlaq_f32(sum_diff_sq_f32x4_0, diff_f32x4_0, diff_f32x4_0);
+      sum_diff_sq_f32x4_1 =
+          vmlaq_f32(sum_diff_sq_f32x4_1, diff_f32x4_1, diff_f32x4_1);
+      sum_diff_sq_f32x4_2 =
+          vmlaq_f32(sum_diff_sq_f32x4_2, diff_f32x4_2, diff_f32x4_2);
+      sum_diff_sq_f32x4_3 =
+          vmlaq_f32(sum_diff_sq_f32x4_3, diff_f32x4_3, diff_f32x4_3);
+    }
+    sum_diff_sq_f32x4_0 = vaddq_f32(sum_diff_sq_f32x4_0, sum_diff_sq_f32x4_2);
+    sum_diff_sq_f32x4_1 = vaddq_f32(sum_diff_sq_f32x4_1, sum_diff_sq_f32x4_3);
+    sum_diff_sq_f32x4_0 = vaddq_f32(sum_diff_sq_f32x4_0, sum_diff_sq_f32x4_1);
+    float sum_diff_sq = AccumulateNeonLane(sum_diff_sq_f32x4_0);
+    for (; TFLITE_UNLIKELY(i < v_size); ++i) {
+      const float diff = input_vector[i] - mean;
+      sum_diff_sq += diff * diff;
+    }
+    // Calculate 1/stddev
+    const float variance = sum_diff_sq / v_size;
+    constexpr float kNormalizationConstant = 1e-8f;
+    const float stddev_inv =
+        1.0f / std::sqrt(variance + kNormalizationConstant);
+    // Do the normalization
+    i = 0;
+    for (; i <= v_size - kBlockSize; i += kBlockSize) {
+      const float32x4_t input_f32x4_0 =
+          vld1q_f32(input_vector + i + 0 * kFloatValuesPerNeonVector);
+      const float32x4_t input_f32x4_1 =
+          vld1q_f32(input_vector + i + 1 * kFloatValuesPerNeonVector);
+      const float32x4_t input_f32x4_2 =
+          vld1q_f32(input_vector + i + 2 * kFloatValuesPerNeonVector);
+      const float32x4_t input_f32x4_3 =
+          vld1q_f32(input_vector + i + 3 * kFloatValuesPerNeonVector);
+      const float32x4_t tmp_0 = vsubq_f32(input_f32x4_0, mean_f32x4);
+      const float32x4_t tmp_1 = vsubq_f32(input_f32x4_1, mean_f32x4);
+      const float32x4_t tmp_2 = vsubq_f32(input_f32x4_2, mean_f32x4);
+      const float32x4_t tmp_3 = vsubq_f32(input_f32x4_3, mean_f32x4);
+      const float32x4_t output_f32x4_0 = vmulq_n_f32(tmp_0, stddev_inv);
+      const float32x4_t output_f32x4_1 = vmulq_n_f32(tmp_1, stddev_inv);
+      const float32x4_t output_f32x4_2 = vmulq_n_f32(tmp_2, stddev_inv);
+      const float32x4_t output_f32x4_3 = vmulq_n_f32(tmp_3, stddev_inv);
+      vst1q_f32(output_vector + i + 0 * kFloatValuesPerNeonVector,
+                output_f32x4_0);
+      vst1q_f32(output_vector + i + 1 * kFloatValuesPerNeonVector,
+                output_f32x4_1);
+      vst1q_f32(output_vector + i + 2 * kFloatValuesPerNeonVector,
+                output_f32x4_2);
+      vst1q_f32(output_vector + i + 3 * kFloatValuesPerNeonVector,
+                output_f32x4_3);
+    }
+    for (; TFLITE_UNLIKELY(i < v_size); ++i) {
+      output_vector[i] = (input_vector[i] - mean) * stddev_inv;
+    }
+    // Advance to next batch
+    input_vector += v_size;
+    output_vector += v_size;
+  }
+}
+
 }  // namespace tensor_utils
 }  // namespace tflite
 
