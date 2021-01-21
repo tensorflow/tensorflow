@@ -657,6 +657,15 @@ absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
   return tuple_elements_.front();
 }
 
+HloSharding HloSharding::WithoutMetadata() const {
+  HloSharding sharding = *this;
+  sharding.metadata_.clear();
+  for (auto& element : sharding.tuple_elements()) {
+    element.metadata_.clear();
+  }
+  return sharding;
+}
+
 size_t HloSharding::Hash() const {
   if (tuple_) {
     size_t h = 0;
