@@ -68,7 +68,7 @@ transitive_hdrs(
 py_binary(
     name = "simple_console",
     srcs = ["simple_console.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -168,7 +168,7 @@ py_binary(
     data = COMMON_PIP_DEPS + [
         "//tensorflow/python:pywrap_tensorflow_import_lib_file",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 

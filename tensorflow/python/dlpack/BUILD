@@ -18,7 +18,7 @@ py_library(
 cuda_py_test(
     name = "dlpack_test",
     srcs = ["dlpack_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_tfrt",  # TODO(b/177356372)
     ],

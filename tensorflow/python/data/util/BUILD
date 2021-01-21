@@ -22,7 +22,7 @@ py_test(
     size = "small",
     srcs = ["nest_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":nest",
         "//tensorflow/python:array_ops",
@@ -55,7 +55,7 @@ py_test(
     size = "small",
     srcs = ["sparse_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":nest",
         ":sparse",
@@ -91,7 +91,7 @@ py_test(
     size = "small",
     srcs = ["structure_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":nest",
         ":structure",
@@ -128,7 +128,7 @@ py_test(
     size = "small",
     srcs = ["options_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":options",
         "//tensorflow/python:client_testlib",
@@ -152,7 +152,7 @@ py_test(
     size = "small",
     srcs = ["convert_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":convert",
         "//tensorflow/python:client_testlib",
@@ -177,7 +177,7 @@ py_test(
     size = "small",
     srcs = ["random_seed_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":random_seed",
         "//tensorflow/python:client_testlib",
@@ -199,7 +199,7 @@ py_test(
     size = "small",
     srcs = ["traverse_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":traverse",
         "//tensorflow/python:client_testlib",

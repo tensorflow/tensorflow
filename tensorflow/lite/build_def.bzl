@@ -778,7 +778,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "--target_ops=%s" % target_op_sets,
             ] + args,
             data = data,
-            srcs_version = "PY2AND3",
+            srcs_version = "PY3",
             python_version = "PY3",
             tags = [
                 "no_gpu",  # Executing with TF GPU configurations is redundant.

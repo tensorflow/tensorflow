@@ -68,7 +68,7 @@ tf_py_test(
         "policy_test.py",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_rocm"],
     deps = [
         ":policy",
@@ -93,7 +93,7 @@ py_library(
 cuda_py_test(
     name = "device_compatibility_check_test",
     srcs = ["device_compatibility_check_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tfrt_enabled = True,
     deps = [
         ":device_compatibility_check",
@@ -114,7 +114,7 @@ py_library(
 tf_py_test(
     name = "get_layer_policy_test",
     srcs = ["get_layer_policy_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":get_layer_policy",
         ":policy",

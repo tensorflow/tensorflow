@@ -50,7 +50,7 @@ py_test(
     size = "small",
     srcs = ["saved_model_utils_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
     deps = [
@@ -84,7 +84,7 @@ py_binary(
     name = "freeze_graph",
     srcs = ["freeze_graph.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":freeze_graph_main_lib"],
 )
 
@@ -101,7 +101,7 @@ py_binary(
     name = "import_pb_to_tensorboard",
     srcs = ["import_pb_to_tensorboard.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":import_pb_to_tensorboard_lib"],
 )
 
@@ -125,7 +125,7 @@ py_test(
     size = "small",
     srcs = ["freeze_graph_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":freeze_graph_lib",
         "//tensorflow/core:protos_all_py",
@@ -145,7 +145,7 @@ py_binary(
     name = "inspect_checkpoint",
     srcs = ["inspect_checkpoint.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":inspect_checkpoint_lib"],
 )
 
@@ -181,7 +181,7 @@ py_binary(
     name = "strip_unused",
     srcs = ["strip_unused.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":strip_unused_lib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -195,7 +195,7 @@ py_test(
     size = "small",
     srcs = ["strip_unused_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["notap"],
     deps = [
         ":strip_unused_lib",
@@ -228,7 +228,7 @@ py_binary(
     name = "optimize_for_inference",
     srcs = ["optimize_for_inference.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":optimize_for_inference_main_lib"],
 )
 
@@ -252,7 +252,7 @@ py_test(
     size = "small",
     srcs = ["optimize_for_inference_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
@@ -284,7 +284,7 @@ py_binary(
     name = "print_selective_registration_header",
     srcs = ["print_selective_registration_header.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [":print_selective_registration_header_lib"],
 )
@@ -304,7 +304,7 @@ py_test(
     name = "print_selective_registration_header_test",
     srcs = ["print_selective_registration_header_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":selective_registration_header_lib",
         "//tensorflow/python:client_testlib",
@@ -316,7 +316,7 @@ py_binary(
     name = "saved_model_cli",
     srcs = ["saved_model_cli.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":saved_model_cli_lib"],
 )
 
@@ -355,7 +355,7 @@ py_test(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
         "no-internal-py3",

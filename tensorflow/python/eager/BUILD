@@ -343,7 +343,7 @@ py_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",
@@ -1135,7 +1135,7 @@ py_binary(
     name = "gradient_input_output_exclusions",
     srcs = ["gradient_input_output_exclusions.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -1153,7 +1153,7 @@ py_test(
         "//tensorflow/python/eager:pywrap_gradient_exclusions.cc",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",  # No point linking the gen script in the pip package.
     ],

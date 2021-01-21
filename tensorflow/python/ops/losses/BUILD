@@ -36,7 +36,7 @@ py_test(
     size = "small",
     srcs = ["util_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":losses",
         "//tensorflow/python:client_testlib",
