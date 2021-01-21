@@ -57,7 +57,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// This factory helps to ensure that different PluggableDevice objects that
+// This factory helps ensure that different PluggableDevice objects that
 // refer to the same physical device and stream group id use the same stream
 // group object (and therefore the same device streams). This is necessary since
 // there is a single memory allocator per device (see

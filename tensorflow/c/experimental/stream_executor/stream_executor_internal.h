@@ -31,8 +31,8 @@ namespace stream_executor {
 typedef void (*SEInitPluginFn)(SE_PlatformRegistrationParams* const,
                                TF_Status* const);
 
-// Registers StreamExecutor platform. device_type and platform_name are output
-// parameters.
+// Registers StreamExecutor platform. `device_type` and `platform_name` are
+// output parameters.
 port::Status InitStreamExecutorPlugin(void* dso_handle, string* device_type,
                                       string* platform_name);
 

@@ -60,7 +60,7 @@ class DeviceIdUtil {
         << ", visible device count: " << visible_device_count;
   }
 
-  // Parse 'visible_device_list' into a list of platform Device ids.
+  // Parse `visible_device_list` into a list of platform Device ids.
   static Status ParseVisibleDeviceList(
       const string& visible_device_list, const int visible_device_count,
       std::vector<PlatformDeviceId>* visible_device_order) {
@@ -71,9 +71,7 @@ class DeviceIdUtil {
     if (visible_device_list.empty()) {
       visible_device_order->resize(visible_device_count);
       // By default, visible to virtual mapping is unchanged.
-      int deviceNo = 0;
-      std::generate(visible_device_order->begin(), visible_device_order->end(),
-                    [&deviceNo] { return deviceNo++; });
+      std::iota(visible_device_order->begin(), visible_device_order->end(), 0);
     } else {
       const std::vector<string> order_str =
           str_util::Split(visible_device_list, ',');

@@ -65,9 +65,6 @@ cc_library(
     hdrs = [
         "pluggable_device_plugin_init.h",
         ":pluggable_device_runtime_headers",
-        "//tensorflow/c:headers",
-        "//tensorflow/core/common_runtime:core_cpu_base_headers",
-        "//tensorflow/core/public:session_options.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -116,7 +113,6 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
     ],
 )
-
 
 cc_library(
     name = "pluggable_device_init",

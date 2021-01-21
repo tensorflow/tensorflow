@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLEDEVICE_PLUGGABLE_DEVICE_PLUGIN_INIT_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLEDEVICE_PLUGGABLE_DEVICE_PLUGIN_INIT_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_PLUGIN_INIT_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_PLUGIN_INIT_H_
 
 #include "tensorflow/core/platform/status.h"
 namespace tensorflow {
 Status RegisterPluggableDevicePlugin(void* library_filename);
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLEDEVICE_PLUGGABLE_DEVICE_PLUGIN_INIT_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_PLUGIN_INIT_H_
