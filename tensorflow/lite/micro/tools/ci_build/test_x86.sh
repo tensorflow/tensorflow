@@ -40,13 +40,6 @@ readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=no
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=release build
 
-# Next, build with TAGS=posix. See b/170223867 for more details.
-# TODO(b/168123200): Since the benchmarks can not currently be run as a test, we
-# only build with TAGS=posix. Once benchmarks can be run (and are added to make
-# test) we should switch to running all the tests with TAGS=posix.
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile build TAGS=posix
-
 # Next, build w/o release so that we can run the tests and get additional
 # debugging info on failures.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean

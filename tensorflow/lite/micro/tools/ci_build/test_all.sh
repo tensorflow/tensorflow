@@ -27,7 +27,7 @@ pwd
 echo "Starting to run micro tests at `date`"
 
 make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true
-make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn clean DISABLE_DOWNLOADS=true
+make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis-nn clean DISABLE_DOWNLOADS=true
 if [ -d tensorflow/lite/micro/tools/make/downloads ]; then
   echo "ERROR: Downloads directory should not exist, but it does."
   exit 1

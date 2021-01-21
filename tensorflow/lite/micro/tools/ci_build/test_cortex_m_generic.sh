@@ -25,10 +25,10 @@ cd "${ROOT_DIR}"
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 
 TARGET=cortex_m_generic
-TAGS=cmsis-nn
+OPTIMIZED_KERNEL_DIR=cmsis-nn
 
 # TODO(b/143715361): downloading first to allow for parallel builds.
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARGET=${TARGET} TARGET_ARCH=cortex-m4 third_party_downloads
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=${OPTIMIZED_KERNEL_DIR} TARGET=${TARGET} TARGET_ARCH=cortex-m4 third_party_downloads
 
 # Build for Cortex-M4 (no FPU) without CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
@@ -40,8 +40,8 @@ readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TARGET
 
 # Build for Cortex-M4 (no FPU) with CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARGET=${TARGET} TARGET_ARCH=cortex-m4 microlite
+readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=${OPTIMIZED_KERNEL_DIR} TARGET=${TARGET} TARGET_ARCH=cortex-m4 microlite
 
 # Build for Cortex-M4 (FPU present) with CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARGET=${TARGET} TARGET_ARCH=cortex-m4+fp microlite
+readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=${OPTIMIZED_KERNEL_DIR} TARGET=${TARGET} TARGET_ARCH=cortex-m4+fp microlite
