@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,46 +13,45 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#import <XCTest/XCTest.h>
+
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/reduce_test_util.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 
-namespace tflite {
-namespace gpu {
-namespace cl {
-namespace {
+@interface ReduceTest : XCTestCase
+@end
 
-TEST_F(OpenCLOperationTest, MeanHW) {
+@implementation ReduceTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+}
+
+- (void)testMeanHW {
   auto status = MeanHWTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-TEST_F(OpenCLOperationTest, ReduceSumChannels) {
+- (void)testReduceSumChannels {
   auto status = ReduceSumChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-TEST_F(OpenCLOperationTest, ReduceProductChannels) {
+- (void)testReduceProductChannels {
   auto status = ReduceProductChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-TEST_F(OpenCLOperationTest, ReduceMaxChannels) {
+- (void)testReduceMaxChannels {
   auto status = ReduceMaxChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-TEST_F(OpenCLOperationTest, ReduceMinChannels) {
+- (void)testReduceMinChannels {
   auto status = ReduceMinChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-}  // namespace
-}  // namespace cl
-}  // namespace gpu
-}  // namespace tflite
+@end

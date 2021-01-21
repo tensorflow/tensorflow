@@ -526,6 +526,19 @@ cc_library(
 )
 
 cc_library(
+    name = "reduce_test_util",
+    testonly = 1,
+    srcs = ["reduce_test_util.cc"],
+    hdrs = ["reduce_test_util.h"],
+    deps = [
+        ":reduce",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "relu",
     srcs = ["relu.cc"],
     hdrs = ["relu.h"],

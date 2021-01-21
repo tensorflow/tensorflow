@@ -443,7 +443,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:reduce",
+        "//tensorflow/lite/delegates/gpu/common/tasks:reduce_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
