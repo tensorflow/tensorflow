@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/dlpack.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -669,6 +670,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         TFE_ContextHasFunction(tensorflow::InputTFE_Context(ctx), name);
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     return output;
+  });
+  m.def("TFE_ContextListFunctionNames", [](py::handle& ctx) {
+    return tensorflow::unwrap(tensorflow::InputTFE_Context(ctx))
+        ->ListFunctionNames();
   });
   m.def("TFE_ContextEnableRunMetadata", [](py::handle& ctx) {
     TFE_ContextEnableRunMetadata(tensorflow::InputTFE_Context(ctx));

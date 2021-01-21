@@ -498,9 +498,17 @@ class _EagerDefinedFunction(object):
       function_callback(self)
 
   def add_to_graph(self, g=None):
+    """Add the function to the current context or a graph, if supplied.
+
+    Args:
+      g: the graph to add the function to. If not supplied, the function will
+        be added to the current context.
+    """
     # pylint: disable=protected-access
     if not g and context.executing_eagerly():
-      context.context().add_function_def(self.definition)
+      ctx = context.context()
+      if not ctx.has_function(self.name):
+        ctx.add_function_def(self.definition)
     else:
       if not g._is_function(self.name):
         g._add_function(self)

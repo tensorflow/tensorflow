@@ -1186,6 +1186,15 @@ class Context(object):
     self.ensure_initialized()
     return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
 
+  def list_function_names(self):
+    """Get a list of names of registered functions.
+
+    Returns:
+      A set of names of all registered functions for the context.
+    """
+    self.ensure_initialized()
+    return set(pywrap_tfe.TFE_ContextListFunctionNames(self._handle))
+
   def remove_function(self, name):
     """Remove a function from the context.
 
