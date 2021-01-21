@@ -97,8 +97,9 @@ void BuildPmapSubmodule(pybind11::module& m) {
   no_sharding.def(py::init<>())
       .def("__repr__",
            [](const NoSharding& chuncked) { return "NoSharding()"; })
-      .def("__eq__",
-           [](py::object obj) { return py::isinstance<NoSharding>(obj); });
+      .def("__eq__", [](const NoSharding& self, py::object obj) {
+        return py::isinstance<NoSharding>(obj);
+      });
 
   py::class_<Chunked> chunked(pmap_lib, "Chunked");
   chunked.def(py::init<std::vector<int>>())
@@ -109,8 +110,11 @@ void BuildPmapSubmodule(pybind11::module& m) {
              return absl::StrCat("Chunked(",
                                  absl::StrJoin(chuncked.chunks, ","), ")");
            })
-      .def("__eq__", [](const Chunked& self, const Chunked& other) {
-        return self == other;
+      .def("__eq__", [](const Chunked& self, py::object other) {
+        if (!py::isinstance<Chunked>(other)) {
+          return false;
+        }
+        return self == py::cast<const Chunked&>(other);
       });
 
   py::class_<Unstacked> unstacked(pmap_lib, "Unstacked");
@@ -120,8 +124,11 @@ void BuildPmapSubmodule(pybind11::module& m) {
            [](const Unstacked& x) {
              return absl::StrCat("Unstacked(", x.size, ")");
            })
-      .def("__eq__", [](const Unstacked& self, const Unstacked& other) {
-        return self == other;
+      .def("__eq__", [](const Unstacked& self, py::object other) {
+        if (!py::isinstance<Unstacked>(other)) {
+          return false;
+        }
+        return self == py::cast<const Unstacked&>(other);
       });
 
   py::class_<ShardedAxis> sharded_axis(pmap_lib, "ShardedAxis");
@@ -152,6 +159,14 @@ void BuildPmapSubmodule(pybind11::module& m) {
            py::arg("mesh_mapping"))
       .def_property_readonly("sharding", &ShardingSpec::GetPySharding)
       .def_property_readonly("mesh_mapping", &ShardingSpec::GetPyMeshMapping);
+
+  py::class_<ShardedDeviceArray> sda(pmap_lib, "ShardedDeviceArray");
+  sda.def(py::init<pybind11::handle, ShardingSpec, pybind11::list>())
+      .def_property_readonly("aval", &ShardedDeviceArray::GetAval)
+      .def_property_readonly("sharding_spec",
+                             &ShardedDeviceArray::GetShardingSpec)
+      .def_property_readonly("device_buffers",
+                             &ShardedDeviceArray::GetDeviceBuffers);
 }
 
 }  // namespace jax

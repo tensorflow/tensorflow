@@ -338,6 +338,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":absl_casters",
+        ":py_client",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
