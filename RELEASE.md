@@ -137,6 +137,10 @@ This release contains contributions from many people at Google, as well as:
 
 <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
+# Release 2.4.1
+
+* This release removes the AVX2 requirement from TF 2.4.0.
+
 # Release 2.3.2
 
 ## Bug Fixes and Other Changes
