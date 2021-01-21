@@ -632,6 +632,7 @@ cc_library(
     hdrs = ["softmax_test_util.h"],
     deps = [
         ":softmax",
+        ":softmax1x1",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
