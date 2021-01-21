@@ -339,12 +339,22 @@ that can be expanded and improved as necessary.
         host machine.
         ```
         docker run -v `pwd`:/tensorflow -it tf_ci.micro bash
+        # cd tensorflow
+        ```
+
+      * If you would prefer to not mount your local folder on the docker image,
+        you can also simply download the branch:
+        ```
+        docker run -it tf_ci.micro bash
+        # wget https://github.com/<github-username>/tensorflow/archive/<git-branch>.zip
+        # unzip <git-branch>.zip
+        # cd tensorflow-<git-branch>
         ```
 
       * Within the docker container, you can now run the TFLM test script, or
         any other command that you would like to test. For example, the following
         commands will run all of the TFLM checks:
         ```
-        # cd tensorflow
         # tensorflow/lite/micro/tools/ci_build/test_all.sh GITHUB_PRESUBMIT
         ```
+

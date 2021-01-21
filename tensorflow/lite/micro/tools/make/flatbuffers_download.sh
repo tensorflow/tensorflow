@@ -82,6 +82,7 @@ function patch_to_avoid_strtod() {
 #   $1 - path to the downloaded flatbuffers code.
 function delete_build_files() {
   rm -f `find ${1} -name BUILD`
+  rm -f `find ${1} -name BUILD.bazel`
 }
 
 DOWNLOADED_FLATBUFFERS_PATH=${DOWNLOADS_DIR}/flatbuffers
