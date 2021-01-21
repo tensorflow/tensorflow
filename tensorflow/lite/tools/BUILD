@@ -29,9 +29,6 @@ py_test(
     srcs = ["visualize_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
-    ],
     deps = [
         ":test_utils",
         ":visualize",
@@ -124,9 +121,6 @@ py_test(
     srcs = ["flatbuffer_utils_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
-    ],
     deps = [
         ":flatbuffer_utils",
         ":test_utils",

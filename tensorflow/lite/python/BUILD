@@ -39,8 +39,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
-        "no_windows",
         "noasan",  # TODO(b/137568139): enable after this is fixed.
         "nomsan",  # TODO(b/137568139): enable after this is fixed.
     ],
@@ -217,7 +215,6 @@ py_test(
     shard_count = 12,
     srcs_version = "PY3",
     tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
     ],
     deps = [
@@ -293,7 +290,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
     ],
     deps = [
