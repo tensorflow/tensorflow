@@ -288,7 +288,12 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
   Type sourceType = getElementTypeOrSelf(args.front().getType());
   Type targetType = getElementTypeOrSelf(result_types.front());
 
-  if (mlir::SIToFPOp::areCastCompatible(sourceType, targetType)) {
+  // A boolean value is considered to be unsigned when converting to
+  // floating-point. Otherwise, it will become `-1`.
+  if (sourceType.isInteger(/*width=*/1) &&
+      mlir::UIToFPOp::areCastCompatible(sourceType, targetType)) {
+    return b->create<mlir::UIToFPOp>(loc, result_types, args, mlir::None);
+  } else if (mlir::SIToFPOp::areCastCompatible(sourceType, targetType)) {
     return b->create<mlir::SIToFPOp>(loc, result_types, args, mlir::None);
   } else if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
     FloatType src = sourceType.cast<FloatType>();
