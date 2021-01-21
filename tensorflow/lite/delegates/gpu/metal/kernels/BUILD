@@ -30,7 +30,6 @@ cc_library(
         ":resize",
         ":slice",
         ":softmax",
-        ":space_to_depth",
         ":transpose_conv",
         ":winograd",
     ],
@@ -641,26 +640,12 @@ ios_unit_test(
     deps = [":softmax_test_lib"],
 )
 
-cc_library(
-    name = "space_to_depth",
-    srcs = ["space_to_depth.cc"],
-    hdrs = ["space_to_depth.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:util",
-    ],
-)
-
 objc_library(
     name = "space_to_depth_test_lib",
     testonly = 1,
     srcs = ["space_to_depth_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":space_to_depth",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
     ],

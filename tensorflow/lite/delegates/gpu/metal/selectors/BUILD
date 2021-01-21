@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu",
+        "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
