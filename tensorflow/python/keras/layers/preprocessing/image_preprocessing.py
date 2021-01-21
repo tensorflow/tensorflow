@@ -767,14 +767,6 @@ class RandomRotation(PreprocessingLayer):
   At inference time, the layer does nothing. If you need to apply random
   rotations at inference time, set `training` to True when calling the layer.
 
-  Input shape:
-    4D tensor with shape:
-    `(samples, height, width, channels)`, data_format='channels_last'.
-
-  Output shape:
-    4D tensor with shape:
-    `(samples, height, width, channels)`, data_format='channels_last'.
-
   Attributes:
     factor: a float represented as fraction of 2pi, or a tuple of size
       2 representing lower and upper bound for rotating clockwise and
