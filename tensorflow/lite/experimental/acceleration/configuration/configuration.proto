@@ -44,14 +44,22 @@ enum ExecutionPreference {
   FORCE_CPU = 3;
 }
 
-// TFLite delegate to use.
+// TFLite accelerator to use. It can be either a delegate or an external
+// context.
 enum Delegate {
   NONE = 0;
+
+  // DELEGATE OPTIONS.
   NNAPI = 1;
   GPU = 2;
   HEXAGON = 3;
   XNNPACK = 4;
+  // The EdgeTpu in Pixel devices.
   EDGETPU = 5;
+
+  // EXTERNAL CONTEXT OPTIONS.
+  // The Coral EdgeTpu Dev Board / USB accelerator.
+  EDGETPU_CORAL = 6;
 }
 
 enum NNAPIExecutionPreference {
@@ -255,6 +263,36 @@ message EdgeTpuSettings {
   optional EdgeTpuDeviceSpec edgetpu_device_spec = 4;
 }
 
+// Coral Dev Board / USB accelerator external context settings.
+//
+// See
+// https://github.com/google-coral/edgetpu/blob/master/libedgetpu/edgetpu.h
+message CoralSettings {
+  enum Performance {
+    UNDEFINED = 0;
+    MAXIMUM = 1;
+    HIGH = 2;
+    MEDIUM = 3;
+    LOW = 4;
+  }
+
+  // The Edge Tpu device to be used. See
+  // https://github.com/google-coral/libcoral/blob/982426546dfa10128376d0c24fd8a8b161daac97/coral/tflite_utils.h#L131-L137
+  optional string device = 1;
+  // The desired performance level. This setting adjusts the internal clock
+  // rate to achieve different performance / power balance. Higher performance
+  // values improve speed, but increase power usage.
+  optional Performance performance = 2 [default = MAXIMUM];
+  // If true, always perform device firmware update (DFU) after reset. DFU is
+  // usually only necessary after power cycle.
+  optional bool usb_always_dfu = 3;
+  // The maximum bulk in queue length. Larger queue length may improve USB
+  // performance on the direction from device to host. When not specified (or
+  // zero), `usb_max_bulk_in_queue_length` will default to 32 according to the
+  // current EdgeTpu Coral implementation.
+  optional int32 usb_max_bulk_in_queue_length = 4;
+}
+
 message CPUSettings {
   optional int32 num_threads = 1;
 }
@@ -281,6 +319,9 @@ message TFLiteSettings {
 
   // For configuring the EdgeTpuDelegate.
   optional EdgeTpuSettings edgetpu_settings = 8;
+
+  // For configuring the Coral External Context (EdgeTpuContext).
+  optional CoralSettings coral_settings = 10;
 
   // Whether to automatically fall back to TFLite CPU path.
   optional FallbackSettings fallback_settings = 9;
