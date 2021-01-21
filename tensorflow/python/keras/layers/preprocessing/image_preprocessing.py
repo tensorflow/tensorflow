@@ -802,13 +802,6 @@ class RandomRotation(PreprocessingLayer):
     fill_value: a float represents the value to be filled outside the
       boundaries when `fill_mode` is "constant".
 
-  Input shape:
-    4D tensor with shape: `(samples, height, width, channels)`,
-      data_format='channels_last'.
-  Output shape:
-    4D tensor with shape: `(samples, height, width, channels)`,
-      data_format='channels_last'.
-
   Raise:
     ValueError: if either bound is not between [0, 1], or upper bound is
       less than lower bound.
