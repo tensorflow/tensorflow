@@ -96,7 +96,7 @@ RUN python3 -m pip --no-cache-dir install \
     enum34
 
 # Build and install bazel
-ENV BAZEL_VERSION 3.7.2
+ENV BAZEL_VERSION 4.0.0
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \
