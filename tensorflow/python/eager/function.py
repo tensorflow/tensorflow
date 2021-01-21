@@ -2412,7 +2412,25 @@ class FunctionSpec(object):
             kwonlyargs=[],
             kwonlydefaults={},
             annotations=fullargspec.annotations)
-    is_method = tf_inspect.ismethod(python_function)
+
+      # inspect.ismethod() and inspect.isfunction() both return False on a
+      # functools.partial-wrapped function. We set it to False to
+      # maintain consistency with prior versions.
+      is_method = False
+
+    else:
+      # Instead of using tf_inspect.ismethod() which only checks the
+      # final unwrapped target, we check if any decorated target along the chain
+      # is a method.
+      is_method = tf_inspect.isanytargetmethod(python_function)
+
+      # In the following scenario, 'python_function' is a callable object.
+      # python_function(...) is equal to python_function.__call__(self, ...)
+      if not is_method and not tf_inspect.isfunction(
+          python_function) and hasattr(
+              python_function, "__class__") and hasattr(
+                  python_function.__class__, "__call__"):
+        is_method = True
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
@@ -2477,6 +2495,8 @@ class FunctionSpec(object):
         offset + index: default
         for index, default in enumerate(default_values or [])
     }
+    self._arg_indices_no_default_values = set(range(len(args))) - set(
+        self._arg_indices_to_default_values)
     if input_signature is None:
       self._input_signature = None
     else:
@@ -2633,12 +2653,14 @@ class FunctionSpec(object):
       args, kwargs = self._convert_variables_to_tensors(args, kwargs)
     if self._experimental_follow_type_hints:
       args, kwargs = self._convert_annotated_args_to_tensors(args, kwargs)
+    # Pre-calculate to reduce overhead
+    arglen = len(args)
     if self._input_signature is not None:
-      if len(args) > len(self._input_signature):
+      if arglen > len(self._input_signature):
         raise TypeError("{} takes {} positional arguments (as specified by the "
                         "input_signature) but {} were given".format(
                             self.signature_summary(),
-                            len(self._input_signature), len(args)))
+                            len(self._input_signature), arglen))
       for arg in six.iterkeys(kwargs):
         index = self._args_to_indices.get(arg, None)
         if index is None:
@@ -2653,13 +2675,12 @@ class FunctionSpec(object):
       inputs = args
       if self._arg_indices_to_default_values:
         try:
-          inputs += tuple(
-              self._arg_indices_to_default_values[i]
-              for i in range(len(args), len(self._arg_names)))
+          inputs += tuple(self._arg_indices_to_default_values[i]
+                          for i in range(arglen, len(self._arg_names)))
         except KeyError:
           missing_args = [
               self._arg_names[i]
-              for i in range(len(args), len(self._arg_names))
+              for i in range(arglen, len(self._arg_names))
               if i not in self._arg_indices_to_default_values
           ]
           raise TypeError("{} missing required arguments: {}".format(
@@ -2673,22 +2694,36 @@ class FunctionSpec(object):
       # aren't in `args`.
       arg_indices_to_values = {
           index: default for index, default in six.iteritems(
-              self._arg_indices_to_default_values) if index >= len(args)
+              self._arg_indices_to_default_values) if index >= arglen
       }
       consumed_args = []
+      missing_arg_indices = self._arg_indices_no_default_values - set(
+          range(arglen))
       for arg, value in six.iteritems(kwargs):
         index = self._args_to_indices.get(arg, None)
         if index is not None:
-          if index < len(args):
+          if index < arglen:
             raise TypeError("{} got two values for argument '{}'".format(
                 self.signature_summary(), arg))
           arg_indices_to_values[index] = value
+          # These arguments in 'kwargs' might also belong to
+          # positional arguments
+          missing_arg_indices.discard(index)
           consumed_args.append(arg)
       for arg in consumed_args:
         # After this loop, `kwargs` will only contain keyword_only arguments,
         # and all positional_or_keyword arguments have been moved to `inputs`.
         kwargs.pop(arg)
       inputs = args + _deterministic_dict_values(arg_indices_to_values)
+      # Exclude positional args with values
+      if missing_arg_indices:
+        missing_args = [self._arg_names[i] for i in sorted(missing_arg_indices)]
+        if len(missing_args) == 1:
+          raise TypeError("{} missing 1 required argument: {}".format(
+              self.signature_summary(), missing_args[0]))
+        else:
+          raise TypeError("{} missing required arguments: {}".format(
+              self.signature_summary(), ", ".join(missing_args)))
 
       if kwargs and self._input_signature is not None:
         raise TypeError(
@@ -3911,9 +3946,9 @@ def class_method_to_instance_method(original_function, instance):
       jit_compile=original_function._jit_compile)
   # pylint: enable=protected-access
 
-  # And we wrap the function with tf_decorator so inspection works correctly
-  wrapped_instance_func = tf_decorator.make_decorator(
-      original_function.python_function, instance_func)
+  # We wrap the the bound method with tf_decorator so inspection works correctly
+  wrapped_instance_func = tf_decorator.make_decorator(bound_method,
+                                                      instance_func)
   return wrapped_instance_func
 
 
