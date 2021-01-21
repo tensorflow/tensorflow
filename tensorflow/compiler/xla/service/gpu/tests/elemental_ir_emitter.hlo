@@ -133,7 +133,7 @@ HloModule Test
 // CHECK:       reduce_window.in_bounds-after:                              ; preds = %[[VAL_29:.*]], %[[VAL_30:.*]]
 // CHECK:         ret void
 // CHECK:       reduce_window.in_bounds-true:                               ; preds = %[[VAL_30]]
-// CHECK:         %[[VAL_31:.*]] = load float, float* bitcast ([4 x i8]* @buffer_for_c.1 to float*), align 4, !invariant.load !4
+// CHECK:         %[[VAL_31:.*]] = load float, float* bitcast ([4 x i8]* @buffer_for_c_1 to float*), align 4, !invariant.load !4
 // CHECK:         store float %[[VAL_31]], float* %[[VAL_9]], align 4
 // CHECK:         store i32 0, i32* %[[VAL_8]], align 4
 // CHECK:         br label %[[VAL_32:.*]]
