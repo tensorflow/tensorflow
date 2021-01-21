@@ -355,3 +355,107 @@ message FallbackSettings {
   // with.
   optional bool allow_automatic_fallback_on_execution_error = 8;
 }
+
+// On-device mini-benchmark result storage. The following definitions are used
+// to keep an append-only log of benchmark results on-device. (Hence there is
+// single top-level event that is used for all data).
+//
+// These definitions don't need a proto-to-flatbuffer conversion, since they are
+// not used for specifying configuration in the Tasks library.
+
+// Which stage of benchmarking the event is for.
+// There might be multiple events with the same type, if a benchmark is run
+// multiple times.
+enum BenchmarkEventType {
+  UNDEFINED_BENCHMARK_EVENT_TYPE = 0;
+  // Benchmark start. A start without an end can be interpreted as a test that
+  // has crashed or hung.
+  START = 1;
+  // Benchmarking completion. A model was successfully loaded, acceleration
+  // configured and inference run without errors. There may still be an issue
+  // with correctness of results, or with performance.
+  END = 2;
+  // Benchmark was not completed due to an error. The error may be a handled
+  // error (e.g., failure in a delegate), or a crash.
+  ERROR = 3;
+  // Benchmark data has been sent for logging.
+  LOGGED = 4;
+}
+
+// A correctness metric from a benchmark, for example KL-divergence between
+// known-good CPU output and on-device output. These are primarily used for
+// telemetry and monitored server-side.
+message BenchmarkMetric {
+  optional string name = 1;
+  repeated float values = 2 [packed = true];
+}
+
+// Outcome of a successfully complete benchmark run. This information is
+// intended to both be used on-device to select best compute configuration as
+// well as sent to server for monitoring.
+//
+// Used with event type END.
+message BenchmarkResult {
+  // Time to load model and apply acceleration. Initialization may get run
+  // multiple times to get information on variance.
+  repeated int64 initialization_time_us = 1 [packed = true];
+  // Time to run inference (call Invoke()). Inference may get run multiple times
+  // to get information on variance.
+  repeated int64 inference_time_us = 2 [packed = true];
+  // Maximum memory used. Measures size of application heap (does not
+  // necessarily take into account driver-side allocation.
+  optional int32 max_memory_kb = 3;
+  // Whether the inference produced correct results (validation graph output
+  // 'ok' for all test inputs). Used on-device to disallow configurations that
+  // produce incorrect results (e.g., due to OpenCL driver bugs).
+  optional bool ok = 4;
+  // Metrics that were used to determine the 'ok' status.
+  repeated BenchmarkMetric metrics = 5;
+}
+
+// A handled error.
+message ErrorCode {
+  // Which delegate the error comes from (or NONE, if it comes from the tflite
+  // framework).
+  optional Delegate source = 1;
+  // What the tflite level error is.
+  optional int32 tflite_error = 2;
+  // What the underlying error is (e.g., NNAPI or OpenGL error).
+  optional int64 underlying_api_error = 3;
+}
+
+// When during benchmark execution an error occurred.
+enum BenchmarkStage {
+  UNKNOWN = 0;
+  // During model loading or delegation.
+  INITIALIZATION = 1;
+  // During inference.
+  INFERENCE = 2;
+}
+
+// An error that occurred during benchmarking.
+//
+// Used with event type ERROR.
+message BenchmarkError {
+  // How far benchmarking got.
+  optional BenchmarkStage stage = 1;
+  // Process exit code.
+  optional int32 exit_code = 2;
+  // Signal the process received.
+  optional int32 signal = 3;
+  // Handled error.
+  repeated ErrorCode error_code = 4;
+}
+
+// Top-level benchmarking event stored on-device. All events for a model are
+// parsed to detect the status.
+message BenchmarkEvent {
+  // Which settings were used for benchmarking.
+  optional TFLiteSettings tflite_settings = 1;
+  // Type of the event.
+  optional BenchmarkEventType event_type = 2;
+  // Result of benchmark, used when type is END.
+  optional BenchmarkResult result = 3;
+  // Error during benchmark, used when type is ERROR.
+  optional BenchmarkError error = 4;
+}
