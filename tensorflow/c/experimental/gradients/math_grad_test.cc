@@ -130,6 +130,8 @@ TEST_P(CppGradients, TestAddGrad) {
     y.reset(y_raw);
   }
 
+  // TODO(srbs): Rename ops::Add to ops::AddV2 and AddRegister to
+  // AddV2Registerer.
   status_ = registry_.Register("AddV2", AddRegisterer);
   ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
 
