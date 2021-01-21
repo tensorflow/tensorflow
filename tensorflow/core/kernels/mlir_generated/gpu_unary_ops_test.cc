@@ -587,6 +587,14 @@ GENERATE_DEFAULT_TEST(Sin, DT_DOUBLE, DT_DOUBLE, std::sin,
 GENERATE_DEFAULT_TEST_2(Sin, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sin,
                         test::GpuOpsTestConfig())
 
+/// Test `tf.Sinh`.
+
+GENERATE_DEFAULT_TEST(Sinh, DT_FLOAT, DT_FLOAT, std::sinh,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Sinh, DT_DOUBLE, DT_DOUBLE, std::sinh,
+                      test::GpuOpsTestConfig())
+
 /// Test `tf.Sqrt`.
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(

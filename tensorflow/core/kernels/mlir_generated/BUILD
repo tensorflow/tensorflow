@@ -75,6 +75,7 @@ filegroup(
         "gpu_op_rsqrt.cc",
         "gpu_op_sign.cc",
         "gpu_op_sin.cc",
+        "gpu_op_sinh.cc",
         "gpu_op_sqrt.cc",
         "gpu_op_tan.cc",
     ],
@@ -149,6 +150,7 @@ tf_kernel_library(
         ":rsqrt_kernels",
         ":sign_kernels",
         ":sin_kernels",
+        ":sinh_kernels",
         ":sqrt_kernels",
         ":tan_kernels",
         ":tanh_kernels",
@@ -468,6 +470,16 @@ gen_kernel_library(
         "f64",
         "i32",
         "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "sinh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
     ],
     unroll_factors = "4",
 )
