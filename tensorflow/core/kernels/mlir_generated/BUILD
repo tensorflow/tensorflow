@@ -417,6 +417,7 @@ gen_kernel_library(
     types = [
         "f16",
         "f32",
+        "f64",
     ],
     unroll_factors = "4",
 )
