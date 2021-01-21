@@ -393,6 +393,10 @@ def clone_model(model, input_tensors=None, clone_function=None):
   except that it creates new layers (and thus new weights) instead
   of sharing the weights of the existing layers.
 
+  `clone_model` will not preserve the uniqueness of shared objects within the
+  model (e.g. a single variable attached to two distinct layers will be
+  restored as two separate variables).
+
   Args:
       model: Instance of `Model`
           (could be a functional model or a Sequential model).
