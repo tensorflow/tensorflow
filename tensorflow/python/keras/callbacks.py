@@ -2440,6 +2440,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     lr_schedule = getattr(self.model.optimizer, 'lr', None)
     if isinstance(lr_schedule, learning_rate_schedule.LearningRateSchedule):
       logs['learning_rate'] = lr_schedule(self.model.optimizer.iterations)
+    elif lr_schedule is not None:
+      logs['learning_rate'] = lr_schedule
     return logs
 
   def _compute_steps_per_second(self):
