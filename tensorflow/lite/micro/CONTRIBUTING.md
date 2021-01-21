@@ -212,15 +212,15 @@ to determine if the requested feature aligns with the TFLM roadmap.
     Please check the READMEs in the optimized kernel directories for specific
     instructions.
 
-1.  Sometimes, bugs are caught by the address sanitizer that can go unnoticed
-    via the Makefile. To run a test with the address sanitizer, use the
-    following command (replace `micro_interpreter_test` with the target that you
+1.  Sometimes, bugs are caught by the sanitizers that can go unnoticed
+    via the Makefile. To run a test with the different sanitizers, use the
+    following commands (replace `micro_interpreter_test` with the target that you
     want to test:
 
     ```
-    CC=clang BAZEL_COMPILER=llvm bazel run --copt=-DADDRESS_SANITIZER \
-    --copt=-fsanitize=address --linkopt=-fsanitize=address \
-    tensorflow/lite/micro:micro_interpreter_test
+    CC=clang bazel test ---config=asan tensorflow/lite/micro:micro_interpreter_test
+    CC=clang bazel test ---config=msan tensorflow/lite/micro:micro_interpreter_test
+    CC=clang bazel test ---config=ubsan tensorflow/lite/micro:micro_interpreter_test
     ```
 
 ## During the PR review
