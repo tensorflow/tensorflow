@@ -871,23 +871,29 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       f(constant_op.constant(1))
 
-  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
-                                 'support stack traces')
   def testTensorArrayErrorMessage(self):
     with ops.device('device:{}:0'.format(self.device)):
 
       @def_function.function(jit_compile=True)
       def f():
-        ta = tensor_array_ops.TensorArray(
+        # The error message as old and new bridge differ in which op they flag.
+        # The one points to the creation of the unitialized tensor array, the
+        # other is the use of the unitialized tensor array.
+        ta = tensor_array_ops.TensorArray(  # EXPECTED_MESSAGE_NEW
             dtype=dtypes.float32,
             size=2,
             dynamic_size=True,
             element_shape=(None,))
-        return ta.concat()  # EXPECTED_MESSAGE
+        return ta.concat()  # EXPECTED_MESSAGE_OLD
 
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'EXPECTED_MESSAGE'):
-        f()
+      if test_util.is_mlir_bridge_enabled():
+        with self.assertRaisesRegex(errors.InternalError,
+                                    'EXPECTED_MESSAGE_NEW'):
+          f()
+      else:
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'EXPECTED_MESSAGE_OLD'):
+          f()
 
 
 if __name__ == '__main__':
