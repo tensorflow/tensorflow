@@ -21,7 +21,10 @@ REGISTER6(BinaryOp, CPU, "Pow", functor::pow, float, Eigen::half, bfloat16,
 REGISTER2(BinaryOp, CPU, "Pow", functor::safe_pow, int32, int64);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER3(BinaryOp, GPU, "Pow", functor::pow, float, Eigen::half, double);
 REGISTER(BinaryOp, GPU, "Pow", functor::safe_pow_ignore_error, int64);
+#endif
 #endif
 }  // namespace tensorflow
