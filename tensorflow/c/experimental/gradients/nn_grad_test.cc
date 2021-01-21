@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/gradients/tape/tape_context.h"
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -33,28 +34,6 @@ Status ReluModel(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> inputs,
                  absl::Span<AbstractTensorHandle*> outputs) {
   return ops::Relu(ctx, inputs, outputs, "Relu");
-}
-
-Status ReluGradModel(AbstractContext* ctx,
-                     absl::Span<AbstractTensorHandle* const> inputs,
-                     absl::Span<AbstractTensorHandle*> outputs) {
-  GradientRegistry registry;
-  TF_RETURN_IF_ERROR(registry.Register("Relu", ReluRegisterer));
-
-  Tape tape(/*persistent=*/false);
-  tape.Watch(inputs[0]);
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, registry));
-  TF_RETURN_IF_ERROR(ops::Relu(tape_ctx.get(), inputs,
-                               absl::MakeSpan(temp_outputs), "ReluGrad"));
-
-  TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
-                                          /*sources=*/inputs,
-                                          /*output_gradients=*/{}, outputs));
-  for (auto temp_output : temp_outputs) {
-    temp_output->Unref();
-  }
-  return Status::OK();
 }
 
 Status SparseSoftmaxCrossEntropyWithLogitsModel(
@@ -73,59 +52,10 @@ Status SparseSoftmaxCrossEntropyWithLogitsModel(
   return Status::OK();
 }
 
-Status SparseSoftmaxCrossEntropyWithLogitsGradModel(
-    AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-    absl::Span<AbstractTensorHandle*> outputs) {
-  GradientRegistry registry;
-  TF_RETURN_IF_ERROR(
-      registry.Register("SparseSoftmaxCrossEntropyWithLogits",
-                        SparseSoftmaxCrossEntropyWithLogitsRegisterer));
-
-  Tape tape(/*persistent=*/false);
-  tape.Watch(inputs[0]);  // Watch score.
-  tape.Watch(inputs[1]);  // Watch label.
-  std::vector<AbstractTensorHandle*> temp_outputs(2);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, registry));
-  TF_RETURN_IF_ERROR(ops::SparseSoftmaxCrossEntropyWithLogits(
-      tape_ctx.get(), inputs, absl::MakeSpan(temp_outputs),
-      "SparseSoftmaxCrossEntropyWithLogitsGrad"));
-
-  TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
-                                          /*sources=*/inputs,
-                                          /*output_gradients=*/{}, outputs));
-  for (auto temp_output : temp_outputs) {
-    temp_output->Unref();
-  }
-  return Status::OK();
-}
-
 Status BiasAddModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs) {
   return ops::BiasAdd(ctx, inputs, outputs, "BiasAdd");
-}
-
-Status BiasAddGradModel(AbstractContext* ctx,
-                        absl::Span<AbstractTensorHandle* const> inputs,
-                        absl::Span<AbstractTensorHandle*> outputs) {
-  GradientRegistry registry;
-  TF_RETURN_IF_ERROR(registry.Register("BiasAdd", BiasAddRegisterer));
-
-  Tape tape(/*persistent=*/false);
-  tape.Watch(inputs[0]);  // Watch A.
-  tape.Watch(inputs[1]);  // Watch Bias.
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, registry));
-  TF_RETURN_IF_ERROR(ops::BiasAdd(tape_ctx.get(), inputs,
-                                  absl::MakeSpan(temp_outputs), "BiasAddGrad"));
-
-  TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
-                                          /*sources=*/inputs,
-                                          /*output_gradients=*/{}, outputs));
-  for (auto temp_output : temp_outputs) {
-    temp_output->Unref();
-  }
-  return Status::OK();
 }
 
 class CppGradients
@@ -134,19 +64,26 @@ class CppGradients
   void SetUp() override {
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
-    Status s = StatusFromTF_Status(status.get());
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    status_ = StatusFromTF_Status(status.get());
+    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
 
     {
       AbstractContext* ctx_raw = nullptr;
-      Status s =
+      status_ =
           BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-      ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-      ctx_.reset(ctx_raw);
+      ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+      immediate_execution_ctx_.reset(ctx_raw);
     }
+
+    // Computing numerical gradients with TensorFloat-32 is numerically
+    // unstable. Some forward pass tests also fail with TensorFloat-32 due to
+    // low tolerances
+    enable_tensor_float_32_execution(false);
   }
 
-  AbstractContextPtr ctx_;
+  AbstractContextPtr immediate_execution_ctx_;
+  GradientRegistry registry_;
+  Status status_;
 
  public:
   bool UseMlir() const { return strcmp(std::get<0>(GetParam()), "mlir") == 0; }
@@ -154,34 +91,41 @@ class CppGradients
 };
 
 TEST_P(CppGradients, TestReluGrad) {
+  status_ = registry_.Register("Relu", ReluRegisterer);
+  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+
+  auto ReluGradModel = BuildGradModel(ReluModel, registry_);
+
   float X_vals[] = {1.0f, 2.0f, 3.0f, -5.0f, -4.0f, -3.0f, 2.0f, 10.0f, -1.0f};
   int64_t X_dims[] = {3, 3};
   AbstractTensorHandlePtr X;
   {
     AbstractTensorHandle* X_raw;
-    Status s =
-        TestTensorHandleWithDimsFloat(ctx_.get(), X_vals, X_dims, 2, &X_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    status_ = TestTensorHandleWithDimsFloat(immediate_execution_ctx_.get(),
+                                            X_vals, X_dims, 2, &X_raw);
+    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     X.reset(X_raw);
   }
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
-      ReluModel, ReluGradModel, ctx_.get(), {X.get()}, UseFunction()));
+      ReluModel, ReluGradModel, immediate_execution_ctx_.get(), {X.get()},
+      UseFunction()));
 
   // Mathematically, Relu isn't differentiable at `0`. So `gradient_checker`
   // does not work with it.
   AbstractTensorHandlePtr Y;
   {
     AbstractTensorHandle* Y_raw;
-    Status s = TestScalarTensorHandle(ctx_.get(), 0.0f, &Y_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    status_ =
+        TestScalarTensorHandle(immediate_execution_ctx_.get(), 0.0f, &Y_raw);
+    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     Y.reset(Y_raw);
   }
 
   std::vector<AbstractTensorHandle*> outputs(1);
-  auto s = RunModel(ReluGradModel, ctx_.get(), {Y.get()},
-                    absl::MakeSpan(outputs), UseFunction());
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  status_ = RunModel(ReluGradModel, immediate_execution_ctx_.get(), {Y.get()},
+                     absl::MakeSpan(outputs), UseFunction());
+  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
   ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[0], {0.0f}, /*dims*/ {},
                                            /*abs_error*/ 0));
   outputs[0]->Unref();
@@ -200,9 +144,9 @@ TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {
   AbstractTensorHandlePtr X;
   {
     AbstractTensorHandle* X_raw;
-    Status s =
-        TestTensorHandleWithDimsFloat(ctx_.get(), X_vals, X_dims, 2, &X_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    status_ = TestTensorHandleWithDimsFloat(immediate_execution_ctx_.get(),
+                                            X_vals, X_dims, 2, &X_raw);
+    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     X.reset(X_raw);
   }
   // Label
@@ -211,16 +155,20 @@ TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {
   AbstractTensorHandlePtr Y;
   {
     AbstractTensorHandle* Y_raw;
-    Status s =
-        TestTensorHandleWithDimsInt(ctx_.get(), Y_vals, Y_dims, 1, &Y_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    status_ = TestTensorHandleWithDimsInt(immediate_execution_ctx_.get(),
+                                          Y_vals, Y_dims, 1, &Y_raw);
+    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     Y.reset(Y_raw);
   }
 
+  status_ = registry_.Register("SparseSoftmaxCrossEntropyWithLogits",
+                               SparseSoftmaxCrossEntropyWithLogitsRegisterer);
+  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       SparseSoftmaxCrossEntropyWithLogitsModel,
-      SparseSoftmaxCrossEntropyWithLogitsGradModel, ctx_.get(),
-      {X.get(), Y.get()}, UseFunction()));
+      BuildGradModel(SparseSoftmaxCrossEntropyWithLogitsModel, registry_),
+      immediate_execution_ctx_.get(), {X.get(), Y.get()}, UseFunction()));
 }
 
 TEST_P(CppGradients, TestBiasAddGrad) {
@@ -234,9 +182,9 @@ TEST_P(CppGradients, TestBiasAddGrad) {
   AbstractTensorHandlePtr A;
   {
     AbstractTensorHandle* A_raw;
-    Status s =
-        TestTensorHandleWithDimsFloat(ctx_.get(), A_vals, A_dims, 2, &A_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    status_ = TestTensorHandleWithDimsFloat(immediate_execution_ctx_.get(),
+                                            A_vals, A_dims, 2, &A_raw);
+    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     A.reset(A_raw);
   }
   // Bias
@@ -245,15 +193,18 @@ TEST_P(CppGradients, TestBiasAddGrad) {
   AbstractTensorHandlePtr Bias;
   {
     AbstractTensorHandle* Bias_raw;
-    Status s = TestTensorHandleWithDimsFloat(ctx_.get(), Bias_vals, Bias_dims,
-                                             1, &Bias_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    status_ = TestTensorHandleWithDimsFloat(immediate_execution_ctx_.get(),
+                                            Bias_vals, Bias_dims, 1, &Bias_raw);
+    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     Bias.reset(Bias_raw);
   }
 
+  status_ = registry_.Register("BiasAdd", BiasAddRegisterer);
+  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
-      BiasAddModel, BiasAddGradModel, ctx_.get(), {A.get(), Bias.get()},
-      UseFunction()));
+      BiasAddModel, BuildGradModel(BiasAddModel, registry_),
+      immediate_execution_ctx_.get(), {A.get(), Bias.get()}, UseFunction()));
 }
 
 #ifdef PLATFORM_GOOGLE

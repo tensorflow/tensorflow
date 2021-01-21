@@ -55,9 +55,9 @@ class CppGradients
 
     {
       AbstractContext* ctx_raw = nullptr;
-      Status s =
+      status_ =
           BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-      ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+      ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
       immediate_execution_ctx_.reset(ctx_raw);
     }
 
