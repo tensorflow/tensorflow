@@ -116,9 +116,9 @@ class DatasetBenchmarkBase(test.Benchmark):
     wall_time = self.run_benchmark(dataset, num_elements, iters, warmup,
                                    apply_default_optimizations)
     if context.executing_eagerly():
-      name = "{}_eager".format(name)
+      name = "{}.EagerMode".format(name)
     else:
-      name = "{}_graph".format(name)
+      name = "{}.GraphMode".format(name)
     if extras is None:
       extras = {}
     extras["num_elements"] = num_elements
