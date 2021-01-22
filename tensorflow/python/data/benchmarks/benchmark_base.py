@@ -65,9 +65,9 @@ class DatasetBenchmarkBase(test.Benchmark):
     dataset = dataset.with_options(options)
 
     # NOTE: We use `dataset.skip()` to perform the iterations in C++, avoiding
-    # the overhead of multiple `session.run()` calls (in graph mode). Note that
-    # this relies on the underlying implementation of `skip`: if it is optimized
-    # in the future, we will have to change this code.
+    # the overhead of having to execute a TensorFlow op for each step of the input
+    # pipeline. Note that this relies on the underlying implementation of `skip`.
+    # If it is optimized in the future, we will have to change this code.
     dataset = dataset.skip(num_elements - 1)
 
     if context.executing_eagerly():
