@@ -34,6 +34,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_z",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm",
+        "//tensorflow/lite/delegates/gpu/common/tasks:padding",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu",

@@ -24,7 +24,6 @@ cc_library(
         ":fully_connected",
         ":max_unpooling",
         ":mean",
-        ":padding",
         ":pooling",
         ":resize",
         ":softmax",
@@ -332,27 +331,12 @@ ios_unit_test(
     deps = [":mean_test_lib"],
 )
 
-cc_library(
-    name = "padding",
-    srcs = ["padding.cc"],
-    hdrs = ["padding.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "padding_test_lib",
     testonly = 1,
     srcs = ["padding_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":padding",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:padding_test_util",
     ],

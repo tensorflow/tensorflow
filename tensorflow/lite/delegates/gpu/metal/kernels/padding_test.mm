@@ -54,10 +54,6 @@ using ::tflite::gpu::metal::SingleOpModel;
   tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
 }
 
-- (void)setUp {
-  [super setUp];
-}
-
 - (void)runPadOperation:(const HWC&)prepend
                  append:(const HWC&)append
            output_shape:(const BHWC&)output_shape

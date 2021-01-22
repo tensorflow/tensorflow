@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/padding.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mean.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
@@ -111,6 +111,12 @@ std::unique_ptr<ComputeTaskDescriptor> SelectConvolutionTransposed(
 std::unique_ptr<GPUOperation> SelectLSTM(const OperationDef& op_def,
                                          const GpuInfo& gpu_info) {
   return absl::make_unique<GPUOperation>(CreateLSTM(op_def, gpu_info));
+}
+
+void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
+                   std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreatePadding(op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 void SelectReshape(int src_channels, int dst_channels,
@@ -391,13 +397,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     }
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node.operation.attributes);
-      if (attr.appended.b != 0 || attr.prepended.b != 0) {
-        return absl::UnimplementedError("Padding for BATCH is not supported.");
-      }
-      auto gpu_op = Padding(op_def, attr);
-      gpu_operation->task_desc =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      SelectPadding(attr, op_def, &gpu_operation->operation);
+      return absl::OkStatus();
     }
     case OperationType::POOLING_2D: {
       auto attr =
