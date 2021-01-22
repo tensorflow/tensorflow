@@ -45,6 +45,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
     case kTfLiteUInt8:
     case kTfLiteInt8:
+    case kTfLiteInt16:
     case kTfLiteInt64:
     case kTfLiteInt32:
     case kTfLiteString:
@@ -129,6 +130,8 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
       return GatherNd<uint8_t, IndicesT>(params, indices, output);
     case kTfLiteInt8:
       return GatherNd<int8_t, IndicesT>(params, indices, output);
+    case kTfLiteInt16:
+      return GatherNd<int16_t, IndicesT>(params, indices, output);
     case kTfLiteInt32:
       return GatherNd<int32_t, IndicesT>(params, indices, output);
     case kTfLiteInt64:
