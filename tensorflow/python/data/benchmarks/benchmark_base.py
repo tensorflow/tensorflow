@@ -73,9 +73,11 @@ class DatasetBenchmarkBase(test.Benchmark):
     if context.executing_eagerly():
       deltas = []
       for _ in range(iters):
-        iterator = iter(dataset)
         if warmup:
+          iterator = iter(dataset)
           next(iterator)
+
+        iterator = iter(dataset)
         start = time.time()
         next(iterator)
         end = time.time()
