@@ -54,10 +54,32 @@ load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 VERSION = "2.5.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 
-# Sanitize a dependency so that it works correctly from code that includes
-# TensorFlow as a submodule.
-def clean_dep(dep):
-    return str(Label(dep))
+def clean_dep(target):
+    """Returns string to 'target' in @org_tensorflow repository.
+
+    Use this function when referring to targets in the @org_tensorflow
+    repository from macros that may be called from external repositories.
+    """
+
+    # A repo-relative label is resolved relative to the file in which the
+    # Label() call appears, i.e. @org_tensorflow.
+    return str(Label(target))
+
+def if_oss(oss_value, google_value = []):
+    """Returns one of the arguments based on the non-configurable build env.
+
+    Specifically, it does not return a `select`, and can be used to e.g.
+    compute elements of list attributes.
+    """
+    return oss_value  # copybara:comment_replace return google_value
+
+def if_google(google_value, oss_value = []):
+    """Returns one of the arguments based on the non-configurable build env.
+
+    Specifically, it does not return a `select`, and can be used to e.g.
+    compute elements of list attributes.
+    """
+    return oss_value  # copybara:comment_replace return google_value
 
 def if_v2(a):
     return select({

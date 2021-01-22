@@ -1,6 +1,13 @@
+load("//tensorflow:tensorflow.bzl", "if_google")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+_selectors_package = (
+    "//tensorflow/lite/delegates/gpu/metal/selectors/" +
+    if_google("google", "default")
 )
 
 cc_library(
@@ -10,7 +17,7 @@ cc_library(
         ":subgraph",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/metal/selectors/default:default_selector",  # buildcleaner: keep
+        _selectors_package + ":default_selector",
     ],
 )
 

@@ -4,7 +4,14 @@
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
-load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "VERSION",
+    "if_oss",
+    "tf_cc_shared_object",
+    "tf_custom_op_library_additional_deps_impl",
+    "tf_native_cc_binary",
+)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
@@ -446,16 +453,20 @@ config_setting(
 
 # Config setting to use in select()s to distinguish open source build from
 # google internal build on configurable attributes.
+#
+# For non-configurable distinction between OSS and Google builds, see
+# `if_oss()` and `if_google()` macros in tensorflow.bzl.
 config_setting(
     name = "oss",
     flag_values = {":oss_setting": "True"},
     visibility = ["//visibility:public"],
 )
 
-# Fixed setting to indicate open source build.
+# Non-configurable setting to indicate open source build.
 bool_setting(
     name = "oss_setting",
-    build_setting_default = True,
+    build_setting_default = if_oss(True, False),
+    visibility = ["//visibility:private"],
 )
 
 config_setting(

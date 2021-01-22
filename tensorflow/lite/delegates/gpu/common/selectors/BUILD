@@ -1,6 +1,13 @@
+load("//tensorflow:tensorflow.bzl", "if_google")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+_selectors_package = (
+    "//tensorflow/lite/delegates/gpu/common/selectors/" +
+    if_google("google", "default")
 )
 
 cc_library(
@@ -11,9 +18,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/selectors/default:convolution_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
+        _selectors_package + ":convolution_selector",
     ],
 )
 
@@ -23,10 +30,10 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/selectors/default:convolution_transposed_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "@com_google_absl//absl/memory",
+        _selectors_package + ":convolution_transposed_selector",
     ],
 )
 
@@ -38,9 +45,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_hints",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/selectors/default:default_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        _selectors_package + ":default_selector",
     ],
 )
 
@@ -50,9 +57,9 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/selectors/default:dw_convolution_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/memory",
+        _selectors_package + ":dw_convolution_selector",
     ],
 )
 
@@ -62,9 +69,9 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/selectors/default:fully_connected_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/memory",
+        _selectors_package + ":fully_connected_selector",
     ],
 )
 
