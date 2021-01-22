@@ -902,7 +902,7 @@ typedef struct TF_FilesystemOps {
   ///
   /// Plugins:
   ///   * Must set `status` to `TF_OK` on success. If there are no configurable
-  ///   keys, `num_keys` should be set to 0
+  ///     keys, `num_keys` should be set to 0
   ///   * Might use any other error value for `status` to signal other errors.
   ///
   /// DEFAULT IMPLEMENTATION: return `TF_OK` and `num_keys`=0.
