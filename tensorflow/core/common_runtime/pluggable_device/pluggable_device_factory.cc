@@ -207,7 +207,7 @@ Status PluggableDeviceFactory::CreateDevices(
   TF_RETURN_IF_ERROR(GetDeviceLocalities(num_tf_devices, &device_localities));
 
   // Build the PluggableDevices.
-  CHECK_EQ(next_tf_device_id, memory_limit_bytes.size());
+  DCHECK_EQ(next_tf_device_id, memory_limit_bytes.size());
   for (int di = 0; di < num_tf_devices; ++di) {
     TfDeviceId tf_device_id(di);
     int64 bytes = memory_limit_bytes[di];
@@ -230,7 +230,7 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
     TfDeviceId tf_device_id, int64 memory_limit,
     const DeviceLocality& dev_locality,
     std::vector<std::unique_ptr<Device>>* devices) {
-  CHECK_GE(tf_device_id.value(), 0);
+  DCHECK_GE(tf_device_id.value(), 0);
   const string device_name = strings::StrCat(
       name_prefix, "/device:", device_type_, ":", tf_device_id.value());
 

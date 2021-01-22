@@ -232,7 +232,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
 }
 
 Allocator* PluggableDevice::GetAllocator(AllocatorAttributes attr) {
-  CHECK(cpu_allocator_) << "bad place 1";
+  DCHECK(cpu_allocator_) << "bad place 1";
   if (attr.on_host()) {
     if (attr.gpu_compatible() || force_gpu_compatible_) {
       PluggableDeviceProcessState* ps =

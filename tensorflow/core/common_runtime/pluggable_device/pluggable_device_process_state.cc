@@ -74,7 +74,7 @@ int PluggableDeviceProcessState::BusIdForPluggableDevice(
 
 Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
     const GPUOptions& options, TfDeviceId tf_device_id, size_t total_bytes) {
-  CHECK(process_state_);
+  DCHECK(process_state_);
   const string& allocator_type = options.allocator_type();
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   mutex_lock lock(mu_);
@@ -126,7 +126,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
 
 Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
     int numa_node) {
-  CHECK(process_state_);
+  DCHECK(process_state_);
   if (!HasPluggableDevice() ||
       !process_state_->ProcessState::FLAGS_brain_mem_reg_gpu_dma) {
     return process_state_->GetCPUAllocator(numa_node);
@@ -161,7 +161,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
     }
   }
 
-  CHECK_NE(nullptr, se);
+  DCHECK_NE(nullptr, se);
 
   while (static_cast<int>(pluggable_device_host_allocators_.size()) <=
          numa_node) {

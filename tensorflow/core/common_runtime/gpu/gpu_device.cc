@@ -200,10 +200,11 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
 
 #if GOOGLE_CUDA
   static void CUDART_CB asyncFree(gpuStream_t stream, cudaError_t status,
-                                  void* userData) {
+                                  void* userData)
 #elif TENSORFLOW_USE_ROCM
-  static void asyncFree(gpuStream_t stream, hipError_t status, void* userData) {
+  static void asyncFree(gpuStream_t stream, hipError_t status, void* userData)
 #endif
+  {
     AsyncFreeData* data = static_cast<AsyncFreeData*>(userData);
     if (LogMemory::IsEnabled()) {
       LogMemory::RecordRawDeallocation(data->operation_, data->step_id_,
@@ -223,7 +224,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   OpKernelContext* context_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenGpuStreamDevice);
-};  // namespace tensorflow
+};
 
 // This factory helps to ensure that different GPU device objects that refer to
 // the same physical device and stream group id use the same stream group

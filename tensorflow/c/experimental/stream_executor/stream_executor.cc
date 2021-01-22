@@ -809,6 +809,8 @@ port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
   TF_RETURN_IF_ERROR(ValidateSPTimerFns(timer_fns));
 
   // Register new platform
+  *device_type = std::string(platform.type);
+  *platform_name = std::string(platform.name);
   std::unique_ptr<stream_executor::CPlatform> cplatform(
       new stream_executor::CPlatform(
           std::move(platform), params.destroy_platform, std::move(platform_fns),
@@ -816,8 +818,6 @@ port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
           std::move(timer_fns)));
   SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
       std::move(cplatform)));
-  *device_type = std::string(platform.type);
-  *platform_name = std::string(platform.name);
   return port::Status::OK();
 }
 }  // namespace stream_executor
