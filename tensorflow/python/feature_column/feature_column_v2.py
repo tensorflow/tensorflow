@@ -1219,12 +1219,16 @@ def categorical_column_with_vocabulary_file(key,
   ID 50-54.
 
   ```python
-  states = categorical_column_with_vocabulary_file(
-      key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
-      num_oov_buckets=5)
-  columns = [states, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = linear_model(features, columns)
+  import tensorflow as tf
+  states = tf.feature_column.categorical_column_with_vocabulary_file(
+    key='states', vocabulary_file='states.txt', vocabulary_size=5,
+    num_oov_buckets=1)
+  columns = [states]
+  features = {'states':tf.constant([['california', 'georgia', 'michigan',
+  'texas', 'new york'], ['new york', 'georgia', 'california', 'michigan',
+  'texas']])}
+  linear_prediction = tf.compat.v1.feature_column.linear_model(features,
+  columns)
   ```
 
   Example with `default_value`:
@@ -1234,20 +1238,31 @@ def categorical_column_with_vocabulary_file(key,
   others are assigned the corresponding line number 1-50.
 
   ```python
-  states = categorical_column_with_vocabulary_file(
-      key='states', vocabulary_file='/us/states.txt', vocabulary_size=51,
-      default_value=0)
-  columns = [states, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction, _, _ = linear_model(features, columns)
+  import tensorflow as tf
+  states = tf.feature_column.categorical_column_with_vocabulary_file(
+    key='states', vocabulary_file='states.txt', vocabulary_size=6,
+    default_value=0)
+  columns = [states]
+  features = {'states':tf.constant([['california', 'georgia', 'michigan',
+  'texas', 'new york'], ['new york', 'georgia', 'california', 'michigan',
+  'texas']])}
+  linear_prediction = tf.compat.v1.feature_column.linear_model(features,
+  columns)
   ```
 
   And to make an embedding with either:
 
   ```python
-  columns = [embedding_column(states, 3),...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = input_layer(features, columns)
+  import tensorflow as tf
+  states = tf.feature_column.categorical_column_with_vocabulary_file(
+    key='states', vocabulary_file='states.txt', vocabulary_size=5,
+    num_oov_buckets=1)
+  columns = [tf.feature_column.embedding_column(states, 3)]
+  features = {'states':tf.constant([['california', 'georgia', 'michigan',
+  'texas', 'new york'], ['new york', 'georgia', 'california', 'michigan',
+  'texas']])}
+  input_layer = tf.keras.layers.DenseFeatures(columns)
+  dense_tensor = input_layer(features)
   ```
 
   Args:
