@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -254,7 +255,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       }
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("MapAndBatchConsume",
-                                       {{"element_id", result->id}});
+                                       {{"element_id", result->uid}});
       });
       return ProcessResult(ctx, result, out_tensors, end_of_sequence);
     }
@@ -328,14 +329,14 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // BatchResult encapsulates the output batch, as well as ancillary
     // metadata required to execute the fused map-and-batch operation.
     struct BatchResult {
-      explicit BatchResult(int64 batch_size, int64 id)
+      explicit BatchResult(int64 batch_size)
           : end_of_input(false),
             num_elements(0),
             output_allocated(false),
             status(Status::OK()),
             status_offset(-1),
             num_calls(batch_size),
-            id(id) {}
+            uid(tensorflow::EnvTime::NowNanos()) {}
 
       // UpdateStatus updates the batch's aggregate Status.
       //
@@ -362,7 +363,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       int64 status_offset TF_GUARDED_BY(mu);
       // Counts the number of outstanding calls for this batch.
       int64 num_calls TF_GUARDED_BY(&Iterator::mu_);
-      const int64 id;
+      const uint64 uid = -1;
     };
 
     void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
@@ -387,7 +388,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         TF_LOCKS_EXCLUDED(*mu_) {
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("MapAndBatchProduce",
-                                       {{"element_id", result->id}});
+                                       {{"element_id", result->uid}});
       });
       // Get the next input element.
       std::vector<Tensor> input_element;
@@ -606,8 +607,6 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                 (batch_results_.size() == max_batch_results_ &&
                  call_counter_ % dataset()->batch_size_ == 0));
       };
-      // Counts the total number of batches to use as an id of BatchResult.
-      int64 num_total_batches = 1;
       while (true) {
         {
           mutex_lock l(*mu_);
@@ -632,8 +631,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
           while (!busy()) {
             if (call_counter_ % dataset()->batch_size_ == 0) {
-              batch_results_.push_back(std::make_shared<BatchResult>(
-                  dataset()->batch_size_, num_total_batches++));
+              batch_results_.push_back(
+                  std::make_shared<BatchResult>(dataset()->batch_size_));
             }
             int64 offset = call_counter_++ % dataset()->batch_size_;
             new_calls.emplace_back(batch_results_.back(), offset);
@@ -659,7 +658,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     Status ReadBatchResult(IteratorContext* ctx, IteratorStateReader* reader,
                            size_t index) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       batch_results_.push_back(
-          std::make_shared<BatchResult>(dataset()->batch_size_, -1));
+          std::make_shared<BatchResult>(dataset()->batch_size_));
       std::shared_ptr<BatchResult> result = batch_results_.back();
       string prefix = strings::StrCat(kBatchResults, "_", index);
       mutex_lock l(result->mu);
