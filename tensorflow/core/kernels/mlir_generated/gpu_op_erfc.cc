@@ -19,5 +19,6 @@ limitations under the License.
 namespace tensorflow {
 
 GENERATE_AND_REGISTER_UNARY_KERNEL(Erfc, f64, DT_DOUBLE, double);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Erfc, f32, DT_FLOAT, float);
 
 }  // namespace tensorflow

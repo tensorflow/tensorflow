@@ -313,8 +313,8 @@ GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
 
 /// Test `tf.Erf` and `tf.Erfc`.
 
-// Use specific values to cover the different intervals of the f64
-// approximation.
+// Use specific values to cover the different intervals in the f64 erf and f64
+// erfc, and f32 erfc approximations.
 //   - (-inf, -sqrt(kMaxlog)]
 //   - [-sqrt(kMaxlog), -8]
 //   - [-8, -1]
@@ -325,7 +325,7 @@ GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
 //   - [sqrt(kMaxlog), inf)
 
 static constexpr double kSqrtMaxlogF64 = 26.6417;
-static constexpr std::initializer_list<double> kErfc64Values = {
+static constexpr std::initializer_list<double> kErfcF64Values = {
     -1000.0,
     -27.0,
     -kSqrtMaxlogF64 - 0.1,
@@ -372,11 +372,59 @@ static constexpr std::initializer_list<double> kErfc64Values = {
     27.0,
     1000.0};
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Erf, DT_DOUBLE, DT_DOUBLE, test::InputAsVector<double>(kErfc64Values),
-    std::erf, test::GpuOpsTestConfig())
+static constexpr float kSqrtMaxlogF32 = 9.41928;
+static constexpr std::initializer_list<float> kErfcF32Values = {
+    -1000.0,
+    -27.0,
+    -kSqrtMaxlogF32 - 0.1,
+    -kSqrtMaxlogF32,
+    -kSqrtMaxlogF32 + 0.1,
+    -16.0,
+    -9.0,
+    -8.2,
+    -8.1,
+    -8.0,
+    -7.9,
+    -6.7,
+    -4.5,
+    -2.3,
+    -1.5,
+    -1.2,
+    -1.1,
+    -1.0,
+    -0.9,
+    -0.3,
+    -0.2,
+    -0.1,
+    0.0,
+    0.1,
+    0.2,
+    0.3,
+    0.9,
+    1.0,
+    1.1,
+    1.2,
+    1.5,
+    2.3,
+    4.5,
+    6.7,
+    7.9,
+    8.0,
+    8.1,
+    8.2,
+    9.0,
+    16.0,
+    kSqrtMaxlogF32 - 0.1,
+    kSqrtMaxlogF32,
+    kSqrtMaxlogF32 + 0.1,
+    27.0,
+    1000.0};
 
-// Use specific values to cover the different intervals of the f32
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(Erf, DT_DOUBLE, DT_DOUBLE,
+                                                 kErfcF64Values, std::erf,
+                                                 test::GpuOpsTestConfig())
+
+// Use specific values to cover the different intervals of the f32 erf
 // approximation.
 //   - (-inf, -4]
 //   - [-4, 4]
@@ -393,9 +441,13 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 GENERATE_DEFAULT_TEST_2(Erf, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::erf,
                         test::GpuOpsTestConfig())
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(Erfc, DT_DOUBLE, DT_DOUBLE,
-                                                 kErfc64Values, std::erfc,
-                                                 test::GpuOpsTestConfig())
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Erfc, DT_DOUBLE, DT_DOUBLE, test::InputAsVector<double>(kErfcF64Values),
+    std::erfc, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Erfc, DT_FLOAT, DT_FLOAT, test::InputAsVector<float>(kErfcF32Values),
+    std::erfc, test::GpuOpsTestConfig())
 
 /// Test `tf.Exp`.
 

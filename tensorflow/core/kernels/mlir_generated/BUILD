@@ -437,6 +437,7 @@ gen_kernel_library(
     tile_size = "256",
     types = [
         "f64",
+        "f32",
     ],
     unroll_factors = "4",
 )
