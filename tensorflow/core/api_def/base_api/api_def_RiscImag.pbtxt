@@ -1,4 +1,4 @@
 op {
-  graph_op_name: "RiscConv"
+  graph_op_name: "RiscImag"
   visibility: HIDDEN
 }
