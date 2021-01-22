@@ -311,7 +311,7 @@ GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
 GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
                       test::GpuOpsTestConfig())
 
-/// Test `tf.Erf`.
+/// Test `tf.Erf` and `tf.Erfc`.
 
 // Use specific values to cover the different intervals of the f64
 // approximation.
@@ -323,16 +323,57 @@ GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
 //   - [1, 8]
 //   - [8, sqrt(kMaxlog)]
 //   - [sqrt(kMaxlog), inf)
-static constexpr double kSqrtMaxlog = 26.6417;
+
+static constexpr double kSqrtMaxlogF64 = 26.6417;
+static constexpr std::initializer_list<double> kErfc64Values = {
+    -1000.0,
+    -27.0,
+    -kSqrtMaxlogF64 - 0.1,
+    -kSqrtMaxlogF64,
+    -kSqrtMaxlogF64 + 0.1,
+    -16.0,
+    -9.0,
+    -8.2,
+    -8.1,
+    -8.0,
+    -7.9,
+    -6.7,
+    -4.5,
+    -2.3,
+    -1.5,
+    -1.2,
+    -1.1,
+    -1.0,
+    -0.9,
+    -0.3,
+    -0.2,
+    -0.1,
+    0.0,
+    0.1,
+    0.2,
+    0.3,
+    0.9,
+    1.0,
+    1.1,
+    1.2,
+    1.5,
+    2.3,
+    4.5,
+    6.7,
+    7.9,
+    8.0,
+    8.1,
+    8.2,
+    9.0,
+    16.0,
+    kSqrtMaxlogF64 - 0.1,
+    kSqrtMaxlogF64,
+    kSqrtMaxlogF64 + 0.1,
+    27.0,
+    1000.0};
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Erf, DT_DOUBLE, DT_DOUBLE,
-    test::InputAsVector<double>(
-        {-1000.0, -27.0,       -26.7, -kSqrtMaxlog, -26.641, -16.0, -9.0, -8.2,
-         -8.1,    -8.0,        -7.9,  -6.7,         -4.5,    -2.3,  -1.5, -1.2,
-         -1.1,    -1.0,        -0.9,  -0.3,         -0.2,    -0.1,  0.0,  0.1,
-         0.2,     0.3,         0.9,   1.0,          1.1,     1.2,   1.5,  2.3,
-         4.5,     6.7,         7.9,   8.0,          8.1,     8.2,   9.0,  16.0,
-         26.641,  kSqrtMaxlog, 26.7,  27.0,         1000.0}),
+    Erf, DT_DOUBLE, DT_DOUBLE, test::InputAsVector<double>(kErfc64Values),
     std::erf, test::GpuOpsTestConfig())
 
 // Use specific values to cover the different intervals of the f32
@@ -351,6 +392,10 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 
 GENERATE_DEFAULT_TEST_2(Erf, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::erf,
                         test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(Erfc, DT_DOUBLE, DT_DOUBLE,
+                                                 kErfc64Values, std::erfc,
+                                                 test::GpuOpsTestConfig())
 
 /// Test `tf.Exp`.
 

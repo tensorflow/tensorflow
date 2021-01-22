@@ -60,6 +60,7 @@ filegroup(
         "gpu_op_cos.cc",
         "gpu_op_cosh.cc",
         "gpu_op_erf.cc",
+        "gpu_op_erfc.cc",
         "gpu_op_exp.cc",
         "gpu_op_expm1.cc",
         "gpu_op_floor.cc",
@@ -138,6 +139,7 @@ tf_kernel_library(
         ":cos_kernels",
         ":cosh_kernels",
         ":erf_kernels",
+        ":erfc_kernels",
         ":exp_kernels",
         ":expm1_kernels",
         ":floor_kernels",
@@ -425,6 +427,15 @@ gen_kernel_library(
     types = [
         "f16",
         "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "erfc",
+    tile_size = "256",
+    types = [
         "f64",
     ],
     unroll_factors = "4",
