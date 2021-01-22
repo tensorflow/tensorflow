@@ -60,14 +60,17 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result += "#define GROUP_ID_2 get_group_id(2)\n";
   result += "#define LOCAL_MEM_BARRIER barrier(CLK_LOCAL_MEM_FENCE)\n";
   result += "#define MAIN_FUNCTION __kernel void main_function\n";
+  result += "#define INIT_FLOAT(value) (float)(value)\n";
   result += "#define INIT_FLOAT2(value) (float2)(value)\n";
   result += "#define INIT_FLOAT2v2(v0, v1) (float2)(v0, v1)\n";
   result += "#define INIT_FLOAT3(value) (float3)(value)\n";
   result += "#define INIT_FLOAT3v3(v0, v1, v2) (float3)(v0, v1, v2)\n";
   result += "#define INIT_FLOAT4(value) (float4)(value)\n";
   result += "#define INIT_FLOAT4v4(v0, v1, v2, v3) (float4)(v0, v1, v2, v3)\n";
+  result += "#define INIT_INT(value) (int)(value)\n";
   result += "#define INIT_INT2v2(v0, v1) (int2)(v0, v1)\n";
   result += "#define INIT_INT4v4(v0, v1, v2, v3) (int4)(v0, v1, v2, v3)\n";
+  result += "#define CONVERT_TO_INT4(value) convert_int4(value)\n";
   switch (precision) {
     case CalculationsPrecision::F32:
       result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";

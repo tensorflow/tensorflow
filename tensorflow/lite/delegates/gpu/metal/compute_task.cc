@@ -200,14 +200,17 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
         [NSString stringWithFormat:@"%@4(value)", storageType],
     @"\"INIT_FLT4v4(v0, v1, v2, v3)\"" :
         [NSString stringWithFormat:@"\"%@4(v0, v1, v2, v3)\"", storageType],
+    @"INIT_FLOAT(value)" : @"float(value)",
     @"INIT_FLOAT2(value)" : @"float2(value)",
     @"\"INIT_FLOAT2v2(v0, v1)\"" : @"\"float2(v0, v1)\"",
     @"INIT_FLOAT3(value)" : @"float3(value)",
     @"\"INIT_FLOAT3v3(v0, v1, v2)\"" : @"\"float3(v0, v1, v2)\"",
     @"INIT_FLOAT4(value)" : @"float4(value)",
     @"\"INIT_FLOAT4v4(v0, v1, v2, v3)\"" : @"\"float4(v0, v1, v2, v3)\"",
+    @"INIT_INT(value)" : @"int(value)",
     @"\"INIT_INT2v2(v0, v1)\"" : @"\"int2(v0, v1)\"",
     @"\"INIT_INT4v4(v0, v1, v2, v3)\"" : @"\"int4(v0, v1, v2, v3)\"",
+    @"CONVERT_TO_INT4(value)" : @"int4(value)",
   };
 
   NSString* code =

@@ -614,6 +614,19 @@ cc_library(
 )
 
 cc_library(
+    name = "resize_test_util",
+    testonly = 1,
+    srcs = ["resize_test_util.cc"],
+    hdrs = ["resize_test_util.h"],
+    deps = [
+        ":resize",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "softmax",
     srcs = ["softmax.cc"],
     hdrs = ["softmax.h"],

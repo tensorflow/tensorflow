@@ -511,6 +511,7 @@ objc_library(
     deps = [
         ":resize",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:resize_test_util",
     ],
 )
 
@@ -829,6 +830,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:reduce_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:resize_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
