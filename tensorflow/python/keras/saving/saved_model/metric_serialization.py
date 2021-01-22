@@ -36,7 +36,7 @@ class MetricSavedModelSaver(layer_serialization.LayerSavedModelSaver):
         class_name=generic_utils.get_registered_name(type(self.obj)),
         name=self.obj.name,
         dtype=self.obj.dtype)
-    metadata.update(layer_serialization.get_serialized(self.obj))
+    metadata.update(layer_serialization.get_config(self.obj))
     if self.obj._build_input_shape is not None:  # pylint: disable=protected-access
       metadata['build_input_shape'] = self.obj._build_input_shape  # pylint: disable=protected-access
     return metadata

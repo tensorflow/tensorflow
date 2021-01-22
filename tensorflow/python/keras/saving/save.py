@@ -148,9 +148,8 @@ def save_model(model,
     hdf5_format.save_model_to_hdf5(
         model, filepath, overwrite, include_optimizer)
   else:
-    with generic_utils.SharedObjectSavingScope():
-      saved_model_save.save(model, filepath, overwrite, include_optimizer,
-                            signatures, options, save_traces)
+    saved_model_save.save(model, filepath, overwrite, include_optimizer,
+                          signatures, options, save_traces)
 
 
 @keras_export('keras.models.load_model')
@@ -195,18 +194,17 @@ def load_model(filepath, custom_objects=None, compile=True, options=None):  # py
       ImportError: if loading from an hdf5 file and h5py is not available.
       IOError: In case of an invalid savefile.
   """
-  with generic_utils.SharedObjectLoadingScope():
-    with generic_utils.CustomObjectScope(custom_objects or {}):
-      with load_context.load_context(options):
-        if (h5py is not None and
-            (isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
-          return hdf5_format.load_model_from_hdf5(filepath, custom_objects,
-                                                  compile)
+  with generic_utils.CustomObjectScope(custom_objects or {}):
+    with load_context.load_context(options):
+      if (h5py is not None and
+          (isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
+        return hdf5_format.load_model_from_hdf5(filepath, custom_objects,
+                                                compile)
 
-        filepath = path_to_string(filepath)
-        if isinstance(filepath, six.string_types):
-          loader_impl.parse_saved_model(filepath)
-          return saved_model_load.load(filepath, compile, options)
+      filepath = path_to_string(filepath)
+      if isinstance(filepath, six.string_types):
+        loader_impl.parse_saved_model(filepath)
+        return saved_model_load.load(filepath, compile, options)
 
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '

@@ -46,6 +46,7 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
     # TODO(kathywu): Synchronize with the keras spec (go/keras-json-spec) once
     # the python config serialization has caught up.
     metadata = dict(
+        class_name=generic_utils.get_registered_name(type(self.obj)),
         name=self.obj.name,
         trainable=self.obj.trainable,
         expects_training_arg=self.obj._expects_training_arg,  # pylint: disable=protected-access
@@ -55,7 +56,7 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
         must_restore_from_config=self.obj._must_restore_from_config,  # pylint: disable=protected-access
     )
 
-    metadata.update(get_serialized(self.obj))
+    metadata.update(get_config(self.obj))
     if self.obj.input_spec is not None:
       # Layer's input_spec has already been type-checked in the property setter.
       metadata['input_spec'] = nest.map_structure(
@@ -109,12 +110,16 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
 
 # TODO(kathywu): Move serialization utils (and related utils from
 # generic_utils.py) to a separate file.
-def get_serialized(obj):
+def get_config(obj):
   with generic_utils.skip_failed_serialization():
     # Store the config dictionary, which may be used when reviving the object.
     # When loading, the program will attempt to revive the object from config,
     # and if that fails, the object will be revived from the SavedModel.
-    return generic_utils.serialize_keras_object(obj)
+    config = generic_utils.serialize_keras_object(obj)['config']
+
+  if config is not None:
+    return {'config': config}
+  return {}
 
 
 class InputLayerSavedModelSaver(base_serialization.SavedModelSaver):

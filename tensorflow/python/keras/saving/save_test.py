@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import os
 import shutil
 import sys
@@ -26,14 +25,12 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
-from six import string_types
 
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import combinations
@@ -861,125 +858,6 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     self.assertAllEqual(loaded_model(args), expected)
     self.assertAllEqual(loaded_model.predict(args, batch_size=batch_size),
                         expected)
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def test_shared_objects(self):
-    class OuterLayer(keras.layers.Layer):
-
-      def __init__(self, inner_layer):
-        super(OuterLayer, self).__init__()
-        self.inner_layer = inner_layer
-
-      def call(self, inputs):
-        return self.inner_layer(inputs)
-
-      def get_config(self):
-        return {
-            'inner_layer': generic_utils.serialize_keras_object(
-                self.inner_layer)
-        }
-
-      @classmethod
-      def from_config(cls, config):
-        return cls(generic_utils.deserialize_keras_object(
-            config['inner_layer']))
-
-    class InnerLayer(keras.layers.Layer):
-
-      def __init__(self):
-        super(InnerLayer, self).__init__()
-        self.v = self.add_weight(name='v', shape=[], dtype=dtypes.float32)
-
-      def call(self, inputs):
-        return self.v + inputs
-
-      @classmethod
-      def from_config(cls, config):
-        return cls()
-
-    # Create a model with 2 output layers that share the same inner layer.
-    inner_layer = InnerLayer()
-    outer_layer_1 = OuterLayer(inner_layer)
-    outer_layer_2 = OuterLayer(inner_layer)
-    input_ = keras.Input(shape=(1,))
-    model = keras.Model(
-        inputs=input_, outputs=[outer_layer_1(input_), outer_layer_2(input_)])
-
-    # Changes to the shared layer should affect both outputs.
-    model.layers[1].inner_layer.v.assign(5)
-    self.assertAllEqual(model(1), [6.0, 6.0])
-    model.layers[1].inner_layer.v.assign(3)
-    self.assertAllEqual(model(1), [4.0, 4.0])
-
-    # After loading, changes to the shared layer should still affect both
-    # outputs.
-    def _do_assertions(loaded):
-      loaded.layers[1].inner_layer.v.assign(5)
-      self.assertAllEqual(loaded(1), [6.0, 6.0])
-      loaded.layers[1].inner_layer.v.assign(3)
-      self.assertAllEqual(loaded(1), [4.0, 4.0])
-      loaded.layers[2].inner_layer.v.assign(5)
-      self.assertAllEqual(loaded(1), [6.0, 6.0])
-      loaded.layers[2].inner_layer.v.assign(3)
-      self.assertAllEqual(loaded(1), [4.0, 4.0])
-
-    # We'd like to make sure we only attach shared object IDs when strictly
-    # necessary, so we'll recursively traverse the generated config to count
-    # whether we have the exact number we expect.
-    def _get_all_keys_recursive(dict_or_iterable):
-      if isinstance(dict_or_iterable, dict):
-        for key in dict_or_iterable.keys():
-          yield key
-        for key in _get_all_keys_recursive(dict_or_iterable.values()):
-          yield key
-      elif isinstance(dict_or_iterable, string_types):
-        return
-      else:
-        try:
-          for item in dict_or_iterable:
-            for key in _get_all_keys_recursive(item):
-              yield key
-        # Not an iterable or dictionary
-        except TypeError:
-          return
-
-    with generic_utils.CustomObjectScope({
-        'OuterLayer': OuterLayer, 'InnerLayer': InnerLayer}):
-
-      # Test saving and loading to disk
-      save_format = testing_utils.get_save_format()
-      saved_model_dir = self._save_model_dir()
-      keras.models.save_model(model, saved_model_dir, save_format=save_format)
-      loaded = keras.models.load_model(saved_model_dir)
-      _do_assertions(loaded)
-
-      # Test recreating directly from config
-      config = model.get_config()
-      key_count = collections.Counter(_get_all_keys_recursive(config))
-      self.assertEqual(key_count[generic_utils.SHARED_OBJECT_KEY], 2)
-      loaded = keras.Model.from_config(config)
-      _do_assertions(loaded)
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def test_shared_objects_wrapper(self):
-    """Tests that shared layers wrapped with `Wrapper` restore correctly."""
-    input_ = keras.Input(shape=(1,))
-    unwrapped = keras.layers.Layer(name='unwrapped')
-    wrapped = keras.layers.Wrapper(unwrapped, name='wrapped')
-    model = keras.Model(inputs=input_,
-                        outputs=[unwrapped(input_), wrapped(input_)])
-
-    # Test recreating directly from config
-    config = model.get_config()
-    loaded = keras.Model.from_config(config)
-    self.assertIs(loaded.layers[1], loaded.layers[2].layer)
-
-    # Test saving and loading to disk
-    save_format = testing_utils.get_save_format()
-    saved_model_dir = self._save_model_dir()
-    keras.models.save_model(model, saved_model_dir, save_format=save_format)
-    loaded = keras.models.load_model(saved_model_dir)
-    self.assertIs(loaded.layers[1], loaded.layers[2].layer)
 
 
 # Factory functions to create models that will be serialized inside a Network.
