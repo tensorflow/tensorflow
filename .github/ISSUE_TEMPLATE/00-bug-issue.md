@@ -6,7 +6,7 @@ labels: 'type:bug'
 ---
 
 <em>Please make sure that this is a bug. As per our
-[GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md),
+[GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/opensource_only/ISSUES.md),
 we only address code/doc bugs, performance issues, feature requests and
 build/installation issues on GitHub. tag:bug_template</em>
 
