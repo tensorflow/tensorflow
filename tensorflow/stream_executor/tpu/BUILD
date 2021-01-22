@@ -6,6 +6,7 @@ package(
     default_visibility = [
         "//learning/brain/experimental/dtensor:__subpackages__",
         "//tensorflow/compiler/jit:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/profiler/internal/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
@@ -124,6 +125,19 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_platform_hdr",
+    hdrs = ["tpu_platform.h"],
+    deps = [
+        ":tpu_executor_c_api_hdrs",
+        ":tpu_platform_interface",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/stream_executor:stream_header",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 cc_library(
@@ -248,23 +262,6 @@ cc_library(
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor",
     ],
-)
-
-cc_library(
-    name = "tpu_computation_placer",
-    srcs = ["tpu_computation_placer.cc"],
-    hdrs = ["tpu_computation_placer.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":status_helper",
-        ":tpu_executor",
-        ":tpu_executor_c_api_hdrs",
-        ":tpu_topology_external",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/core/tpu:tpu_api",
-    ],
-    alwayslink = True,
 )
 
 cc_library(

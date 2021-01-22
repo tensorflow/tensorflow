@@ -7,7 +7,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -2872,6 +2872,9 @@ cc_library(
     hdrs = ["computation_placer.h"],
     deps = [
         ":global_device_id",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -2887,11 +2890,42 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/stream_executor/host:host_platform_id",
         "//tensorflow/stream_executor/rocm:rocm_platform_id",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-    ],
+    ] + if_libtpu([":tpu_computation_placer"]),
     alwayslink = True,  # Contains per-platform computation placer registration
+)
+
+cc_library(
+    name = "computation_placer_hdr",
+    hdrs = ["computation_placer.h"],
+    deps = [
+        ":global_device_id",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/stream_executor:stream_header",
+    ],
+)
+
+cc_library(
+    name = "tpu_computation_placer",
+    srcs = ["tpu_computation_placer.cc"],
+    hdrs = ["tpu_computation_placer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":computation_placer_hdr",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/stream_executor/tpu:status_helper",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_platform_hdr",
+        "//tensorflow/stream_executor/tpu:tpu_topology_external",
+    ],
+    alwayslink = True,  # Contains TPU computation placer registration
 )
 
 cc_library(

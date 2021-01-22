@@ -153,9 +153,9 @@ cc_library(
         ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
+        "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
-        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
@@ -173,8 +173,8 @@ cc_library(
     deps = [
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
+        "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
     alwayslink = True,
