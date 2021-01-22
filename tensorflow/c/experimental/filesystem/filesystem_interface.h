@@ -885,6 +885,7 @@ typedef struct TF_FilesystemOps {
   ///   * Must set `status` to `TF_OK` if `option` is set/updated
   ///   * Must set `status` to `TF_NOT_FOUND` if the key is invalid
   ///   * Might use any other error value for `status` to signal other errors.
+  ///
   /// DEFAULT IMPLEMENTATION: return `TF_NOT_FOUND`.
   void (*set_filesystem_configuration_option)(
       const TF_Filesystem* filesystem, const TF_Filesystem_Option* option,
