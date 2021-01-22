@@ -98,24 +98,6 @@ class InterfaceTests(test.TestCase):
       checkpoint = trackable_utils.Checkpoint(model=model)
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
-  def testObjectMetadata(self):
-    if not context.executing_eagerly():
-      self.skipTest("Run in eager mode only.")
-
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    dense = core.Dense(1)
-    checkpoint = trackable_utils.Checkpoint(dense=dense)
-    dense(constant_op.constant([[1.]]))
-    save_path = checkpoint.save(checkpoint_prefix)
-
-    objects = trackable_utils.object_metadata(save_path)
-    all_variable_names = []
-    for obj in objects.nodes:
-      for attribute in obj.attributes:
-        all_variable_names.append(attribute.full_name)
-    self.assertIn("dense/kernel", all_variable_names)
-
 
 class CheckpointingTests(keras_parameterized.TestCase):
 
