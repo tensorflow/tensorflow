@@ -5,7 +5,7 @@ labels: 'type:build/install'
 
 ---
 
-<em>Please make sure that this is a build/installation issue. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md), we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub. tag:build_template</em>
+<em>Please make sure that this is a build/installation issue. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/opensource_only/ISSUES.md), we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub. tag:build_template</em>
 
 **System information**
 - OS Platform and Distribution (e.g., Linux Ubuntu 16.04):
