@@ -894,6 +894,7 @@ typedef struct TF_FilesystemOps {
   /// Returns a list of valid configuration keys in `keys` array and number of
   /// keys in `num_keys`. Ownership of the buffers in `keys` are transferred to
   /// caller and needs to be freed using relevant filesystem allocation API.
+  ///
   /// Plugins:
   ///   * Must set `status` to `TF_OK` on success. If there are no configurable
   ///   keys, `num_keys` should be set to 0
