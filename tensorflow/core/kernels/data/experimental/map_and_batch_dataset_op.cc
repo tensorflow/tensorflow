@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -200,6 +200,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       // ahead of time and store them in an internal buffer. The maximum number
       // of batches to buffer is a trade-off between performance and memory and
       // we derive it from the degree of parallelism and the batch size.
+      //
+      // TODO(b/178059273): If we handle RAM budget correctly, the upper bound
+      // should be removed.
       max_batch_results_ = std::min(
           kMaxBatchResults,
           CeilDiv(params.dataset->num_parallel_calls_ == model::kAutotune
@@ -302,8 +305,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
-      long long parallelism = -1;        // NOLINT
-      long long max_batch_results = -1;  // NOLINT
+      int64 parallelism = -1;
+      int64 max_batch_results = -1;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {
@@ -325,14 +328,14 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // BatchResult encapsulates the output batch, as well as ancillary
     // metadata required to execute the fused map-and-batch operation.
     struct BatchResult {
-      explicit BatchResult(int64 batch_size, int64 id = -1) : id(id) {
-        end_of_input = false;
-        num_calls = batch_size;
-        num_elements = 0;
-        output_allocated = false;
-        status = Status::OK();
-        status_offset = -1;
-      }
+      explicit BatchResult(int64 batch_size, int64 id)
+          : end_of_input(false),
+            num_elements(0),
+            output_allocated(false),
+            status(Status::OK()),
+            status_offset(-1),
+            num_calls(batch_size),
+            id(id) {}
 
       // UpdateStatus updates the batch's aggregate Status.
       //
@@ -358,8 +361,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       Status status TF_GUARDED_BY(mu);
       int64 status_offset TF_GUARDED_BY(mu);
       // Counts the number of outstanding calls for this batch.
-      int64 num_calls;  // access guarded by owner's mutex
-      int64 id = -1;
+      int64 num_calls TF_GUARDED_BY(&Iterator::mu_);
+      const int64 id;
     };
 
     void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
@@ -656,7 +659,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     Status ReadBatchResult(IteratorContext* ctx, IteratorStateReader* reader,
                            size_t index) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       batch_results_.push_back(
-          std::make_shared<BatchResult>(dataset()->batch_size_));
+          std::make_shared<BatchResult>(dataset()->batch_size_, -1));
       std::shared_ptr<BatchResult> result = batch_results_.back();
       string prefix = strings::StrCat(kBatchResults, "_", index);
       mutex_lock l(result->mu);
