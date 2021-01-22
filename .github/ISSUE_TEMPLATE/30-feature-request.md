@@ -5,7 +5,7 @@ labels: 'type:feature'
 
 ---
 
-<em>Please make sure that this is a feature request. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md), we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub. tag:feature_template</em>
+<em>Please make sure that this is a feature request. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/opensource_only/ISSUES.md), we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub. tag:feature_template</em>
 
 
 **System information**
