@@ -56,7 +56,10 @@ class DatasetBenchmarkBase(test.Benchmark):
       This is the median time (with respect to `iters`) it takes for the dataset
       to go through `num_elements` elements, divided by `num_elements.`
     """
-    options = dataset_ops.Options()
+
+    # The options that have been applied to the dataset are preserved so that
+    # they are not overwritten while benchmarking.
+    options = dataset.options()
     options.experimental_optimization.apply_default_optimizations = (
         apply_default_optimizations)
     dataset = dataset.with_options(options)
