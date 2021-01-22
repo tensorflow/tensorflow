@@ -757,7 +757,7 @@ def add(inputs, **kwargs):
   >>> print(y.shape)
   (2, 3, 4)
 
-  Used in a functiona model:
+  Used in a functional model:
 
   >>> input1 = tf.keras.layers.Input(shape=(16,))
   >>> x1 = tf.keras.layers.Dense(8, activation='relu')(input1)
