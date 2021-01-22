@@ -840,6 +840,7 @@ typedef struct TF_FilesystemOps {
   ///   * Must set `status` to `TF_OK` if `options` and `num_options` set.
   ///     If there is no configurable option, `num_options` should be 0.
   ///   * Might use any other error value for `status` to signal other errors.
+
   /// DEFAULT IMPLEMENTATION: return 0 options and `TF_OK`.
   void (*get_filesystem_configuration)(const TF_Filesystem* filesystem,
                                        TF_Filesystem_Option** options,
