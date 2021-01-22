@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,26 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
-#include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
-#include "tensorflow/stream_executor/tpu/tpu_transfer_manager.h"
 
 namespace tensorflow {
 namespace tpu {
 
-static std::unique_ptr<xla::TransferManager> CreateTpuTransferManager() {
-  return std::make_unique<TpuTransferManager>();
+::stream_executor::Platform::Id GetTpuPlatformId() {
+  // We can't use the PLATFORM_DEFINE_ID macro because of potential
+  // initialization-order-fiasco errors.
+  static int plugin_id_value = 42;
+  const ::stream_executor::Platform::Id platform_id = &plugin_id_value;
+  return platform_id;
 }
-
-static bool InitModule() {
-  xla::TransferManager::RegisterTransferManager(GetTpuPlatformId(),
-                                                CreateTpuTransferManager);
-  return true;
-}
-static bool module_initialized = InitModule();
 
 }  // namespace tpu
 }  // namespace tensorflow

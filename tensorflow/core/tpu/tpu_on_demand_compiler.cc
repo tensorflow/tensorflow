@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream.h"
 
 namespace ApiConverter {
@@ -211,7 +212,7 @@ class TpuCompiler : public Compiler {
   ~TpuCompiler() override { ExecutorApiFn()->TpuCompiler_FreeFn(compiler_); }
 
   stream_executor::Platform::Id PlatformId() const override {
-    return tensorflow::tpu::TpuPlatform::kId;
+    return tensorflow::tpu::GetTpuPlatformId();
   }
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
@@ -371,7 +372,7 @@ class TpuCompiler : public Compiler {
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
-      tensorflow::tpu::TpuPlatform::kId,
+      tensorflow::tpu::GetTpuPlatformId(),
       []() { return absl::make_unique<TpuCompiler>(); });
   return true;
 }

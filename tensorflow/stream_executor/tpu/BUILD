@@ -166,6 +166,13 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_platform_id",
+    srcs = ["tpu_platform_id.cc"],
+    hdrs = ["tpu_platform_id.h"],
+    deps = ["//tensorflow/stream_executor:stream_header"],
+)
+
+cc_library(
     name = "tpu_executor_base",
     srcs = [
         "tpu_executor.cc",
@@ -184,6 +191,7 @@ cc_library(
         ":status_helper",
         ":tpu_executor_c_api_hdrs",
         ":tpu_executor_interface",
+        ":tpu_platform_id",
         ":tpu_platform_interface",
         ":tpu_stream_interface",
         "//tensorflow/c:tf_status",
@@ -236,6 +244,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_executor",
+        ":tpu_platform_id",
         ":tpu_transfer_manager_base",
         "//tensorflow/compiler/xla/service:transfer_manager",
     ],
@@ -253,6 +262,7 @@ cc_library(
         ":status_helper",
         ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_platform_id",
         ":tpu_transfer_manager_interface",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
