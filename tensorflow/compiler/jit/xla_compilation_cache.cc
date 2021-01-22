@@ -69,6 +69,10 @@ XlaCompilationCache::~XlaCompilationCache() {
     }
   }
   // Wait for all outstanding compilations to finish.
+  // Resetting the pointer explicitly in the top level destructor.
+  // Without this, the pointer would be reset when the AsyncCompilationState
+  // is destructed, which is dependent on the order of the members in the
+  // XlaCompilationCache class, which is error prone if the order changes.
   async_compilation_state_.compiler_threads.reset();
   // TODO(b/110813685): Think about the program ownership model. Programs are
   // currently owned by the compilation cache which means we must wait for
@@ -192,8 +196,11 @@ Status XlaCompilationCache::Compile(
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
 
-    // !!Pay attention when additional variables must be captured by this lambda!! 
-    auto compile_fn = [&, compile_options, function](
+    // !!Pay attention when additional variables must be captured by this
+    // lambda!! compile_fn can run asynchronously after this funcion has
+    // exited. Make sure that any variable needed inside compile_fn is
+    // either passed as an argument, or captured by value right here.
+    auto compile_fn = [compile_options, function](
                         XlaCompiler* compiler,
                         const std::vector<XlaCompiler::Argument>& args,
                         XlaCompiler::CompilationResult* result) {
@@ -399,9 +406,11 @@ Status XlaCompilationCache::CompileAsynchronous(
   // updates the async compilation state!
 
   // When the ThreadPool for the compilation cache is destroyed, it waits for
-  // compilations to have finished. This means that bith 'entry' and 'this' will
+  // compilations to have finished. This means that both 'entry' and 'this' will
   // be alive for the duration of the compilation.
-    // !!Pay attention when additional variables must be captured by this lambda!! 
+  // !!Pay attention when additional variables must be captured by this lambda!!
+  // All values are captured by value. Make sure that all pointer values (like
+  // entry) do not get freed until the lambda has finished,\.
   async_compilation_state_.compiler_threads.get()->Schedule([=] {
       Entry local_entry;
       VLOG(2) << "Starting asynchronous compilation of cluster "
@@ -517,6 +526,7 @@ Status XlaCompilationCache::CompileImpl(
           << " signature: " << human_signature << " with request count "
           << current_request_count << " and compile threshold "
           << compile_threshold.value_or(0);
+  // TODO(sanjoy): Refactor this code into helper functions.
   bool return_null = false;
   CompileState state = entry->compile_state;
   if (state == CompileState::kUncompiled) {
