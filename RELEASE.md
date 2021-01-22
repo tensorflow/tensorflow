@@ -97,6 +97,9 @@
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
         `tf.GradientTape` inside a `tf.function`.
     *   Changed the default step size in `gradient_checker_v2.compute_gradients` to be exactly representable as a binary floating point numbers. This avoids poluting gradient approximations needlessly, which is some cases leads to false negatives in op gradient tests.
+    * Added `tf.config.experimental.get_memory_info`, returning a dict with the
+      current and peak memory usage. Deprecated 
+      `tf.config.experimental.get_memory_usage` in favor of this new function.
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph

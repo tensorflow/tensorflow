@@ -510,9 +510,58 @@ def set_visible_devices(devices, device_type=None):
   context.context().set_visible_devices(devices, device_type)
 
 
+@tf_export('config.experimental.get_memory_info')
+def get_memory_info(device):
+  """Get memory info for the chosen device, as a dict.
+
+  This function returns a dict containing information about the device's memory
+  usage. For example:
+
+  >>> if tf.config.list_physical_devices('GPU'):
+  ...   # Returns a dict in the form {'current': <current mem usage>,
+  ...   #                             'peak': <peak mem usage>}
+  ...   tf.config.experimental.get_memory_info('GPU:0')
+
+  Currently returns the following keys:
+    `'current'`: The current memory used by the device, in bytes.
+    `'peak'`: The peak memory used by the device across the run of the program,
+        in bytes.
+
+  More keys may be added in the future, including device-specific keys.
+
+  Currently raises an exception for the CPU.
+
+  For GPUs, TensorFlow will allocate all the memory by default, unless changed
+  with `tf.config.experimental.set_memory_growth`. The dict specifies only the
+  current and peak memory that TensorFlow is actually using, not the memory that
+  TensorFlow has allocated on the GPU.
+
+  Args:
+    device: Device string to get the memory information for, e.g. `"GPU:0"`. See
+      https://www.tensorflow.org/api_docs/python/tf/device for specifying device
+      strings.
+
+  Returns:
+    A dict with keys `'current'` and `'peak'`, specifying the current and peak
+    memory usage respectively.
+
+  Raises:
+    ValueError: Non-existent or CPU device specified.
+
+  """
+  return context.context().get_memory_info(device)
+
+
+@deprecation.deprecated(
+    None,
+    "Use tf.config.experimental.get_memory_info(device)['current'] instead.")
 @tf_export('config.experimental.get_memory_usage')
 def get_memory_usage(device):
-  """Get the memory usage, in bytes, for the chosen device.
+  """Get the current memory usage, in bytes, for the chosen device.
+
+  This function is deprecated in favor of
+  `tf.config.experimental.get_memory_info`. Calling this function is equivalent
+  to calling `tf.config.experimental.get_memory_info()['current']`.
 
   See https://www.tensorflow.org/api_docs/python/tf/device for specifying device
   strings.
@@ -525,8 +574,13 @@ def get_memory_usage(device):
 
   Does not work for CPU.
 
+  For GPUs, TensorFlow will allocate all the memory by default, unless changed
+  with `tf.config.experimental.set_memory_growth`. This function only returns
+  the memory that TensorFlow is actually using, not the memory that TensorFlow
+  has allocated on the GPU.
+
   Args:
-    device: Device string to get the bytes in use for.
+    device: Device string to get the bytes in use for, e.g. `"GPU:0"`
 
   Returns:
     Total memory usage in bytes.
@@ -534,7 +588,7 @@ def get_memory_usage(device):
   Raises:
     ValueError: Non-existent or CPU device specified.
   """
-  return context.context().get_total_memory_usage(device)
+  return get_memory_info(device)['current']
 
 
 @tf_export('config.experimental.get_memory_growth')
