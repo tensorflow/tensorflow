@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -181,16 +182,15 @@ void HandleInput(Value input, const int64_t execute_arg_index,
 bool HandleReplicatedInputs(
     const int64_t execute_arg_index, Value compilation_key,
     tf_device::LaunchOp execute_launch, tf_device::LaunchOp compile_launch,
-    const int64_t replicate_arg_index, tf_device::ReplicateOp replicate,
+    mlir::BlockArgument replicate_arg, tf_device::ReplicateOp replicate,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
   // We need to know the devices to copy to.
   if (!replicate.devices()) return false;
-  int64_t num_replicas = replicate.n();
-  auto inputs = replicate.getOperands()
-                    .drop_front(replicate_arg_index * num_replicas)
-                    .take_front(num_replicas);
+
+  MutableArrayRef<OpOperand> inputs =
+      replicate.GetOperandsForBlockArgument(replicate_arg);
   for (auto entry : llvm::enumerate(inputs)) {
-    auto input_op = entry.value().getDefiningOp();
+    auto input_op = entry.value().get().getDefiningOp();
     if (!input_op || !IsSupportedInputOp(input_op, resource_alias_analysis))
       return false;
   }
@@ -199,8 +199,9 @@ bool HandleReplicatedInputs(
                                    compile_launch, &builder);
   builder.setInsertionPoint(replicate);
   for (auto entry : llvm::enumerate(inputs)) {
-    auto copy_with_layout = BuildCopyWithLayout(
-        execute_launch, compile_launch, get_layout, entry.value(), &builder);
+    auto copy_with_layout =
+        BuildCopyWithLayout(execute_launch, compile_launch, get_layout,
+                            entry.value().get(), &builder);
 
     auto device_list = replicate.devices()
                            .getValue()
@@ -209,8 +210,7 @@ bool HandleReplicatedInputs(
     copy_with_layout->setAttr(kDeviceAttr,
                               device_list.getValue()[entry.index()]);
 
-    replicate.setOperand(num_replicas * replicate_arg_index + entry.index(),
-                         copy_with_layout);
+    entry.value().set(copy_with_layout);
   }
   return true;
 }
@@ -247,9 +247,8 @@ void HandleCompileAndExecutes(
         // replicated input (defining ops will be outside the replicate node).
         if (maybe_replicate != block_arg.getParentRegion()->getParentOp() ||
             !HandleReplicatedInputs(execute_arg_index, execute.key(),
-                                    execute_launch, compile_launch,
-                                    block_arg.getArgNumber(), maybe_replicate,
-                                    resource_alias_analysis)) {
+                                    execute_launch, compile_launch, block_arg,
+                                    maybe_replicate, resource_alias_analysis)) {
           continue;
         }
       } else {
