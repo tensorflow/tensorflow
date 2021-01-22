@@ -295,6 +295,29 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
   return true;
 }
 
+bool LmhloOpIsElementwise(mlir::Operation* op) {
+  CHECK(op->getDialect() == op->getContext()->getLoadedDialect("lmhlo"));
+  auto opcode = *MhloToHloOpcode(op);
+  if (HloInstruction::IsOpElementwise(opcode)) {
+    return true;
+  }
+  if (opcode == HloOpcode::kMap) {
+    int iota = 0;
+    for (const llvm::APInt& i :
+         mlir::cast<mlir::lmhlo::MapOp>(op).dimensions()) {
+      if (i.getZExtValue() != iota) {
+        return false;
+      }
+      iota++;
+    }
+    return true;
+  }
+  // TODO(timshen): not sure about whether porting
+  // HloFusionInstruction::IsElementwiseImpl() is necessary. HandleFusion()
+  // doesn't use such information.
+  return false;
+}
+
 bool MayPreventVectorization(mlir::Operation* op) {
   CHECK(op->getDialect() == op->getContext()->getLoadedDialect("lmhlo"));
   auto opcode = *MhloToHloOpcode(op);
@@ -326,7 +349,7 @@ bool MayPreventVectorization(mlir::Operation* op) {
       }
     }
     return false;
-  } else if (HloInstruction::IsOpElementwise(opcode)) {
+  } else if (LmhloOpIsElementwise(op)) {
     // Unfused elementwise operations are usually memory bound, unroll them.
     switch (opcode) {
         // The following elementwise operation implementations contain branches.
@@ -398,7 +421,7 @@ int ComputeMaxUnrollFactor(mlir::Operation* op,
         shapes.push_back(TypeToShape(result.getType()));
       }
     } else {
-      for (mlir::Value result : op->getResults()) {
+      for (mlir::Value result : GetHloOutputs(op)) {
         shapes.push_back(TypeToShape(result.getType()));
       }
     }
@@ -666,11 +689,8 @@ StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSliceForMlir(
 }
 
 Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
-  if (hlo->IsElementwise()) {
-    TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
-    return EmitUsingElementalIrEmitter(input);
-  }
-  return IrEmitter::DefaultAction(hlo);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitUsingElementalIrEmitter(input);
 }
 
 Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
@@ -766,9 +786,13 @@ Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
     HloFunctionImporter::SetLayoutForMlir(new_op, output_shape);
     b.create<mlir::TensorStoreOp>(loc, new_op->getResult(0), outputs[0]);
   }
+  int unroll_factor = 1;
+  if (!MayPreventVectorization(input.op)) {
+    unroll_factor = ComputeMaxUnrollFactor(input.op, hlo_module_config_);
+  }
   input.op->erase();
   input.op = fusion;
-  return EmitLoopFusionFromMlir(input, output_shape);
+  return EmitLoopFusionFromMlir(input, output_shape, unroll_factor);
 }
 
 Status IrEmitterUnnested::HandleConstant(HloInstruction* constant) {
@@ -1700,8 +1724,9 @@ StatusOr<MlirEmitterInput> IrEmitterUnnested::GetMlirEmitterInput(
 //
 // This is migrated from IrEmitter::HandleFusion() with IrEmitterUnnested as the
 // subclass. The logic is de-virtualized and less scattered.
-Status IrEmitterUnnested::EmitLoopFusionFromMlir(MlirEmitterInput input,
-                                                 const Shape& output_shape) {
+Status IrEmitterUnnested::EmitLoopFusionFromMlir(
+    MlirEmitterInput input, const Shape& output_shape,
+    absl::optional<int> unroll_factor_override) {
   auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(input.op);
   MlirEmitterContext context;
   context.SetOperation(fusion);
@@ -1748,9 +1773,13 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(MlirEmitterInput input,
       auto element_generator,
       fused_emitter.GetGenerator(fused_computation->root_instruction()));
 
-  int unroll_factor = 1;
-  if (!MayPreventVectorization(fusion)) {
+  int unroll_factor;
+  if (unroll_factor_override.has_value()) {
+    unroll_factor = *unroll_factor_override;
+  } else if (!MayPreventVectorization(fusion)) {
     unroll_factor = ComputeMaxUnrollFactor(fusion, hlo_module_config_);
+  } else {
+    unroll_factor = 1;
   }
 
   bool few_waves = [fusion]() mutable {

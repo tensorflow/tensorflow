@@ -180,8 +180,9 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitCustomCallThunkFromMlir(MlirEmitterInput input);
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
-  Status EmitLoopFusionFromMlir(MlirEmitterInput input,
-                                const Shape& output_shape);
+  Status EmitLoopFusionFromMlir(
+      MlirEmitterInput input, const Shape& output_shape,
+      absl::optional<int> unroll_factor_override = {});
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;

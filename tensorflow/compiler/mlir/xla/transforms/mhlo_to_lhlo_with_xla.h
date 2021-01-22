@@ -90,6 +90,34 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
       const xla::HloInstruction* instr);
 
+  xla::StatusOr<lmhlo::BroadcastInDimOp> EmitBroadcastOp(
+      const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::ConcatenateOp> EmitConcatenateOp(
+      const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::IotaOp> EmitIotaOp(const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::ReverseOp> EmitReverseOp(
+      const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::TransposeOp> EmitTransposeOp(
+      const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::PadOp> EmitPadOp(const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::ReduceWindowOp> EmitReduceWindowOp(
+      const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::SliceOp> EmitSliceOp(const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::GatherOp> EmitGatherOp(const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::DynamicSliceOp> EmitDynamicSliceOp(
+      const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::DotOp> EmitDotOp(const xla::HloInstruction* instr);
+
   // Create LHLO operation operands given an XLA HLO instruction. By default,
   // all XLA HLO operands and results are converted to MLIR and appended to
   // `operands`. If `num_operands` is specified, only the first `num_operand`

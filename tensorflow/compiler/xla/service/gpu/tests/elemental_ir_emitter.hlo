@@ -6,11 +6,11 @@ HloModule Test
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca float, align 4
 // CHECK:         %[[VAL_4:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [1 x [4 x [5 x float]]]*
-// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
-// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [1 x [3 x [4 x float]]]*
-// CHECK:         %[[VAL_9:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
+// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [1 x [3 x [4 x float]]]*
+// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [1 x [4 x [5 x float]]]*
+// CHECK:         %[[VAL_9:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
 // CHECK:         %[[VAL_10:.*]] = bitcast i8* %[[VAL_9]] to [1 x [4 x [5 x float]]]*
 // CHECK:         %[[VAL_11:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_12:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
@@ -31,15 +31,15 @@ HloModule Test
 // CHECK:         store float 0.000000e+00, float* %[[VAL_3]], align 4
 // CHECK:         store i32 0, i32* %[[VAL_4]], align 4
 // CHECK:         br label %[[VAL_26:.*]]
-// CHECK:       dot.inner.loop_header:                            ; preds = %[[VAL_27:.*]], %[[VAL_22]]
+// CHECK:       dot.3.inner.loop_header:                          ; preds = %[[VAL_27:.*]], %[[VAL_22]]
 // CHECK:         %[[VAL_28:.*]] = load i32, i32* %[[VAL_4]], align 4
 // CHECK:         %[[VAL_29:.*]] = icmp uge i32 %[[VAL_28]], 4
 // CHECK:         br i1 %[[VAL_29]], label %[[VAL_24]], label %[[VAL_27]]
-// CHECK:       dot.inner.loop_body:                              ; preds = %[[VAL_26]]
+// CHECK:       dot.3.inner.loop_body:                            ; preds = %[[VAL_26]]
 // CHECK:         %[[VAL_30:.*]] = load float, float* %[[VAL_3]], align 4
-// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [1 x [3 x [4 x float]]], [1 x [3 x [4 x float]]]* %[[VAL_8]], i32 0, i32 0, i32 %[[VAL_19]], i32 %[[VAL_28]]
+// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [1 x [3 x [4 x float]]], [1 x [3 x [4 x float]]]* %[[VAL_6]], i32 0, i32 0, i32 %[[VAL_19]], i32 %[[VAL_28]]
 // CHECK:         %[[VAL_32:.*]] = load float, float* %[[VAL_31]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [1 x [4 x [5 x float]]], [1 x [4 x [5 x float]]]* %[[VAL_10]], i32 0, i32 0, i32 %[[VAL_28]], i32 %[[VAL_17]]
+// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [1 x [4 x [5 x float]]], [1 x [4 x [5 x float]]]* %[[VAL_8]], i32 0, i32 0, i32 %[[VAL_28]], i32 %[[VAL_17]]
 // CHECK:         %[[VAL_34:.*]] = load float, float* %[[VAL_33]], align 4, !invariant.load !4
 // CHECK:         %[[VAL_35:.*]] = fmul float %[[VAL_32]], %[[VAL_34]]
 // CHECK:         %[[VAL_36:.*]] = fadd float %[[VAL_30]], %[[VAL_35]]
@@ -47,9 +47,9 @@ HloModule Test
 // CHECK:         %[[VAL_37:.*]] = add nuw nsw i32 %[[VAL_28]], 1
 // CHECK:         store i32 %[[VAL_37]], i32* %[[VAL_4]], align 4
 // CHECK:         br label %[[VAL_26]]
-// CHECK:       dot.inner.loop_exit:                              ; preds = %[[VAL_26]]
+// CHECK:       dot.3.inner.loop_exit:                            ; preds = %[[VAL_26]]
 // CHECK:         %[[VAL_38:.*]] = load float, float* %[[VAL_3]], align 4
-// CHECK:         %[[VAL_39:.*]] = bitcast [1 x [4 x [5 x float]]]* %[[VAL_6]] to float*
+// CHECK:         %[[VAL_39:.*]] = bitcast [1 x [4 x [5 x float]]]* %[[VAL_10]] to float*
 // CHECK:         %[[VAL_40:.*]] = getelementptr inbounds float, float* %[[VAL_39]], i32 %[[VAL_14]]
 // CHECK:         store float %[[VAL_38]], float* %[[VAL_40]], align 4
 // CHECK:         br label %[[VAL_23]]
@@ -66,10 +66,10 @@ HloModule Test
 
 // CHECK: define void @reshape(i8* noalias align 64 dereferenceable(8) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(8) %[[VAL_1:.*]]) {
 // CHECK:       entry:
-// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [1 x [2 x float]]*
-// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [2 x float]*
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [2 x float]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [1 x [2 x float]]*
 // CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_7:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_8:.*]] = mul nuw nsw i32 %[[VAL_6]], 2
@@ -81,13 +81,13 @@ HloModule Test
 // CHECK:         %[[VAL_13:.*]] = udiv i32 %[[VAL_9]], 2
 // CHECK:         %[[VAL_14:.*]] = icmp ult i32 %[[VAL_9]], 2
 // CHECK:         br i1 %[[VAL_14]], label %[[VAL_15:.*]], label %[[VAL_16:.*]]
-// CHECK:       reshape.in_bounds-after:                              ; preds = %[[VAL_15]], %[[VAL_17:.*]]
+// CHECK:       reshape.in_bounds-after:                          ; preds = %[[VAL_15]], %[[VAL_17:.*]]
 // CHECK:         ret void
-// CHECK:       reshape.in_bounds-true:                               ; preds = %[[VAL_17]]
-// CHECK:         %[[VAL_18:.*]] = bitcast [2 x float]* %[[VAL_5]] to float*
+// CHECK:       reshape.in_bounds-true:                           ; preds = %[[VAL_17]]
+// CHECK:         %[[VAL_18:.*]] = bitcast [2 x float]* %[[VAL_3]] to float*
 // CHECK:         %[[VAL_19:.*]] = getelementptr inbounds float, float* %[[VAL_18]], i32 %[[VAL_9]]
 // CHECK:         %[[VAL_20:.*]] = load float, float* %[[VAL_19]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_21:.*]] = bitcast [1 x [2 x float]]* %[[VAL_3]] to float*
+// CHECK:         %[[VAL_21:.*]] = bitcast [1 x [2 x float]]* %[[VAL_5]] to float*
 // CHECK:         %[[VAL_22:.*]] = getelementptr inbounds float, float* %[[VAL_21]], i32 %[[VAL_9]]
 // CHECK:         store float %[[VAL_20]], float* %[[VAL_22]], align 4
 // CHECK:         br label %[[VAL_16]]
@@ -111,10 +111,10 @@ HloModule Test
 // CHECK:         %[[VAL_7:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_8:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_9:.*]] = alloca float, align 4
-// CHECK:         %[[VAL_10:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_11:.*]] = bitcast i8* %[[VAL_10]] to [2 x [5 x [8 x [7 x float]]]]*
-// CHECK:         %[[VAL_12:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_13:.*]] = bitcast i8* %[[VAL_12]] to [2 x [17 x [31 x [7 x float]]]]*
+// CHECK:         %[[VAL_10:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_11:.*]] = bitcast i8* %[[VAL_10]] to [2 x [17 x [31 x [7 x float]]]]*
+// CHECK:         %[[VAL_12:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_13:.*]] = bitcast i8* %[[VAL_12]] to [2 x [5 x [8 x [7 x float]]]]*
 // CHECK:         %[[VAL_14:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_15:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_16:.*]] = mul nuw nsw i32 %[[VAL_14]], 560
@@ -130,39 +130,39 @@ HloModule Test
 // CHECK:         %[[VAL_25:.*]] = udiv i32 %[[VAL_17]], 280
 // CHECK:         %[[VAL_26:.*]] = icmp ult i32 %[[VAL_17]], 560
 // CHECK:         br i1 %[[VAL_26]], label %[[VAL_27:.*]], label %[[VAL_28:.*]]
-// CHECK:       reduce_window.in_bounds-after:                              ; preds = %[[VAL_29:.*]], %[[VAL_30:.*]]
+// CHECK:       reduce_window.in_bounds-after:                    ; preds = %[[VAL_29:.*]], %[[VAL_30:.*]]
 // CHECK:         ret void
-// CHECK:       reduce_window.in_bounds-true:                               ; preds = %[[VAL_30]]
+// CHECK:       reduce_window.in_bounds-true:                     ; preds = %[[VAL_30]]
 // CHECK:         %[[VAL_31:.*]] = load float, float* bitcast ([4 x i8]* @buffer_for_c_1 to float*), align 4, !invariant.load !4
 // CHECK:         store float %[[VAL_31]], float* %[[VAL_9]], align 4
 // CHECK:         store i32 0, i32* %[[VAL_8]], align 4
 // CHECK:         br label %[[VAL_32:.*]]
-// CHECK:       reduce_window.loop_header.window.0:                         ; preds = %[[VAL_33:.*]], %[[VAL_27]]
+// CHECK:       reduce-window.7.loop_header.window.0:             ; preds = %[[VAL_33:.*]], %[[VAL_27]]
 // CHECK:         %[[VAL_34:.*]] = load i32, i32* %[[VAL_8]], align 4
 // CHECK:         %[[VAL_35:.*]] = icmp uge i32 %[[VAL_34]], 1
 // CHECK:         br i1 %[[VAL_35]], label %[[VAL_29]], label %[[VAL_36:.*]]
-// CHECK:       reduce_window.loop_body.window.0:                           ; preds = %[[VAL_32]]
+// CHECK:       reduce-window.7.loop_body.window.0:               ; preds = %[[VAL_32]]
 // CHECK:         store i32 0, i32* %[[VAL_7]], align 4
 // CHECK:         br label %[[VAL_37:.*]]
-// CHECK:       reduce_window.loop_header.window.1:                         ; preds = %[[VAL_38:.*]], %[[VAL_36]]
+// CHECK:       reduce-window.7.loop_header.window.1:             ; preds = %[[VAL_38:.*]], %[[VAL_36]]
 // CHECK:         %[[VAL_39:.*]] = load i32, i32* %[[VAL_7]], align 4
 // CHECK:         %[[VAL_40:.*]] = icmp uge i32 %[[VAL_39]], 2
 // CHECK:         br i1 %[[VAL_40]], label %[[VAL_33]], label %[[VAL_41:.*]]
-// CHECK:       reduce_window.loop_body.window.1:                           ; preds = %[[VAL_37]]
+// CHECK:       reduce-window.7.loop_body.window.1:               ; preds = %[[VAL_37]]
 // CHECK:         store i32 0, i32* %[[VAL_6]], align 4
 // CHECK:         br label %[[VAL_42:.*]]
-// CHECK:       reduce_window.loop_header.window.2:                         ; preds = %[[VAL_43:.*]], %[[VAL_41]]
+// CHECK:       reduce-window.7.loop_header.window.2:             ; preds = %[[VAL_43:.*]], %[[VAL_41]]
 // CHECK:         %[[VAL_44:.*]] = load i32, i32* %[[VAL_6]], align 4
 // CHECK:         %[[VAL_45:.*]] = icmp uge i32 %[[VAL_44]], 2
 // CHECK:         br i1 %[[VAL_45]], label %[[VAL_38]], label %[[VAL_46:.*]]
-// CHECK:       reduce_window.loop_body.window.2:                           ; preds = %[[VAL_42]]
+// CHECK:       reduce-window.7.loop_body.window.2:               ; preds = %[[VAL_42]]
 // CHECK:         store i32 0, i32* %[[VAL_5]], align 4
 // CHECK:         br label %[[VAL_47:.*]]
-// CHECK:       reduce_window.loop_header.window.3:                         ; preds = %[[VAL_48:.*]], %[[VAL_46]]
+// CHECK:       reduce-window.7.loop_header.window.3:             ; preds = %[[VAL_48:.*]], %[[VAL_46]]
 // CHECK:         %[[VAL_49:.*]] = load i32, i32* %[[VAL_5]], align 4
 // CHECK:         %[[VAL_50:.*]] = icmp uge i32 %[[VAL_49]], 1
 // CHECK:         br i1 %[[VAL_50]], label %[[VAL_43]], label %[[VAL_51:.*]]
-// CHECK:       reduce_window.loop_body.window.3:                           ; preds = %[[VAL_47]]
+// CHECK:       reduce-window.7.loop_body.window.3:               ; preds = %[[VAL_47]]
 // CHECK:         %[[VAL_52:.*]] = mul nsw i32 %[[VAL_25]], 1
 // CHECK:         %[[VAL_53:.*]] = mul nsw i32 %[[VAL_34]], 1
 // CHECK:         %[[VAL_54:.*]] = add nsw i32 %[[VAL_52]], %[[VAL_53]]
@@ -208,31 +208,31 @@ HloModule Test
 // CHECK:         %[[VAL_94:.*]] = add nuw nsw i32 %[[VAL_49]], 1
 // CHECK:         store i32 %[[VAL_94]], i32* %[[VAL_5]], align 4
 // CHECK:         br label %[[VAL_47]]
-// CHECK:       reduce_window.loop_exit.window.3:                           ; preds = %[[VAL_47]]
+// CHECK:       reduce-window.7.loop_exit.window.3:               ; preds = %[[VAL_47]]
 // CHECK:         %[[VAL_95:.*]] = add nuw nsw i32 %[[VAL_44]], 1
 // CHECK:         store i32 %[[VAL_95]], i32* %[[VAL_6]], align 4
 // CHECK:         br label %[[VAL_42]]
-// CHECK:       reduce_window.loop_exit.window.2:                           ; preds = %[[VAL_42]]
+// CHECK:       reduce-window.7.loop_exit.window.2:               ; preds = %[[VAL_42]]
 // CHECK:         %[[VAL_96:.*]] = add nuw nsw i32 %[[VAL_39]], 1
 // CHECK:         store i32 %[[VAL_96]], i32* %[[VAL_7]], align 4
 // CHECK:         br label %[[VAL_37]]
-// CHECK:       reduce_window.loop_exit.window.1:                           ; preds = %[[VAL_37]]
+// CHECK:       reduce-window.7.loop_exit.window.1:               ; preds = %[[VAL_37]]
 // CHECK:         %[[VAL_97:.*]] = add nuw nsw i32 %[[VAL_34]], 1
 // CHECK:         store i32 %[[VAL_97]], i32* %[[VAL_8]], align 4
 // CHECK:         br label %[[VAL_32]]
-// CHECK:       reduce_window.loop_exit.window.0:                           ; preds = %[[VAL_32]]
+// CHECK:       reduce-window.7.loop_exit.window.0:               ; preds = %[[VAL_32]]
 // CHECK:         %[[VAL_98:.*]] = load float, float* %[[VAL_9]], align 4
-// CHECK:         %[[VAL_99:.*]] = bitcast [2 x [5 x [8 x [7 x float]]]]* %[[VAL_11]] to float*
+// CHECK:         %[[VAL_99:.*]] = bitcast [2 x [5 x [8 x [7 x float]]]]* %[[VAL_13]] to float*
 // CHECK:         %[[VAL_100:.*]] = getelementptr inbounds float, float* %[[VAL_99]], i32 %[[VAL_17]]
 // CHECK:         store float %[[VAL_98]], float* %[[VAL_100]], align 4
 // CHECK:         br label %[[VAL_28]]
 // CHECK:       in_bounds-true:                                   ; preds = %[[VAL_51]]
-// CHECK:         %[[VAL_101:.*]] = getelementptr inbounds [2 x [17 x [31 x [7 x float]]]], [2 x [17 x [31 x [7 x float]]]]* %[[VAL_13]], i32 0, i32 %[[VAL_59]], i32 %[[VAL_69]], i32 %[[VAL_79]], i32 %[[VAL_89]]
+// CHECK:         %[[VAL_101:.*]] = getelementptr inbounds [2 x [17 x [31 x [7 x float]]]], [2 x [17 x [31 x [7 x float]]]]* %[[VAL_11]], i32 0, i32 %[[VAL_59]], i32 %[[VAL_69]], i32 %[[VAL_79]], i32 %[[VAL_89]]
 // CHECK:         %[[VAL_102:.*]] = load float, float* %[[VAL_101]], align 4, !invariant.load !4
 // CHECK:         %[[VAL_103:.*]] = load float, float* %[[VAL_9]], align 4
 // CHECK:         store float %[[VAL_103]], float* %[[VAL_3]], align 4
 // CHECK:         store float %[[VAL_102]], float* %[[VAL_2]], align 4
-// CHECK:         call void @max(float* %[[VAL_3]], float* %[[VAL_2]], float* %[[VAL_4]])
+// CHECK:         call void @region_1_3(float* %[[VAL_3]], float* %[[VAL_2]], float* %[[VAL_4]])
 // CHECK:         %[[VAL_104:.*]] = load float, float* %[[VAL_4]], align 4
 // CHECK:         store float %[[VAL_104]], float* %[[VAL_9]], align 4
 // CHECK:         br label %[[VAL_48]]
@@ -240,7 +240,7 @@ HloModule Test
 // CHECK:         br label %[[VAL_48]]
 // CHECK:       }
 
-// CHECK: define internal void @max(float* dereferenceable(4) %[[VAL_0:.*]], float* dereferenceable(4) %[[VAL_1:.*]], float* dereferenceable(4) %[[VAL_2:.*]]) {
+// CHECK: define internal void @region_1_3(float* dereferenceable(4) %[[VAL_0:.*]], float* dereferenceable(4) %[[VAL_1:.*]], float* dereferenceable(4) %[[VAL_2:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca float, align 4
 // CHECK:         %[[VAL_4:.*]] = load float, float* %[[VAL_0]], align 4
@@ -270,12 +270,12 @@ HloModule Test
 // CHECK: define void @pad(i8* noalias align 64 dereferenceable(988) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_2:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca float, align 4
-// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [13 x [19 x float]]*
-// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_6]] to [4 x [6 x float]]*
-// CHECK:         %[[VAL_8:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
-// CHECK:         %[[VAL_9:.*]] = bitcast i8* %[[VAL_8]] to float*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [4 x [6 x float]]*
+// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
+// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_6]] to float*
+// CHECK:         %[[VAL_8:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_9:.*]] = bitcast i8* %[[VAL_8]] to [13 x [19 x float]]*
 // CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_11:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_12:.*]] = mul nuw nsw i32 %[[VAL_10]], 247
@@ -311,17 +311,17 @@ HloModule Test
 // CHECK:         br i1 %[[VAL_40]], label %[[VAL_41:.*]], label %[[VAL_42:.*]]
 // CHECK:       in_bounds-after:                                  ; preds = %[[VAL_42]], %[[VAL_41]]
 // CHECK:         %[[VAL_43:.*]] = load float, float* %[[VAL_3]], align 4
-// CHECK:         %[[VAL_44:.*]] = bitcast [13 x [19 x float]]* %[[VAL_5]] to float*
+// CHECK:         %[[VAL_44:.*]] = bitcast [13 x [19 x float]]* %[[VAL_9]] to float*
 // CHECK:         %[[VAL_45:.*]] = getelementptr inbounds float, float* %[[VAL_44]], i32 %[[VAL_13]]
 // CHECK:         store float %[[VAL_43]], float* %[[VAL_45]], align 4
 // CHECK:         br label %[[VAL_20]]
 // CHECK:       in_bounds-true:                                   ; preds = %[[VAL_19]]
-// CHECK:         %[[VAL_46:.*]] = getelementptr inbounds [4 x [6 x float]], [4 x [6 x float]]* %[[VAL_7]], i32 0, i32 %[[VAL_29]], i32 %[[VAL_38]]
+// CHECK:         %[[VAL_46:.*]] = getelementptr inbounds [4 x [6 x float]], [4 x [6 x float]]* %[[VAL_5]], i32 0, i32 %[[VAL_29]], i32 %[[VAL_38]]
 // CHECK:         %[[VAL_47:.*]] = load float, float* %[[VAL_46]], align 4, !invariant.load !4
 // CHECK:         store float %[[VAL_47]], float* %[[VAL_3]], align 4
 // CHECK:         br label %[[VAL_21]]
 // CHECK:       in_bounds-false:                                  ; preds = %[[VAL_19]]
-// CHECK:         %[[VAL_48:.*]] = load float, float* %[[VAL_9]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_48:.*]] = load float, float* %[[VAL_7]], align 4, !invariant.load !4
 // CHECK:         store float %[[VAL_48]], float* %[[VAL_3]], align 4
 // CHECK:         br label %[[VAL_21]]
 // CHECK:       }
@@ -337,10 +337,10 @@ HloModule Test
 
 // CHECK: define void @transpose(i8* noalias align 64 dereferenceable(96) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]]) {
 // CHECK:       entry:
-// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [2 x [1 x [4 x [3 x float]]]]*
-// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [1 x [2 x [3 x [4 x float]]]]*
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [1 x [2 x [3 x [4 x float]]]]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [2 x [1 x [4 x [3 x float]]]]*
 // CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_7:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_8:.*]] = mul nuw nsw i32 %[[VAL_6]], 24
@@ -356,12 +356,12 @@ HloModule Test
 // CHECK:         %[[VAL_17:.*]] = udiv i32 %[[VAL_9]], 12
 // CHECK:         %[[VAL_18:.*]] = icmp ult i32 %[[VAL_9]], 24
 // CHECK:         br i1 %[[VAL_18]], label %[[VAL_19:.*]], label %[[VAL_20:.*]]
-// CHECK:       transpose.in_bounds-after:                              ; preds = %[[VAL_19]], %[[VAL_21:.*]]
+// CHECK:       transpose.in_bounds-after:                        ; preds = %[[VAL_19]], %[[VAL_21:.*]]
 // CHECK:         ret void
-// CHECK:       transpose.in_bounds-true:                               ; preds = %[[VAL_21]]
-// CHECK:         %[[VAL_22:.*]] = getelementptr inbounds [1 x [2 x [3 x [4 x float]]]], [1 x [2 x [3 x [4 x float]]]]* %[[VAL_5]], i32 0, i32 0, i32 %[[VAL_17]], i32 %[[VAL_12]], i32 %[[VAL_14]]
+// CHECK:       transpose.in_bounds-true:                         ; preds = %[[VAL_21]]
+// CHECK:         %[[VAL_22:.*]] = getelementptr inbounds [1 x [2 x [3 x [4 x float]]]], [1 x [2 x [3 x [4 x float]]]]* %[[VAL_3]], i32 0, i32 0, i32 %[[VAL_17]], i32 %[[VAL_12]], i32 %[[VAL_14]]
 // CHECK:         %[[VAL_23:.*]] = load float, float* %[[VAL_22]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_24:.*]] = bitcast [2 x [1 x [4 x [3 x float]]]]* %[[VAL_3]] to float*
+// CHECK:         %[[VAL_24:.*]] = bitcast [2 x [1 x [4 x [3 x float]]]]* %[[VAL_5]] to float*
 // CHECK:         %[[VAL_25:.*]] = getelementptr inbounds float, float* %[[VAL_24]], i32 %[[VAL_9]]
 // CHECK:         store float %[[VAL_23]], float* %[[VAL_25]], align 4
 // CHECK:         br label %[[VAL_20]]
@@ -377,10 +377,10 @@ HloModule Test
 
 // CHECK: define void @broadcast(i8* noalias align 64 dereferenceable(40) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]]) {
 // CHECK:       entry:
-// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [10 x float]*
-// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [1 x float]*
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [1 x float]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [10 x float]*
 // CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_7:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_8:.*]] = mul nuw nsw i32 %[[VAL_6]], 10
@@ -390,15 +390,14 @@ HloModule Test
 // CHECK:         %[[VAL_11:.*]] = udiv i32 %[[VAL_9]], 1
 // CHECK:         %[[VAL_12:.*]] = icmp ult i32 %[[VAL_9]], 10
 // CHECK:         br i1 %[[VAL_12]], label %[[VAL_13:.*]], label %[[VAL_14:.*]]
-// CHECK:       broadcast.in_bounds-after:                              ; preds = %[[VAL_13]], %[[VAL_15:.*]]
+// CHECK:       broadcast.in_bounds-after:                        ; preds = %[[VAL_13]], %[[VAL_15:.*]]
 // CHECK:         ret void
-// CHECK:       broadcast.in_bounds-true:                               ; preds = %[[VAL_15]]
-// CHECK:         %[[VAL_16:.*]] = bitcast [1 x float]* %[[VAL_5]] to float*
-// CHECK:         %[[VAL_17:.*]] = getelementptr inbounds float, float* %[[VAL_16]], i32 %[[VAL_9]]
-// CHECK:         %[[VAL_18:.*]] = load float, float* %[[VAL_17]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_19:.*]] = bitcast [10 x float]* %[[VAL_3]] to float*
-// CHECK:         %[[VAL_20:.*]] = getelementptr inbounds float, float* %[[VAL_19]], i32 %[[VAL_9]]
-// CHECK:         store float %[[VAL_18]], float* %[[VAL_20]], align 4
+// CHECK:       broadcast.in_bounds-true:                         ; preds = %[[VAL_15]]
+// CHECK:         %[[VAL_16:.*]] = getelementptr inbounds [1 x float], [1 x float]* %[[VAL_3]], i32 0, i32 0
+// CHECK:         %[[VAL_17:.*]] = load float, float* %[[VAL_16]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_18:.*]] = bitcast [10 x float]* %[[VAL_5]] to float*
+// CHECK:         %[[VAL_19:.*]] = getelementptr inbounds float, float* %[[VAL_18]], i32 %[[VAL_9]]
+// CHECK:         store float %[[VAL_17]], float* %[[VAL_19]], align 4
 // CHECK:         br label %[[VAL_14]]
 // CHECK:       }
 ENTRY main {
@@ -412,12 +411,12 @@ HloModule Test
 
 // CHECK: define void @concatenate(i8* noalias align 64 dereferenceable(2048) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(1920) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(128) %[[VAL_2:.*]]) {
 // CHECK:       entry:
-// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [32 x [16 x float]]*
-// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
-// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [32 x [1 x float]]*
-// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [32 x [15 x float]]*
+// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
+// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [32 x [1 x float]]*
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [32 x [15 x float]]*
+// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [32 x [16 x float]]*
 // CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_11:.*]] = mul nuw nsw i32 %[[VAL_9]], 512
@@ -429,21 +428,21 @@ HloModule Test
 // CHECK:         %[[VAL_16:.*]] = udiv i32 %[[VAL_12]], 16
 // CHECK:         %[[VAL_17:.*]] = icmp ult i32 %[[VAL_12]], 512
 // CHECK:         br i1 %[[VAL_17]], label %[[VAL_18:.*]], label %[[VAL_19:.*]]
-// CHECK:       concatenate.in_bounds-after:                              ; preds = %[[VAL_20:.*]], %[[VAL_21:.*]]
+// CHECK:       concatenate.in_bounds-after:                      ; preds = %[[VAL_20:.*]], %[[VAL_21:.*]]
 // CHECK:         ret void
-// CHECK:       concatenate.in_bounds-true:                               ; preds = %[[VAL_21]]
+// CHECK:       concatenate.in_bounds-true:                       ; preds = %[[VAL_21]]
 // CHECK:         %[[VAL_22:.*]] = icmp ult i32 %[[VAL_15]], 1
 // CHECK:         br i1 %[[VAL_22]], label %[[VAL_23:.*]], label %[[VAL_24:.*]]
 // CHECK:       concat_index_from_operand_id0:                    ; preds = %[[VAL_18]]
 // CHECK:         %[[VAL_25:.*]] = phi i32 [ 0, %[[VAL_18]] ]
 // CHECK:         %[[VAL_26:.*]] = sub nsw i32 %[[VAL_15]], %[[VAL_25]]
-// CHECK:         %[[VAL_27:.*]] = getelementptr inbounds [32 x [1 x float]], [32 x [1 x float]]* %[[VAL_6]], i32 0, i32 %[[VAL_16]], i32 0
+// CHECK:         %[[VAL_27:.*]] = getelementptr inbounds [32 x [1 x float]], [32 x [1 x float]]* %[[VAL_4]], i32 0, i32 %[[VAL_16]], i32 0
 // CHECK:         %[[VAL_28:.*]] = load float, float* %[[VAL_27]], align 4, !invariant.load !4
 // CHECK:         br label %[[VAL_20]]
 // CHECK:       concat_index_from_operand_id1:                    ; preds = %[[VAL_24]]
 // CHECK:         %[[VAL_29:.*]] = phi i32 [ 1, %[[VAL_24]] ]
 // CHECK:         %[[VAL_30:.*]] = sub nsw i32 %[[VAL_15]], %[[VAL_29]]
-// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [32 x [15 x float]], [32 x [15 x float]]* %[[VAL_8]], i32 0, i32 %[[VAL_16]], i32 %[[VAL_30]]
+// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [32 x [15 x float]], [32 x [15 x float]]* %[[VAL_6]], i32 0, i32 %[[VAL_16]], i32 %[[VAL_30]]
 // CHECK:         %[[VAL_32:.*]] = load float, float* %[[VAL_31]], align 4, !invariant.load !4
 // CHECK:         br label %[[VAL_20]]
 // CHECK:       concat_index_not_from_operand0:                   ; preds = %[[VAL_18]]
@@ -451,9 +450,9 @@ HloModule Test
 // CHECK:         br i1 %[[VAL_33]], label %[[VAL_34:.*]], label %[[VAL_35:.*]]
 // CHECK:       concat_index_not_from_operand1:                   ; preds = %[[VAL_24]]
 // CHECK:         unreachable
-// CHECK:       concatenate.merge:                                        ; preds = %[[VAL_34]], %[[VAL_23]]
+// CHECK:       concatenate.3.merge:                              ; preds = %[[VAL_34]], %[[VAL_23]]
 // CHECK:         %[[VAL_36:.*]] = phi float [ %[[VAL_28]], %[[VAL_23]] ], [ %[[VAL_32]], %[[VAL_34]] ]
-// CHECK:         %[[VAL_37:.*]] = bitcast [32 x [16 x float]]* %[[VAL_4]] to float*
+// CHECK:         %[[VAL_37:.*]] = bitcast [32 x [16 x float]]* %[[VAL_8]] to float*
 // CHECK:         %[[VAL_38:.*]] = getelementptr inbounds float, float* %[[VAL_37]], i32 %[[VAL_12]]
 // CHECK:         store float %[[VAL_36]], float* %[[VAL_38]], align 4
 // CHECK:         br label %[[VAL_19]]
@@ -518,12 +517,12 @@ HloModule m
 
 // CHECK: define void @ds(i8* noalias align 64 dereferenceable(8) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_2:.*]]) {
 // CHECK:       entry:
-// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [2 x i32]*
-// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
-// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [6 x i32]*
-// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to i32*
+// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
+// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [6 x i32]*
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to i32*
+// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [2 x i32]*
 // CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
 // CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !10
 // CHECK:         %[[VAL_11:.*]] = mul nuw nsw i32 %[[VAL_9]], 2
@@ -536,15 +535,15 @@ HloModule m
 // CHECK:       ds.in_bounds-after:                               ; preds = %[[VAL_16]], %[[VAL_18:.*]]
 // CHECK:         ret void
 // CHECK:       ds.in_bounds-true:                                ; preds = %[[VAL_18]]
-// CHECK:         %[[VAL_19:.*]] = load i32, i32* %[[VAL_8]], align 4, !invariant.load !8
+// CHECK:         %[[VAL_19:.*]] = load i32, i32* %[[VAL_6]], align 4, !invariant.load !8
 // CHECK:         %[[VAL_20:.*]] = icmp sge i32 0, %[[VAL_19]]
 // CHECK:         %[[VAL_21:.*]] = select i1 %[[VAL_20]], i32 0, i32 %[[VAL_19]]
 // CHECK:         %[[VAL_22:.*]] = icmp sle i32 4, %[[VAL_21]]
 // CHECK:         %[[VAL_23:.*]] = select i1 %[[VAL_22]], i32 4, i32 %[[VAL_21]]
 // CHECK:         %[[VAL_24:.*]] = add i32 %[[VAL_23]], %[[VAL_14]]
-// CHECK:         %[[VAL_25:.*]] = getelementptr inbounds [6 x i32], [6 x i32]* %[[VAL_6]], i32 0, i32 %[[VAL_24]]
+// CHECK:         %[[VAL_25:.*]] = getelementptr inbounds [6 x i32], [6 x i32]* %[[VAL_4]], i32 0, i32 %[[VAL_24]]
 // CHECK:         %[[VAL_26:.*]] = load i32, i32* %[[VAL_25]], align 4, !invariant.load !8
-// CHECK:         %[[VAL_27:.*]] = bitcast [2 x i32]* %[[VAL_4]] to i32*
+// CHECK:         %[[VAL_27:.*]] = bitcast [2 x i32]* %[[VAL_8]] to i32*
 // CHECK:         %[[VAL_28:.*]] = getelementptr inbounds i32, i32* %[[VAL_27]], i32 %[[VAL_12]]
 // CHECK:         store i32 %[[VAL_26]], i32* %[[VAL_28]], align 4
 // CHECK:         br label %[[VAL_17]]
@@ -565,12 +564,12 @@ HloModule TensorFlowGatherV1
 
 // CHECK: define void @gather(i8* noalias align 16 dereferenceable(36) %[[VAL_0:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(8) %[[VAL_2:.*]]) {
 // CHECK:       entry:
-// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [2 x [3 x i32]]*
-// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [3 x [3 x i32]]*
-// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
-// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [2 x i32]*
+// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [3 x [3 x i32]]*
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
+// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [2 x i32]*
+// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [2 x [3 x i32]]*
 // CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_11:.*]] = mul nuw nsw i32 %[[VAL_9]], 6
@@ -585,16 +584,16 @@ HloModule TensorFlowGatherV1
 // CHECK:       gather.in_bounds-after:                           ; preds = %[[VAL_18]], %[[VAL_20:.*]]
 // CHECK:         ret void
 // CHECK:       gather.in_bounds-true:                            ; preds = %[[VAL_20]]
-// CHECK:         %[[VAL_21:.*]] = getelementptr inbounds [2 x i32], [2 x i32]* %[[VAL_8]], i32 0, i32 %[[VAL_16]]
+// CHECK:         %[[VAL_21:.*]] = getelementptr inbounds [2 x i32], [2 x i32]* %[[VAL_6]], i32 0, i32 %[[VAL_16]]
 // CHECK:         %[[VAL_22:.*]] = load i32, i32* %[[VAL_21]], align 4, !invariant.load !4
 // CHECK:         %[[VAL_23:.*]] = icmp sge i32 0, %[[VAL_22]]
 // CHECK:         %[[VAL_24:.*]] = select i1 %[[VAL_23]], i32 0, i32 %[[VAL_22]]
 // CHECK:         %[[VAL_25:.*]] = icmp sle i32 2, %[[VAL_24]]
 // CHECK:         %[[VAL_26:.*]] = select i1 %[[VAL_25]], i32 2, i32 %[[VAL_24]]
 // CHECK:         %[[VAL_27:.*]] = add i32 0, %[[VAL_26]]
-// CHECK:         %[[VAL_28:.*]] = getelementptr inbounds [3 x [3 x i32]], [3 x [3 x i32]]* %[[VAL_6]], i32 0, i32 %[[VAL_27]], i32 %[[VAL_15]]
+// CHECK:         %[[VAL_28:.*]] = getelementptr inbounds [3 x [3 x i32]], [3 x [3 x i32]]* %[[VAL_4]], i32 0, i32 %[[VAL_27]], i32 %[[VAL_15]]
 // CHECK:         %[[VAL_29:.*]] = load i32, i32* %[[VAL_28]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_30:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_4]] to i32*
+// CHECK:         %[[VAL_30:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_8]] to i32*
 // CHECK:         %[[VAL_31:.*]] = getelementptr inbounds i32, i32* %[[VAL_30]], i32 %[[VAL_12]]
 // CHECK:         store i32 %[[VAL_29]], i32* %[[VAL_31]], align 4
 // CHECK:         br label %[[VAL_19]]
@@ -649,9 +648,9 @@ HloModule Test
 
 // CHECK: define void @reverse(i8* noalias align 64 dereferenceable(96) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]]) {
 // CHECK:       entry:
-// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
 // CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [2 x [3 x [4 x float]]]*
-// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
 // CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [2 x [3 x [4 x float]]]*
 // CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_7:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
@@ -671,9 +670,9 @@ HloModule Test
 // CHECK:       reverse.in_bounds-true:                           ; preds = %[[VAL_19]]
 // CHECK:         %[[VAL_20:.*]] = sub i32 2, %[[VAL_14]]
 // CHECK:         %[[VAL_21:.*]] = sub i32 3, %[[VAL_12]]
-// CHECK:         %[[VAL_22:.*]] = getelementptr inbounds [2 x [3 x [4 x float]]], [2 x [3 x [4 x float]]]* %[[VAL_5]], i32 0, i32 %[[VAL_15]], i32 %[[VAL_20]], i32 %[[VAL_21]]
+// CHECK:         %[[VAL_22:.*]] = getelementptr inbounds [2 x [3 x [4 x float]]], [2 x [3 x [4 x float]]]* %[[VAL_3]], i32 0, i32 %[[VAL_15]], i32 %[[VAL_20]], i32 %[[VAL_21]]
 // CHECK:         %[[VAL_23:.*]] = load float, float* %[[VAL_22]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_24:.*]] = bitcast [2 x [3 x [4 x float]]]* %[[VAL_3]] to float*
+// CHECK:         %[[VAL_24:.*]] = bitcast [2 x [3 x [4 x float]]]* %[[VAL_5]] to float*
 // CHECK:         %[[VAL_25:.*]] = getelementptr inbounds float, float* %[[VAL_24]], i32 %[[VAL_9]]
 // CHECK:         store float %[[VAL_23]], float* %[[VAL_25]], align 4
 // CHECK:         br label %[[VAL_18]]
