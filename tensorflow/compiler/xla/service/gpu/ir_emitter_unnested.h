@@ -239,7 +239,7 @@ class IrEmitterUnnested : public IrEmitter,
 
   // pseudo code for padToStatic on a 2d array
   //   ```
-  // void padToStatic(int** input, int** output, int thread_per_block,
+  // void padToStatic(int** input, int** output, int threads_per_block,
   //                  int meta_data_offset, int max_num_element,
   //                  int static_dim0_size, int static_dim1_size) {
   //   int* source_array = input[0];
@@ -260,7 +260,7 @@ class IrEmitterUnnested : public IrEmitter,
   //   int dyn_element_total = 1;
   //   dyn_element_total *= *dyn_dim0_size;
   //   dyn_element_total *= *dyn_dim1_size;
-  //   linear_index = block_id * thread_per_block + thread_id;
+  //   linear_index = block_id * threads_per_block + thread_id;
   //   if (linear_index < max_num_element) {
   //     Index static_index =
   //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
@@ -285,7 +285,7 @@ class IrEmitterUnnested : public IrEmitter,
 
   // pseudo code for sliceToDynamic on a 2d array
   //   ```
-  // void sliceToDynamic(int** input, int** output, int thread_per_block,
+  // void sliceToDynamic(int** input, int** output, int threads_per_block,
   //                  int meta_data_offset, int max_num_element,
   //                  int static_dim0_size, int static_dim1_size) {
   //   int* source_array = input[0];
@@ -306,7 +306,7 @@ class IrEmitterUnnested : public IrEmitter,
   //   int dyn_element_total = 1;
   //   dyn_element_total *= *dyn_dim0_size;
   //   dyn_element_total *= *dyn_dim1_size;
-  //   linear_index = block_id * thread_per_block + thread_id;
+  //   linear_index = block_id * threads_per_block + thread_id;
   //   if (linear_index < max_num_element) {
   //     Index static_index =
   //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
@@ -611,13 +611,15 @@ class IrEmitterUnnested : public IrEmitter,
   // result to the global result.
   void EmitFullWarpShuffleDownLoopForAllReduces(
       absl::Span<HloComputation* const> reducers,
-      absl::Span<llvm::AllocaInst* const> partial_result_addresses);
+      absl::Span<llvm::AllocaInst* const> partial_result_addresses,
+      int threads_per_block);
 
   // Emits shuffle-down reduction for the `partial_result_address` using the
   // reduction computation `reducer` over types `element_type`.
-  void EmitFullWarpShuffleDownLoopForReduce(
-      HloComputation* reducer, llvm::Type* element_type,
-      llvm::Value* partial_result_address);
+  void EmitFullWarpShuffleDownLoopForReduce(HloComputation* reducer,
+                                            llvm::Type* element_type,
+                                            llvm::Value* partial_result_address,
+                                            int threads_per_block);
 
   std::unique_ptr<KernelThunk> BuildKernelThunkFromBufferSlices(
       absl::string_view name, Thunk::ThunkInfo thunk_info,

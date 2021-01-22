@@ -930,7 +930,7 @@ Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
                                      /*Name=*/"dyn_element_total");
   }
 
-  //   linear_index = block_id * thread_per_block + thread_id;
+  //   linear_index = block_id * threads_per_block + thread_id;
   //   if (linear_index < max_num_element) {
   //     Index static_index =
   //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
@@ -1052,7 +1052,7 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
                                      /*Name=*/"dyn_element_total");
   }
 
-  //   linear_index = block_id * thread_per_block + thread_id;
+  //   linear_index = block_id * threads_per_block + thread_id;
   //   if (linear_index < max_num_element) {
   //     Index static_index =
   //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
@@ -4472,18 +4472,21 @@ void IrEmitterUnnested::EmitPrologueForReduction(
 
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
     absl::Span<HloComputation* const> reducers,
-    absl::Span<llvm::AllocaInst* const> partial_result_addresses) {
+    absl::Span<llvm::AllocaInst* const> partial_result_addresses,
+    int threads_per_block) {
   CHECK_EQ(reducers.size(), partial_result_addresses.size());
   for (int i = 0; i != reducers.size(); i++) {
     EmitFullWarpShuffleDownLoopForReduce(
         reducers[i], partial_result_addresses[i]->getType()->getElementType(),
-        partial_result_addresses[i]);
+        partial_result_addresses[i], threads_per_block);
   }
 }
 
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     HloComputation* reducer, llvm::Type* element_type,
-    llvm::Value* partial_result_address) {
+    llvm::Value* partial_result_address, int threads_per_block) {
+  // This only works when the block size is a multiple of 32 threads.
+  CHECK_EQ(threads_per_block % 32, 0);
   for (int distance = 16; distance >= 1; distance /= 2) {
     int bit_width = llvm_ir::GetSizeInBits(element_type);
     llvm::Value* result_from_other_lane = llvm_ir::EmitAllocaAtFunctionEntry(
@@ -4629,8 +4632,9 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
       llvm::Type* element_type =
           partial_result_addresses[i]->getType()->getElementType();
       if (reduction_info.IsRowReduction()) {
-        EmitFullWarpShuffleDownLoopForReduce(reducers[i], element_type,
-                                             current_output);
+        EmitFullWarpShuffleDownLoopForReduce(
+            reducers[i], element_type, current_output,
+            mapping_scheme.GetThreadsPerBlock());
         llvm::Value* warp_id =
             b_.CreateUDiv(thread_id_info.thread_id_x, constant(kWarpSize));
         ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
@@ -4660,7 +4664,8 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
 
           EmitFullWarpShuffleDownLoopForReduce(
               reducers[i], element_type,
-              /*block_accum_addr*/ selected_value);
+              /*block_accum_addr*/ selected_value,
+              mapping_scheme.GetThreadsPerBlock());
           ksl.If("reduction_atomic_update", is_zero(thread_id_info.thread_id_x),
                  [&] {
                    TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
@@ -4687,8 +4692,9 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
                  thread_id_info.thread_id_x},
                 "shmem_transposed_addr"));
 
-        EmitFullWarpShuffleDownLoopForReduce(reducers[i], element_type,
-                                             shmem_transposed_addr);
+        EmitFullWarpShuffleDownLoopForReduce(
+            reducers[i], element_type, shmem_transposed_addr,
+            mapping_scheme.GetThreadsPerBlock());
 
         // Some threads in the block are completely outside of the bound of the
         // tensor, so they should not write any output at all.
@@ -5476,6 +5482,9 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo)) {
         fan_out = fusion.getFusionResults().size();
       }
+
+      // 64 is the general advice as the smallest block sizes.
+      // Moreover, XLA:GPU emitters need at least 32 threads at some places.
       int64 max_block_size = std::max(64LL, 512LL / NearestPowerOfTwo(fan_out));
       return std::min(
           max_block_size,
