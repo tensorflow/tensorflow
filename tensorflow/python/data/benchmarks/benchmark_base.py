@@ -115,7 +115,10 @@ class DatasetBenchmarkBase(test.Benchmark):
     # Measure the per-element wall time.
     wall_time = self.run_benchmark(dataset, num_elements, iters, warmup,
                                    apply_default_optimizations)
-
+    if context.executing_eagerly():
+      name = "{}_eager".format(name)
+    else:
+      name = "{}_graph".format(name)
     if extras is None:
       extras = {}
     extras["num_elements"] = num_elements
