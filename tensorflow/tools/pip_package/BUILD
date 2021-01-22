@@ -157,7 +157,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
     "//tensorflow/python/distribute/coordinator:metric_utils",
     "//tensorflow:tensorflow_py",
-    "//tensorflow/tools/docs/tf_doctest_lib.py",
+    "//tensorflow/tools/docs:tf_doctest_lib",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
