@@ -1118,7 +1118,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       features,
       weights=None,
       training: bool = True,
-      name: Optional[Text] = None):
+      name: Optional[Text] = None,
+      device: Optional[Text] = None):
     """Enqueues id tensors for embedding lookup.
 
     This function enqueues a structure of features to be looked up in the
@@ -1166,6 +1167,28 @@ class TPUEmbedding(tracking.AutoTrackable):
     `embedding.apply_gradients` (e.g. for frozen embeddings or when doing
     evaluation).
 
+    For finer grained control, in the above example the line
+
+    ```
+      embedding.enqueue(embedding_features, training=True)
+    ```
+
+    may be replaced with
+
+    ```
+      per_core_embedding_features = self.strategy.experimental_local_results(
+          embedding_features)
+
+      def per_core_enqueue(ctx):
+        core_id = ctx.replica_id_in_sync_group
+        device = strategy.extended.worker_devices[core_id]
+        embedding.enqueue(per_core_embedding_features[core_id],
+                          device=device)
+
+      strategy.experimental_distribute_values_from_function(
+          per_core_queue_inputs)
+    ```
+
     Args:
       features: A nested structure of `tf.Tensor`s, `tf.SparseTensor`s or
         `tf.RaggedTensor`s, with the same structure as `feature_config`. Inputs
@@ -1181,6 +1204,10 @@ class TPUEmbedding(tracking.AutoTrackable):
         batch (forward pass only). Do not call `apply_gradients` when this is
         `False` as this may lead to a deadlock.
        name: A name for the underlying op.
+       device: The device name (e.g. '/task:0/device:TPU:2') where this batch
+         should be enqueued. This should be set if and only if features is not a
+         `tf.distribute.DistributedValues` and enqueue is not being called
+         inside a TPU context (e.g. inside `TPUStrategy.run`).
 
     Raises:
       ValueError: When called inside a strategy.run call and input is not
@@ -1257,7 +1284,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       tpu.outside_compilation(generate_enqueue_ops)
 
-    else:
+    elif device is None:
       mode_override = "train" if training else "inference"
       # We generate enqueue ops per device, so we need to gather the all
       # features for a single device in to a dict.
@@ -1272,7 +1299,8 @@ class TPUEmbedding(tracking.AutoTrackable):
         tpu_device = self._strategy.extended.worker_devices[replica_id]
         # TPU devices string are like /job:worker/replica:0/task:0/device:TPU:0
         # the device ordinal is the last number
-        device_ordinal = int(tpu_device.rsplit(":", 1)[1])
+        device_ordinal = (
+            tf_device.DeviceSpec.from_string(tpu_device).device_index)
         with ops.device(device_util.get_host_for_device(tpu_device)):
           enqueue_op = self._generate_enqueue_op(
               replica_inputs, replica_weights, flat_features,
@@ -1283,6 +1311,22 @@ class TPUEmbedding(tracking.AutoTrackable):
             _add_key_attr(enqueue_op, name)
           enqueue_ops.append(enqueue_op)
       ops.get_default_graph().control_outputs.extend(enqueue_ops)
+    else:
+      mode_override = "train" if training else "inference"
+      device_spec = tf_device.DeviceSpec.from_string(device)
+      if device_spec.device_type != "TPU":
+        raise ValueError(
+            "Non-TPU device {} passed to enqueue.".format(device))
+      with ops.device(device_util.get_host_for_device(device)):
+        enqueue_op = self._generate_enqueue_op(
+            flat_inputs, flat_weights, flat_features,
+            device_ordinal=device_spec.device_index,
+            mode_override=mode_override)
+
+        # Apply the name tag to the op.
+        if name is not None:
+          _add_key_attr(enqueue_op, name)
+        ops.get_default_graph().control_outputs.append(enqueue_op)
 
   def _get_batch_size(self, tensors, in_tpu_context: bool):
     """Gets the batch size from a nested structure of features."""
