@@ -62,6 +62,12 @@ class DatasetBenchmarkBase(test.Benchmark):
         apply_default_optimizations)
     dataset = dataset.with_options(options)
 
+    # NOTE: We use `dataset.skip()` to perform the iterations in C++, avoiding
+    # the overhead of multiple `session.run()` calls (in graph mode). Note that
+    # this relies on the underlying implementation of `skip`: if it is optimized
+    # in the future, we will have to change this code.
+    dataset = dataset.skip(num_elements - 1)
+
     if context.executing_eagerly():
       deltas = []
       for _ in range(iters):
@@ -75,11 +81,6 @@ class DatasetBenchmarkBase(test.Benchmark):
         deltas.append(end - start)
       return np.median(deltas) / float(num_elements)
 
-    # NOTE: We use `dataset.skip()` to perform the iterations in C++, avoiding
-    # the overhead of multiple `session.run()` calls. Note that this relies on
-    # the underlying implementation of `skip`: if it is optimized in the future,
-    # we will have to change this code.
-    dataset = dataset.skip(num_elements - 1)
     iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     next_element = nest.flatten(next_element)[0]
