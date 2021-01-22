@@ -120,6 +120,135 @@ bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
   return true;
 }
 
+namespace {
+bool Is1dSliceWithoutStrides(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kSlice &&
+         1 == instr->slice_starts().size() &&
+         1 == instr->slice_limits().size() &&
+         1 == instr->slice_strides().size() &&
+         1 == instr->slice_strides().at(0);
+}
+
+bool IsSliceInputFusion(const HloInstruction& unnested_hlo) {
+  if (!unnested_hlo.IsInputFusion()) {
+    return false;
+  }
+
+  const HloInstruction* root = unnested_hlo.fused_expression_root();
+  if (Is1dSliceWithoutStrides(root)) {
+    return true;
+  }
+
+  if (root->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+
+  return absl::c_all_of(root->operands(), [](const HloInstruction* instr) {
+    return Is1dSliceWithoutStrides(instr);
+  });
+}
+
+bool ConcatHasNoEffect(const HloInstruction* concat) {
+  // Check if this concat is in the below pattern. In addition, we check
+  // that the slices combiningly are in effect a reverse function of the
+  // concat.
+  //
+  //     Concat
+  //     |    |
+  //     v    v
+  //   Slice Slice
+  //
+  std::vector<HloInstruction*> users = concat->users();
+  bool all_1d_slices = absl::c_all_of(users, [](const HloInstruction* i) {
+    return Is1dSliceWithoutStrides(i);
+  });
+  if (!all_1d_slices) {
+    // Limit our supported cases to 1 dimensional slices.
+    return false;
+  }
+  absl::c_sort(users, [](const HloInstruction* a, const HloInstruction* b) {
+    return a->slice_starts().at(0) < b->slice_starts().at(0);
+  });
+
+  // Verify that each operand to the concat is reversed by a slice.
+  if (users.size() != concat->operand_count()) {
+    return false;
+  }
+  int64 prev_limit = 0;
+  for (size_t i = 0; i < users.size(); ++i) {
+    const HloInstruction* u = users[i];
+    int64 slice_size = u->slice_limits().at(0) - u->slice_starts().at(0);
+    if (u->slice_starts().at(0) != prev_limit ||
+        slice_size != ShapeUtil::ElementsIn(concat->operand(i)->shape())) {
+      return false;
+    }
+    prev_limit = u->slice_limits().at(0);
+  }
+
+  return true;
+}
+
+// Returns whether we can prove the transitive uses are in effect elementwise
+// operations. A concat followed by slices is considered (effectively)
+// elementwise if the slices combiningly is a reverse function of the concat.
+// We can prove more patterns but we currently do just enough for
+// SliceInputFusion.
+bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* instr) {
+  absl::flat_hash_set<const HloInstruction*> visited;
+  absl::InlinedVector<const HloInstruction*, 4> stack;
+  stack.push_back(instr);
+  while (!stack.empty()) {
+    const HloInstruction* current = stack.back();
+    stack.pop_back();
+    visited.insert(current);
+    for (const HloInstruction* user : current->users()) {
+      VLOG(3) << "Visiting: " << user->ToString();
+      switch (user->opcode()) {
+        case HloOpcode::kTuple:
+        // We say reshape is fine because it does not reorder elements.
+        case HloOpcode::kReshape:
+          break;
+        case HloOpcode::kConcatenate:
+          if (!ConcatHasNoEffect(user)) {
+            return false;
+          }
+          break;
+        case HloOpcode::kSlice:
+          if (user->operand(0)->opcode() != HloOpcode::kConcatenate) {
+            return false;
+          }
+          break;
+        default:
+          if (user->IsElementwise()) {
+            for (const int64 use_index : user->OperandIndices(current)) {
+              if (!user->IsElementwiseOnOperand(use_index)) {
+                // Found a user that is non-elementwise on the current
+                // instruction.
+                return false;
+              }
+            }
+          } else {
+            VLOG(3) << "Cannot prove that the op is effectively elementwise: "
+                    << user->ToString();
+            return false;
+          }
+          break;
+      }  // end of switch
+      if (user->opcode() != HloOpcode::kTuple &&
+          !LayoutUtil::IsMonotonicWithDim0Major(user->shape().layout())) {
+        // Simply check that all the layout is row-major to make sure there
+        // is no layout change.
+        return false;
+      }
+      if (!visited.contains(user)) {
+        stack.push_back(user);
+      }
+    }
+  }
+  return true;
+}
+}  // namespace
+
 bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
                                            const ShapeIndex& index) const {
   const HloValueSet& value_set = GetValueSet(instruction, index);
@@ -1266,10 +1395,21 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   if (operand->opcode() == HloOpcode::kConstant) {
     return false;
   }
+
   const Shape& operand_subshape =
       ShapeUtil::GetSubshape(operand->shape(), operand_index);
   const Shape& user_subshape =
       ShapeUtil::GetSubshape(user->shape(), user_index);
+  if (IsSliceInputFusion(*user)) {
+    HloInstruction* fusion_param =
+        user->fused_parameter(user->operand_index(operand));
+    // We don't require the same dimensions but only the same number of elements
+    // and type (to make sure the same buffer size).
+    return ShapeUtil::ElementsIn(operand_subshape) ==
+               ShapeUtil::ElementsIn(user_subshape) &&
+           ShapeUtil::SameElementType(operand_subshape, user_subshape) &&
+           AreTransitiveUsesEffectivelyElementwise(fusion_param);
+  }
 
   // Check that operand and user emit the same shape and layout.
   if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
