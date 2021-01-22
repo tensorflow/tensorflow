@@ -836,12 +836,12 @@ typedef struct TF_FilesystemOps {
   /// `num_options`. Ownership of the array is transferred to caller and the
   /// caller is responsible of freeing the buffers using respective file systems
   /// allocation API.
-
+  ///
   /// Plugins:
   ///   * Must set `status` to `TF_OK` if `options` and `num_options` set.
   ///     If there is no configurable option, `num_options` should be 0.
   ///   * Might use any other error value for `status` to signal other errors.
-
+  ///
   /// DEFAULT IMPLEMENTATION: return 0 options and `TF_OK`.
   void (*get_filesystem_configuration)(const TF_Filesystem* filesystem,
                                        TF_Filesystem_Option** options,
@@ -852,7 +852,9 @@ typedef struct TF_FilesystemOps {
   /// of them. Ownership of options and buffers therein belongs to the caller
   /// and any buffers need to be allocated through filesystem allocation API.
   /// Filesystems may choose to ignore configuration errors but should at least
-  /// display a warning or error message to warn the users. Plugins:
+  /// display a warning or error message to warn the users. 
+  ///
+  /// Plugins:
   ///   * Must set `status` to `TF_OK` if options are updated.
   ///   * Might use any other error value for `status` to signal other errors.
   ///
@@ -866,6 +868,7 @@ typedef struct TF_FilesystemOps {
   /// `get_file_system_configuration_keys` call. Ownership of the
   /// `option` is transferred to caller. Buffers therein should be allocated and
   /// freed by the relevant filesystems allocation API.
+  ///
   /// Plugins:
   ///   * Must set `status` to `TF_OK` if `option` is set
   ///   * Must set `status` to `TF_NOT_FOUND` if the key is invalid
@@ -881,7 +884,9 @@ typedef struct TF_FilesystemOps {
   /// `option`. Valid values of the `key` are returned by
   /// `get_file_system_configuration_keys` call. Ownership of the `option` and
   /// the `key` belogs to the caller. Buffers therein should be allocated and
-  /// freed by the filesystems allocation API. Plugins:
+  /// freed by the filesystems allocation API.
+  ///
+  /// Plugins:
   ///   * Must set `status` to `TF_OK` if `option` is set/updated
   ///   * Must set `status` to `TF_NOT_FOUND` if the key is invalid
   ///   * Might use any other error value for `status` to signal other errors.
