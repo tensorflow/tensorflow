@@ -313,7 +313,7 @@ Status PluggableDeviceFactory::GetDeviceLocalities(
       // The trouble may manifest as slower than expected performance,
       // or outright features.
       LOG(INFO) << "Could not identify NUMA node of platform " << device_type_
-                << " Id" << platform_device_id
+                << " Id " << platform_device_id
                 << ", defaulting to 0. Your kernel may not have been built "
                 << "with NUMA support. ";
       numa_node = 0;
@@ -322,8 +322,8 @@ Status PluggableDeviceFactory::GetDeviceLocalities(
     dev_locality.set_numa_node(numa_node);
     dev_locality.set_bus_id(numa_node + 1);
     device_localities->push_back(dev_locality);
-    VLOG(1) << "PluggableDevice PlatformId" << platform_device_id
-            << "TfDeviceId " << tf_device_id << "on bus "
+    VLOG(1) << "PluggableDevice PlatformId " << platform_device_id
+            << " TfDeviceId " << tf_device_id << " on bus "
             << dev_locality.bus_id() << " numa: " << numa_node;
   }
   return Status::OK();

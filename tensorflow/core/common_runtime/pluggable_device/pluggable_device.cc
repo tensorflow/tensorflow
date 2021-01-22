@@ -302,7 +302,7 @@ void PluggableDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   }
   const auto stream_id = device_context->stream_id();
 
-  VLOG(1) << "PluggableDevice::ComputeAsync " << op_kernel->name() << "op"
+  VLOG(1) << "PluggableDevice::ComputeAsync " << op_kernel->name() << " op "
           << op_kernel->type_string() << " on " << device_type()
           << tf_device_id_ << " stream[" << stream_id << "]";
   op_kernel->ComputeAsync(context, std::move(done));
