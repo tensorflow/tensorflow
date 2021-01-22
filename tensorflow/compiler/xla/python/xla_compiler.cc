@@ -365,7 +365,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       "hlo_module_cost_analysis",
       [](PyClient* client,
          const HloModule& module) -> StatusOr<std::map<string, float>> {
-        auto analysis = client->pjrt_client()->GetHloCostAnalysis();
+        TF_ASSIGN_OR_RETURN(auto analysis,
+                            client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
         return analysis->properties();
       });
