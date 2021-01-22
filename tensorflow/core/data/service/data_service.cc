@@ -195,15 +195,14 @@ Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetTasks(int64 job_client_id,
-                                             std::vector<TaskInfo>& tasks,
-                                             bool& job_finished) {
+Status DataServiceDispatcherClient::ClientHeartbeat(
+    int64 job_client_id, std::vector<TaskInfo>& tasks, bool& job_finished) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  GetTasksRequest req;
+  ClientHeartbeatRequest req;
   req.set_job_client_id(job_client_id);
-  GetTasksResponse resp;
+  ClientHeartbeatResponse resp;
   grpc::ClientContext ctx;
-  grpc::Status s = stub_->GetTasks(&ctx, req, &resp);
+  grpc::Status s = stub_->ClientHeartbeat(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get tasks", s);
   }

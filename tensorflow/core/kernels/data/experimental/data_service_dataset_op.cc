@@ -428,7 +428,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(4) << "Updating tasks";
       std::vector<TaskInfo> tasks;
       bool job_finished;
-      Status s = dispatcher_->GetTasks(job_client_id_, tasks, job_finished);
+      Status s =
+          dispatcher_->ClientHeartbeat(job_client_id_, tasks, job_finished);
       if (!s.ok()) {
         LOG(WARNING) << "Failed to get task info for job client id "
                      << job_client_id_ << ": " << s;

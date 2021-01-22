@@ -94,17 +94,15 @@ message ReleaseJobClientRequest {
 
 message ReleaseJobClientResponse {}
 
-message GetTasksRequest {
-  // The job client id to look up tasks for.
+message ClientHeartbeatRequest {
+  // The job client id to heartbeat for.
   int64 job_client_id = 1;
 }
 
-message GetTasksResponse {
-  // A list of all tasks for a job.
+message ClientHeartbeatResponse {
+  // A list of all tasks that the client should read from.
   repeated TaskInfo task_info = 1;
-  // Whether the job has finished. An empty `task_info` list could either mean
-  // that no tasks have been started yet, or that all tasks have finished. This
-  // field gives us a way to tell the difference.
+  // Whether the job has finished.
   bool job_finished = 2;
 }
 
@@ -148,8 +146,10 @@ service DispatcherService {
   rpc ReleaseJobClient(ReleaseJobClientRequest)
       returns (ReleaseJobClientResponse);
 
-  // Reports a list of all tasks for a job.
-  rpc GetTasks(GetTasksRequest) returns (GetTasksResponse);
+  // Heartbeats from the client. This lets the dispatcher know that the client
+  // is still active, and gives the dispatcher a chance to notify the client
+  // of new tasks.
+  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (ClientHeartbeatResponse);
 
   // Reports a list of all workers registered with the dispatcher.
   rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);

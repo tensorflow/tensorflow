@@ -672,8 +672,8 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
-                                           GetTasksResponse* response) {
+Status DataServiceDispatcherImpl::ClientHeartbeat(
+    const ClientHeartbeatRequest* request, ClientHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();

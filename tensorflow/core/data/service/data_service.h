@@ -116,11 +116,10 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // read from the job.
   Status ReleaseJobClient(int64 job_client_id);
 
-  // Queries the dispatcher for the tasks associated with the specified job.
-  // The tasks will be stored in `tasks`, and whether the job is finished will
-  // be stored in `job_finished`.
-  Status GetTasks(int64 job_client_id, std::vector<TaskInfo>& tasks,
-                  bool& job_finished);
+  // Heartbeats to the dispatcher, getting back the tasks that should be
+  // running, and whether the job is finished.
+  Status ClientHeartbeat(int64 job_client_id, std::vector<TaskInfo>& tasks,
+                         bool& job_finished);
 
   // Queries the dispatcher for its registered workers. The worker info will be
   // stored in `workers`.
