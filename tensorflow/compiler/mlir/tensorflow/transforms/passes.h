@@ -333,6 +333,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 // the cluster only writes to.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUResourceReadForWritePass();
 
+// Creates a pass that reorders partitiioned resource reads and replicated
+// inputs.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateTPUReorderReplicateAndPartitionedInputsPass();
+
 // Creates a pass that partitions unpartitioned resource read/write to
 // partitioned resource variables.
 std::unique_ptr<OperationPass<FuncOp>>
