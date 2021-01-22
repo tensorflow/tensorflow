@@ -653,5 +653,21 @@ GENERATE_DEFAULT_TEST(Tanh, DT_DOUBLE, DT_DOUBLE, std::tanh,
 GENERATE_DEFAULT_TEST_2(Tanh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::tanh,
                         test::GpuOpsTestConfig())
 
+/// Test `tf.Square`.
+
+template <typename T>
+T baseline_square(T inp) {
+  return inp * inp;
+}
+
+GENERATE_DEFAULT_TEST(Square, DT_HALF, DT_HALF, baseline_square,
+                      test::GpuOpsTestConfig())
+GENERATE_DEFAULT_TEST(Square, DT_FLOAT, DT_FLOAT, baseline_square,
+                      test::GpuOpsTestConfig())
+GENERATE_DEFAULT_TEST(Square, DT_DOUBLE, DT_DOUBLE, baseline_square,
+                      test::GpuOpsTestConfig())
+GENERATE_DEFAULT_TEST(Square, DT_INT64, DT_INT64, baseline_square,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
 }  // namespace
 }  // end namespace tensorflow
