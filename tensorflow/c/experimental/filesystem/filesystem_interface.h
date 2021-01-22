@@ -855,6 +855,7 @@ typedef struct TF_FilesystemOps {
   /// display a warning or error message to warn the users. Plugins:
   ///   * Must set `status` to `TF_OK` if options are updated.
   ///   * Might use any other error value for `status` to signal other errors.
+  ///
   /// DEFAULT IMPLEMENTATION: return `TF_NOT_FOUND`.
   void (*set_filesystem_configuration)(const TF_Filesystem* filesystem,
                                        const TF_Filesystem_Option** options,
