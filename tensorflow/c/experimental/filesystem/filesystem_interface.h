@@ -836,6 +836,7 @@ typedef struct TF_FilesystemOps {
   /// `num_options`. Ownership of the array is transferred to caller and the
   /// caller is responsible of freeing the buffers using respective file systems
   /// allocation API.
+
   /// Plugins:
   ///   * Must set `status` to `TF_OK` if `options` and `num_options` set.
   ///     If there is no configurable option, `num_options` should be 0.
