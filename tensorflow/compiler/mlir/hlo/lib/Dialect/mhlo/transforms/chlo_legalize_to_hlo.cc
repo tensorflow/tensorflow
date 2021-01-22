@@ -254,6 +254,93 @@ Value MaterializeErfcApproximationF64(ConversionPatternRewriter &rewriter,
                                          erfc_approx);
 }
 
+// Precondition is |x| >= 1. Use erf approximation, otherwise.
+//
+// We rely on multiple polynomial approximations for x >= 1. We pass |x| as an
+// argument and derive the final approximation for all |x| >= 1.
+// This implementation is based on Cephes.
+Value MaterializeErfcApproximationF32ForMagnitudeGEOne(
+    ConversionPatternRewriter &rewriter, Location loc, Value x) {
+  assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
+         "expect f32 element type");
+  const double kMaxlog = 88.72283905206835;
+  const std::vector<float> kErfcPCoefficients{
+      +2.326819970068386E-2, -1.387039388740657E-1, +3.687424674597105E-1,
+      -5.824733027278666E-1, +6.210004621745983E-1, -4.944515323274145E-1,
+      +3.404879937665872E-1, -2.741127028184656E-1, +5.638259427386472E-1,
+  };
+  const std::vector<float> kErfcRCoefficients{
+      -1.047766399936249E+1, +1.297719955372516E+1, -7.495518717768503E+0,
+      +2.921019019210786E+0, -1.015265279202700E+0, +4.218463358204948E-1,
+      -2.820767439740514E-1, +5.641895067754075E-1,
+  };
+
+  // Let z = -x^2.
+  Value x_sq = rewriter.create<mhlo::MulOp>(loc, x, x);
+  Value z = rewriter.create<mhlo::NegOp>(loc, x_sq);
+
+  // Materialize polynomial approximation for x >= 1 as
+  //   erfc(x) = exp(z) 1/x P(1/x^2)   if x in [1, 2)
+  //   erfc(x) = exp(z) 1/x R(1/x^2)   if x >= 2
+  const StringAttr kLT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
+  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
+  Value reciprocal_x_sq = rewriter.create<mhlo::DivOp>(loc, one, x_sq);
+  Value exp_z = rewriter.create<mhlo::ExpOp>(loc, z);
+  Value one_div_abs_x = rewriter.create<mhlo::DivOp>(loc, one, abs_x);
+  Value exp_z_mul_one_div_abs_x =
+      rewriter.create<mhlo::MulOp>(loc, exp_z, one_div_abs_x);
+  Value two = chlo::getConstantLike(rewriter, loc, 2.0, x);
+  Value abs_x_lt_two = rewriter.create<mhlo::CompareOp>(loc, abs_x, two, kLT);
+  Value poly_p = MaterializePolynomialApproximation(
+      rewriter, loc, reciprocal_x_sq, kErfcPCoefficients);
+  Value poly_r = MaterializePolynomialApproximation(
+      rewriter, loc, reciprocal_x_sq, kErfcRCoefficients);
+  Value poly =
+      rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_two, poly_p, poly_r);
+  Value erfc_approx =
+      rewriter.create<mhlo::MulOp>(loc, exp_z_mul_one_div_abs_x, poly);
+
+  // Clamp to prevent overflow and materialize approximation for large x as
+  //   erfc(x) = 0.
+  Value z_lt_neq_maxlog = rewriter.create<mhlo::CompareOp>(
+      loc, z, chlo::getConstantLike(rewriter, loc, -kMaxlog, x), kLT);
+  Value zero = chlo::getConstantLike(rewriter, loc, 0.0, x);
+  Value erfc_approx_clamped =
+      rewriter.create<mhlo::SelectOp>(loc, z_lt_neq_maxlog, zero, erfc_approx);
+
+  // Derive approximation for x <= -1 as
+  //   erfc(x) = 2 - erfc(-x).
+  // Reuse previously materialized approximations all of which take |x| as their
+  // argument.
+  Value x_lt_zero = rewriter.create<mhlo::CompareOp>(loc, x, zero, kLT);
+  Value two_sub_erfc_approx =
+      rewriter.create<mhlo::SubOp>(loc, two, erfc_approx_clamped);
+  return rewriter.create<mhlo::SelectOp>(loc, x_lt_zero, two_sub_erfc_approx,
+                                         erfc_approx_clamped);
+}
+
+// Precondition is |x| <= 1. Use erfc approximation, otherwise.
+// This implementation is based on Cephes.
+Value MaterializeErfApproximationF32ForMagnitudeLEOne(
+    ConversionPatternRewriter &rewriter, Location loc, Value x) {
+  assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
+         "expect f32 element type");
+  const std::vector<float> kErfTCoefficients{
+      +7.853861353153693E-5, -8.010193625184903E-4, +5.188327685732524E-3,
+      -2.685381193529856E-2, +1.128358514861418E-1, -3.761262582423300E-1,
+      +1.128379165726710E+0,
+  };
+
+  // Materialize polynomial approximation for |x| <= 1 as
+  //   erf(x) = x T(x^2).
+  Value x_sq = rewriter.create<mhlo::MulOp>(loc, x, x);
+  Value poly_t = MaterializePolynomialApproximation(rewriter, loc, x_sq,
+                                                    kErfTCoefficients);
+  return rewriter.create<mhlo::MulOp>(loc, x, poly_t);
+}
+
 // This is the same approximation as used in Eigen.
 Value MaterializeErfApproximationF32(ConversionPatternRewriter &rewriter,
                                      Location loc, Value operand) {
@@ -284,6 +371,32 @@ Value MaterializeErfApproximationF32(ConversionPatternRewriter &rewriter,
       MaterializePolynomialApproximation(rewriter, loc, x_sq, kBeta);
   Value x_mul_alpha_poly = rewriter.create<mhlo::MulOp>(loc, x, alpha_poly);
   return rewriter.create<mhlo::DivOp>(loc, x_mul_alpha_poly, beta_poly);
+}
+
+Value MaterializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
+                                      Location loc, Value x) {
+  assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
+         "expect f32 element type");
+
+  // Rely on erfc approximation for |x| >= 1
+  //   erfc(x) = erfc_approx(x)
+  Value erfc_approx =
+      MaterializeErfcApproximationF32ForMagnitudeGEOne(rewriter, loc, x);
+
+  // Rely on erf approximation for |x| < 1 and materialize erfc as
+  //   erfc(x) = 1 - erf_approx(x)
+  Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
+  Value erf_approx =
+      MaterializeErfApproximationF32ForMagnitudeLEOne(rewriter, loc, x);
+  Value erf_based_approx = rewriter.create<mhlo::SubOp>(loc, one, erf_approx);
+
+  // Materialize approximation selection based on argument.
+  const StringAttr kLT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
+  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(loc, abs_x, one, kLT);
+  return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, erf_based_approx,
+                                         erfc_approx);
 }
 
 struct ConvertErfOp : public OpConversionPattern<ErfOp> {
@@ -332,10 +445,15 @@ struct ConvertErfcOp : public OpConversionPattern<ErfcOp> {
     Value x = transformed.operand();
     Type ty = x.getType().cast<ShapedType>().getElementType();
 
-    // For now, we support only f64.
-    if (!ty.isF64()) return failure();
+    // For now, we support only f64 and f32.
+    if (!ty.isF64() && !ty.isF32()) return failure();
 
-    rewriter.replaceOp(op, MaterializeErfcApproximationF64(rewriter, loc, x));
+    if (ty.isF64()) {
+      rewriter.replaceOp(op, MaterializeErfcApproximationF64(rewriter, loc, x));
+      return success();
+    }
+
+    rewriter.replaceOp(op, MaterializeErfcApproximationF32(rewriter, loc, x));
     return success();
   }
 };
