@@ -74,7 +74,7 @@ pip3 install py-cpuinfo
 
 # pylint tests require the following:
 pip2 install pylint==1.6.4
-pip3 install pylint==2.4.4
+pip3 install pylint==1.6.4
 
 # pycodestyle tests require the following:
 pip2 install pycodestyle
