@@ -1403,7 +1403,7 @@ def categorical_hinge(y_true, y_pred):
   `loss = maximum(neg - pos + 1, 0)`
   where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
-  Usage:
+  Standalone usage:
   
   >>> y_true = np.random.randint(0, 3, size=(2,))
   >>> y_true = tf.keras.utils.to_categorical(y_true, num_classes=3)
