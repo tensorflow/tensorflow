@@ -6,8 +6,7 @@ labels: 'type:docs'
 ---
 
 
-Thank you for submitting a TensorFlow documentation issue. Per our GitHub
-policy, we only address code/doc bugs, performance issues, feature requests, and
+Thank you for submitting a TensorFlow documentation issue. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/opensource_only/ISSUES.md), we only address code/doc bugs, performance issues, feature requests, and
 build/installation issues on GitHub.
 
 The TensorFlow docs are open source! To get involved, read the documentation
