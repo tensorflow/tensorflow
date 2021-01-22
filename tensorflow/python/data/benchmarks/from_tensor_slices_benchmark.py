@@ -58,7 +58,6 @@ class SingleThreadedFlatMapDataset(dataset_ops.UnaryDataset):
     return "SingleThreadedFlatMapDataset"
 
 
-# TODO(b/119837791): Add eager benchmarks.
 class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.from_tensor_slices()`."""
 

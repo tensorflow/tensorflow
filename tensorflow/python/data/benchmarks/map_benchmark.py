@@ -28,7 +28,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
 
-# TODO(b/119837791): Add eager benchmarks.
 class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.map()`."""
 

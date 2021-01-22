@@ -28,7 +28,6 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.platform import test
 
 
-# TODO(b/119837791): Add eager benchmarks.
 class DatasetBenchmarkBase(test.Benchmark):
   """Base class for dataset benchmarks."""
 
@@ -75,8 +74,7 @@ class DatasetBenchmarkBase(test.Benchmark):
         if warmup:
           next(iterator)
         start = time.time()
-        for _ in range(num_elements - 1):
-          next(iterator)
+        next(iterator)
         end = time.time()
         deltas.append(end - start)
       return np.median(deltas) / float(num_elements)
