@@ -151,6 +151,12 @@ void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
 
 Status TpuPlatform::TpusPerHost(int* tpus) {
   TF_Status* status = TF_NewStatus();
+
+  if (tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn == nullptr) {
+    *tpus = 0;
+    return Status::OK();
+  }
+
   tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus, status);
   auto ret_status = StatusFromTF_Status(status);
   TF_DeleteStatus(status);
@@ -159,6 +165,12 @@ Status TpuPlatform::TpusPerHost(int* tpus) {
 
 Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
   TF_Status* status = TF_NewStatus();
+
+  if (tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn == nullptr) {
+    *memory_limit = 0;
+    return Status::OK();
+  }
+
   tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
       reinterpret_cast<int64_t*>(memory_limit), status);
   auto ret_status = StatusFromTF_Status(status);
