@@ -20,5 +20,6 @@ namespace tensorflow {
 
 GENERATE_AND_REGISTER_UNARY_KERNEL(Erfc, f64, DT_DOUBLE, double);
 GENERATE_AND_REGISTER_UNARY_KERNEL(Erfc, f32, DT_FLOAT, float);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Erfc, f16, DT_HALF, Eigen::half);
 
 }  // namespace tensorflow

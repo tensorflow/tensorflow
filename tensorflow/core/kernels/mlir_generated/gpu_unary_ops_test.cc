@@ -449,6 +449,9 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Erfc, DT_FLOAT, DT_FLOAT, test::InputAsVector<float>(kErfcF32Values),
     std::erfc, test::GpuOpsTestConfig())
 
+GENERATE_DEFAULT_TEST_2(Erfc, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::erfc,
+                        test::GpuOpsTestConfig())
+
 /// Test `tf.Exp`.
 
 GENERATE_DEFAULT_TEST(Exp, DT_FLOAT, DT_FLOAT, std::exp,

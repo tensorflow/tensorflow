@@ -642,3 +642,13 @@ func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
   %1 = "chlo.erfc"(%arg) : (tensor<f32>) -> tensor<f32>
   return %1 : tensor<f32>
 }
+
+// CHECK-LABEL: @erfc_f16
+// CHECK-SAME: %[[ARG:.*]]: tensor<f16>
+func @erfc_f16(%arg : tensor<f16>) -> tensor<f16> {
+  // CHECK: "mhlo.convert"(%[[ARG]]) : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = "mhlo.convert"(%{{.*}}) : (tensor<f32>) -> tensor<f16>
+  // CHECK: return %[[RESULT]]
+  %1 = "chlo.erfc"(%arg) : (tensor<f16>) -> tensor<f16>
+  return %1 : tensor<f16>
+}

@@ -445,15 +445,28 @@ struct ConvertErfcOp : public OpConversionPattern<ErfcOp> {
     Value x = transformed.operand();
     Type ty = x.getType().cast<ShapedType>().getElementType();
 
-    // For now, we support only f64 and f32.
-    if (!ty.isF64() && !ty.isF32()) return failure();
+    // For now, we support only f64, f32, and f16.
+    if (!ty.isF64() && !ty.isF32() && !ty.isF16()) return failure();
 
     if (ty.isF64()) {
       rewriter.replaceOp(op, MaterializeErfcApproximationF64(rewriter, loc, x));
       return success();
     }
 
-    rewriter.replaceOp(op, MaterializeErfcApproximationF32(rewriter, loc, x));
+    // Cast argument to f32 tensor if needed.
+    assert((ty.isF16() || ty.isF32()) && "expect f16 or f32 at this point");
+    if (ty.isF16()) {
+      x = rewriter.create<mhlo::ConvertOp>(loc, x, rewriter.getF32Type());
+    }
+
+    Value result = MaterializeErfcApproximationF32(rewriter, loc, x);
+
+    // Cast back if needed.
+    if (ty.isF16()) {
+      result = rewriter.create<mhlo::ConvertOp>(loc, result, ty);
+    }
+
+    rewriter.replaceOp(op, result);
     return success();
   }
 };

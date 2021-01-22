@@ -436,8 +436,9 @@ gen_kernel_library(
     name = "erfc",
     tile_size = "256",
     types = [
-        "f64",
+        "f16",
         "f32",
+        "f64",
     ],
     unroll_factors = "4",
 )

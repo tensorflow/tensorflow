@@ -20,11 +20,9 @@ REGISTER3(UnaryOp, CPU, "Erfc", functor::erfc, float, Eigen::half, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-REGISTER(UnaryOp, GPU, "Erfc", functor::erfc, Eigen::half);
-
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
     !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
-REGISTER2(UnaryOp, GPU, "Erfc", functor::erfc, double, float);
+REGISTER3(UnaryOp, GPU, "Erfc", functor::erfc, double, float, Eigen::half);
 #endif
 
 #endif
