@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import collections
 import copy
+import multiprocessing.dummy
+import multiprocessing.pool
 import threading
 
 import six
@@ -36,7 +38,6 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import executor as executor_lib
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -1013,8 +1014,8 @@ class CollectiveAllReduce(CrossDeviceOps):
     # deadlocks. E.g. if two user threads both are launching collectives:
     #   user-thread-0  device0                 device1
     #   user-thread-1          device0 device1
-    # In eager mode, we use one executor per device. Executors use single FIFO
-    # queues, so the above launch sequences end up with the following queues:
+    # In eager mode, we use one thread per device to launch collective ops, so
+    # the above launch sequences end up with the following queues:
     #   device-0  collective-0  collective-1
     #   device-1  collective-1  collective-0
     # This deadlocks since neither collective is able to finish.
@@ -1022,25 +1023,19 @@ class CollectiveAllReduce(CrossDeviceOps):
 
     self._devices = tuple(device_util.canonicalize(d) for d in devices)
     group_key = self._collective_keys.get_group_key(self._devices)
-    # Collective ops requires all devices to participate and is blocking. In
-    # eager, we need one async executor for each device to be able to launch
-    # them altogether. Note that async doesn't imply concurrency. Within an
-    # async executor operations are still executed sequentially. In graph or
-    # function building, the executors are not used.
-    self._executors = []
     self._launchers = []
     # Whether to only use NCCL for batched all-reduce when NCCL is requested.
     # This is because of the lack of mechanism to order NCCL operations
     # deterministically.
     self._limited_nccl = False
     for device in self._devices:
-      executor = executor_lib.new_executor(enable_async=True)
-      self._executors.append(executor)
       launcher = cross_device_utils.CollectiveReplicaLauncher(
-          group_key, group_size, self._collective_keys, device, executor)
+          group_key, group_size, self._collective_keys, device)
       self._launchers.append(launcher)
       if not launcher.can_order_nccl():
         self._limited_nccl = True
+
+    self._pool = multiprocessing.pool.ThreadPool(len(self._devices))
 
     super(CollectiveAllReduce, self).__init__()
 
@@ -1147,22 +1142,31 @@ class CollectiveAllReduce(CrossDeviceOps):
       for i in range(len(self._devices)):
         values_by_device[i].append(per_replica.values[i])
 
-    outputs_by_device = []
-    with self._lock:
-      for i in range(len(self._devices)):
-        packs = cross_device_utils.group_by_size(
-            values_by_device[i], options.bytes_per_pack)
-        if not context.executing_eagerly() and i == 0:
-          logging.info(
-              "Collective batch_all_reduce: %d all-reduces, num_devices = %d, "
-              "group_size = %d, implementation = %s, num_packs = %d",
-              batch_size, len(self._launchers), self._group_size,
-              implementation, len(packs))
-        outputs_by_device.append(self._launchers[i].batch_all_reduce(
-            packs, implementation, options.timeout_seconds))
+    if context.executing_eagerly():
+      def thread_fn(device_id):
+        with context.eager_mode():
+          packs = cross_device_utils.group_by_size(values_by_device[device_id],
+                                                   options.bytes_per_pack)
+          return self._launchers[device_id].batch_all_reduce(
+              packs, implementation, options.timeout_seconds)
 
-    for e in self._executors:
-      e.wait()
+      num_devices = len(self._devices)
+      with self._lock:
+        outputs_by_device = self._pool.map(thread_fn, list(range(num_devices)))
+    else:
+      outputs_by_device = []
+      with self._lock:
+        for i in range(len(self._devices)):
+          packs = cross_device_utils.group_by_size(
+              values_by_device[i], options.bytes_per_pack)
+          if i == 0:
+            logging.info(
+                "Collective batch_all_reduce: %d all-reduces, num_devices = %d,"
+                " group_size = %d, implementation = %s, num_packs = %d",
+                batch_size, len(self._launchers), self._group_size,
+                implementation, len(packs))
+          outputs_by_device.append(self._launchers[i].batch_all_reduce(
+              packs, implementation, options.timeout_seconds))
 
     mirrored = []
     for values in zip(*outputs_by_device):
