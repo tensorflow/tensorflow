@@ -4682,44 +4682,90 @@ TEST_F(OpConverterTest, ConvertConv2DBackpropInput) {
 }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-TEST_F(OpConverterTest, ConvertConv3D) {
-  // Get nodedef for Conv3D layer.
-  auto get_conv3d_nodedef =
-      [](std::vector<int> strides = {1, 1, 1, 1, 1}, string padding = "SAME",
-         string data_format = "NCDHW",
-         std::vector<int> dilations = {1, 1, 1, 1, 1},
-         bool is_conv3d_backprop_input = false) -> NodeDef {
-    Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    auto filter = ops::Placeholder(s.WithOpName("weights"), DT_FLOAT);
+// Get the NodeDef for Pack.
+NodeDef GetConv3DNodeDef(std::vector<int> strides = {1, 1, 1, 1, 1},
+                         string padding = "SAME", string data_format = "NCDHW",
+                         std::vector<int> dilations = {1, 1, 1, 1, 1},
+                         bool is_conv3d_backprop_input = false) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+  auto filter = ops::Placeholder(s.WithOpName("weights"), DT_FLOAT);
 
-    if (is_conv3d_backprop_input) {
-      auto input_sizes =
-          ops::Placeholder(s.WithOpName("input_sizes"), DT_INT32);
-      ops::Conv3DBackpropInputV2::Attrs attrs =
-          ops::Conv3DBackpropInputV2::Attrs()
-              .DataFormat(data_format)
-              .Dilations(dilations);
-      auto conv3d =
-          ops::Conv3DBackpropInputV2(s.WithOpName("my_conv3d"), input_sizes,
-                                     filter, input, strides, padding, attrs);
-      return conv3d.operation.node()->def();
-    } else {
-      ops::Conv3D::Attrs attrs =
-          ops::Conv3D::Attrs().DataFormat(data_format).Dilations(dilations);
-      auto conv3d = ops::Conv3D(s.WithOpName("my_conv3d"), input, filter,
-                                strides, padding, attrs);
-      return conv3d.operation.node()->def();
-    }
-  };
+  if (is_conv3d_backprop_input) {
+    auto input_sizes =
+        ops::Placeholder(s.WithOpName("input_sizes"), DT_INT32);
+    ops::Conv3DBackpropInputV2::Attrs attrs =
+        ops::Conv3DBackpropInputV2::Attrs()
+            .DataFormat(data_format)
+            .Dilations(dilations);
+    auto conv3d =
+        ops::Conv3DBackpropInputV2(s.WithOpName("my_conv3d"), input_sizes,
+                                   filter, input, strides, padding, attrs);
+    return conv3d.operation.node()->def();
+  } else {
+    ops::Conv3D::Attrs attrs =
+        ops::Conv3D::Attrs().DataFormat(data_format).Dilations(dilations);
+    auto conv3d = ops::Conv3D(s.WithOpName("my_conv3d"), input, filter,
+                              strides, padding, attrs);
+    return conv3d.operation.node()->def();
+  }
+}
 
+struct Conv3DTestParams {
+  std::vector<int> input_dims;
+  std::vector<float> input;
+  std::vector<int> filter_dims;
+  std::vector<float> filter;
+  std::vector<int> strides;
+  string padding;
+  string data_format;
+  std::vector<int> dilations;
+  bool is_conv3d_backprop;
+  std::vector<int> expected_output_dims;
+  std::vector<float> expected_output;
+  bool allow_dynamic_channel_dim;
+  Status validation_status;
+};
+
+void TestConv3D(ParameterizedOpConverterTestBase* test, Conv3DTestParams& p) {
+  test->Reset();
+  NodeDef node_def = GetConv3DNodeDef(p.strides, p.padding, p.data_format,
+                                      p.dilations, p.is_conv3d_backprop);
+
+  std::vector<int> partial_input_shape;
+  if (! p.allow_dynamic_channel_dim &&
+      test->get_trt_mode() == TrtTestMode::kDynamicShape) {
+    // The channel dim cannot have unknown size, fix that.
+    partial_input_shape.resize(p.input_dims.size(), -1);
+    int channel_id = (p.data_format == "NCDHW") ? 1 : 4;
+    partial_input_shape[channel_id] = p.input_dims[channel_id];
+  }
+
+  test->AddTestTensor("input", p.input_dims, test->get_tf_type(), p.input,
+                      partial_input_shape);
+  test->AddTestWeights<float>("weights", p.filter_dims, p.filter);
+
+  if (p.is_conv3d_backprop) {
+    test->AddTestWeights<float>(
+        "input_sizes", {static_cast<int>(p.expected_output.size())},
+        p.expected_output);
+  }
+
+  test->TestOpConverter("my_conv3d", node_def, p.expected_output_dims,
+                        /*expected_conversion_status=*/p.validation_status,
+                        /*expected_runtime_status=*/Status::OK(),
+                        /*matcher=*/ElementsAreArray(p.expected_output),
+                        /*out_tf_types=*/{test->get_tf_type()});
+}
+
+TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
   {
     // Input is weights, should fail.
     Reset();
-    NodeDef node_def = get_conv3d_nodedef();
+    NodeDef node_def = GetConv3DNodeDef();
 
-    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
-    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    AddTestWeights<float>("input", {1, 1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<float>("weights", {1, 3, 3, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "The input \"input\" for Conv3D must be a tensor, at my_conv3d");
@@ -4727,9 +4773,9 @@ TEST_F(OpConverterTest, ConvertConv3D) {
   {
     // Filter is tensor, should fail.
     Reset();
-    NodeDef node_def = get_conv3d_nodedef();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestTensor("weights", {3, 3, 1, 1, 3, 3, 1, 1});
+    NodeDef node_def = GetConv3DNodeDef();
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("weights", {1, 3, 3, 1}, tf_type_, InitTestVector<float>(9));
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "The input \"filter\" for Conv3D must be a constant, at my_conv3d");
@@ -4737,8 +4783,8 @@ TEST_F(OpConverterTest, ConvertConv3D) {
   {
     // Filter is not 5D, should fail.
     Reset();
-    NodeDef node_def = get_conv3d_nodedef();
-    AddTestTensor("input", {1, 2, 3});
+    NodeDef node_def = GetConv3DNodeDef();
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
@@ -4748,8 +4794,8 @@ TEST_F(OpConverterTest, ConvertConv3D) {
     // Dilations is not 5D, should fail.
     Reset();
     NodeDef node_def =
-        get_conv3d_nodedef({1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1});
-    AddTestTensor("input", {1, 2, 3});
+        GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1});
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
     AddTestWeights<float>(
         "weights", {3, 3, 1, 1, 1},
         {1, 2, 3, 4, 5, 6, 7, 8, 9});  // Dimensions, then values
@@ -4761,8 +4807,8 @@ TEST_F(OpConverterTest, ConvertConv3D) {
     // Dilation value is not 1 for channel, should fail.
     Reset();
     NodeDef node_def =
-        get_conv3d_nodedef({1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 2, 1, 1, 1});
-    AddTestTensor("input", {1, 2, 3});
+        GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 2, 1, 1, 1});
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
@@ -4773,8 +4819,8 @@ TEST_F(OpConverterTest, ConvertConv3D) {
     // Dilation value is not 1 for channel (NDHWC), should fail.
     Reset();
     NodeDef node_def =
-        get_conv3d_nodedef({1, 1, 1, 1, 1}, "SAME", "NDHWC", {1, 1, 1, 1, 2});
-    AddTestTensor("input", {2, 3, 1});
+        GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NDHWC", {1, 1, 1, 1, 2});
+    AddTestTensor("input", {1, 2, 3, 1}, tf_type_, InitTestVector<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
@@ -4784,9 +4830,9 @@ TEST_F(OpConverterTest, ConvertConv3D) {
   {
     // Dilation + Conv3DBackpropInputV2, should fail.
     Reset();
-    NodeDef node_def = get_conv3d_nodedef({1, 1, 1, 1, 1}, "SAME", "NDHWC",
+    NodeDef node_def = GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NDHWC",
                                           {1, 1, 2, 1, 1}, true);
-    AddTestTensor("input", {2, 3, 1});
+    AddTestTensor("input", {1, 2, 3, 1}, tf_type_, InitTestVector<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     AddTestWeights<int>("input_sizes", {4}, {1, 2, 3, 1});
@@ -4798,9 +4844,9 @@ TEST_F(OpConverterTest, ConvertConv3D) {
   {
     // Asymmetric+ Conv3DBackpropInputV2, should fail.
     Reset();
-    NodeDef node_def = get_conv3d_nodedef({1, 1, 1, 1, 1}, "SAME", "NDHWC",
+    NodeDef node_def = GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NDHWC",
                                           {1, 1, 1, 1, 1}, true);
-    AddTestTensor("input", {1, 2, 2, 2});
+    AddTestTensor("input", {1, 2, 2, 2}, tf_type_, InitTestVector<float>(8));
     AddTestWeights<float>("weights", {1, 1, 2, 1, 1}, {1, 1});
     AddTestWeights<int>("input_sizes", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
@@ -4811,9 +4857,9 @@ TEST_F(OpConverterTest, ConvertConv3D) {
   {
     // Strides is not 5D, should fail.
     Reset();
-    NodeDef node_def = get_conv3d_nodedef({1, 1, 1, 1, 1, 1}, "SAME", "NCDHW",
+    NodeDef node_def = GetConv3DNodeDef({1, 1, 1, 1, 1, 1}, "SAME", "NCDHW",
                                           {1, 1, 1, 1, 1});
-    AddTestTensor("input", {1, 2, 2, 2});
+    AddTestTensor("input", {1, 2, 2, 2}, tf_type_, InitTestVector<float>(8));
     AddTestWeights<float>("weights", {1, 1, 2, 1, 1}, {1, 1});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
@@ -4823,63 +4869,59 @@ TEST_F(OpConverterTest, ConvertConv3D) {
     // Stride value is not 1 for channel, should fail.
     Reset();
     NodeDef node_def =
-        get_conv3d_nodedef({1, 2, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1, 1});
-    AddTestTensor("input", {1, 2, 3});
+        GetConv3DNodeDef({1, 2, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1, 1});
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "Stride must be 1 for batch and channel dimensions, at my_conv3d");
   }
-  struct TestParams {
-    std::vector<int> input_dims;
-    std::vector<float> input;
-    std::vector<int> filter_dims;
-    std::vector<float> filter;
-    std::vector<int> strides;
-    string padding;
-    string data_format;
-    std::vector<int> dilations;
-    bool is_conv3d_backprop_input;
-    std::vector<int> expected_output_dims;
-    std::vector<float> expected_output;
-  };
 
   // Start here
-  std::vector<TestParams> ok_params = {
+  std::vector<Conv3DTestParams> ok_params = {
       // Basic - just 1x1 conv - input = output
-      TestParams{
-          /*input_dims=*/{1, 3, 3, 3},  // CDHW
-          /*input=*/{1, 2,  15,  3, 6,  -3, 22, 1, 88, 56, 36, 1,  1, 105,
-                     1, 16, -28, 1, 42, 9,  3,  1, 7,  1,  11, 61, 5},
+      {
+          /*input_dims=*/{1, 1, 3, 3, 3},  // CDHW
+          /*input=*/{1,  2,  15, 3, 6,   -3, 22, 1,   88,
+                     56, 36, 1,  1, 105, 1,  16, -28, 1,
+                     42, 9,  3,  1, 7,   1,  11, 61,  5},
           /*filter_dims=*/{1, 1, 1, 1, 1},  // DRSCK
           /*filter=*/{1},
           /*strides=*/{1, 1, 1, 1, 1},
           /*padding=*/"VALID",
           /*data_format=*/"NCDHW",
           /*dilations=*/{1, 1, 1, 1, 1},
-          /*is_conv3d_backprop_input=*/false,
-          /*expected_output_dims=*/{1, 3, 3, 3},
+          /*is_conv3d_backprop=*/false,
+          /*expected_output_dims=*/{1, 1, 3, 3, 3},
           /*expected_output=*/{1,  2,  15, 3, 6,   -3, 22, 1,   88,
                                56, 36, 1,  1, 105, 1,  16, -28, 1,
-                               42, 9,  3,  1, 7,   1,  11, 61,  5}},
+                               42, 9,  3,  1, 7,   1,  11, 61,  5},
+          /*allow_dynamic_channel_dim=*/false,
+          /*validation_status=*/Status::OK()
+      },
       // Basic - 2x1 filter
-      TestParams{/*input_dims=*/{1, 3, 3, 3},  // CDHW
-                 /*input=*/{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6},
-                 /*filter_dims=*/{2, 1, 1, 1, 1},  // DRSCK
-                 /*filter=*/{1, 1},
-                 /*strides=*/{1, 1, 1, 1, 1},
-                 /*padding=*/"VALID",
-                 /*data_format=*/"NCDHW",
-                 /*dilations=*/{1, 1, 1, 1, 1},
-                 /*is_conv3d_backprop_input=*/false,
-                 /*expected_output_dims=*/{1, 2, 3, 3},
-                 /*expected_output=*/
-                 {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 7}},
+      {
+          /*input_dims=*/{1, 1, 3, 3, 3},  // CDHW
+          /*input=*/{1, 1, 1, 1, 1, 1, 1, 1, 1,
+                     1, 1, 1, 1, 1, 1, 1, 1, 1,
+                     1, 1, 1, 1, 1, 1, 1, 1, 6},
+          /*filter_dims=*/{2, 1, 1, 1, 1},  // DRSCK
+          /*filter=*/{1, 1},
+          /*strides=*/{1, 1, 1, 1, 1},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*dilations=*/{1, 1, 1, 1, 1},
+          /*is_conv3d_backprop=*/false,
+          /*expected_output_dims=*/{1, 1, 2, 3, 3},
+          /*expected_output=*/{2, 2, 2, 2, 2, 2, 2, 2, 2,
+                               2, 2, 2, 2, 2, 2, 2, 2, 7},
+          /*allow_dynamic_channel_dim=*/false,
+          /*validation_status=*/Status::OK()
+      },
       // SAME padding (Asymmetric)
-      TestParams{
-          /*input_dims=*/{1, 2, 3, 2},  // CDHW
+      {
+          /*input_dims=*/{1, 1, 2, 3, 2},  // CDHW
           /*input=*/{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
           /*filter_dims=*/{2, 1, 1, 1, 1},  // DRSCK
           /*filter=*/{-1, 1},
@@ -4887,15 +4929,16 @@ TEST_F(OpConverterTest, ConvertConv3D) {
           /*padding=*/"SAME",
           /*data_format=*/"NCDHW",
           /*dilations=*/{1, 1, 1, 1, 1},
-          /*is_conv3d_backprop_input=*/false,
-          /*expected_output_dims=*/{1, 2, 3, 2},
-          /*expected_output=*/
-          {6, 6, 6, 6, 6, 6, -6, -7, -8, -9, -10,
-           -11}  // Diff in first 2 depths is const 6
+          /*is_conv3d_backprop=*/false,
+          /*expected_output_dims=*/{1, 1, 2, 3, 2},
+          // Diff in first 2 depths is const 6.
+          /*expected_output=*/{6, 6, 6, 6, 6, 6, -6, -7, -8, -9, -10, -11},
+          /*allow_dynamic_channel_dim=*/false,
+          /*validation_status=*/Status::OK()
       },
       // SAME padding (Symmetric)
-      TestParams{
-          /*input_dims=*/{1, 2, 3, 2},  // CDHW
+      {
+          /*input_dims=*/{1, 1, 2, 3, 2},  // CDHW
           /*input=*/{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
           /*filter_dims=*/{3, 1, 1, 1, 1},  // DRSCK
           /*filter=*/{-1, 0, 1},
@@ -4903,16 +4946,17 @@ TEST_F(OpConverterTest, ConvertConv3D) {
           /*padding=*/"SAME",
           /*data_format=*/"NCDHW",
           /*dilations=*/{1, 1, 1, 1, 1},
-          /*is_conv3d_backprop_input=*/false,
-          /*expected_output_dims=*/{1, 2, 3, 2},
-          /*expected_output=*/
-          {6, 7, 8, 9, 10, 11, 0, -1, -2, -3, -4,
-           -5}  // Swaps front two depths, negates
-      },
+          /*is_conv3d_backprop=*/false,
+          /*expected_output_dims=*/{1, 1, 2, 3, 2},
+          // Swaps front two depths, negates
+          /*expected_output=*/{6, 7, 8, 9, 10, 11, 0, -1, -2, -3, -4, -5},
+          /*allow_dynamic_channel_dim=*/false,
+          /*validation_status=*/Status::OK()
 
+      },
       // NDHWC (multi-channel)
-      TestParams{
-          /*input_dims=*/{2, 3, 2, 2},  // DHWC
+      {
+          /*input_dims=*/{1, 2, 3, 2, 2},  // DHWC
           /*input=*/{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
                      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
           /*filter_dims=*/{2, 1, 1, 2, 1},  // DRSCK
@@ -4921,94 +4965,111 @@ TEST_F(OpConverterTest, ConvertConv3D) {
           /*padding=*/"VALID",
           /*data_format=*/"NDHWC",
           /*dilations=*/{1, 1, 1, 1, 1},
-          /*is_conv3d_backprop_input=*/false,
-          /*expected_output_dims=*/{1, 3, 2, 1},
-          /*expected_output=*/{0, 0, 0, 0, 0, 0}  // Each filter opposes the
-                                                  // other
+          /*is_conv3d_backprop=*/false,
+          /*expected_output_dims=*/{1, 1, 3, 2, 1},
+          /*expected_output=*/{0, 0, 0, 0, 0, 0},  // Filters oppose each-other
+          /*allow_dynamic_channel_dim=*/false,
+          /*validation_status=*/Status::OK()
       },
-
       // Dilated
-      TestParams{
-          /*input_dims=*/{1, 3, 3, 3},  // CDHW
-          /*input=*/{1,   1,   1,   1,   1, 1, 1, 1, 1, -10, -10, -10, -10, -10,
-                     -10, -10, -10, -10, 7, 7, 7, 7, 7, 7,   7,   7,   7},
+      {
+          /*input_dims=*/{1, 1, 3, 3, 3},  // CDHW
+          /*input=*/{1,   1,   1,   1,   1,   1,   1,   1,   1,
+                     -10, -10, -10, -10, -10, -10, -10, -10, -10,
+                     7,   7,   7,   7,   7,   7,   7,   7,   7},
           /*filter_dims=*/{2, 1, 1, 1, 1},  // DRSCK
           /*filter=*/{1, 1},
           /*strides=*/{1, 1, 1, 1, 1},
           /*padding=*/"VALID",
           /*data_format=*/"NCDHW",
           /*dilations=*/{1, 1, 2, 1, 1},
-          /*is_conv3d_backprop_input=*/false,
-          /*expected_output_dims=*/{1, 1, 3, 3},
-          /*expected_output=*/{8, 8, 8, 8, 8, 8, 8, 8, 8}  // Only front depth
-                                                           // is valid, skips
-                                                           // neg values
+          /*is_conv3d_backprop=*/false,
+          /*expected_output_dims=*/{1, 1, 1, 3, 3},
+          // Only front depth is valid, skips neg values
+          /*expected_output=*/{8, 8, 8, 8, 8, 8, 8, 8, 8},
+          /*allow_dynamic_channel_dim=*/false,
+          /*validation_status=*/Status::OK()
       },
       // Strided
-      TestParams{
-          /*input_dims=*/{1, 3, 3, 3},
-          /*input=*/{1, 0, 2, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0,
-                     0, 0, 0, 0, 5, 0, 6, 0, 0, 0, 7, 0, 8},
+      {
+          /*input_dims=*/{1, 1, 3, 3, 3},
+          /*input=*/{1, 0, 2, 0, 0, 0, 3, 0, 4,
+                     0, 0, 0, 0, 0, 0, 0, 0, 0,
+                     5, 0, 6, 0, 0, 0, 7, 0, 8},
           /*filter_dims=*/{1, 1, 1, 1, 1},
           /*filter=*/{1},
           /*strides=*/{1, 1, 2, 2, 2},
           /*padding=*/"VALID",
           /*data_format=*/"NCDHW",
           /*dilations=*/{1, 1, 1, 1, 1},
-          /*is_conv3d_backprop_input=*/false,
-          /*expected_output_dims=*/{1, 2, 2, 2},
-          /*expected_output=*/{1, 2, 3, 4, 5, 6, 7, 8}  // Should only pick up
-                                                        // the corners
+          /*is_conv3d_backprop=*/false,
+          /*expected_output_dims=*/{1, 1, 2, 2, 2},
+          // Should only pick up the corners
+          /*expected_output=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*allow_dynamic_channel_dim=*/false,
+          /*validation_status=*/Status::OK()
       },
       // Transpose Strided
-      TestParams{/*input_dims=*/{1, 2, 2, 2},  // CDHW
-                 /*input=*/{1, 2, 3, 4, 5, 6, 7, 8},
-                 /*filter_dims=*/{1, 1, 1, 1, 1},
-                 /*filter=*/{1},
-                 /*strides=*/{1, 1, 2, 2, 2},
-                 /*padding=*/"VALID",
-                 /*data_format=*/"NCDHW",
-                 /*dilations=*/{1, 1, 1, 1, 1},
-                 /*is_conv3d_backprop_input=*/true,
-                 /*expected_output_dims=*/{1, 3, 3, 3},
-                 /*expected_output=*/
-                 {1, 0, 2, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0,
-                  0, 0, 0, 0, 5, 0, 6, 0, 0, 0, 7, 0, 8}},  // Cube
-                                                            // expands and
-                                                            // fills
-                                                            // center with
-                                                            // zeroes
-
+      {
+          /*input_dims=*/{1, 1, 2, 2, 2},  // CDHW
+          /*input=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*filter_dims=*/{1, 1, 1, 1, 1},
+          /*filter=*/{1},
+          /*strides=*/{1, 1, 2, 2, 2},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*dilations=*/{1, 1, 1, 1, 1},
+          /*is_conv3d_backprop=*/true,
+          /*expected_output_dims=*/{1, 1, 3, 3, 3},
+          /*expected_output=*/{1, 0, 2, 0, 0, 0, 3, 0, 4,   // Cube expands and
+                               0, 0, 0, 0, 0, 0, 0, 0, 0,   // fills center
+                               5, 0, 6, 0, 0, 0, 7, 0, 8},  // with zeroes
+          /*allow_dynamic_channel_dim=*/false,
+          /*validation_status=*/Status::OK()
+      },
   };
 
-  for (int i = 0; i < ok_params.size(); i++) {
-    Reset();
-    NodeDef node_def = get_conv3d_nodedef(
-        ok_params[i].strides, ok_params[i].padding, ok_params[i].data_format,
-        ok_params[i].dilations, ok_params[i].is_conv3d_backprop_input);
-    AddTestTensor("input", ok_params[i].input_dims);
-    AddTestWeights<float>("weights", ok_params[i].filter_dims,
-                          ok_params[i].filter);
-    if (ok_params[i].is_conv3d_backprop_input) {
-      AddTestWeights<float>(
-          "input_sizes",
-          {static_cast<int>(ok_params[i].expected_output.size())},
-          ok_params[i].expected_output);
-    }
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_conv3d", &output));
-    ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
-                             output.tensor()->getDimensions());
+  if (trt_mode_ == TrtTestMode::kDynamicShape) {
+      ok_params.reserve(ok_params.size() + 2);
+      const std::vector<float> common_input = InitTestVector<float>(3*3*3);
+      // NCDHW - Dynamic Channel - Should fail in kDynamicShape
+      ok_params.push_back(Conv3DTestParams{
+          /*input_dims=*/{1, 1, 3, 3, 3},
+          /*input=*/common_input,
+          /*filter_dims=*/{1, 1, 1, 1, 1},
+          /*filter=*/{1},
+          /*strides=*/{1, 1, 2, 2, 2},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*dilations=*/{1, 1, 1, 1, 1},
+          /*is_conv3d_backprop=*/false,
+          /*expected_output_dims=*/{},  // ignore, will fail anyway
+          /*expected_output=*/{},  // ignore, will fail anyway
+          /*allow_dynamic_channel_dim=*/true,
+          /*validation_status=*/Status{error::INVALID_ARGUMENT,
+                              "Channel dimension must be static, at my_conv3d"}
+      });
+      // NDHWC - Dynamic Channel - Should fail in kDynamicShape
+      ok_params.push_back(Conv3DTestParams{
+          /*input_dims=*/{1, 3, 3, 3, 1},
+          /*input=*/common_input,
+          /*filter_dims=*/{1, 1, 1, 1, 1},
+          /*filter=*/{1},
+          /*strides=*/{1, 2, 2, 2, 1},
+          /*padding=*/"VALID",
+          /*data_format=*/"NDHWC",
+          /*dilations=*/{1, 1, 1, 1, 1},
+          /*is_conv3d_backprop=*/false,
+          /*expected_output_dims=*/{},  // ignore, will fail anyway
+          /*expected_output=*/{},  // ignore, will fail anyway
+          /*allow_dynamic_channel_dim=*/true,
+          /*validation_status=*/Status{error::INVALID_ARGUMENT,
+                              "Channel dimension must be static, at my_conv3d"}
+      });
+  }
 
-    const DataVec input_data{{"input", AsTensor<float>(ok_params[i].input)}};
-    DataVec output_data{
-        {"my_conv3d",
-         ConstructTensor<float>(ok_params[i].expected_output.size())}};
-    TF_EXPECT_OK(BuildAndRun(input_data, &output_data));
-    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                ElementsAreArray(ok_params[i].expected_output));
+  for (auto p : ok_params) {
+    TestConv3D(this, p);
   }
 }
 #endif

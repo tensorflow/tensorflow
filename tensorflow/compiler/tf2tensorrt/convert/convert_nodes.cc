@@ -3318,6 +3318,14 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     }
   }
 
+  // Channel dim must be static for Conv3D since we use that value for
+  // num_groups at build time.
+  // TODO: Allow conversion if kImplicitBatchModeCompatible||kOptimal is used.
+  if (tensor->getDimensions().d[c_index] == -1) {
+    return errors::InvalidArgument("Channel dimension must be static, at ",
+                                   node_def.name());
+  }
+
   // Finished validation checks
   if (params->validation_only) return Status::OK();
 
