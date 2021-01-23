@@ -1185,8 +1185,8 @@ class DataHandler(object):
   def catch_stop_iteration(self):
     """Catches errors when an iterator runs out of data."""
     try:
-      yield
-      context.async_wait()
+      with context.async_scope():
+        yield
     except (StopIteration, errors.OutOfRangeError):
       if self._inferred_steps is None:
         self._inferred_steps = self._current_step
