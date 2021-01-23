@@ -375,6 +375,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateOutsideCompiledToHostLaunchPass();
 
+// Creates a pass that groups outside compiled operations (CPU ops inside TPU
+// cluster) into clusters that can be extracted and run on the CPU.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUOutsideCompilationClusterPass();
+
 // Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
 // at head/tail of TPU cluster to run before/after TPU computation.
 std::unique_ptr<OperationPass<ModuleOp>>
