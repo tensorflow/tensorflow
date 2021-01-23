@@ -9289,6 +9289,31 @@ tensor, so its value can change during training.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_QueueDequeueV2Op : TF_Op<"QueueDequeueV2", []> {
+  let summary = "Dequeues a tuple of one or more tensors from the given queue.";
+
+  let description = [{
+This operation has k outputs, where k is the number of components
+in the tuples stored in the given queue, and output i is the ith
+component of the dequeued tuple.
+
+N.B. If the queue is empty, this operation will block until an element
+has been dequeued (or 'timeout_ms' elapses, if specified).
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+
+    DefaultValuedAttr<I64Attr, "-1">:$timeout_ms
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$components
+  );
+
+  TF_DerivedResultTypeListAttr component_types = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_RFFTOp : TF_Op<"RFFT", [NoSideEffect]> {
   let summary = "Real-valued fast Fourier transform.";
 
@@ -9933,6 +9958,24 @@ def TF_ReluGradOp : TF_Op<"ReluGrad", [NoSideEffect, SameOperandsAndResultType]>
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_RemoteCallOp : TF_Op<"RemoteCall", []> {
+  let summary = "Runs function `f` on a remote device indicated by `target`.";
+
+  let arguments = (ins
+    TF_StrTensor:$target,
+    Variadic<TF_Tensor>:$args,
+
+    SymbolRefAttr:$f
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_ReshapeOp : TF_Op<"Reshape", [NoSideEffect]> {
@@ -16338,6 +16381,22 @@ for binary operators.
       return ArraysAreCastCompatible(l, r);
     }
   }];
+}
+
+def TF_XlaClusterOutputOp : TF_Op<"XlaClusterOutput", [NoSideEffect]> {
+  let summary = [{
+Operator that connects the output of an XLA computation to other consumer graph nodes.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$outputs
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_XlaConvOp : TF_Op<"XlaConv", [NoSideEffect]> {
