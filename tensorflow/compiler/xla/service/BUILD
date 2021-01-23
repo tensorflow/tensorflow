@@ -2489,6 +2489,7 @@ cc_library(
         ":hlo",
         ":hlo_evaluator",
         ":pattern_matcher",
+        "//tensorflow/compiler/xla/service:hlo_reachability",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:optional",
     ],
