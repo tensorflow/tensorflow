@@ -899,7 +899,6 @@ REGISTER_OP("XlaSharding")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("sharding: string = ''")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 An op which shards the input based on the given sharding attribute.

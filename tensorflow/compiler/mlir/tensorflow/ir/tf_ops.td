@@ -1013,7 +1013,6 @@ An op which shards the input based on the given sharding attribute.
   let arguments = (ins
     TF_Tensor:$input,
 
-    DefaultValuedAttr<StrAttr, "">:$sharding,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 

@@ -161,19 +161,12 @@ class Sharding(object):
             tile_assignment_dimensions=tile_assignment_dims,
             tile_assignment_devices=range(num_devices)))
 
-  def apply_to_tensor(self,
-                      tensor,
-                      assign_tuple_sharding=False,
-                      use_sharding_op=False):
+  def apply_to_tensor(self, tensor, assign_tuple_sharding=False):
     """Applies this Sharding attribute to `tensor`.
 
     Args:
       tensor: A tf.Tensor to split.
       assign_tuple_sharding: If the sharding type should be a tuple.
-      use_sharding_op: whether to create a sharding op on `tensor`.
-
-    Returns:
-      The tensor with Sharding attribute.
     """
     if len(tensor.op.outputs) > 1 or assign_tuple_sharding:
       proto = self._get_or_create_tuple_proto(tensor.op)
@@ -185,15 +178,11 @@ class Sharding(object):
           type=xla_data_pb2.OpSharding.TUPLE, tuple_shardings=tuple_shardings)
     else:
       proto = self._proto
-    attr_value = proto.SerializeToString()
-
-    if use_sharding_op:
-      tensor = tf2xla.sharding(tensor, sharding=attr_value)
+    attr_value = attr_value_pb2.AttrValue(s=proto.SerializeToString())
     # TODO(jmolloy): This need to be seriously revisited before declaring this
     # API available for public use.
     # pylint: disable=protected-access
-    tensor.op._set_attr('_XlaSharding', attr_value_pb2.AttrValue(s=attr_value))
-    return tensor
+    tensor.op._set_attr('_XlaSharding', attr_value)
 
   def apply_to_operation(self, operation):
     """Applies this Sharding attribute to `operation`.
@@ -244,7 +233,7 @@ def copy_sharding(from_tensor, to_tensor, use_sharding_op=False):
     return to_tensor
 
   if use_sharding_op:
-    to_tensor = tf2xla.sharding(to_tensor, sharding=sharding)
+    to_tensor = tf2xla.sharding(to_tensor)
   attr_value = attr_value_pb2.AttrValue(s=sharding)
   # pylint: disable=protected-access
   to_tensor.op._set_attr('_XlaSharding', attr_value)
@@ -256,10 +245,12 @@ def copy_sharding(from_tensor, to_tensor, use_sharding_op=False):
 
 
 def replicate(tensor, assign_tuple_sharding=False, use_sharding_op=False):
-  return Sharding.replicate().apply_to_tensor(
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
+  Sharding.replicate().apply_to_tensor(
       tensor,
-      assign_tuple_sharding=assign_tuple_sharding,
-      use_sharding_op=use_sharding_op)
+      assign_tuple_sharding=assign_tuple_sharding)
+  return tensor
 
 
 def assign_device(tensor,
@@ -267,10 +258,13 @@ def assign_device(tensor,
                   assign_tuple_sharding=False,
                   use_sharding_op=False):
   """Returns a tensor that has AssignDevice sharding attribute."""
-  return Sharding.assign_device(device).apply_to_tensor(
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
+
+  Sharding.assign_device(device).apply_to_tensor(
       tensor,
-      assign_tuple_sharding=assign_tuple_sharding,
-      use_sharding_op=use_sharding_op)
+      assign_tuple_sharding=assign_tuple_sharding)
+  return tensor
 
 
 def tile(tensor,
@@ -286,10 +280,13 @@ def tile(tensor,
     assign_tuple_sharding: If the sharding type should be a tuple.
     use_sharding_op: If true, adds a sharding op to set the sharding.
   """
-  return Sharding.tile(tile_assignment).apply_to_tensor(
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
+  Sharding.tile(tile_assignment).apply_to_tensor(
       tensor,
-      assign_tuple_sharding=assign_tuple_sharding,
-      use_sharding_op=use_sharding_op)
+      assign_tuple_sharding=assign_tuple_sharding
+  )
+  return tensor
 
 
 def split(tensor,
@@ -308,11 +305,12 @@ def split(tensor,
     use_sharding_op: If true, adds a sharding op to set the sharding.
     input_shape: The full shape of the input tensor.
   """
-  return Sharding.split(tensor, split_dimension, num_devices,
-                        input_shape).apply_to_tensor(
-                            tensor,
-                            assign_tuple_sharding=assign_tuple_sharding,
-                            use_sharding_op=use_sharding_op)
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
+  Sharding.split(
+      tensor, split_dimension, num_devices, input_shape).apply_to_tensor(
+          tensor, assign_tuple_sharding=assign_tuple_sharding)
+  return tensor
 
 
 def partial_tile(tensor, tile_assignment, use_sharding_op=False):
@@ -326,8 +324,10 @@ def partial_tile(tensor, tile_assignment, use_sharding_op=False):
       replicated tiles.
     use_sharding_op: If true, adds a sharding op to set the sharding.
   """
-  return Sharding.partial_tile(tile_assignment).apply_to_tensor(
-      tensor, use_sharding_op=use_sharding_op)
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
+  Sharding.partial_tile(tile_assignment).apply_to_tensor(tensor)
+  return tensor
 
 
 def get_op_sharding(op):
@@ -464,4 +464,7 @@ def mesh_split(tensor,
       rank.
   """
   sharding = mesh_split_sharding(device_mesh, tensor_split_dims_mapping)
-  return sharding.apply_to_tensor(tensor, use_sharding_op=use_sharding_op)
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
+  sharding.apply_to_tensor(tensor)
+  return tensor
