@@ -56,19 +56,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_compilation_device",
-    srcs = ["tpu_compilation_device.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_defs",
-        ":tpu_node_device_util",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "tpu_node_device_util",
     srcs = ["tpu_node_device_util.cc"],
     hdrs = ["tpu_node_device_util.h"],
@@ -149,7 +136,6 @@ cc_library(
         ":libtftpu_header",
         ":tpu_api",
         ":tpu_api_dlsym_set_fn",
-        ":tpu_compilation_device",
         ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
@@ -285,7 +271,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_api_dlsym_initializer",
-        ":tpu_compilation_device",
         "//tensorflow/core/tpu:tpu_on_demand_compiler",
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/core/tpu/ops",
