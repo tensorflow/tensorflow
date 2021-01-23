@@ -229,11 +229,9 @@ class PreprocessingLayer(Layer):
     for _, iterator in data_handler.enumerate_epochs():
       with data_handler.catch_stop_iteration():
         for _ in data_handler.steps():
+          self._adapt_function(iterator)
           if data_handler.should_sync:
-            with context.async_scope():
-              self._adapt_function(iterator)
-          else:
-            self._adapt_function(iterator)
+            context.async_wait()
     self.finalize_state()
     self._is_adapted = True
 

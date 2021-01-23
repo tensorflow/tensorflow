@@ -1131,11 +1131,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                 batch_size=batch_size,
                 _r=1):
               callbacks.on_train_batch_begin(step)
+              tmp_logs = self.train_function(iterator)
               if data_handler.should_sync:
-                with context.async_scope():
-                  tmp_logs = self.train_function(iterator)
-              else:
-                tmp_logs = self.train_function(iterator)
+                context.async_wait()
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_train_batch_end(end_step, logs)
@@ -1422,11 +1420,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           for step in data_handler.steps():
             with trace.Trace('test', step_num=step, _r=1):
               callbacks.on_test_batch_begin(step)
+              tmp_logs = self.test_function(iterator)
               if data_handler.should_sync:
-                with context.async_scope():
-                  tmp_logs = self.test_function(iterator)
-              else:
-                tmp_logs = self.test_function(iterator)
+                context.async_wait()
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_test_batch_end(end_step, logs)
@@ -1664,11 +1660,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
             callbacks.on_predict_batch_begin(step)
+            tmp_batch_outputs = self.predict_function(iterator)
             if data_handler.should_sync:
-              with context.async_scope():
-                tmp_batch_outputs = self.predict_function(iterator)
-            else:
-              tmp_batch_outputs = self.predict_function(iterator)
+              context.async_wait()
             batch_outputs = tmp_batch_outputs  # No error, now safe to assign.
             if outputs is None:
               outputs = nest.map_structure(lambda batch_output: [batch_output],
