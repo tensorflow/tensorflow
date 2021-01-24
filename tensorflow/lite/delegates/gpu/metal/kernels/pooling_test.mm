@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/pooling_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -39,9 +40,8 @@ using ::tflite::gpu::metal::SingleOpModel;
 @interface PoolingTest : XCTestCase
 @end
 
-@implementation PoolingTest
-- (void)setUp {
-  [super setUp];
+@implementation PoolingTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
 }
 
 - (void)testPoolingMaxKernel2x2Stride2x2WithIndices {
@@ -127,6 +127,26 @@ using ::tflite::gpu::metal::SingleOpModel;
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1, 2, 3, 4}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testAveragePooling {
+  auto status = AveragePoolingTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testAveragePoolingNonEmptyPadding {
+  auto status = AveragePoolingNonEmptyPaddingTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaxPooling {
+  auto status = MaxPoolingTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaxPoolingIndices {
+  auto status = MaxPoolingIndicesTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
