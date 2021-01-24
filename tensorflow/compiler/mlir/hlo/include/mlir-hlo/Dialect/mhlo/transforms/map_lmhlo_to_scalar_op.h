@@ -438,15 +438,25 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::LogOp>(Location loc,
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::LogisticOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  auto ty = result_types.front().cast<FloatType>();
+  Value one = b->create<ConstantOp>(loc, b->getFloatAttr(ty, 1.0));
+  Value x = args.front();
+  Value neg_x = b->create<NegFOp>(loc, x);
+  Value exp_neg_x = b->create<::mlir::ExpOp>(loc, neg_x);
+  Value one_add_exp_neg_x = b->create<AddFOp>(loc, one, exp_neg_x);
+  return b->create<DivFOp>(loc, one, one_add_exp_neg_x);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::Log1pOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
                                                     OpBuilder* b) {
-  auto ty = result_types.front().cast<FloatType>();
-  Value x = args.front();
-  Value one = b->create<ConstantOp>(loc, b->getFloatAttr(ty, 1.0));
-  Value x_plus_one = b->create<AddFOp>(loc, x, one);
-  return b->create<::mlir::LogOp>(loc, x_plus_one);
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::Log1pOp>{}(
+      loc, result_types, args, b);
 }
 
 template <>

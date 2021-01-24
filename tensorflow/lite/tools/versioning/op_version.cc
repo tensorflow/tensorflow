@@ -514,6 +514,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_GATHER_ND:
       if (!op_sig.input_types.empty() &&
+          (op_sig.input_types.at(0) == TensorType_INT16)) {
+        return 3;
+      }
+      if (!op_sig.input_types.empty() &&
           op_sig.input_types.at(0) == TensorType_STRING) {
         return 2;
       }

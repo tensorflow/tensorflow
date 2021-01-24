@@ -111,7 +111,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertFalse(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testSoftmax1x1 {
+- (void)testSoftmax1x1Op {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -173,7 +173,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testSoftmax1x1BigNumber {
+- (void)testSoftmax1x1BigNumberOp {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -216,6 +216,16 @@ using ::tflite::gpu::metal::SingleOpModel;
 
 - (void)testSoftmaxBigNumber {
   auto status = SoftmaxBigNumberTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSoftmax1x1 {
+  auto status = Softmax1x1Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testSoftmax1x1BigNumber {
+  auto status = Softmax1x1BigNumberTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

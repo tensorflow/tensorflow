@@ -19,7 +19,7 @@
 set -e
 
 TARGET=stm32f4
-OPTIMIZED_KERNEL_DIR=cmsis-nn
+OPTIMIZED_KERNEL_DIR=cmsis_nn
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../..
 cd "${ROOT_DIR}"

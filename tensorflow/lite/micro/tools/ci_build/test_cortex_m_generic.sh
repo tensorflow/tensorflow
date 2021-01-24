@@ -25,7 +25,7 @@ cd "${ROOT_DIR}"
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 
 TARGET=cortex_m_generic
-OPTIMIZED_KERNEL_DIR=cmsis-nn
+OPTIMIZED_KERNEL_DIR=cmsis_nn
 
 # TODO(b/143715361): downloading first to allow for parallel builds.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=${OPTIMIZED_KERNEL_DIR} TARGET=${TARGET} TARGET_ARCH=cortex-m4 third_party_downloads

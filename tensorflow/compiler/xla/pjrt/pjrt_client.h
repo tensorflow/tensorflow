@@ -180,7 +180,7 @@ class PjRtClient {
       int num_replicas, int num_partitions) const = 0;
 
   // Returns a backend-specific HLO cost analysis visitor.
-  virtual std::unique_ptr<HloCostAnalysis> GetHloCostAnalysis() = 0;
+  virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() = 0;
 
   // Compile `computation` with given `options`.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(

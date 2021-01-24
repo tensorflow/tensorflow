@@ -28,9 +28,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/padding.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshape.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshapex4.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
@@ -42,9 +46,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mean.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
@@ -106,15 +108,26 @@ std::unique_ptr<ComputeTaskDescriptor> SelectConvolutionTransposed(
   }
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectReshape(
-    const OperationDef& op_def, const BHWC& src_shape,
-    const ReshapeAttributes& attr) {
-  if (src_shape.c % 4 == 0 && attr.new_shape.c % 4 == 0) {
-    auto gpu_op = Reshapex4(op_def);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+std::unique_ptr<GPUOperation> SelectLSTM(const OperationDef& op_def,
+                                         const GpuInfo& gpu_info) {
+  return absl::make_unique<GPUOperation>(CreateLSTM(op_def, gpu_info));
+}
+
+void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
+                   std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreatePadding(op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+}
+
+void SelectReshape(int src_channels, int dst_channels,
+                   const OperationDef& op_def,
+                   std::unique_ptr<GPUOperation>* ptr) {
+  if (src_channels % 4 == 0 && dst_channels % 4 == 0) {
+    GPUOperation operation = CreateReshapex4(op_def);
+    *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   } else {
-    auto gpu_op = Reshape(op_def);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    GPUOperation operation = CreateReshape(op_def);
+    *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   }
 }
 
@@ -360,6 +373,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
           absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
       break;
     }
+    case OperationType::LSTM: {
+      gpu_operation->operation = SelectLSTM(op_def, gpu_info);
+      return absl::OkStatus();
+    }
     case OperationType::MAX_UNPOOLING_2D: {
       auto gpu_op = MaxUnpooling(
           op_def,
@@ -380,13 +397,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     }
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node.operation.attributes);
-      if (attr.appended.b != 0 || attr.prepended.b != 0) {
-        return absl::UnimplementedError("Padding for BATCH is not supported.");
-      }
-      auto gpu_op = Padding(op_def, attr);
-      gpu_operation->task_desc =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      SelectPadding(attr, op_def, &gpu_operation->operation);
+      return absl::OkStatus();
     }
     case OperationType::POOLING_2D: {
       auto attr =
@@ -431,11 +443,11 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       return absl::OkStatus();
     }
     case OperationType::RESHAPE: {
-      const auto src_shape = inputs[0]->tensor.shape;
-      gpu_operation->task_desc = SelectReshape(
-          op_def, src_shape,
-          absl::any_cast<ReshapeAttributes>(node.operation.attributes));
-      break;
+      const int src_channels = inputs[0]->tensor.shape.c;
+      auto attr = absl::any_cast<ReshapeAttributes>(node.operation.attributes);
+      SelectReshape(src_channels, attr.new_shape.c, op_def,
+                    &gpu_operation->operation);
+      return absl::OkStatus();
     }
     case OperationType::RESIZE: {
       auto gpu_op =
@@ -527,7 +539,6 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::BATCH_TO_SPACE:
     case OperationType::BATCHED_MATMUL:
     case OperationType::CONSTANT:
-    case OperationType::LSTM:
     // TODO(b/162763635): implement MeanStddevNormalization for Metal.
     case OperationType::MEAN_STDDEV_NORMALIZATION:
     case OperationType::REDUCE_MAXIMUM:

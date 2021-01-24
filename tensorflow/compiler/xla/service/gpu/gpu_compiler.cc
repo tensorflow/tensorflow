@@ -660,6 +660,16 @@ static Status CompileModuleToLlvmIrImpl(
   return Status::OK();
 }
 
+static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,
+                                  void* context) {
+  std::string error_string;
+  llvm::raw_string_ostream string_printer(error_string);
+  llvm::DiagnosticPrinterRawOStream diagnostic_printer(string_printer);
+  diag_info.print(diagnostic_printer);
+
+  VLOG(1) << error_string;
+}
+
 StatusOr<std::pair<std::string, std::vector<uint8>>>
 GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                    std::unique_ptr<llvm::Module> llvm_module,
@@ -675,6 +685,9 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     {
       XLA_SCOPED_LOGGING_TIMER(
           "GpuCompiler::RunBackend - Running LLVM verifier");
+
+      llvm_module->getContext().setDiagnosticHandlerCallBack(
+          NullDiagnosticHandler, nullptr);
 
       std::string err;
       llvm::raw_string_ostream err_stream(err);
@@ -797,13 +810,6 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
       llvm::LLVMContext context;
       std::string buffer;
       llvm::raw_string_ostream error(buffer);
-      llvm::DiagnosticPrinterRawOStream printer(error);
-      auto DiagnosticHandler = [](const llvm::DiagnosticInfo& diag_info,
-                                  void* Context) {
-        auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
-        diag_info.print(*printer);
-      };
-      context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
 
       std::unique_ptr<llvm::Module> new_llvm_module;
       // Switch to a new context by dumping and re-parsing LLVM IR. Each thread

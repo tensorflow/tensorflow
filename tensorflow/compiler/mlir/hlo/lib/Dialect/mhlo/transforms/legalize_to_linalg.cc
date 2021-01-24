@@ -474,7 +474,8 @@ class HloDynamicBroadcastInDimConverter
       Value index = rewriter.create<ConstantIndexOp>(loc, i);
       dyn_dims.push_back(rewriter.create<tensor::ExtractOp>(loc, shape, index));
     }
-    auto result_type = op.getType().cast<RankedTensorType>();
+    auto result_type = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_type) return failure();
 
     int64_t nloops = result_type.getRank();
     Value init = rewriter.create<linalg::InitTensorOp>(
@@ -1240,6 +1241,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<lmhlo::ImagOp>,
                    PointwiseToLinalgConverter<lmhlo::IsFiniteOp>,
                    PointwiseToLinalgConverter<lmhlo::LogOp>,
+                   PointwiseToLinalgConverter<lmhlo::LogisticOp>,
                    PointwiseToLinalgConverter<lmhlo::Log1pOp>,
                    PointwiseToLinalgConverter<lmhlo::MaxOp>,
                    PointwiseToLinalgConverter<lmhlo::MinOp>,
@@ -1364,6 +1366,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                PointwiseToLinalgConverter<mhlo::ImagOp, false>,
                PointwiseToLinalgConverter<mhlo::IsFiniteOp, false>,
                PointwiseToLinalgConverter<mhlo::LogOp, false>,
+               PointwiseToLinalgConverter<mhlo::LogisticOp, false>,
                PointwiseToLinalgConverter<mhlo::Log1pOp, false>,
                PointwiseToLinalgConverter<mhlo::MaxOp, false>,
                PointwiseToLinalgConverter<mhlo::MinOp, false>,

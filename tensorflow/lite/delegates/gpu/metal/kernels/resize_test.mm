@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/resize_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -41,7 +42,10 @@ using ::tflite::gpu::metal::SingleOpModel;
 @interface ResizeTest : XCTestCase
 @end
 
-@implementation ResizeTest
+@implementation ResizeTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+}
+
 - (void)setUp {
   [super setUp];
 }
@@ -195,7 +199,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testResizeNearestAlignCorners {
+- (void)testResizeNearestAlignCornersOp {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -221,7 +225,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testResizeNearestHalfPixelCenters {
+- (void)testResizeNearestHalfPixelCentersOp {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -244,6 +248,41 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({3.0f, 6.0f, 6.0f, 9.0f, 12.0f, 12.0f, 9.0f, 12.0f, 12.0f},
                           model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testResizeBilinearAligned {
+  auto status = ResizeBilinearAlignedTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testResizeBilinearNonAligned {
+  auto status = ResizeBilinearNonAlignedTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testResizeBilinearWithoutHalfPixel {
+  auto status = ResizeBilinearWithoutHalfPixelTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testResizeBilinearWithHalfPixel {
+  auto status = ResizeBilinearWithHalfPixelTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testResizeNearest {
+  auto status = ResizeNearestTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testResizeNearestAlignCorners {
+  auto status = ResizeNearestAlignCornersTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testResizeNearestHalfPixelCenters {
+  auto status = ResizeNearestHalfPixelCentersTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

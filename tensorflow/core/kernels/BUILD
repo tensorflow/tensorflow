@@ -5974,6 +5974,7 @@ filegroup(
         "//tensorflow/core/kernels/linalg:linalg_ops_common.h",
         "//tensorflow/core/kernels/linalg:matrix_diag_op.h",
         "//tensorflow/core/kernels/linalg:matrix_set_diag_op.h",
+        "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_impl.h",
         "//tensorflow/core/util:image_resizer_state.h",
     ],
 )
@@ -6280,9 +6281,12 @@ filegroup(
         "//tensorflow/core/kernels/image:resize_nearest_neighbor_op.cc",
         "//tensorflow/core/kernels/image:sample_distorted_bounding_box_op.cc",
         "//tensorflow/core/kernels/linalg:linalg_ops_common.cc",
+        "//tensorflow/core/kernels/linalg:cholesky_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_diag_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_inverse_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_set_diag_op.cc",
+        "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_complex.cc",
+        "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_real.cc",
     ],
 )
 

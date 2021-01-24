@@ -171,7 +171,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return absl::optional<std::string>();
   }
 
-  std::unique_ptr<HloCostAnalysis> GetHloCostAnalysis() override;
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
 
   // Creates a buffer on the device without initializing or copying any data.
   // An optional `definition_event` may be speficied that can be used to

@@ -23,8 +23,10 @@ namespace tflite {
 namespace gpu {
 
 absl::Status SoftmaxTest(TestExecutionEnvironment* env);
-
 absl::Status SoftmaxBigNumberTest(TestExecutionEnvironment* env);
+
+absl::Status Softmax1x1Test(TestExecutionEnvironment* env);
+absl::Status Softmax1x1BigNumberTest(TestExecutionEnvironment* env);
 
 }  // namespace gpu
 }  // namespace tflite

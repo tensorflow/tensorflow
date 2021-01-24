@@ -228,7 +228,7 @@ class Model(training_lib.Model):
         ValueError: If `skip_mismatch` is set to `True` when `by_name` is
           `False`.
     """
-    if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
+    if K.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
           (not saving_utils.is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
@@ -2137,8 +2137,7 @@ class Model(training_lib.Model):
                                 'when using tf.distribute.Strategy.')
 
     if (sample_weight is not None and sample_weight.all() and
-        distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)):
+        K.is_tpu_strategy(self._distribution_strategy)):
       raise NotImplementedError('`sample_weight` is currently not supported '
                                 'when using TPUStrategy.')
 
@@ -2192,8 +2191,7 @@ class Model(training_lib.Model):
         # TODO(b/131720208): We still drop remainder here if number of examples
         # is divisible by batch size, as sometimes dynamic padder will time out
         # with keras.metrics.CategoricalAccuracy() metric.
-        if distributed_training_utils.is_tpu_strategy(
-            strategy) and not drop_remainder:
+        if K.is_tpu_strategy(strategy) and not drop_remainder:
           dataset_size = first_x_value.shape[0]
           if dataset_size % batch_size == 0:
             drop_remainder = True

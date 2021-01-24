@@ -127,9 +127,11 @@ Status RunGrappler(MetaGraphDef* meta_graph_def) {
       ->mutable_rewrite_options()
       ->set_min_graph_nodes(-1);
 
+  grappler::ItemConfig item_config;
+  item_config.ignore_user_placement = false;
   std::unique_ptr<grappler::GrapplerItem> item =
       grappler::GrapplerItemFromMetaGraphDef("graph", *meta_graph_def,
-                                             grappler::ItemConfig());
+                                             item_config);
   if (!item) {
     return tensorflow::errors::Internal(
         "Failed to create grappler item from MetaGraphDef.");

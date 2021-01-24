@@ -261,6 +261,7 @@ function install_macos_pip_deps {
   ${PIP_CMD} install $USER_FLAG 'grpcio ~= 1.34.0'
   ${PIP_CMD} install $USER_FLAG 'portpicker ~= 1.3.1'
   ${PIP_CMD} install $USER_FLAG 'scipy ~= 1.5.2'
+  ${PIP_CMD} install $USER_FLAG --upgrade certifi
 
   # LINT.ThenChange(:linux_pip_installations_orig)
   # LINT.ThenChange(:linux_pip_installations)

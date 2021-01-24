@@ -4334,6 +4334,7 @@ EagerContextThreadLocalData* GetEagerContextThreadLocalData(
   }
 
   if (eager_context_thread_local_data_map == nullptr) {
+    absl::LeakCheckDisabler disabler;
     eager_context_thread_local_data_map = new EagerContextThreadLocalDataMap();
   }
   auto& thread_local_data =

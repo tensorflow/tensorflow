@@ -333,6 +333,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 // the cluster only writes to.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUResourceReadForWritePass();
 
+// Creates a pass that reorders partitiioned resource reads and replicated
+// inputs.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateTPUReorderReplicateAndPartitionedInputsPass();
+
 // Creates a pass that partitions unpartitioned resource read/write to
 // partitioned resource variables.
 std::unique_ptr<OperationPass<FuncOp>>
@@ -369,6 +374,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
 // attribute value in a tf_device.launch op with host device assignment.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateOutsideCompiledToHostLaunchPass();
+
+// Creates a pass that groups outside compiled operations (CPU ops inside TPU
+// cluster) into clusters that can be extracted and run on the CPU.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUOutsideCompilationClusterPass();
 
 // Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
 // at head/tail of TPU cluster to run before/after TPU computation.

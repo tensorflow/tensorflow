@@ -27,6 +27,7 @@ from enum import Enum
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
@@ -38,7 +39,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.tpu import tpu
 from tensorflow.python.util import tf_decorator
 
 NEG_INF = -1e10
@@ -77,7 +77,7 @@ def update_state_wrapper(update_state_fn):
     # replica.
 
     for weight in metric_obj.weights:
-      if (tpu.is_tpu_strategy(strategy) and
+      if (backend.is_tpu_strategy(strategy) and
           not strategy.extended.variable_created_in_scope(weight)
           and not distribution_strategy_context.in_cross_replica_context()):
         raise ValueError(

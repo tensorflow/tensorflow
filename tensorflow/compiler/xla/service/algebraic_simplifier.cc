@@ -3425,7 +3425,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     }
   }
 
-  if (has_negative) {
+  if (has_negative && options_.enable_negative_padding_replacement()) {
     // Pad has negative padding. Replace with a pad with the non-negative
     // padding followed by a slice which effectively performs the negative
     // padding.

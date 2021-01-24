@@ -295,6 +295,29 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
   return true;
 }
 
+bool LmhloOpIsElementwise(mlir::Operation* op) {
+  CHECK(op->getDialect() == op->getContext()->getLoadedDialect("lmhlo"));
+  auto opcode = *MhloToHloOpcode(op);
+  if (HloInstruction::IsOpElementwise(opcode)) {
+    return true;
+  }
+  if (opcode == HloOpcode::kMap) {
+    int iota = 0;
+    for (const llvm::APInt& i :
+         mlir::cast<mlir::lmhlo::MapOp>(op).dimensions()) {
+      if (i.getZExtValue() != iota) {
+        return false;
+      }
+      iota++;
+    }
+    return true;
+  }
+  // TODO(timshen): not sure about whether porting
+  // HloFusionInstruction::IsElementwiseImpl() is necessary. HandleFusion()
+  // doesn't use such information.
+  return false;
+}
+
 bool MayPreventVectorization(mlir::Operation* op) {
   CHECK(op->getDialect() == op->getContext()->getLoadedDialect("lmhlo"));
   auto opcode = *MhloToHloOpcode(op);
@@ -326,7 +349,7 @@ bool MayPreventVectorization(mlir::Operation* op) {
       }
     }
     return false;
-  } else if (HloInstruction::IsOpElementwise(opcode)) {
+  } else if (LmhloOpIsElementwise(op)) {
     // Unfused elementwise operations are usually memory bound, unroll them.
     switch (opcode) {
         // The following elementwise operation implementations contain branches.
@@ -398,7 +421,7 @@ int ComputeMaxUnrollFactor(mlir::Operation* op,
         shapes.push_back(TypeToShape(result.getType()));
       }
     } else {
-      for (mlir::Value result : op->getResults()) {
+      for (mlir::Value result : GetHloOutputs(op)) {
         shapes.push_back(TypeToShape(result.getType()));
       }
     }
@@ -666,11 +689,8 @@ StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSliceForMlir(
 }
 
 Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
-  if (hlo->IsElementwise()) {
-    TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
-    return EmitUsingElementalIrEmitter(input);
-  }
-  return IrEmitter::DefaultAction(hlo);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitUsingElementalIrEmitter(input);
 }
 
 Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
@@ -766,9 +786,13 @@ Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
     HloFunctionImporter::SetLayoutForMlir(new_op, output_shape);
     b.create<mlir::TensorStoreOp>(loc, new_op->getResult(0), outputs[0]);
   }
+  int unroll_factor = 1;
+  if (!MayPreventVectorization(input.op)) {
+    unroll_factor = ComputeMaxUnrollFactor(input.op, hlo_module_config_);
+  }
   input.op->erase();
   input.op = fusion;
-  return EmitLoopFusionFromMlir(input, output_shape);
+  return EmitLoopFusionFromMlir(input, output_shape, unroll_factor);
 }
 
 Status IrEmitterUnnested::HandleConstant(HloInstruction* constant) {
@@ -930,7 +954,7 @@ Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
                                      /*Name=*/"dyn_element_total");
   }
 
-  //   linear_index = block_id * thread_per_block + thread_id;
+  //   linear_index = block_id * threads_per_block + thread_id;
   //   if (linear_index < max_num_element) {
   //     Index static_index =
   //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
@@ -1052,7 +1076,7 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
                                      /*Name=*/"dyn_element_total");
   }
 
-  //   linear_index = block_id * thread_per_block + thread_id;
+  //   linear_index = block_id * threads_per_block + thread_id;
   //   if (linear_index < max_num_element) {
   //     Index static_index =
   //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
@@ -1700,8 +1724,9 @@ StatusOr<MlirEmitterInput> IrEmitterUnnested::GetMlirEmitterInput(
 //
 // This is migrated from IrEmitter::HandleFusion() with IrEmitterUnnested as the
 // subclass. The logic is de-virtualized and less scattered.
-Status IrEmitterUnnested::EmitLoopFusionFromMlir(MlirEmitterInput input,
-                                                 const Shape& output_shape) {
+Status IrEmitterUnnested::EmitLoopFusionFromMlir(
+    MlirEmitterInput input, const Shape& output_shape,
+    absl::optional<int> unroll_factor_override) {
   auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(input.op);
   MlirEmitterContext context;
   context.SetOperation(fusion);
@@ -1748,9 +1773,13 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(MlirEmitterInput input,
       auto element_generator,
       fused_emitter.GetGenerator(fused_computation->root_instruction()));
 
-  int unroll_factor = 1;
-  if (!MayPreventVectorization(fusion)) {
+  int unroll_factor;
+  if (unroll_factor_override.has_value()) {
+    unroll_factor = *unroll_factor_override;
+  } else if (!MayPreventVectorization(fusion)) {
     unroll_factor = ComputeMaxUnrollFactor(fusion, hlo_module_config_);
+  } else {
+    unroll_factor = 1;
   }
 
   bool few_waves = [fusion]() mutable {
@@ -4472,18 +4501,21 @@ void IrEmitterUnnested::EmitPrologueForReduction(
 
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
     absl::Span<HloComputation* const> reducers,
-    absl::Span<llvm::AllocaInst* const> partial_result_addresses) {
+    absl::Span<llvm::AllocaInst* const> partial_result_addresses,
+    int threads_per_block) {
   CHECK_EQ(reducers.size(), partial_result_addresses.size());
   for (int i = 0; i != reducers.size(); i++) {
     EmitFullWarpShuffleDownLoopForReduce(
         reducers[i], partial_result_addresses[i]->getType()->getElementType(),
-        partial_result_addresses[i]);
+        partial_result_addresses[i], threads_per_block);
   }
 }
 
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     HloComputation* reducer, llvm::Type* element_type,
-    llvm::Value* partial_result_address) {
+    llvm::Value* partial_result_address, int threads_per_block) {
+  // This only works when the block size is a multiple of 32 threads.
+  CHECK_EQ(threads_per_block % 32, 0);
   for (int distance = 16; distance >= 1; distance /= 2) {
     int bit_width = llvm_ir::GetSizeInBits(element_type);
     llvm::Value* result_from_other_lane = llvm_ir::EmitAllocaAtFunctionEntry(
@@ -4629,8 +4661,9 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
       llvm::Type* element_type =
           partial_result_addresses[i]->getType()->getElementType();
       if (reduction_info.IsRowReduction()) {
-        EmitFullWarpShuffleDownLoopForReduce(reducers[i], element_type,
-                                             current_output);
+        EmitFullWarpShuffleDownLoopForReduce(
+            reducers[i], element_type, current_output,
+            mapping_scheme.GetThreadsPerBlock());
         llvm::Value* warp_id =
             b_.CreateUDiv(thread_id_info.thread_id_x, constant(kWarpSize));
         ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
@@ -4660,7 +4693,8 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
 
           EmitFullWarpShuffleDownLoopForReduce(
               reducers[i], element_type,
-              /*block_accum_addr*/ selected_value);
+              /*block_accum_addr*/ selected_value,
+              mapping_scheme.GetThreadsPerBlock());
           ksl.If("reduction_atomic_update", is_zero(thread_id_info.thread_id_x),
                  [&] {
                    TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
@@ -4687,8 +4721,9 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
                  thread_id_info.thread_id_x},
                 "shmem_transposed_addr"));
 
-        EmitFullWarpShuffleDownLoopForReduce(reducers[i], element_type,
-                                             shmem_transposed_addr);
+        EmitFullWarpShuffleDownLoopForReduce(
+            reducers[i], element_type, shmem_transposed_addr,
+            mapping_scheme.GetThreadsPerBlock());
 
         // Some threads in the block are completely outside of the bound of the
         // tensor, so they should not write any output at all.
@@ -5476,6 +5511,9 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo)) {
         fan_out = fusion.getFusionResults().size();
       }
+
+      // 64 is the general advice as the smallest block sizes.
+      // Moreover, XLA:GPU emitters need at least 32 threads at some places.
       int64 max_block_size = std::max(64LL, 512LL / NearestPowerOfTwo(fan_out));
       return std::min(
           max_block_size,
