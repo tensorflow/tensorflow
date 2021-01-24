@@ -24,7 +24,6 @@ cc_library(
         ":fully_connected",
         ":max_unpooling",
         ":pooling",
-        ":resize",
         ":transpose_conv",
         ":winograd",
     ],
@@ -450,26 +449,12 @@ ios_unit_test(
     deps = [":relu_test_lib"],
 )
 
-cc_library(
-    name = "resize",
-    srcs = ["resize.cc"],
-    hdrs = ["resize.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/types:variant",
-    ],
-)
-
 objc_library(
     name = "resize_test_lib",
     testonly = 1,
     srcs = ["resize_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":resize",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:resize_test_util",
     ],

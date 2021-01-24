@@ -48,6 +48,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:relu",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshapex4",
+        "//tensorflow/lite/delegates/gpu/common/tasks:resize",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax1x1",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth",

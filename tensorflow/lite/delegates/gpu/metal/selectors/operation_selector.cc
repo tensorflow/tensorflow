@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/reshape.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/reshapex4.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/resize.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/softmax.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/softmax1x1.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
 #include "tensorflow/lite/delegates/gpu/metal/selectors/default_selector.h"
@@ -127,6 +127,14 @@ std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
                                            const GpuInfo& gpu_info) {
   return absl::make_unique<Reduce>(
       CreateReduce(axis_to_reduce, src_shape, op_type, op_def, gpu_info));
+}
+
+absl::Status SelectResize(const Resize2DAttributes& attr,
+                          const OperationDef& op_def,
+                          std::unique_ptr<GPUOperation>* ptr) {
+  Resize operation = CreateResize(op_def, attr);
+  *ptr = absl::make_unique<Resize>(std::move(operation));
+  return absl::OkStatus();
 }
 
 void SelectReshape(int src_channels, int dst_channels,
@@ -464,12 +472,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       return absl::OkStatus();
     }
     case OperationType::RESIZE: {
-      auto gpu_op =
-          Resize(op_def,
-                 absl::any_cast<Resize2DAttributes>(node.operation.attributes));
-      gpu_operation->task_desc =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      auto attr = absl::any_cast<Resize2DAttributes>(node.operation.attributes);
+      return SelectResize(attr, op_def, &gpu_operation->operation);
     }
     case OperationType::SLICE: {
       auto attr = absl::any_cast<SliceAttributes>(node.operation.attributes);
