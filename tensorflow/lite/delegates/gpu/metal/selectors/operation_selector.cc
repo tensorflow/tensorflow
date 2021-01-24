@@ -35,6 +35,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/reshape.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/reshapex4.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/softmax.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/softmax1x1.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
@@ -48,7 +50,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mean.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
 #include "tensorflow/lite/delegates/gpu/metal/selectors/default_selector.h"
@@ -131,15 +132,14 @@ void SelectReshape(int src_channels, int dst_channels,
   }
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectSoftmax(const OperationDef& op_def,
-                                                     const BHWC& src_shape,
-                                                     const GpuInfo& gpu_info) {
-  if (src_shape.w == 1 && src_shape.h == 1) {
-    auto gpu_op = Softmax1x1(op_def, gpu_info);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
+                   std::unique_ptr<GPUOperation>* ptr) {
+  if (shape.w == 1 && shape.h == 1) {
+    Softmax1x1 operation = CreateSoftmax1x1(op_def);
+    *ptr = absl::make_unique<Softmax1x1>(std::move(operation));
   } else {
-    auto gpu_op = Softmax(op_def);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    GPUOperation operation = CreateSoftmax(op_def);
+    *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   }
 }
 
@@ -469,8 +469,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             "Softmax supports only CHANNELS dimension");
       }
       const auto src_shape = inputs[0]->tensor.shape;
-      gpu_operation->task_desc = SelectSoftmax(op_def, src_shape, gpu_info);
-      break;
+      SelectSoftmax(src_shape, op_def, &gpu_operation->operation);
+      return absl::OkStatus();
     }
     case OperationType::SPACE_TO_DEPTH: {
       auto attr =

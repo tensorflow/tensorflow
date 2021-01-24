@@ -26,7 +26,6 @@ cc_library(
         ":mean",
         ":pooling",
         ":resize",
-        ":softmax",
         ":transpose_conv",
         ":winograd",
     ],
@@ -573,29 +572,12 @@ ios_unit_test(
     deps = [":slice_test_lib"],
 )
 
-cc_library(
-    name = "softmax",
-    srcs = ["softmax.cc"],
-    hdrs = ["softmax.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-    ],
-)
-
 objc_library(
     name = "softmax_test_lib",
     testonly = 1,
     srcs = ["softmax_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":softmax",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
     ],
