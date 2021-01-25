@@ -121,11 +121,16 @@ Status RunGrappler(MetaGraphDef* meta_graph_def) {
   config_proto.mutable_experimental()->set_use_tfrt(true);
   config_proto.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_do_function_inlining(true);
+      ->set_do_function_inlining(false);
   // Do not skip grappler optimization even for small graphs.
   config_proto.mutable_graph_options()
       ->mutable_rewrite_options()
       ->set_min_graph_nodes(-1);
+  // Disable function inlining because it may cause restore graphs to be removed
+  // as we optimize all graphs together.
+  config_proto.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_function_optimization(RewriterConfig::OFF);
 
   grappler::ItemConfig item_config;
   item_config.ignore_user_placement = false;
