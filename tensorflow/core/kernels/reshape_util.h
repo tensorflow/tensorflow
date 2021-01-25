@@ -37,8 +37,8 @@ void ReshapeSparseTensor(OpKernelContext *context,
 namespace functor {
 
 template <typename Device>
-struct ReshapeSparseTensor {
-  Status operator()(OpKernelContext *context, const TensorShape &input_shape,
+struct ReshapeSparseTensorFunctor {
+  Status operator()(const TensorShape &input_shape,
                     const TensorShape &output_shape,
                     typename TTypes<int64>::ConstMatrix input_indices,
                     typename TTypes<int64>::Matrix output_indices) const;
