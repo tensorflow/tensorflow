@@ -97,6 +97,8 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(CastFloatToInt8) {
   int8_t output_data[6];
   const int input_dims[] = {1, 3, 2};
+
+  // TODO(b/178391195): Test negative and out-of-range numbers.
   const float input_values[] = {100.f, 1.0f, 0.f, 0.4f, 1.999f, 1.1f};
   const int8_t golden[] = {100, 1, 0, 0, 1, 1};
   tflite::testing::TestCastFloatToInt8(input_dims, input_values, golden,
