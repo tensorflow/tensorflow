@@ -175,7 +175,7 @@ bool ConcatHasNoEffect(const HloInstruction* concat) {
     return false;
   }
   int64 prev_limit = 0;
-  for (size_t i = 0; i < users.size(); ++i) {
+  for (int64 i = 0; i < users.size(); ++i) {
     const HloInstruction* u = users[i];
     int64 slice_size = u->slice_limits().at(0) - u->slice_starts().at(0);
     if (u->slice_starts().at(0) != prev_limit ||
@@ -205,8 +205,11 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* instr) {
       VLOG(3) << "Visiting: " << user->ToString();
       switch (user->opcode()) {
         case HloOpcode::kTuple:
-        // We say reshape is fine because it does not reorder elements.
+          break;
         case HloOpcode::kReshape:
+          if (!ShapeUtil::ReshapeIsBitcast(current->shape(), user->shape())) {
+            return false;
+          }
           break;
         case HloOpcode::kConcatenate:
           if (!ConcatHasNoEffect(user)) {
@@ -215,6 +218,8 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* instr) {
           break;
         case HloOpcode::kSlice:
           if (user->operand(0)->opcode() != HloOpcode::kConcatenate) {
+            // Check that we have seen and verified a preceding concat of this
+            // Slice.
             return false;
           }
           break;
@@ -227,6 +232,11 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* instr) {
                 return false;
               }
             }
+            if (!LayoutUtil::Equal(current->shape().layout(),
+                                   user->shape().layout())) {
+              // Make sure the layout is not changed by the elementwise op.
+              return false;
+            }
           } else {
             VLOG(3) << "Cannot prove that the op is effectively elementwise: "
                     << user->ToString();
@@ -234,12 +244,6 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* instr) {
           }
           break;
       }  // end of switch
-      if (user->opcode() != HloOpcode::kTuple &&
-          !LayoutUtil::IsMonotonicWithDim0Major(user->shape().layout())) {
-        // Simply check that all the layout is row-major to make sure there
-        // is no layout change.
-        return false;
-      }
       if (!visited.contains(user)) {
         stack.push_back(user);
       }
