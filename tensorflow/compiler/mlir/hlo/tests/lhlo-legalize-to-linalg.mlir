@@ -70,10 +70,7 @@ func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
 // CHECK-NEXT:   %[[CMP:.*]] = cmpf olt, %[[LHS_IN]], %[[RHS_IN]] : f32
-// CHECK-NEXT:   %[[MIN:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : f32
-// CHECK-NEXT:   %[[ISNAN:.*]] = cmpf uno, %[[LHS_IN]], %[[RHS_IN]] : f32
-// CHECK-NEXT:   %[[NAN:.*]] = constant 0x7FC00000 : f32
-// CHECK-NEXT:   %[[RESULT:.*]] = select %[[ISNAN]], %[[NAN]], %[[MIN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -951,9 +948,9 @@ func @reduce_maximum(%arg: memref<100x10xf32>,
 // CHECK-NEXT: store
 // CHECK-NEXT: load
 // CHECK-NEXT: load
-// CHECK: cmpf
-// CHECK: select
-// CHECK: store
+// CHECK-NEXT: cmpf
+// CHECK-NEXT: select
+// CHECK-NEXT: store
 // CHECK-NEXT: load
 // CHECK-NEXT: linalg.yield
 // CHECK-NEXT: }

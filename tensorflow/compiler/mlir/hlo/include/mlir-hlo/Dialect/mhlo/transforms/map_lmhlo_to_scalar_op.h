@@ -437,20 +437,6 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::LogOp>(Location loc,
       loc, result_types, args, b);
 }
 
-inline Value LhloAlwaysPropagateNaN(Value v, ArrayRef<Value> args, Location loc,
-                                    OpBuilder* b) {
-  Type element_type = getElementTypeOrSelf(args.front().getType());
-  if (auto float_type = element_type.dyn_cast<FloatType>()) {
-    Value isnan =
-        b->create<mlir::CmpFOp>(loc, CmpFPredicate::UNO, args[0], args[1]);
-
-    auto nan_apfloat = APFloat::getQNaN(float_type.getFloatSemantics());
-    Value nan = b->create<mlir::ConstantFloatOp>(loc, nan_apfloat, float_type);
-    v = b->create<mlir::SelectOp>(loc, isnan, nan, v);
-  }
-  return v;
-}
-
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::LogisticOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
@@ -478,13 +464,10 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MaxOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return LhloAlwaysPropagateNaN(
-      CompareSelectOpToStdScalarOp<
-          IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
-          ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "GT",
-                                                           result_types, args,
-                                                           b),
-      args, loc, b);
+  return CompareSelectOpToStdScalarOp<
+      IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
+      ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "GT", result_types,
+                                                       args, b);
 }
 
 template <>
@@ -492,13 +475,10 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MinOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return LhloAlwaysPropagateNaN(
-      CompareSelectOpToStdScalarOp<
-          IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
-          ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "LT",
-                                                           result_types, args,
-                                                           b),
-      args, loc, b);
+  return CompareSelectOpToStdScalarOp<
+      IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
+      ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "LT", result_types,
+                                                       args, b);
 }
 
 template <>
