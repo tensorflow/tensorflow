@@ -118,4 +118,13 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsShadow) {
 #endif
 }
 
+TEST(MlirOptimizationPassRegistry, RegisterPassesWithTheSamePriority) {
+  MlirOptimizationPassRegistry::Global().Add(
+      0, std::make_unique<NiceMock<MockMlirOptimizationPass>>());
+  MlirOptimizationPassRegistry::Global().Add(
+      0, std::make_unique<NiceMock<MockMlirOptimizationPass>>());
+
+  EXPECT_EQ(MlirOptimizationPassRegistry::Global().passes().size(), 2);
+}
+
 }  // namespace tensorflow

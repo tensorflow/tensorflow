@@ -63,7 +63,7 @@ class MlirOptimizationPassRegistry {
     }
   };
 
-  using Passes = std::set<PassRegistration, PriorityComparator>;
+  using Passes = std::multiset<PassRegistration, PriorityComparator>;
 
   // Returns the global registry of MLIR optimization passes.
   static MlirOptimizationPassRegistry& Global();
@@ -145,7 +145,7 @@ class MlirV1CompatOptimizationPassRegistry {
     }
   };
 
-  using Passes = std::set<PassRegistration, PriorityComparator>;
+  using Passes = std::multiset<PassRegistration, PriorityComparator>;
 
   // Returns the global registry of MLIR optimization passes.
   static MlirV1CompatOptimizationPassRegistry& Global();
