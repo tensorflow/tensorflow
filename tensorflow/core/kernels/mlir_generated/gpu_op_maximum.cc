@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
 
 namespace tensorflow {
-namespace functor {
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
-DEFINE_BINARY6(maximum, Eigen::half, float, double, uint8, int16, int64);
-#endif
-}  // namespace functor
-}  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+GENERATE_AND_REGISTER_BINARY_KERNEL(Maximum, f16, DT_HALF, Eigen::half);
+GENERATE_AND_REGISTER_BINARY_KERNEL(Maximum, f32, DT_FLOAT, float);
+GENERATE_AND_REGISTER_BINARY_KERNEL(Maximum, f64, DT_DOUBLE, double);
+GENERATE_AND_REGISTER_BINARY_KERNEL(Maximum, i16, DT_INT16, int16);
+// TODO(b/25387198): We cannot use a regular GPU kernel for int32.
+GENERATE_AND_REGISTER_BINARY_KERNEL(Maximum, i64, DT_INT64, int64);
+
+}  // namespace tensorflow

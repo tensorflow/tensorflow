@@ -183,6 +183,8 @@ tf_kernel_library(
         "gpu_op_less_equal.cc",
         "gpu_op_logical_and.cc",
         "gpu_op_logical_or.cc",
+        "gpu_op_maximum.cc",
+        "gpu_op_minimum.cc",
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
         "gpu_op_pow.cc",
