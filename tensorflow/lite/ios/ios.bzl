@@ -59,6 +59,7 @@ def tflite_ios_static_framework(
     cmd = ("INPUT_FRAMEWORK=\"$(location " + framework_target + ")\" " +
            "BUNDLE_NAME=\"" + bundle_name + "\" " +
            "ALLOWLIST_FILE_PATH=\"$(location " + allowlist_symbols_file + ")\" " +
+           "EXTRACT_SCRIPT_PATH=\"$(location //tensorflow/lite/ios:extract_object_files_main)\" " +
            "OUTPUT=\"$(OUTS)\" " +
            "\"$(location //tensorflow/lite/ios:hide_symbols_with_allowlist)\"")
 
@@ -68,6 +69,7 @@ def tflite_ios_static_framework(
         outs = [name + ".zip"],
         cmd = cmd,
         tools = [
+            "//tensorflow/lite/ios:extract_object_files_main",
             "//tensorflow/lite/ios:hide_symbols_with_allowlist",
         ],
     )

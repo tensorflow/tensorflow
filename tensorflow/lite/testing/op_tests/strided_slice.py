@@ -63,7 +63,8 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
         end,
         strides,
         begin_mask=parameters["begin_mask"],
-        end_mask=parameters["end_mask"])
+        end_mask=parameters["end_mask"],
+        shrink_axis_mask=parameters["shrink_axis_mask"])
     return tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -241,12 +242,12 @@ def make_strided_slice_tests(options):
             "strides": [[2, 1, 3, 1]],
             "begin_mask": [8],
             "end_mask": [3],
-            "shrink_axis_mask": [None, -1],
+            "shrink_axis_mask": [None],
             "constant_indices": [True, False],
             "fully_quantize": [False],
         }
     ]
-  _make_strided_slice_tests(options, test_parameters, expected_tf_failures=2)
+  _make_strided_slice_tests(options, test_parameters, expected_tf_failures=29)
 
 
 @register_make_test_function()

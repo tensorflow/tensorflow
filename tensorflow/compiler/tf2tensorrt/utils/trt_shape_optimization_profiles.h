@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -139,9 +140,9 @@ class TrtShapeOptimizationProfile {
 #endif
 
   // Creates execution contexts for each optimization profile.
-  Status CreateExecutionContexts(
-      nvinfer1::ICudaEngine* engine,
-      std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context);
+  Status CreateExecutionContexts(nvinfer1::ICudaEngine* engine,
+                                 std::vector<ExecutionContext>& exec_context,
+                                 TRTBaseAllocator* memory_allocator);
 
   // Maps input vector shapes to TRT Optimization profiles (min, max, opt) i.e.
   // maps input_shapes_ to profiles_

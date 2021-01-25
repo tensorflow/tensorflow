@@ -286,21 +286,22 @@ void resize_image(typename TTypes<T, 4>::ConstTensor images,
   }
 }
 
-template <typename Device>
-struct CastFloatToHalf {
+// Casts from float16 to T.
+template <typename Device, typename T>
+struct CastFloatTo {
   void operator()(const Device& d, typename TTypes<float>::ConstFlat input,
-                  typename TTypes<Eigen::half>::Flat output) {
-    output.device(d) = input.template cast<Eigen::half>();
+                  typename TTypes<T>::Flat output) {
+    output.device(d) = input.template cast<T>();
   }
 };
 
-template <>
-struct CastFloatToHalf<GPUDevice> {
+template <typename T>
+struct CastFloatTo<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<float>::ConstFlat input,
-                  typename TTypes<Eigen::half>::Flat output) {
+                  typename TTypes<T>::Flat output) {
     // Use existing cast functor instead of directly casting Eigen tensor, as
     // otherwise we need to instantiate the cast function in a .cu.cc file
-    functor::CastFunctor<GPUDevice, Eigen::half, float> cast;
+    functor::CastFunctor<GPUDevice, T, float> cast;
     cast(d, output, input);
   }
 };
@@ -380,17 +381,18 @@ class ResizeBilinearOpGrad : public OpKernel {
 
     TTypes<float, 4>::ConstTensor input_grad = input.tensor<float, 4>();
 
-    if (!std::is_same<T, Eigen::half>::value) {
+    if (!std::is_same<T, Eigen::half>::value &&
+        !std::is_same<T, Eigen::bfloat16>::value) {
       typename TTypes<T, 4>::Tensor output_grad(st.output->tensor<T, 4>());
       functor::ResizeBilinearGrad<Device, T>()(
           context->eigen_device<Device>(), input_grad, st.height_scale,
           st.width_scale, half_pixel_centers_, output_grad);
     } else {
-      // Accumulate output to float instead of half tensor, since float
+      // Accumulate output to float instead of half/bfloat16 tensor, since float
       // accumulation is more numerically stable and GPU half implementation is
       // slow.
-      // TODO(b/165759037): Create optimized and numerically stable half
-      // implementation
+      // TODO(b/165759037): Create optimized and numerically stable half and
+      // bfloat16 implementation
       Tensor output_grad;
       OP_REQUIRES_OK(context, context->allocate_temp(
                                   DT_FLOAT, st.output->shape(), &output_grad));
@@ -398,9 +400,9 @@ class ResizeBilinearOpGrad : public OpKernel {
           context->eigen_device<Device>(), input_grad, st.height_scale,
           st.width_scale, half_pixel_centers_, output_grad.tensor<float, 4>());
       const Tensor& output_grad_const = output_grad;
-      CastFloatToHalf<Device>{}(context->template eigen_device<Device>(),
-                                output_grad_const.template flat<float>(),
-                                st.output->template flat<Eigen::half>());
+      CastFloatTo<Device, T>{}(context->template eigen_device<Device>(),
+                               output_grad_const.template flat<float>(),
+                               st.output->template flat<T>());
     }
   }
 
@@ -509,6 +511,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
 TF_CALL_half(REGISTER_GRAD_KERNEL);
 TF_CALL_float(REGISTER_GRAD_KERNEL);
 TF_CALL_double(REGISTER_GRAD_KERNEL);
+TF_CALL_bfloat16(REGISTER_GRAD_KERNEL);
 
 #undef REGISTER_GRAD_KERNEL
 

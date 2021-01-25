@@ -30,6 +30,7 @@ filegroup(
 # Add all benchmarks related utils here for pip testing dependencis.
 py_library(
     name = "keras_benchmark_lib_pip",
+    srcs_version = "PY3",
     deps = [
         ":benchmark_util",
         ":distribution_util",
@@ -40,6 +41,7 @@ py_library(
 # This lib is mainly for running benchmarks on mlcompass infra.
 py_library(
     name = "profiler_lib",
+    srcs_version = "PY3",
     visibility = [
         "//learning/brain/contrib/keras_benchmark:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
@@ -93,6 +95,7 @@ cuda_py_test(
 py_library(
     name = "benchmark_util",
     srcs = ["benchmark_util.py"],
+    srcs_version = "PY3",
     deps = [
         ":distribution_util",
         "//tensorflow:tensorflow_py",
@@ -225,6 +228,7 @@ cuda_py_test(
 py_library(
     name = "distribution_util",
     srcs = ["distribution_util.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],

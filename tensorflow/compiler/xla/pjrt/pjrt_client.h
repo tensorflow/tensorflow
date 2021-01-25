@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -179,7 +180,7 @@ class PjRtClient {
       int num_replicas, int num_partitions) const = 0;
 
   // Returns a backend-specific HLO cost analysis visitor.
-  virtual std::unique_ptr<HloCostAnalysis> GetHloCostAnalysis() = 0;
+  virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() = 0;
 
   // Compile `computation` with given `options`.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
@@ -284,28 +285,31 @@ class PjRtBuffer {
   virtual StatusOr<std::unique_ptr<ExternalReferenceHold>>
   AcquireExternalReference() = 0;
 
-  // Returns the buffer's value as an XLA Literal. If the value has previously
-  // been prefetched to the host, then returns the prefetched version, otherwise
-  // copies the buffer to the host. Blocks until the value is ready. If
-  // `discard_cached_copy` is true then buffer will no longer keep hold of a
-  // cached copy of the literal (i.e. The reference to the host value will be
-  // removed.) If a layout is passed than a literal with this layout will be
-  // returned.
-  StatusOr<std::shared_ptr<Literal>> ToLiteral() {
-    return ToLiteral(/*discard_cached_copy=*/false, /*layout=*/{});
-  }
-  StatusOr<std::shared_ptr<Literal>> ToLiteral(bool discard_cached_copy) {
-    return ToLiteral(discard_cached_copy, /*layout=*/{});
-  }
-  virtual StatusOr<std::shared_ptr<Literal>> ToLiteral(
-      bool discard_cached_copy, absl::optional<xla::Layout> layout) = 0;
+  // Copies the buffer's value into `literal`. Calls `on_ready` when the value
+  // (or an error) is ready. The transfer respects the layout of `literal`; to
+  // specify a particular layout, set the layout before calling `ToLiteral`.
+  virtual void ToLiteral(MutableLiteralBase* literal,
+                         std::function<void(Status)> on_ready) = 0;
 
-  // Initiates a copy of the buffer to the host. Does not block waiting for
-  // the transfer to complete. The value can be retrieved by a later call to
-  // ToLiteral(). If a layout is passed then a cached copy with this layout will
-  // be created.
-  Status CopyToHostAsync() { return CopyToHostAsync(/*layout=*/{}); }
-  virtual Status CopyToHostAsync(absl::optional<xla::Layout> layout) = 0;
+  // Synchronous overload of ToLiteral, as a convenience.
+  Status ToLiteral(MutableLiteralBase* literal) {
+    absl::Notification done;
+    Status status;
+    ToLiteral(literal, [&](Status s) {
+      status = std::move(s);
+      done.Notify();
+    });
+    done.WaitForNotification();
+    return status;
+  }
+
+  // Convenience synchronous overload that allocates a literal with a default
+  // layout.
+  StatusOr<std::shared_ptr<Literal>> ToLiteral() {
+    auto literal = std::make_shared<Literal>(on_host_shape());
+    TF_RETURN_IF_ERROR(ToLiteral(literal.get()));
+    return literal;
+  }
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async

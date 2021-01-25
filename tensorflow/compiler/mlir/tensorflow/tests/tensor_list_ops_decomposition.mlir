@@ -515,7 +515,7 @@ func @main(%arg0: tensor<i1>) -> () {
 }
 
 // CHECK: func private @callee(%[[ARG0:.*]]: tensor<10xf32>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<1xi32>) -> (tensor<10xf32>, tensor<1xi32>)
-func @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<!tf.variant<tensor<f32>>> attributes {sym_visibility = "private"} {
+func private @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<!tf.variant<tensor<f32>>> {
   %elem = "tf._SomeOp"(%arg1) : (tensor<i1>) -> tensor<f32>
 
   // CHECK-NOT: "tf.TensorListPushBack"

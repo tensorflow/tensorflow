@@ -265,11 +265,18 @@ int64 Product(absl::Span<const int64> xs) {
 absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
     absl::Span<const int64> a, absl::Span<const int64> b) {
   CHECK_EQ(Product(a), Product(b));
+  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
+  if (absl::c_equal(a, b)) {
+    bounds.reserve(a.size() + 1);
+    for (int64 i = 0; i <= a.size(); ++i) {
+      bounds.emplace_back(i, i);
+    }
+    return bounds;
+  }
   if (0 == Product(a)) {
     return {std::make_pair(0, 0), std::make_pair(a.size(), b.size())};
   }
 
-  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
   for (int64 i = 0, j = 0, prior_i = -1, prior_j = -1, partial_size_a = 1,
              partial_size_b = 1;
        ;) {

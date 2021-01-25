@@ -4,7 +4,14 @@
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
-load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "VERSION",
+    "if_oss",
+    "tf_cc_shared_object",
+    "tf_custom_op_library_additional_deps_impl",
+    "tf_native_cc_binary",
+)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
@@ -178,12 +185,29 @@ config_setting(
 )
 
 config_setting(
-    name = "macos",
+    name = "macos_x86_64",
     values = {
         "apple_platform_type": "macos",
         "cpu": "darwin",
     },
     visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "macos_arm64",
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_arm64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "macos",
+    match_any = [
+        ":macos_x86_64",
+        ":macos_arm64",
+    ],
 )
 
 config_setting(
@@ -246,6 +270,12 @@ config_setting(
 config_setting(
     name = "linux_mips64",
     values = {"cpu": "mips64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_riscv64",
+    values = {"cpu": "riscv64"},
     visibility = ["//visibility:public"],
 )
 
@@ -385,7 +415,7 @@ config_setting(
 )
 
 config_setting(
-    name = "macos_with_framework_shared_object",
+    name = "macos_x86_64_with_framework_shared_object",
     define_values = {
         "framework_shared_object": "true",
     },
@@ -397,22 +427,46 @@ config_setting(
 )
 
 config_setting(
+    name = "macos_arm64_with_framework_shared_object",
+    define_values = {
+        "framework_shared_object": "true",
+    },
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_arm64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "macos_with_framework_shared_object",
+    match_any = [
+        ":macos_x86_64_with_framework_shared_object",
+        ":macos_arm64_with_framework_shared_object",
+    ],
+)
+
+config_setting(
     name = "using_cuda_clang",
     define_values = {"using_cuda_clang": "true"},
 )
 
 # Config setting to use in select()s to distinguish open source build from
 # google internal build on configurable attributes.
+#
+# For non-configurable distinction between OSS and Google builds, see
+# `if_oss()` and `if_google()` macros in tensorflow.bzl.
 config_setting(
     name = "oss",
     flag_values = {":oss_setting": "True"},
     visibility = ["//visibility:public"],
 )
 
-# Fixed setting to indicate open source build.
+# Non-configurable setting to indicate open source build.
 bool_setting(
     name = "oss_setting",
-    build_setting_default = True,
+    build_setting_default = if_oss(True, False),
+    visibility = ["//visibility:private"],
 )
 
 config_setting(
@@ -719,7 +773,9 @@ tf_cc_shared_object(
     name = "tensorflow_framework",
     framework_so = [],
     linkopts = select({
-        "//tensorflow:macos": [],
+        "//tensorflow:macos": [
+            "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text",
+        ],
         "//tensorflow:windows": [],
         "//tensorflow:freebsd": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
@@ -736,6 +792,7 @@ tf_cc_shared_object(
     deps = [
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
+        "//tensorflow/c:env",
         "//tensorflow/c:kernels",
         "//tensorflow/c:logging",
         "//tensorflow/c:ops_hdrs",
@@ -793,12 +850,12 @@ tf_cc_shared_object(
     per_os_targets = True,
     soversion = VERSION,
     visibility = ["//visibility:public"],
-    # add win_def_file for tensorflow
+    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
         "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
+    # copybara:comment_end
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
@@ -826,12 +883,12 @@ tf_cc_shared_object(
     per_os_targets = True,
     soversion = VERSION,
     visibility = ["//visibility:public"],
-    # add win_def_file for tensorflow_cc
+    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
         "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
+    # copybara:comment_end
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
         "//tensorflow:tf_version_script.lds",
@@ -1048,7 +1105,7 @@ gen_api_init_files(
 
 py_library(
     name = "tensorflow_py",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = select({
         "api_version_2": [],
@@ -1070,7 +1127,7 @@ py_library(
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],
 )

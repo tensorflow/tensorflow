@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":iterator_ops",
         "//tensorflow/python:constant_op",
@@ -45,7 +45,7 @@ py_library(
 py_library(
     name = "readers",
     srcs = ["readers.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":dataset_ops",
         "//tensorflow/python:array_ops",
@@ -65,7 +65,7 @@ py_library(
 py_library(
     name = "iterator_ops",
     srcs = ["iterator_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optional_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -86,7 +86,7 @@ py_library(
 py_library(
     name = "optional_ops",
     srcs = ["optional_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
@@ -101,7 +101,7 @@ py_library(
 py_library(
     name = "multi_device_iterator_ops",
     srcs = ["multi_device_iterator_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":dataset_ops",
         ":iterator_ops",

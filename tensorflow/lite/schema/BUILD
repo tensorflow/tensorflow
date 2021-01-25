@@ -42,6 +42,7 @@ py_library(
         "schema_v3.fbs",
         "@flatbuffers//:flatc",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
@@ -53,7 +54,7 @@ py_test(
     size = "small",
     srcs = ["upgrade_schema_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
         "no_oss",

@@ -41,9 +41,9 @@ if [ ! -d ${DOWNLOADS_DIR} ]; then
 fi
 
 if [[ ${2} == "hifi4" ]]; then
-  LIBRARY_URL="http://mirror.tensorflow.org/github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_06_27.zip"
+  LIBRARY_URL="http://github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_hifi4_12_22.zip"
   LIBRARY_DIRNAME="xa_nnlib_hifi4"
-  LIBRARY_MD5="45fdc1209a8da62ab568aa6040f7eabf"
+  LIBRARY_MD5="bb4aa8bd589ee1b4b9fd71349a1e7317"
 else
   echo "Attempting to download an unsupported xtensa variant: ${2}"
   exit 1

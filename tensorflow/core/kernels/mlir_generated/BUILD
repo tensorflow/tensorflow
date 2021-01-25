@@ -47,21 +47,40 @@ filegroup(
 filegroup(
     name = "experimental_unary_kernel_srcs",
     srcs = [
+        "gpu_op_acos.cc",
+        "gpu_op_acosh.cc",
+        "gpu_op_asin.cc",
+        "gpu_op_asinh.cc",
+        "gpu_op_atan.cc",
+        "gpu_op_atanh.cc",
         "gpu_op_ceil.cc",
+        "gpu_op_complex.cc",
+        "gpu_op_complex_abs.cc",
         "gpu_op_conj.cc",
         "gpu_op_cos.cc",
+        "gpu_op_cosh.cc",
+        "gpu_op_erf.cc",
+        "gpu_op_erfc.cc",
         "gpu_op_exp.cc",
+        "gpu_op_expm1.cc",
         "gpu_op_floor.cc",
         "gpu_op_imag.cc",
+        "gpu_op_invert.cc",
+        "gpu_op_is_finite.cc",
         "gpu_op_is_inf.cc",
+        "gpu_op_is_nan.cc",
         "gpu_op_log.cc",
+        "gpu_op_log1p.cc",
         "gpu_op_logical_not.cc",
         "gpu_op_neg.cc",
         "gpu_op_real.cc",
         "gpu_op_rsqrt.cc",
         "gpu_op_sign.cc",
         "gpu_op_sin.cc",
+        "gpu_op_sinh.cc",
         "gpu_op_sqrt.cc",
+        "gpu_op_square.cc",
+        "gpu_op_tan.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -106,21 +125,40 @@ tf_kernel_library(
         # sure that those targets can be built, so it should not hurt to
         # link them in even if they are currently not needed yet.
         ":abs_kernels",
+        ":square_kernels",
+        ":acos_kernels",
+        ":acosh_kernels",
+        ":asin_kernels",
+        ":asinh_kernels",
+        ":atan_kernels",
+        ":atanh_kernels",
         ":ceil_kernels",
+        ":complex_abs_kernels",
+        ":complex_kernels",
         ":conj_kernels",
         ":cos_kernels",
+        ":cosh_kernels",
+        ":erf_kernels",
+        ":erfc_kernels",
         ":exp_kernels",
+        ":expm1_kernels",
         ":floor_kernels",
         ":imag_kernels",
+        ":invert_kernels",
+        ":is_finite_kernels",
         ":is_inf_kernels",
+        ":is_nan_kernels",
         ":log_kernels",
+        ":log1p_kernels",
         ":logical_not_kernels",
         ":neg_kernels",
         ":real_kernels",
         ":rsqrt_kernels",
         ":sign_kernels",
         ":sin_kernels",
+        ":sinh_kernels",
         ":sqrt_kernels",
+        ":tan_kernels",
         ":tanh_kernels",
         ":gpu_ops_base",
         "//third_party/eigen3",
@@ -131,6 +169,7 @@ tf_kernel_library(
     name = "cwise_binary_op",
     srcs = [
         "gpu_op_add.cc",
+        "gpu_op_atan2.cc",
         "gpu_op_bitwise_and.cc",
         "gpu_op_bitwise_or.cc",
         "gpu_op_bitwise_xor.cc",
@@ -146,6 +185,7 @@ tf_kernel_library(
         "gpu_op_logical_or.cc",
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
+        "gpu_op_pow.cc",
         "gpu_op_right_shift.cc",
         "gpu_op_sub.cc",
     ],
@@ -154,6 +194,7 @@ tf_kernel_library(
     ],
     deps = [
         ":add_v2_kernels",
+        ":atan2_kernels",
         ":bitwise_and_kernels",
         ":bitwise_or_kernels",
         ":bitwise_xor_kernels",
@@ -172,6 +213,7 @@ tf_kernel_library(
         ":minimum_kernels",
         ":mul_kernels",
         ":not_equal_kernels",
+        ":pow_kernels",
         ":right_shift_kernels",
         ":sub_kernels",
         "//third_party/eigen3",
@@ -220,7 +262,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "gpu_binary_ops_test",
-    size = "small",
+    size = "medium",
     srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_binary_ops_test.cc"]),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
@@ -300,6 +342,66 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "acos",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "acosh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "asin",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "asinh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "atan",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "atanh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "conj",
     tile_size = "256",
     types = [
@@ -307,6 +409,38 @@ gen_kernel_library(
         "f64",
     ],
     unroll_factors = "2",
+)
+
+gen_kernel_library(
+    name = "cosh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "erf",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "erfc",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -326,17 +460,6 @@ gen_kernel_library(
         "i16",
         "i32",
         "i64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "is_inf",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
     ],
     unroll_factors = "4",
 )
@@ -370,6 +493,16 @@ gen_kernel_library(
     unroll_factors = "4",
 )
 
+gen_kernel_library(
+    name = "sinh",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
 [
     gen_kernel_library(
         name = name,
@@ -380,10 +513,10 @@ gen_kernel_library(
             "f64",
             "i64",
         ],
-        # TODO(b/174543802): Enable once fusion heuristics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
+        "square",
         "add_v2",
         "sub",
     ]
@@ -396,8 +529,16 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    # TODO(b/174543802): Enable once fusion heuristics is better.
-    # unroll_factors = "2",
+    unroll_factors = "2",
+)
+
+gen_kernel_library(
+    name = "complex_abs",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
 )
 
 gen_kernel_library(
@@ -410,8 +551,7 @@ gen_kernel_library(
         "i16",
         "i64",
     ],
-    # TODO(b/174543802): Enable once fusion heuristics is better.
-    # unroll_factors = "4",
+    unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -425,8 +565,7 @@ gen_kernel_library(
         "i16",
         "i64",
     ],
-    # TODO(b/174543802): Enable once fusion heuristics is better.
-    # unroll_factors = "4",
+    unroll_factors = "4",
 )
 
 # Bitwise operations.
@@ -445,8 +584,7 @@ gen_kernel_library(
             # "ui32",
             # "ui64",
         ],
-        # TODO(b/174543802): Enable once fusion heursitics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "bitwise_and",
@@ -457,6 +595,16 @@ gen_kernel_library(
     ]
 ]
 
+gen_kernel_library(
+    name = "atan2",
+    tile_size = "256,1,1",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
 # Logical operations.
 [
     gen_kernel_library(
@@ -465,8 +613,7 @@ gen_kernel_library(
         types = [
             "i1",
         ],
-        # TODO(b/174543802): Enable once fusion heursitics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "logical_and",
@@ -488,8 +635,7 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        # TODO(b/174543802): Enable once fusion heuristics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "equal",
@@ -510,8 +656,7 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        # TODO(b/174543802): Enable once fusion heuristics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "less",
@@ -533,8 +678,7 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        # TODO(b/174543802): Enable once fusion heuristics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "maximum",
@@ -573,8 +717,7 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    # TODO(b/174543802): Enable once fusion heursitics is better.
-    # unroll_factors = "4",
+    unroll_factors = "4",
 )
 
 # Kernels that support all floating-point types.
@@ -592,9 +735,13 @@ gen_kernel_library(
     for name in [
         "ceil",
         "exp",
+        "expm1",
         "floor",
         "is_finite",
+        "is_inf",
+        "is_nan",
         "log",
+        "log1p",
         "rsqrt",
         "sqrt",
         "tanh",
@@ -615,5 +762,18 @@ gen_kernel_library(
     for name in [
         "cos",
         "sin",
+        "tan",
     ]
 ]
+
+gen_kernel_library(
+    name = "pow",
+    tile_size = "256,1,1",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)

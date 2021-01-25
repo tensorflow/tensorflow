@@ -111,6 +111,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/tools/optimize:quantization_utils",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

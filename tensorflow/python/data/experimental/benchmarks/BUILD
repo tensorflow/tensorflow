@@ -12,7 +12,7 @@ py_binary(
     srcs = ["autotune_benchmark.py"],
     main = "autotune_benchmark.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",

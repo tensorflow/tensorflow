@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/gradients/grad_test_helper.h"
 
 #include "tensorflow/c/eager/gradient_checker.h"
+#include "tensorflow/c/experimental/gradients/tape/tape_context.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -72,6 +73,62 @@ void CompareNumericalAndAutodiffGradients(
     delete[] dnumerical;
     outputs[i]->Unref();
   }
+}
+
+void CheckTensorValue(AbstractTensorHandle* t, absl::Span<const float> manuals,
+                      absl::Span<const int64_t> dims, double abs_error) {
+  TF_Tensor* analytical_tensor;
+  auto s = GetValue(t, &analytical_tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  int64_t num_elem_analytical = 1;
+  auto num_dims_analytical = TF_NumDims(analytical_tensor);
+  ASSERT_EQ(dims.size(), num_dims_analytical);
+  for (int j = 0; j < num_dims_analytical; j++) {
+    auto dim_analytical = TF_Dim(analytical_tensor, j);
+    ASSERT_EQ(dims[j], dim_analytical);
+    num_elem_analytical *= dim_analytical;
+  }
+
+  float* danalytical = new float[num_elem_analytical]{0};
+  memcpy(&danalytical[0], TF_TensorData(analytical_tensor),
+         TF_TensorByteSize(analytical_tensor));
+
+  for (int64_t j = 0; j < num_elem_analytical; j++) {
+    if (abs_error == 0) {
+      ASSERT_EQ(manuals[j], danalytical[j]);
+    } else {
+      ASSERT_NEAR(manuals[j], danalytical[j], abs_error);
+    }
+  }
+
+  TF_DeleteTensor(analytical_tensor);
+  delete[] danalytical;
+}
+
+Model BuildGradModel(Model forward, GradientRegistry registry) {
+  return [forward_model = std::move(forward),
+          grad_registry = std::move(registry)](
+             AbstractContext* ctx,
+             absl::Span<AbstractTensorHandle* const> inputs,
+             absl::Span<AbstractTensorHandle*> outputs) -> Status {
+    Tape tape(/*persistent=*/false);
+    for (size_t i{}; i < inputs.size(); ++i) {
+      tape.Watch(inputs[i]);
+    }
+    std::vector<AbstractTensorHandle*> temp_outputs(1);
+    AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, grad_registry));
+    TF_RETURN_IF_ERROR(
+        forward_model(tape_ctx.get(), inputs, absl::MakeSpan(temp_outputs)));
+
+    TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
+                                            /*sources=*/inputs,
+                                            /*output_gradients=*/{}, outputs));
+    for (auto temp_output : temp_outputs) {
+      temp_output->Unref();
+    }
+    return Status::OK();
+  };
 }
 
 }  // namespace internal

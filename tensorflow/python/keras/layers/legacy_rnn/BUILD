@@ -18,6 +18,7 @@ filegroup(
 py_library(
     name = "rnn_cell_impl",
     srcs = ["rnn_cell_impl.py"],
+    srcs_version = "PY3",
     deps = [
         ":rnn_cell_wrapper_impl",
         "//tensorflow/python:array_ops",
@@ -50,6 +51,7 @@ py_library(
 py_library(
     name = "rnn_cell_wrapper_impl",
     srcs = ["rnn_cell_wrapper_impl.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",

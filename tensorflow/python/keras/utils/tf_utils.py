@@ -84,7 +84,7 @@ def get_reachable_from_inputs(inputs, targets=None):
       except AttributeError:
         # Variables can be created in an Eager context.
         outputs = []
-    elif tensor_util.is_tensor(x):
+    elif tensor_util.is_tf_type(x):
       outputs = x.consumers()
     else:
       raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
@@ -391,7 +391,7 @@ def is_ragged(tensor):
 
 
 def is_tensor_or_variable(x):
-  return tensor_util.is_tensor(x) or isinstance(x, variables.Variable)
+  return tensor_util.is_tf_type(x) or isinstance(x, variables.Variable)
 
 
 def assert_no_legacy_layers(layers):

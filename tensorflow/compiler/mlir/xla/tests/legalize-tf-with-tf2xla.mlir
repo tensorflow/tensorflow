@@ -1,11 +1,8 @@
-// RUN: tf-opt -xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT %s | FileCheck %s
-
-// INVALID_DEVICE: xla-opt -xla-legalize-tf-with-tf2xla=device-type=INVALID_DEVICE %s | FileCheck %s
+// RUN: tf-opt -xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT %s -verify-diagnostics | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
 // CHECK-LABEL: abs
-// expected-error@+1 {{unsupported device}}
 func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: %[[RESULT:.*]] = "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   %0 = "tf.Abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
@@ -17,7 +14,6 @@ func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: unknown_op
 func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: tf.CustomTestOp
-  // expected-remark@+1 {{constant 20}}
   %0 = "tf.CustomTestOp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
@@ -341,6 +337,26 @@ func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor
   // CHECK-NOT: XlaSvd
   %s, %u, %v = "tf.XlaSvd"(%arg0) {max_iter = 1, epsilon = 1.0E-09 : f32, precision_config = ""} : (tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>)
   return %s, %u, %v : tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>
+}
+
+func @abs_impl(%arg0: f32) -> f32 {
+ return %arg0 : f32
+}
+
+// This test verifies that legalization for ops with symbol reference attribute
+// is not attempted even if they are in allow-list. XLA op kernels for these
+// ops compile the function to HLO on-demand which won't work in our case as it
+// may contain unsupported ops in the fallback nor we provide XlaCompiler to
+// the kernel. Using a allowed op Abs to protect against future addition of a
+// new op with a symbol ref.
+
+// CHECK-LABEL: @abs_with_symbol_ref
+func @abs_with_symbol_ref(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: tf.Abs
+  // expected-remark@+1 {{ops with symbol references are not supported}}
+  %0 = "tf.Abs"(%arg0) {_body = @abs_impl} : (tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
 }
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is

@@ -8,7 +8,7 @@ package(
 py_library(
     name = "mlir",
     srcs = ["mlir.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:pywrap_mlir",
         "//tensorflow/python/util:tf_export",

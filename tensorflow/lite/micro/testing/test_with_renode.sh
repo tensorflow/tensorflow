@@ -17,11 +17,13 @@
 #
 # Parameters:
 #  ${1} - path to a binary to test or directory (all *_test will be run).
-#  ${2} - target (bluepill, stm32f4 etc.)
+#  ${2} - String that is checked for pass/fail.
+#  ${3} - target (bluepill, stm32f4 etc.)
 
 set -e
 
-TARGET=${2}
+PASS_STRING=${2}
+TARGET=${3}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TFLM_ROOT_DIR=${SCRIPT_DIR}/..
@@ -78,7 +80,7 @@ echo -e "*** Settings ***\n" \
         "*** Variables ***\n" \
         "\${RESC}                      undefined_RESC\n" \
         "\${UART_LOG}                  /tmp/uart.log\n" \
-        "\${UART_LINE_ON_SUCCESS}      ~~~ALL TESTS PASSED~~~\n" \
+        "\${UART_LINE_ON_SUCCESS}      ${PASS_STRING}\n" \
         "\${CREATE_SNAPSHOT_ON_FAIL}   False\n" \
         "\n" \
         "*** Test Cases ***\n" \

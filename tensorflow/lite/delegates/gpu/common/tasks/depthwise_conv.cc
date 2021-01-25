@@ -236,7 +236,7 @@ std::string GenerateDepthwiseConvolutionCode(
 GPUOperation CreateDepthwiseConvolution2D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
-  bool weights_are_buffer = gpu_info.IsMali();
+  bool weights_are_buffer = !gpu_info.SupportsImages() || gpu_info.IsMali();
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);
@@ -297,7 +297,7 @@ GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
 GPUOperation CreateDepthwiseConvolution3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr) {
-  bool weights_are_buffer = gpu_info.IsMali();
+  bool weights_are_buffer = !gpu_info.SupportsImages() || gpu_info.IsMali();
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);

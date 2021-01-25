@@ -53,7 +53,6 @@ void CreateBenchmarkRunner() {
   // We allocate the KeywordOpResolver from a global buffer because the object's
   // lifetime must exceed that of the KeywordBenchmarkRunner object.
   KeywordOpResolver* op_resolver = new (op_resolver_buffer) KeywordOpResolver();
-  op_resolver->AddDequantize();
   op_resolver->AddFullyConnected(tflite::Register_FULLY_CONNECTED_INT8());
   op_resolver->AddQuantize();
   op_resolver->AddSoftmax();

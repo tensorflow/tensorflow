@@ -106,6 +106,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
 
+  std::vector<ClientAndPtr<PyBuffer>> LiveBuffers();
+
   StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
   GetDefaultDeviceAssignment(int num_replicas, int num_partitions);
 
@@ -124,10 +126,10 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   }
 
   StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBufferFromPyval(
-      const pybind11::object& argument, PjRtDevice* device, bool force_copy,
+      pybind11::handle argument, PjRtDevice* device, bool force_copy,
       PjRtClient::HostBufferSemantics host_buffer_semantics);
   StatusOr<std::unique_ptr<PyBuffer>> BufferFromPyval(
-      const pybind11::object& argument, PjRtDevice* device, bool force_copy,
+      pybind11::handle argument, PjRtDevice* device, bool force_copy,
       PjRtClient::HostBufferSemantics host_buffer_semantics);
 
   StatusOr<std::shared_ptr<PyExecutable>> Compile(

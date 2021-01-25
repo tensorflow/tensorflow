@@ -457,7 +457,8 @@ class ExponentialMovingAverage(object):
                 var,
                 var.initialized_value(),
                 self.name,
-                colocate_with_primary=True)
+                colocate_with_primary=True,
+                copy_xla_sharding=True)
             # NOTE(mrry): We only add `tf.Variable` objects to the
             # `MOVING_AVERAGE_VARIABLES` collection.
             ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
@@ -467,7 +468,8 @@ class ExponentialMovingAverage(object):
                 self.name,
                 colocate_with_primary=(var.op.type in [
                     "Variable", "VariableV2", "VarHandleOp"
-                ]))
+                ]),
+                copy_xla_sharding=True)
             if self._zero_debias:
               zero_debias_true.add(avg.ref())
         self._averages[var.ref()] = avg

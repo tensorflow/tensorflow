@@ -25,11 +25,6 @@ namespace xla {
 namespace py = pybind11;
 
 PYBIND11_MODULE(tpu_client_extension, m) {
-  // Initializes the NumPy API for the use of the types module.
-  if (!InitializeNumpyAPIForTypes()) {
-    throw std::runtime_error("Unable to initialize Numpy API");
-  }
-
   py::class_<PyTpuClient, std::shared_ptr<PyTpuClient>>(m, "TpuClient")
       .def_static("Get", &PyTpuClient::Get, py::arg("worker"))
       .def_property_readonly("platform", &PyTpuClient::platform_name)

@@ -153,7 +153,7 @@ def unwrap_output_dict(strategy, grouped_outputs, mode):
                                        grouped_outputs['metrics'])
   batch_size = strategy.reduce(reduce_util.ReduceOp.SUM,
                                grouped_outputs['batch_size'], axis=None)
-  if (dist_utils.is_tpu_strategy(strategy) and
+  if (K.is_tpu_strategy(strategy) and
       ops.executing_eagerly_outside_functions()):
     # Choose 1 value per replica in the TPU case since all replicas produce the
     # same output.
@@ -201,7 +201,7 @@ def unwrap_outputs(distribution_strategy, grouped_outputs,
                                       grouped_outputs[0], axis=None)
   all_outputs = flatten_per_replica_values(distribution_strategy,
                                            grouped_outputs[1:])
-  if (dist_utils.is_tpu_strategy(distribution_strategy) and
+  if (K.is_tpu_strategy(distribution_strategy) and
       ops.executing_eagerly_outside_functions()):
     # Choose 1 value per replica in the TPU case since all replicas produce the
     # same output.
@@ -346,7 +346,7 @@ def validate_per_replica_inputs(distribution_strategy, x):
     # At this point x should contain only tensors.
     x_values = distribution_strategy.unwrap(x)
     for value in x_values:
-      if not tensor_util.is_tensor(value):
+      if not tensor_util.is_tf_type(value):
         raise ValueError('Dataset input to the model should be tensors instead '
                          'they are of type {}'.format(type(value)))
 
@@ -496,12 +496,12 @@ def get_input_params(distribution_strategy,
   if context.executing_eagerly():
     allow_partial_batch = (
         mode != ModeKeys.TRAIN or
-        not dist_utils.is_tpu_strategy(distribution_strategy))
+        not K.is_tpu_strategy(distribution_strategy))
   else:
     allow_partial_batch = (
         mode == ModeKeys.TRAIN or
         ((mode == ModeKeys.PREDICT or mode == ModeKeys.TEST) and
-         dist_utils.is_tpu_strategy(distribution_strategy)))
+         K.is_tpu_strategy(distribution_strategy)))
 
   if steps is None:
     if batch_size is None:
@@ -623,7 +623,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """
   strategy = model._distribution_strategy
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
-  if dist_utils.is_tpu_strategy(strategy):
+  if K.is_tpu_strategy(strategy):
     if sample_weights is not None:
       raise ValueError('TPUStrategy does not support sample weights.')
 
@@ -669,7 +669,7 @@ def is_distributing_by_cloning(model):
     True if the `model` is going to be distributed using cloning and False
     otherwise.
   """
-  if (dist_utils.is_tpu_strategy(model._distribution_strategy) and
+  if (K.is_tpu_strategy(model._distribution_strategy) and
       context.executing_eagerly):  # b/137580852
     return False
   elif ops.executing_eagerly_outside_functions():

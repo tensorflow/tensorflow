@@ -506,7 +506,8 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
         absl::optional<xla::OpSharding> sharding,
         ParseShardingFromDevice(
             *possible_match,
-            /*num_cores_per_replica=*/std::numeric_limits<int32>::max()));
+            /*num_cores_per_replica=*/std::numeric_limits<int32>::max(),
+            /*add_metadata=*/false));
     if (sharding && sharding->type() == xla::OpSharding::MAXIMAL) {
       const int core_annotation = sharding.value().tile_assignment_devices(0);
       if (core == -1 || core > core_annotation) {

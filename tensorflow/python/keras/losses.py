@@ -248,7 +248,7 @@ class LossFunctionWrapper(Loss):
     Returns:
       Loss values per sample.
     """
-    if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
+    if tensor_util.is_tf_type(y_pred) and tensor_util.is_tf_type(y_true):
       y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(y_pred, y_true)
     ag_fn = autograph.tf_convert(self.fn, ag_ctx.control_status_ctx())
     return ag_fn(y_true, y_pred, **self._fn_kwargs)
@@ -1404,7 +1404,7 @@ def categorical_hinge(y_true, y_pred):
   where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Standalone usage:
-
+  
   >>> y_true = np.random.randint(0, 3, size=(2,))
   >>> y_true = tf.keras.utils.to_categorical(y_true, num_classes=3)
   >>> y_pred = np.random.random(size=(2, 3))
@@ -1413,9 +1413,10 @@ def categorical_hinge(y_true, y_pred):
   >>> pos = np.sum(y_true * y_pred, axis=-1)
   >>> neg = np.amax((1. - y_true) * y_pred, axis=-1)
   >>> assert np.array_equal(loss.numpy(), np.maximum(0., neg - pos + 1.))
-
+  
   Args:
-    y_true: The ground truth values. `y_true` values are expected to be 0 or 1.
+    y_true: The ground truth values. `y_true` values are expected to be
+    either `{-1, +1}` or `{0, 1}` (i.e. a one-hot-encoded tensor).
     y_pred: The predicted values.
 
   Returns:
