@@ -43,7 +43,13 @@ void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   CUdeviceptr rv = 0;
   CUresult res = cuMemAlloc(&rv, num_bytes);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "cuMemAlloc failed to allocate " << num_bytes;
+    const char* error_name;
+    const char* error_string;
+    cuGetErrorName(res, &error_name);
+    cuGetErrorString(res, &error_string);
+    LOG(ERROR) << "cuMemAlloc failed to allocate " << num_bytes
+               << "\n Error name: " << error_name
+               << "\n Error string: " << error_string;
     return nullptr;
   }
   return reinterpret_cast<void*>(rv);
@@ -56,7 +62,13 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
   // free with cudaFree
   CUresult res = cuMemFree(reinterpret_cast<CUdeviceptr>(ptr));
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "cuMemFree failed to free " << ptr;
+    const char* error_name;
+    const char* error_string;
+    cuGetErrorName(res, &error_name);
+    cuGetErrorString(res, &error_string);
+    LOG(ERROR) << "cuMemFree failed to free " << ptr
+               << "\n Error name: " << error_name
+               << "\n Error string: " << error_string;
   }
 #endif  // GOOGLE_CUDA
 }
