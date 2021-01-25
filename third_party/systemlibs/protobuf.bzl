@@ -1,8 +1,3 @@
-load("@bazel_skylib//lib:versions.bzl", "versions")
-load("@rules_cc//cc:defs.bzl", "cc_library")
-load("@rules_proto//proto:defs.bzl", "ProtoInfo")
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
-
 def _GetPath(ctx, path):
     if ctx.label.workspace_root:
         return ctx.label.workspace_root + "/" + path
@@ -76,105 +71,54 @@ def _RelativeOutputPath(path, include, dest = ""):
 def _proto_gen_impl(ctx):
     """General implementation for generating protos"""
     srcs = ctx.files.srcs
-    deps = depset(direct = ctx.files.srcs)
+    deps = []
+    deps += ctx.files.srcs
     source_dir = _SourceDir(ctx)
-    gen_dir = _GenDir(ctx).rstrip("/")
+    gen_dir = _GenDir(ctx)
     if source_dir:
-        import_flags = depset(direct = ["-I" + source_dir, "-I" + gen_dir])
+        import_flags = ["-I" + source_dir, "-I" + gen_dir]
     else:
-        import_flags = depset(direct = ["-I."])
+        import_flags = ["-I."]
 
     for dep in ctx.attr.deps:
-        if type(dep.proto.import_flags) == "list":
-            import_flags = depset(transitive = [import_flags], direct = dep.proto.import_flags)
-        else:
-            import_flags = depset(transitive = [import_flags, dep.proto.import_flags])
-        if type(dep.proto.deps) == "list":
-            deps = depset(transitive = [deps], direct = dep.proto.deps)
-        else:
-            deps = depset(transitive = [deps, dep.proto.deps])
+        import_flags += dep.proto.import_flags
+        deps += dep.proto.deps
+    import_flags = depset(import_flags).to_list()
+    deps = depset(deps).to_list()
 
-    if not ctx.attr.gen_cc and not ctx.attr.gen_py and not ctx.executable.plugin:
-        return struct(
-            proto = struct(
-                srcs = srcs,
-                import_flags = import_flags,
-                deps = deps,
-            ),
+    args = []
+    if ctx.attr.gen_cc:
+        args += ["--cpp_out=" + gen_dir]
+    if ctx.attr.gen_py:
+        args += ["--python_out=" + gen_dir]
+
+    inputs = srcs + deps
+    tools = [ctx.executable.protoc]
+    if ctx.executable.plugin:
+        plugin = ctx.executable.plugin
+        lang = ctx.attr.plugin_language
+        if not lang and plugin.basename.startswith("protoc-gen-"):
+            lang = plugin.basename[len("protoc-gen-"):]
+        if not lang:
+            fail("cannot infer the target language of plugin", "plugin_language")
+
+        outdir = gen_dir
+        if ctx.attr.plugin_options:
+            outdir = ",".join(ctx.attr.plugin_options) + ":" + outdir
+        args += ["--plugin=protoc-gen-%s=%s" % (lang, plugin.path)]
+        args += ["--%s_out=%s" % (lang, outdir)]
+        tools.append(plugin)
+
+    if args:
+        ctx.actions.run(
+            inputs = inputs,
+            outputs = ctx.outputs.outs,
+            arguments = args + import_flags + [s.path for s in srcs],
+            executable = ctx.executable.protoc,
+            mnemonic = "ProtoCompile",
+            tools = tools,
+            use_default_shell_env = True,
         )
-
-    for src in srcs:
-        args = []
-
-        in_gen_dir = src.root.path == gen_dir
-        if in_gen_dir:
-            import_flags_real = []
-            for f in import_flags.to_list():
-                path = f.replace("-I", "")
-                import_flags_real.append("-I$(realpath -s %s)" % path)
-
-        outs = []
-        use_grpc_plugin = (ctx.attr.plugin_language == "grpc" and ctx.attr.plugin)
-        path_tpl = "$(realpath %s)" if in_gen_dir else "%s"
-        if ctx.attr.gen_cc:
-            args += [("--cpp_out=" + path_tpl) % gen_dir]
-            outs.extend(_CcOuts([src.basename], use_grpc_plugin = use_grpc_plugin))
-        if ctx.attr.gen_py:
-            args += [("--python_out=" + path_tpl) % gen_dir]
-            outs.extend(_PyOuts([src.basename], use_grpc_plugin = use_grpc_plugin))
-
-        outs = [ctx.actions.declare_file(out, sibling = src) for out in outs]
-        inputs = [src] + deps.to_list()
-        tools = [ctx.executable.protoc]
-        if ctx.executable.plugin:
-            plugin = ctx.executable.plugin
-            lang = ctx.attr.plugin_language
-            if not lang and plugin.basename.startswith("protoc-gen-"):
-                lang = plugin.basename[len("protoc-gen-"):]
-            if not lang:
-                fail("cannot infer the target language of plugin", "plugin_language")
-
-            outdir = "." if in_gen_dir else gen_dir
-
-            if ctx.attr.plugin_options:
-                outdir = ",".join(ctx.attr.plugin_options) + ":" + outdir
-            args += [("--plugin=protoc-gen-%s=" + path_tpl) % (lang, plugin.path)]
-            args += ["--%s_out=%s" % (lang, outdir)]
-            tools.append(plugin)
-
-        if not in_gen_dir:
-            ctx.actions.run(
-                inputs = inputs,
-                tools = tools,
-                outputs = outs,
-                arguments = args + import_flags.to_list() + [src.path],
-                executable = ctx.executable.protoc,
-                mnemonic = "ProtoCompile",
-                use_default_shell_env = True,
-            )
-        else:
-            for out in outs:
-                orig_command = " ".join(
-                    ["$(realpath %s)" % ctx.executable.protoc.path] + args +
-                    import_flags_real + ["-I.", src.basename],
-                )
-                command = ";".join([
-                    'CMD="%s"' % orig_command,
-                    "cd %s" % src.dirname,
-                    "${CMD}",
-                    "cd -",
-                ])
-                generated_out = "/".join([gen_dir, out.basename])
-                if generated_out != out.path:
-                    command += ";mv %s %s" % (generated_out, out.path)
-                ctx.actions.run_shell(
-                    inputs = inputs,
-                    outputs = [out],
-                    command = command,
-                    mnemonic = "ProtoCompile",
-                    tools = tools,
-                    use_default_shell_env = True,
-                )
 
     return struct(
         proto = struct(
@@ -230,29 +174,6 @@ Args:
   outs: a list of labels of the expected outputs from the protocol compiler.
 """
 
-def _adapt_proto_library_impl(ctx):
-    deps = [dep[ProtoInfo] for dep in ctx.attr.deps]
-
-    srcs = [src for dep in deps for src in dep.direct_sources]
-    return struct(
-        proto = struct(
-            srcs = srcs,
-            import_flags = ["-I{}".format(path) for dep in deps for path in dep.transitive_proto_path.to_list()],
-            deps = srcs,
-        ),
-    )
-
-adapt_proto_library = rule(
-    implementation = _adapt_proto_library_impl,
-    attrs = {
-        "deps": attr.label_list(
-            mandatory = True,
-            providers = [ProtoInfo],
-        ),
-    },
-    doc = "Adapts `proto_library` from `@rules_proto` to be used with `{cc,py}_proto_library` from this file.",
-)
-
 def cc_proto_library(
         name,
         srcs = [],
@@ -260,6 +181,7 @@ def cc_proto_library(
         cc_libs = [],
         include = None,
         protoc = "@com_google_protobuf//:protoc",
+        internal_bootstrap_hack = False,
         use_grpc_plugin = False,
         default_runtime = "@com_google_protobuf//:protobuf",
         **kargs):
@@ -277,16 +199,40 @@ def cc_proto_library(
           cc_library.
       include: a string indicating the include path of the .proto files.
       protoc: the label of the protocol compiler to generate the sources.
+      internal_bootstrap_hack: a flag indicate the cc_proto_library is used only
+          for bootstraping. When it is set to True, no files will be generated.
+          The rule will simply be a provider for .proto files, so that other
+          cc_proto_library can depend on it.
       use_grpc_plugin: a flag to indicate whether to call the grpc C++ plugin
           when processing the proto files.
       default_runtime: the implicitly default runtime which will be depended on by
           the generated cc_library target.
       **kargs: other keyword arguments that are passed to cc_library.
+
     """
 
     includes = []
     if include != None:
         includes = [include]
+
+    if internal_bootstrap_hack:
+        # For pre-checked-in generated files, we add the internal_bootstrap_hack
+        # which will skip the codegen action.
+        proto_gen(
+            name = name + "_genproto",
+            srcs = srcs,
+            deps = [s + "_genproto" for s in deps],
+            includes = includes,
+            protoc = protoc,
+            visibility = ["//visibility:public"],
+        )
+
+        # An empty cc_library to make rule dependency consistent.
+        native.cc_library(
+            name = name,
+            **kargs
+        )
+        return
 
     grpc_cpp_plugin = None
     if use_grpc_plugin:
@@ -313,68 +259,40 @@ def cc_proto_library(
         cc_libs = cc_libs + [default_runtime]
     if use_grpc_plugin:
         cc_libs = cc_libs + ["//external:grpc_lib"]
-    cc_library(
+
+    native.cc_library(
         name = name,
         srcs = gen_srcs,
         hdrs = gen_hdrs,
         deps = cc_libs + deps,
         includes = includes,
+        alwayslink = 1,
         **kargs
     )
 
-def _internal_gen_well_known_protos_java_impl(ctx):
-    args = ctx.actions.args()
+def internal_gen_well_known_protos_java(srcs):
+    """Bazel rule to generate the gen_well_known_protos_java genrule
 
-    deps = [d[ProtoInfo] for d in ctx.attr.deps]
-
-    srcjar = ctx.actions.declare_file("{}.srcjar".format(ctx.attr.name))
-    args.add("--java_out", srcjar)
-
-    descriptors = depset(
-        transitive = [dep.transitive_descriptor_sets for dep in deps],
+    Args:
+      srcs: the well known protos
+    """
+    root = Label("%s//protobuf_java" % (native.repository_name())).workspace_root
+    pkg = native.package_name() + "/" if native.package_name() else ""
+    if root == "":
+        include = " -I%ssrc " % pkg
+    else:
+        include = " -I%s/%ssrc " % (root, pkg)
+    native.genrule(
+        name = "gen_well_known_protos_java",
+        srcs = srcs,
+        outs = [
+            "wellknown.srcjar",
+        ],
+        cmd = "$(location :protoc) --java_out=$(@D)/wellknown.jar" +
+              " %s $(SRCS) " % include +
+              " && mv $(@D)/wellknown.jar $(@D)/wellknown.srcjar",
+        tools = [":protoc"],
     )
-    args.add_joined(
-        "--descriptor_set_in",
-        descriptors,
-        join_with = ctx.configuration.host_path_separator,
-    )
-
-    for dep in deps:
-        if "." == dep.proto_source_root:
-            args.add_all([src.path for src in dep.direct_sources])
-        else:
-            source_root = dep.proto_source_root
-            offset = len(source_root) + 1  # + '/'.
-            args.add_all([src.path[offset:] for src in dep.direct_sources])
-
-    ctx.actions.run(
-        executable = ctx.executable._protoc,
-        inputs = descriptors,
-        outputs = [srcjar],
-        arguments = [args],
-        use_default_shell_env = True,
-    )
-
-    return [
-        DefaultInfo(
-            files = depset([srcjar]),
-        ),
-    ]
-
-internal_gen_well_known_protos_java = rule(
-    implementation = _internal_gen_well_known_protos_java_impl,
-    attrs = {
-        "deps": attr.label_list(
-            mandatory = True,
-            providers = [ProtoInfo],
-        ),
-        "_protoc": attr.label(
-            executable = True,
-            cfg = "host",
-            default = "@com_google_protobuf//:protoc",
-        ),
-    },
-)
 
 def internal_copied_filegroup(name, srcs, strip_prefix, dest, **kwargs):
     """Macro to copy files to a different directory and then create a filegroup.
@@ -438,7 +356,7 @@ def py_proto_library(
       protoc: the label of the protocol compiler to generate the sources.
       use_grpc_plugin: a flag to indicate whether to call the Python C++ plugin
           when processing the proto files.
-      **kargs: other keyword arguments that are passed to py_library.
+      **kargs: other keyword arguments that are passed to cc_library.
 
     """
     outs = _PyOuts(srcs, use_grpc_plugin)
@@ -469,7 +387,8 @@ def py_proto_library(
 
     if default_runtime and not default_runtime in py_libs + deps:
         py_libs = py_libs + [default_runtime]
-    py_library(
+
+    native.py_library(
         name = name,
         srcs = outs + py_extra_srcs,
         deps = py_libs + deps,
@@ -492,7 +411,7 @@ def internal_protobuf_py_tests(
     """
     for m in modules:
         s = "python/google/protobuf/internal/%s.py" % m
-        py_test(
+        native.py_test(
             name = "py_%s" % m,
             srcs = [s],
             main = s,
@@ -505,4 +424,7 @@ def check_protobuf_required_bazel_version():
     This ensures bazel supports our approach to proto_library() depending on a
     copied filegroup. (Fixed in bazel 0.5.4)
     """
-    versions.check(minimum_bazel_version = "0.5.4")
+    expected = apple_common.dotted_version("0.5.4")
+    current = apple_common.dotted_version(native.bazel_version)
+    if current.compare_to(expected) < 0:
+        fail("Bazel must be newer than 0.5.4")
