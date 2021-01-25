@@ -22,7 +22,6 @@ cc_library(
         ":conv",
         ":depthwise_conv",
         ":fully_connected",
-        ":pooling",
         ":transpose_conv",
         ":winograd",
     ],
@@ -296,28 +295,12 @@ ios_unit_test(
     deps = [":padding_test_lib"],
 )
 
-cc_library(
-    name = "pooling",
-    srcs = ["pooling.cc"],
-    hdrs = ["pooling.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "pooling_test_lib",
     testonly = 1,
     srcs = ["pooling_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":pooling",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:pooling_test_util",
     ],
