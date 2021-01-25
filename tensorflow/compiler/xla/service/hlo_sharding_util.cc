@@ -346,9 +346,11 @@ HloSharding GatherOutputSharding(const HloSharding& index_sharding,
     if (absl::c_binary_search(dnums.offset_dims(), i)) {
       output_tile_assignment_dims.push_back(1);
     } else {
+      const int64 new_tile_dimension =
+          index_dim >= dnums.index_vector_dim() ? index_dim + 1 : index_dim;
       output_tile_assignment_dims.push_back(
-          index_sharding.tile_assignment().dim(index_dim));
-      index_dim++;
+          index_sharding.tile_assignment().dim(new_tile_dimension));
+      ++index_dim;
     }
   }
 

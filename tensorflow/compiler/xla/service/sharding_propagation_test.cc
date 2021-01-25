@@ -1872,12 +1872,12 @@ TEST_F(ShardingPropagationTest, GatherFromIndex) {
 HloModule module
 
 ENTRY entry {
-  %input = f32[2,9] parameter(0), sharding={replicated}
-  %indices = s32[3] parameter(1), sharding={devices=[2]0,1}
-  %gather = f32[3,9] gather(%input, %indices), offset_dims={1},
-    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
-    slice_sizes={1,9}
-  ROOT %copy = f32[3,9] copy(%gather)
+  %input = f32[2,2,9] parameter(0), sharding={replicated}
+  %indices = s32[2,3,4] parameter(1), sharding={devices=[1,2,1]0,1}
+  %gather = f32[3,4,9] gather(%input, %indices), offset_dims={2},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,9}
+  ROOT %copy = f32[3,4,9] copy(%gather)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -1885,7 +1885,7 @@ ENTRY entry {
                           ShardingPropagation().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module.get(), "gather"),
-              op::Sharding("{devices=[2,1]0,1}"));
+              op::Sharding("{devices=[2,1,1]0,1}"));
 }
 
 TEST_F(ShardingPropagationTest, GatherFromIndex_PartialReplicate) {
