@@ -259,22 +259,22 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
   c += "  if(X + 0 < args.dst_tensor.Width() && Y + 0 < "
        "args.dst_tensor.Height()) {\n";
   c += "    FLT4 result = TO_FLT4(r0);\n";
-  c += "    args.dst_tensor.Write(result, X + 0, Y + 0, S)\n";
+  c += "    args.dst_tensor.Write(result, X + 0, Y + 0, S);\n";
   c += "  }\n";
   c += "  if(X + 1 < args.dst_tensor.Width() && Y + 0 < "
        "args.dst_tensor.Height()) {\n";
   c += "    FLT4 result = TO_FLT4(r1);\n";
-  c += "    args.dst_tensor.Write(result, X + 1, Y + 0, S)\n";
+  c += "    args.dst_tensor.Write(result, X + 1, Y + 0, S);\n";
   c += "  }\n";
   c += "  if(X + 0 < args.dst_tensor.Width() && Y + 1 < "
        "args.dst_tensor.Height()) {\n";
   c += "    FLT4 result = TO_FLT4(r2);\n";
-  c += "    args.dst_tensor.Write(result, X + 0, Y + 1, S)\n";
+  c += "    args.dst_tensor.Write(result, X + 0, Y + 1, S);\n";
   c += "  }\n";
   c += "  if(X + 1 < args.dst_tensor.Width() && Y + 1 < "
        "args.dst_tensor.Height()) {\n";
   c += "    FLT4 result = TO_FLT4(r3);\n";
-  c += "    args.dst_tensor.Write(result, X + 1, Y + 1, S)\n";
+  c += "    args.dst_tensor.Write(result, X + 1, Y + 1, S);\n";
   c += "  }\n";
   c += "}\n";
 
