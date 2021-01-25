@@ -1,6 +1,9 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "micro_top_level",
@@ -55,7 +58,6 @@ cc_binary(
     ],
     deps = [
         ":micro_benchmark",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",

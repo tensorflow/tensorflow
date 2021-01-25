@@ -59,7 +59,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool operator!=(const TensorDescriptor& d) const { return !(*this == d); }
 
-  absl::Status PerformSelector(const std::string& selector,
+  absl::Status PerformSelector(const GpuInfo& gpu_info,
+                               const std::string& selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
@@ -104,7 +105,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
  private:
   absl::Status PerformReadSelector(
-      const std::vector<std::string>& args,
+      const GpuInfo& gpu_info, const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
 
   absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
@@ -130,7 +131,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformWriteLinearSelector(const std::vector<std::string>& args,
                                           std::string* result) const;
 
-  std::string Read(DataType read_as_type,
+  std::string Read(const GpuInfo& gpu_info, DataType read_as_type,
                    const std::string& global_address) const;
   std::string Write(const std::string& var_name,
                     const std::string& global_address) const;

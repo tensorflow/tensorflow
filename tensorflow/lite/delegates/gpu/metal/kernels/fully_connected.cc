@@ -47,12 +47,8 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
   const int src_depth = DivideRoundUp(src_channels, 4);
   std::stringstream code;
   code << R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
-    $$0
     kernel void ComputeFunction(
-                                $$1
+                                $$0
                                 uint3 tid[[thread_position_in_threadgroup]],
                                 uint tid_index[[thread_index_in_threadgroup]],
                                 uint3 ugid[[thread_position_in_grid]]) {
@@ -104,8 +100,6 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
   if (tid.y == 0 && tid.x % 4 == 0 && dst_s < args.dst_tensor.Slices()) {
     FLT4 value = FLT4(temp[tid.x][0], temp[tid.x + 1][0], temp[tid.x + 2][0], temp[tid.x + 3][0]) +
       args.bias.Read(dst_s);
-    uint3 gid = uint3(0u, 0u, uint(dst_s));
-    $$2
     args.dst_tensor.Write(value, 0, 0, dst_s);
   }
 }

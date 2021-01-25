@@ -359,6 +359,46 @@ def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos", [],
   }];
 }
 
+def HLOClient_AcoshOp : HLOClient_UnaryElementwiseOp<"acosh", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Acosh operation";
+
+  let description = [{
+    Returns `Acosh(operand)` element-wise.
+
+    $$
+    \acosh(x) = log(x + sqrt(x^2 - 1))      if x >= -1
+    \acosh(x) = nan                         if x < -1
+    $$
+  }];
+}
+
+def HLOClient_AsinOp : HLOClient_UnaryElementwiseOp<"asin", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Asin operator";
+
+  let description = [{
+    Returns `Asin(operand)` element-wise.
+
+    $$
+    \asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
+    $$
+  }];
+}
+
+def HLOClient_AsinhOp : HLOClient_UnaryElementwiseOp<"asinh", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Asinh operation";
+
+  let description = [{
+    Returns `Asinh(operand)` element-wise.
+
+    $$
+    \asinh(x) = log(x + sqrt(x^2 + 1))
+    $$
+  }];
+}
+
 def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
     HLO_FpOrComplexTensor> {
   let summary = "Atan operator";
@@ -372,6 +412,20 @@ def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
   }];
 }
 
+def HLOClient_AtanhOp : HLOClient_UnaryElementwiseOp<"atanh", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Atanh operator";
+
+  let description = [{
+    Returns `Atanh(operand)` element-wise.
+
+    $$
+    \atanh(x) = 0.5 * log((1 + x) / (1 - x)) if abs(x) <= 1
+              = nan                          otherwise
+    $$
+  }];
+}
+
 def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj", [],
     HLO_FpOrComplexTensor> {
   let summary = "Conj operator";
@@ -381,6 +435,19 @@ def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj", [],
 
     $$
     \conj(x) = (\real(x), \neg(\imag(x)))
+    $$
+  }];
+}
+
+def HLOClient_CoshOp : HLOClient_UnaryElementwiseOp<"cosh", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Cosh operator";
+
+  let description = [{
+    Returns `Cosh(operand)` element-wise.
+
+    $$
+    \cosh(x) = (e^x + e^-x) / 2
     $$
   }];
 }

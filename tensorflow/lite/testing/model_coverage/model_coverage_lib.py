@@ -148,7 +148,7 @@ def _convert(converter, **kwargs):
     converter.target_spec.supported_ops = [_lite.OpsSet.TFLITE_BUILTINS_INT8]
     converter.representative_dataset = _get_calib_data_func(input_size)
     # Note that the full integer quantization is by the mlir quantizer
-    converter._experimental_new_quantizer = True  # pylint: disable=protected-access
+    converter.experimental_new_quantizer = True
   if kwargs.get("post_training_quantize_16x8", False):
     input_size = kwargs.get("model_input_size")
     converter.optimizations = [_lite.Optimize.DEFAULT]

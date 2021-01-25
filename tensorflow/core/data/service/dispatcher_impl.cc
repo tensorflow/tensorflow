@@ -217,6 +217,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     }
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
+    update.mutable_register_worker()->set_transfer_address(
+        request->transfer_address());
     TF_RETURN_IF_ERROR(Apply(update));
     TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
     TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, correct_tasks));
@@ -533,7 +535,11 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
     const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
   for (const auto& job : jobs) {
-    if (job->finished) {
+    if (job->finished || job->num_consumers.has_value()) {
+      // Don't add new tasks for late-joining workers when doing round-robin
+      // reads. It would create synchronization issues where some clients might
+      // learn about the new tasks earlier than others, potentially causing
+      // deadlock.
       continue;
     }
     std::shared_ptr<const Task> task;
@@ -580,6 +586,9 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   create_task->set_task_id(task_id);
   create_task->set_job_id(job->job_id);
   create_task->set_worker_address(worker_address);
+  std::shared_ptr<const Worker> worker;
+  TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
+  create_task->set_transfer_address(worker->transfer_address);
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
   return Status::OK();
@@ -646,6 +655,9 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   }
   task_def->set_task_id(task->task_id);
   task_def->set_processing_mode(ProcessingModeDef(task->job->processing_mode));
+  if (task->job->num_consumers.has_value()) {
+    task_def->set_num_consumers(task->job->num_consumers.value());
+  }
   ProcessTaskResponse resp;
   WorkerService::Stub* stub;
   TF_RETURN_IF_ERROR(GetOrCreateWorkerStub(task->worker_address, stub));
@@ -660,8 +672,8 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
-                                           GetTasksResponse* response) {
+Status DataServiceDispatcherImpl::ClientHeartbeat(
+    const ClientHeartbeatRequest* request, ClientHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();
@@ -679,6 +691,7 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
+    task_info->set_transfer_address(task->transfer_address);
     task_info->set_task_id(task->task_id);
     task_info->set_job_id(job->job_id);
   }

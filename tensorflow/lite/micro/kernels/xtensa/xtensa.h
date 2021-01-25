@@ -18,6 +18,8 @@ limitations under the License.
 
 #if defined(HIFIMINI)
 #include <xtensa/tie/xt_hifi2.h>
+#elif defined(FUSION_F1)
+#include "include/nnlib/xa_nnlib_api.h"
 #endif
 
 #endif  // TENSORFLOW_LITE_MICRO_KERNELS_XTENSA_XTENSA_H_

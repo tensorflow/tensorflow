@@ -65,6 +65,12 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
       }
     }
 
+    if (updated_reduced_dimensions.empty()) {
+      std::unique_ptr<HloInstruction> reshape =
+          HloInstruction::CreateBitcast(reduce_shape, reduced_op);
+      return ReplaceWithNewInstruction(instr, std::move(reshape));
+    }
+
     HloInstruction *input_reshape = instr->parent()->AddInstruction(
         HloInstruction::CreateBitcast(canonical_input_shape, reduced_op));
 

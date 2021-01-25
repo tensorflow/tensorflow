@@ -477,6 +477,11 @@ void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForSinCosTan() {
       float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16>(v)));
       return std::abs(f) > (1 << 13);
     };
+  } else if (T == F16) {
+    this->known_incorrect_fn_ = [](int64 v) {
+      float f = static_cast<float>(BitCast<half>(static_cast<uint16>(v)));
+      return std::abs(f) > (1 << 13);
+    };
   }
 }
 

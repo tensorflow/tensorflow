@@ -53,7 +53,7 @@ using QuantParams = quant::QuantizedType;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
-    std::function<QuantParams(const std::vector<QuantParams>&)>;
+    std::function<QuantParams(const std::vector<QuantParams>&, bool)>;
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {
@@ -82,14 +82,23 @@ struct OpQuantSpec {
 // op.
 typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
 
+// Re-calculates scales again in float instead of simply downcasting existing
+// scales.
+QuantizedType DownCastScale(QuantizedType type,
+                            const SmallVectorImpl<double>& mins,
+                            const SmallVectorImpl<double>& maxs);
+
+QuantizedType DownCastScale(QuantizedType type, double min, double max);
+
 template <typename Q, typename DQ>
 struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
   ConvertStatsToQDQs(int num_bits, bool narrow_range, bool is_signed,
-                     MLIRContext* context)
+                     bool legacy_float_scale, MLIRContext* context)
       : OpRewritePattern<quant::StatisticsOp>(context),
         num_bits(num_bits),
         narrow_range(narrow_range),
-        is_signed(is_signed) {}
+        is_signed(is_signed),
+        legacy_float_scale(legacy_float_scale) {}
 
   LogicalResult matchAndRewrite(quant::StatisticsOp op,
                                 PatternRewriter& rewriter) const override {
@@ -118,6 +127,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
                                       maxs, narrow_range, expressed, is_signed);
+      if (legacy_float_scale) {
+        quant_type = DownCastScale(quant_type, mins, maxs);
+      }
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
       double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
@@ -130,6 +142,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
                                       narrow_range, expressed, is_signed);
+      if (legacy_float_scale) {
+        quant_type = DownCastScale(quant_type, rmin, rmax);
+      }
     } else {
       return failure();
     }
@@ -149,6 +164,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
   int num_bits;
   bool narrow_range;
   bool is_signed;
+  bool legacy_float_scale;
 
   // Emits an op warning message if the calibrated range is larger than 10.0 and
   // the storage type is less than or equal to 8 bits.
@@ -479,7 +495,7 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor);
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, int quant_dim,
                               IntegerAttr num_bits, BoolAttr narrow_range,
-                              bool is_signed);
+                              bool is_signed, bool legacy_float_scale = false);
 
 // Casts the `target` type to a quantized type by using the quantization
 // parameters from the type in the `source` type attribute.
@@ -502,6 +518,10 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
 // `tensor_type` is not a QuantizedType or the quantization fails.
 ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 
+// Quantizes the elements in "legacy mode", where it calls TOCO's methods to
+// to quantize values with float scale.
+ElementsAttr QuantizeLegacy(Attribute real_value, Type tensor_type);
+
 // Returns the quantized type for an element attribute. The quantization
 // parameters in this type is based on the min and max element of the
 // attribute. When the elements in the `attr` are not in floating-point, or
@@ -510,7 +530,8 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 // `symmetric` can only be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
                                       unsigned num_bits, bool is_signed,
-                                      bool narrow_range);
+                                      bool narrow_range,
+                                      bool legacy_float_scale = false);
 
 // Returns the per channel quantized type for an element attribute.
 // `quant_dim` defines the quantization axis. The channel min/max are adjusted
@@ -518,13 +539,15 @@ Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
 // be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
                                              bool symmetric, unsigned num_bits,
-                                             bool is_signed, bool narrow_range);
+                                             bool is_signed, bool narrow_range,
+                                             bool legacy_float_scale = false);
 
 // Returns the quantized type of a bias input, given the quantized types of
 // other operands which are multiply-accumulated (the bias is added to the
 // accumulated value).
 quant::QuantizedType GetUniformQuantizedTypeForBias(
-    const std::vector<quant::QuantizedType>& op_types);
+    const std::vector<quant::QuantizedType>& op_types,
+    bool legacy_float_scale = false);
 
 // Propagates quantization parameters across ops in this function and satisfy
 // the quantization specification of the ops. This methods assumes the initial
@@ -538,7 +561,8 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
-                                        bool infer_tensor_ranges);
+                                        bool infer_tensor_ranges,
+                                        bool legacy_float_scale = false);
 
 // The function might contain more stats ops than required, and it will
 // introduce requantize if the calibration stats have conflicts. This method
@@ -560,15 +584,15 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
 // When `symmetric` is true, the range is expanded to [-M, M].
 void ExtractMinMaxFromAttr(DenseFPElementsAttr values, int dim_size,
                            int slice_size, bool symmetric,
-                           SmallVector<double, 4>& mins,
-                           SmallVector<double, 4>& maxs);
+                           SmallVectorImpl<double>& mins,
+                           SmallVectorImpl<double>& maxs);
 
 // Returns the quantized type for the
 // input_type/min/max/storag_type_width/narrow_range.
 Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
                       ArrayRef<double> max, int quant_dim,
-                      int storage_type_width, bool narrow_range,
-                      bool is_signed);
+                      int storage_type_width, bool narrow_range, bool is_signed,
+                      bool legacy_float_scale = false);
 }  // namespace quant
 }  // namespace mlir
 

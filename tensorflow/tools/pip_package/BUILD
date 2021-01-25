@@ -68,7 +68,7 @@ transitive_hdrs(
 py_binary(
     name = "simple_console",
     srcs = ["simple_console.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -95,7 +95,6 @@ COMMON_PIP_DEPS = [
     ":included_headers",
     ":xla_compiled_cpu_runtime_srcs.txt_file",
     ":xla_cmake",
-    "//tensorflow:tensorflow_py",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
     "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
@@ -157,6 +156,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute/coordinator:cluster_coordinator",
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
     "//tensorflow/python/distribute/coordinator:metric_utils",
+    "//tensorflow:tensorflow_py",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -168,7 +168,7 @@ py_binary(
     data = COMMON_PIP_DEPS + [
         "//tensorflow/python:pywrap_tensorflow_import_lib_file",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 

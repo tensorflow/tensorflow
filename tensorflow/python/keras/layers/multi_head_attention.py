@@ -193,7 +193,10 @@ class MultiHeadAttention(Layer):
     key: Optional key `Tensor` of shape `[B, S, dim]`. If not given, will use
       `value` for both `key` and `value`, which is the most common case.
     attention_mask: a boolean mask of shape `[B, T, S]`, that prevents
-      attention to certain positions.
+      attention to certain positions. The boolean mask specifies which query
+      elements can attend to which key elements, 1 indicates attention and 0
+      indicates no attention. Broadcasting can happen for the missing batch
+      dimensions and the head dimension.
     return_attention_scores: A boolean to indicate whether the output should
       be attention output if True, or (attention_output, attention_scores) if
       False. Defaults to False.

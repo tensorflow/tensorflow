@@ -103,16 +103,9 @@ llvm::SmallSet<llvm::StringRef, 1> GetCompositeResourceUserNames(
   return composite_users;
 }
 
-// Checks if `tf.VarHandleOp` has a valid resource subtype and its users are of
-// `tf.ReadVariableOp` and `tf.AssignVariableOp` only.
+// Checks that the only users of `tf.VarHandleOp` are
+// `tf.ReadVariableOp` and `tf.AssignVariableOp`.
 mlir::LogicalResult ValidateVarHandle(TF::VarHandleOp var_handle_op) {
-  auto resource_type =
-      getElementTypeOrSelf(var_handle_op.getType()).cast<TF::ResourceType>();
-  if (resource_type.getSubtypes().size() != 1)
-    return var_handle_op.emitOpError()
-           << "expects resource type to have one subtype, got "
-           << resource_type;
-
   auto composite_ops = GetCompositeResourceUserNames(var_handle_op);
   if (!composite_ops.empty())
     return var_handle_op.emitOpError()

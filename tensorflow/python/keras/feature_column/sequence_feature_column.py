@@ -51,24 +51,32 @@ class SequenceFeatures(kfc._BaseFeaturesLayer):
     Example:
 
     ```python
+
+    import tensorflow as tf
+
     # Behavior of some cells or feature columns may depend on whether we are in
     # training or inference mode, e.g. applying dropout.
     training = True
-    rating = sequence_numeric_column('rating')
-    watches = sequence_categorical_column_with_identity(
+    rating = tf.feature_column.sequence_numeric_column('rating')
+    watches = tf.feature_column.sequence_categorical_column_with_identity(
         'watches', num_buckets=1000)
-    watches_embedding = embedding_column(watches, dimension=10)
+    watches_embedding = tf.feature_column.embedding_column(watches,
+                                                dimension=10)
     columns = [rating, watches_embedding]
 
-    sequence_input_layer = SequenceFeatures(columns)
-    features = tf.io.parse_example(...,
-                                   features=make_parse_example_spec(columns))
+    features = {
+     'rating': tf.sparse.from_dense([[1.0,1.1, 0, 0, 0],
+                                                 [2.0,2.1,2.2, 2.3, 2.5]]),
+     'watches': tf.sparse.from_dense([[2, 85, 0, 0, 0],[33,78, 2, 73, 1]])
+    }
+
+    sequence_input_layer = tf.keras.experimental.SequenceFeatures(columns)
     sequence_input, sequence_length = sequence_input_layer(
        features, training=training)
     sequence_length_mask = tf.sequence_mask(sequence_length)
-
-    rnn_cell = tf.keras.layers.SimpleRNNCell(hidden_size, training=training)
-    rnn_layer = tf.keras.layers.RNN(rnn_cell, training=training)
+    hidden_size = 32
+    rnn_cell = tf.keras.layers.SimpleRNNCell(hidden_size)
+    rnn_layer = tf.keras.layers.RNN(rnn_cell)
     outputs, state = rnn_layer(sequence_input, mask=sequence_length_mask)
     ```
   """

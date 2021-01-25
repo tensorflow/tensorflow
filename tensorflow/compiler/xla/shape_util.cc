@@ -309,9 +309,11 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64> dimensions,
     absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
     int64 element_size_in_bits, int64 memory_space) {
-  return MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
-                                     tiles, element_size_in_bits, memory_space)
-      .ValueOrDie();
+  auto ret =
+      MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
+                                  tiles, element_size_in_bits, memory_space);
+  if (!ret.ok()) LOG(ERROR) << ret.status();
+  return ret.ValueOrDie();
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(

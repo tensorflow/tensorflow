@@ -147,7 +147,6 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -319,9 +318,11 @@ tf_cc_test(
     data = [
         "//tensorflow/lite/tools/optimize:testdata/add_with_const_input.bin",
         "//tensorflow/lite/tools/optimize:testdata/argmax.bin",
+        "//tensorflow/lite/tools/optimize:testdata/broadcast_to.bin",
         "//tensorflow/lite/tools/optimize:testdata/concat.bin",
         "//tensorflow/lite/tools/optimize:testdata/fc.bin",
         "//tensorflow/lite/tools/optimize:testdata/fc_qat.bin",
+        "//tensorflow/lite/tools/optimize:testdata/gather_nd.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated2.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_quantized.bin",

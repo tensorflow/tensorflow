@@ -165,15 +165,16 @@ cc_library(
     srcs = ["tf_cuda_runtime_wrappers.cc"],
     compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
-    deps = [
+    deps = if_cuda_is_configured([
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/stream_executor:stream_header",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ]),
 )
 
 cc_library(
@@ -183,6 +184,7 @@ cc_library(
     copts = if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = if_rocm_is_configured([
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",

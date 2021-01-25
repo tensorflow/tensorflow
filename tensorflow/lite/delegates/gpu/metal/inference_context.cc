@@ -27,6 +27,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -38,6 +42,26 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
+
+bool HasIntersection(const std::vector<ValueId>& vec_ids,
+                     const std::set<ValueId>& ids) {
+  for (ValueId id : vec_ids) {
+    if (ids.find(id) != ids.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsReady(const std::set<ValueId>& ready_tensors, const MetalNode& node) {
+  for (const ValueId in_id : node.inputs) {
+    if (ready_tensors.find(in_id) == ready_tensors.end()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void AddUsage(ValueId id, int task_index,
               std::map<ValueId, int2>* usage_records) {
   auto it = usage_records->find(id);
@@ -82,429 +106,27 @@ bool IsGenericAdd(const Node& node, const std::vector<Value*>& inputs,
   return true;
 }
 
-// Allows to get result about the graph compilation to validate graph. This
-// information helps to find a cause of performance degradation, like misfusing.
-struct OptimizationInfo {
-  // Initial operations count before compilation.
-  int operations_count;
-  // GPU tasks count after fusion and splitting complex operations into few GPU
-  // subtasks.
-  int gpu_tasks_count;
-  // Some operations are not used due to dependencies of the graph.
-  std::vector<int> unused_operations;
-  // Used inputs.
-  std::vector<ValueId> input_buffer_ids;
-  // Unused inputs. Requested outputs do not require this inputs to be used.
-  std::vector<ValueId> unused_input_buffer_ids;
-  // The outputs are deducted by the graph but not requested by user.
-  std::vector<ValueId> extra_output_buffer_ids;
-  // Outputs that are requested but can't be calculated by the graph.
-  std::vector<ValueId> missing_output_buffer_ids;
-};
-
-using FusionSequence = std::vector<NodeDescriptor>;
-
-bool Contains(const std::vector<ValueId>& container, ValueId value) {
-  return std::find(container.begin(), container.end(), value) !=
-         container.end();
-}
-
-template <class T>
-bool Contains(const std::vector<T>& container, ValueId value) {
-  for (const auto& buffer : container) {
-    if (buffer.id == value) {
-      return true;
-    }
+absl::Status MergeNodes(MetalNode* src, MetalNode* dst) {
+  for (int j = 1; j < src->inputs.size(); ++j) {
+    dst->inputs.push_back(src->inputs[j]);
   }
-  return false;
-}
-
-// Checks if all elements of the narrow vector exist in the wide vector. Vectors
-// are expected to be unsorted.
-bool Contains(const std::vector<ValueId>& wide,
-              const std::vector<ValueId>& narrow) {
-  if (narrow.empty() || narrow.size() > wide.size()) {
-    return false;
-  }
-  std::set<ValueId> wide_sorted;
-  wide_sorted.insert(wide.begin(), wide.end());
-  for (auto element : narrow) {
-    if (std::find(wide.begin(), wide.end(), element) == wide.end()) {
-      return false;
-    }
-  }
-  return true;
-}
-
-uint32_t BufferUseCount(ValueId id,
-                        const std::list<NodeDescriptor>& descriptors,
-                        std::list<FusionSequence>* chains) {
-  uint32_t use_count = 0;
-  // Buffer may be read by both processed and not processed operations.
-  for (auto& desc : descriptors) {
-    if (Contains(desc.src_tensors_ids, id)) {
-      use_count++;
-    }
-  }
-
-  for (auto& chain : *chains) {
-    for (auto& desc : chain) {
-      if (Contains(desc.src_tensors_ids, id)) {
-        use_count++;
-      }
-    }
-  }
-  return use_count;
-}
-
-// Examines if the second operation can be linked to the first one. Linking may
-// be skipped in the situation when conflict may happen: if first operation's
-// output is used by more than 1 other operation.
-bool CanFuseOperations(const NodeDescriptor& first,
-                       const NodeDescriptor& second,
-                       const std::vector<ValueId>& output_ids,
-                       const std::list<NodeDescriptor>& descriptors,
-                       std::list<FusionSequence>* chains) {
-  return second.task->is_linkable &&
-         !Contains(output_ids, first.dst_tensors_ids[0]) &&
-         BufferUseCount(first.dst_tensors_ids[0], descriptors, chains) == 1;
-}
-
-// Takes an unsorted list of task descriptors, builds a list of chains. Each
-// chain is a list of task descriptors that can be fused into a single GPU task.
-// Building is started from the input IDs and building statistic is filled.
-void BuildFusableChains(const std::vector<ValueId>& input_ids,
-                        const std::vector<ValueId>& output_ids,
-                        std::list<NodeDescriptor>* descriptors,
-                        std::list<FusionSequence>* chains,
-                        std::vector<int>* unused_ids) {
-  // Proxy tasks for inputs - only output is valid on this elements.
-  for (auto input_id : input_ids) {
-    auto desc = std::make_shared<ComputeTaskDescriptor>();
-    desc->is_linkable = true;
-    desc->AddDstTensor("", {});
-    NodeDescriptor node;
-    node.task = desc;
-    node.dst_tensors_ids = {input_id};
-    chains->push_back({node});
-  }
-
-  if (descriptors->empty()) return;
-  // Get all possible operations - grow-up chains.
-  bool added;
-  do {
-    // At least one element must be added to any chain at this step.
-    added = false;
-    for (auto it = descriptors->begin(); it != descriptors->end();) {
-      const NodeDescriptor& task_descriptor = *it;
-
-      // Gather all outputs of all chains to check with.
-      std::vector<ValueId> ready_buffer_ids;
-      ready_buffer_ids.reserve(chains->size());
-      for (const auto& chain : *chains) {
-        ready_buffer_ids.push_back(chain.back().dst_tensors_ids[0]);
-      }
-
-      // Check if all inputs of this operation are ready.
-      if (Contains(ready_buffer_ids, task_descriptor.src_tensors_ids)) {
-        // Now find a chain to fuse with.
-        bool fused = false;
-        for (auto& chain : *chains) {
-          // We can fuse only single output for now.
-          const bool can_link = task_descriptor.src_tensors_ids[0] ==
-                                chain.back().dst_tensors_ids[0];
-          if (can_link && CanFuseOperations(chain.back(), task_descriptor,
-                                            output_ids, *descriptors, chains)) {
-            chain.push_back(task_descriptor);
-            fused = true;
-            break;
-          }
-        }
-        if (!fused) {
-          chains->push_back({task_descriptor});
-        }
-
-        // Remove operation from original list and start from the beginning.
-        descriptors->erase(it);
-        added = true;
-        break;
-      } else {
-        ++it;
-      }
-    }
-  } while (!descriptors->empty() && added);
-
-  unused_ids->reserve(descriptors->size());
-  for (const auto& desc : *descriptors) {
-    unused_ids->push_back(desc.id);
-  }
-}
-
-// Accepts unsorted list of chains and returns sorted list with the order of GPU
-// task execution.
-std::list<FusionSequence> SortChains(
-    const std::vector<ValueId>& graph_input_ids,
-    std::list<FusionSequence>* chains) {
-  std::list<FusionSequence> sorted_chains;
-  while (!chains->empty()) {
-    // Collect ready buffers.
-    std::vector<ValueId> ready_buffer_ids;
-    ready_buffer_ids.reserve(graph_input_ids.size() + sorted_chains.size());
-    ready_buffer_ids.insert(ready_buffer_ids.begin(), graph_input_ids.begin(),
-                            graph_input_ids.end());
-    for (auto& chain : sorted_chains) {
-      ready_buffer_ids.push_back(chain.back().dst_tensors_ids[0]);
-    }
-
-    for (auto it = chains->begin(); it != chains->end();) {
-      const FusionSequence& chain = *it;
-
-      // If the input is also is the output in the same chain - eliminate
-      // because it used internally inside sthis chain only.
-      std::vector<ValueId> elements_output_buffer_ids;
-      elements_output_buffer_ids.reserve(chain.size());
-      for (const auto& element : chain) {
-        elements_output_buffer_ids.push_back(element.dst_tensors_ids[0]);
-      }
-
-      // Collect all inputs also for linked operations.
-      std::vector<ValueId> elements_input_buffer_ids;
-      for (const auto& element : chain) {
-        for (const auto& id : element.src_tensors_ids) {
-          if (!Contains(elements_output_buffer_ids, id)) {
-            elements_input_buffer_ids.push_back(id);
-          }
-        }
-      }
-
-      if (Contains(ready_buffer_ids, elements_input_buffer_ids)) {
-        // All input buffers for all elements of this chain are ready.
-        sorted_chains.push_back(chain);
-        it = chains->erase(it);
-      } else {
-        ++it;
-      }
-    }
-  }
-  return sorted_chains;
-}
-
-// If a graph structure contains unused outputs then it can lead to unused
-// operations and unused input buffers. It's not an error but some sort of
-// warning.
-std::vector<ValueId> GetUsedInputBufferIds(
-    const std::list<FusionSequence>& sorted_chains) {
-  // Match requested outputs with all outputs and intermediate buffers.
-  std::vector<ValueId> output_and_intermediate_ids;
-  output_and_intermediate_ids.reserve(sorted_chains.size());
-  std::set<ValueId> input_and_intermediate_ids;
-  for (auto it = sorted_chains.begin(); it != sorted_chains.end(); ++it) {
-    output_and_intermediate_ids.push_back(it->back().dst_tensors_ids[0]);
-    for (const auto& id : it->front().src_tensors_ids) {
-      input_and_intermediate_ids.insert(id);
-    }
-  }
-  std::vector<ValueId> input_ids;
-  for (ValueId id : input_and_intermediate_ids) {
-    if (!Contains(output_and_intermediate_ids, id)) {
-      input_ids.push_back(id);
-    }
-  }
-  return input_ids;
-}
-
-// If a buffer is requested as output from the graph but the graph structure
-// can't provide this buffer by output (can't deduct), that means the graph
-// structure is incorrect.
-std::vector<ValueId> GetMissingOutputBufferIds(
-    const std::vector<ValueId>& output_ids,
-    const std::list<FusionSequence>& sorted_chains) {
-  // Match requested outputs with all output and intermediate buffers.
-  std::vector<ValueId> output_and_intermediate_ids;
-  output_and_intermediate_ids.reserve(sorted_chains.size());
-  for (auto it = sorted_chains.begin(); it != sorted_chains.end(); ++it) {
-    output_and_intermediate_ids.push_back(it->back().dst_tensors_ids[0]);
-  }
-  std::vector<ValueId> missing_output_ids;
-  for (ValueId id : output_ids) {
-    if (!Contains(output_and_intermediate_ids, id)) {
-      missing_output_ids.push_back(id);
-    }
-  }
-  return missing_output_ids;
-}
-
-// Graph may contain leafs with outputs that are not requested. It wastes GPU
-// computations.
-std::vector<ValueId> DeductOutputBufferIds(
-    const std::vector<ValueId>& output_ids,
-    const std::list<FusionSequence>& sorted_chains) {
-  std::vector<ValueId> extra_output_ids;
-  // Detect all unused output buffers - all outputs.
-  for (auto it1 = sorted_chains.begin(); it1 != sorted_chains.end(); ++it1) {
-    bool found_as_input = false;
-    for (auto it2 = sorted_chains.begin(); it2 != sorted_chains.end(); ++it2) {
-      if (it1 != it2) {
-        std::vector<ValueId> input_ids;
-        for (const auto& element : *it2) {
-          for (const auto& id : element.src_tensors_ids) {
-            input_ids.push_back(id);
-          }
-        }
-        if (Contains(input_ids, it1->back().dst_tensors_ids[0])) {
-          found_as_input = true;
-          break;
-        }
-      }
-    }
-    if (!found_as_input) {
-      if (!Contains(output_ids, it1->back().dst_tensors_ids[0])) {
-        extra_output_ids.push_back(it1->back().dst_tensors_ids[0]);
-      }
-    }
-  }
-  return extra_output_ids;
-}
-
-// Delete all unused task descriptors that have non-requested outputs.
-// !delete not the whole chain but only the last element, then others.!
-std::vector<int> DeleteUnusedTasks(const std::vector<ValueId>& output_ids,
-                                   std::list<FusionSequence>* chains) {
-  std::vector<int> unused_operations;
-  for (auto it1 = chains->rbegin(); it1 != chains->rend();) {
-    // Don't delete if output is requested.
-    if (Contains(output_ids, it1->back().dst_tensors_ids[0])) {
-      ++it1;
-      continue;
-    }
-
-    // Don't delete if some operation uses the output.
-    bool output_used = false;
-    for (auto it2 = chains->rbegin(); it2 != chains->rend(); ++it2) {
-      std::vector<ValueId> input_ids;
-      for (const auto& element : *it2) {
-        for (const auto& id : element.src_tensors_ids) {
-          input_ids.push_back(id);
-        }
-      }
-      if (Contains(input_ids, it1->back().dst_tensors_ids[0])) {
-        output_used = true;
-        break;
-      }
-    }
-    if (output_used) {
-      ++it1;
-      continue;
-    }
-    // Delete if not used.
-    unused_operations.push_back(it1->back().id);
-    it1 = decltype(it1){chains->erase(std::next(it1).base())};
-  }
-  return unused_operations;
-}
-
-// Returns unused input buffer IDs.
-void RemoveInputProxies(std::list<FusionSequence>* chains) {
-  // Remove input proxy and sort items.
-  for (auto it = chains->begin(); it != chains->end();) {
-    auto& chain = *it;
-    // Remove input proxy-operations.
-    if (chain.front().src_tensors_ids.empty()) {
-      chain.erase(chain.begin());
-    }
-    if (chain.empty()) {
-      // Input proxy operation has been deleted and the chain is empty due to
-      // unused input buffer.
-      it = chains->erase(it);
-    } else {
-      ++it;
-    }
-  }
-}
-
-NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
-                               ValueId output_id,
-                               const OperationDef& definition) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->shader_source = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    $0
-    kernel void ComputeFunction($1
-                                uint3 gid[[thread_position_in_grid]]) {
-      if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
-        return;
-      }
-      FLT4 value = args.src_tensor.Read(gid.x, gid.y, gid.z);
-      args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
-      $2
-      args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
-    }
-  )";
-
-  desc->AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc->AddDstTensor("dst_tensor", definition.dst_tensors[0]);
-
-  desc->resize_function = [](const std::vector<BHWC>& src_shapes,
-                             const std::vector<BHWC>& dst_shapes) {
-    uint3 groups_size{8, 8, 1};
-    uint3 groups_count{DivideRoundUp(dst_shapes[0].w, groups_size.x),
-                       DivideRoundUp(dst_shapes[0].h, groups_size.y),
-                       DivideRoundUp(dst_shapes[0].c, 4)};
-    return std::make_pair(groups_size, groups_count);
-  };
-
-  NodeDescriptor node_desc;
-  node_desc.task = desc;
-  node_desc.id = operation_id;
-  node_desc.src_tensors_ids = {input_id};
-  node_desc.dst_tensors_ids = {output_id};
-  return node_desc;
-}
-
-absl::Status MergeNodes(const NodeDescriptor* src, NodeDescriptor* dst,
-                        std::string link_name) {
-  dst->dst_tensors_ids[0] = src->dst_tensors_ids[0];
-  dst->description += " linked : " + src->description;
-  for (int i = 0; i < src->task->src_tensors_names.size(); ++i) {
-    std::string tensor_name = src->task->src_tensors_names[i];
-    dst->task->src_tensors_names.push_back(tensor_name + link_name);
-    dst->task->definition.src_tensors.push_back(
-        src->task->definition.src_tensors[i + 1]);
-    dst->src_tensors_ids.push_back(src->src_tensors_ids[i + 1]);
-  }
-
-  std::string code = src->task->shader_source;
-  src->task->args.RenameArgs(link_name, &code);
-
-  RETURN_IF_ERROR(dst->task->args.Merge(std::move(src->task->args), link_name));
-
-  dst->task->shader_source = absl::Substitute(dst->task->shader_source, "$0",
-                                              "$1", "{\n" + code + "\n}\n$2");
-
-  return absl::OkStatus();
-}
-
-absl::Status FuseChain(const FusionSequence& chain, NodeDescriptor* node_desc) {
-  if (chain.front().task->is_linkable) {
-    *node_desc = NonLinkableStub(
-        chain.front().id, chain.front().src_tensors_ids[0],
-        chain.front().dst_tensors_ids[0], chain.front().task->definition);
-    RETURN_IF_ERROR(MergeNodes(&chain.front(), node_desc, "_link0"));
-  } else {
-    *node_desc = chain.front();
-  }
-  for (int j = 1; j < chain.size(); ++j) {
-    RETURN_IF_ERROR(
-        MergeNodes(&chain[j], node_desc, "_link" + std::to_string(j)));
-  }
-  return absl::OkStatus();
+  dst->outputs[0] = src->outputs[0];
+  dst->name += " linked : " + src->name;
+  return dst->task.AddTask(&src->task);
 }
 }  // namespace
 
+absl::Status InferenceContext::InitFromGraphWithTransforms(
+    const CreateInferenceInfo& create_info, GraphFloat32* graph,
+    id<MTLDevice> device_id) {
+  RETURN_IF_ERROR(RunGraphTransforms(graph));
+  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, device_id));
+  return absl::OkStatus();
+}
+
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
-    id<MTLDevice> device) {
+    id<MTLDevice> device_id) {
   const auto inputs = graph.inputs();
   for (const auto& input : inputs) {
     input_ids_.push_back(input->id);
@@ -514,34 +136,58 @@ absl::Status InferenceContext::InitFromGraph(
   for (const auto& output : outputs) {
     output_ids_.push_back(output->id);
   }
+  precision_ = create_info.precision;
 
-  std::string device_name = std::string([[device name] UTF8String]);
-  GpuInfo gpu_info;
-  GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
-  CompiledModel compiled_model;
+  MetalDevice metal_device(device_id);
+  ReserveGraphTensors(create_info, metal_device.GetInfo(), graph);
   RETURN_IF_ERROR(
-      Compile(graph, gpu_info, create_info.precision, &compiled_model));
-  CompiledModel optimized_model;
-  RETURN_IF_ERROR(ValidateOptimizeModel(input_ids_, output_ids_, compiled_model,
-                                        &optimized_model));
-
-  RETURN_IF_ERROR(CompileModelWithDevice(device, optimized_model, input_ids_,
-                                         output_ids_, create_info.precision));
+      Compile(graph, metal_device.GetInfo(), create_info.precision));
+  RETURN_IF_ERROR(Merge());
+  RETURN_IF_ERROR(CompileOperations(&metal_device));
+  RETURN_IF_ERROR(AllocateTensors(&metal_device));
+  BindTensorsToOperations();
+  RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
+  RETURN_IF_ERROR(Tune(TuningType::kFast, &metal_device));
   return absl::OkStatus();
+}
+
+void InferenceContext::ReserveGraphTensors(
+    const CreateInferenceInfo& create_info, const GpuInfo& gpu_info,
+    const GraphFloat32& graph) {
+  ValueId max_id = 0;
+  auto tensors = graph.values();
+  auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
+  for (auto& t : tensors) {
+    TensorStorageType storage_type = create_info.storage_type;
+    const auto shape = graph.GetValue(t->id)->tensor.shape;
+    Layout layout = shape.b == 1 ? Layout::HWC : Layout::BHWC;
+    // Temporary disabled because no support of SINGLE_TEXTURE_2D in Metal
+    // Metal supports only BUFFER storage type currently
+    // if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
+    //   if (false && shape.c < 4 &&
+    //       CanCreateTensorWithShape(
+    //           gpu_info, shape,
+    //           TensorDescriptor{data_type,
+    //           TensorStorageType::SINGLE_TEXTURE_2D,
+    //                            layout})) {
+    //     storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
+    //   }
+    // }
+    storage_type =
+        SelectBestStorageType(gpu_info, shape, storage_type, data_type, layout);
+    tensor_reserver_.Add(
+        t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
+    max_id = std::max(max_id, t->id);
+  }
+  tensor_reserver_.SetNext(max_id + 1);
 }
 
 absl::Status InferenceContext::Compile(const GraphFloat32& graph,
                                        const GpuInfo& gpu_info,
-                                       CalculationsPrecision precision,
-                                       CompiledModel* compiled_model) {
+                                       CalculationsPrecision precision) {
   if (!IsBatchMatchesForAllValues(graph)) {
     return absl::InvalidArgumentError(
         "Only identical batch dimension is supported");
-  }
-  int last_value_id = 0;
-  for (const auto& value : graph.values()) {
-    compiled_model->tensor_shapes[value->id] = value->tensor.shape;
-    last_value_id = std::max(last_value_id, static_cast<int>(value->id));
   }
   std::map<ValueId, int>
       tensor_usages;  // keeps latest index of operation that updated tensor
@@ -562,28 +208,26 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     // associativity and ADD can be linked. In current approach "linking"
     // tensor can be only latest written tensor(during linear order of
     // execution) among input tensors.
-    // TODO(b/176397043) sorokin, check failure on segmentation model
-    // if (IsGenericAdd(node, inputs, outputs)) {
-    //   int latest_written_tensor_index = 0;
-    //   int last_usage = tensor_usages[inputs[0]->id];
-    //   for (int j = 1; j < inputs.size(); ++j) {
-    //     if (tensor_usages[inputs[j]->id] > last_usage) {
-    //       last_usage = tensor_usages[inputs[j]->id];
-    //       latest_written_tensor_index = j;
-    //     }
-    //   }
-    //   std::swap(inputs[0], inputs[latest_written_tensor_index]);
-    // }
-    DataType data_type = DeduceDataTypeFromPrecision(precision);
-    TensorDescriptor tensor_descriptor =
-        TensorDescriptor{data_type, TensorStorageType::BUFFER, Layout::HWC};
+    if (IsGenericAdd(node, inputs, outputs)) {
+      int latest_written_tensor_index = 0;
+      int last_usage = tensor_usages[inputs[0]->id];
+      for (int j = 1; j < inputs.size(); ++j) {
+        if (tensor_usages[inputs[j]->id] > last_usage) {
+          last_usage = tensor_usages[inputs[j]->id];
+          latest_written_tensor_index = j;
+        }
+      }
+      std::swap(inputs[0], inputs[latest_written_tensor_index]);
+    }
     OperationDef op_def;
     op_def.precision = precision;
     for (int j = 0; j < inputs.size(); ++j) {
-      op_def.src_tensors.push_back(tensor_descriptor);
+      op_def.src_tensors.push_back(
+          tensor_reserver_.Get(inputs[j]->id).descriptor);
     }
     for (int j = 0; j < outputs.size(); ++j) {
-      op_def.dst_tensors.push_back(tensor_descriptor);
+      op_def.dst_tensors.push_back(
+          tensor_reserver_.Get(outputs[j]->id).descriptor);
     }
     GPUOperationsSubgraph gpu_subgraph;
     RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, inputs, outputs,
@@ -591,118 +235,94 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     std::map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
-      last_value_id++;
-      compiled_model->tensor_shapes[last_value_id] = t.first;
-      mapping_to_global_ids[j] = last_value_id;
+      auto global_id = tensor_reserver_.Add({t.first, t.second});
+      mapping_to_global_ids[j] = global_id;
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
-      NodeDescriptor metal_node;
-      metal_node.task = std::move(gpu_op.operation);
-      metal_node.src_tensors_ids.resize(gpu_op.input_ids.size());
+      MetalNode metal_node;
+      if (gpu_op.task_desc) {
+        metal_node.task.Init(std::move(gpu_op.task_desc));
+      } else {
+        metal_node.task.Init(std::move(gpu_op.operation));
+      }
+      metal_node.inputs.resize(gpu_op.input_ids.size());
       for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
         int id = gpu_op.input_ids[j];
         if (id >= 0) {
-          metal_node.src_tensors_ids[j] = id;
+          metal_node.inputs[j] = id;
         } else {
-          metal_node.src_tensors_ids[j] = mapping_to_global_ids[-(id + 1)];
+          metal_node.inputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      metal_node.dst_tensors_ids.resize(gpu_op.output_ids.size());
+      metal_node.outputs.resize(gpu_op.output_ids.size());
       for (int j = 0; j < gpu_op.output_ids.size(); ++j) {
         int id = gpu_op.output_ids[j];
         if (id >= 0) {
-          metal_node.dst_tensors_ids[j] = id;
+          metal_node.outputs[j] = id;
           tensor_usages[id] = i;
         } else {
-          metal_node.dst_tensors_ids[j] = mapping_to_global_ids[-(id + 1)];
+          metal_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      metal_node.description =
-          node.operation.type + " " + std::to_string(node.id);
-      metal_node.id = i;
-      compiled_model->nodes.push_back(std::move(metal_node));
+      metal_node.name = node.operation.type + " " + std::to_string(node.id);
+      nodes_.push_back(std::move(metal_node));
     }
   }
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::ValidateOptimizeModel(
-    const std::vector<ValueId>& input_buffers,
-    const std::vector<ValueId>& output_buffers,
-    const CompiledModel& input_model, CompiledModel* output_model) {
-  std::list<NodeDescriptor> input;
-  input.insert(input.end(), input_model.nodes.begin(), input_model.nodes.end());
-  OptimizationInfo info;
-  info.operations_count = static_cast<int>(input.size());
-
-  // A chain is a sequence of fusable operations. All internal outputs are
-  // consumed with the next element of the chain. The last element of each chain
-  // contains outputs which are ready to be used as inputs. if a chain can't be
-  // extended with linkable element then new chain is created.
-  std::list<FusionSequence> unsorted_chains;
-  BuildFusableChains(input_buffers, output_buffers, &input, &unsorted_chains,
-                     &info.unused_operations);
-
-  RemoveInputProxies(&unsorted_chains);
-  std::list<FusionSequence> sorted_chains =
-      SortChains(input_buffers, &unsorted_chains);
-
-  info.extra_output_buffer_ids =
-      DeductOutputBufferIds(output_buffers, sorted_chains);
-  info.unused_operations = DeleteUnusedTasks(output_buffers, &sorted_chains);
-  info.input_buffer_ids = GetUsedInputBufferIds(sorted_chains);
-  // find provided input buffers that has not being used
-  for (ValueId id : input_buffers) {
-    if (!Contains(info.input_buffer_ids, id)) {
-      info.unused_input_buffer_ids.push_back(id);
+absl::Status InferenceContext::Merge() {
+  std::set<ValueId> ready_tensors;
+  for (const auto& input_id : input_ids_) {
+    ready_tensors.insert(input_id);
+  }
+  for (int i = 0; i < nodes_.size(); ++i) {
+    auto& node = nodes_[i];
+    for (const auto& out_id : node.outputs) {
+      ready_tensors.insert(out_id);
     }
+    if (node.outputs.size() != 1) {
+      continue;
+    }
+    std::vector<int> next_nodes;
+    int link_index = 0;
+    for (int j = i + 1; j < nodes_.size(); ++j) {
+      for (int k = 0; k < nodes_[j].inputs.size(); ++k) {
+        if (nodes_[j].inputs[k] == node.outputs[0]) {
+          next_nodes.push_back(j);
+          link_index = k;
+        }
+      }
+    }
+    if (next_nodes.size() != 1 || link_index != 0) {
+      continue;
+    }
+    auto& linkable_node = nodes_[next_nodes[0]];
+    if (!linkable_node.task.IsLinkable() || linkable_node.outputs.size() != 1 ||
+        !IsReady(ready_tensors, linkable_node)) {
+      continue;
+    }
+    const auto& original_dst_def = node.task.GetDefinition().dst_tensors[0];
+    const auto& link_dst_def =
+        linkable_node.task.GetDefinition().dst_tensors[0];
+    if (original_dst_def != link_dst_def) {
+      continue;
+    }
+    RETURN_IF_ERROR(MergeNodes(&linkable_node, &node));
+    nodes_.erase(nodes_.begin() + next_nodes[0]);
+    i -= 1;
   }
-  info.missing_output_buffer_ids =
-      GetMissingOutputBufferIds(output_buffers, sorted_chains);
-  info.gpu_tasks_count = static_cast<int>(sorted_chains.size());
-  if (sorted_chains.empty()) {
-    const std::string message =
-        "No valid operations in the graph.\nInput operations count " +
-        std::to_string(info.operations_count) + "\nUnused operations " +
-        std::to_string(info.unused_operations.size()) + "\nUnused inputs " +
-        std::to_string(info.unused_input_buffer_ids.size()) +
-        "\nMissing output buffers " +
-        std::to_string(info.missing_output_buffer_ids.size());
-    return absl::InternalError(message);
-  }
-  for (const auto& chain : sorted_chains) {
-    NodeDescriptor fused_node;
-    RETURN_IF_ERROR(FuseChain(chain, &fused_node));
-    output_model->nodes.push_back(std::move(fused_node));
-  }
-  output_model->tensor_shapes = input_model.tensor_shapes;
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::CompileModelWithDevice(
-    id<MTLDevice> device, const CompiledModel& compiled_model,
-    const std::vector<ValueId>& input_ids,
-    const std::vector<ValueId>& output_ids, CalculationsPrecision precision) {
-  input_ids_ = input_ids;
-  output_ids_ = output_ids;
-  precision_ = precision;
-  // Metal resources are created here.
-  for (const auto& node : compiled_model.nodes) {
-    ComputeTask task;
-    RETURN_IF_ERROR(task.CompileWithDevice(device, node, precision_));
-    task.SetDescription(node.description);
-    compute_tasks_.emplace_back(std::move(task));
+absl::Status InferenceContext::CompileOperations(MetalDevice* device) {
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.task.Compile(device));
   }
-  tensor_shapes_ = compiled_model.tensor_shapes;
-  for (auto& task : compute_tasks_) {
-    // The same device must be used here as well as on shader compilation stage.
-    RETURN_IF_ERROR(task.UpdateParamsWithDevice(device, tensor_shapes_));
-  }
-  RETURN_IF_ERROR(AllocateTensors(device));
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::AllocateTensors(id<MTLDevice> device) {
+absl::Status InferenceContext::AllocateTensors(MetalDevice* device) {
   std::set<ValueId> preallocated_ids;
   for (auto tensor_id : input_ids_) {
     preallocated_ids.insert(tensor_id);
@@ -710,26 +330,22 @@ absl::Status InferenceContext::AllocateTensors(id<MTLDevice> device) {
   for (const auto& outputId : output_ids_) {
     preallocated_ids.insert(outputId);
   }
-  for (int i = 0; i < compute_tasks_.size(); ++i) {
-    auto& task = compute_tasks_[i];
-    if (task.HasInOutIds(preallocated_ids)) {
+  for (int i = 0; i < nodes_.size(); ++i) {
+    auto& node = nodes_[i];
+    if (HasIntersection(node.inputs, preallocated_ids) ||
+        HasIntersection(node.outputs, preallocated_ids)) {
       task_ids_with_preallocated_tensors_.push_back(i);
     }
   }
 
   const bool f32_storage = precision_ == CalculationsPrecision::F32;
   for (auto& tensor_id : preallocated_ids) {
-    BHWC shape = tensor_shapes_[tensor_id];
-    TensorDescriptor descriptor;
-    descriptor.storage_type = TensorStorageType::BUFFER;
-    descriptor.data_type = f32_storage ? DataType::FLOAT32 : DataType::FLOAT16;
-    descriptor.layout = Layout::HWC;
+    const auto& t = tensor_reserver_.Get(tensor_id);
     preallocated_tensors_[tensor_id] =
-        CreateSharedBufferTensor(nil, shape, descriptor);
+        CreateSharedBufferTensor(nil, t.shape, t.descriptor);
   }
 
   RETURN_IF_ERROR(AllocateMemoryForBuffers(device));
-  BindTensorsToOperations();
   return absl::OkStatus();
 }
 
@@ -745,18 +361,31 @@ MetalSpatialTensor* InferenceContext::GetTensor(ValueId tensor_id) {
 }
 
 void InferenceContext::BindTensorsToOperations() {
-  for (auto& task : compute_tasks_) {
-    const auto& src_ids = task.GetInputIds();
+  for (auto& node : nodes_) {
+    const auto& src_ids = node.inputs;
     for (int i = 0; i < src_ids.size(); ++i) {
-      MetalSpatialTensor* tensor = GetTensor(src_ids[i]);
-      task.SetSrcTensor(*tensor, i);
+      node.task.SetSrcTensor(GetTensor(src_ids[i]), i);
     }
-    const auto& dst_ids = task.GetOutputIds();
+    const auto& dst_ids = node.outputs;
     for (int i = 0; i < dst_ids.size(); ++i) {
-      MetalSpatialTensor* tensor = GetTensor(dst_ids[i]);
-      task.SetDstTensor(*tensor, i);
+      node.task.SetDstTensor(GetTensor(dst_ids[i]), i);
     }
   }
+}
+
+absl::Status InferenceContext::UpdateParams(const GpuInfo& gpu_info) {
+  for (auto& node : nodes_) {
+    std::vector<BHWC> src_shapes;
+    std::vector<BHWC> dst_shapes;
+    for (const auto& in_id : node.inputs) {
+      src_shapes.push_back(tensor_reserver_.Get(in_id).shape);
+    }
+    for (const auto& out_id : node.outputs) {
+      dst_shapes.push_back(tensor_reserver_.Get(out_id).shape);
+    }
+    RETURN_IF_ERROR(node.task.UpdateParams(gpu_info, src_shapes, dst_shapes));
+  }
+  return absl::OkStatus();
 }
 
 void InferenceContext::GetUsages(std::map<ValueId, int2>* usages) {
@@ -765,14 +394,14 @@ void InferenceContext::GetUsages(std::map<ValueId, int2>* usages) {
       AddUsage(in_id, 0, usages);
     }
   }
-  for (int op_index = 0; op_index < compute_tasks_.size(); ++op_index) {
-    for (auto& tensor_id : compute_tasks_[op_index].GetInputIds()) {
+  for (int op_index = 0; op_index < nodes_.size(); ++op_index) {
+    for (auto& tensor_id : nodes_[op_index].inputs) {
       if (preallocated_tensors_.find(tensor_id) ==
           preallocated_tensors_.end()) {
         AddUsage(tensor_id, op_index, usages);
       }
     }
-    for (auto& tensor_id : compute_tasks_[op_index].GetOutputIds()) {
+    for (auto& tensor_id : nodes_[op_index].outputs) {
       if (preallocated_tensors_.find(tensor_id) ==
           preallocated_tensors_.end()) {
         AddUsage(tensor_id, op_index, usages);
@@ -781,18 +410,18 @@ void InferenceContext::GetUsages(std::map<ValueId, int2>* usages) {
   }
   for (ValueId out_id : output_ids_) {
     if (preallocated_tensors_.find(out_id) == preallocated_tensors_.end()) {
-      AddUsage(out_id, compute_tasks_.size(), usages);
+      AddUsage(out_id, nodes_.size(), usages);
     }
   }
 }
 
-absl::Status InferenceContext::AllocateMemoryForBuffers(id<MTLDevice> device) {
+absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
   std::map<ValueId, int2> buffer_usages;
   GetUsages(&buffer_usages);
 
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
   for (auto& usage : buffer_usages) {
-    const auto& shape = tensor_shapes_[usage.first];
+    const auto& shape = tensor_reserver_.Get(usage.first).shape;
     const size_t buffer_size =
         shape.b * shape.w * shape.h * AlignByN(shape.c, 4);
     graph_ids_to_shared_buffer_tensors_[usage.first] =
@@ -813,33 +442,18 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(id<MTLDevice> device) {
     // Initialize metal buffer
     NSUInteger bufferSize = dataTypeSize * buffer_assignment.object_sizes[i];
 
-#if (defined(__MAC_10_14) &&                               \
-     __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_14) ||    \
-    (defined(__IPHONE_12_0) &&                             \
-     __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_12_0) || \
-    (defined(__TVOS_12_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_12_0)
-    if (bufferSize > [device maxBufferLength]) {
+    if (bufferSize > device->GetInfo().GetMaxBufferSize()) {
       std::string error("Tensor id: ");
       error += std::to_string(buffer_assignment.object_ids[i]) +
                " with size: " + std::to_string(bufferSize) +
                " exceeds MTLDevice maxBufferLength: " +
-               std::to_string([device maxBufferLength]);
+               std::to_string(device->GetInfo().GetMaxBufferSize());
       return absl::ResourceExhaustedError(error);
     }
-#endif
-#if defined(__MAC_10_12) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_12
-    if ([device currentAllocatedSize] + bufferSize >
-        [device recommendedMaxWorkingSetSize]) {
-      std::string error(
-          "Out of memory in MTLBuffer allocation. Currently allocated: ");
-      error += std::to_string([device currentAllocatedSize]);
-      return absl::ResourceExhaustedError(error);
-    }
-#endif
 
     shared_buffers_[i] =
-        [device newBufferWithLength:bufferSize
-                            options:MTLResourceStorageModeShared];
+        [device->device() newBufferWithLength:bufferSize
+                                      options:MTLResourceStorageModeShared];
   }
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
@@ -848,17 +462,15 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(id<MTLDevice> device) {
   descriptor.storage_type = TensorStorageType::BUFFER;
   descriptor.data_type = f32_storage ? DataType::FLOAT32 : DataType::FLOAT16;
   descriptor.layout = Layout::HWC;
-  for (auto& task : compute_tasks_) {
-    const std::vector<ValueId> input_ids = task.GetInputIds();
-    const std::vector<ValueId> output_ids = task.GetOutputIds();
-    std::vector<ValueId> all_ids = input_ids;
-    all_ids.insert(all_ids.end(), output_ids.begin(), output_ids.end());
+  for (auto& node : nodes_) {
+    std::vector<ValueId> all_ids = node.inputs;
+    all_ids.insert(all_ids.end(), node.outputs.begin(), node.outputs.end());
     for (auto& tensor_id : all_ids) {
       if (preallocated_tensors_.find(tensor_id) != preallocated_tensors_.end())
         continue;
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[tensor_id];
       if (created_tensors[tensor_index]) continue;
-      const auto& shape = tensor_shapes_[tensor_id];
+      const auto& shape = tensor_reserver_.Get(tensor_id).shape;
       const int buffer_index = buffer_assignment.object_ids[tensor_index];
       shared_buffer_tensors_[tensor_index] = CreateSharedBufferTensor(
           shared_buffers_[buffer_index], shape, descriptor);
@@ -868,13 +480,21 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(id<MTLDevice> device) {
   return absl::OkStatus();
 }
 
+absl::Status InferenceContext::Tune(TuningType tuning_type,
+                                    MetalDevice* device) {
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.task.Tune(tuning_type, device));
+  }
+  return absl::OkStatus();
+}
+
 void InferenceContext::EncodeWithEncoder(
     id<MTLComputeCommandEncoder> command_encoder,
     const std::map<ValueId, id<MTLBuffer>>& in_out_buffers) {
   UpdatePreallocatedTensors(in_out_buffers);
-  for (int i = 0; i < compute_tasks_.size(); ++i) {
-    auto& task = compute_tasks_[i];
-    task.EncodeWithEncoder(command_encoder);
+  for (int i = 0; i < nodes_.size(); ++i) {
+    auto& task = nodes_[i].task;
+    task.Encode(command_encoder);
   }
 }
 
@@ -882,11 +502,11 @@ void InferenceContext::EncodeWithCommandBuffer(
     id<MTLCommandBuffer> command_buffer,
     const std::map<ValueId, id<MTLBuffer>>& in_out_buffers) {
   UpdatePreallocatedTensors(in_out_buffers);
-  for (int i = 0; i < compute_tasks_.size(); ++i) {
+  for (int i = 0; i < nodes_.size(); ++i) {
     id<MTLComputeCommandEncoder> encoder =
         [command_buffer computeCommandEncoder];
-    auto& task = compute_tasks_[i];
-    task.EncodeWithEncoder(encoder);
+    auto& task = nodes_[i].task;
+    task.Encode(encoder);
     [encoder endEncoding];
   }
 }
@@ -896,11 +516,11 @@ void InferenceContext::EncodeWithCommandQueue(
     const std::map<ValueId, id<MTLBuffer>>& in_out_buffers, int flush_period) {
   UpdatePreallocatedTensors(in_out_buffers);
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
-  for (int i = 0; i < compute_tasks_.size(); ++i) {
+  for (int i = 0; i < nodes_.size(); ++i) {
     id<MTLComputeCommandEncoder> encoder =
         [command_buffer computeCommandEncoder];
-    auto& task = compute_tasks_[i];
-    task.EncodeWithEncoder(encoder);
+    auto& task = nodes_[i].task;
+    task.Encode(encoder);
     [encoder endEncoding];
     if (i % flush_period == (flush_period - 1)) {
       [command_buffer commit];
@@ -916,22 +536,40 @@ void InferenceContext::UpdatePreallocatedTensors(
     preallocated_tensors_[it.first].SetBufferHandle(it.second);
   }
   for (auto& task_index : task_ids_with_preallocated_tensors_) {
-    auto& task = compute_tasks_[task_index];
-    const auto& src_ids = task.GetInputIds();
+    auto& task = nodes_[task_index].task;
+    const auto& src_ids = nodes_[task_index].inputs;
     for (int i = 0; i < src_ids.size(); ++i) {
       const auto& it = preallocated_tensors_.find(src_ids[i]);
       if (it != preallocated_tensors_.end()) {
-        task.SetSrcTensor(it->second, i);
+        task.SetSrcTensor(&it->second, i);
       }
     }
-    const auto& dst_ids = task.GetOutputIds();
+    const auto& dst_ids = nodes_[task_index].outputs;
     for (int i = 0; i < dst_ids.size(); ++i) {
       const auto& it = preallocated_tensors_.find(dst_ids[i]);
       if (it != preallocated_tensors_.end()) {
-        task.SetDstTensor(it->second, i);
+        task.SetDstTensor(&it->second, i);
       }
     }
   }
+}
+
+absl::Status RunGraphTransforms(GraphFloat32* graph) {
+  auto merge_padding_transform = NewMergePaddingWithAdd();
+  auto add_bias_transform = NewAddBias();
+  auto pooling_to_reduce_op = NewGlobalPoolingToReduceOp();
+  ModelTransformer transformer(graph, /*reporter=*/nullptr);
+  if (!transformer.Apply("add_bias", add_bias_transform.get())) {
+    return absl::InternalError("Invalid add_bias transform");
+  }
+  if (!transformer.Apply("merge_padding", merge_padding_transform.get())) {
+    return absl::InternalError("Invalid merge_padding transform");
+  }
+  if (!transformer.Apply("global pooling to mean",
+                         pooling_to_reduce_op.get())) {
+    return absl::InternalError("Invalid global pooling to mean transform");
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace metal

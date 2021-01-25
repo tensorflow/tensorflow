@@ -93,7 +93,8 @@ ComputeArgAndRetvalShardings(const Graph& graph) {
       [](const Node* n) -> xla::StatusOr<absl::optional<xla::OpSharding>> {
     TF_ASSIGN_OR_RETURN(
         auto sharding,
-        ParseShardingFromDevice(*n, std::numeric_limits<int32>::max()));
+        ParseShardingFromDevice(*n, std::numeric_limits<int32>::max(),
+                                /*add_metadata=*/false));
     return sharding;
   };
   std::map<int, xla::OpSharding> arg_shardings;

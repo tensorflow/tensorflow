@@ -601,7 +601,7 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
 struct HsacoCacheEntry {
   uint64 hash;
   std::string ir;
-  int gfx;
+  std::string gfx;
   std::vector<uint8> hsaco;
 };
 
@@ -613,16 +613,16 @@ struct HsacoCache {
   int hit_count = 0;
 
  public:
-  static bool Find(const std::string& ir, uint64_t& hash, int gfx,
-                   std::vector<uint8>& hsaco);
-  static void Add(const std::string& ir, uint64_t hash, int gfx,
+  static bool Find(const std::string& ir, uint64_t& hash,
+                   const std::string& gfx, std::vector<uint8>& hsaco);
+  static void Add(const std::string& ir, uint64_t hash, const std::string& gfx,
                   const std::vector<uint8>& hsaco);
 };
 
 static HsacoCache g_hsacoCache;
 
-bool HsacoCache::Find(const std::string& ir, uint64_t& hash, int gfx,
-                      std::vector<uint8>& hsaco) {
+bool HsacoCache::Find(const std::string& ir, uint64_t& hash,
+                      const std::string& gfx, std::vector<uint8>& hsaco) {
   std::lock_guard<std::mutex> lg(g_hsacoCache.m_mutex);
   hash = std::hash<std::string>{}(ir);
   bool hit = false;
@@ -642,8 +642,8 @@ bool HsacoCache::Find(const std::string& ir, uint64_t& hash, int gfx,
   return hit;
 }
 
-void HsacoCache::Add(const std::string& ir, uint64_t hash, int gfx,
-                     const std::vector<uint8>& hsaco) {
+void HsacoCache::Add(const std::string& ir, uint64_t hash,
+                     const std::string& gfx, const std::vector<uint8>& hsaco) {
   std::lock_guard<std::mutex> lg(g_hsacoCache.m_mutex);
   g_hsacoCache.cache.resize(g_hsacoCache.cache.size() + 1);
   g_hsacoCache.cache.back().ir = ir;
@@ -787,29 +787,79 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
                                 const HloModuleConfig& hlo_module_config,
                                 const string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
-  auto amdgpu_version = absl::get_if<int>(&gpu_version);
+  auto amdgpu_version = absl::get_if<std::pair<int, std::string>>(&gpu_version);
   if (!amdgpu_version) {
     return xla::InternalError(
         "Incompatible AMD GCN ISA version was specified.");
   }
-  TF_RETURN_IF_ERROR(
-      LinkROCDLIfNecessary(module, *amdgpu_version, device_bitcode_dir_path));
+  TF_RETURN_IF_ERROR(LinkROCDLIfNecessary(module, amdgpu_version->first,
+                                          device_bitcode_dir_path));
 
   return Status::OK();
 }
 
-std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
-    llvm::Triple target_triple, int amdgpu_version,
-    const HloModuleConfig& hlo_module_config) {
-  string feature_str = "+code-object-v3";
-#if TF_ROCM_VERSION >= 30900
-  // code-object-v3 is default, so no need to expliticitly specify it
-  // in the feature string. Also, starting with ROCm 4.0, this feature string
-  // is deprecated, and we get a warning to that effect. So removing that
-  // feature string
+// The following routine maps a feature token extracted from the
+// hipDeviceProp_t::gcnArchName string, and maps it to a valid feature_str
+// to be used for creating the AMDGPUTarget.
+// This mapping is currently in a state of flux because TF XLA uses its
+// own copy of LLVM, which is different from the LLVM version used by
+// hipcc/runtime in the ROCm install. Ordinarily this is not a problem,
+// but right now, the LLVM version used by hipcc/runtime has "targetID"
+// related changes which have not yet been upstreamed (to the LLVM repo)
+// When that upstreaming happens (and TF LLVM pointer moves past the
+// upstream commit), the following mapping will need to change
+std::string MapGCNArchNameTokenToFeatureStr(const std::string& token) {
+  if (token == "sramecc+") {
+    return "+sram-ecc";
+  } else if (token == "sramecc-") {
+    return "-sram-ecc";
+  } else if (token == "xnack+") {
+    return "+xnack";
+  } else if (token == "xnack-") {
+    return "-xnack";
+  }
+  return "";
+}
+
+std::string GetFeatureStrFromGCNArchName(const std::string& gcn_arch_name) {
+  std::string feature_str;
+
+#if TF_ROCM_VERSION < 30900
+  // For ROCm versions older than 3.9, hardcode it to "+code-object-v3"
+  // This is simply to preserve how things were...nohing else
+  feature_str = "+code-object-v3";
+#elif TF_ROCM_VERSION < 40000
+  // For ROCM versions 3.9 and 3.10, hardcode it to empty string
   feature_str = "";
+#else
+  // For ROCm versions 4.0 and greater, we need to specify the correct
+  // feature str, based on the underlying GPU HW to get max performance.
+  std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
+  std::vector<std::string> mapped_tokens;
+  for (auto it = tokens.begin(); it != tokens.end(); it++) {
+    // Skip the first token, that is the gfxNNN str
+    // The rest of the tokens are the feature/targetid strings
+    if (it != tokens.begin()) {
+      std::string token(*it);
+      std::string mapped_token = MapGCNArchNameTokenToFeatureStr(token);
+      mapped_tokens.push_back(mapped_token);
+    }
+  }
+  feature_str = absl::StrJoin(mapped_tokens, ",");
 #endif
-  return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version),
+
+  return feature_str;
+}
+
+std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
+    llvm::Triple target_triple, GpuVersion gpu_version,
+    const HloModuleConfig& hlo_module_config) {
+  auto amdgpu_version = absl::get_if<std::pair<int, std::string>>(&gpu_version);
+  int gcn_arch_value = amdgpu_version->first;
+  std::string gcn_arch_name = amdgpu_version->second;
+  std::string feature_str = GetFeatureStrFromGCNArchName(gcn_arch_name);
+  return GetTargetMachine(std::move(target_triple),
+                          absl::StrCat("gfx", gcn_arch_value),
                           hlo_module_config, feature_str);
 }
 
@@ -861,13 +911,14 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
-    auto amdgpu_version = absl::get_if<int>(&gpu_version);
+    auto amdgpu_version =
+        absl::get_if<std::pair<int, std::string>>(&gpu_version);
     if (!amdgpu_version) {
       return xla::InternalError(
           "Incompatible AMD GCN ISA version was specified.");
     }
     uint64_t hash;
-    if (HsacoCache::Find(str, hash, *amdgpu_version, hsaco)) {
+    if (HsacoCache::Find(str, hash, amdgpu_version->second, hsaco)) {
       VLOG(1) << "HSACO cache hit";
       return hsaco;
     }
@@ -885,7 +936,7 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
     llvm::Triple default_target_triple("amdgcn--amdhsa-amdgiz");
     // Construct LLVM TargetMachine for AMDGPU.
     std::unique_ptr<llvm::TargetMachine> target_machine =
-        AMDGPUGetTargetMachine(default_target_triple, *amdgpu_version,
+        AMDGPUGetTargetMachine(default_target_triple, gpu_version,
                                hlo_module_config);
 
     // Link with ROCm-Device-Libs, and optimize the LLVM module.
@@ -896,7 +947,7 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
 
     // Lower optimized LLVM module to HSA code object.
     TF_ASSIGN_OR_RETURN(hsaco, EmitModuleToHsaco(module, target_machine.get()));
-    HsacoCache::Add(str, hash, *amdgpu_version, hsaco);
+    HsacoCache::Add(str, hash, amdgpu_version->second, hsaco);
   }
   return hsaco;
 }

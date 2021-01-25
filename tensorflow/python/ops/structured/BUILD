@@ -15,7 +15,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "structured",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["nofixdeps"],
     deps = [
         ":structured_array_ops",
@@ -29,6 +29,7 @@ py_library(
         "structured_array_ops.py",
         "structured_tensor.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -54,6 +55,7 @@ py_library(
     srcs = [
         "structured_array_ops.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/python:array_ops",

@@ -76,6 +76,7 @@ using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd4DSlow;
 using reference_ops::BroadcastMul4DSlow;
+using reference_ops::BroadcastSub16POTSlow;
 using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
@@ -1341,6 +1342,8 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
                        int8_t* im2col_data, CpuBackendContext* context) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -1351,15 +1354,22 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
   const int filter_width = filter_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
 
+  const int input_zero_point = 0;
   const int8_t* gemm_input_data = nullptr;
   int num_input;
+  const bool need_dilated_im2col =
+      dilation_width_factor != 1 || dilation_height_factor != 1;
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;
 
-  if (need_im2col) {
+  if (need_dilated_im2col) {
+    DilatedIm2col(params, input_zero_point, input_shape, input_data,
+                  filter_shape, output_shape, im2col_data);
+    gemm_input_data = im2col_data;
+    num_input = im2col_shape.FlatSize();
+  } else if (need_im2col) {
     TFLITE_DCHECK(im2col_data);
     // symmetric quantization assumes zero point of 0.
-    const int input_zero_point = 0;
 
     Im2col(params, filter_height, filter_width, input_zero_point, input_shape,
            input_data, im2col_shape, im2col_data);
@@ -1475,7 +1485,6 @@ inline void HybridConvPerChannel(
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
   TFLITE_DCHECK_EQ(scratch_shape.FlatSize(), output_shape.FlatSize());
   if (!compute_row_sums || *compute_row_sums) {
-    memset(row_sums, 0, sizeof(int32_t) * filter_rows);
     tensor_utils::ReductionSumVector(filter_data, row_sums, filter_rows,
                                      filter_cols);
     if (compute_row_sums) {

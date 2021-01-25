@@ -59,15 +59,15 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
                                  TfLiteRegistration registration,
                                  uint8_t* output_data, float tolerance = 1e-5);
 
-void TestConvFloat(const int* input_dims_data, const float* input_data,
-                   const int* filter_dims_data, const float* filter_data,
-                   const int* bias_dims_data, const float* bias_data,
-                   const int* output_dims_data,
-                   const float* expected_output_data,
-                   TfLiteConvParams* conv_params,
-                   TfLiteRegistration registration, float* output_data);
+TfLiteStatus TestConvFloat(const int* input_dims_data, const float* input_data,
+                           const int* filter_dims_data,
+                           const float* filter_data, const int* bias_dims_data,
+                           const float* bias_data, const int* output_dims_data,
+                           const float* expected_output_data,
+                           TfLiteConvParams* conv_params,
+                           TfLiteRegistration registration, float* output_data);
 
-void TestConvQuantizedPerLayer(
+TfLiteStatus TestConvQuantizedPerLayer(
     const int* input_dims_data, const float* input_data,
     uint8_t* input_quantized, float input_scale, const int* filter_dims_data,
     const float* filter_data, uint8_t* filter_quantized, float filter_scale,
@@ -77,7 +77,7 @@ void TestConvQuantizedPerLayer(
     TfLiteConvParams* conv_params, TfLiteRegistration registration,
     uint8_t* output_data);
 
-void TestConvQuantizedPerChannel(
+TfLiteStatus TestConvQuantizedPerChannel(
     const int* input_dims_data, const float* input_data,
     int8_t* input_quantized, float input_scale, int input_zero_point,
     const int* filter_dims_data, const float* filter_data,

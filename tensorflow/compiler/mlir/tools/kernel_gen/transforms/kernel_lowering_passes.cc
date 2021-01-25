@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
@@ -51,6 +52,7 @@ class GpuKernelToNVVMPass
     LLVMTypeConverter converter(m.getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToNVVMConversionPatterns(converter, patterns);
+    populateComplexToLLVMConversionPatterns(converter, patterns);
     ConversionTarget target(getContext());
     configureGpuToNVVMConversionLegality(target);
     if (failed(mlir::applyFullConversion(m, target, std::move(patterns)))) {
@@ -75,6 +77,7 @@ class GpuKernelToROCDLPass
     LLVMTypeConverter converter(m.getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToROCDLConversionPatterns(converter, patterns);
+    populateComplexToLLVMConversionPatterns(converter, patterns);
     ConversionTarget target(getContext());
     configureGpuToROCDLConversionLegality(target);
     if (failed(mlir::applyFullConversion(m, target, std::move(patterns)))) {

@@ -66,6 +66,11 @@ static Value getConstantLike(OpBuilder& b, Location loc, T constant,
   return b.create<ConstantLikeOp>(loc, getAttr(), val);
 }
 
+Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
+                      Value val);
+
+Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val);
+
 }  // namespace chlo
 }  // namespace mlir
 

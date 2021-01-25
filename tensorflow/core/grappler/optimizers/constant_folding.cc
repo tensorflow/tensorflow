@@ -188,18 +188,22 @@ float QuantizedTypeMaxAsFloat(DataType data_type) {
 
 ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
                                  DeviceBase* cpu_device,
-                                 bool disable_compressed_tensor_optimization)
+                                 bool disable_compressed_tensor_optimization,
+                                 bool fold_quantization_emulation)
     : opt_level_(opt_level),
       cpu_device_(cpu_device),
       disable_compressed_tensor_optimization_(
-          disable_compressed_tensor_optimization) {
+          disable_compressed_tensor_optimization),
+      fold_quantization_emulation_(fold_quantization_emulation) {
   resource_mgr_.reset(new ResourceMgr());
 }
 
 ConstantFolding::ConstantFolding(DeviceBase* cpu_device,
-                                 bool disable_compressed_tensor_optimization)
+                                 bool disable_compressed_tensor_optimization,
+                                 bool fold_quantization_ops)
     : ConstantFolding(RewriterConfig::ON, cpu_device,
-                      disable_compressed_tensor_optimization) {}
+                      disable_compressed_tensor_optimization,
+                      fold_quantization_ops) {}
 
 // static
 string ConstantFolding::AddControlDependency(const string& input_name,
@@ -1058,6 +1062,10 @@ bool ConstantFolding::MaybeFoldable(const NodeDef& node,
   }
   // Removing LoopCond nodes can screw up the partitioner.
   if (node.op() == "LoopCond") {
+    return false;
+  }
+
+  if (!fold_quantization_emulation_ && IsQuantizationEmulation(node)) {
     return false;
   }
 

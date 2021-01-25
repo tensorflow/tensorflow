@@ -24,7 +24,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import layers
-from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -62,39 +61,38 @@ class KerasTensorTest(test.TestCase):
     self.assertEqual(expected_str, str(kt))
     self.assertEqual(expected_repr, repr(kt))
 
-    with testing_utils.use_keras_tensors_scope(True):
-      inp = layers.Input(shape=(3, 5))
-      kt = layers.Dense(10)(inp)
-      expected_str = (
-          "KerasTensor(type_spec=TensorSpec(shape=(None, 3, 10), "
-          "dtype=tf.float32, name=None), name='dense/BiasAdd:0', "
-          "description=\"created by layer 'dense'\")")
-      expected_repr = (
-          "<KerasTensor: shape=(None, 3, 10) dtype=float32 (created "
-          "by layer 'dense')>")
-      self.assertEqual(expected_str, str(kt))
-      self.assertEqual(expected_repr, repr(kt))
+    inp = layers.Input(shape=(3, 5))
+    kt = layers.Dense(10)(inp)
+    expected_str = (
+        "KerasTensor(type_spec=TensorSpec(shape=(None, 3, 10), "
+        "dtype=tf.float32, name=None), name='dense/BiasAdd:0', "
+        "description=\"created by layer 'dense'\")")
+    expected_repr = (
+        "<KerasTensor: shape=(None, 3, 10) dtype=float32 (created "
+        "by layer 'dense')>")
+    self.assertEqual(expected_str, str(kt))
+    self.assertEqual(expected_repr, repr(kt))
 
-      kt = array_ops.reshape(kt, shape=(3, 5, 2))
-      expected_str = (
-          "KerasTensor(type_spec=TensorSpec(shape=(3, 5, 2), dtype=tf.float32, "
-          "name=None), name='tf.reshape/Reshape:0', description=\"created "
-          "by layer 'tf.reshape'\")")
-      expected_repr = ("<KerasTensor: shape=(3, 5, 2) dtype=float32 (created "
-                       "by layer 'tf.reshape')>")
-      self.assertEqual(expected_str, str(kt))
-      self.assertEqual(expected_repr, repr(kt))
+    kt = array_ops.reshape(kt, shape=(3, 5, 2))
+    expected_str = (
+        "KerasTensor(type_spec=TensorSpec(shape=(3, 5, 2), dtype=tf.float32, "
+        "name=None), name='tf.reshape/Reshape:0', description=\"created "
+        "by layer 'tf.reshape'\")")
+    expected_repr = ("<KerasTensor: shape=(3, 5, 2) dtype=float32 (created "
+                     "by layer 'tf.reshape')>")
+    self.assertEqual(expected_str, str(kt))
+    self.assertEqual(expected_repr, repr(kt))
 
-      kts = array_ops.unstack(kt)
-      for i in range(3):
-        expected_str = (
-            "KerasTensor(type_spec=TensorSpec(shape=(5, 2), dtype=tf.float32, "
-            "name=None), name='tf.unstack/unstack:%s', description=\"created "
-            "by layer 'tf.unstack'\")" % (i,))
-        expected_repr = ("<KerasTensor: shape=(5, 2) dtype=float32 "
-                         "(created by layer 'tf.unstack')>")
-        self.assertEqual(expected_str, str(kts[i]))
-        self.assertEqual(expected_repr, repr(kts[i]))
+    kts = array_ops.unstack(kt)
+    for i in range(3):
+      expected_str = (
+          "KerasTensor(type_spec=TensorSpec(shape=(5, 2), dtype=tf.float32, "
+          "name=None), name='tf.unstack/unstack:%s', description=\"created "
+          "by layer 'tf.unstack'\")" % (i,))
+      expected_repr = ("<KerasTensor: shape=(5, 2) dtype=float32 "
+                       "(created by layer 'tf.unstack')>")
+      self.assertEqual(expected_str, str(kts[i]))
+      self.assertEqual(expected_repr, repr(kts[i]))
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

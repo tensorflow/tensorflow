@@ -104,6 +104,18 @@ class Optimize(enum.Enum):
 
   OPTIMIZE_FOR_LATENCY
       Deprecated. Does the same as DEFAULT.
+
+  EXPERIMENTAL_SPARSITY
+      Experimental flag, subject to change.
+
+      Enable optimization by taking advantage of the sparse model weights
+      trained with pruning.
+
+      The converter will inspect the sparsity pattern of the model weights and
+      do its best to improve size and latency.
+      The flag can be used alone to optimize float32 models with sparse weights.
+      It can also be used together with the DEFAULT optimization mode to
+      optimize quantized models with sparse weights.
   """
 
   # Default optimization strategy that quantizes model weights. Enhanced
@@ -118,6 +130,18 @@ class Optimize(enum.Enum):
 
   # Deprecated. Does the same as DEFAULT.
   OPTIMIZE_FOR_LATENCY = "OPTIMIZE_FOR_LATENCY"
+
+  # Experimental flag, subject to change.
+  # Enable optimization by taking advantage of the sparse model weights trained
+  # with pruning.
+  #
+  # The converter will inspect the sparsity pattern of the model weights and do
+  # its best to improve size and latency.
+  # The flag can be used alone to optimize float32 models with sparse weights.
+  # It can also be used together with the DEFAULT optimization mode to optimize
+  # quantized models with sparse weights.
+  # TODO(b/161560631): Add log message when this optimization is applied.
+  EXPERIMENTAL_SPARSITY = "EXPERIMENTAL_SPARSITY"
 
   def __str__(self):
     return str(self.value)
@@ -405,7 +429,8 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.allow_custom_ops = False
     self.experimental_new_converter = True
-    self._experimental_new_quantizer = False
+    self.experimental_new_quantizer = False
+    self._experimental_new_quantizer = None
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
     self._debug_info = None  # contains the stack traces of all the original
@@ -450,13 +475,13 @@ class TFLiteConverterBase(object):
     # Add intermediate tensors to the model if needed.
     result = _calibrator.add_intermediate_tensors(result)
     calibrate_quantize = _calibrator.Calibrator(result)
-    if self._experimental_calibrate_only or self._experimental_new_quantizer:
+    if self._experimental_calibrate_only or self.experimental_new_quantizer:
       calibrated = calibrate_quantize.calibrate(
           self.representative_dataset.input_gen)
 
     if self._experimental_calibrate_only:
       return calibrated
-    elif self._experimental_new_quantizer and (
+    elif self.experimental_new_quantizer and (
         activations_type != _dtypes.int16):
       # TODO(b/175659372): remove the activations_type restriction and enable
       # it for all the activation types.
@@ -538,6 +563,13 @@ class TFLiteConverterBase(object):
         raise ValueError("SavedModel file format({0}) is not supported".format(
             self._saved_model_version))
 
+  def _sparsify_model(self):
+    return Optimize.EXPERIMENTAL_SPARSITY in self.optimizations
+
+  def _validate_experimental_new_quantizer_flag(self):
+    if self._experimental_new_quantizer is not None:
+      raise ValueError("Please use 'experimental_new_quantizer' instead.")
+
 
 class TFLiteConverterBaseV2(TFLiteConverterBase):
   """Converter subclass to share functionality between V2 converters."""
@@ -590,6 +622,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
                                   self.representative_dataset, graph_def)
 
     self._validate_inference_input_output_types(quant_mode)
+    self._validate_experimental_new_quantizer_flag()
 
     if not self._is_unknown_shapes_allowed():
       # Checks dimensions in input tensor.
@@ -643,7 +676,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     if flags_modify_model_io_type:
       result = _modify_model_io_type(result, **flags_modify_model_io_type)
 
-    if self._experimental_sparsify_model:
+    if self._sparsify_model():
       result = _mlir_sparsify(result)
 
     return result
@@ -752,7 +785,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     if flags_modify_model_io_type:
       result = _modify_model_io_type(result, **flags_modify_model_io_type)
 
-    if self._experimental_sparsify_model:
+    if self._sparsify_model():
       result = _mlir_sparsify(result)
 
     return result
@@ -984,6 +1017,9 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       to the TensorFlow Lite runtime with a custom resolver. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
       MLIR-based conversion instead of TOCO conversion. (default True)
+    experimental_new_quantizer: Experimental flag, subject to change. Enables
+      MLIR-based quantization conversion instead of Flatbuffer-based conversion.
+      (default False)
 
   Example usage:
 
@@ -1313,6 +1349,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       calibrate_quantize, flags = quant_mode.quantizer_flags()
 
     self._validate_quantized_input_stats(converter_kwargs, calibrate_quantize)
+    self._validate_experimental_new_quantizer_flag()
 
     # Converts model.
     if self._has_valid_tensors():
@@ -1331,13 +1368,13 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     if calibrate_quantize:
       result = self._calibrate_quantize_model(result, **flags)
 
-    if self.experimental_new_converter or self._experimental_new_quantizer:
+    if self.experimental_new_converter or self.experimental_new_quantizer:
       flags_modify_model_io_type = quant_mode.flags_modify_model_io_type(
           self.inference_input_type, self.inference_output_type)
       if flags_modify_model_io_type:
         result = _modify_model_io_type(result, **flags_modify_model_io_type)
 
-    if self._experimental_sparsify_model:
+    if self._sparsify_model():
       result = _mlir_sparsify(result)
 
     return result
@@ -1704,6 +1741,9 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
       set it to `{tf.lite.Optimize.DEFAULT}`. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
       MLIR-based conversion instead of TOCO conversion. (default True)
+    experimental_new_quantizer: Experimental flag, subject to change. Enables
+      MLIR-based quantization conversion instead of Flatbuffer-based conversion.
+      (default False)
 
   Example usage:
 

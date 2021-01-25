@@ -741,6 +741,7 @@ tf_py_test(
 py_library(
     name = "test_base",
     srcs = ["test_base.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

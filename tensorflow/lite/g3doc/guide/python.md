@@ -10,148 +10,52 @@ just a few minutes. All you need is a TensorFlow model [converted to TensorFlow
 Lite](../convert/). (If you don't have a model converted yet, you can experiment
 using the model provided with the example linked below.)
 
-## Install just the TensorFlow Lite interpreter
+## About the TensorFlow Lite runtime package
 
-To quickly run TensorFlow Lite models with Python, you can install just the
-TensorFlow Lite interpreter, instead of all TensorFlow packages.
+To quickly start executing TensorFlow Lite models with Python, you can install
+just the TensorFlow Lite interpreter, instead of all TensorFlow packages. We
+call this simplified Python package `tflite_runtime`.
 
-This interpreter-only package is a fraction the size of the full TensorFlow
+The `tflite_runtime` package is a fraction the size of the full `tensorflow`
 package and includes the bare minimum code required to run inferences with
-TensorFlow Lite—it includes only the
-[`tf.lite.Interpreter`](https://www.tensorflow.org/api_docs/python/tf/lite/Interpreter)
+TensorFlow Lite—primarily the
+[`Interpreter`](https://www.tensorflow.org/api_docs/python/tf/lite/Interpreter)
 Python class. This small package is ideal when all you want to do is execute
 `.tflite` models and avoid wasting disk space with the large TensorFlow library.
 
-Note: If you need access to other Python APIs, such as the [TensorFlow Lite
-Converter](../convert/python_api.md), you must install the [full TensorFlow
-package](https://www.tensorflow.org/install/).
+Note: If you need access to other Python APIs, such as the
+[TensorFlow Lite Converter](../convert/), you must install the
+[full TensorFlow package](https://www.tensorflow.org/install/).
 
-To install, run `pip3 install` and pass it the appropriate Python wheel URL from
-the following table.
+## Install TensorFlow Lite for Python
 
-For example, if you have a Raspberry Pi that's running Raspberry Pi OS 10 (which
-has Python 3.7), install the Python wheel as follows:
+To install the TensorFlow Lite runtime package, run this command:
+
+<pre class="devsite-terminal devsite-click-to-copy">
+pip3 install --extra-index-url https://google-coral.github.io/py-repo/ tflite_runtime
+</pre>
+
+If you're on a Raspberry Pi, this command might fail due to a known issue with
+the `extra-index-url` option
+([#4011](https://github.com/raspberrypi/linux/issues/4011)). So we suggest you
+specify one of the
+[`tflite_runtime` wheels](https://github.com/google-coral/pycoral/releases/)
+that matches your system. For example, if you're running Raspberry Pi OS 10
+(which has Python 3.7), instead use this command:
 
 <pre class="devsite-terminal devsite-click-to-copy">
 pip3 install https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_armv7l.whl
 </pre>
 
-<table>
-<tr><th>Platform</th><th>Python</th><th>URL</th></tr>
-<tr>
-  <td style="white-space:nowrap" rowspan="4">Linux (ARM 32)</td>
-  <td style="white-space:nowrap">3.5</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-linux_armv7l.whl</td>
-</tr>
-<tr>
-  <!-- ARM 32 -->
-  <td style="white-space:nowrap">3.6</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp36-cp36m-linux_armv7l.whl</td>
-</tr>
-<tr>
-  <!-- ARM 32 -->
-  <td style="white-space:nowrap">3.7</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_armv7l.whl</td>
-</tr>
-<tr>
-  <!-- ARM 32 -->
-  <td style="white-space:nowrap">3.8</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp38-cp38-linux_armv7l.whl</td>
-</tr>
-
-<tr>
-  <td style="white-space:nowrap" rowspan="4">Linux (ARM 64)</td>
-  <td style="white-space:nowrap">3.5</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-linux_aarch64.whl</td>
-</tr>
-<tr>
-  <!-- ARM 64 -->
-  <td style="white-space:nowrap">3.6</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp36-cp36m-linux_aarch64.whl</td>
-</tr>
-<tr>
-  <!-- ARM 64 -->
-  <td style="white-space:nowrap">3.7</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_aarch64.whl</td>
-</tr>
-<tr>
-  <!-- ARM 64 -->
-  <td style="white-space:nowrap">3.8</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp38-cp38-linux_aarch64.whl</td>
-</tr>
-
-<tr>
-  <td style="white-space:nowrap" rowspan="4">Linux (x86-64)</td>
-  <td style="white-space:nowrap">3.5</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-linux_x86_64.whl</td>
-</tr>
-<tr>
-  <!-- x86-64 -->
-  <td style="white-space:nowrap">3.6</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp36-cp36m-linux_x86_64.whl</td>
-</tr>
-<tr>
-  <!-- x86-64 -->
-  <td style="white-space:nowrap">3.7</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_x86_64.whl</td>
-</tr>
-<tr>
-  <!-- x86-64 -->
-  <td style="white-space:nowrap">3.8</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp38-cp38-linux_x86_64.whl</td>
-</tr>
-
-<tr>
-  <td style="white-space:nowrap" rowspan="4">macOS 10.15</td>
-  <td style="white-space:nowrap">3.5</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-macosx_10_15_x86_64.whl</td>
-</tr>
-<tr>
-  <!-- Mac -->
-  <td style="white-space:nowrap">3.6</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp36-cp36m-macosx_10_15_x86_64.whl</td>
-</tr>
-<tr>
-  <!-- Mac -->
-  <td style="white-space:nowrap">3.7</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-macosx_10_15_x86_64.whl</td>
-</tr>
-<tr>
-  <!-- Mac -->
-  <td style="white-space:nowrap">3.8</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp38-cp38-macosx_10_15_x86_64.whl</td>
-</tr>
-
-<tr>
-  <td style="white-space:nowrap" rowspan="4">Windows 10</td>
-  <td style="white-space:nowrap">3.5</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-win_amd64.whl</td>
-</tr>
-<tr>
-  <!-- Win -->
-  <td style="white-space:nowrap">3.6</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp36-cp36m-win_amd64.whl</td>
-</tr>
-<tr>
-  <!-- Win -->
-  <td style="white-space:nowrap">3.7</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-win_amd64.whl</td>
-</tr>
-<tr>
-  <!-- Win -->
-  <td style="white-space:nowrap">3.8</td>
-  <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp38-cp38-win_amd64.whl</td>
-</tr>
-
-</table>
+Note: If you're on Debian Linux and using TensorFlow Lite with a Coral ML
+accelerator, using pip to install `tflite_runtime` may not be compatible with
+other Coral libraries. To ensure all your libraries are compatible, instead
+install `tflite_runtime` as a
+[Debian package from Coral](https://coral.ai/software/#debian-packages).
 
 ## Run an inference using tflite_runtime
 
-To distinguish this interpreter-only package from the full TensorFlow package
-(allowing both to be installed, if you choose), the Python module provided in
-the above wheel is named `tflite_runtime`.
-
-So instead of importing `Interpreter` from the `tensorflow` module, you need to
+Instead of importing `Interpreter` from the `tensorflow` module, you now need to
 import it from `tflite_runtime`.
 
 For example, after you install the package above, copy and run the
