@@ -156,9 +156,8 @@ class PjRtClient {
   // non-addressable devices.
   virtual absl::Span<PjRtDevice* const> devices() const = 0;
 
-  // TODO(zhangqiaorjc): Rename to addressable_devices.
   // Return only addressable devices.
-  virtual absl::Span<PjRtDevice* const> local_devices() const = 0;
+  virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
   virtual StatusOr<PjRtDevice*> LookupDevice(int device_id) const = 0;

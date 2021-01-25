@@ -133,11 +133,11 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   int device_count() const override { return devices_.size(); }
   int addressable_device_count() const override {
-    return local_devices_.size();
+    return addressable_devices_.size();
   }
   absl::Span<PjRtDevice* const> devices() const override { return devices_; }
-  absl::Span<PjRtDevice* const> local_devices() const override {
-    return local_devices_;
+  absl::Span<PjRtDevice* const> addressable_devices() const override {
+    return addressable_devices_;
   }
 
   StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
@@ -207,7 +207,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-                local_devices_.at(device_ordinal))
+                addressable_devices_.at(device_ordinal))
                 ->local_device_state();
   }
   LocalClient* client() const { return client_; }
@@ -253,7 +253,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // Maps Device::id() to the corresponding Device. Includes all devices.
   std::map<int, PjRtDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
-  std::vector<PjRtDevice*> local_devices_;
+  std::vector<PjRtDevice*> addressable_devices_;
   int host_id_;
 
   se::DeviceMemoryAllocator* allocator_;

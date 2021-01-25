@@ -47,8 +47,8 @@ std::vector<ClientAndPtr<PjRtDevice>> PyClient::Devices() {
 
 std::vector<ClientAndPtr<PjRtDevice>> PyClient::LocalDevices() {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
-  devices.reserve(pjrt_client_->local_devices().size());
-  for (PjRtDevice* device : pjrt_client_->local_devices()) {
+  devices.reserve(pjrt_client_->addressable_devices().size());
+  for (PjRtDevice* device : pjrt_client_->addressable_devices()) {
     devices.push_back(WrapWithClient(shared_from_this(), device));
   }
   return devices;
@@ -103,8 +103,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
     pybind11::handle argument, PjRtDevice* device, bool force_copy,
     PjRtClient::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
-    TF_RET_CHECK(!pjrt_client_->local_devices().empty());
-    device = pjrt_client_->local_devices().front();
+    TF_RET_CHECK(!pjrt_client_->addressable_devices().empty());
+    device = pjrt_client_->addressable_devices().front();
   }
   CHECK(device != nullptr);
   TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,

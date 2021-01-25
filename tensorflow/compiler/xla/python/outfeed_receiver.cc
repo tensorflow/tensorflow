@@ -231,7 +231,7 @@ OutfeedReceiverImpl::OutfeedReceiverImpl(
   callback_ = callback;
   max_callback_queue_size_bytes_ = max_callback_queue_size_bytes;
   for (const auto& client : clients) {
-    for (auto device : client->local_devices()) {
+    for (auto device : client->addressable_devices()) {
       devices_.push_back(device);
     }
   }
