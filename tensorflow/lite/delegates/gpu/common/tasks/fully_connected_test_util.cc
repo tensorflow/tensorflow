@@ -85,7 +85,7 @@ absl::Status FullyConnectedLargeTest(TestExecutionEnvironment* env) {
 
   for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 0.0f : 0.601f;
+      const float eps = precision == CalculationsPrecision::F32 ? 0.0f : 1.0f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -133,8 +133,11 @@ absl::Status FullyConnectedExtraLargeTest(TestExecutionEnvironment* env) {
           eps = 1.38f;
           break;
         case CalculationsPrecision::F16:
-          eps = 38.7f;
+          eps = 39.0f;
           break;
+      }
+      if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
+        eps *= 4.0f;
       }
       OperationDef op_def;
       op_def.precision = precision;

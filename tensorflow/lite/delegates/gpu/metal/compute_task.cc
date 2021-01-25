@@ -143,9 +143,6 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
   }
   NSString* storageType;
   NSString* accumulatorType;
-  NSString* toAccumulatorType = @"";
-  NSString* toAccumulatorType2 = @"";
-  NSString* toAccumulatorType3 = @"";
   NSString* toAccumulatorType4 = @"";
   if (precision == CalculationsPrecision::F32) {
     storageType = @"float";
@@ -155,15 +152,18 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
     storageType = @"half";
     if (precision == CalculationsPrecision::F32_F16) {
       accumulatorType = @"float";
-      toAccumulatorType = @"float";
-      toAccumulatorType2 = @"float2";
-      toAccumulatorType3 = @"float3";
       toAccumulatorType4 = @"float4";
     } else {
       accumulatorType = @"half";
     }
   }
   NSDictionary<NSString*, NSString*>* macros = @{
+    @"float16" : @"float4x4",
+    @"half16" : @"half4x4",
+    @"FLT16_0123(V)" : @"V[0]",
+    @"FLT16_4567(V)" : @"V[1]",
+    @"FLT16_89ab(V)" : @"V[2]",
+    @"FLT16_cdef(V)" : @"V[3]",
     @"FLT" : storageType,
     @"FLT2" : [NSString stringWithFormat:@"%@2", storageType],
     @"FLT3" : [NSString stringWithFormat:@"%@3", storageType],
@@ -174,10 +174,7 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
     @"ACCUM_FLT4" : [NSString stringWithFormat:@"%@4", accumulatorType],
     @"INIT_ACCUM_FLT4(value)" :
         [NSString stringWithFormat:@"%@4(value)", accumulatorType],
-    @"TO_ACCUM_TYPE" : toAccumulatorType,
-    @"TO_ACCUM2_TYPE" : toAccumulatorType2,
-    @"TO_ACCUM3_TYPE" : toAccumulatorType3,
-    @"TO_ACCUM4_TYPE" : toAccumulatorType4,
+    @"TO_ACCUM_TYPE" : toAccumulatorType4,
     @"TO_FLT4" : [NSString stringWithFormat:@"%@4", storageType],
     @"SIMDGROUP_BARRIER" : barrier,
     @"MAIN_FUNCTION" : @"\"kernel void ComputeFunction\"",
