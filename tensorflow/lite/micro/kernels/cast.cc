@@ -71,8 +71,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8:
       return copyToTensor(context, input->data.int8, output, num_elements);
     case kTfLiteFloat32:
-      return copyToTensor(context, tflite::micro::GetTensorData<float>(input), output,
-                          num_elements);
+      return copyToTensor(context, tflite::micro::GetTensorData<float>(input),
+                          output, num_elements);
     default:
       // Unsupported type.
       TF_LITE_KERNEL_LOG(context, "Input type %s (%d) not supported.",
