@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -37,7 +38,7 @@ namespace strided_slice {
 
 enum KernelType {
   kReference,
-  // TODO(b/175642009): add kGenericOptimized
+  kGenericOptimized,
 };
 
 constexpr int kInputTensor = 0;
@@ -190,51 +191,43 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   StridedSliceParams op_params = BuildStridedSliceParams(&op_context);
 
-#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                \
-  kernel_type::StridedSlice<data_type>(                              \
-      op_params, GetTensorShape(op_context.input), op_context.input, \
-      GetTensorShape(op_context.output), op_context.output)
+#define TF_LITE_STRIDED_SLICE(data_type)                                 \
+  {                                                                      \
+    if (kernel_type == kGenericOptimized) {                              \
+      optimized_ops::StridedSlice<data_type>(                            \
+          op_params, GetTensorShape(op_context.input), op_context.input, \
+          GetTensorShape(op_context.output), op_context.output);         \
+    } else {                                                             \
+      reference_ops::StridedSlice<data_type>(                            \
+          op_params, GetTensorShape(op_context.input), op_context.input, \
+          GetTensorShape(op_context.output), op_context.output);         \
+    }                                                                    \
+  }
 
   switch (op_context.input->type) {
     case kTfLiteFloat32:
-      if (kernel_type == kReference) {
-        TF_LITE_STRIDED_SLICE(reference_ops, float);
-      }
+      TF_LITE_STRIDED_SLICE(float);
       break;
     case kTfLiteInt32:
-      if (kernel_type == kReference) {
-        TF_LITE_STRIDED_SLICE(reference_ops, int32_t);
-      }
+      TF_LITE_STRIDED_SLICE(int32_t);
       break;
     case kTfLiteInt64:
-      if (kernel_type == kReference) {
-        TF_LITE_STRIDED_SLICE(reference_ops, int64_t);
-      }
+      TF_LITE_STRIDED_SLICE(int64_t);
       break;
     case kTfLiteUInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_STRIDED_SLICE(reference_ops, uint8_t);
-      }
+      TF_LITE_STRIDED_SLICE(uint8_t);
       break;
     case kTfLiteInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_STRIDED_SLICE(reference_ops, int8_t);
-      }
+      TF_LITE_STRIDED_SLICE(int8_t);
       break;
     case kTfLiteInt16:
-      if (kernel_type == kReference) {
-        TF_LITE_STRIDED_SLICE(reference_ops, int16_t);
-      }
+      TF_LITE_STRIDED_SLICE(int16_t);
       break;
     case kTfLiteBool:
-      if (kernel_type == kReference) {
-        TF_LITE_STRIDED_SLICE(reference_ops, bool);
-      }
+      TF_LITE_STRIDED_SLICE(bool);
       break;
     case kTfLiteString:
-      if (kernel_type == kReference) {
-        TF_LITE_STRIDED_SLICE(reference_ops, string);
-      }
+      TF_LITE_STRIDED_SLICE(string);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -257,7 +250,10 @@ TfLiteRegistration* Register_STRIDED_SLICE_REF() {
 }
 
 TfLiteRegistration* Register_STRIDED_SLICE() {
-  return Register_STRIDED_SLICE_REF();
+  static TfLiteRegistration r = {
+      nullptr, nullptr, strided_slice::Prepare,
+      strided_slice::Eval<strided_slice::kGenericOptimized>};
+  return &r;
 }
 
 }  // namespace builtin

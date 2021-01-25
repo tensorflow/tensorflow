@@ -609,7 +609,6 @@ xla_test(
     name = "logdet_test",
     srcs = ["logdet_test.cc"],
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [

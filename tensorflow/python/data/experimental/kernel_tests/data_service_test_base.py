@@ -205,6 +205,8 @@ class TestBase(test_base.DatasetTestBase):
                                cluster,
                                processing_mode="parallel_epochs",
                                job_name=None,
+                               consumer_index=None,
+                               num_consumers=None,
                                max_outstanding_requests=None):
     # pylint: disable=protected-access
     return dataset.apply(
@@ -212,6 +214,8 @@ class TestBase(test_base.DatasetTestBase):
             processing_mode,
             cluster.target,
             job_name=job_name,
+            consumer_index=consumer_index,
+            num_consumers=num_consumers,
             max_outstanding_requests=max_outstanding_requests,
             task_refresh_interval_hint_ms=20))
 

@@ -1969,10 +1969,10 @@ def _get_batched_dataset_attributes(d):
     drop_remainder = d._drop_remainder_t
   # pylint: enable=protected-access
 
-  if tensor_util.is_tensor(batch_size):
+  if tensor_util.is_tf_type(batch_size):
     batch_size = tensor_util.constant_value(batch_size)
 
-  if tensor_util.is_tensor(drop_remainder):
+  if tensor_util.is_tf_type(drop_remainder):
     drop_remainder = tensor_util.constant_value(drop_remainder)
 
   return batch_size, drop_remainder

@@ -97,6 +97,12 @@ class HloRunnerInterface {
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
       const std::string& filename, const DebugOptions& debug_options);
 
+  // Reads the proto file in xla.HloModule format, creates and returns the
+  // HloModule.
+  static StatusOr<std::unique_ptr<HloModule>>
+  ReadModuleFromModuleBinaryProtofile(const std::string& filename,
+                                      const DebugOptions& debug_options);
+
   // Reads the hlo text dump file in HloModule::ToString format, creates and
   // returns the HloModule.
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(

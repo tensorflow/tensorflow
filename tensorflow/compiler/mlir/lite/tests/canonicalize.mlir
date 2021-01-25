@@ -172,3 +172,35 @@ func @WhileCanonicalizeBug1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f3
   }) : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   return %0#1 : tensor<f32>
 }
+
+// -----
+
+// Test case to test While op with resources that are not read-only variables.
+// Do not remove resource arugments if they are not read-only variables to keep
+// the graph's control dependency.
+// CHECK-LABEL: WhileWithNonReadOnlyVariableResources
+func @WhileWithNonReadOnlyVariableResources(%arg0: tensor<i32>) -> tensor<!tf.resource> {
+  %0 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+  %1 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+  %2 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %3 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+  %4 = "tf.StackV2"(%3) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf.resource>
+  %5:5 = "tfl.while"(%2, %3, %2, %4, %0) ( {
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf.resource>, %arg5: tensor<f32>):  // no predecessors
+    %9 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %10 = "tf.Less"(%arg3, %9) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "tfl.yield"(%10) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf.resource>, %arg5: tensor<f32>):  // no predecessors
+    %9 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %10 = "tf.Cast"(%arg3) {Truncate = false, device = ""} : (tensor<i32>) -> tensor<f32>
+    %11 = "tf.AddV2"(%arg3, %9) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %12 = "tf.StackPushV2"(%arg4, %10) {device = "", swap_memory = false} : (tensor<!tf.resource>, tensor<f32>) -> tensor<f32>
+    %13 = "tf.AddV2"(%arg1, %9) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    "tfl.yield"(%13, %arg2, %11, %arg4, %12) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.resource>, tensor<f32>) -> ()
+  }) {is_stateless = false} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.resource>, tensor<f32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.resource>, tensor<f32>)
+  return %5#3 : tensor<!tf.resource>
+
+// CHECK: "tfl.while"
+// CHECK: (tensor<i32>, tensor<i32>, tensor<!tf.resource>) -> (tensor<i32>, tensor<i32>, tensor<!tf.resource>)
+}

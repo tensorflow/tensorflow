@@ -151,6 +151,16 @@ class ContextTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'Multiple devices'):
       context.context().get_total_memory_usage('GPU')
 
+  def testListFunctionNames(self):
+
+    @def_function.function
+    def f():
+      return constant_op.constant(1.)
+
+    concrete = f.get_concrete_function()
+    self.assertIn(concrete.name.decode(),
+                  context.context().list_function_names())
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

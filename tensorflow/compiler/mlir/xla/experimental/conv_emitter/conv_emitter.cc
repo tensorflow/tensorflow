@@ -340,11 +340,12 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
         builder.getF32Type());
   }();
 
+  auto accum_load_op =
+      builder.createOrFold<mlir::AffineLoadOp>(location, output_acc);
   builder.createOrFold<mlir::AffineStoreOp>(
       location,
       builder.create<mlir::AddFOp>(
-          location,
-          builder.createOrFold<mlir::AffineLoadOp>(location, output_acc),
+          location, accum_load_op,
           builder.create<mlir::MulFOp>(location, loaded_input, loaded_filter)),
       output_acc, llvm::ArrayRef<mlir::Value>());
 

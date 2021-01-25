@@ -72,7 +72,8 @@ class DataServiceDispatcherImpl {
                         GetOrCreateJobResponse* response);
   Status ReleaseJobClient(const ReleaseJobClientRequest* request,
                           ReleaseJobClientResponse* response);
-  Status GetTasks(const GetTasksRequest* request, GetTasksResponse* response);
+  Status ClientHeartbeat(const ClientHeartbeatRequest* request,
+                         ClientHeartbeatResponse* response);
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
 

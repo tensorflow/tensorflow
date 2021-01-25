@@ -19,7 +19,7 @@ py_library(
         "np_random.py",
         "np_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -110,7 +110,6 @@ cuda_py_test(
 cuda_py_test(
     name = "np_interop_test",
     srcs = ["np_interop_test.py"],
-    tags = ["no_rocm"],
     deps = [
         ":numpy",
         "//tensorflow:tensorflow_py",

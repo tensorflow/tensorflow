@@ -157,6 +157,7 @@ TfLiteRegistration* Register_DEPTH_TO_SPACE_REF();
 TfLiteRegistration* Register_SELECT_V2();
 TfLiteRegistration* Register_SEGMENT_SUM();
 TfLiteRegistration* Register_BROADCAST_TO();
+TfLiteRegistration* Register_CONV_3D();
 
 namespace {
 
@@ -268,7 +269,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   // of builtin op code shortage problem.
   AddBuiltin(BuiltinOperator_BROADCAST_TO, Register_BROADCAST_TO(),
              /* min_version = */ 2,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
              Register_LOCAL_RESPONSE_NORM_REF());
   AddBuiltin(BuiltinOperator_LSTM, Register_LSTM(), /* min_version */ 1,
@@ -442,7 +443,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_ADD_N, Register_ADD_N());
   AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_WHERE, Register_WHERE());
   AddBuiltin(BuiltinOperator_REVERSE_SEQUENCE, Register_REVERSE_SEQUENCE());
   AddBuiltin(BuiltinOperator_MATRIX_DIAG, Register_MATRIX_DIAG());
@@ -461,6 +462,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL_REF(),
              /* min_version = */ 1,
              /* max_version = */ 3);
+  AddBuiltin(BuiltinOperator_CONV_3D, Register_CONV_3D());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

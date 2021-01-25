@@ -143,7 +143,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
 // TFL Runtime type predicate.
 class TFL_RuntimeType<TypeConstraint t> {
   Pred tflRuntimeTypePredicate = t.predicate;
-  string tflRuntimeTypeDescription = t.description;
+  string tflRuntimeTypeDescription = t.summary;
 }
 
 class TFL_AnyTypeOf<list<Type> allowedRuntimeTypes, string description = "",
@@ -194,6 +194,10 @@ def TFL_StatefulTensor : TypeAlias<AnyTensor, "stateful tensor">;
 //===----------------------------------------------------------------------===//
 // Rank/Shape helpers.
 //===----------------------------------------------------------------------===//
+
+// Returns true of operand is none type.
+class TFL_OperandIsNoneType<int i> :
+  CPred<"$_op.getOperand(" # i # ").getType().isa<NoneType>()">;
 
 class TFL_OperandIsUnrankedPred<int n> :
   CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">;
@@ -256,6 +260,44 @@ class TFL_Operand0DOr1ElementTensor<int x> :
     Or<[TFL_OperandHasKnownRank<x, 0>,
         And<[TFL_OperandHasKnownRank<x, 1>, TFL_OperandDimEquals<x, 0, 1>]>]>>;
 
+// Return true if i-th dim of x-th operand is the same as j-th dim of y-th
+// operand or any of those operands does not have static shape.
+class TFL_OperandsHaveSameDims<int x, int y, int i, int j> :
+    Or<[TFL_OperandIsUnrankedPred<x>,
+        TFL_OperandIsUnrankedPred<y>,
+        CPred<"!$_op.getOperand(" # x #
+          ").getType().cast<ShapedType>().hasStaticShape()">,
+        CPred<"!$_op.getOperand(" # y #
+          ").getType().cast<ShapedType>().hasStaticShape()">,
+        CPred<"$_op.getOperand(" # x #
+          ").getType().cast<ShapedType>().getShape()[" # i # "] == "
+          "$_op.getOperand(" # y #
+          ").getType().cast<ShapedType>().getShape()[" # j # "]">]>;
+
+class TFL_OperandsHaveSameDimsTrait<int x, int y, int i, int j> :
+  PredOpTrait<"dim " # i # " of operand " # x # " equals to dim " # j #
+    " of operand " # y,
+    TFL_OperandsHaveSameDims<x, y, i, j>>;
+
+// Return true if number of elements of x-th operand is the same as j-th dim of
+// y-th operand or any of those operands does not have static shape.
+class TFL_NumElementsEqualsDim<int x, int y, int j> :
+  Or<[TFL_OperandIsUnrankedPred<x>,
+      TFL_OperandIsUnrankedPred<y>,
+      CPred<"!$_op.getOperand(" # x #
+        ").getType().cast<ShapedType>().hasStaticShape()">,
+      CPred<"!$_op.getOperand(" # y #
+        ").getType().cast<ShapedType>().hasStaticShape()">,
+      CPred<"$_op.getOperand(" # x #
+        ").getType().cast<ShapedType>().getNumElements() == "
+        "$_op.getOperand(" # y #
+        ").getType().cast<ShapedType>().getShape()[" # j # "]">]>;
+
+class TFL_NumElementsEqualsDimTrait<int x, int y, int j> :
+  PredOpTrait<"operand " # x # " has num of elements equals to dim " # j #
+    " of operand " # y,
+    TFL_NumElementsEqualsDim<x, y, j>>;
+
 // tf.uint8 and tf.quint8 are mapped to the same tflite types, so they are equal
 // when used as element types.
 class TFL_TFTypesWithSameBits<int i, int j, int num> :
@@ -275,7 +317,7 @@ class TFL_TFOperandTypesWithSameBits<int i, int j, int num> :
 class TFL_OperandIsNoneOrHasRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
     Or<[
-      CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
+      TFL_OperandIsNoneType<n>,
       TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() == " # m>]>>;
@@ -283,7 +325,7 @@ class TFL_OperandIsNoneOrHasRank<int n, int m> :
 class TFL_OperandIsNoneOrHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
     Or<[
-      CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
+      TFL_OperandIsNoneType<n>,
       TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
@@ -806,7 +848,7 @@ def DimensionMetadataAttr : StructAttr<"DimensionMetadataAttr", TFL_Dialect, [
                             StructFieldAttr<"dense_size", I32Attr>,
                             StructFieldAttr<"segments", I32ArrayAttr>,
                             StructFieldAttr<"indices", I32ArrayAttr>] > {
-  let description = "Dimension metadata.";
+  let summary = "Dimension metadata.";
 }
 
 def DimensionMetadataArrayAttr : TypedArrayAttrBase<DimensionMetadataAttr,
@@ -816,7 +858,7 @@ def SparsityParameterAttr : StructAttr<"SparsityParameterAttr", TFL_Dialect, [
                             StructFieldAttr<"traversal_order", I32ArrayAttr>,
                             StructFieldAttr<"block_map", I32ArrayAttr>,
                             StructFieldAttr<"dim_metadata", DimensionMetadataArrayAttr>]> {
-  let description = "Sparsity parameter.";
+  let summary = "Sparsity parameter.";
   let storageType = [{ TFL::SparsityParameterAttr }];
 }
 
@@ -1068,12 +1110,12 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I64, I32, UI8, TFL_Str]>:$params,
+    TFL_TensorOf<[F32, I8, I16, I64, I32, UI8, TFL_Str]>:$params,
     TFL_I32OrI64Tensor:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, UI8, TFL_Str]>:$output
+    TFL_TensorOf<[F32, I8, I16, I64, I32, UI8, TFL_Str]>:$output
   );
 }
 
@@ -1604,9 +1646,9 @@ def TFL_FillOp: TFL_Op<"fill", [
   }];
 
   let arguments = (ins TFL_I32OrI64Tensor:$dims,
-                   TFL_TensorOf<[F32, I32, I64, I1, TFL_Str]>:$input);
+                   TFL_TensorOf<[F32, I32, I64, I1, QI8, TFL_Str]>:$input);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, TFL_Str]>:$result);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, QI8, TFL_Str]>:$result);
 
   let hasOptions = 0;
 }
@@ -3691,8 +3733,12 @@ def LstmMandatoryInputsConstraint : PredOpTrait<
 
 def LstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
-  And<[TFL_TCopVTEtAreSameAt<9, 10, 16>,
-       TFL_TCopVTEtAreSameAt<9, 11, 16>]>>;
+  // Ignore input 9 (cell_to_input_weights) for LSTM with CIFG.
+  And<[
+    TFL_TCopVTEtAreSameAt<10, 11, 16>,
+    Or<[TFL_TCopVTEtAreSameAt<9, 10, 16>,
+        And<[TypeIsPred<"input_to_input_weights", NoneType>,
+             TypeIsPred<"cell_to_input_weights", NoneType>]>]>]>>;
 
 def LstmProjectionWeightBiasConstraint : PredOpTrait<
   "either projection weight must be specified or both projection weight and "
@@ -3702,13 +3748,25 @@ def LstmProjectionWeightBiasConstraint : PredOpTrait<
            TypeIsPred<"projection_bias", NoneType>]>,
       Neg<TypeIsPred<"projection_weights", NoneType>>]>>;
 
-// TODO(b/137798843): Need to add two additional constraints for both LSTM and
+def LstmCifgInputConstraint : PredOpTrait<
+  "the cifg inputs should all be specified or none",
+   // If LSTM has combined input/forget gate, input 1, 5, 9, 12, 20 are all none
+   // or 1, 5, 12 should not be none. Inputs 9 and 20 depend on LSTM's variants.
+   Or<[
+     And<[TypeIsPred<"input_to_input_weights", NoneType>,
+          TypeIsPred<"recurrent_to_input_weights", NoneType>,
+          TypeIsPred<"cell_to_input_weights", NoneType>,
+          TypeIsPred<"input_gate_bias", NoneType>,
+          TypeIsPred<"input_layer_norm_coefficients", NoneType>]>,
+     Neg<Or<[
+       TypeIsPred<"input_to_input_weights", NoneType>,
+       TypeIsPred<"recurrent_to_input_weights", NoneType>,
+       TypeIsPred<"input_gate_bias", NoneType>]>>]>>;
+
+
+// TODO(b/137798843): Need to add an additional constraint for both LSTM and
 // UnidirectionalSequenceLstm
-// For coupling of input and forget gates (cifg): if cifg is true,
-// tensor {1, 5, 9, 12, 20} are null; if cifg is
-// false, tensors {1, 5, 12} are not null; tensor {9} is not null if
-// additionally peephole = true; tensor {20} is not null if additionally layer
-// norm = true. For layer norm: if layer norm is false, tensor {20, 21, 22, 23}
+// For layer norm: if layer norm is false, tensor {20, 21, 22, 23}
 // are null; if layer norm is true, tensors {21, 22, 23} are not null; tensor
 // {20} is not null if additionally cifg = false.
 
@@ -3759,6 +3817,7 @@ def TFL_LSTMOp :
           [LstmMandatoryInputsConstraint,
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
+           LstmCifgInputConstraint,
            LstmResultConstraint,
            TFL_OperandHasRank<2, 2>,           // input_to_forget_weights
            TFL_OperandHasRank<3, 2>,           // input_to_cell_weights
@@ -3883,6 +3942,7 @@ def TFL_UnidirectionalSequenceLSTMOp :
           [LstmMandatoryInputsConstraint,
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
+           LstmCifgInputConstraint,
            LstmResultConstraint,
            TFL_OperandHasRankAtLeast<0, 2>,    // input
            TFL_OperandIsNoneOrHasRank<1, 2>,   // input_to_input_weights
@@ -4285,7 +4345,8 @@ def TFL_SVDFOp :
   TFL_Op<"svdf", [
     PredOpTrait<"the input and result tensor elemental types must be same",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_StatefulOp]> {
+    TFL_StatefulOp,
+    AccumulatorUniformScale<3, 2, 4>]> {
 
   let summary = "Single value decomposition filter operator";
 
@@ -4303,10 +4364,10 @@ def TFL_SVDFOp :
     TFL_TensorOf<[F32, QI8, QUI8]>:$feature_weights,
 
     // Time weights
-    TFL_TensorOf<[F32, QI8]>:$time_weights,
+    TFL_TensorOf<[F32, QI16]>:$time_weights,
 
     // Bias
-    TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
+    TFL_TensorOfOrNone<[F32, QI32]>:$input_gate_bias,
 
     // Activation state.
     TFL_StatefulTensor:$activation_state,
@@ -4532,6 +4593,54 @@ the dimension is padded with zeros.
   let results = (outs
     TFL_Complex64Tensor:$output
   );
+}
+
+def TFL_Conv3DOp : TFL_Op<"conv_3d", [
+    NoSideEffect,
+    AccumulatorUniformScale<2, 0, 1>,
+    TFL_OperandHasRank<0, 5>,
+    TFL_OperandHasRank<1, 5>,
+    // Channel dimension in input and filter should match.
+    TFL_OperandsHaveSameDimsTrait<0, 1, 4, 3>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    PredOpTrait<"bias and output must have same element type",
+      Or<[
+        TFL_OperandIsNoneType<2>,
+        TFL_TCresVTEtIsSameAsOp<0, 2>]>>,
+    PredOpTrait<"bias must has num of elements equals to 4th dim of filter",
+      Or<[
+        TFL_OperandIsNoneType<2>,
+        TFL_NumElementsEqualsDim<2, 1, 4>]>>]> {
+  let summary = "Convolution 3D operator";
+
+  let description = [{
+    Performs convolution operation on 3D inputs.
+    Inputs:
+      `inputs[0]`: required: the input activation tensor
+      `inputs[1]`: required: the filter weight tensor
+      `inputs[2]`: optional: the bias tensor
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32]>:$input,
+    TFL_TensorOf<[F32]>:$filter,
+    TFL_TensorOfOrNone<[F32]>:$bias,
+    I32Attr:$dilation_d_factor,
+    I32Attr:$dilation_h_factor,
+    I32Attr:$dilation_w_factor,
+    TFL_AFAttr:$fused_activation_function,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_d,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w
+  );
+
+  let results = (outs TFL_TensorOf<[F32]>:$output);
+
+  let hasOptions = 1;
+
+  let customOption = "Conv3DOptions";
 }
 
 #endif // TFL_OPS

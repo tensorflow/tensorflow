@@ -2982,9 +2982,10 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   // Same number of _Send and _Recv.
   EXPECT_EQ(op_count.at(kSend), op_count.at(kRecv));
 
-  // Expect 4 Send and Recvs each: port 0, 1, and, 2, and control dependency.
-  EXPECT_EQ(op_count.at(kRecv), 4);
-  EXPECT_EQ(op_count.at(kSend), 4);
+  // Expect 3 Send and Recvs each: port 0, 1, and, 2.
+  // Control dependency bypasses the channel.
+  EXPECT_EQ(op_count.at(kRecv), 3);
+  EXPECT_EQ(op_count.at(kSend), 3);
 
   // Helper lambda for extracting output Tensor size.
   auto get_output_size = [this, ops_executed](const string& name) -> int64 {
@@ -3006,9 +3007,6 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   EXPECT_EQ(get_output_size(send_op_names[1]), 4 * depth_in_);
   EXPECT_EQ(get_output_size(recv_op_names[2]), 4 * depth_in_);
   EXPECT_EQ(get_output_size(send_op_names[2]), 4 * depth_in_);
-  // Control dependency size is 4B.
-  EXPECT_EQ(get_output_size(recv_op_names[-1]), 4);
-  EXPECT_EQ(get_output_size(send_op_names[-1]), 4);
 }
 
 TEST_F(VirtualSchedulerTest, GraphWithSendRecv) {

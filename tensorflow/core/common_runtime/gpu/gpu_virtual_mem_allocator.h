@@ -68,14 +68,15 @@ class GpuVirtualMemAllocator : public SubAllocator {
   // this free function should never be invoked.
   void Free(void* ptr, size_t num_bytes) override;
 
+  bool SupportsCoalescing() const override { return true; }
+
  private:
-  GpuVirtualMemAllocator(const std::vector<Visitor>& alloc_visitors,
-                         const std::vector<Visitor>& free_visitors,
-                         ::stream_executor::gpu::GpuContext& gpu_context,
-                         PlatformGpuId gpu_id,
-                         std::vector<int> access_gpu_ordinals,
-                         stream_executor::gpu::GpuDriver::VmemSpan vmem,
-                         size_t granularity);
+  GpuVirtualMemAllocator(
+      const std::vector<Visitor>& alloc_visitors,
+      const std::vector<Visitor>& free_visitors,
+      stream_executor::gpu::GpuContext& gpu_context, PlatformGpuId gpu_id,
+      std::vector<stream_executor::gpu::GpuDeviceHandle> access_device_handles,
+      stream_executor::gpu::GpuDriver::VmemSpan vmem, size_t granularity);
 
   stream_executor::gpu::GpuContext& gpu_context_;
   PlatformGpuId gpu_id_;
@@ -84,7 +85,7 @@ class GpuVirtualMemAllocator : public SubAllocator {
   // all gpus that may want to read the memory. This list also includes the
   // above gpu_id_ to facilitate the invocation of the GpuDriver::MapMemory
   // function.
-  const std::vector<int> access_gpu_ordinals_;
+  const std::vector<stream_executor::gpu::GpuDeviceHandle> access_gpu_handles_;
 
   // The virtual memory span held by this allocator.
   stream_executor::gpu::GpuDriver::VmemSpan vmem_;

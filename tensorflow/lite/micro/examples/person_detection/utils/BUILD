@@ -1,6 +1,9 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers Vision Example Utils.
-licenses(["notice"])  # Apache 2.0
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_binary(
     name = "raw_to_bitmap",
@@ -13,7 +16,7 @@ py_binary(
 py_library(
     name = "raw_to_bitmap_lib",
     srcs = ["raw_to_bitmap.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
     ],

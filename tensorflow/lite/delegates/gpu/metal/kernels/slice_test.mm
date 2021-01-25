@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
-
 #import <XCTest/XCTest.h>
 
 #include <string>
@@ -27,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice_test_util.h"
 
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
@@ -40,7 +39,10 @@ using ::tflite::gpu::metal::SingleOpModel;
 @interface SliceTest : XCTestCase
 @end
 
-@implementation SliceTest
+@implementation SliceTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
+}
+
 - (void)setUp {
   [super setUp];
 }
@@ -186,6 +188,11 @@ using ::tflite::gpu::metal::SingleOpModel;
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({2, 4}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testStridedSlice {
+  auto status = StridedSliceTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

@@ -80,6 +80,9 @@ TensorStorageType SelectBestStorageType(const GpuInfo& gpu_info,
                                         const TensorStorageType& desired,
                                         const DataType& data_type,
                                         const Layout& layout) {
+  if (gpu_info.IsApiMetal()) {
+    return TensorStorageType::BUFFER;
+  }
   if (CanCreateTensorWithShape(gpu_info, shape,
                                TensorDescriptor{data_type, desired, layout})) {
     return desired;

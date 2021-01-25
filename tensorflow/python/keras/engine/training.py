@@ -45,7 +45,6 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as callbacks_module
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import compile_utils
@@ -2160,16 +2159,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         session = None
       else:
         session = backend.get_session()
-      optimizer = getattr(self, 'optimizer', None)
-      if (optimizer
-          and not isinstance(optimizer, trackable.Trackable)):
-        logging.warning(
-            ('This model was compiled with a Keras optimizer (%s) but is being '
-             'saved in TensorFlow format with `save_weights`. The model\'s '
-             'weights will be saved, but unlike with TensorFlow optimizers in '
-             'the TensorFlow format the optimizer\'s state will not be '
-             'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
-            % (optimizer,))
       self._trackable_saver.save(filepath, session=session, options=options)
       # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
       checkpoint_management.update_checkpoint_state_internal(
@@ -2231,7 +2220,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         ValueError: If `skip_mismatch` is set to `True` when `by_name` is
           `False`.
     """
-    if dist_utils.is_tpu_strategy(self._distribution_strategy):
+    if backend.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
           (not saving_utils.is_hdf5_filepath(filepath))):
         raise ValueError('Load weights is not yet supported with TPUStrategy '
@@ -2753,7 +2742,7 @@ def concat(tensors, axis=0):
 
 
 def _is_tpu_multi_host(strategy):
-  return (dist_utils.is_tpu_strategy(strategy) and
+  return (backend.is_tpu_strategy(strategy) and
           strategy.extended.num_hosts > 1)
 
 

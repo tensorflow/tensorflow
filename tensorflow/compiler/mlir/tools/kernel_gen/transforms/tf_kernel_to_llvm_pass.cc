@@ -16,9 +16,11 @@ limitations under the License.
 #include <stdexcept>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
@@ -63,15 +65,15 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
 
   MLIRContext *context_ = &this->getTypeConverter()->getContext();
 
-  LLVM::LLVMType llvm_void_type_ = LLVM::LLVMVoidType::get(context_);
-  LLVM::LLVMType llvm_pointer_type_ =
-      LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(context_, 8));
-  LLVM::LLVMType llvm_pointer_pointer_type_ =
+  Type llvm_void_type_ = LLVM::LLVMVoidType::get(context_);
+  Type llvm_pointer_type_ =
+      LLVM::LLVMPointerType::get(IntegerType::get(context_, 8));
+  Type llvm_pointer_pointer_type_ =
       LLVM::LLVMPointerType::get(llvm_pointer_type_);
-  LLVM::LLVMType llvm_int8_type_ = LLVM::LLVMIntegerType::get(context_, 8);
-  LLVM::LLVMType llvm_int32_type_ = LLVM::LLVMIntegerType::get(context_, 32);
-  LLVM::LLVMType llvm_int64_type_ = LLVM::LLVMIntegerType::get(context_, 64);
-  LLVM::LLVMType llvm_intptr_type_ = LLVM::LLVMIntegerType::get(
+  Type llvm_int8_type_ = IntegerType::get(context_, 8);
+  Type llvm_int32_type_ = IntegerType::get(context_, 32);
+  Type llvm_int64_type_ = IntegerType::get(context_, 64);
+  Type llvm_intptr_type_ = IntegerType::get(
       context_, this->getTypeConverter()->getPointerBitwidth(0));
 
   llvm::SmallString<32> gpu_binary_annotation_;
@@ -99,10 +101,9 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
       loc, launch_op.getOperands().take_back(num_kernel_operands),
       operands.take_back(num_kernel_operands), builder);
   auto num_arguments = arguments.size();
-  SmallVector<LLVM::LLVMType, 4> argument_types;
+  SmallVector<Type, 4> argument_types;
   argument_types.reserve(num_arguments);
-  for (auto argument : arguments)
-    argument_types.push_back(argument.getType().cast<LLVM::LLVMType>());
+  for (auto argument : arguments) argument_types.push_back(argument.getType());
   auto struct_type = LLVM::LLVMStructType::getNewIdentified(
       context_, StringRef(), argument_types);
   auto one = builder.create<LLVM::ConstantOp>(loc, llvm_int32_type_,
@@ -246,7 +247,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     MLIRContext *ctx = m.getContext();
     LLVMTypeConverter type_converter(ctx);
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
-      return LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(ctx, 8));
+      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });
 
     // Populate patterns.
@@ -254,6 +255,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
 
     populateStdExpandOpsPatterns(ctx, patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
+    populateComplexToLLVMConversionPatterns(type_converter, patterns);
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
                                                               &patterns);
     patterns.insert<ConvertLaunchFuncOpToTfRuntimeCallPattern>(
@@ -261,8 +263,9 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     // Set target.
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addIllegalDialect<gpu::GPUDialect, StandardOpsDialect,
-                             tf_framework::TFFrameworkDialect>();
+    target
+        .addIllegalDialect<StandardOpsDialect, complex::ComplexDialect,
+                           gpu::GPUDialect, tf_framework::TFFrameworkDialect>();
     target.addIllegalOp<LLVM::DialectCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, ModuleTerminatorOp, gpu::GPUModuleOp>();

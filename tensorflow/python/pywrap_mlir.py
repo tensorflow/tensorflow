@@ -20,19 +20,22 @@ from __future__ import print_function
 
 # pylint: disable=invalid-import-order, g-bad-import-order, wildcard-import, unused-import, undefined-variable
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.eager import context
 from tensorflow.python._pywrap_mlir import *
 
 
-def import_graphdef(graphdef, pass_pipeline):
+def import_graphdef(graphdef, pass_pipeline, show_debug_info):
   return ImportGraphDef(
-      str(graphdef).encode('utf-8'), pass_pipeline.encode('utf-8'))
+      str(graphdef).encode('utf-8'), pass_pipeline.encode('utf-8'),
+      show_debug_info)
 
 
-def import_function(concrete_function, pass_pipeline):
-  return ImportFunction(
-      str(concrete_function.function_def).encode('utf-8'),
-      str(concrete_function.graph.as_graph_def().library).encode('utf-8'),
-      pass_pipeline.encode('utf-8'))
+def import_function(concrete_function, pass_pipeline, show_debug_info):
+  ctxt = context.context()
+  ctxt.ensure_initialized()
+  return ImportFunction(ctxt._handle,
+                        str(concrete_function.function_def).encode('utf-8'),
+                        pass_pipeline.encode('utf-8'), show_debug_info)
 
 
 def experimental_convert_saved_model_to_mlir(saved_model_path, exported_names,

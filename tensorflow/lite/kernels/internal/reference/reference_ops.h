@@ -33,21 +33,27 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
+#include "tensorflow/lite/kernels/internal/reference/add_n.h"
 #include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
 #include "tensorflow/lite/kernels/internal/reference/batch_to_space_nd.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
+#include "tensorflow/lite/kernels/internal/reference/cast.h"
 #include "tensorflow/lite/kernels/internal/reference/ceil.h"
 #include "tensorflow/lite/kernels/internal/reference/comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/concatenation.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
+#include "tensorflow/lite/kernels/internal/reference/depth_to_space.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/div.h"
 #include "tensorflow/lite/kernels/internal/reference/exp.h"
 #include "tensorflow/lite/kernels/internal/reference/fill.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
+#include "tensorflow/lite/kernels/internal/reference/floor_div.h"
+#include "tensorflow/lite/kernels/internal/reference/floor_mod.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/hard_swish.h"
 #include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
+#include "tensorflow/lite/kernels/internal/reference/leaky_relu.h"
 #include "tensorflow/lite/kernels/internal/reference/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
 #include "tensorflow/lite/kernels/internal/reference/mul.h"
@@ -75,59 +81,6 @@ limitations under the License.
 namespace tflite {
 
 namespace reference_ops {
-
-template <typename T>
-inline void DepthToSpace(const tflite::DepthToSpaceParams& op_params,
-                         const RuntimeShape& unextended_input_shape,
-                         const T* input_data,
-                         const RuntimeShape& unextended_output_shape,
-                         T* output_data) {
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  const int input_depth = input_shape.Dims(3);
-  const int input_width = input_shape.Dims(2);
-  const int input_height = input_shape.Dims(1);
-  const int input_batch = input_shape.Dims(0);
-
-  const int output_depth = output_shape.Dims(3);
-  const int output_width = output_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_batch = output_shape.Dims(0);
-
-  const int32 block_size = op_params.block_size;
-
-  TFLITE_DCHECK_EQ(input_width * block_size, output_width);
-  TFLITE_DCHECK_EQ(input_height * block_size, output_height);
-  TFLITE_DCHECK_EQ(input_depth, output_depth * block_size * block_size);
-  TFLITE_DCHECK_EQ(input_batch, output_batch);
-
-  for (int out_b = 0; out_b < output_batch; ++out_b) {
-    for (int out_h = 0; out_h < output_height; ++out_h) {
-      for (int out_w = 0; out_w < output_width; ++out_w) {
-        for (int out_d = 0; out_d < output_depth; ++out_d) {
-          const int in_d =
-              out_d + ((out_h % block_size) * block_size + out_w % block_size) *
-                          output_depth;
-
-          const int in_w = out_w / block_size;
-          const int in_h = out_h / block_size;
-          const int in_b = out_b;
-
-          const int input_index = Offset(input_shape, in_b, in_h, in_w, in_d);
-          const int output_index =
-              Offset(output_shape, out_b, out_h, out_w, out_d);
-
-          output_data[output_index] = input_data[input_index];
-        }
-      }
-    }
-  }
-}
 
 inline void Elu(const RuntimeShape& input_shape, const float* input_data,
                 const RuntimeShape& output_shape, float* output_data) {
@@ -209,64 +162,6 @@ inline void ReluX(const tflite::ActivationParams& params,
                       : val < min_value ? min_value
                                         : val;
     output_data[i] = clamped;
-  }
-}
-
-inline void LeakyRelu(const tflite::LeakyReluParams& params,
-                      const RuntimeShape& input_shape, const float* input_data,
-                      const RuntimeShape& output_shape, float* output_data) {
-  ruy::profiler::ScopeLabel label("LeakyRelu (not fused)");
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    // Note that alpha might be > 1 or < 0, so we don't use std::max here.
-    output_data[i] = val > 0 ? val : val * params.alpha;
-  }
-}
-
-template <typename T>
-inline void QuantizeLeakyRelu(const LeakyReluParams& params,
-                              const RuntimeShape& input_shape,
-                              const T* input_data,
-                              const RuntimeShape& output_shape,
-                              T* output_data) {
-  ruy::profiler::ScopeLabel label("Quantized LeakyRelu (not fused)");
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  static const int32 quantized_min = std::numeric_limits<T>::min();
-  static const int32 quantized_max = std::numeric_limits<T>::max();
-  for (int i = 0; i < flat_size; ++i) {
-    const int32 input_value = input_data[i] - params.input_offset;
-    int32 unclamped_output;
-    if (input_value >= 0) {
-      unclamped_output = params.output_offset +
-                         MultiplyByQuantizedMultiplier(
-                             input_value, params.output_multiplier_identity,
-                             params.output_shift_identity);
-    } else {
-      unclamped_output = params.output_offset +
-                         MultiplyByQuantizedMultiplier(
-                             input_value, params.output_multiplier_alpha,
-                             params.output_shift_alpha);
-    }
-    const T clamped_output =
-        std::min(quantized_max, std::max(quantized_min, unclamped_output));
-    output_data[i] = static_cast<T>(clamped_output);
-  }
-}
-
-// T is expected to be either float or int.
-template <typename T>
-inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
-                 T* const* input_data, T* output_data) {
-  // All inputs and output should have the same shape, this is checked during
-  // Prepare stage.
-  const size_t size = input_shape.FlatSize();
-  for (int i = 0; i < size; ++i) {
-    T x = 0;
-    for (int j = 0; j < num_inputs; ++j) {
-      x += input_data[j][i];
-    }
-    output_data[i] = x;
   }
 }
 
@@ -1163,33 +1058,6 @@ inline void FakeQuant(const tflite::FakeQuantParams& op_params,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   FakeQuantizeArray(nudged_scale, nudged_min, nudged_max, input_data,
                     output_data, flat_size);
-}
-
-template <typename SrcT, typename DstT>
-inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
-                 const RuntimeShape& output_shape, DstT* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    int offset = i;
-    output_data[offset] = static_cast<DstT>(input_data[offset]);
-  }
-}
-
-template <typename T>
-T FloorMod(T input1, T input2) {
-  struct FloatMod {
-    float operator()(const float lhs, const float rhs) const {
-      return std::fmod(lhs, rhs);
-    }
-  };
-  using ModFunc = typename std::conditional<std::is_integral<T>::value,
-                                            std::modulus<T>, FloatMod>::type;
-  ModFunc mod_func;
-  T trunc_mod = mod_func(input1, input2);
-  return (trunc_mod != 0) && ((input2 < 0) != (trunc_mod < 0))
-             ? (trunc_mod + input2)
-             : trunc_mod;
 }
 
 template <typename T, typename CoordsT = int32>

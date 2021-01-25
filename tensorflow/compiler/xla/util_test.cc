@@ -74,6 +74,7 @@ TEST(UtilTest, CommonFactors) {
     absl::InlinedVector<std::pair<int64, int64>, 8> expected;
   } test_cases[] = {
       {/*.a =*/{0}, /*.b =*/{0}, /*.expected =*/{{0, 0}, {1, 1}}},
+      {/*.a =*/{0, 1}, /*.b =*/{0, 1}, /*.expected =*/{{0, 0}, {1, 1}, {2, 2}}},
       {/*.a =*/{}, /*.b =*/{}, /*.expected =*/{{0, 0}}},
       {/*.a =*/{2, 5, 1, 3},
        /*.b =*/{1, 10, 3, 1},

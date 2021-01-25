@@ -508,8 +508,16 @@ void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
                                              int shift, int16_t* result);
 
 // Add another vector for each batch in the batch vector.
-void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                          float* batch_vector);
+template <typename T>
+void VectorBatchVectorAdd(const T* vector, int v_size, int n_batch,
+                          T* batch_vector) {
+  for (int b = 0; b < n_batch; b++) {
+    for (int i = 0; i < v_size; ++i) {
+      batch_vector[i] += vector[i];
+    }
+    batch_vector += v_size;
+  }
+}
 
 // Batch vector initialization with another vector.
 template <typename T>
@@ -622,8 +630,9 @@ void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size);
 
 // Layer norm for each batch.
-void MeanStddevNormalization(const float* input_vector, float* output_vector,
-                             int v_size, int n_batch);
+void MeanStddevNormalization(const float* __restrict__ input_vector,
+                             float* __restrict__ output_vector, int v_size,
+                             int n_batch);
 
 // Saturate Add with rescale on both inputs.
 void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,

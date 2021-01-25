@@ -661,6 +661,12 @@ message OpSharding {
   // dimensions of tile_assignment(), but replicated across devices along the
   // last dimension. (Experimental)
   bool replicate_on_last_tile_dim = 6;
+  // This field is used to track the source of this sharding, usually derived
+  // from instructions. Multple metadata may be populated if sharding is
+  // combined with other shardings.  Metadata are to not be populated when
+  // type == TUPLE and instead metadata should be set on individual tuple
+  // elements.
+  repeated OpMetadata metadata = 7;
 }
 
 // Describes the replica groups in a cross replica op (e.g., all-reduce and

@@ -96,8 +96,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
-               bool async, const bool lazy_copy_function_remote_inputs,
-               const DeviceMgr* device_mgr, bool device_mgr_owned,
+               bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
                Rendezvous* rendezvous,
                DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
@@ -190,8 +189,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status SelectDevice(DeviceNameUtils::ParsedName preferred,
                       const NodeDef& ndef, Device** out) const;
 
-  bool LazyCopyFunctionRemoteInputs() const;
-
   bool FindFunctionByName(const string& name) const;
 
   Status FindFunctionOpData(const string& name,
@@ -228,6 +225,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                         const StackTracesMap& stack_traces = {});
 
   const FunctionDef* GetFunctionDef(const string& function_name);
+
+  std::vector<string> ListFunctionNames() override;
 
   Status RemoveFunction(const string& func) override;
 

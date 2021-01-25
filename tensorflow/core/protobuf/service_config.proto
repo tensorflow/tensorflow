@@ -40,4 +40,6 @@ message WorkerConfig {
   // How long to retry requests to the dispatcher before giving up and reporting
   // an error.
   int64 dispatcher_timeout_ms = 6;
+  // The protocol for the worker to use when transferring data to clients.
+  string data_transfer_protocol = 7;
 }

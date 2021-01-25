@@ -32,7 +32,7 @@ import org.tensorflow.lite.nnapi.NnApiDelegate;
  * explicitly freed by invoking the {@link #close()} method when the {@code
  * NativeInterpreterWrapper} object is no longer needed.
  *
- * Note: This class is not thread safe.
+ * <p>Note: This class is not thread safe.
  */
 final class NativeInterpreterWrapper implements AutoCloseable {
 
@@ -294,7 +294,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     }
   }
 
-  /** Initializes mapping from tensor index to input/output index. **/
+  /** Initializes mapping from tensor index to input/output index. * */
   private void initTensorIndexesMaps() {
     if (tensorToInputsIndexes != null) {
       return;
@@ -366,6 +366,25 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return inputTensor;
   }
 
+  /**
+   * Gets the input {@link Tensor} given the tensor name and method in the signature.
+   *
+   * @throws IllegalArgumentException if the input name is invalid.
+   */
+  Tensor getInputTensor(String inputName, String methodName) {
+    if (inputName == null) {
+      throw new IllegalArgumentException("Invalid input tensor name provided (null)");
+    }
+    initTensorIndexesMaps();
+    int tensorIndex = getInputTensorIndexFromSignature(interpreterHandle, inputName, methodName);
+    if (!tensorToInputsIndexes.containsKey(tensorIndex)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Invalid input tensor name (%s) for signature (%s).", inputName, methodName));
+    }
+    return getInputTensor(tensorToInputsIndexes.get(tensorIndex));
+  }
+
   /** Gets the list of SignatureDefs available in the model, if any. */
   public String[] getSignatureDefNames() {
     return getSignatureDefNames(interpreterHandle);
@@ -408,6 +427,25 @@ final class NativeInterpreterWrapper implements AutoCloseable {
               Tensor.fromIndex(interpreterHandle, getOutputTensorIndex(interpreterHandle, index));
     }
     return outputTensor;
+  }
+
+  /**
+   * Gets the output {@link Tensor} given the tensor name and method in the signature.
+   *
+   * @throws IllegalArgumentException if the output name is invalid.
+   */
+  Tensor getOutputTensor(String outputName, String methodName) {
+    if (outputName == null) {
+      throw new IllegalArgumentException("Invalid output tensor name provided (null)");
+    }
+    initTensorIndexesMaps();
+    int tensorIndex = getOutputTensorIndexFromSignature(interpreterHandle, outputName, methodName);
+    if (!tensorToOutputsIndexes.containsKey(tensorIndex)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Invalid output tensor name (%s) for signature (%s).", outputName, methodName));
+    }
+    return getOutputTensor(tensorToOutputsIndexes.get(tensorIndex));
   }
 
   /** Gets the number of ops in the execution plan. */

@@ -85,7 +85,7 @@ def main():
   parser.add_argument(
       "--enable_mlir_converter",
       action="store_true",
-      help=("Boolean indiciating whether to enable MLIR-based conversion "
+      help=("Boolean indicating whether to enable MLIR-based conversion "
             "instead of TOCO conversion. (default False)"))
 
   FLAGS, unparsed = parser.parse_known_args()

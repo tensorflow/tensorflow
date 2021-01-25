@@ -39,7 +39,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   explicit EagerOperation(tensorflow::EagerContext* ctx)
       : ImmediateExecutionOperation(kEager), ctx_(*ctx) {}
   ~EagerOperation() override {
-    for (TensorHandle* h : inputs_) {
+    for (ImmediateExecutionTensorHandle* h : inputs_) {
       h->Unref();
     }
   }
@@ -69,8 +69,9 @@ class EagerOperation : public ImmediateExecutionOperation {
 
   void SetDevice(VariantDevice device) {
     device_ = device;
-    device_name_ =
-        device == kVariantDeviceNull ? "" : VariantDeviceName(device);
+    device_name_ = absl::visit(
+        [](auto* device) { return device == nullptr ? "" : device->name(); },
+        device);
     DeviceNameUtils::ParseFullName(device_name_, &device_parsed_name_);
     // TODO(b/154133594): Due to intricacies of external logic, we can not
     // set this do device_name_ as it would be natural, because we need the
@@ -141,10 +142,18 @@ class EagerOperation : public ImmediateExecutionOperation {
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }
 
-  const absl::InlinedVector<TensorHandle*, 4>& Inputs() const {
+  // TensorHandleInputs and MutableTensorHandleInputs first check that all
+  // inputs are TensorHandles, i.e. that there are no custom device inputs. They
+  // return a bad status otherwise.
+  Status TensorHandleInputs(
+      const absl::InlinedVector<TensorHandle*, 4>** inputs) const;
+  Status MutableTensorHandleInputs(
+      absl::InlinedVector<TensorHandle*, 4>** inputs);
+
+  const absl::InlinedVector<ImmediateExecutionTensorHandle*, 4>& Inputs()
+      const {
     return inputs_;
   }
-  absl::InlinedVector<TensorHandle*, 4>* MutableInputs() { return &inputs_; }
 
   void UpdateInput(int i, TensorHandle* h);
 
@@ -180,7 +189,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   }
 
  private:
-  void AddTensorHandle(TensorHandle* h);
+  void AddTensorHandle(ImmediateExecutionTensorHandle* h);
 
   const tensorflow::OpDef* GetOpDef(Status* status);
 
@@ -190,7 +199,7 @@ class EagerOperation : public ImmediateExecutionOperation {
     inference_attrs_.clear_no_resize();
   }
 
-  Status MaybeInferSingleInputAttrs(TensorHandle* handle);
+  Status MaybeInferSingleInputAttrs(ImmediateExecutionTensorHandle* handle);
   Status InferInputListAttrs(int num_inputs);
 
   void InferSingleTypeInputListAttrs(const OpDef::ArgDef& input_def,
@@ -198,11 +207,21 @@ class EagerOperation : public ImmediateExecutionOperation {
   void InferMixedTypeInputListAttrs(const OpDef::ArgDef& input_def,
                                     const std::vector<DataType>& dtypes);
 
+  // Replaces input tensors placed on custom devices with physical device
+  // equivalents. Used if an op is placed on a physical device but may have
+  // custom device inputs.
+  Status CopyOffCustomDeviceInputs();
+
   tensorflow::EagerContext& ctx_;
   const char* op_name_ = nullptr;
   AttrBuilder attrs_;
   const AttrTypeMap* attr_types_;
-  absl::InlinedVector<TensorHandle*, 4> inputs_;
+
+  // Toggled to indicate whether all inputs are known to be TensorHandles and
+  // not another type (e.g. custom device tensor handles). Explicitly set to
+  // false when custom device TensorHandles are added.
+  bool inputs_are_tensor_handles_ = true;
+  absl::InlinedVector<ImmediateExecutionTensorHandle*, 4> inputs_;
 
   // The last device name given to SetDeviceName.
   // This is used to avoid having to re-process the same device in repeated
@@ -240,8 +259,8 @@ class EagerOperation : public ImmediateExecutionOperation {
 };
 
 inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
-  TensorHandle** slot = &inputs_[i];
-  TensorHandle* existing = *slot;
+  ImmediateExecutionTensorHandle** slot = &inputs_[i];
+  ImmediateExecutionTensorHandle* existing = *slot;
   if (existing != h) {
     h->Ref();
     existing->Unref();

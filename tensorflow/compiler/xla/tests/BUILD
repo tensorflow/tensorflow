@@ -1116,7 +1116,6 @@ xla_test(
     srcs = ["convolution_test.cc"],
     shard_count = 50,
     tags = [
-        "no_rocm",
         "optonly",
         # Timed out on 2020-07-18
         "nozapfhahn",
@@ -1160,7 +1159,6 @@ xla_test(
     ],
     shard_count = 50,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1213,9 +1211,6 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-    tags = [
-        "no_rocm",
-    ],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1229,9 +1224,6 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-    tags = [
-        "no_rocm",
-    ],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1990,19 +1982,21 @@ xla_test(
     name = "collective_ops_test",
     srcs = ["collective_ops_test.cc"],
     args = ["--xla_force_host_platform_device_count=4"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    tags = [
+    backend_tags = {
         # This test is tagged "manual" because it requires multiple GPUs, and
         # Forge only supports single-GPU tests.  Guitar skips "manual" tests
         # unless they're also tagged "guitar".
-        "guitar",
-        "manual",
-        "multi_gpu",
-        "no_oss",
-        "notap",
+        "gpu": [
+            "guitar",
+            "manual",
+            "multi_gpu",
+            "no_oss",
+            "notap",
+        ],
+    },
+    backends = [
+        "gpu",
+        "cpu",
     ],
     deps = [
         ":client_library_test_base",
@@ -2599,9 +2593,12 @@ xla_test(
     ],
     deps = [
         ":client_library_test_base",
+        ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

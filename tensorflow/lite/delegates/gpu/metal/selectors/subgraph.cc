@@ -25,7 +25,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::unique_ptr<ComputeTaskDescriptor>* InitSingleOpSubgraph(
+GPUOperationWithRefs* InitSingleOpSubgraph(
     const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
     GPUOperationsSubgraph* gpu_subgraph) {
   gpu_subgraph->operations.clear();
@@ -38,7 +38,7 @@ std::unique_ptr<ComputeTaskDescriptor>* InitSingleOpSubgraph(
     gpu_subgraph->operations[0].output_ids.push_back(outputs[i]->id);
   }
 
-  return &gpu_subgraph->operations[0].operation;
+  return &gpu_subgraph->operations[0];
 }
 
 }  // namespace metal

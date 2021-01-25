@@ -18,7 +18,7 @@ tf_proto_library(
 py_library(
     name = "python_object_to_proto_visitor",
     srcs = ["python_object_to_proto_visitor.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":api_objects_proto_py",
         "//tensorflow/python:platform",

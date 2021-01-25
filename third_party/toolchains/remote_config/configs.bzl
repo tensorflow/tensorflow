@@ -81,14 +81,14 @@ def initialize_rbe_configs():
     )
 
     tensorflow_rbe_config(
-        name = "ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0",
-        compiler = "/clang_r42cab985fd95ba4f3f290e7bb26b93805edb447d/bin/clang",
-        cuda_version = "10.1",
-        cudnn_version = "7",
-        os = "ubuntu16.04-manylinux2010-multipython",
+        name = "ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1",
+        compiler = "/clang_r7f6f9f4cf966c78a315d15d6e913c43cfa45c47c/bin/clang",
+        cuda_version = "11.0",
+        cudnn_version = "8",
+        os = "ubuntu18.04-manylinux2010-multipython",
         python_versions = ["2.7", "3.5", "3.6", "3.7", "3.8"],
         tensorrt_install_path = "/usr",
-        tensorrt_version = "6.0",
+        tensorrt_version = "7.1",
         sysroot = "/dt7",
         python_install_path = "/usr/local",
     )

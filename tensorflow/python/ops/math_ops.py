@@ -464,8 +464,8 @@ def divide(x, y, name=None):
     return DivideDelegateWithName(x, name) / y
   else:
     # We do conversion here to make sure at least x is a tensor.
-    if not tensor_util.is_tensor(x):
-      dtype = y.dtype.base_dtype if tensor_util.is_tensor(y) else None
+    if not tensor_util.is_tf_type(x):
+      dtype = y.dtype.base_dtype if tensor_util.is_tf_type(y) else None
       x = ops.convert_to_tensor(x, dtype=dtype)
     return x / y
 

@@ -30,6 +30,7 @@ filegroup(
 py_library(
     name = "saved_model_benchmark_util",
     srcs = ["saved_model_benchmark_util.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/keras/benchmarks:profiler_lib",
