@@ -129,7 +129,7 @@ do_pylint() {
   sudo add-apt-repository -y ppa:deadsnakes/ppa
   sudo apt-get update
   sudo apt-get install -y python3.5
-  curl -O https://bootstrap.pypa.io/get-pip.py
+  curl -O https://bootstrap.pypa.io/3.5/get-pip.py
   python3.5 get-pip.py
   python3.5 -m pip install pylint==1.6.4
 
