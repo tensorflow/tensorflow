@@ -23,9 +23,8 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
-install_macos_pip_deps sudo python3.7
-
-sudo pip3.7 install 'twine ~= 3.2.0'
+# Set up and install MacOS pip dependencies.
+setup_venv_macos python3.7
 
 # For python3 path on Mac
 export PATH=$PATH:/usr/local/bin
