@@ -22,7 +22,6 @@ cc_library(
         ":conv",
         ":depthwise_conv",
         ":fully_connected",
-        ":max_unpooling",
         ":pooling",
         ":transpose_conv",
         ":winograd",
@@ -251,28 +250,12 @@ ios_unit_test(
     deps = [":lstm_test_lib"],
 )
 
-cc_library(
-    name = "max_unpooling",
-    srcs = ["max_unpooling.cc"],
-    hdrs = ["max_unpooling.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "max_unpooling_test_lib",
     testonly = 1,
     srcs = ["max_unpooling_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":max_unpooling",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling_test_util",
     ],
