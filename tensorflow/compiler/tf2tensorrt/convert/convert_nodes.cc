@@ -4348,8 +4348,11 @@ BinaryOperationMap() {
         {"Mul", nvinfer1::ElementWiseOperation::kPROD},
         {"Sub", nvinfer1::ElementWiseOperation::kSUB},
         {"Div", nvinfer1::ElementWiseOperation::kDIV},
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
-        // This op applies Floor after Div.
+#if IS_TRT_VERSION_GE(6, 0, 1, 0)
+        // Use TensorRT native FloorDiv.
+        {"FloorDiv", nvinfer1::ElementWiseOperation::kFLOOR_DIV},
+#elif IS_TRT_VERSION_GE(5, 1, 0, 0)
+        // Emulate FloorDiv by doing Div then Floor.
         {"FloorDiv", nvinfer1::ElementWiseOperation::kDIV},
 #endif
         {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
@@ -4414,7 +4417,7 @@ Status ConvertBinary(OpConverterParams* params) {
   SetLayerName(layer, node_def);
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
 
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+#if IS_TRT_VERSION_GE(5, 1, 0, 0) and !IS_TRT_VERSION_GE(6, 0, 1, 0)
   if (node_def.op() == "FloorDiv") {
     layer = params->converter->network()->addUnary(
         *trt_tensor, nvinfer1::UnaryOperation::kFLOOR);
