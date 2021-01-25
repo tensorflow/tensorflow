@@ -60,7 +60,7 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteEvalTensor* input = 
+  const TfLiteEvalTensor* input =
       tflite::micro::GetEvalInput(context, node, kInputTensor);
   TfLiteEvalTensor* output =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
