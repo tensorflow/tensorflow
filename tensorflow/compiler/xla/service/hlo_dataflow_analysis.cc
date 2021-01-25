@@ -159,10 +159,9 @@ bool ConcatHasNoEffect(const HloInstruction* concat) {
   //   Slice Slice
   //
   std::vector<HloInstruction*> users = concat->users();
-  bool all_1d_slices = absl::c_all_of(users, [](const HloInstruction* i) {
-    return Is1dSliceWithoutStrides(i);
-  });
-  if (!all_1d_slices) {
+  if (!absl::c_all_of(users, [](const HloInstruction* i) {
+        return Is1dSliceWithoutStrides(i);
+      })) {
     // Limit our supported cases to 1 dimensional slices.
     return false;
   }
