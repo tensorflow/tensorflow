@@ -245,28 +245,6 @@ class TestModelCloning(keras_parameterized.TestCase):
     loss = model.train_on_batch(x, y)
     self.assertEqual(float(loss), 0.)
 
-  def test_clone_rnn(self):
-    # Test cloning a model with multiple cells in an RNN.  This exercises a
-    # few "fancier" features such as the `Bidrectional` wrapper and
-    # `StackedRNNCells` under the hood.
-    inputs = keras.Input(shape=(3, 3))
-    cells = [
-        keras.layers.LSTMCell(
-            units=32,
-            enable_caching_device=True,
-            implementation=2,
-            activation='relu')]
-    rnn = keras.layers.RNN(cells, return_sequences=True)
-    outputs = keras.layers.Bidirectional(rnn)(inputs)
-    outputs = keras.layers.Dense(
-        12, activation='softmax', name='scores')(outputs)
-    model = keras.Model(inputs=inputs, outputs=outputs)
-    model.compile(
-        loss=keras.losses.CategoricalCrossentropy(),
-        optimizer=keras.optimizer_v2.rmsprop.RMSprop(lr=0.01),
-        metrics=['accuracy'])
-    keras.models.clone_model(model)
-
   def test_model_cloning_invalid_use_cases(self):
     seq_model = keras.models.Sequential()
     seq_model.add(keras.layers.Dense(4, input_shape=(4,)))

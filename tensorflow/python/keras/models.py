@@ -393,10 +393,6 @@ def clone_model(model, input_tensors=None, clone_function=None):
   except that it creates new layers (and thus new weights) instead
   of sharing the weights of the existing layers.
 
-  `clone_model` will not preserve the uniqueness of shared objects within the
-  model (e.g. a single variable attached to two distinct layers will be
-  restored as two separate variables).
-
   Args:
       model: Instance of `Model`
           (could be a functional model or a Sequential model).
@@ -424,16 +420,15 @@ def clone_model(model, input_tensors=None, clone_function=None):
   Raises:
       ValueError: in case of invalid `model` argument value.
   """
-  with generic_utils.DisableSharedObjectScope():
-    if clone_function is None:
-      clone_function = _clone_layer
+  if clone_function is None:
+    clone_function = _clone_layer
 
-    if isinstance(model, Sequential):
-      return _clone_sequential_model(
-          model, input_tensors=input_tensors, layer_fn=clone_function)
-    else:
-      return _clone_functional_model(
-          model, input_tensors=input_tensors, layer_fn=clone_function)
+  if isinstance(model, Sequential):
+    return _clone_sequential_model(
+        model, input_tensors=input_tensors, layer_fn=clone_function)
+  else:
+    return _clone_functional_model(
+        model, input_tensors=input_tensors, layer_fn=clone_function)
 
 
 # "Clone" a subclassed model by reseting all of the attributes.

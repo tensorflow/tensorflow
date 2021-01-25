@@ -492,15 +492,13 @@ class KerasObjectLoader(object):
     #       found.
     class_name = metadata.get('class_name')
     config = metadata.get('config')
-    shared_object_id = metadata.get('shared_object_id')
     must_restore_from_config = metadata.get('must_restore_from_config')
     if not generic_utils.validate_config(config):
       return None
 
     try:
       obj = layers_module.deserialize(
-          generic_utils.serialize_keras_class_and_config(
-              class_name, config, shared_object_id=shared_object_id))
+          generic_utils.serialize_keras_class_and_config(class_name, config))
     except ValueError:
       if must_restore_from_config:
         raise RuntimeError(
