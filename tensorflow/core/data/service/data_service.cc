@@ -308,10 +308,11 @@ class GrpcDataTransferClient : public DataTransferClient {
   std::unique_ptr<WorkerService::Stub> stub_;
   // Set of all currently active clients contexts. Used to support
   // cancellation.
-  absl::flat_hash_set<::grpc::ClientContext*> active_contexts_ GUARDED_BY(mu_);
+  absl::flat_hash_set<::grpc::ClientContext*> active_contexts_
+      ABSL_GUARDED_BY(mu_);
   // Indicates that the client has been cancelled, so no further requests should
   // be accepted.
-  bool cancelled_ GUARDED_BY(mu_) = false;
+  bool cancelled_ ABSL_GUARDED_BY(mu_) = false;
 };
 
 class GrpcTransferClientRegistrar {

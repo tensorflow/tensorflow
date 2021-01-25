@@ -120,7 +120,7 @@ class AcceleratorRegistry {
 
   absl::Mutex mutex_;
   std::unordered_map<std::string, CreatorFunction> factories_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 };
 
 using DelegatePluginRegistry =
