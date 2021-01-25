@@ -394,7 +394,7 @@ class AssignVariableOp : public OpKernel {
                                   return Status::OK();
                                 }));
     mutex_lock ml(*variable->mu());
-    OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
+    OP_REQUIRES(context, !variable->is_initialized || variable->tensor()->dtype() == dtype_,
                 errors::InvalidArgument(
                     "Trying to assign variable with wrong dtype. Expected ",
                     DataTypeString(variable->tensor()->dtype()), " got ",
