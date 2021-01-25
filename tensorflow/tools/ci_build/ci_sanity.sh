@@ -123,7 +123,7 @@ do_pylint() {
   fi
 
   # Now that we know we have to do work, check if `pylint` is installed
-  PYLINT_BIN="python3 -m pylint"
+  PYLINT_BIN="python3.8 -m pylint"
 
   echo ""
   echo "check whether pylint is available or not."
@@ -188,8 +188,7 @@ do_pylint() {
   # C0326 bad-whitespace
   # W0611 unused-import
   # W0622 redefined-builtin
-  # W9015 missing-param-doc
-  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622|\[W9015)' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   # Split the pylint reported errors into permitted ones and those we want to
   # block submit on until fixed.
@@ -224,6 +223,7 @@ do_pylint() {
     cat ${FORBID_FILE}
   fi
 
+  echo ""
   if [[ ${N_FORBID_ERRORS} != 0 ]]; then
     echo "FAIL: Found ${N_FORBID_ERRORS} non-allowlisted errors and ${N_PERMIT_ERRORS} allowlisted errors"
     return 1
