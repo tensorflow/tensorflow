@@ -309,10 +309,10 @@ class GrpcDataTransferClient : public DataTransferClient {
   // Set of all currently active clients contexts. Used to support
   // cancellation.
   absl::flat_hash_set<::grpc::ClientContext*> active_contexts_
-      ABSL_GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
   // Indicates that the client has been cancelled, so no further requests should
   // be accepted.
-  bool cancelled_ ABSL_GUARDED_BY(mu_) = false;
+  bool cancelled_ TF_GUARDED_BY(mu_) = false;
 };
 
 class GrpcTransferClientRegistrar {
