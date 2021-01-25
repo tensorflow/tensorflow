@@ -149,6 +149,7 @@ objc_library(
     deps = [
         ":depthwise_conv",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
     ],
 )
 
@@ -717,6 +718,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm_test_util",

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -42,9 +43,8 @@ using ::tflite::gpu::metal::SingleOpModel;
 @interface DepthwiseConvTest : XCTestCase
 @end
 
-@implementation DepthwiseConvTest
-- (void)setUp {
-  [super setUp];
+@implementation DepthwiseConvTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
 }
 
 - (void)testO4H1W1I2Strides1x1Dilation1x1 {
@@ -200,6 +200,21 @@ using ::tflite::gpu::metal::SingleOpModel;
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({100, 52, 41, 16}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testDepthwiseConvSimpleWeights {
+  auto status = DepthwiseConvSimpleWeightsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testDepthwiseConvNoMultiplier {
+  auto status = DepthwiseConvNoMultiplierTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testDepthwiseConvMultiplier2 {
+  auto status = DepthwiseConvMultiplier2Test(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

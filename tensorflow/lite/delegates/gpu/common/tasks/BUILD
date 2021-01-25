@@ -278,6 +278,19 @@ cc_library(
 )
 
 cc_library(
+    name = "depthwise_conv_test_util",
+    testonly = 1,
+    srcs = ["depthwise_conv_test_util.cc"],
+    hdrs = ["depthwise_conv_test_util.h"],
+    deps = [
+        ":depthwise_conv",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "depthwise_conv_3x3",
     srcs = ["depthwise_conv_3x3.cc"],
     hdrs = ["depthwise_conv_3x3.h"],
