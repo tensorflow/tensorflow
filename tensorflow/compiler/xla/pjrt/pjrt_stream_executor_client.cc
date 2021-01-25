@@ -120,7 +120,7 @@ namespace xla {
 PjRtPlatformId PjRtStreamExecutorDevice::platform_id() const {
   return client_->platform_id();
 }
-const std::string& PjRtStreamExecutorDevice::platform_name() const {
+absl::string_view PjRtStreamExecutorDevice::platform_name() const {
   return client_->platform_name();
 }
 
@@ -1558,14 +1558,12 @@ Status PjRtStreamExecutorExecutable::SetUpDonation(bool tuple_inputs) {
   return Status::OK();
 }
 
-const std::string& PjRtStreamExecutorExecutable::name() const {
+absl::string_view PjRtStreamExecutorExecutable::name() const {
   Executable* executable = executables_[0]->executable();
   if (executable->has_module()) {
     return executable->module().name();
   } else {
-    static const std::string* unknown_name =
-        new std::string("<unknown executable>");
-    return *unknown_name;
+    return "<unknown executable>";
   }
 }
 

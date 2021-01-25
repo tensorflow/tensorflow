@@ -85,7 +85,7 @@ class PjRtDevice {
   // A vendor-dependent string that uniquely identifies the kind of device,
   // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
   // compatible compilation.
-  virtual const std::string& device_kind() const = 0;
+  virtual absl::string_view device_kind() const = 0;
 
   virtual std::string DebugString() const = 0;
 
@@ -172,7 +172,7 @@ class PjRtClient {
   virtual PjRtPlatformId platform_id() const = 0;
 
   // Returns a string that identifies the platform (CPU/GPU/TPU).
-  virtual const std::string& platform_name() const = 0;
+  virtual absl::string_view platform_name() const = 0;
 
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
@@ -406,7 +406,7 @@ class PjRtExecutable {
   virtual PjRtClient* client() const = 0;
 
   // Unique name for this executable, e.g., HloModule name.
-  virtual const std::string& name() const = 0;
+  virtual absl::string_view name() const = 0;
 
   virtual int num_replicas() const = 0;
 

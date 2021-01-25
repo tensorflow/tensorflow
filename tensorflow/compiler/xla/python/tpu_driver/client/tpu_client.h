@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
@@ -62,7 +63,7 @@ class TpuDevice : public PjRtDevice {
 
   int local_hardware_id() const override { return -1; }
 
-  const std::string& device_kind() const override { return device_kind_; }
+  absl::string_view device_kind() const override { return device_kind_; }
 
   Status TransferToInfeed(const LiteralSlice& literal) const override {
     return Unimplemented("Infeed not yet implemented via this API");

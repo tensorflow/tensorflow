@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdexcept>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
 #include "pybind11/numpy.h"
@@ -59,7 +60,7 @@ class PyBuffer : public DeviceArrayBase {
   PjRtBuffer* buffer() const { return buffer_.get(); }
 
   ClientAndPtr<PjRtDevice> device() const;
-  const std::string& platform_name() const {
+  absl::string_view platform_name() const {
     return buffer_->client()->platform_name();
   }
   bool is_deleted() const { return buffer_->IsDeleted(); }

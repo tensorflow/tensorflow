@@ -78,7 +78,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   PjRtPlatformId platform_id() const;
 
   // Return `platform_name` from client.
-  const std::string& platform_name() const;
+  absl::string_view platform_name() const;
 
   PjRtClient* client() const override { return client_; }
 
@@ -100,7 +100,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   // is not local to this host.
   StatusOr<LocalDeviceState*> GetLocalDeviceState() const;
 
-  const std::string& device_kind() const override { return device_kind_; }
+  absl::string_view device_kind() const override { return device_kind_; }
 
   std::string DebugString() const override;
 
@@ -153,7 +153,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
       int local_hardware_id) const override;
 
   PjRtPlatformId platform_id() const override { return platform_id_; }
-  const std::string& platform_name() const override { return platform_name_; }
+  absl::string_view platform_name() const override { return platform_name_; }
 
   // Most platforms expect device-to-device transfers to be enqueued on the
   // source d2d stream, but some platforms use the destination d2d stream. This
@@ -463,7 +463,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   const Shape& on_device_shape() const override { return on_device_shape_; }
   PjRtStreamExecutorDevice* device() const override { return device_; }
   PjRtPlatformId platform_id() const { return client_->platform_id(); }
-  const std::string& platform_name() const { return client_->platform_name(); }
+  absl::string_view platform_name() const { return client_->platform_name(); }
   PjRtStreamExecutorClient* client() const override { return client_; }
   bool IsEmptyTuple() const {
     return on_host_shape_.IsTuple() && on_host_shape_.tuple_shapes_size() == 0;
@@ -625,7 +625,7 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
   PjRtStreamExecutorClient* client() const override { return client_; }
 
-  const std::string& name() const override;
+  absl::string_view name() const override;
 
   int num_replicas() const override {
     return executables_[0]->build_options().num_replicas();
