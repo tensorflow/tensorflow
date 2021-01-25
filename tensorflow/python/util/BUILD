@@ -341,6 +341,7 @@ cc_library(
     srcs = ["stack_trace.cc"],
     hdrs = ["stack_trace.h"],
     deps = [
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/util:abstract_stack_trace",

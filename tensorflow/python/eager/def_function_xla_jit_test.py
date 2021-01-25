@@ -944,6 +944,26 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertEqual(cell_nojit.value(), orig_nojit + 2)
       self.assertEqual(cell_jit.value(), orig_jit + 3)
 
+  @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns '
+                                 ' wrong status type')
+  def testResourceWrongDevice(self):
+    if 'gpu' not in self.device.lower():
+      self.skipTest('Need a GPU to have non-trivial device placement')
+
+    with ops.device('device:CPU:0'):
+      v = variables.Variable([3.1, 3.2])
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def update_var(a):
+        v.assign_add(a)
+
+      arg = random_ops.random_normal([2])
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'def_function_xla_jit_test.py'):
+        update_var(arg)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
