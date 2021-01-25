@@ -50,7 +50,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   // Check number of inputs/outputs.
-  TF_LITE_ENSURE(context, node->inputs->size == 2 || node->inputs->size == 3);
+  bool has_bias = node->inputs->size == 3;
+  TF_LITE_ENSURE(context, has_bias || node->inputs->size == 2);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
@@ -73,8 +74,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, input_type);
 
   // Check bias.
-  const TfLiteTensor* bias = GetInput(context, node, 2);
-  if (bias) {
+  const TfLiteTensor* bias = nullptr;
+  if (has_bias) {
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 2, &bias));
     TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input_type);
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 4));
   }
@@ -118,7 +120,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   const TfLiteTensor* filter;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &filter));
-  const TfLiteTensor* bias = GetInput(context, node, 2);
+  bool has_bias = node->inputs->size == 3;
+  const TfLiteTensor* bias = has_bias ? GetInput(context, node, 2) : nullptr;
 
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
