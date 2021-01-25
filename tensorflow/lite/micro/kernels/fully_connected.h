@@ -15,9 +15,50 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_FULLY_CONNECTED_H_
 #define TENSORFLOW_LITE_MICRO_KERNELS_FULLY_CONNECTED_H_
 
+#include <cstdint>
+
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
+
+struct OpDataFullyConnected {
+  // The scaling factor from input to output (aka the 'real multiplier') can
+  // be represented as a fixed point multiplier plus a left shift.
+  int32_t output_multiplier;
+  int output_shift;
+  // The range of the fused activation layer. For example for kNone and
+  // uint8_t these would be 0 and 255.
+  int32_t output_activation_min;
+  int32_t output_activation_max;
+  // The index of the temporary tensor where the quantized inputs are cached.
+  int input_quantized_index;
+  // Cached zero point values of tensors.
+  int32_t input_zero_point;
+  int32_t filter_zero_point;
+  int32_t output_zero_point;
+};
+
+extern const int kFullyConnectedInputTensor;
+extern const int kFullyConnectedWeightsTensor;
+extern const int kFullyConnectedBiasTensor;
+extern const int kFullyConnectedOutputTensor;
+
+// Returns a FullyConnectedParams struct with all the parameters needed for a
+// float computation.
+FullyConnectedParams FullyConnectedParamsFloat(
+    TfLiteFusedActivation activation);
+
+// Returns a FullyConnectedParams struct with all the parameters needed for a
+// quantized computation.
+FullyConnectedParams FullyConnectedParamsQuantized(
+    const OpDataFullyConnected& op_data);
+
+TfLiteStatus CalculateOpDataFullyConnected(
+    TfLiteContext* context, TfLiteFusedActivation activation,
+    TfLiteType data_type, const TfLiteTensor* input, const TfLiteTensor* filter,
+    const TfLiteTensor* bias, TfLiteTensor* output, OpDataFullyConnected* data);
 
 // This is the most generic TfLiteRegistration. The actual supported types may
 // still be target dependent. The only requirement is that every implementation
@@ -30,7 +71,7 @@ TfLiteRegistration Register_FULLY_CONNECTED();
 // part of the build. As a result, we use defined(ARDUINO) as proxy for the
 // CMSIS kernels for this one special case.
 
-// Returns a TfLiteRegistration struct for cmsis-nn kernel variant that only
+// Returns a TfLiteRegistration struct for cmsis_nn kernel variant that only
 // supports int8.
 TfLiteRegistration Register_FULLY_CONNECTED_INT8();
 

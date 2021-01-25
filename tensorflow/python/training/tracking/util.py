@@ -1587,7 +1587,7 @@ class CheckpointV1(tracking.AutoTrackable):
       The full path to the checkpoint (i.e. `file_prefix`).
     """
     output = self._saver.save(file_prefix=file_prefix, session=session)
-    if tensor_util.is_tensor(output):
+    if tensor_util.is_tf_type(output):
       if context.executing_eagerly():
         return compat.as_str(output.numpy())
       else:
@@ -2009,7 +2009,7 @@ class Checkpoint(tracking.AutoTrackable):
     """
     options = options or checkpoint_options.CheckpointOptions()
     output = self._saver.save(file_prefix=file_prefix, options=options)
-    if tensor_util.is_tensor(output):
+    if tensor_util.is_tf_type(output):
       if context.executing_eagerly():
         return compat.as_str(output.numpy())
       else:

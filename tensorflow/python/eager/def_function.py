@@ -31,6 +31,7 @@ from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -52,6 +53,14 @@ from tensorflow.python.util.tf_export import tf_export
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
 FREQUENT_TRACING_WARNING_THRESHOLD = 5
 FREQUENT_TRACING_WARNING_MAX_WARNING_PER_DETECTOR = 2
+
+
+_tf_function_counter = monitoring.Counter(
+    "/tensorflow/core/tf_function_counter",
+    "Counter for the number of tf.functions created when Eager execution is "
+    "enabled.",
+    # jit_compile is "0" or "1".
+    "jit_compile")
 
 
 class _FrequentTracingDetector(object):
@@ -693,6 +702,18 @@ class Function(object):
     self._concrete_stateful_fn = (
         self._stateful_fn._get_concrete_function_internal_garbage_collected(  # pylint: disable=protected-access
             *args, **kwds))
+
+    compiled = bool(self._jit_compile and
+                    not control_flow_util.GraphOrParentsInXlaContext(
+                        ops.get_default_graph()))
+    # For nested functions, increment the counter only when a function with
+    # jit_compile=True is called within a function with jit_compile=False. We
+    # count this special case to correctly record that both jit_compile=True and
+    # jit_compile=False is being used for parts of the outer function.
+    if ops.executing_eagerly_outside_functions() and (
+        context.executing_eagerly() or compiled):
+      # Labels must be strings in Python, so we convert 'compiled' to a string
+      _tf_function_counter.get_cell(str(int(compiled))).increase_by(1)
 
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""

@@ -20,8 +20,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -29,8 +31,10 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
@@ -83,17 +87,39 @@ struct TFLFullQuantization
   static bool AllowHybridResult() { return false; }
 };
 
+struct LegacyQuantizePass : public OpRewritePattern<QuantizeOp> {
+  // This pattern should be applied before existing quantize pattern in
+  // `quantize_patterns.td`, so the benefit is set to some value larger than 1.
+  explicit LegacyQuantizePass(MLIRContext* context)
+      : OpRewritePattern<QuantizeOp>(context, /*benefit=*/10) {}
+  LogicalResult matchAndRewrite(QuantizeOp op,
+                                PatternRewriter& rewriter) const override {
+    DenseFPElementsAttr attr;
+    if (matchPattern(op.input(), m_Constant(&attr))) {
+      auto qtype = op.qtypeAttr();
+      if (auto quantized_attr = quant::QuantizeLegacy(attr, qtype.getValue())) {
+        rewriter.replaceOpWithNewOp<QConstOp>(op, qtype, quantized_attr);
+        return success();
+      }
+    }
+    return failure();
+  }
+};
+
 // Applies quantization on the model in TFL dialect.
 struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
  public:
   // Constructor used by manually creating the pass.
-  explicit QuantizePass(bool verify_numeric_flag = false)
-      : verify_numeric(verify_numeric_flag) {}
+  explicit QuantizePass(bool verify_numeric_flag = false,
+                        bool legacy_float_scale = false)
+      : verify_numeric(verify_numeric_flag),
+        legacy_float_scale(legacy_float_scale) {}
 
   void runOnFunction() override;
 
  private:
   bool verify_numeric;
+  bool legacy_float_scale;
 };
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
@@ -102,6 +128,9 @@ void QuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto* ctx = func.getContext();
+  if (legacy_float_scale) {
+    patterns.insert<LegacyQuantizePass>(ctx);
+  }
   TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<TFLFullQuantization>(
       ctx, enable_numeric_verify || verify_numeric, error_tolerance,
@@ -111,8 +140,9 @@ void QuantizePass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(bool verify_numeric) {
-  return std::make_unique<QuantizePass>(verify_numeric);
+std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
+    bool verify_numeric, bool legacy_float_scale) {
+  return std::make_unique<QuantizePass>(verify_numeric, legacy_float_scale);
 }
 
 static PassRegistration<QuantizePass> pass(

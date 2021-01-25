@@ -793,7 +793,7 @@ class BinaryOpTest(test.TestCase):
       self._compareCpu(x1, x2, np.arctan2, math_ops.atan2)
       self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
 
-  def testPowNegativeExponent(self):
+  def testPowNegativeExponentCpu(self):
     for dtype in [np.int32, np.int64]:
       with test_util.force_cpu():
         with self.assertRaisesRegex(
@@ -818,6 +818,16 @@ class BinaryOpTest(test.TestCase):
           x = np.array([5, 2]).astype(dtype)
           y = -3
           self.evaluate(math_ops.pow(x, y))
+
+  def testPowNegativeExponentGpu(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("Requires GPU")
+    # Negative integer powers return zero on GPUs for abs(LHS) > 1. Negative
+    # integer powers for 1 and -1 will return the correct result.
+    x = np.array([2, 3, 1, -1, -1]).astype(np.int64)
+    y = np.array([-1, 0, -2, -2, -3]).astype(np.int64)
+    z = math_ops.pow(x, y)
+    self.assertAllEqual(self.evaluate(z), [0, 1, 1, 1, -1])
 
 
 class ComparisonOpTest(test.TestCase):

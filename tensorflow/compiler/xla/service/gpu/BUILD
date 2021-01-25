@@ -119,8 +119,6 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -129,6 +127,10 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/core:test",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
 
@@ -210,13 +212,10 @@ cc_library(
     name = "thunk_emitter",
     srcs = ["thunk_emitter.cc"],
     hdrs = ["thunk_emitter.h"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
-        ":cudnn_batchnorm_runner",
         ":gpu_constants",
-        ":gpu_conv_runner",
         ":gpu_executable",
         ":ir_emission_utils",
         ":nccl_all_reduce_thunk",
@@ -224,7 +223,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
     ],
 )
@@ -286,6 +284,7 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
@@ -700,6 +699,7 @@ cc_library(
         "convolution_thunk.cc",
         "copy_thunk.cc",
         "cudnn_batchnorm_thunk.cc",
+        "custom_call_thunk.cc",
         "fft_thunk.cc",
         "for_thunk.cc",
         "gemm_thunk.cc",
@@ -716,9 +716,6 @@ cc_library(
         "while_thunk.cc",
     ] + if_cuda_is_configured([
         "cholesky_thunk.cc",
-        "custom_call_thunk.cc",
-    ]) + if_rocm_is_configured([
-        "custom_call_thunk.cc",
     ]),
     hdrs = [
         "collective_permute_thunk.h",
@@ -726,6 +723,7 @@ cc_library(
         "convolution_thunk.h",
         "copy_thunk.h",
         "cudnn_batchnorm_thunk.h",
+        "custom_call_thunk.h",
         "fft_thunk.h",
         "for_thunk.h",
         "gemm_thunk.h",
@@ -742,10 +740,8 @@ cc_library(
         "while_thunk.h",
     ] + if_cuda_is_configured([
         "cholesky_thunk.h",
-        "custom_call_thunk.h",
-    ]) + if_rocm_is_configured([
-        "custom_call_thunk.h",
     ]),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -1400,6 +1396,7 @@ cc_library(
         ":ir_emitter",
         ":launch_dimensions",
         ":multi_output_fusion",
+        ":nccl_all_gather_thunk",
         ":reduction_degenerate_dim_remover",
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",
@@ -1410,12 +1407,14 @@ cc_library(
         ":tree_reduction_rewriter",
         ":variadic_op_splitter",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_reduce_combiner",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
@@ -1442,10 +1441,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_util",
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/service:integral_upcaster",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:logistic_expander",
         "//tensorflow/compiler/xla/service:loop_schedule_linearizer",
+        "//tensorflow/compiler/xla/service:operand_upcaster",
         "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
@@ -1788,7 +1787,7 @@ cc_library(
 tf_cc_test(
     name = "buffer_comparator_test",
     srcs = if_cuda_is_configured(["buffer_comparator_test.cc"]),
-    tags = ["no_rocm"] + tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/core:test_main",
         "//tensorflow/compiler/xla:shape_util",

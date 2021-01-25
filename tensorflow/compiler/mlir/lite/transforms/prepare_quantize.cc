@@ -43,8 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_lstm.h"
+#include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> quantize_allowlist(
@@ -79,6 +80,10 @@ namespace TFL {
 
 namespace {
 
+auto* tflite_quantizer_usage_stats = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/lite/quantization/transforms/stats",
+    "The number of quantization pass invocations.", "path");
+
 // Applies prepare quantization on the model in TFL dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
 // across ops. This step is necessary for post-training quantization and also
@@ -87,8 +92,8 @@ namespace {
 class PrepareQuantizePass
     : public PassWrapper<PrepareQuantizePass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TFL::TensorFlowLiteDialect,
-                    ::mlir::quant::QuantizationDialect>();
+    registry
+        .insert<TensorFlowLiteDialect, ::mlir::quant::QuantizationDialect>();
   }
 
  public:
@@ -321,19 +326,16 @@ bool PrepareQuantizePass::ContainsQuantizeOps(FuncOp func) {
 using PrepareQuantStats =
     quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
-using PrepareLstmQuantStats = TFL::ConvertLstmStatsToQDQs<TFL::LSTMOp>;
-
-using PrepareUnidirectionalLstmQuantStats =
-    TFL::ConvertLstmStatsToQDQs<TFL::UnidirectionalSequenceLSTMOp>;
-
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
   ConvertTFLQuantOpsToMlirQuantOps(func);
 
   if (quant_specs_.post_training_quantization) {
+    tflite_quantizer_usage_stats->GetCell("post_training")->IncrementBy(1);
     RemoveRedundantStats(func);
   } else {
+    tflite_quantizer_usage_stats->GetCell("during_training")->IncrementBy(1);
     // Set the quantization parameters for the quantizable input nodes. If this
     // failed, return the function immediately. This is only required for
     // quantization aware training model conversion.
@@ -361,8 +363,9 @@ void PrepareQuantizePass::runOnFunction() {
   // consistent. Otherwise some FileCheck tests would fail.
   OwningRewritePatternList patterns_1;
   if (quant_specs_.post_training_quantization) {
-    patterns_1.insert<PrepareLstmQuantStats>(ctx, quant_specs_);
-    patterns_1.insert<PrepareUnidirectionalLstmQuantStats>(ctx, quant_specs_);
+    patterns_1.insert<PrepareLstmOutputScale<LSTMOp>>(ctx);
+    patterns_1.insert<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(
+        ctx);
   }
   applyPatternsAndFoldGreedily(func, std::move(patterns_1));
 
@@ -374,11 +377,20 @@ void PrepareQuantizePass::runOnFunction() {
         ctx);
     // Convert quant stats to int8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.insert<PrepareQuantStats>(bit_width, false, true, ctx);
+    patterns_2.insert<PrepareQuantStats>(bit_width, false, true,
+                                         quant_specs_.legacy_float_scale, ctx);
   } else {
     // Convert quant stats to uint8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.insert<PrepareQuantStats>(bit_width, false, false, ctx);
+    patterns_2.insert<PrepareQuantStats>(bit_width, false, false,
+                                         quant_specs_.legacy_float_scale, ctx);
+  }
+
+  if (quant_specs_.post_training_quantization) {
+    patterns_2.insert<ConvertLstmStatsToQDQs<LSTMOp>>(ctx, quant_specs_);
+    patterns_2.insert<ConvertLstmStatsToQDQs<UnidirectionalSequenceLSTMOp>>(
+        ctx, quant_specs_);
+    patterns_2.insert<ConvertSvdfStatsToQDQs>(ctx, quant_specs_);
   }
   applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 
@@ -388,7 +400,7 @@ void PrepareQuantizePass::runOnFunction() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, infer_tensor_range);
+      GetOpQuantSpec, infer_tensor_range, quant_specs_.legacy_float_scale);
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }

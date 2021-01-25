@@ -1123,6 +1123,25 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     # so we end up at the epoch with the best weights, i.e. epoch 2
     self.assertEqual(early_stop.model.get_weights(), 2)
 
+    # Check early stopping when no model beats the baseline.
+    early_stop = keras.callbacks.EarlyStopping(
+        monitor='val_loss', patience=5, baseline=0.5, restore_best_weights=True)
+    early_stop.model = DummyModel()
+    losses = [0.9, 0.8, 0.7, 0.71, 0.72, 0.73]
+    # The best configuration is in the epoch 2 (loss = 0.7000).
+    epochs_trained = 0
+    early_stop.on_train_begin()
+    for epoch in range(len(losses)):
+      epochs_trained += 1
+      early_stop.model.set_weight_to_epoch(epoch=epoch)
+      early_stop.on_epoch_end(epoch, logs={'val_loss': losses[epoch]})
+      if early_stop.model.stop_training:
+        break
+    # No epoch improves on the baseline, so we should train for only 5 epochs,
+    # and restore the second model.
+    self.assertEqual(epochs_trained, 5)
+    self.assertEqual(early_stop.model.get_weights(), 2)
+
   def test_RemoteMonitor(self):
     if requests is None:
       self.skipTest('`requests` required to run this test')
@@ -2041,9 +2060,13 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         y,
         batch_size=2,
         epochs=2,
+        verbose=0,
         callbacks=[
             keras.callbacks.TensorBoard(
-                self.logdir, update_freq=1, write_steps_per_second=True)
+                self.logdir,
+                update_freq=1,
+                profile_batch=0,
+                write_steps_per_second=True)
         ])
 
     summary_file = list_summaries(self.logdir)

@@ -29,6 +29,9 @@ limitations under the License.
 // correspond fairly well to the implementation, but testing the C++ directly is
 // another option.
 
+namespace tensorflow {
+namespace parallel_device {
+
 TEST(PARALLEL_DEVICE, TestBasicCPU) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -199,8 +202,10 @@ TEST(PARALLEL_DEVICE, TestDifferentShapes) {
   std::array<TFE_TensorHandle*, 2> components{size_two.get(), size_three.get()};
   TensorHandlePtr combined_value = CreatePerDeviceValues(
       context.get(), components, device_name, status.get());
-  ASSERT_TRUE(TF_GetCode(status.get()) == TF_UNIMPLEMENTED)
-      << TF_Message(status.get());
+  // We can create the handle, but fetching the shape is an error at the moment.
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_TensorHandleNumDims(combined_value.get(), status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_UNIMPLEMENTED);
 }
 
 TEST(PARALLEL_DEVICE, TestNestedParallelDevices) {
@@ -570,3 +575,6 @@ TEST(PARALLEL_DEVICE, TestFunction) {
       result_components[1].get(), status.get());
   ASSERT_EQ(underlying_devices[1], second_device);
 }
+
+}  // namespace parallel_device
+}  // namespace tensorflow

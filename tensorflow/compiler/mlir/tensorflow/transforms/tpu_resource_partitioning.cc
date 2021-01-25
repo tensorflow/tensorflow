@@ -20,10 +20,12 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
@@ -39,9 +41,27 @@ struct TPUResourceReadsWritesPartitioningPass
   void runOnFunction() override;
 };
 
-bool IsReplicateSharding(TF::TPUPartitionedInputOp op) {
-  return op._XlaSharding().hasValue() &&
-         op._XlaSharding().getValue() == kReplicateSharding;
+bool AllResourceTypesHaveSubtypes(TypeRange resources) {
+  for (Type resource : resources)
+    if (!llvm::hasSingleElement(resource.cast<TensorType>()
+                                    .getElementType()
+                                    .cast<TF::ResourceType>()
+                                    .getSubtypes()))
+      return false;
+
+  return true;
+}
+
+Type GetResourceSubtype(Type type) {
+  return type.cast<TensorType>()
+      .getElementType()
+      .cast<TF::ResourceType>()
+      .getSubtypes()
+      .front();
+}
+
+Type GetResourceSubtype(Value resource) {
+  return GetResourceSubtype(resource.getType());
 }
 
 // Rewrites unpartitioned resource reads and writes to partitioned resource
@@ -53,8 +73,8 @@ bool IsReplicateSharding(TF::TPUPartitionedInputOp op) {
 // resource reads and writes per associated partitioned resource handle.
 void PartitionResourceReadsWrites(tf_device::ClusterFuncOp cluster_func) {
   bool use_spmd = false;
-  if (auto use_spmd_attr =
-          cluster_func.getAttrOfType<BoolAttr>("use_spmd_for_xla_partitioning"))
+  if (auto use_spmd_attr = cluster_func->getAttrOfType<BoolAttr>(
+          "use_spmd_for_xla_partitioning"))
     use_spmd = use_spmd_attr.getValue();
 
   if (!use_spmd) return;
@@ -71,11 +91,15 @@ void PartitionResourceReadsWrites(tf_device::ClusterFuncOp cluster_func) {
     if (!assign_var || assign_var.value() != result) continue;
     auto partitioned_input = llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(
         assign_var.resource().getDefiningOp());
-    if (!partitioned_input || !IsReplicateSharding(partitioned_input)) continue;
+    if (!partitioned_input ||
+        !AllResourceTypesHaveSubtypes(partitioned_input.inputs().getTypes()))
+      continue;
 
     builder.setInsertionPoint(assign_var);
-    llvm::SmallVector<Type, 4> partitioned_output_types(partitioned_input.N(),
-                                                        result.getType());
+    llvm::SmallVector<Type, 4> partitioned_output_types;
+    partitioned_output_types.reserve(partitioned_input.N());
+    for (Type input_type : partitioned_input.inputs().getTypes())
+      partitioned_output_types.push_back(GetResourceSubtype(input_type));
     auto partitioned_output = builder.create<TF::TPUPartitionedOutputOp>(
         cluster_func->getLoc(), partitioned_output_types, result,
         partitioned_input.partition_dimAttr(),
@@ -94,15 +118,15 @@ void PartitionResourceReadsWrites(tf_device::ClusterFuncOp cluster_func) {
     if (!read_var || !read_var.value().hasOneUse()) continue;
     auto partitioned_input = llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(
         read_var.resource().getDefiningOp());
-    if (!partitioned_input || !IsReplicateSharding(partitioned_input) ||
-        !partitioned_input.output().hasOneUse())
+    if (!partitioned_input || !partitioned_input.output().hasOneUse() ||
+        !AllResourceTypesHaveSubtypes(partitioned_input.inputs().getTypes()))
       continue;
 
     builder.setInsertionPoint(partitioned_input);
     llvm::SmallVector<Value, 4> partitioned_reads;
     for (Value input : partitioned_input.inputs()) {
       auto partitioned_read = builder.create<TF::ReadVariableOp>(
-          read_var->getLoc(), read_var.value().getType(), input);
+          read_var->getLoc(), GetResourceSubtype(input), input);
       partitioned_reads.push_back(partitioned_read.value());
     }
     auto partitioned_read = builder.create<TF::TPUPartitionedInputOp>(

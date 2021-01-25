@@ -81,7 +81,7 @@ struct CenterSizeEncoding {
   float h;
   float w;
 };
-// We make sure that the memory allocations are contiguous with static assert.
+// We make sure that the memory allocations are contiguous with static_assert.
 static_assert(sizeof(BoxCornerEncoding) == sizeof(float) * kNumCoordBox,
               "Size of BoxCornerEncoding is 4 float values");
 static_assert(sizeof(CenterSizeEncoding) == sizeof(float) * kNumCoordBox,

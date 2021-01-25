@@ -41,13 +41,15 @@ struct Texture2DDescriptor : public GPUObjectDescriptor {
   Texture2DDescriptor(Texture2DDescriptor&& desc) = default;
   Texture2DDescriptor& operator=(Texture2DDescriptor&& desc) = default;
 
-  absl::Status PerformSelector(const std::string& selector,
+  absl::Status PerformSelector(const GpuInfo& gpu_info,
+                               const std::string& selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
   GPUResources GetGPUResources() const override;
-  absl::Status PerformReadSelector(const std::vector<std::string>& args,
+  absl::Status PerformReadSelector(const GpuInfo& gpu_info,
+                                   const std::vector<std::string>& args,
                                    std::string* result) const;
 
   void Release() override;

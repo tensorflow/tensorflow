@@ -10,6 +10,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
+        "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
@@ -55,19 +56,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_compilation_device",
-    srcs = ["tpu_compilation_device.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_defs",
-        ":tpu_node_device_util",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "tpu_node_device_util",
     srcs = ["tpu_node_device_util.cc"],
     hdrs = ["tpu_node_device_util.h"],
@@ -93,6 +81,7 @@ cc_library(
     name = "tpu_defs",
     srcs = ["tpu_defs.cc"],
     hdrs = ["tpu_defs.h"],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core:protos_all_cc"],
 )
 
@@ -147,15 +136,12 @@ cc_library(
         ":libtftpu_header",
         ":tpu_api",
         ":tpu_api_dlsym_set_fn",
-        ":tpu_compilation_device",
         ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
-        ":tpu_node_device",
         ":tpu_ops_c_api_hdrs",
-        ":tpu_system_device",
+        "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
-        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
@@ -173,8 +159,8 @@ cc_library(
     deps = [
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
+        "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
     alwayslink = True,
@@ -197,49 +183,6 @@ cc_library(
     name = "tpu_executor_init_fns",
     hdrs = ["tpu_executor_init_fns.inc"],
     visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "tpu_node_device",
-    srcs = ["tpu_node_device.cc"],
-    hdrs = ["tpu_node_device.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_api",
-        ":tpu_defs",
-        ":tpu_node_device_util",
-        "//tensorflow/compiler/jit:xla_device",
-        "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_options",
-        "//tensorflow/stream_executor/tpu:c_api_conversions",
-        "//tensorflow/stream_executor/tpu:status_helper",
-        "//tensorflow/stream_executor/tpu:tpu_node_context",
-        "//tensorflow/stream_executor/tpu:tpu_platform_interface",
-        "//tensorflow/stream_executor/tpu:tpu_stream_interface",
-    ],
-)
-
-cc_library(
-    name = "tpu_system_device",
-    srcs = ["tpu_system_device.cc"],
-    hdrs = ["tpu_system_device.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":virtual_device",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:session_options",
-        "//tensorflow/stream_executor/tpu:tpu_executor_base",
-    ],
 )
 
 cc_library(
@@ -316,6 +259,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_platform_id",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
@@ -327,9 +271,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_api_dlsym_initializer",
-        ":tpu_compilation_device",
-        ":tpu_node_device",
-        ":tpu_system_device",
         "//tensorflow/core/tpu:tpu_on_demand_compiler",
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/core/tpu/ops",

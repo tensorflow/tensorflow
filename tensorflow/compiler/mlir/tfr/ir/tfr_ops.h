@@ -33,6 +33,7 @@ namespace TFR {
 
 constexpr char kAttrArgumentNameAttr[] = "tfr.name";
 constexpr char kAttrArgumentDefaultAttr[] = "tfr.default";
+constexpr char kAttrArgumentTypeAttr[] = "tfr.type";
 
 class TFRDialect : public Dialect {
  public:

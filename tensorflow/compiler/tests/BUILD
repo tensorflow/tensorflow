@@ -41,7 +41,7 @@ py_library(
     name = "xla_test",
     testonly = 1,
     srcs = ["xla_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -65,7 +65,7 @@ py_library(
         "__init__.py",
         "test_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -773,6 +773,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_gpu",  # TODO(b/177961887): Fails after NCCL update
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -1048,7 +1049,6 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -1729,7 +1729,7 @@ py_library(
     name = "lstm",
     testonly = 1,
     srcs = ["lstm.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",

@@ -228,7 +228,7 @@ def copy_sharding(from_tensor, to_tensor, use_sharding_op=False):
   Returns:
     A tensor with sharding annotation copied from `from_tensor`.
   """
-  sharding = get_op_sharding(from_tensor.op)
+  sharding = get_tensor_sharding(from_tensor)
   if sharding is None:
     return to_tensor
 
@@ -342,6 +342,25 @@ def get_op_sharding(op):
   try:
     return op.get_attr('_XlaSharding')
   except ValueError:
+    return None
+  except AttributeError:
+    # AttributeError: 'DistributedVarOp' object has no attribute 'get_attr'.
+    return None
+
+
+def get_tensor_sharding(tensor):
+  """Returns sharding attribute of a Tensor.
+
+  Args:
+    tensor: a Tensor.
+
+  Returns:
+    The attribute representing XLA sharding on tensor's op.
+  """
+  try:
+    return get_op_sharding(tensor.op)
+  except AttributeError:
+    # AttributeError: Tensor.op is meaningless when eager execution is enabled.
     return None
 
 

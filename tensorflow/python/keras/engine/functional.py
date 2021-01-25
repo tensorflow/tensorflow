@@ -27,6 +27,7 @@ import warnings
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
@@ -92,9 +93,9 @@ class Functional(training_lib.Model):
 
   Args:
     inputs: List of input tensors (must be created via `tf.keras.Input()`).
-    outputs: List of outputs tensors.
+    outputs: List of output tensors.
     name: String, optional. Name of the model.
-    trainable: Boolean, whether the model's variables should be trainable.
+    trainable: Boolean, optional. If the model's variables should be trainable.
   """
 
   # See tf.Module for the usage of this property.
@@ -107,7 +108,7 @@ class Functional(training_lib.Model):
   ))
 
   @trackable.no_automatic_dependency_tracking
-  def __init__(self, inputs=None, outputs=None, name=None, trainable=True,
+  def __init__(self, inputs, outputs, name=None, trainable=True,
                **kwargs):
     # This is used by the Model class, since we have some logic to swap the
     # class in the __new__ method, which will lead to __init__ get invoked
@@ -643,8 +644,11 @@ class Functional(training_lib.Model):
       # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
     elif tf_utils.is_extension_type(tensor):
-      # Dtype casting.
-      tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
+      # Dtype casting (If the extension type has a non-variant dtype and
+      # supports being cast)
+      ref_input_dtype = getattr(ref_input, 'dtype', None)
+      if ref_input_dtype is not None and ref_input_dtype != dtypes.variant:
+        tensor = math_ops.cast(tensor, dtype=ref_input_dtype)
 
     return tensor
 
@@ -1089,10 +1093,13 @@ def _should_skip_first_node(layer):
   # Networks that are constructed with an Input layer/shape start with a
   # pre-existing node linking their input to output. This node is excluded from
   # the network config.
-  return (isinstance(layer, Functional) and
-          # Filter out Sequential models without an input shape.
-          isinstance(layer._self_tracked_trackables[0],
-                     input_layer_module.InputLayer))
+  if layer._self_tracked_trackables:
+    return (isinstance(layer, Functional) and
+            # Filter out Sequential models without an input shape.
+            isinstance(layer._self_tracked_trackables[0],
+                       input_layer_module.InputLayer))
+  else:
+    return isinstance(layer, Functional)
 
 
 def connect_ancillary_layers(model, created_layers):

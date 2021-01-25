@@ -2,7 +2,7 @@
 
 // Test that simple TF operations can be inlined.
 
-func @inline_simple_callee() -> tensor<2xi32> attributes {sym_visibility = "private"} {
+func private @inline_simple_callee() -> tensor<2xi32>  {
   %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
   return %cst : tensor<2xi32>
 }
@@ -17,7 +17,7 @@ func @inline_simple() -> tensor<2xi32> {
 
 // Test that TPUParitionedCallOp is not inlined.
 
-func @simple_callee() -> tensor<2xi32> attributes {sym_visibility = "private"} {
+func private @simple_callee() -> tensor<2xi32>  {
   %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
   return %cst : tensor<2xi32>
 }
@@ -35,7 +35,7 @@ func @dont_inline_tpu_partitioned_call() -> tensor<2xi32> {
 // Check that TF call operations can be inlined, even when the shape of the
 // argument or result is different than the called function.
 
-func @inline_shape_cast_callee(%arg : tensor<*xi32>) -> tensor<*xi32> attributes {sym_visibility = "private"} {
+func private @inline_shape_cast_callee(%arg : tensor<*xi32>) -> tensor<*xi32>  {
   return %arg : tensor<*xi32>
 }
 
@@ -51,12 +51,12 @@ func @inline_shape_cast(%arg: tensor<2xi32>) -> tensor<2xi32> {
 
 // Check that functions can be inlined into islands.
 
-func @inline_simple_callee1() -> tensor<2xi32> attributes {sym_visibility = "private"} {
+func private @inline_simple_callee1() -> tensor<2xi32>  {
   %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
   return %cst : tensor<2xi32>
 }
 
-func @inline_into_island_multi_block_callee() -> tensor<2xi32> attributes {sym_visibility = "private"} {
+func private @inline_into_island_multi_block_callee() -> tensor<2xi32>  {
   br ^bb1
 
 ^bb1:

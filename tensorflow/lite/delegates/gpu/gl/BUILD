@@ -403,6 +403,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl/runtime:shared_buffer",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

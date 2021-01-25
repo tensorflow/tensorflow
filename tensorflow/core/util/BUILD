@@ -474,13 +474,16 @@ cc_library(
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
+        "//tensorflow/core/framework:__pkg__",
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
     deps = [
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stack_frame",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -783,7 +786,6 @@ tf_cc_test(
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_windows"],  # b/150411480
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

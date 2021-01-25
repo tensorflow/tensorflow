@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import abc
+
 from tensorflow.python.distribute import tpu_values as tpu_values_lib
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.eager import context
@@ -68,10 +70,10 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
     else:
       return regrouped_tuple
 
-  if isinstance(v0, dict):
+  if isinstance(v0, abc.Mapping):
     v0keys = v0.keys()
     for v in values[1:]:
-      assert isinstance(v, dict), ("v[0]: %r  v[i]: %r" % (v0, v))
+      assert isinstance(v, abc.Mapping), ("v[0]: %r  v[i]: %r" % (v0, v))
       assert set(v.keys()) == set(v0keys), ("v[0].keys: %s  v[i].keys: %s" %
                                             (set(v0keys), set(v.keys())))
     # Use the actual type in case it is a class inherited from a dict.
@@ -178,7 +180,7 @@ def update_regroup(extended, updates, group):
     # If values is just ops, the grouping is enough. Everything in values
     # should have the same type, since we expect every replica to be performing
     # the same computation.
-    if not all(tensor_util.is_tensor(v) for v in values):
+    if not all(tensor_util.is_tf_type(v) for v in values):
       return g
 
     # Otherwise we need tensors with the same values as `values`, but

@@ -120,8 +120,9 @@ class GpuKernelToBlobPass
 
       std::string libdevice_dir = tensorflow::RocdlRoot();
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
+      xla::gpu::GpuVersion gpu_version{std::make_pair(arch, arch_str)};
       auto hsaco_or = xla::gpu::amdgpu::CompileToHsaco(
-          llvm_module_copy.get(), arch, config, libdevice_dir);
+          llvm_module_copy.get(), gpu_version, config, libdevice_dir);
       if (!hsaco_or.ok()) {
         return InternalError("Failure when generating HSACO");
       }

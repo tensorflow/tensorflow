@@ -1552,6 +1552,7 @@ def assert_type(tensor, tf_type, message=None, name=None):
     A `no_op` that does nothing.  Type can be determined statically.
   """
   message = message or ''
+  tf_type = dtypes.as_dtype(tf_type)
   with ops.name_scope(name, 'assert_type', [tensor]):
     if not isinstance(tensor, sparse_tensor.SparseTensor):
       tensor = ops.convert_to_tensor(tensor, name='tensor')

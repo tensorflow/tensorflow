@@ -19,7 +19,7 @@ py_library(
         "np_random.py",
         "np_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:array_ops",

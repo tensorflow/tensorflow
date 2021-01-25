@@ -24,6 +24,14 @@
     `_tpu_estimator_embedding.py`. This allows embedding lookup statistics
     gathered at runtime to be used in embedding layer partitioning decisions.
 * `tf.keras.metrics.AUC` now support logit predictions.
+* Creating `tf.random.Generator` under `tf.distribute.Strategy` scopes is now allowed (except for `tf.distribute.experimental.CentralStorageStrategy` and `tf.distribute.experimental.ParameterServerStrategy`). Different replicas will get different random-number streams.
+* `tf.data`:
+    *   tf.data service now supports strict round-robin reads, which is useful
+        for synchronous training workloads where example sizes vary. With strict
+        round robin reads, users can guarantee that consumers get similar-sized
+        examples in the same step.
+    *   tf.data service supports custom data transfer protocols (other than
+        gRPC).
 
 ## Bug Fixes and Other Changes
 
@@ -35,11 +43,22 @@
         *   Discretization combiner implemented, with additional arg `epsilon`.
     *   Improvements to model saving/loading:
         *   `model.load_weights` now accepts paths to saved models.
+    *   Keras inputs can now be created directly from arbitrary `tf.TypeSpecs`.
+    *   Two new learning rate schedules added:
+        `tf.keras.optimizers.schedules.CosineDecay` and
+        `tf.keras.optimizers.schedules.CosineDecayRestarts`.
 
 *   `tf.data`:
     *   Exposing `tf.data.experimental.ExternalStatePolicy`, which can be used
         to control how external state should be handled during dataset
         serialization or iterator checkpointing.
+    *   Changing `tf.data.experimental.save` to store the type specification of
+        the dataset elements. This avoids the need for explicitly specifying the
+        `element_spec` argument of `tf.data.experimental.load` when loading the
+        previously saved dataset.
+    *   Add `.element_spec` property to `tf.data.DatasetSpec` to access the
+        inner spec. This can be used to extract the structure of nested
+        datasets.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
@@ -61,6 +80,7 @@
                 directly.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
+        *   Additional tests and fixes for ADD and SUB operators.
     *  Added support for saved model's session initializer through
          `TFLiteConverter.from_saved_model`.
     *  Added DEPTH_TO_SPACE support in Post training quantization.
@@ -73,12 +93,16 @@
         * TFLiteConverter exports models with SignatureDef
         * Interpreter supports getting a list of signatures and getting callable
           function for a given signaturedef.
-    * Add int8 support for `ReshapeV2`.
+    *  Add int8 support for `ReshapeV2`.
+    *  Add experimental support for optimization with sparsity.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
         `tf.GradientTape` inside a `tf.function`.
     *   Changed the default step size in `gradient_checker_v2.compute_gradients` to be exactly representable as a binary floating point numbers. This avoids poluting gradient approximations needlessly, which is some cases leads to false negatives in op gradient tests.
+    * Added `tf.config.experimental.get_memory_info`, returning a dict with the
+      current and peak memory usage. Deprecated 
+      `tf.config.experimental.get_memory_usage` in favor of this new function.
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph
@@ -102,17 +126,163 @@
         value of `is_dynamic_op` is not True. We didn't use the value for
         `max_batch_size` for building TensorRT engines.
     *   Issue a warning when function get_tensorrt_rewriter_config is used.
-*   Other:
+
+*   TF XLA
     *   Add new enum value `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED` to
         `tf.config.experimental.mlir_bridge_rollout` to enable a \"safe\" mode.
         This runs the MLIR bridge only when an analysis of the graph only when
         an analysis of the graph determines that it is safe to run.
+
+* Other
+    *   Adding show_debug_info to mlir.convert_graph_def and
+        mlir.convert_function.
 
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
 <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.4.1
+
+* This release removes the AVX2 requirement from TF 2.4.0.
+
+# Release 2.3.2
+
+## Bug Fixes and Other Changes
+* Fixes an access to unitialized memory in Eigen code
+  ([CVE-2020-26266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26266))
+* Fixes a security vulnerability caused by lack of validation in
+  `tf.raw_ops.DataFormatVecPermute` and `tf.raw_ops.DataFormatDimMap`
+  ([CVE-2020-26267](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26267))
+* Fixes a vulnerability caused by attempting to write to immutable memory region in
+  `tf.raw_ops.ImmutableConst`
+  ([CVE-2020-26268](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26268)
+* Fixes a `CHECK`-fail in LSTM with zero-length input
+  ([CVE-2020-26270](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26270))
+* Fixes a security vulnerability caused by accessing heap data outside of bounds
+  when loading a specially crafted `SavedModel`
+  ([CVE-2020-26271](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26271))
+* Solves an OOM issue on TPUs when XLA contexts use fused average updates
+* Updates `libjpeg-turbo` to `2.0.5` to handle
+  [CVE-2020-13790](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13790).
+* Updates `junit` to `4.13.1` to handle
+  [CVE-2020-15250](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15250).
+* Updates `PCRE` to `8.44` to handle
+  [CVE-2019-20838](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-20838)
+  and
+  [CVE-2020-14155](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-14155).
+* Updates `sqlite3` to `3.44.0` to keep in sync with master branch.
+
+# Release 2.2.2
+
+## Bug Fixes and Other Changes
+* Fixes an access to unitialized memory in Eigen code
+  ([CVE-2020-26266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26266))
+* Fixes a security vulnerability caused by lack of validation in
+  `tf.raw_ops.DataFormatVecPermute` and `tf.raw_ops.DataFormatDimMap`
+  ([CVE-2020-26267](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26267))
+* Fixes a vulnerability caused by attempting to write to immutable memory region in
+  `tf.raw_ops.ImmutableConst`
+  ([CVE-2020-26268](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26268)
+* Fixes a `CHECK`-fail in LSTM with zero-length input
+  ([CVE-2020-26270](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26270))
+* Fixes a security vulnerability caused by accessing heap data outside of bounds
+  when loading a specially crafted `SavedModel`
+  ([CVE-2020-26271](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26271))
+* Prevents memory leaks in loading `SavedModel`s that import functions
+* Updates `libjpeg-turbo` to `2.0.5` to handle
+  [CVE-2020-13790](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13790).
+* Updates `junit` to `4.13.1` to handle
+  [CVE-2020-15250](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15250).
+* Updates `PCRE` to `8.44` to handle
+  [CVE-2019-20838](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-20838)
+  and
+  [CVE-2020-14155](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-14155).
+* Updates `sqlite3` to `3.44.0` to keep in sync with master branch.
+
+# Release 2.1.3
+
+## Bug Fixes and Other Changes
+* Fixes an access to unitialized memory in Eigen code
+  ([CVE-2020-26266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26266))
+* Fixes a security vulnerability caused by lack of validation in
+  `tf.raw_ops.DataFormatVecPermute` and `tf.raw_ops.DataFormatDimMap`
+  ([CVE-2020-26267](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26267))
+* Fixes a vulnerability caused by attempting to write to immutable memory region in
+  `tf.raw_ops.ImmutableConst`
+  ([CVE-2020-26268](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26268)
+* Fixes a `CHECK`-fail in LSTM with zero-length input
+  ([CVE-2020-26270](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26270))
+* Fixes a security vulnerability caused by accessing heap data outside of bounds
+  when loading a specially crafted `SavedModel`
+  ([CVE-2020-26271](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26271))
+* Updates `libjpeg-turbo` to `2.0.5` to handle
+  [CVE-2020-13790](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13790).
+* Updates `junit` to `4.13.1` to handle
+  [CVE-2020-15250](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15250).
+* Updates `PCRE` to `8.44` to handle
+  [CVE-2019-20838](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-20838)
+  and
+  [CVE-2020-14155](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-14155).
+* Updates `sqlite3` to `3.44.0` to keep in sync with master branch.
+* Newer ROCm versions are supported on the 2.1 branch. 
+
+# Release 2.0.4
+
+Note that this is the last patch release for the TensorFlow 2.0.x series.
+
+## Bug Fixes and Other Changes
+* Fixes an access to unitialized memory in Eigen code
+  ([CVE-2020-26266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26266))
+* Fixes a security vulnerability caused by lack of validation in
+  `tf.raw_ops.DataFormatVecPermute` and `tf.raw_ops.DataFormatDimMap`
+  ([CVE-2020-26267](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26267))
+* Fixes a vulnerability caused by attempting to write to immutable memory region in
+  `tf.raw_ops.ImmutableConst`
+  ([CVE-2020-26268](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26268)
+* Fixes a `CHECK`-fail in LSTM with zero-length input
+  ([CVE-2020-26270](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26270))
+* Fixes a security vulnerability caused by accessing heap data outside of bounds
+  when loading a specially crafted `SavedModel`
+  ([CVE-2020-26271](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26271))
+* Updates `libjpeg-turbo` to `2.0.5` to handle
+  [CVE-2020-13790](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13790).
+* Updates `junit` to `4.13.1` to handle
+  [CVE-2020-15250](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15250).
+* Updates `PCRE` to `8.44` to handle
+  [CVE-2019-20838](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-20838)
+  and
+  [CVE-2020-14155](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-14155).
+* Updates `sqlite3` to `3.44.0` to keep in sync with master branch.
+
+# Release 1.15.5
+
+Note that this is the last patch release for the TensorFlow 1.x series.
+
+## Bug Fixes and Other Changes
+* Fixes an access to unitialized memory in Eigen code
+  ([CVE-2020-26266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26266))
+* Fixes a security vulnerability caused by lack of validation in
+  `tf.raw_ops.DataFormatVecPermute` and `tf.raw_ops.DataFormatDimMap`
+  ([CVE-2020-26267](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26267))
+* Fixes a vulnerability caused by attempting to write to immutable memory region in
+  `tf.raw_ops.ImmutableConst`
+  ([CVE-2020-26268](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26268)
+* Fixes a `CHECK`-fail in LSTM with zero-length input
+  ([CVE-2020-26270](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26270))
+* Fixes a security vulnerability caused by accessing heap data outside of bounds
+  when loading a specially crafted `SavedModel`
+  ([CVE-2020-26271](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26271))
+* Updates `libjpeg-turbo` to `2.0.5` to handle
+  [CVE-2020-13790](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13790).
+* Updates `junit` to `4.13.1` to handle
+  [CVE-2020-15250](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15250).
+* Updates `PCRE` to `8.44` to handle
+  [CVE-2019-20838](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-20838)
+  and
+  [CVE-2020-14155](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-14155).
+* Updates `sqlite3` to `3.44.0` to keep in sync with master branch.
 
 # Release 2.4.0
 
@@ -163,7 +333,7 @@ This release contains contributions from many people at Google, as well as:
 ## Breaking Changes
 
 * TF Core:
-  * Certain float32 ops run in lower precsion on Ampere based GPUs, including
+  * Certain float32 ops run in lower precision on Ampere based GPUs, including
   matmuls and convolutions, due to the use of [TensorFloat-32]
   (https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/).
   Specifically, inputs to such ops are rounded from 23 bits of precision to 10

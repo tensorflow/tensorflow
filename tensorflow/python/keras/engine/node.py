@@ -78,7 +78,7 @@ class Node(object):
     self._flat_arguments = nest.flatten((self.call_args, self.call_kwargs))
     # Used to avoid expensive `nest` operations in the most common case.
     self._single_positional_tensor_passed = (not self.call_kwargs and len(
-        self.call_args) == 1 and tensor_util.is_tensor(self.call_args[0]))
+        self.call_args) == 1 and tensor_util.is_tf_type(self.call_args[0]))
 
     if not keras_tensor.keras_tensors_enabled():
       # Create TensorFlowOpLayers if needed.

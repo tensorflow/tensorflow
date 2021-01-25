@@ -1792,7 +1792,7 @@ name=None))
 
     Args:
       map_func: A function mapping a dataset element to another dataset element.
-      num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
+      num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
@@ -3284,6 +3284,11 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
   @property
   def value_type(self):
     return Dataset
+
+  @property
+  def element_spec(self):
+    """The inner element spec."""
+    return self._element_spec
 
   def _serialize(self):
     return (self._element_spec, self._dataset_shape)

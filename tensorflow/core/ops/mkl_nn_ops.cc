@@ -111,11 +111,11 @@ REGISTER_OP("_MklNativeDepthwiseConv2dNative")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShapeWithExplicitPadding);
 
 REGISTER_OP("_MklNativeDepthwiseConv2dNativeBackpropInput")
     .Input("input_sizes: int32")
@@ -170,17 +170,18 @@ REGISTER_OP("_MklFusedConv2D")
     .Attr("num_args: int >= 0")
     .Attr("strides: list(int)")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ------------------------------------ //
     .Attr("epsilon: float = 0.0001")
     // Attributes for the LeakyRelu ----------------------------------------- //
     .Attr("leakyrelu_alpha: float = 0.2")
     // ---------------------------------------------------------------------- //
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. MKL DNN graph transformer
  is expected to create these operators.
@@ -195,10 +196,11 @@ REGISTER_OP("_MklNativeFusedConv2D")
     .Attr("num_args: int >= 0")
     .Attr("strides: list(int)")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ------------------------------------ //
     .Attr("epsilon: float = 0.0001")
@@ -220,10 +222,11 @@ REGISTER_OP("_MklNativeConv2DWithBias")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
 MKL version of Conv2D and BiasAdd operator. Uses oneDNN APIs to perform
 2D convolution and add Bias to the output of convolution.

@@ -30,7 +30,7 @@ tf_py_test(
     srcs = ["pad_ops_test.py"],
     data = [":pad_ops_mlir"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",  # TODO(b/170752141)
@@ -41,5 +41,6 @@ tf_py_test(
         ":pad_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:test_utils",
+        "//tensorflow/python:is_mlir_bridge_test_false",
     ],
 )

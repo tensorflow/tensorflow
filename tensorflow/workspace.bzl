@@ -202,11 +202,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "df23a89e4cdfa7de2d81ee28190bd194413e47ff177c94076f845b32d7280344",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-5dc2fbabeee17fe023c38756ebde0c1d56472913",
+        sha256 = "768b744d98505db4d73562b7813ee1e102dd185cf79a7ef1d5dbcc6e7e918eaf",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-352f1422d3ceea19a04cab297c6339e0870e1c6c",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/5dc2fbabeee17fe023c38756ebde0c1d56472913/eigen-5dc2fbabeee17fe023c38756ebde0c1d56472913.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/5dc2fbabeee17fe023c38756ebde0c1d56472913/eigen-5dc2fbabeee17fe023c38756ebde0c1d56472913.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/352f1422d3ceea19a04cab297c6339e0870e1c6c/eigen-352f1422d3ceea19a04cab297c6339e0870e1c6c.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/352f1422d3ceea19a04cab297c6339e0870e1c6c/eigen-352f1422d3ceea19a04cab297c6339e0870e1c6c.tar.gz",
         ],
     )
 
@@ -450,12 +450,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "gast_archive",
         build_file = clean_dep("//third_party:gast.BUILD"),
-        sha256 = "b881ef288a49aa81440d2c5eb8aeefd4c2bb8993d5f50edae7413a85bfdb3b57",
-        strip_prefix = "gast-0.3.3",
+        sha256 = "40feb7b8b8434785585ab224d1568b857edb18297e5a3047f1ba012bc83b42c1",
+        strip_prefix = "gast-0.4.0",
         system_build_file = clean_dep("//third_party/systemlibs:gast.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.3.3.tar.gz",
-            "https://files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.3.3.tar.gz",
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.4.0.tar.gz",
+            "https://files.pythonhosted.org/packages/83/4a/07c7e59cef23fb147454663c3271c21da68ba2ab141427c20548ae5a8a4d/gast-0.4.0.tar.gz",
         ],
     )
 
@@ -685,8 +685,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "930c74f12d799c95e37a107bb692148b36493806"
-    LLVM_SHA256 = "367b7c624839d24fb444e675c26db3df5f0c0ad5c2acc8c62a1647de751159f6"
+    LLVM_COMMIT = "f3f3c9c2549a268e602be8730990b552e30cc932"
+    LLVM_SHA256 = "3faf880bf9562c9b63de8b7d2f15146e2e691a471f66903bc07c29ffaf6b9df3"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -789,11 +789,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "nccl_archive",
         build_file = clean_dep("//third_party:nccl/archive.BUILD"),
         patch_file = clean_dep("//third_party/nccl:archive.patch"),
-        sha256 = "b8eaed1fb2d0cc2f951625dc4e17185bab9ff3ab188ba4d34a6e3a01ce9f0d57",
-        strip_prefix = "nccl-195232556936b39b01cc908296e1650b80d4a3e9",
+        sha256 = "3ae89ddb2956fff081e406a94ff54ae5e52359f5d645ce977c7eba09b3b782e6",
+        strip_prefix = "nccl-2.8.3-1",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/195232556936b39b01cc908296e1650b80d4a3e9.tar.gz",
-            "https://github.com/nvidia/nccl/archive/195232556936b39b01cc908296e1650b80d4a3e9.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/v2.8.3-1.tar.gz",
+            "https://github.com/nvidia/nccl/archive/v2.8.3-1.tar.gz",
         ],
     )
 

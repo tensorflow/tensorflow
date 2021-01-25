@@ -59,7 +59,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool operator!=(const TensorDescriptor& d) const { return !(*this == d); }
 
-  absl::Status PerformSelector(const std::string& selector,
+  absl::Status PerformSelector(const GpuInfo& gpu_info,
+                               const std::string& selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
@@ -70,6 +71,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool HasAxis(Axis axis) const;
   void SetAddressMode(AddressMode mode);
+  int GetWidthSize(BHWDC shape) const;
+  int GetSliceStrideSize(BHWDC shape) const;
 
   absl::Status GetLinkingContextFromWriteSelector(
       const std::vector<std::string>& args, std::string* value_name,
@@ -102,7 +105,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
  private:
   absl::Status PerformReadSelector(
-      const std::vector<std::string>& args,
+      const GpuInfo& gpu_info, const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
 
   absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
@@ -122,48 +125,55 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   std::string StorageTypeToAddressType() const;
 
-  absl::Status PerformWriteSelector(const std::vector<std::string>& args,
+  absl::Status PerformWriteSelector(const GpuInfo& gpu_info,
+                                    const std::vector<std::string>& args,
                                     std::string* result) const;
 
-  absl::Status PerformWriteLinearSelector(const std::vector<std::string>& args,
+  absl::Status PerformWriteLinearSelector(const GpuInfo& gpu_info,
+                                          const std::vector<std::string>& args,
                                           std::string* result) const;
 
-  std::string Read(DataType read_as_type,
-                   const std::string& global_address) const;
-  std::string Write(const std::string& var_name,
-                    const std::string& global_address) const;
+  std::string Read(const GpuInfo& gpu_info, DataType read_as_type,
+                   const std::vector<std::string>& coords) const;
+  std::string Write(const GpuInfo& gpu_info, const std::string& var_name,
+                    const std::vector<std::string>& coords) const;
 
   bool IsBatchedWidth() const;
 
   std::string GetWidth() const;
-  std::string GetSliceStride() const;
 
   AddressMode AddressModeFromState() const;
 
   absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
                                            DataType* result) const;
 
-  std::string GetGlobalAddressNoDeclarationWHS(const std::string& x,
-                                               const std::string& y,
-                                               const std::string& s) const;
-  std::string GetGlobalAddressNoDeclarationWHSB(const std::string& x,
-                                                const std::string& y,
-                                                const std::string& s,
-                                                const std::string& b) const;
-  std::string GetGlobalAddressNoDeclarationWHDS(const std::string& x,
-                                                const std::string& y,
-                                                const std::string& z,
-                                                const std::string& s) const;
-  std::string GetGlobalAddressNoDeclarationWHDSB(const std::string& x,
-                                                 const std::string& y,
-                                                 const std::string& z,
-                                                 const std::string& s,
-                                                 const std::string& b) const;
   std::string GetGlobalAddressNoDeclaration(const std::string& xc,
                                             const std::string& yc,
                                             const std::string& zc,
                                             const std::string& sc,
                                             const std::string& bc) const;
+
+  std::vector<std::string> GetPhysicalCoordsWHS(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& s) const;
+  std::vector<std::string> GetPhysicalCoordsWHSB(const std::string& x,
+                                                 const std::string& y,
+                                                 const std::string& s,
+                                                 const std::string& b) const;
+  std::vector<std::string> GetPhysicalCoordsWHDS(const std::string& x,
+                                                 const std::string& y,
+                                                 const std::string& z,
+                                                 const std::string& s) const;
+  std::vector<std::string> GetPhysicalCoordsWHDSB(const std::string& x,
+                                                  const std::string& y,
+                                                  const std::string& z,
+                                                  const std::string& s,
+                                                  const std::string& b) const;
+  std::vector<std::string> GetPhysicalCoords(const std::string& xc,
+                                             const std::string& yc,
+                                             const std::string& zc,
+                                             const std::string& sc,
+                                             const std::string& bc) const;
 
   bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
                            std::string* xc, std::string* yc, std::string* zc,

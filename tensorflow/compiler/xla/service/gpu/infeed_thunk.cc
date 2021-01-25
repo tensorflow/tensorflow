@@ -27,7 +27,7 @@ namespace xla {
 namespace gpu {
 
 InfeedThunk::InfeedThunk(ThunkInfo thunk_info,
-                         std::vector<ShapedSlice>&& dest_slices)
+                         std::vector<ShapedSlice> dest_slices)
     : Thunk(Kind::kInfeed, thunk_info), dest_slices_(std::move(dest_slices)) {}
 
 Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {

@@ -36,13 +36,7 @@ namespace {
 
 std::string GetKernelDepthWiseConv3x3Stride1x1() {
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-
-$0
-
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 ugid[[thread_position_in_grid]])
 {
   int gid_x = ugid.x * 2;
@@ -93,65 +87,65 @@ kernel void ComputeFunction(
   FLT4 s2 = src_loc[args.src_tensor.GetWHOffset(x0, y2)] * FLT(!(x0_out || y2_out));
   FLT4 s3 = src_loc[args.src_tensor.GetWHOffset(x0, y3)] * FLT(!(x0_out || y3_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[0]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[1]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[2]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[0]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[1]);
-  l0 += TO_ACCUM4_TYPE(s3 * filters_loc[2]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[0]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[1]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[2]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[0]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[1]);
+  l0 += TO_ACCUM_TYPE(s3 * filters_loc[2]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x1, y0)] * FLT(!(x1_out || y0_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x1, y1)] * FLT(!(x1_out || y1_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x1, y2)] * FLT(!(x1_out || y2_out));
   s3 = src_loc[args.src_tensor.GetWHOffset(x1, y3)] * FLT(!(x1_out || y3_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[3]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[4]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[5]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[3]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[4]);
-  l0 += TO_ACCUM4_TYPE(s3 * filters_loc[5]);
-  t0 += TO_ACCUM4_TYPE(s0 * filters_loc[0]);
-  t0 += TO_ACCUM4_TYPE(s1 * filters_loc[1]);
-  t0 += TO_ACCUM4_TYPE(s2 * filters_loc[2]);
-  b0 += TO_ACCUM4_TYPE(s1 * filters_loc[0]);
-  b0 += TO_ACCUM4_TYPE(s2 * filters_loc[1]);
-  b0 += TO_ACCUM4_TYPE(s3 * filters_loc[2]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[3]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[4]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[5]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[3]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[4]);
+  l0 += TO_ACCUM_TYPE(s3 * filters_loc[5]);
+  t0 += TO_ACCUM_TYPE(s0 * filters_loc[0]);
+  t0 += TO_ACCUM_TYPE(s1 * filters_loc[1]);
+  t0 += TO_ACCUM_TYPE(s2 * filters_loc[2]);
+  b0 += TO_ACCUM_TYPE(s1 * filters_loc[0]);
+  b0 += TO_ACCUM_TYPE(s2 * filters_loc[1]);
+  b0 += TO_ACCUM_TYPE(s3 * filters_loc[2]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x2, y0)] * FLT(!(x2_out || y0_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x2, y1)] * FLT(!(x2_out || y1_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x2, y2)] * FLT(!(x2_out || y2_out));
   s3 = src_loc[args.src_tensor.GetWHOffset(x2, y3)] * FLT(!(x2_out || y3_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[6]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[7]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[8]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[6]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[7]);
-  l0 += TO_ACCUM4_TYPE(s3 * filters_loc[8]);
-  t0 += TO_ACCUM4_TYPE(s0 * filters_loc[3]);
-  t0 += TO_ACCUM4_TYPE(s1 * filters_loc[4]);
-  t0 += TO_ACCUM4_TYPE(s2 * filters_loc[5]);
-  b0 += TO_ACCUM4_TYPE(s1 * filters_loc[3]);
-  b0 += TO_ACCUM4_TYPE(s2 * filters_loc[4]);
-  b0 += TO_ACCUM4_TYPE(s3 * filters_loc[5]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[6]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[7]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[8]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[6]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[7]);
+  l0 += TO_ACCUM_TYPE(s3 * filters_loc[8]);
+  t0 += TO_ACCUM_TYPE(s0 * filters_loc[3]);
+  t0 += TO_ACCUM_TYPE(s1 * filters_loc[4]);
+  t0 += TO_ACCUM_TYPE(s2 * filters_loc[5]);
+  b0 += TO_ACCUM_TYPE(s1 * filters_loc[3]);
+  b0 += TO_ACCUM_TYPE(s2 * filters_loc[4]);
+  b0 += TO_ACCUM_TYPE(s3 * filters_loc[5]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x3, y0)] * FLT(!(x3_out || y0_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x3, y1)] * FLT(!(x3_out || y1_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x3, y2)] * FLT(!(x3_out || y2_out));
   s3 = src_loc[args.src_tensor.GetWHOffset(x3, y3)] * FLT(!(x3_out || y3_out));
 
-  t0 += TO_ACCUM4_TYPE(s0 * filters_loc[6]);
-  t0 += TO_ACCUM4_TYPE(s1 * filters_loc[7]);
-  t0 += TO_ACCUM4_TYPE(s2 * filters_loc[8]);
-  b0 += TO_ACCUM4_TYPE(s1 * filters_loc[6]);
-  b0 += TO_ACCUM4_TYPE(s2 * filters_loc[7]);
-  b0 += TO_ACCUM4_TYPE(s3 * filters_loc[8]);
+  t0 += TO_ACCUM_TYPE(s0 * filters_loc[6]);
+  t0 += TO_ACCUM_TYPE(s1 * filters_loc[7]);
+  t0 += TO_ACCUM_TYPE(s2 * filters_loc[8]);
+  b0 += TO_ACCUM_TYPE(s1 * filters_loc[6]);
+  b0 += TO_ACCUM_TYPE(s2 * filters_loc[7]);
+  b0 += TO_ACCUM_TYPE(s3 * filters_loc[8]);
 
-  r0 += TO_ACCUM4_TYPE(filters_loc[9]);
-  l0 += TO_ACCUM4_TYPE(filters_loc[9]);
-  t0 += TO_ACCUM4_TYPE(filters_loc[9]);
-  b0 += TO_ACCUM4_TYPE(filters_loc[9]);
+  r0 += TO_ACCUM_TYPE(filters_loc[9]);
+  l0 += TO_ACCUM_TYPE(filters_loc[9]);
+  t0 += TO_ACCUM_TYPE(filters_loc[9]);
+  b0 += TO_ACCUM_TYPE(filters_loc[9]);
 
   bool x0_in = gid_x < args.dst_tensor.Width();
   bool x1_in = gid_x + 1 < args.dst_tensor.Width();
@@ -159,31 +153,19 @@ kernel void ComputeFunction(
   bool y1_in = gid_y + 1 < args.dst_tensor.Height();
 
   if (y0_in && x0_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y, gid_z);
     FLT4 value = FLT4(r0);
-    uint3 gid = uint3(gid_x, gid_y, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y, gid_z);
   }
   if (y1_in && x0_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y + 1, gid_z);
     FLT4 value = FLT4(l0);
-    uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y + 1, gid_z);
   }
   if (y0_in && x1_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x + 1, gid_y, gid_z);
     FLT4 value = FLT4(t0);
-    uint3 gid = uint3(gid_x + 1, gid_y, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x + 1, gid_y, gid_z);
   }
   if (y1_in && x1_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x + 1, gid_y + 1, gid_z);
     FLT4 value = FLT4(b0);
-    uint3 gid = uint3(gid_x + 1, gid_y + 1, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x + 1, gid_y + 1, gid_z);
   }
 }
@@ -233,13 +215,7 @@ std::vector<float> ReorderWeightsDepthWiseConv3x3Stride1x1(
 
 std::string GetKernelDepthWiseConv3x3Stride2() {
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-
-$0
-
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 ugid[[thread_position_in_grid]])
 {
   int gid_x = ugid.x;
@@ -287,63 +263,57 @@ kernel void ComputeFunction(
   FLT4 s1 = src_loc[args.src_tensor.GetWHOffset(x1, y0)] * FLT(!(x1_out || y0_out));
   FLT4 s2 = src_loc[args.src_tensor.GetWHOffset(x2, y0)] * FLT(!(x2_out || y0_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[0]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[1]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[2]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[0]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[1]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[2]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x0, y1)] * FLT(!(x0_out || y1_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x1, y1)] * FLT(!(x1_out || y1_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x2, y1)] * FLT(!(x2_out || y1_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[3]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[4]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[5]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[3]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[4]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[5]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x0, y2)] * FLT(!(x0_out || y2_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x1, y2)] * FLT(!(x1_out || y2_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x2, y2)] * FLT(!(x2_out || y2_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[6]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[7]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[8]);
-  l0 += TO_ACCUM4_TYPE(s0 * filters_loc[0]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[1]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[2]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[6]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[7]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[8]);
+  l0 += TO_ACCUM_TYPE(s0 * filters_loc[0]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[1]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[2]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x0, y3)] * FLT(!(x0_out || y3_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x1, y3)] * FLT(!(x1_out || y3_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x2, y3)] * FLT(!(x2_out || y3_out));
 
-  l0 += TO_ACCUM4_TYPE(s0 * filters_loc[3]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[4]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[5]);
+  l0 += TO_ACCUM_TYPE(s0 * filters_loc[3]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[4]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[5]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x0, y4)] * FLT(!(x0_out || y4_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x1, y4)] * FLT(!(x1_out || y4_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x2, y4)] * FLT(!(x2_out || y4_out));
 
-  l0 += TO_ACCUM4_TYPE(s0 * filters_loc[6]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[7]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[8]);
+  l0 += TO_ACCUM_TYPE(s0 * filters_loc[6]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[7]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[8]);
 
-  r0 += TO_ACCUM4_TYPE(filters_loc[9]);
-  l0 += TO_ACCUM4_TYPE(filters_loc[9]);
+  r0 += TO_ACCUM_TYPE(filters_loc[9]);
+  l0 += TO_ACCUM_TYPE(filters_loc[9]);
 
   bool y0_in = gid_y < args.dst_tensor.Height();
   bool y1_in = gid_y + 1 < args.dst_tensor.Height();
 
   if (y0_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y, gid_z);
     FLT4 value = FLT4(r0);
-    uint3 gid = uint3(gid_x, gid_y, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y, gid_z);
   }
   if (y1_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y + 1, gid_z);
     FLT4 value = FLT4(l0);
-    uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y + 1, gid_z);
   }
 }
@@ -398,11 +368,7 @@ ComputeTaskDescriptor DepthWiseConvolution(
     const DepthwiseConvolution2DAttributes& attr) {
   int channels_multiplier = attr.weights.shape.o;
   std::string shader_source = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint tid[[thread_index_in_threadgroup]],
                             uint3 gid[[thread_position_in_grid]]) {
   int dst_x = static_cast<int>(gid.x);
@@ -456,18 +422,14 @@ kernel void ComputeFunction(
 )";
   }
   shader_source += R"(
-      sum0 += TO_ACCUM4_TYPE(src_modified * temp[ky * args.kernel_size_x + kx]);
+      sum0 += TO_ACCUM_TYPE(src_modified * temp[ky * args.kernel_size_x + kx]);
     }
   }
   FLT4 res = FLT4(sum0) + args.biases.Read(dst_z);
-  args.dst_tensor.GetAddress(linear_index, dst_x, dst_y, dst_z);
-  FLT4 value = res;
-  $2
-  args.dst_tensor.Write(value, dst_x, dst_y, dst_z);
+  args.dst_tensor.Write(res, dst_x, dst_y, dst_z);
 }
 )";
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = shader_source;
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -519,7 +481,6 @@ ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetKernelDepthWiseConv3x3Stride1x1();
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -568,7 +529,6 @@ ComputeTaskDescriptor DepthWiseConv3x3Stride2(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetKernelDepthWiseConv3x3Stride2();
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);

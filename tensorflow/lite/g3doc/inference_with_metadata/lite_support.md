@@ -36,7 +36,7 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
     // The GPU delegate library is optional. Depend on it as needed.
     implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly'
-    implementation 'org.tensorflow:tensorflow-lite-support:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.1.0'
 }
 ```
 

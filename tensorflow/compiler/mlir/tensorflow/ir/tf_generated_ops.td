@@ -8973,6 +8973,59 @@ stores the parameters for each batch.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_PolygammaOp : TF_Op<"Polygamma", [NoSideEffect, ResultsBroadcastableShape]>,
+                     WithBroadcastableBinOpBuilder {
+  let summary = [{
+Compute the polygamma function \\(\psi^{(n)}(x)\\).
+  }];
+
+  let description = [{
+The polygamma function is defined as:
+
+
+\\(\psi^{(a)}(x) = \frac{d^a}{dx^a} \psi(x)\\)
+
+where \\(\psi(x)\\) is the digamma function.
+The polygamma function is defined only for non-negative integer orders \\a\\.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$a,
+    TF_F32OrF64Tensor:$x
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_PopulationCountOp : TF_Op<"PopulationCount", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = [{
+Computes element-wise population count (a.k.a. popcount, bitsum, bitcount).
+  }];
+
+  let description = [{
+For each entry in `x`, calculates the number of `1` (on) bits in the binary
+representation of that entry.
+
+**NOTE**: It is more efficient to first `tf.bitcast` your tensors into
+`int32` or `int64` and perform the bitcount on the result, than to feed in
+8- or 16-bit inputs and then aggregate the resulting counts.
+  }];
+
+  let arguments = (ins
+    TF_IntTensor:$x
+  );
+
+  let results = (outs
+    TF_Uint8Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_PowOp : TF_Op<"Pow", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Computes the power of one value to another.";
@@ -9234,6 +9287,31 @@ tensor, so its value can change during training.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_QueueDequeueV2Op : TF_Op<"QueueDequeueV2", []> {
+  let summary = "Dequeues a tuple of one or more tensors from the given queue.";
+
+  let description = [{
+This operation has k outputs, where k is the number of components
+in the tuples stored in the given queue, and output i is the ith
+component of the dequeued tuple.
+
+N.B. If the queue is empty, this operation will block until an element
+has been dequeued (or 'timeout_ms' elapses, if specified).
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+
+    DefaultValuedAttr<I64Attr, "-1">:$timeout_ms
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$components
+  );
+
+  TF_DerivedResultTypeListAttr component_types = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_RFFTOp : TF_Op<"RFFT", [NoSideEffect]> {
@@ -9747,6 +9825,24 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RecvOp : TF_Op<"Recv", []> {
+  let summary = "Receives the named tensor from send_device on recv_device.";
+
+  let arguments = (ins
+    StrAttr:$tensor_name,
+    StrAttr:$send_device,
+    I64Attr:$send_device_incarnation,
+    StrAttr:$recv_device,
+    DefaultValuedAttr<BoolAttr, "false">:$client_terminated
+  );
+
+  let results = (outs
+    TF_Tensor:$tensor
+  );
+
+  TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", [TF_TPUEmbeddingSideEffect]> {
   let summary = "An op that receives embedding activations on the TPU.";
 
@@ -9880,6 +9976,24 @@ def TF_ReluGradOp : TF_Op<"ReluGrad", [NoSideEffect, SameOperandsAndResultType]>
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_RemoteCallOp : TF_Op<"RemoteCall", []> {
+  let summary = "Runs function `f` on a remote device indicated by `target`.";
+
+  let arguments = (ins
+    TF_StrTensor:$target,
+    Variadic<TF_Tensor>:$args,
+
+    SymbolRefAttr:$f
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_ReshapeOp : TF_Op<"Reshape", [NoSideEffect]> {
@@ -10035,7 +10149,7 @@ def TF_ResizeNearestNeighborGradOp : TF_Op<"ResizeNearestNeighborGrad", [NoSideE
   let summary = "Computes the gradient of nearest neighbor interpolation.";
 
   let arguments = (ins
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int8, TF_Uint8]>:$grads,
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int8, TF_Uint8]>:$grads,
     TF_Int32Tensor:$size,
 
     DefaultValuedAttr<BoolAttr, "false">:$align_corners,
@@ -10043,7 +10157,7 @@ def TF_ResizeNearestNeighborGradOp : TF_Op<"ResizeNearestNeighborGrad", [NoSideE
   );
 
   let results = (outs
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int8, TF_Uint8]>:$output
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int8, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -11774,6 +11888,24 @@ Both input and output have a range `(-inf, inf)`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RiscDotOp : TF_Op<"RiscDot", [NoSideEffect]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_FloatTensor:$a,
+    TF_FloatTensor:$b,
+
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_b
+  );
+
+  let results = (outs
+    TF_FloatTensor:$product
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_RollOp : TF_Op<"Roll", [NoSideEffect]> {
   let summary = "Rolls the elements of a tensor along an axis.";
 
@@ -11872,6 +12004,27 @@ is the corresponding input gradient.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SaveV2Op : TF_Op<"SaveV2", []> {
+  let summary = "Saves tensors in V2 checkpoint format.";
+
+  let description = [{
+By default, saves the named tensors in full.  If the caller wishes to save
+specific slices of full tensors, "shape_and_slices" should be non-empty strings
+and correspondingly well-formed.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$prefix,
+    TF_StrTensor:$tensor_names,
+    TF_StrTensor:$shape_and_slices,
+    Variadic<TF_Tensor>:$tensors
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr dtypes = TF_DerivedOperandTypeListAttr<3>;
 }
 
 def TF_ScatterNdOp : TF_Op<"ScatterNd", [NoSideEffect]> {
@@ -12335,6 +12488,24 @@ Computes gradients for the scaled exponential linear (Selu) operation.
   let results = (outs
     TF_FloatTensor:$backprops
   );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SendOp : TF_Op<"Send", []> {
+  let summary = "Sends the named tensor from send_device to recv_device.";
+
+  let arguments = (ins
+    TF_Tensor:$tensor,
+
+    StrAttr:$tensor_name,
+    StrAttr:$send_device,
+    I64Attr:$send_device_incarnation,
+    StrAttr:$recv_device,
+    DefaultValuedAttr<BoolAttr, "false">:$client_terminated
+  );
+
+  let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
@@ -13101,6 +13272,31 @@ has length `R_out`, then `input_indices` has shape `[N, R_in]`,
     TF_Int64Tensor:$output_indices,
     TF_Int64Tensor:$output_shape
   );
+}
+
+def TF_SparseSegmentMeanOp : TF_Op<"SparseSegmentMean", [NoSideEffect]> {
+  let summary = "Computes the mean along sparse segments of a tensor.";
+
+  let description = [{
+See `tf.sparse.segment_sum` for usage examples.
+
+Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
+dimension, selecting a subset of dimension 0, specified by `indices`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>:$data,
+    TF_I32OrI64Tensor:$indices,
+    TF_I32OrI64Tensor:$segment_ids
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_SparseSegmentSqrtNOp : TF_Op<"SparseSegmentSqrtN", [NoSideEffect]> {
@@ -15204,6 +15400,40 @@ On GPU, if an out of bound index is found, the index is ignored.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TensorScatterMaxOp : TF_Op<"TensorScatterMax", [NoSideEffect]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Tensor:$tensor,
+    TF_I32OrI64Tensor:$indices,
+    TF_Tensor:$updates
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_TensorScatterMinOp : TF_Op<"TensorScatterMin", [NoSideEffect]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Tensor:$tensor,
+    TF_I32OrI64Tensor:$indices,
+    TF_Tensor:$updates
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_TensorScatterSubOp : TF_Op<"TensorScatterSub", [NoSideEffect]> {
   let summary = [{
 Subtracts sparse `updates` from an existing tensor according to `indices`.
@@ -16158,7 +16388,7 @@ def TF_XdivyOp : TF_Op<"Xdivy", [NoSideEffect, ResultsBroadcastableShape, TF_Sam
   let hasCanonicalizer = 1;
 }
 
-def TF_XlaBroadcastHelperOp : TF_Op<"XlaBroadcastHelper", [NoSideEffect]> {
+def TF_XlaBroadcastHelperOp : TF_Op<"XlaBroadcastHelper", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
   let summary = "Helper operator for performing XLA-style broadcasts";
 
   let description = [{
@@ -16179,6 +16409,29 @@ for binary operators.
   );
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
+}
+
+def TF_XlaClusterOutputOp : TF_Op<"XlaClusterOutput", [NoSideEffect]> {
+  let summary = [{
+Operator that connects the output of an XLA computation to other consumer graph nodes.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$outputs
+  );
+
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
@@ -16676,6 +16929,56 @@ s[..., 0] is the largest value, s[..., 1] is the second largest, etc.}]>:$s,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaVariadicReduceOp : TF_Op<"XlaVariadicReduce", [NoSideEffect, SameVariadicOperandSize]> {
+  let summary = "Wraps the variadic XLA Reduce operator.";
+
+  let description = [{
+Semantics are documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>>, [{the input tensor(s)}]>:$input,
+    Arg<Variadic<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>>, [{scalar initial value(s) for the reduction}]>:$init_value,
+
+    I64ArrayAttr:$dimensions_to_reduce,
+    SymbolRefAttr:$reducer
+  );
+
+  let results = (outs
+    Variadic<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_XlaVariadicSortOp : TF_Op<"XlaVariadicSort", [NoSideEffect]> {
+  let summary = "Wraps the XLA Sort operator, documented at";
+
+  let description = [{
+https://www.tensorflow.org/performance/xla/operation_semantics#sort
+.
+
+Sorts one or more tensors, with support for custom comparator, dimension, and
+is_stable attributes.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A list of `Tensor` of identical shape but possibly different types.}]>:$inputs,
+    Arg<TF_Int32Tensor, [{The dimension along which to sort. Must be a compile-time constant.}]>:$dimension,
+
+    SymbolRefAttr:$comparator,
+    BoolAttr:$is_stable
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{A list of `Tensor` of same shape and types as the `input`.}]>:$outputs
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_Xlog1pyOp : TF_Op<"Xlog1py", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
   let summary = "Returns 0 if x == 0, and x * log1p(y) otherwise, elementwise.";
 
@@ -16716,6 +17019,31 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [Idempotent, NoSideEffect, SameOperandsA
 
   let results = (outs
     TF_Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ZetaOp : TF_Op<"Zeta", [NoSideEffect, ResultsBroadcastableShape]>,
+                WithBroadcastableBinOpBuilder {
+  let summary = [{
+Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
+  }];
+
+  let description = [{
+The Hurwitz zeta function is defined as:
+
+
+\\(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\\)
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$x,
+    TF_F32OrF64Tensor:$q
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -16865,6 +17193,52 @@ expected to create these operators.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
+}
+
+def TF__HostRecvOp : TF_Op<"_HostRecv", []> {
+  let summary = "Receives the named tensor from send_device on recv_device.";
+
+  let description = [{
+_HostRecv produces its output on host memory whereas _Recv produces its
+output on device memory.
+  }];
+
+  let arguments = (ins
+    StrAttr:$tensor_name,
+    StrAttr:$send_device,
+    I64Attr:$send_device_incarnation,
+    StrAttr:$recv_device,
+    DefaultValuedAttr<BoolAttr, "false">:$client_terminated
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The tensor to receive.}]>:$tensor
+  );
+
+  TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF__HostSendOp : TF_Op<"_HostSend", []> {
+  let summary = "Sends the named tensor from send_device to recv_device.";
+
+  let description = [{
+_HostSend requires its input on host memory whereas _Send requires its
+input on device memory.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor to send.}]>:$tensor,
+
+    StrAttr:$tensor_name,
+    StrAttr:$send_device,
+    I64Attr:$send_device_incarnation,
+    StrAttr:$recv_device,
+    DefaultValuedAttr<BoolAttr, "false">:$client_terminated
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF__ListToArrayOp : TF_Op<"_ListToArray", [NoSideEffect]> {

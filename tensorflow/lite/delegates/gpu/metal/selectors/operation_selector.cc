@@ -24,27 +24,32 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/padding.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/pooling.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reduce.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshape.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshapex4.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/resize.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/softmax.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/softmax1x1.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/add.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/concat.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/mean.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/prelu.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/quantize_and_dequantize.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
 #include "tensorflow/lite/delegates/gpu/metal/selectors/default_selector.h"
@@ -69,6 +74,29 @@ std::unique_ptr<ComputeTaskDescriptor> SelectDepthWiseConv(
   }
 }
 
+absl::Status SelectConcat(const ConcatAttributes& attr,
+                          const std::vector<int>& channels,
+                          const OperationDef& op_def, const GpuInfo& gpu_info,
+                          std::unique_ptr<GPUOperation>* ptr) {
+  switch (attr.axis) {
+    case Axis::CHANNELS: {
+      GPUOperation operation = CreateConcatZ(op_def, channels, gpu_info);
+      *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+      return absl::OkStatus();
+    }
+    case Axis::BATCH:
+    case Axis::DEPTH:
+    case Axis::HEIGHT:
+    case Axis::WIDTH: {
+      GPUOperation operation = CreateConcatXY(op_def, attr);
+      *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+      return absl::OkStatus();
+    }
+    default:
+      return absl::UnimplementedError("No concat for this axis.");
+  }
+}
+
 std::unique_ptr<ComputeTaskDescriptor> SelectConvolutionTransposed(
     const OperationDef& op_def, const ConvolutionTransposedAttributes& attr,
     const GpuInfo& gpu_info) {
@@ -81,60 +109,85 @@ std::unique_ptr<ComputeTaskDescriptor> SelectConvolutionTransposed(
   }
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectQuantizeAndDequantize(
-    const OperationDef& op_def, const QuantizeAndDequantizeAttributes& attr) {
-  auto gpu_op = QuantizeAndDequantize(op_def, attr);
-  return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+std::unique_ptr<GPUOperation> SelectLSTM(const OperationDef& op_def,
+                                         const GpuInfo& gpu_info) {
+  return absl::make_unique<GPUOperation>(CreateLSTM(op_def, gpu_info));
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectPReLU(
-    const OperationDef& op_def, const BHWC& src_shape,
-    const PReLUAttributes& attr) {
-  auto alpha = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
-  if (alpha) {
-    auto gpu_op = PReLU(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-  }
-  auto alpha3d = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
-  if (!alpha3d) {
-    return {};
-  }
-  if (alpha3d->shape.h != src_shape.h || alpha3d->shape.w != src_shape.w ||
-      alpha3d->shape.c != src_shape.c) {
-    return {};
-  }
-  auto gpu_op = PReLUFull(op_def, attr);
-  return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+std::unique_ptr<GPUOperation> SelectMaxUnpooling(
+    const MaxUnpooling2DAttributes& attr, const OperationDef& op_def) {
+  return absl::make_unique<GPUOperation>(CreateMaxUnpooling(op_def, attr));
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectReshape(
-    const OperationDef& op_def, const BHWC& src_shape,
-    const ReshapeAttributes& attr) {
-  if (src_shape.c % 4 == 0 && attr.new_shape.c % 4 == 0) {
-    auto gpu_op = Reshapex4(op_def);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
+                   std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreatePadding(op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+}
+
+std::unique_ptr<GPUOperation> SelectPooling(const Pooling2DAttributes& attr,
+                                            const OperationDef& op_def) {
+  return absl::make_unique<GPUOperation>(CreatePooling(op_def, attr));
+}
+
+std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
+                                           const BHWC& src_shape,
+                                           OperationType op_type,
+                                           const OperationDef& op_def,
+                                           const GpuInfo& gpu_info) {
+  return absl::make_unique<Reduce>(
+      CreateReduce(axis_to_reduce, src_shape, op_type, op_def, gpu_info));
+}
+
+absl::Status SelectResize(const Resize2DAttributes& attr,
+                          const OperationDef& op_def,
+                          std::unique_ptr<GPUOperation>* ptr) {
+  Resize operation = CreateResize(op_def, attr);
+  *ptr = absl::make_unique<Resize>(std::move(operation));
+  return absl::OkStatus();
+}
+
+void SelectReshape(int src_channels, int dst_channels,
+                   const OperationDef& op_def,
+                   std::unique_ptr<GPUOperation>* ptr) {
+  if (src_channels % 4 == 0 && dst_channels % 4 == 0) {
+    GPUOperation operation = CreateReshapex4(op_def);
+    *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   } else {
-    auto gpu_op = Reshape(op_def);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    GPUOperation operation = CreateReshape(op_def);
+    *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   }
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectSoftmax(const OperationDef& op_def,
-                                                     const BHWC& src_shape,
-                                                     const GpuInfo& gpu_info) {
-  if (src_shape.w == 1 && src_shape.h == 1) {
-    auto gpu_op = Softmax1x1(op_def, gpu_info);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
+                   std::unique_ptr<GPUOperation>* ptr) {
+  if (shape.w == 1 && shape.h == 1) {
+    Softmax1x1 operation = CreateSoftmax1x1(op_def);
+    *ptr = absl::make_unique<Softmax1x1>(std::move(operation));
   } else {
-    auto gpu_op = Softmax(op_def);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    GPUOperation operation = CreateSoftmax(op_def);
+    *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   }
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectSpaceToDepth(
-    const OperationDef& op_def, const SpaceToDepthAttributes& attr) {
-  auto gpu_op = SpaceToDepth(op_def, attr);
-  return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
+                        const OperationDef& op_def,
+                        std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreateSpaceToDepth(op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+}
+
+void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
+                        std::unique_ptr<GPUOperation>* ptr) {
+  StridedSlice operation = CreateStridedSlice(op_def, attr);
+  *ptr = absl::make_unique<StridedSlice>(std::move(operation));
+}
+
+void SelectTranspose(const TransposeAttributes& attr,
+                     const OperationDef& op_def,
+                     std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreateTranspose(op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 std::unique_ptr<ComputeTaskDescriptor> SelectWinograd4x4To36(
@@ -214,7 +267,7 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   auto& winograd_up = gpu_subgraph->operations[0];
   Winograd4x4To36Attributes wino_up_attr;
   wino_up_attr.padding = attr.padding;
-  winograd_up.operation =
+  winograd_up.task_desc =
       SelectWinograd4x4To36(winograd_up_def, wino_up_attr, gpu_info);
   winograd_up.input_ids = {static_cast<int>(inputs[0]->id)};
   winograd_up.output_ids = {-1};
@@ -227,7 +280,7 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   conv.input_ids = {-1};
   conv.output_ids = {-2};
   auto gpu_op = ConvolutionWino4x4To6x6(conv_def, shape_1, attr, gpu_info);
-  conv.operation = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+  conv.task_desc = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
   OperationDef winograd_down_def;
   winograd_down_def.precision = op_def.precision;
   winograd_down_def.src_tensors.push_back(op_def.src_tensors[0]);
@@ -238,7 +291,7 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   Winograd36To4x4Attributes wino_down_attr;
   wino_down_attr.output_shape = outputs[0]->tensor.shape;
   wino_down_attr.biases = attr.bias;
-  winograd_down.operation =
+  winograd_down.task_desc =
       SelectWinograd36To4x4(winograd_down_def, wino_down_attr, gpu_info);
   return absl::OkStatus();
 }
@@ -251,42 +304,50 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
                                   const std::vector<Value*>& outputs,
                                   const Node& node,
                                   GPUOperationsSubgraph* gpu_subgraph) {
-  std::unique_ptr<ComputeTaskDescriptor>* task =
+  GPUOperationWithRefs* gpu_operation =
       InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
   auto op_type = OperationTypeFromString(node.operation.type);
   switch (op_type) {
     case OperationType::ADD: {
-      if (inputs.size() == 1) {
-        if (node.operation.attributes.has_value()) {
-          auto attr =
-              absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-          auto gpu_op = ElementwiseWithOneInputAndConstantArguent(
-              op_def, op_type, attr.param);
-          *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-        } else {
-          return absl::UnimplementedError(
-              "Missing attributes for single input op: " + node.operation.type);
+      if (inputs.size() == 2 &&
+          (inputs[0]->tensor.shape.c == inputs[1]->tensor.shape.c ||
+           inputs[1]->tensor.shape.c == 1)) {
+        GPUOperation operation =
+            CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
+        gpu_operation->operation =
+            absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
+      } else if (inputs.size() >= 2) {
+        auto output = outputs[0];
+        std::vector<int> channels(inputs.size());
+        for (int i = 0; i < inputs.size(); ++i) {
+          channels[i] = inputs[i]->tensor.shape.c;
         }
-      } else if (inputs.size() == 2) {
-        auto gpu_op =
-            ElementwiseWithTwoInputs(op_def, inputs[1]->tensor.shape, op_type);
-        *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      } else {  // more than 2 inputs
-        auto gpu_op = Add(op_def);
-        *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+        GPUOperation operation =
+            CreateAdd(op_def, channels, output->tensor.shape.c);
+        gpu_operation->operation =
+            absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
+      } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
+        auto attr =
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
+        GPUOperation operation =
+            CreateElementwise(gpu_info, op_def, op_type, attr);
+        gpu_operation->operation =
+            absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
       }
-      break;
+      return absl::UnimplementedError(absl::StrCat(
+          "No support of ", node.operation.type, " with this parameters"));
     }
     case OperationType::CONCAT: {
-      std::vector<BHWC> input_shapes;
-      for (auto& input : inputs) {
-        input_shapes.push_back(input->tensor.shape);
+      auto attr = absl::any_cast<ConcatAttributes>(node.operation.attributes);
+      std::vector<int> channels(inputs.size());
+      for (int i = 0; i < inputs.size(); ++i) {
+        channels[i] = inputs[i]->tensor.shape.c;
       }
-      auto gpu_op = Concat(
-          op_def, absl::any_cast<ConcatAttributes>(node.operation.attributes),
-          input_shapes);
-      *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      return SelectConcat(attr, channels, op_def, gpu_info,
+                          &gpu_operation->operation);
     }
     case OperationType::CONVOLUTION_2D: {
       if (inputs.size() != 1) {
@@ -303,7 +364,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         return absl::OkStatus();
       } else {
         auto gpu_op = ConvolutionGeneric(op_def, output_shape, attr, gpu_info);
-        *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+        gpu_operation->task_desc =
+            absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
       }
       break;
     }
@@ -313,7 +375,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             "Convolution Transposed does not support more than 1 runtime "
             "tensor");
       }
-      *task = SelectConvolutionTransposed(
+      gpu_operation->task_desc = SelectConvolutionTransposed(
           op_def,
           absl::any_cast<ConvolutionTransposedAttributes>(
               node.operation.attributes),
@@ -325,7 +387,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             "DepthWise Convolution does not support more than 1 runtime "
             "tensor");
       }
-      *task = SelectDepthWiseConv(
+      gpu_operation->task_desc = SelectDepthWiseConv(
           op_def, absl::any_cast<DepthwiseConvolution2DAttributes>(
                       node.operation.attributes));
       break;
@@ -334,112 +396,80 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
           op_def,
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes),
           gpu_info);
-      *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+      gpu_operation->task_desc =
+          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
       break;
     }
+    case OperationType::LSTM: {
+      gpu_operation->operation = SelectLSTM(op_def, gpu_info);
+      return absl::OkStatus();
+    }
     case OperationType::MAX_UNPOOLING_2D: {
-      auto gpu_op = MaxUnpooling(
-          op_def,
-          absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes));
-      *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      auto attr =
+          absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
+      gpu_operation->operation = SelectMaxUnpooling(attr, op_def);
+      return absl::OkStatus();
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
-      if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
-        return absl::UnimplementedError("Mean supports HW axis only in Metal");
-      }
-      auto gpu_op = Mean(op_def, attr);
-      *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      gpu_operation->operation = SelectReduce(
+          attr.dims, inputs[0]->tensor.shape, op_type, op_def, gpu_info);
+      return absl::OkStatus();
     }
-    case OperationType::MUL:
-      if (inputs.size() == 1) {
-        if (node.operation.attributes.has_value()) {
-          auto attr =
-              absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-          auto gpu_op = ElementwiseWithOneInputAndConstantArguent(
-              op_def, op_type, attr.param);
-          *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-        } else {
-          return absl::UnimplementedError(
-              "Missing attributes for single input op: " + node.operation.type);
-        }
-      } else if (inputs.size() == 2) {
-        auto gpu_op =
-            ElementwiseWithTwoInputs(op_def, inputs[1]->tensor.shape, op_type);
-        *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      }
-      break;
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node.operation.attributes);
-      if (attr.appended.b != 0 || attr.prepended.b != 0) {
-        return absl::UnimplementedError("Padding for BATCH is not supported.");
-      }
-      auto gpu_op = Padding(op_def, attr);
-      *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      SelectPadding(attr, op_def, &gpu_operation->operation);
+      return absl::OkStatus();
     }
     case OperationType::POOLING_2D: {
       auto attr =
           absl::any_cast<Pooling2DAttributes>(node.operation.attributes);
-      auto pooling_op_def = op_def;
-      pooling_op_def.dst_tensors = {op_def.dst_tensors[0]};
-      auto gpu_op = Pooling(op_def, attr, false);
-      gpu_subgraph->operations[0].operation =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      gpu_subgraph->operations[0].input_ids = {static_cast<int>(inputs[0]->id)};
-      gpu_subgraph->operations[0].output_ids = {
-          static_cast<int>(outputs[0]->id)};
-      if (attr.type == PoolingType::MAX && attr.output_indices) {
-        gpu_subgraph->operations.push_back({});
-        auto gpu_ind_op = Pooling(op_def, attr, true);
-        gpu_subgraph->operations[1].operation =
-            absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_ind_op));
-        gpu_subgraph->operations[1].input_ids = {
-            static_cast<int>(inputs[0]->id)};
-        gpu_subgraph->operations[1].output_ids = {
-            static_cast<int>(outputs[1]->id)};
-      }
-      break;
+      gpu_operation->operation = SelectPooling(attr, op_def);
+      return absl::OkStatus();
     }
     case OperationType::PRELU: {
-      const auto src_shape = inputs[0]->tensor.shape;
-      *task = SelectPReLU(
-          op_def, src_shape,
-          absl::any_cast<PReLUAttributes>(node.operation.attributes));
-      break;
+      auto attr = absl::any_cast<PReLUAttributes>(node.operation.attributes);
+      gpu_operation->operation =
+          absl::make_unique<GPUOperation>(CreatePReLU(gpu_info, op_def, attr));
+      return absl::OkStatus();
+    }
+    case OperationType::REDUCE_MAXIMUM:
+    case OperationType::REDUCE_MINIMUM:
+    case OperationType::REDUCE_PRODUCT:
+    case OperationType::REDUCE_SUM: {
+      auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
+      gpu_operation->operation = SelectReduce(
+          attr.dims, inputs[0]->tensor.shape, op_type, op_def, gpu_info);
+      return absl::OkStatus();
     }
     case OperationType::RELU: {
-      auto gpu_op = ReLU(
-          op_def, absl::any_cast<ReLUAttributes>(node.operation.attributes));
-      *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      auto attr = absl::any_cast<ReLUAttributes>(node.operation.attributes);
+      gpu_operation->operation =
+          absl::make_unique<GPUOperation>(CreateReLU(op_def, attr));
+      return absl::OkStatus();
     }
-    case OperationType::QUANTIZE_AND_DEQUANTIZE:
-      *task = SelectQuantizeAndDequantize(
-          op_def, absl::any_cast<QuantizeAndDequantizeAttributes>(
-                      node.operation.attributes));
-      break;
+    case OperationType::QUANTIZE_AND_DEQUANTIZE: {
+      auto attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
+          node.operation.attributes);
+      gpu_operation->operation = absl::make_unique<GPUOperation>(
+          CreateQuantizeAndDequantize(op_def, attr));
+      return absl::OkStatus();
+    }
     case OperationType::RESHAPE: {
-      const auto src_shape = inputs[0]->tensor.shape;
-      *task = SelectReshape(
-          op_def, src_shape,
-          absl::any_cast<ReshapeAttributes>(node.operation.attributes));
-      break;
+      const int src_channels = inputs[0]->tensor.shape.c;
+      auto attr = absl::any_cast<ReshapeAttributes>(node.operation.attributes);
+      SelectReshape(src_channels, attr.new_shape.c, op_def,
+                    &gpu_operation->operation);
+      return absl::OkStatus();
     }
     case OperationType::RESIZE: {
-      auto gpu_op =
-          Resize(op_def,
-                 absl::any_cast<Resize2DAttributes>(node.operation.attributes));
-      *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      auto attr = absl::any_cast<Resize2DAttributes>(node.operation.attributes);
+      return SelectResize(attr, op_def, &gpu_operation->operation);
     }
     case OperationType::SLICE: {
-      auto gpu_op = Slice(
-          op_def, absl::any_cast<SliceAttributes>(node.operation.attributes));
-      *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      auto attr = absl::any_cast<SliceAttributes>(node.operation.attributes);
+      SelectStridedSlice(attr, op_def, &gpu_operation->operation);
+      return absl::OkStatus();
     }
     case OperationType::SOFTMAX: {
       auto attr = absl::any_cast<SoftmaxAttributes>(node.operation.attributes);
@@ -448,13 +478,21 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             "Softmax supports only CHANNELS dimension");
       }
       const auto src_shape = inputs[0]->tensor.shape;
-      *task = SelectSoftmax(op_def, src_shape, gpu_info);
-      break;
+      SelectSoftmax(src_shape, op_def, &gpu_operation->operation);
+      return absl::OkStatus();
     }
-    case OperationType::SPACE_TO_DEPTH:
-      *task = SelectSpaceToDepth(op_def, absl::any_cast<SpaceToDepthAttributes>(
-                                             node.operation.attributes));
-      break;
+    case OperationType::SPACE_TO_DEPTH: {
+      auto attr =
+          absl::any_cast<SpaceToDepthAttributes>(node.operation.attributes);
+      SelectSpaceToDepth(attr, op_def, &gpu_operation->operation);
+      return absl::OkStatus();
+    }
+    case OperationType::TRANSPOSE: {
+      auto attr =
+          absl::any_cast<TransposeAttributes>(node.operation.attributes);
+      SelectTranspose(attr, op_def, &gpu_operation->operation);
+      return absl::OkStatus();
+    }
     case OperationType::ABS:
     case OperationType::COPY:
     case OperationType::COS:
@@ -469,53 +507,50 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::SQRT:
     case OperationType::SQUARE:
     case OperationType::TANH: {
-      auto gpu_op = ElementwiseWithOneInput(op_def, op_type);
-      *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      GPUOperation operation =
+          CreateElementwiseOneInput(gpu_info, op_def, op_type);
+      gpu_operation->operation =
+          absl::make_unique<GPUOperation>(std::move(operation));
+      return absl::OkStatus();
     }
     case OperationType::DIV:
+    case OperationType::EQUAL:
+    case OperationType::GREATER:
+    case OperationType::GREATER_EQUAL:
+    case OperationType::LESS:
+    case OperationType::LESS_EQUAL:
     case OperationType::MAXIMUM:
     case OperationType::MINIMUM:
+    case OperationType::MUL:
+    case OperationType::NOT_EQUAL:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB: {
-      if (inputs.size() == 1) {
-        if (node.operation.attributes.has_value()) {
-          auto attr =
-              absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-          auto gpu_op = ElementwiseWithOneInputAndConstantArguent(
-              op_def, op_type, attr.param);
-          *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-        } else {
-          return absl::UnimplementedError(
-              "Missing attributes for single input op: " + node.operation.type);
-        }
-      } else if (inputs.size() == 2) {
-        auto gpu_op =
-            ElementwiseWithTwoInputs(op_def, inputs[1]->tensor.shape, op_type);
-        *task = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+      if (inputs.size() == 2) {
+        GPUOperation operation =
+            CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
+        gpu_operation->operation =
+            absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
+      } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
+        auto attr =
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
+        GPUOperation operation =
+            CreateElementwise(gpu_info, op_def, op_type, attr);
+        gpu_operation->operation =
+            absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
       }
-    } break;
+      return absl::UnimplementedError(absl::StrCat(
+          "No support of ", node.operation.type, " with this parameters"));
+    }
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
     case OperationType::BATCHED_MATMUL:
-    case OperationType::CONST:
-    case OperationType::LSTM:
+    case OperationType::CONSTANT:
     // TODO(b/162763635): implement MeanStddevNormalization for Metal.
     case OperationType::MEAN_STDDEV_NORMALIZATION:
-    case OperationType::REDUCE_MAXIMUM:
-    case OperationType::REDUCE_MINIMUM:
-    case OperationType::REDUCE_PRODUCT:
-    case OperationType::REDUCE_SUM:
-    // comparison operations
-    case OperationType::LESS:
-    case OperationType::LESS_EQUAL:
-    case OperationType::EQUAL:
-    case OperationType::NOT_EQUAL:
-    case OperationType::GREATER:
-    case OperationType::GREATER_EQUAL:
     case OperationType::SPACE_TO_BATCH:
-    case OperationType::TRANSPOSE:
       return absl::UnimplementedError("Unsupported op: " + node.operation.type);
     default:
       return SelectDefault(gpu_info, op_def, inputs, outputs, node,

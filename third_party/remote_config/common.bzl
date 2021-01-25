@@ -24,10 +24,12 @@ def which(repository_ctx, program_name):
     if is_windows(repository_ctx):
         if not program_name.endswith(".exe"):
             program_name = program_name + ".exe"
-        result = execute(repository_ctx, ["C:\\Windows\\System32\\where.exe", program_name])
-    else:
-        result = execute(repository_ctx, ["which", program_name])
-    return result.stdout.rstrip()
+        return execute(
+            repository_ctx,
+            ["C:\\Windows\\System32\\where.exe", program_name],
+        ).stdout.replace("\\", "\\\\").rstrip()
+
+    return execute(repository_ctx, ["which", program_name]).stdout.rstrip()
 
 def get_python_bin(repository_ctx):
     """Gets the python bin path.
@@ -274,7 +276,7 @@ def realpath(repository_ctx, path, bash_bin = None):
     if bash_bin == None:
         bash_bin = get_bash_bin(repository_ctx)
 
-    return execute(repository_ctx, [bash_bin, "-cl", "realpath \"%s\"" % path]).stdout.strip()
+    return execute(repository_ctx, [bash_bin, "-c", "realpath \"%s\"" % path]).stdout.strip()
 
 def err_out(result):
     """Returns stderr if set, else stdout.

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm_test_util.h"
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
@@ -25,7 +23,7 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-void LstmTest(TestExecutionEnvironment* env) {
+absl::Status LstmTest(TestExecutionEnvironment* env) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 1, 1, 16);
   src_tensor.data = {
@@ -60,26 +58,24 @@ void LstmTest(TestExecutionEnvironment* env) {
       TensorFloat32 new_state;
       TensorFloat32 new_activ;
       GPUOperation operation = CreateLSTM(op_def, env->GetGpuInfo());
-      ASSERT_TRUE(env->ExecuteGPUOperation(
-                         {src_tensor, prev_state},
-                         absl::make_unique<GPUOperation>(std::move(operation)),
-                         {BHWC(1, 1, 1, 4), BHWC(1, 1, 1, 4)},
-                         {&new_state, &new_activ})
-                      .ok());
-      EXPECT_THAT(new_state.data,
-                  testing::Pointwise(
-                      testing::FloatNear(eps),
-                      {7.0 / 15.0, 10.0 / 15.0, 13.0 / 15.0, 16.0 / 15.0}))
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          {src_tensor, prev_state},
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          {BHWC(1, 1, 1, 4), BHWC(1, 1, 1, 4)}, {&new_state, &new_activ}));
+      RETURN_IF_ERROR(
+          PointWiseNear({7.0 / 15.0, 10.0 / 15.0, 13.0 / 15.0, 16.0 / 15.0},
+                        new_state.data, eps))
           << ToString(storage) << ", " << ToString(precision);
-      EXPECT_THAT(new_activ.data,
-                  testing::Pointwise(testing::FloatNear(eps),
-                                     {(1.0 / 6.0) * std::tanh(7.0 / 15.0),
-                                      (1.0 / 6.0) * std::tanh(10.0 / 15.0),
-                                      (1.0 / 6.0) * std::tanh(13.0 / 15.0),
-                                      (1.0 / 6.0) * std::tanh(16.0 / 15.0)}))
+      RETURN_IF_ERROR(PointWiseNear(
+          {static_cast<float>((1.0 / 6.0) * std::tanh(7.0 / 15.0)),
+           static_cast<float>((1.0 / 6.0) * std::tanh(10.0 / 15.0)),
+           static_cast<float>((1.0 / 6.0) * std::tanh(13.0 / 15.0)),
+           static_cast<float>((1.0 / 6.0) * std::tanh(16.0 / 15.0))},
+          new_activ.data, eps))
           << ToString(storage) << ", " << ToString(precision);
     }
   }
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

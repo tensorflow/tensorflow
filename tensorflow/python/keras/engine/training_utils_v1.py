@@ -531,7 +531,7 @@ def standardize_single_array(x, expected_shape=None):
 
   if (x.shape is not None and len(x.shape) == 1 and
       (expected_shape is None or len(expected_shape) != 1)):
-    if tensor_util.is_tensor(x):
+    if tensor_util.is_tf_type(x):
       x = array_ops.expand_dims(x, axis=1)
     else:
       x = np.expand_dims(x, 1)
@@ -644,7 +644,7 @@ def standardize_input_data(data,
   if shapes:
     for i in range(len(names)):
       if shapes[i] is not None:
-        if tensor_util.is_tensor(data[i]):
+        if tensor_util.is_tf_type(data[i]):
           tensorshape = data[i].shape
           if not tensorshape:
             continue
@@ -742,7 +742,7 @@ def check_array_lengths(inputs, targets, weights=None):
   """
 
   def is_tensor_or_composite_tensor(x):
-    return tensor_util.is_tensor(x) or is_composite_or_composite_value(x)
+    return tensor_util.is_tf_type(x) or is_composite_or_composite_value(x)
 
   def set_of_lengths(x):
     # Returns a set with the variation between
@@ -805,7 +805,7 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
   key_loss_classes = (losses.MeanSquaredError, losses.BinaryCrossentropy,
                       losses.CategoricalCrossentropy)
   for y, loss, shape in zip(targets, loss_fns, output_shapes):
-    if y is None or loss is None or tensor_util.is_tensor(y):
+    if y is None or loss is None or tensor_util.is_tf_type(y):
       continue
     if losses.is_categorical_crossentropy(loss):
       if y.shape[-1] == 1:
@@ -1007,7 +1007,7 @@ def standardize_weights(y,
                        'Expected sample_weight with rank '
                        'less than or equal to ' + str(len(y.shape)))
 
-    if (not tensor_util.is_tensor(sample_weight) and
+    if (not tensor_util.is_tf_type(sample_weight) and
         y.shape[:sample_weight.ndim] != sample_weight.shape):
       raise ValueError('Found a sample_weight array with shape ' +
                        str(sample_weight.shape) + ' for an input with shape ' +
@@ -1021,7 +1021,7 @@ def standardize_weights(y,
       raise ValueError('`class_weight` not supported for '
                        '3+ dimensional targets.')
 
-    if tensor_util.is_tensor(y):
+    if tensor_util.is_tf_type(y):
       # Few classes are expected, so densifying is reasonable.
       keys = np.array(sorted(class_weight.keys()))
       values = np.array([class_weight[i] for i in keys])
@@ -1085,14 +1085,14 @@ def has_tensors(ls):
   # which would then require a steps_per_epoch argument.
   if isinstance(ls, (list, tuple)):
     return any(
-        tensor_util.is_tensor(v) and
+        tensor_util.is_tf_type(v) and
         not isinstance(v, ragged_tensor.RaggedTensor) for v in ls)
   if isinstance(ls, dict):
     return any(
-        tensor_util.is_tensor(v) and
+        tensor_util.is_tf_type(v) and
         not isinstance(v, ragged_tensor.RaggedTensor)
         for _, v in six.iteritems(ls))
-  return tensor_util.is_tensor(ls) and not isinstance(
+  return tensor_util.is_tf_type(ls) and not isinstance(
       ls, ragged_tensor.RaggedTensor)
 
 
@@ -1271,7 +1271,7 @@ def validate_input_types(inp, orig_inp, allow_dict=True, field_name='inputs'):
   """Helper function to validate either inputs or targets."""
   if isinstance(inp, (list, tuple)):
     if not all(isinstance(v, np.ndarray) or
-               tensor_util.is_tensor(v) for v in inp):
+               tensor_util.is_tf_type(v) for v in inp):
       raise ValueError(
           'Please provide as model inputs either a single array or a list of '
           'arrays. You passed: {}={}'.format(field_name, str(orig_inp)))
@@ -1279,7 +1279,7 @@ def validate_input_types(inp, orig_inp, allow_dict=True, field_name='inputs'):
     if not allow_dict:
       raise ValueError(
           'You cannot pass a dictionary as model {}.'.format(field_name))
-  elif not isinstance(inp, np.ndarray) and not tensor_util.is_tensor(inp):
+  elif not isinstance(inp, np.ndarray) and not tensor_util.is_tf_type(inp):
     raise ValueError(
         'Please provide as model inputs either a single array or a list of '
         'arrays. You passed: {}={}'.format(field_name, orig_inp))
@@ -1371,7 +1371,7 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   Returns:
     Targets in appropriate datatype.
   """
-  if tensor_util.is_tensor(targets):
+  if tensor_util.is_tf_type(targets):
     # There is one target, so output[0] should be the only output.
     return cast_single_tensor(targets, dtype=outputs[0].dtype)
   new_targets = []

@@ -15,7 +15,7 @@ func @tanh(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: scf.parallel
   // CHECK-NOT: tensor_load
   // CHECK: scf.for
-  // CHECK-NOT: tensor_from_elements
+  // CHECK-NOT: tensor.from_elements
   // CHECK: memref_reshape
   // CHECK: linalg.generic
   // CHECK: memref_reshape

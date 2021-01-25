@@ -5237,7 +5237,9 @@ def non_max_suppression_padded(boxes,
       Dimensions except the last two are batch dimensions.
     scores: a tensor of rank 1 or higher with a shape of [..., num_boxes].
     max_output_size: a scalar integer `Tensor` representing the maximum number
-      of boxes to be selected by non max suppression.
+      of boxes to be selected by non max suppression. Note that setting this
+      value to a large number may result in OOM error depending on the system
+      workload.
     iou_threshold: a float representing the threshold for deciding whether boxes
       overlap too much with respect to IoU (intersection over union).
     score_threshold: a float representing the threshold for box scores. Boxes

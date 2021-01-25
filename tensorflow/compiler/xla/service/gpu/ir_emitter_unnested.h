@@ -162,6 +162,9 @@ class IrEmitterUnnested : public IrEmitter,
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
+  Status HandleConstant(HloInstruction* constant) override;
+  Status EmitConstant(MlirEmitterInput mlir_input);
+
   Status HandleCopy(HloInstruction* copy) override;
   Status EmitCopyForMlir(MlirEmitterInput input);
 
@@ -174,10 +177,12 @@ class IrEmitterUnnested : public IrEmitter,
 #if GOOGLE_CUDA
   Status EmitCholeskyThunkFromMlir(MlirEmitterInput input);
 #endif  // GOOGLE_CUDA
+  Status EmitCustomCallThunkFromMlir(MlirEmitterInput input);
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
-  Status EmitLoopFusionFromMlir(MlirEmitterInput input,
-                                const Shape& output_shape);
+  Status EmitLoopFusionFromMlir(
+      MlirEmitterInput input, const Shape& output_shape,
+      absl::optional<int> unroll_factor_override = {});
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
@@ -200,6 +205,8 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+
+  Status EmitOp(MlirEmitterInput mlir_input);
 
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -233,7 +240,7 @@ class IrEmitterUnnested : public IrEmitter,
 
   // pseudo code for padToStatic on a 2d array
   //   ```
-  // void padToStatic(int** input, int** output, int thread_per_block,
+  // void padToStatic(int** input, int** output, int threads_per_block,
   //                  int meta_data_offset, int max_num_element,
   //                  int static_dim0_size, int static_dim1_size) {
   //   int* source_array = input[0];
@@ -254,7 +261,7 @@ class IrEmitterUnnested : public IrEmitter,
   //   int dyn_element_total = 1;
   //   dyn_element_total *= *dyn_dim0_size;
   //   dyn_element_total *= *dyn_dim1_size;
-  //   linear_index = block_id * thread_per_block + thread_id;
+  //   linear_index = block_id * threads_per_block + thread_id;
   //   if (linear_index < max_num_element) {
   //     Index static_index =
   //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
@@ -279,7 +286,7 @@ class IrEmitterUnnested : public IrEmitter,
 
   // pseudo code for sliceToDynamic on a 2d array
   //   ```
-  // void sliceToDynamic(int** input, int** output, int thread_per_block,
+  // void sliceToDynamic(int** input, int** output, int threads_per_block,
   //                  int meta_data_offset, int max_num_element,
   //                  int static_dim0_size, int static_dim1_size) {
   //   int* source_array = input[0];
@@ -300,7 +307,7 @@ class IrEmitterUnnested : public IrEmitter,
   //   int dyn_element_total = 1;
   //   dyn_element_total *= *dyn_dim0_size;
   //   dyn_element_total *= *dyn_dim1_size;
-  //   linear_index = block_id * thread_per_block + thread_id;
+  //   linear_index = block_id * threads_per_block + thread_id;
   //   if (linear_index < max_num_element) {
   //     Index static_index =
   //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
@@ -605,13 +612,15 @@ class IrEmitterUnnested : public IrEmitter,
   // result to the global result.
   void EmitFullWarpShuffleDownLoopForAllReduces(
       absl::Span<HloComputation* const> reducers,
-      absl::Span<llvm::AllocaInst* const> partial_result_addresses);
+      absl::Span<llvm::AllocaInst* const> partial_result_addresses,
+      int threads_per_block);
 
   // Emits shuffle-down reduction for the `partial_result_address` using the
   // reduction computation `reducer` over types `element_type`.
-  void EmitFullWarpShuffleDownLoopForReduce(
-      HloComputation* reducer, llvm::Type* element_type,
-      llvm::Value* partial_result_address);
+  void EmitFullWarpShuffleDownLoopForReduce(HloComputation* reducer,
+                                            llvm::Type* element_type,
+                                            llvm::Value* partial_result_address,
+                                            int threads_per_block);
 
   std::unique_ptr<KernelThunk> BuildKernelThunkFromBufferSlices(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
@@ -715,16 +724,18 @@ class IrEmitterUnnested : public IrEmitter,
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
 
-  // The HloComputation that this IrEmitter emits code for.
-  const HloComputation* hlo_computation_;
-
-  mlir::OwningModuleRef mlir_scratch_module_;
+  // Begin optional members for XLA HLO -> LMHLO:
+  // TODO(timshen): Once XLA HLO -> LMHLO converter is complete,
+  // IrEmitterUnnested should take LMHLO only, and won't require a scratch
+  // module.
+  absl::optional<mlir::OwningModuleRef> mlir_scratch_module_;
 
   // This is for cache-purpose only. It has no significant semantics.
-  mlir::LhloDialectEmitter lhlo_scratch_emitter_;
+  absl::optional<mlir::LhloDialectEmitter> lhlo_scratch_emitter_;
 
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
       scratch_nested_computations_;
+  // End optional members for XLA HLO -> LMHLO.
 };
 
 }  // namespace gpu

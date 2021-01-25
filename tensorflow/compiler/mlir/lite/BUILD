@@ -237,6 +237,7 @@ cc_library(
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
@@ -530,7 +531,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/passes.h",
-        "transforms/prepare_quantize_lstm.h",
+        "transforms/prepare_quantize_helper.h",
     ],
     deps = [
         "convert_type",
@@ -539,9 +540,11 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:operator_property",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

@@ -39,10 +39,13 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -1489,11 +1492,16 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
     auto tuple =
         xla::Parameter(builder, 0, input_shape, "arg_tuple", leaf_replication);
-
     builder->ClearSharding();
 
-    for (BlockArgument& arg : block->getArguments())
+    bool set_tuple_element_sharding =
+        !arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings);
+    for (BlockArgument& arg : block->getArguments()) {
+      if (set_tuple_element_sharding)
+        builder->SetSharding(arg_shardings[arg.getArgNumber()].value());
       lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
+    }
+    builder->ClearSharding();
   } else {
     for (BlockArgument& arg : block->getArguments()) {
       auto num = arg.getArgNumber();
@@ -1722,6 +1730,11 @@ Status ConvertMlirHloToHlo(
     bool return_tuple,
     const tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     MlirToHloConversionOptions options) {
+  // Prepare for export to XLA HLO.
+  mlir::PassManager pm(module.getContext());
+  pm.addNestedPass<mlir::FuncOp>(mhlo::CreatePrepareForExport());
+  if (failed(pm.run(module)))
+    return tensorflow::errors::Internal("Unable to optimize for XLA export");
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder("main");
   ConvertToHloModule converter(module, module_builder, use_tuple_args,

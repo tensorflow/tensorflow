@@ -367,7 +367,6 @@ xla_test(
         "conv_depthwise_test.cc",
     ],
     shard_count = 50,
-    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":conv_depthwise_common",
         ":test_macros_header",
@@ -389,7 +388,6 @@ xla_test(
     timeout = "long",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
     shard_count = 40,
-    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:execution_options_util",
@@ -414,7 +412,6 @@ xla_test(
         "cpu",
     ],
     shard_count = 50,
-    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -924,7 +921,6 @@ xla_test(
     srcs = ["dot_operation_test.cc"],
     shard_count = 20,
     tags = [
-        "no_rocm",  # ROCm 3.9 regression
         "optonly",
     ],
     deps = [
@@ -958,7 +954,6 @@ xla_test(
     backends = ["gpu"],
     shard_count = 20,
     tags = [
-        "no_rocm",  # ROCm 3.9 regression
         "optonly",
         # TODO(b/151340488): Timed out on 2020-03-12.
         "nozapfhahn",
@@ -1025,7 +1020,6 @@ xla_test(
     },
     shard_count = 20,
     tags = [
-        "no_rocm",  # ROCm 3.9 regression
         "optonly",
     ],
     deps = [
@@ -1122,7 +1116,6 @@ xla_test(
     srcs = ["convolution_test.cc"],
     shard_count = 50,
     tags = [
-        "no_rocm",
         "optonly",
         # Timed out on 2020-07-18
         "nozapfhahn",
@@ -1166,7 +1159,6 @@ xla_test(
     ],
     shard_count = 50,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1219,9 +1211,6 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-    tags = [
-        "no_rocm",
-    ],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1235,9 +1224,6 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-    tags = [
-        "no_rocm",
-    ],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1253,7 +1239,6 @@ xla_test(
         "cpu": ["nomsan"],
     },
     shard_count = 30,
-    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array3d",
@@ -1278,7 +1263,6 @@ xla_test(
     timeout = "long",
     srcs = ["convolution_dimension_numbers_test.cc"],
     shard_count = 20,
-    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array4d",
@@ -1998,19 +1982,21 @@ xla_test(
     name = "collective_ops_test",
     srcs = ["collective_ops_test.cc"],
     args = ["--xla_force_host_platform_device_count=4"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    tags = [
+    backend_tags = {
         # This test is tagged "manual" because it requires multiple GPUs, and
         # Forge only supports single-GPU tests.  Guitar skips "manual" tests
         # unless they're also tagged "guitar".
-        "guitar",
-        "manual",
-        "multi_gpu",
-        "no_oss",
-        "notap",
+        "gpu": [
+            "guitar",
+            "manual",
+            "multi_gpu",
+            "no_oss",
+            "notap",
+        ],
+    },
+    backends = [
+        "gpu",
+        "cpu",
     ],
     deps = [
         ":client_library_test_base",
@@ -2322,7 +2308,6 @@ xla_test(
     name = "multioutput_fusion_test",
     srcs = ["multioutput_fusion_test.cc"],
     backends = ["gpu"],
-    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",
@@ -2608,9 +2593,12 @@ xla_test(
     ],
     deps = [
         ":client_library_test_base",
+        ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

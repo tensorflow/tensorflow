@@ -25,11 +25,10 @@ set +u
 set -x
 
 function install_pylint () {
-  # TODO(gunan): figure out why we get stuck with later versions of pylint.
   # TODO(mihaimaruseac): this is used in the release build in the same way,
   # maybe extract out to a common?
-  sudo python3 -m pip install setuptools --upgrade
-  sudo python3 -m pip install pylint==2.6.0
+  sudo python3.8 -m pip install setuptools --upgrade
+  sudo python3.8 -m pip install pylint==2.6.0
 }
 
 function run_sanity_checks () {

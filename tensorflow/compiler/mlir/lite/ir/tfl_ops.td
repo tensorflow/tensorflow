@@ -133,7 +133,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
   TFL_RuntimePredOpTrait<"operands do not have the same shape or "
       "broadcastable shapes within the rank " # max_bcast_rank,
     CPred<"TFL::VerifyOperandsHaveSameShapesOrBroadcastableShape("
-            "$_op, llvm::ArrayRef<unsigned>({" # StrJoinInt<indices>.result #
+            "$_op, llvm::ArrayRef<unsigned>({" # !interleave(indices, ", ") #
             "}), " # max_bcast_rank # ")">>;
 
 // These additional types/type constraints here are used to decouple the ops
@@ -143,7 +143,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
 // TFL Runtime type predicate.
 class TFL_RuntimeType<TypeConstraint t> {
   Pred tflRuntimeTypePredicate = t.predicate;
-  string tflRuntimeTypeDescription = t.description;
+  string tflRuntimeTypeDescription = t.summary;
 }
 
 class TFL_AnyTypeOf<list<Type> allowedRuntimeTypes, string description = "",
@@ -806,7 +806,7 @@ def DimensionMetadataAttr : StructAttr<"DimensionMetadataAttr", TFL_Dialect, [
                             StructFieldAttr<"dense_size", I32Attr>,
                             StructFieldAttr<"segments", I32ArrayAttr>,
                             StructFieldAttr<"indices", I32ArrayAttr>] > {
-  let description = "Dimension metadata.";
+  let summary = "Dimension metadata.";
 }
 
 def DimensionMetadataArrayAttr : TypedArrayAttrBase<DimensionMetadataAttr,
@@ -816,7 +816,7 @@ def SparsityParameterAttr : StructAttr<"SparsityParameterAttr", TFL_Dialect, [
                             StructFieldAttr<"traversal_order", I32ArrayAttr>,
                             StructFieldAttr<"block_map", I32ArrayAttr>,
                             StructFieldAttr<"dim_metadata", DimensionMetadataArrayAttr>]> {
-  let description = "Sparsity parameter.";
+  let summary = "Sparsity parameter.";
   let storageType = [{ TFL::SparsityParameterAttr }];
 }
 
@@ -1068,12 +1068,12 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I64, I32, UI8, TFL_Str]>:$params,
+    TFL_TensorOf<[F32, I8, I16, I64, I32, UI8, TFL_Str]>:$params,
     TFL_I32OrI64Tensor:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, UI8, TFL_Str]>:$output
+    TFL_TensorOf<[F32, I8, I16, I64, I32, UI8, TFL_Str]>:$output
   );
 }
 
@@ -1604,9 +1604,9 @@ def TFL_FillOp: TFL_Op<"fill", [
   }];
 
   let arguments = (ins TFL_I32OrI64Tensor:$dims,
-                   TFL_TensorOf<[F32, I32, I64, I1, TFL_Str]>:$input);
+                   TFL_TensorOf<[F32, I32, I64, I1, QI8, TFL_Str]>:$input);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, TFL_Str]>:$result);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, QI8, TFL_Str]>:$result);
 
   let hasOptions = 0;
 }
@@ -3453,10 +3453,10 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I32, I64, TFL_Quint8, UI8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F32, I1, I16, I32, I64, TFL_Quint8, UI8, Complex<F<32>>]>:$input
   );
 
-  let results = (outs TFL_TensorOf<[F32, I1, I32, I64, TFL_Quint8, UI8, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I1, I16, I32, I64, TFL_Quint8, UI8, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
@@ -3691,8 +3691,12 @@ def LstmMandatoryInputsConstraint : PredOpTrait<
 
 def LstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
-  And<[TFL_TCopVTEtAreSameAt<9, 10, 16>,
-       TFL_TCopVTEtAreSameAt<9, 11, 16>]>>;
+  // Ignore input 9 (cell_to_input_weights) for LSTM with CIFG.
+  And<[
+    TFL_TCopVTEtAreSameAt<10, 11, 16>,
+    Or<[TFL_TCopVTEtAreSameAt<9, 10, 16>,
+        And<[TypeIsPred<"input_to_input_weights", NoneType>,
+             TypeIsPred<"cell_to_input_weights", NoneType>]>]>]>>;
 
 def LstmProjectionWeightBiasConstraint : PredOpTrait<
   "either projection weight must be specified or both projection weight and "
@@ -3702,13 +3706,25 @@ def LstmProjectionWeightBiasConstraint : PredOpTrait<
            TypeIsPred<"projection_bias", NoneType>]>,
       Neg<TypeIsPred<"projection_weights", NoneType>>]>>;
 
-// TODO(b/137798843): Need to add two additional constraints for both LSTM and
+def LstmCifgInputConstraint : PredOpTrait<
+  "the cifg inputs should all be specified or none",
+   // If LSTM has combined input/forget gate, input 1, 5, 9, 12, 20 are all none
+   // or 1, 5, 12 should not be none. Inputs 9 and 20 depend on LSTM's variants.
+   Or<[
+     And<[TypeIsPred<"input_to_input_weights", NoneType>,
+          TypeIsPred<"recurrent_to_input_weights", NoneType>,
+          TypeIsPred<"cell_to_input_weights", NoneType>,
+          TypeIsPred<"input_gate_bias", NoneType>,
+          TypeIsPred<"input_layer_norm_coefficients", NoneType>]>,
+     Neg<Or<[
+       TypeIsPred<"input_to_input_weights", NoneType>,
+       TypeIsPred<"recurrent_to_input_weights", NoneType>,
+       TypeIsPred<"input_gate_bias", NoneType>]>>]>>;
+
+
+// TODO(b/137798843): Need to add an additional constraint for both LSTM and
 // UnidirectionalSequenceLstm
-// For coupling of input and forget gates (cifg): if cifg is true,
-// tensor {1, 5, 9, 12, 20} are null; if cifg is
-// false, tensors {1, 5, 12} are not null; tensor {9} is not null if
-// additionally peephole = true; tensor {20} is not null if additionally layer
-// norm = true. For layer norm: if layer norm is false, tensor {20, 21, 22, 23}
+// For layer norm: if layer norm is false, tensor {20, 21, 22, 23}
 // are null; if layer norm is true, tensors {21, 22, 23} are not null; tensor
 // {20} is not null if additionally cifg = false.
 
@@ -3759,6 +3775,7 @@ def TFL_LSTMOp :
           [LstmMandatoryInputsConstraint,
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
+           LstmCifgInputConstraint,
            LstmResultConstraint,
            TFL_OperandHasRank<2, 2>,           // input_to_forget_weights
            TFL_OperandHasRank<3, 2>,           // input_to_cell_weights
@@ -3883,6 +3900,7 @@ def TFL_UnidirectionalSequenceLSTMOp :
           [LstmMandatoryInputsConstraint,
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
+           LstmCifgInputConstraint,
            LstmResultConstraint,
            TFL_OperandHasRankAtLeast<0, 2>,    // input
            TFL_OperandIsNoneOrHasRank<1, 2>,   // input_to_input_weights
@@ -4285,7 +4303,8 @@ def TFL_SVDFOp :
   TFL_Op<"svdf", [
     PredOpTrait<"the input and result tensor elemental types must be same",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_StatefulOp]> {
+    TFL_StatefulOp,
+    AccumulatorUniformScale<3, 2, 4>]> {
 
   let summary = "Single value decomposition filter operator";
 
@@ -4303,10 +4322,10 @@ def TFL_SVDFOp :
     TFL_TensorOf<[F32, QI8, QUI8]>:$feature_weights,
 
     // Time weights
-    TFL_TensorOf<[F32, QI8]>:$time_weights,
+    TFL_TensorOf<[F32, QI16]>:$time_weights,
 
     // Bias
-    TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
+    TFL_TensorOfOrNone<[F32, QI32]>:$input_gate_bias,
 
     // Activation state.
     TFL_StatefulTensor:$activation_state,

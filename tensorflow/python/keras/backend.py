@@ -1337,7 +1337,6 @@ def placeholder(shape=None,
     if sparse:
       spec = sparse_tensor.SparseTensorSpec(
           shape=shape, dtype=dtype)
-      x = keras_tensor.SparseKerasTensor(spec, name=name)
     elif ragged:
       ragged_rank = 0
       for i in range(1, len(shape)):
@@ -1349,12 +1348,10 @@ def placeholder(shape=None,
           ragged_rank = i
       spec = ragged_tensor.RaggedTensorSpec(
           shape=shape, dtype=dtype, ragged_rank=ragged_rank)
-
-      x = keras_tensor.RaggedKerasTensor(spec, name=name)
     else:
       spec = tensor_spec.TensorSpec(
           shape=shape, dtype=dtype, name=name)
-      x = keras_tensor.KerasTensor(spec, name=name)
+    x = keras_tensor.keras_tensor_from_type_spec(spec, name=name)
   else:
     with get_graph().as_default():
       if sparse:
@@ -3716,7 +3713,7 @@ def get_value(x):
   Returns:
       A Numpy array.
   """
-  if not tensor_util.is_tensor(x):
+  if not tensor_util.is_tf_type(x):
     return x
   if context.executing_eagerly() or isinstance(x, ops.EagerTensor):
     return x.numpy()
@@ -4035,7 +4032,7 @@ class GraphExecutionFunction(object):
       if value is None:
         continue
 
-      if tensor_util.is_tensor(value):
+      if tensor_util.is_tf_type(value):
         # Case: feeding symbolic tensor.
         feed_symbols.append(tensor)
         symbol_vals.append(value)
@@ -4722,7 +4719,7 @@ def in_train_phase(x, alt, training=None):
     training = learning_phase()
 
   # TODO(b/138862903): Handle the case when training is tensor.
-  if not tensor_util.is_tensor(training):
+  if not tensor_util.is_tf_type(training):
     if training == 1 or training is True:
       if callable(x):
         return x()
@@ -6556,7 +6553,7 @@ def cast_variables_to_tensor(tensors):
 
 
 def _is_symbolic_tensor(x):
-  return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)
+  return tensor_util.is_tf_type(x) and not isinstance(x, ops.EagerTensor)
 
 
 def convert_inputs_if_ragged(inputs):

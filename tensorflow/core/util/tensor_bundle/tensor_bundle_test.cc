@@ -768,9 +768,12 @@ TEST(TensorBundleTest, StringTensors) {
     EXPECT_EQ(DT_STRING, dtype);
     EXPECT_EQ(TensorShape({1}), shape);
 
-    // Zero-out the string so that we can be sure the new one is read in.
+    // Fill the string differently so that we can be sure the new one is read
+    // in. Because fragmentation in tc-malloc and we have such a big tensor
+    // of 4GB, therefore it is not ideal to free the buffer right now.
+    // The rationale is to make allocation/free close to each other.
     tstring* backing_string = long_string_tensor.flat<tstring>().data();
-    backing_string->assign("");
+    std::char_traits<char>::assign(backing_string->data(), kLongLength, 'e');
 
     // Read long_scalar and check it contains kLongLength 'd's.
     TF_ASSERT_OK(reader.Lookup("long_scalar", &long_string_tensor));

@@ -139,7 +139,7 @@ class _DataSet(object):
     Args:
       images: The images
       labels: The labels
-      fake_data: Ignore inages and labels, use fake data.
+      fake_data: Ignore images and labels, use fake data.
       one_hot: Bool, return the labels as one hot vectors (if True) or ints (if
         False).
       dtype: Output image dtype. One of [uint8, float32]. `uint8` output has
@@ -331,4 +331,3 @@ def read_data_sets(train_dir,
   test = _DataSet(test_images, test_labels, **options)
 
   return _Datasets(train=train, validation=validation, test=test)
-

@@ -2751,59 +2751,6 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
   }
 };
 
-// Converts Size to HLO ops, computing the size of a ranked input tensor.
-// TODO(b/145253252): Update this to not require ranked input tensor shapes.
-//
-// The main logic of this pattern is to calculate the size by multiplying every
-// dimension of the input tensor's shape together.
-//
-// For example, the following source IR:
-//
-//   %size = "tf.Size"(%input) : (tensor<2x?x8xf32>) -> tensor<i32>
-//
-// will be converted into:
-//
-//   %const = mhlo.constant dense<1> : tensor<i32>
-//   %dim_0 = "mhlo.get_dimension_size"(%input) {dimension = 0 : i64} :
-//                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %prod_0 = mhlo.multiply %const, %dim_0 : tensor<i32>
-//   %dim_1 = "mhlo.get_dimension_size"(%input) {dimension = 1 : i64} :
-//                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %prod_1 = mhlo.multiply %prod_0, %dim_1 : tensor<i32>
-//   %dim_2 = "mhlo.get_dimension_size"(%input) {dimension = 2 : i64} :
-//                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %size = mhlo.multiply %prod_1, %dim_2 : tensor<i32>
-class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::SizeOp op,
-                                PatternRewriter &rewriter) const override {
-    Value input = op.input();
-    auto input_ty = input.getType().dyn_cast<RankedTensorType>();
-    if (!input_ty) return failure();
-
-    const int64_t rank = input_ty.getRank();
-    auto result_ty = op.getResult().getType();
-    auto element_ty = result_ty.cast<TensorType>().getElementType();
-    Value size = GetScalarConstOfType(element_ty, op.getLoc(), 1, &rewriter);
-    for (int64_t i = 0; i < rank; ++i) {
-      auto i32_ty = rewriter.getIntegerType(32);
-      auto size_ty = RankedTensorType::get({}, i32_ty);
-      auto dim_index = rewriter.getI64IntegerAttr(i);
-      Value dim = rewriter.create<GetDimensionSizeOp>(op.getLoc(), size_ty,
-                                                      input, dim_index);
-      dim = rewriter.create<mhlo::ConvertOp>(op.getLoc(), result_ty, dim);
-      size = rewriter.create<chlo::BroadcastMulOp>(
-          op.getLoc(), size, dim,
-          /*DenseIntElementsAttr=*/DenseIntElementsAttr());
-    }
-    rewriter.replaceOp(op, size);
-
-    return success();
-  }
-};
-
 static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
                                            Value *out_lhs, Value *out_rhs,
                                            PatternRewriter *rewriter) {
@@ -4237,12 +4184,31 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
     const int64_t feature_group_count = in_depth / filter_in_depth;
 
     if (feature_group_count != 1) {
-      /*
-      // TODO(parkers): Convert this code to mlir.
-    filter = TransposeFilterForGroupConvolutionBackpropInput(
-        filter, filter_shape, feature_group_count, attrs.num_spatial_dims);
-        */
-      return failure();
+      // 1. Reshape filter from
+      //   [H, W, ..., filter_in_depth, out_depth] to
+      //   [H, W, ..., filter_in_depth, G, out_depth / G].
+      auto new_shape = llvm::to_vector<6>(filter_shape);
+      new_shape.back() = feature_group_count;
+      new_shape.push_back(filter_shape.back() / feature_group_count);
+      Type filter_element_ty = filter_ty.getElementType();
+      auto ty = RankedTensorType::get(new_shape, filter_element_ty);
+      filter = rewriter.create<ReshapeOp>(op.getLoc(), ty, filter);
+
+      // 2. Transpose to [H, W, ..., G, filter_in_depth, out_depth / G].
+      llvm::SmallVector<int64_t, 6> perm(num_dims + 1);
+      std::iota(perm.begin(), perm.end(), 0);
+      std::swap(perm[num_spatial_dims], perm[num_spatial_dims + 1]);
+      std::swap(new_shape[num_spatial_dims], new_shape[num_spatial_dims + 1]);
+      ty = RankedTensorType::get(new_shape, filter_element_ty);
+      filter = rewriter.create<TransposeOp>(
+          op.getLoc(), ty, filter, GetI64ElementsAttr(perm, &rewriter));
+
+      // 3. Reshape to [H, W, ..., in_depth, out_depth / G].
+      new_shape[num_spatial_dims] *= new_shape[num_spatial_dims + 1];
+      new_shape[num_spatial_dims + 1] = new_shape.back();
+      new_shape.pop_back();
+      ty = RankedTensorType::get(new_shape, filter_element_ty);
+      filter = rewriter.create<ReshapeOp>(op.getLoc(), ty, filter);
     }
 
     auto kernel_spatial_dims_attr =
@@ -4380,17 +4346,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
         tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
     const int64_t in_depth = input_shape[feature_dim];
     const int64_t filter_in_depth = *(filter_shape.begin() + num_spatial_dims);
-    const int64_t feature_group_count = in_depth / filter_in_depth;
-
-    if (feature_group_count != 1) {
-      /*
-          // TODO(parkers): translate this code to mlir.
-          activations = TransposeInputForGroupConvolutionBackpropFilter(
-              activations, input_shape, feature_group_count, batch_dim,
-         feature_dim);
-      */
-      return failure();
-    }
+    const int64_t batch_group_count = in_depth / filter_in_depth;
 
     // Compute ConvDimensionNumbers, dilation, and padding.
     SmallVector<int64_t, num_spatial_dims> spatial_dims;
@@ -4501,8 +4457,8 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
             /*output_spatial_dimensions=*/
             GetI64ElementsAttrForSeq(0, num_spatial_dims, &rewriter),
             rewriter.getContext()),
-        rewriter.getI64IntegerAttr(feature_group_count),
-        /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
+        /*feature_group_count=*/rewriter.getI64IntegerAttr(1),
+        rewriter.getI64IntegerAttr(batch_group_count),
         /*precision_config=*/ArrayAttr());
 
     rewriter.replaceOp(op, {result});
@@ -6228,7 +6184,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
       ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
       ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
       ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertSigmoidOp, ConvertShapeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,

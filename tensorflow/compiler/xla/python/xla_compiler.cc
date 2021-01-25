@@ -29,6 +29,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl_bind.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -364,7 +365,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       "hlo_module_cost_analysis",
       [](PyClient* client,
          const HloModule& module) -> StatusOr<std::map<string, float>> {
-        auto analysis = client->pjrt_client()->GetHloCostAnalysis();
+        TF_ASSIGN_OR_RETURN(auto analysis,
+                            client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
         return analysis->properties();
       });

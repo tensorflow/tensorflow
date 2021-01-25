@@ -481,7 +481,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::SQRT:
     case OperationType::SQUARE:
     case OperationType::TANH: {
-      GPUOperation operation = CreateElementwiseOneInput(op_def, op_type);
+      GPUOperation operation =
+          CreateElementwiseOneInput(gpu_info, op_def, op_type);
       *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
       return absl::OkStatus();
     }

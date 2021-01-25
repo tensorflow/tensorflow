@@ -492,6 +492,47 @@ will be transformed into this functional operation
   let constructor = "TF::CreateTFRegionControlFlowToFunctional()";
 }
 
+def TPUReorderReplicateAndPartitionedInputsPass : FunctionPass<"tf-tpu-reorder-replicate-partitioned-inputs"> {
+  let summary = "Reorder replicated and partitioned input ops.";
+
+  let description = [{
+This pass rewrites how data parallelism and model parallelism is expressed for
+inputs. It reorders `tf.TPUPartitionedInput` (model parallelism) and
+`tf.TPUReplicatedInput` (data parallelism) ops. It transforms a DAG where
+multiple `tf.TPUPartitionedInput` ops are feeding into a single
+`tf.TPUReplicatedInput` into a DAG where multiple `tf.TPUReplicatedInput` ops
+are feeding into a single `tf.TPUPartitionedInput`. Transforming the IR in such
+a manner will allow subsequent cluster formation pass to handle IR with both
+data and model parallelism in an easier manner.
+
+For example, the following:
+
+```mlir
+!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
+  %pi_0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (!rtype, !rtype) -> !rtype
+  return %ri : !rtype
+}
+```
+
+will be transformed into:
+
+```mlir
+!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
+  %ri_0 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
+  %ri_1 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype
+  %pi = "tf.TPUPartitionedInput"(%ri_0, %ri_1) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  return %pi : !rtype
+}
+```
+  }];
+
+  let constructor = "TFTPU::CreateTPUReorderReplicateAndPartitionedInputsPass()";
+}
+
 def TPUResourceReadsWritesPartitioningPass : FunctionPass<"tf-tpu-resource-partition"> {
   let summary = "Partitions unpartitioned resource read/write to partitioned resource variables.";
 
@@ -541,3 +582,172 @@ func @computation(%arg0: tensor<i32>) -> tensor<i32> {
 
   let constructor = "TFTPU::CreateTPUResourceReadsWritesPartitioningPass()";
 }
+
+def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
+  let summary = "Rewrites a `tf_device.cluster_func` on TPUs into TPU runtime operations.";
+
+  let description = [{
+This pass rewrites a `tf_device.cluster_func` operation into a sequence of `tf._TPUCompileMlir`
+and `tf.TPUExecute` operations. `tf._TPUCompileMlir` contains a MLIR module that is
+functionally equivalent to the function referenced by `tf_device.cluster_func`.
+This makes the module to be jit-compiled and executed on TPU.
+If it is not possible to rewrite the operation or device assignment fails,
+a failure will be returned.
+
+Note, many parameters to the `tf_device.cluster_func` are ommited in this
+and following examples.
+For example, a non replicated `tf_device.cluster_func`:
+
+```mlir
+func @tf_tpu_rewrite(%arg0: tensor<i8>) {
+  %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "cluster0", func = @func} : (tensor<i8>) -> tensor<i8>
+  return
+}
+```
+
+will be rewritten as:
+
+```mlir
+func @tf_tpu_rewrite(%arg0: tensor<i8>) {
+  %0:2 = "tf_device.launch"() ( {
+    %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
+    tf_device.return %compilation_status, %program : tensor<!tf.string>, tensor<3x!tf.string>
+  }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
+  "tf_device.launch"() ( {
+    "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf.string>) -> ()
+    tf_device.return
+  }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+  %1 = "tf_device.launch"() ( {
+    %2 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<i8>, tensor<3x!tf.string>) -> tensor<i8>
+    tf_device.return %2 : tensor<i8>
+  }) {device = "/job:worker/replica:0/task:0/device:TPU:0"} : () -> tensor<i8>
+  return
+}
+```
+
+A replicated `tf_device.cluster_func`:
+
+```mlir
+func @tf_tpu_rewrite(%arg0: tensor<i8>, %arg1: tensor<i8>) {
+  %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<i8>) {n = 2 : i32} {
+    %1 = "tf_device.cluster_func"(%ri) {_tpu_replicate = "cluster0", func = @func} : (tensor<i8>) -> tensor<i8>
+    tf_device.return %1 : tensor<i8>
+  }
+  return
+}
+```
+
+will be rewritten as:
+
+```mlir
+func @tf_tpu_rewrite(%arg0: tensor<i8>, %arg1: tensor<i8>) {
+  %0:2 = tf_device.replicate([%arg0, %arg1] as %arg2: tensor<i8>) {devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}, n = 2 : i32} {
+    %1:2 = "tf_device.launch"() ( {
+      %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
+      tf_device.return %compilation_status, %program : tensor<!tf.string>, tensor<3x!tf.string>
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
+    "tf_device.launch"() ( {
+      "tf.TPUCompileSucceededAssert"(%1#0) : (tensor<!tf.string>) -> ()
+      tf_device.return
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+    %2 = "tf_device.launch"() ( {
+      %3 = "tf.TPUExecute"(%arg2, %1#1) : (tensor<i8>, tensor<3x!tf.string>) -> tensor<i8>
+      tf_device.return %3 : tensor<i8>
+    }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<i8>
+    tf_device.return %2 : tensor<i8>
+  }
+  return
+}
+
+A non replicated `tf_device.cluster_func` with the model parallelism:
+
+```mlir
+func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+  %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "cluster0", func = @func, num_cores_per_replica = 2, input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
+  return %0 : tensor<8xi32>
+}
+```
+
+will be rewritten as:
+
+```mlir
+func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+  %0:3 = "tf_device.launch"() ( {
+    %compilation_status, %program:2 = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>, tensor<3x!tf.string>)
+    tf_device.return %compilation_status, %program#0, %program#1 : tensor<!tf.string>, tensor<3x!tf.string>, tensor<3x!tf.string>
+  }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>, tensor<3x!tf.string>)
+  "tf_device.launch"() ( {
+    "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf.string>) -> ()
+    tf_device.return
+  }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
+  %1 = "tf_device.parallel_execute"() ( {
+    %2 = "tf_device.launch"() ( {
+      %3 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<8xi32>, tensor<3x!tf.string>) -> tensor<8xi32>
+      tf_device.return %3 : tensor<8xi32>
+    }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> tensor<8xi32>
+    tf_device.return %2 : tensor<8xi32>
+  },  {
+    "tf_device.launch"() ( {
+      "tf.TPUExecute"(%0#2) : (tensor<3x!tf.string>) -> ()
+      tf_device.return
+    }) {device = "/job:localhost/replica:0/task:0/device:TPU:1"} : () -> ()
+    tf_device.return
+  }) : () -> tensor<8xi32>
+  return %1 : tensor<8xi32>
+}
+```
+  }];
+
+  let constructor = "TFTPU::CreateTPURewritePass()";
+}
+
+def ClusterOpsByPolicyPass : FunctionPass<"cluster-ops-by-policy"> {
+  let summary = "Clusters ops according to specified policy.";
+
+  let description = [{
+This pass clusters ops according to the policy specified by the pass options.
+Clustered ops are moved to a tf_device::clusterOp region.
+
+The only currently supported option is 'oplist=<list of ops>'. This option
+specifies the names of the ops that should be clustered if they form
+a single use def-use chain, that is, the next op in the list uses the result
+of the previous op and is the only user of that result. The ops should
+be located in the same block, be assigned to the same device and have no
+side effects.
+
+For example, running this pass with option oplist="tf.Cast, tf.Add" on:
+
+```mlir
+func @cluster_oplist(%arg0 : tensor<f32>, %arg1 : tensor<i32>) -> tensor<i32> {
+  %0 = "tf.Cast"(%arg0) : (tensor<f32>) -> tensor<i32>
+  %1 = "SomeOp" (%arg1) : (tensor<i32>) -> tensor<i32>
+  %2 = "tf.Add"(%0, %1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %2 : tensor<i32>
+}
+```
+
+will produce tf_device::opCluster enclosing tf.Add and tf.Neg:
+
+```mlir
+func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = "SomeOp"(%arg1) : (tensor<i32>) -> tensor<i32>
+  %1 = "tf_device.cluster"() ( {
+    %2 = "tf.Cast"(%arg0) : (tensor<f32>) -> tensor<i32>
+    %3 = "tf.Add"(%2, %0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    tf_device.return %3 : tensor<i32>
+  }) : () -> tensor<i32>
+  return %1 : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateClusterOpsByPolicyPass()";
+
+  let options = [
+   ListOption<"oplist", "oplist", "std::string",
+               "Cluster listed ops when they form a single use def-use chain, "
+               "such that each op's single user is the next op in the list.",
+               "llvm::cl::MiscFlags::CommaSeparated">
+  ];
+}
+
