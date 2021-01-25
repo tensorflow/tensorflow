@@ -206,6 +206,71 @@ TEST_P(CppGradients, TestMatMulGrad) {
   }
 }
 
+TEST_P(CppGradients, TestMatMulGradManual) {
+  float A_vals[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  int64_t A_dims[] = {3, 3};
+  AbstractTensorHandlePtr A;
+  {
+    AbstractTensorHandle* A_raw;
+    status_ = TestTensorHandleWithDimsFloat(immediate_execution_ctx_.get(),
+                                            A_vals, A_dims, 2, &A_raw);
+    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    A.reset(A_raw);
+  }
+
+  float B_vals[] = {9.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
+  int64_t B_dims[] = {3, 3};
+  AbstractTensorHandlePtr B;
+  {
+    AbstractTensorHandle* B_raw;
+    status_ = TestTensorHandleWithDimsFloat(immediate_execution_ctx_.get(),
+                                            B_vals, B_dims, 2, &B_raw);
+    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    B.reset(B_raw);
+  }
+
+  status_ = registry_.Register("MatMul", MatMulRegisterer);
+  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+
+  bool transpose_a_vals[] = {false, false, true, true};
+  bool transpose_b_vals[] = {false, true, false, true};
+  float dA_vals[4][9] = {{24, 15, 6, 24, 15, 6, 24, 15, 6},
+                         {18, 15, 12, 18, 15, 12, 18, 15, 12},
+                         {24, 24, 24, 15, 15, 15, 6, 6, 6},
+                         {18, 18, 18, 15, 15, 15, 12, 12, 12}};
+  float dB_vals[4][9] = {{12, 12, 12, 15, 15, 15, 18, 18, 18},
+                         {12, 15, 18, 12, 15, 18, 12, 15, 18},
+                         {6, 6, 6, 15, 15, 15, 24, 24, 24},
+                         {6, 15, 24, 6, 15, 24, 6, 15, 24}};
+
+  for (int i{}; i < 4; ++i) {
+    bool transpose_a = transpose_a_vals[i];
+    bool transpose_b = transpose_b_vals[i];
+    Model MatMulModel =
+        [transpose_a, transpose_b](
+            AbstractContext* ctx,
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs) -> Status {
+      return ops::MatMul(ctx, inputs, outputs, "MatMul", transpose_a,
+                         transpose_b);
+    };
+    Model MatMulGradModel = BuildGradModel(MatMulModel, registry_);
+    std::vector<AbstractTensorHandle*> outputs(2);
+    status_ =
+        RunModel(MatMulGradModel, immediate_execution_ctx_.get(),
+                 {A.get(), B.get()}, absl::MakeSpan(outputs), UseFunction());
+    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[0], dA_vals[i],
+                                             /*dims*/ {3, 3},
+                                             /*abs_error*/ 0));
+    ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[1], dB_vals[i],
+                                             /*dims*/ {3, 3},
+                                             /*abs_error*/ 0));
+    outputs[0]->Unref();
+    outputs[1]->Unref();
+  }
+}
+
 TEST_P(CppGradients, TestSqrtGrad) {
   AbstractTensorHandlePtr x;
   {
