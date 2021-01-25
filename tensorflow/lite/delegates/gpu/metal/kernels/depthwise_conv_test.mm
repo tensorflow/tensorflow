@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -215,6 +216,16 @@ using ::tflite::gpu::metal::SingleOpModel;
 
 - (void)testDepthwiseConvMultiplier2 {
   auto status = DepthwiseConvMultiplier2Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testDepthwiseConv3x3SimpleWeights {
+  auto status = DepthwiseConv3x3SimpleWeightsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testDepthwiseConv3x3 {
+  auto status = DepthwiseConv3x3Test(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

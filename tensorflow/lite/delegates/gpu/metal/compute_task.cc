@@ -191,6 +191,8 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
     @"GROUP_SIZE_1" : @"static_cast<int>(reserved_group_size.y)",
     @"GROUP_SIZE_2" : @"static_cast<int>(reserved_group_size.z)",
     @"__local" : @"threadgroup",
+    @"__global" : @"device",
+    @"__constant" : @"constant",
     @"LOCAL_MEM_BARRIER" : @"threadgroup_barrier(mem_flags::mem_threadgroup)",
     @"INIT_FLT(value)" : [NSString stringWithFormat:@"%@(value)", storageType],
     @"INIT_FLT4(value)" :
