@@ -520,6 +520,7 @@ cc_library(
         ":hlo_graph_dumper",
         ":hlo_pass",
         ":hlo_sharding_util",
+        "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -541,12 +542,16 @@ tf_cc_test(
         "sharding_propagation_test.cc",
     ],
     deps = [
-        "hlo_matchers",
+        ":hlo",
+        ":hlo_matchers",
         ":hlo_parser",
         ":sharding_propagation",
+        "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 

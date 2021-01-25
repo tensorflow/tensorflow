@@ -285,7 +285,8 @@ class HloSharding {
   int64 NumTiles(absl::Span<const int64> dims) const;
 
   // Gets metadata from sharding.
-  absl::Span<const OpMetadata> metadata() const { return metadata_; }
+  std::vector<OpMetadata>& metadata() { return metadata_; }
+  const std::vector<OpMetadata>& metadata() const { return metadata_; }
 
  private:
   explicit HloSharding(bool manual, bool replicated,
