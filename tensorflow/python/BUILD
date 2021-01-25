@@ -5239,7 +5239,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/experimental/ops",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
-        "//tensorflow/c/eager:mnist_gradients_testutil",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/grappler:grappler_item",
