@@ -177,49 +177,6 @@ void MicroInterpreter::Init(tflite::Profiler* profiler) {
   initialization_status_ = kTfLiteOk;
 }
 
-void MicroInterpreter::CorrectTensorEndianness(TfLiteEvalTensor* tensorCorr) {
-  int32_t tensorSize = 1;
-  for (int d = 0; d < tensorCorr->dims->size; ++d)
-    tensorSize *= reinterpret_cast<const int32_t*>(tensorCorr->dims->data)[d];
-
-  switch (tensorCorr->type) {
-    case TfLiteType::kTfLiteFloat32:
-      CorrectTensorDataEndianness(tensorCorr->data.f, tensorSize);
-      break;
-    case TfLiteType::kTfLiteFloat16:
-      CorrectTensorDataEndianness(tensorCorr->data.f16, tensorSize);
-      break;
-    case TfLiteType::kTfLiteInt64:
-      CorrectTensorDataEndianness(tensorCorr->data.i64, tensorSize);
-      break;
-    case TfLiteType::kTfLiteUInt64:
-      CorrectTensorDataEndianness(tensorCorr->data.u64, tensorSize);
-      break;
-    case TfLiteType::kTfLiteInt32:
-      CorrectTensorDataEndianness(tensorCorr->data.i32, tensorSize);
-      break;
-    case TfLiteType::kTfLiteInt16:
-      CorrectTensorDataEndianness(tensorCorr->data.i16, tensorSize);
-      break;
-    case TfLiteType::kTfLiteComplex64:
-      CorrectTensorDataEndianness(tensorCorr->data.c64, tensorSize);
-      break;
-    case TfLiteType::kTfLiteComplex128:
-      CorrectTensorDataEndianness(tensorCorr->data.c128, tensorSize);
-      break;
-    default:
-      // Do nothing for other data types.
-      break;
-  }
-}
-
-template <class T>
-void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
-  for (int32_t i = 0; i < size; ++i) {
-    data[i] = flatbuffers::EndianScalar(data[i]);
-  }
-}
-
 TfLiteStatus MicroInterpreter::AllocateTensors() {
   if (allocator_.StartModelAllocation(model_, op_resolver_,
                                       &node_and_registrations_,
@@ -236,28 +193,6 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   // into the interpreter.
   context_helper_.SetTfLiteEvalTensors(eval_tensors_);
   context_.tensors_size = subgraph_->tensors()->size();
-
-  // If the system is big endian then convert weights from the flatbuffer from
-  // little to big endian on startup so that it does not need to be done during
-  // inference.
-  // NOTE: This requires that the flatbuffer is held in memory which can be
-  // modified by this process.
-  if (!FLATBUFFERS_LITTLEENDIAN) {
-    for (size_t t = 0; t < subgraph_->tensors()->size(); ++t) {
-      if (auto* buffer =
-              (*model_->buffers())[subgraph_->tensors()->Get(t)->buffer()]) {
-        // If we've found a buffer, does it have any data?
-        if (auto* array = buffer->data()) {
-          // If it has any data, is the data size larger than zero?
-          if (array->size()) {
-            // Update the endianness of the corresponding eval tensor since that
-            // struct holds the buffer used at inference time.
-            CorrectTensorEndianness(&eval_tensors_[t]);
-          }
-        }
-      }
-    }
-  }
 
   // Only allow AllocatePersistentBuffer in Init stage.
   context_.AllocatePersistentBuffer = context_helper_.AllocatePersistentBuffer;

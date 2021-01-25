@@ -181,11 +181,6 @@ class MicroInterpreter {
   // error reporting during initialization.
   void Init(tflite::Profiler* profiler);
 
-  void CorrectTensorEndianness(TfLiteEvalTensor* tensorCorr);
-
-  template <class T>
-  void CorrectTensorDataEndianness(T* data, int32_t size);
-
   NodeAndRegistration* node_and_registrations_ = nullptr;
 
   const Model* model_;
