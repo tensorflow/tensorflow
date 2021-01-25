@@ -186,6 +186,10 @@ py_library(
     name = "client_testlib",
     srcs = ["test.py"],
     srcs_version = "PY3",
+    visibility = visibility + [
+        # TODO(b/178183520): remove once the test no longer depend on internal files.
+        "//learning/serving/testing/prober/model_generators/tpu:__pkg__",
+    ],
     deps = [
         ":test",
         "//tensorflow/python:client",
