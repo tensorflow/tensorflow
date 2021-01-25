@@ -32,7 +32,7 @@ def ConvolutionBackendConfigAttr : StructAttr<"ConvolutionBackendConfig",
    StructFieldAttr<"operand_0_layout", I64ArrayAttr>,
    StructFieldAttr<"operand_1_layout", I64ArrayAttr>,
    StructFieldAttr<"result_layout", I64ArrayAttr>]> {
-   let description = "GPU Convolution backend configuration";
+   let summary = "GPU Convolution backend configuration";
 }
 
 #endif // LHLO_GPU_OPS_STRUCTS

@@ -7,14 +7,17 @@ workspace(name = "org_tensorflow")
 # E.g. we can not retrieve a new repository with http_archive and then load()
 # a macro from that repository in the same file.
 load("@//tensorflow:workspace3.bzl", "workspace")
+
 workspace()
+
 load("@//tensorflow:workspace2.bzl", "workspace")
+
 workspace()
+
 load("@//tensorflow:workspace1.bzl", "workspace")
+
 workspace()
+
 load("@//tensorflow:workspace0.bzl", "workspace")
+
 workspace()
-
-
-
-

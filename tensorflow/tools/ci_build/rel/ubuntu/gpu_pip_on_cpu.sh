@@ -18,7 +18,7 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_pip_deps pip3.6
+install_ubuntu_16_python_pip_deps python3.6
 # Update Bazel to the desired version
 install_bazelisk
 
@@ -31,7 +31,7 @@ export TF_CUDA_VERSION=11
 export TF_CUDNN_VERSION=8
 export TF_NEED_TENSORRT=1
 export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
-export CC_OPT_FLAGS='-mavx'
+export CC_OPT_FLAGS='-mavx -march=native'
 export PYTHON_BIN_PATH=$(which python3.6)
 export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$TENSORRT_INSTALL_PATH/lib"
 export TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_50,sm_60,sm_70,sm_75,compute_80

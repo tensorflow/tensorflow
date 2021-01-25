@@ -660,7 +660,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # versions of python2.7.x.
         for _ in range(warmup_iters):
           f(self, *args, **kwargs)
-        # Since we aren't in the normal test lifecylce, we need to manually run
+        # Since we aren't in the normal test lifecycle, we need to manually run
         # cleanups to clear out their object references.
         self.doCleanups()
 
@@ -668,6 +668,10 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # create and save as a dummy variable to include it as a baseline.
         obj_count_by_type = _get_object_count_by_type()
         gc.collect()
+
+        # Make sure any registered functions are cleaned up in the C++ runtime.
+        registered_function_names = context.context().list_function_names()
+
         # unittest.doCleanups adds to self._outcome with each unwound call.
         # These objects are retained across gc collections so we exclude them
         # from the object count calculation.
@@ -682,7 +686,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
           }
         for _ in range(3):
           f(self, *args, **kwargs)
-        # Since we aren't in the normal test lifecylce, we need to manually run
+        # Since we aren't in the normal test lifecycle, we need to manually run
         # cleanups to clear out their object references.
         self.doCleanups()
         # Note that gc.get_objects misses anything that isn't subject to garbage
@@ -711,6 +715,14 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
                 exclude=gc.get_referents(self._outcome.errors,
                                          self._outcome.skipped)) -
             obj_count_by_type)
+
+        # There should be no newly registered functions hanging around.
+        leftover_functions = (
+            context.context().list_function_names() - registered_function_names)
+        assert not leftover_functions, (
+            "The following functions were newly created: %s" %
+            leftover_functions)
+
         # In some cases (specifically on MacOS), new_count is somehow
         # smaller than previous_count.
         # Using plain assert because not all classes using this decorator
@@ -1104,21 +1116,6 @@ def run_in_async_and_sync_mode(f):
     else:
       with context.execution_mode(context.SYNC):
         f(self, *args, **kwargs)
-  return decorator
-
-
-def eager_lazy_remote_copy_on_and_off(f):
-  """Execute the test method w/o lazy tensor copy for function remote inputs."""
-
-  @parameterized.named_parameters([("WithLazyRemoteCopy", True), ("", False)])
-  @functools.wraps(f)
-  def decorator(self, lazily_remote_copy, *args, **kwargs):
-    if lazily_remote_copy:
-      context.context().lazy_remote_inputs_copy = True
-    else:
-      context.context().lazy_remote_inputs_copy = False
-    f(self, *args, **kwargs)
-
   return decorator
 
 

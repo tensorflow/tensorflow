@@ -49,6 +49,7 @@ py_library(
     name = "mnist_train",
     srcs = ["mnist_train.py"],
     data = [":mnist_ops_mlir"],
+    srcs_version = "PY3",
     deps = [
         ":mnist_ops",
         ":mnist_ops_py",

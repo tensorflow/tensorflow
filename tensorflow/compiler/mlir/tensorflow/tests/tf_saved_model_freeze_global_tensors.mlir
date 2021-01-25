@@ -64,7 +64,7 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 
-  func @f_callee(%arg0: tensor<!tf.resource<tensor<f32>>>) attributes {sym_visibility = "private"} {
+  func private @f_callee(%arg0: tensor<!tf.resource<tensor<f32>>>) {
     return
   }
 }

@@ -14,8 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/util.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include <algorithm>
 #include <complex>
 #include <cstring>
+#include <initializer_list>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"

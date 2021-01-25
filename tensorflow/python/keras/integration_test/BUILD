@@ -80,7 +80,6 @@ cuda_py_test(
     name = "gradient_checkpoint_test",
     srcs = ["gradient_checkpoint_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py_no_contrib",
     ],

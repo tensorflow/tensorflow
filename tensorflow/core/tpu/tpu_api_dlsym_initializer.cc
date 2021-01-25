@@ -22,8 +22,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_node_device.h"
-#include "tensorflow/core/tpu/tpu_system_device.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #endif
@@ -55,11 +53,6 @@ Status InitializeTpuLibrary(void* library_handle) {
     (*initialize_fn)(/*init_library=*/true, /*argc=*/0, /*argv=*/nullptr);
 
     RegisterTpuPlatform();
-    RegisterTpuSystemDevice();
-    RegisterTpuNodeDevice(
-        /*tpu_autoclustering=*/false,
-        /*tpu_xla_device_failure_closes_chips=*/true,
-        /*tpu_use_substreams_for_cross_tpu_device_transfers=*/true);
   }
 
   return s;

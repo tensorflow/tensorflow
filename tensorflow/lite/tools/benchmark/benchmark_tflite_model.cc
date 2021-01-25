@@ -509,6 +509,12 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
       // TODO(haoliang): No need to cache string tensors right now.
       break;
     }
+    case kTfLiteBool: {
+      // According to std::uniform_int_distribution specification, non-int type
+      // is not supported.
+      return CreateInputTensorData<bool>(
+          num_elements, std::uniform_int_distribution<uint32_t>(0, 1));
+    }
     default: {
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t.name
                         << " of type " << t.type;
@@ -678,6 +684,12 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     if (input.name != t->name) {
       TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
                        << " but flags call it " << input.name;
+    }
+
+    if (input.shape.size() != t->dims->size) {
+      TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
+                        << t->dims->size << " dimensions!";
+      return kTfLiteError;
     }
   }
 

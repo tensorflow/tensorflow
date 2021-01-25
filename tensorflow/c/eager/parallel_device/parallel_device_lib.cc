@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -434,30 +436,45 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
 std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     const ParallelDevice& parallel_device,
     std::vector<TensorHandlePtr> components, TF_Status* status) {
-  std::vector<int64> shape(
-      TFE_TensorHandleNumDims(components[0].get(), status));
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  for (int i = 0; i < shape.size(); ++i) {
-    shape[i] = TFE_TensorHandleDim(components[0].get(), i, status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-  }
-
-  // Verify that the TensorHandle's shape matches all of the component shapes.
+  TF_DataType dtype = TFE_TensorHandleDataType(components[0].get());
+  // Verify that the combined TensorHandle's dtype matches all of the component
+  // dtypes.
   for (TensorHandlePtr& component : components) {
-    for (int i = 0; i < shape.size(); ++i) {
-      int64 tensor_dim = TFE_TensorHandleDim(component.get(), i, status);
-      if (TF_GetCode(status) != TF_OK) return nullptr;
-      if (tensor_dim != shape[i]) {
-        // TODO(allenl): Allow shapes to differ.
-        TF_SetStatus(status, TF_UNIMPLEMENTED,
-                     "Components of a ParallelTensor must currently all have "
-                     "the same shape");
-        return nullptr;
-      }
+    if (TFE_TensorHandleDataType(component.get()) != dtype) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   "Components of a ParallelTensor must all have "
+                   "the same dtype");
+      return nullptr;
     }
   }
-  return FromTensorHandles(parallel_device, std::move(components),
-                           absl::Span<const int64>(shape), status);
+  return std::unique_ptr<ParallelTensor>(
+      new ParallelTensor(parallel_device, std::move(components), dtype));
+}
+
+Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
+  if (!shape_.has_value()) {
+    TF_Status status;
+    PartialTensorShape first_shape;
+    TF_RETURN_IF_ERROR(unwrap(tensors_[0].get())->Shape(&first_shape));
+
+    // Verify that the TensorHandle's shape matches all of the component shapes.
+    for (const TensorHandlePtr& component : tensors_) {
+      PartialTensorShape component_shape;
+      TF_RETURN_IF_ERROR(unwrap(component.get())->Shape(&component_shape));
+      if (!first_shape.IsIdenticalTo(component_shape)) {
+        return errors::Unimplemented(absl::StrCat(
+            "Computing the shape of a ParallelTensor when the components do "
+            "not all have the same shapes is not supported. One tensor had "
+            "shape ",
+            first_shape.DebugString(), " and another had shape ",
+            component_shape.DebugString()));
+      }
+    }
+    auto dim_sizes = first_shape.dim_sizes();
+    shape_ = std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
+  }
+  *shape = &*shape_;
+  return Status::OK();
 }
 
 }  // namespace parallel_device

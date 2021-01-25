@@ -134,7 +134,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::ErfcOp>(),
     TypeID::get<TF::ErfinvOp>(),
     TypeID::get<TF::ErfOp>(),
-    TypeID::get<TF::Expm1Op>(),
     TypeID::get<TF::ExtractImagePatchesOp>(),
     TypeID::get<TF::FFT2DOp>(),
     TypeID::get<TF::FFT3DOp>(),
@@ -194,6 +193,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::PadOp>(),
     TypeID::get<TF::ParameterizedTruncatedNormalOp>(),
     TypeID::get<TF::PlaceholderWithDefaultOp>(),
+    TypeID::get<TF::PolygammaOp>(),
+    TypeID::get<TF::PopulationCountOp>(),
     TypeID::get<TF::PowOp>(),
     // TODO(hinsu): Canonicalize QuantizeAndDequantize and
     // QuantizeAndDequantizeV2 to QuantizeAndDequantizeV3 by converting
@@ -271,7 +272,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
     TypeID::get<TF::XlaSortOp>(),
-    TypeID::get<TF::XlaSvdOp>()
+    TypeID::get<TF::XlaSvdOp>(),
+    TypeID::get<TF::ZetaOp>()
   };
   // clang-format on
 
@@ -405,6 +407,13 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
     if (!ranked_ty || !ranked_ty.hasStaticShape()) {
       return op_->emitRemark()
              << "lowering requires static shaped tensor operands";
+    }
+  }
+
+  for (const auto& attr : op_->getAttrs()) {
+    if (attr.second.isa<SymbolRefAttr>()) {
+      return op_->emitRemark()
+             << "ops with symbol references are not supported";
     }
   }
 

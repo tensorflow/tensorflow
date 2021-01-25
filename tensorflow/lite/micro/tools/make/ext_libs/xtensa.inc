@@ -11,7 +11,6 @@ ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "fusion_f1 hifi4"))
 
   PLATFORM_FLAGS = \
     -DNNLIB_V2 \
-    -DXTENSA_NNLIB_MAX_SCRATCH_SIZE=70*1024 \
     -Wno-shadow
 
   CCFLAGS += $(PLATFORM_FLAGS)
@@ -30,6 +29,7 @@ ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "fusion_f1 hifi4"))
   THIRD_PARTY_CC_SRCS := $(filter-out $(EXCLUDED_NNLIB_SRCS), $(THIRD_PARTY_CC_SRCS))
 
   INCLUDES += \
+    -I$(NNLIB_PATH)/ \
     -I$(NNLIB_PATH)/algo/kernels/ \
     -I$(NNLIB_PATH)/include/nnlib/ \
     -I$(NNLIB_PATH)/include/ \

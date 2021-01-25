@@ -36,13 +36,7 @@ namespace {
 
 std::string GetKernelDepthWiseConv3x3Stride1x1() {
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-
-$0
-
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 ugid[[thread_position_in_grid]])
 {
   int gid_x = ugid.x * 2;
@@ -160,26 +154,18 @@ kernel void ComputeFunction(
 
   if (y0_in && x0_in) {
     FLT4 value = FLT4(r0);
-    uint3 gid = uint3(gid_x, gid_y, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y, gid_z);
   }
   if (y1_in && x0_in) {
     FLT4 value = FLT4(l0);
-    uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y + 1, gid_z);
   }
   if (y0_in && x1_in) {
     FLT4 value = FLT4(t0);
-    uint3 gid = uint3(gid_x + 1, gid_y, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x + 1, gid_y, gid_z);
   }
   if (y1_in && x1_in) {
     FLT4 value = FLT4(b0);
-    uint3 gid = uint3(gid_x + 1, gid_y + 1, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x + 1, gid_y + 1, gid_z);
   }
 }
@@ -229,13 +215,7 @@ std::vector<float> ReorderWeightsDepthWiseConv3x3Stride1x1(
 
 std::string GetKernelDepthWiseConv3x3Stride2() {
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-
-$0
-
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 ugid[[thread_position_in_grid]])
 {
   int gid_x = ugid.x;
@@ -330,14 +310,10 @@ kernel void ComputeFunction(
 
   if (y0_in) {
     FLT4 value = FLT4(r0);
-    uint3 gid = uint3(gid_x, gid_y, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y, gid_z);
   }
   if (y1_in) {
     FLT4 value = FLT4(l0);
-    uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y + 1, gid_z);
   }
 }
@@ -392,11 +368,7 @@ ComputeTaskDescriptor DepthWiseConvolution(
     const DepthwiseConvolution2DAttributes& attr) {
   int channels_multiplier = attr.weights.shape.o;
   std::string shader_source = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint tid[[thread_index_in_threadgroup]],
                             uint3 gid[[thread_position_in_grid]]) {
   int dst_x = static_cast<int>(gid.x);
@@ -454,9 +426,7 @@ kernel void ComputeFunction(
     }
   }
   FLT4 res = FLT4(sum0) + args.biases.Read(dst_z);
-  FLT4 value = res;
-  $2
-  args.dst_tensor.Write(value, dst_x, dst_y, dst_z);
+  args.dst_tensor.Write(res, dst_x, dst_y, dst_z);
 }
 )";
   ComputeTaskDescriptor desc(definition);

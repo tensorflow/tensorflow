@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -45,7 +46,7 @@ TpuTransferManager::~TpuTransferManager() {
 }
 
 stream_executor::Platform::Id TpuTransferManager::PlatformId() const {
-  return TpuPlatform::kId;
+  return GetTpuPlatformId();
 }
 
 xla::Shape TpuTransferManager::HostShapeToDeviceShape(

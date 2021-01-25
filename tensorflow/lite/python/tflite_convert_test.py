@@ -506,11 +506,13 @@ class ArgParserTest(test_util.TensorFlowTestCase):
     parser = tflite_convert._get_parser(use_v2_converter=False)
     parsed_args = parser.parse_args(args)
     self.assertIsNone(parsed_args.experimental_new_converter)
+    self.assertFalse(parsed_args.experimental_new_quantizer)
 
     # V2 parser.
     parser = tflite_convert._get_parser(use_v2_converter=True)
     parsed_args = parser.parse_args(args)
     self.assertIsNone(parsed_args.experimental_new_converter)
+    self.assertFalse(parsed_args.experimental_new_quantizer)
 
   def test_experimental_new_converter(self):
     args = [
@@ -563,6 +565,22 @@ class ArgParserTest(test_util.TensorFlowTestCase):
     parsed_args = parser.parse_args(args)
     self.assertFalse(parsed_args.experimental_new_converter)
 
+  def test_experimental_new_quantizer(self):
+    args = [
+        '--saved_model_dir=/tmp/saved_model/',
+        '--output_file=/tmp/output.tflite',
+        '--experimental_new_quantizer',
+    ]
+
+    # V1 parser.
+    parser = tflite_convert._get_parser(use_v2_converter=False)
+    parsed_args = parser.parse_args(args)
+    self.assertTrue(parsed_args.experimental_new_quantizer)
+
+    # V2 parser.
+    parser = tflite_convert._get_parser(use_v2_converter=True)
+    parsed_args = parser.parse_args(args)
+    self.assertTrue(parsed_args.experimental_new_quantizer)
 
 if __name__ == '__main__':
   test.main()

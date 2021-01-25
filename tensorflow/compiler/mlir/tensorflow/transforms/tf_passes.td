@@ -492,6 +492,47 @@ will be transformed into this functional operation
   let constructor = "TF::CreateTFRegionControlFlowToFunctional()";
 }
 
+def TPUReorderReplicateAndPartitionedInputsPass : FunctionPass<"tf-tpu-reorder-replicate-partitioned-inputs"> {
+  let summary = "Reorder replicated and partitioned input ops.";
+
+  let description = [{
+This pass rewrites how data parallelism and model parallelism is expressed for
+inputs. It reorders `tf.TPUPartitionedInput` (model parallelism) and
+`tf.TPUReplicatedInput` (data parallelism) ops. It transforms a DAG where
+multiple `tf.TPUPartitionedInput` ops are feeding into a single
+`tf.TPUReplicatedInput` into a DAG where multiple `tf.TPUReplicatedInput` ops
+are feeding into a single `tf.TPUPartitionedInput`. Transforming the IR in such
+a manner will allow subsequent cluster formation pass to handle IR with both
+data and model parallelism in an easier manner.
+
+For example, the following:
+
+```mlir
+!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
+  %pi_0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (!rtype, !rtype) -> !rtype
+  return %ri : !rtype
+}
+```
+
+will be transformed into:
+
+```mlir
+!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
+  %ri_0 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
+  %ri_1 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype
+  %pi = "tf.TPUPartitionedInput"(%ri_0, %ri_1) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  return %pi : !rtype
+}
+```
+  }];
+
+  let constructor = "TFTPU::CreateTPUReorderReplicateAndPartitionedInputsPass()";
+}
+
 def TPUResourceReadsWritesPartitioningPass : FunctionPass<"tf-tpu-resource-partition"> {
   let summary = "Partitions unpartitioned resource read/write to partitioned resource variables.";
 
@@ -658,5 +699,55 @@ func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   }];
 
   let constructor = "TFTPU::CreateTPURewritePass()";
+}
+
+def ClusterOpsByPolicyPass : FunctionPass<"cluster-ops-by-policy"> {
+  let summary = "Clusters ops according to specified policy.";
+
+  let description = [{
+This pass clusters ops according to the policy specified by the pass options.
+Clustered ops are moved to a tf_device::clusterOp region.
+
+The only currently supported option is 'oplist=<list of ops>'. This option
+specifies the names of the ops that should be clustered if they form
+a single use def-use chain, that is, the next op in the list uses the result
+of the previous op and is the only user of that result. The ops should
+be located in the same block, be assigned to the same device and have no
+side effects.
+
+For example, running this pass with option oplist="tf.Cast, tf.Add" on:
+
+```mlir
+func @cluster_oplist(%arg0 : tensor<f32>, %arg1 : tensor<i32>) -> tensor<i32> {
+  %0 = "tf.Cast"(%arg0) : (tensor<f32>) -> tensor<i32>
+  %1 = "SomeOp" (%arg1) : (tensor<i32>) -> tensor<i32>
+  %2 = "tf.Add"(%0, %1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %2 : tensor<i32>
+}
+```
+
+will produce tf_device::opCluster enclosing tf.Add and tf.Neg:
+
+```mlir
+func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = "SomeOp"(%arg1) : (tensor<i32>) -> tensor<i32>
+  %1 = "tf_device.cluster"() ( {
+    %2 = "tf.Cast"(%arg0) : (tensor<f32>) -> tensor<i32>
+    %3 = "tf.Add"(%2, %0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    tf_device.return %3 : tensor<i32>
+  }) : () -> tensor<i32>
+  return %1 : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateClusterOpsByPolicyPass()";
+
+  let options = [
+   ListOption<"oplist", "oplist", "std::string",
+               "Cluster listed ops when they form a single use def-use chain, "
+               "such that each op's single user is the next op in the list.",
+               "llvm::cl::MiscFlags::CommaSeparated">
+  ];
 }
 

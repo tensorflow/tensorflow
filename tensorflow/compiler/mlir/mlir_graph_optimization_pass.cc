@@ -120,7 +120,8 @@ Status MlirFunctionOptimizationPass::Run(
   // Skip conversion from Graph to MLIR if none of the passes are enabled.
   const bool is_enabled =
       llvm::any_of(registry_->passes(), [&](auto& pass_registration) -> bool {
-        return pass_registration.pass->IsEnabled(config_proto, **graph);
+        return pass_registration.pass->IsEnabled(&device_set, config_proto,
+                                                 **graph);
       });
 
   if (!is_enabled) {
@@ -139,7 +140,7 @@ Status MlirFunctionOptimizationPass::Run(
   // In this case, no changes should be done to the original `graph`
   // and no failures propagated to the user.
   bool enabled_by_analysis =
-      mlir_rollout_policy_(**graph, config_proto) ==
+      mlir_rollout_policy_(**graph, config_proto, /*record_stats=*/true) ==
       MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis;
   if (enabled_by_analysis) {
     LOG_FIRST_N(INFO, 1) << "Shadow run of MLIR enabled after graph analysis";
@@ -251,7 +252,8 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   const bool is_enabled =
       absl::c_any_of(registry_->passes(), [&](auto& pass_registration) -> bool {
         return pass_registration.pass->IsEnabled(
-            options.session_options->config, **options.graph);
+            options.device_set, options.session_options->config,
+            **options.graph);
       });
 
   if (!is_enabled) {

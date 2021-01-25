@@ -18,7 +18,7 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
-TensorShape DefaultInputShape() { return TensorShape{3, 4}; }
+TensorShape DefaultInputShape() { return TensorShape{7, 13}; }
 
 }  // namespace test
 }  // namespace tensorflow

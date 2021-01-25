@@ -228,3 +228,19 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 }
+
+// -----
+
+// Test presence of tf_saved_model.asset's as bound inputs.
+// It should not crash.
+module attributes {tf_saved_model.semantics}  {
+
+  "tf_saved_model.session_initializer"() {initializers = [@legacy_init_op]} : () -> ()
+  "tf_saved_model.asset"() {filename = "assets/foo.txt", sym_name = "asset"} : () -> ()
+  // CHECK: @legacy_init_op
+  func @legacy_init_op(%arg0: tensor<!tf.string> {tf_saved_model.bound_input = @asset}) attributes {tf_saved_model.exported_names = ["f"]} {
+    %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_shared_name", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
+    "tf.InitializeTableFromTextFileV2"(%0, %arg0) {delimiter = "\09", device = "", key_index = -2 : i64, value_index = -1 : i64, vocab_size = 205 : i64} : (tensor<!tf.resource>, tensor<!tf.string>) -> ()
+    return
+  }
+}

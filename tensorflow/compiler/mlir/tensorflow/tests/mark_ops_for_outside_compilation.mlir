@@ -103,6 +103,20 @@ func @ignore_stack_ops(%arg0: tensor<i32>) -> () {
   return
 }
 
+// CHECK-LABEL: func @ignore_const_foldable_ops
+func @ignore_const_foldable_ops(%arg0: tensor<i32>) -> () {
+  "tf_device.cluster"() ( {
+    %s0 = "tf.Const"() {value = dense<[501, 1, 32, 1280]> : tensor<4xi32>} : () -> tensor<4xi32>
+    %s1 = "tf.Const"() {value = dense<[  1, 1,  1, 1280]> : tensor<4xi32>} : () -> tensor<4xi32>
+
+    // CHECK: "tf.BroadcastGradientArgs"
+    // CHECK-NOT: _xla_outside_compilation
+    %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) {} : (tensor<4xi32>, tensor<4xi32>) -> (tensor<1xi32>, tensor<3xi32>)
+    tf_device.return
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+  return
+}
+
 // CHECK-LABEL: func @op_string_result
 func @op_string_result() -> tensor<i32> {
   %0 = "tf_device.cluster"() ( {

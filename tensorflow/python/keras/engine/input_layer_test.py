@@ -174,210 +174,201 @@ class InputLayerTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testInputTensorArgInTFFunction(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      # We use a mutable model container instead of a model python variable,
-      # because python 2.7 does not have `nonlocal`
-      model_container = {}
+    # We use a mutable model container instead of a model python variable,
+    # because python 2.7 does not have `nonlocal`
+    model_container = {}
 
-      @def_function.function
-      def run_model(inp):
-        if not model_container:
-          # Create a Keras Input
-          x = input_layer_lib.Input(tensor=array_ops.zeros((10, 16)))
-          self.assertAllEqual(x.shape.as_list(), [10, 16])
+    @def_function.function
+    def run_model(inp):
+      if not model_container:
+        # Create a Keras Input
+        x = input_layer_lib.Input(tensor=array_ops.zeros((10, 16)))
+        self.assertAllEqual(x.shape.as_list(), [10, 16])
 
-          # Verify you can construct and use a model w/ this input
-          model_container['model'] = functional.Functional(x, x * 3.0)
-        return model_container['model'](inp)
+        # Verify you can construct and use a model w/ this input
+        model_container['model'] = functional.Functional(x, x * 3.0)
+      return model_container['model'](inp)
 
-      self.assertAllEqual(run_model(array_ops.ones((10, 16))),
-                          array_ops.ones((10, 16)) * 3.0)
+    self.assertAllEqual(run_model(array_ops.ones((10, 16))),
+                        array_ops.ones((10, 16)) * 3.0)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testCompositeInputTensorArg(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      # Create a Keras Input
-      rt = ragged_tensor.RaggedTensor.from_row_splits(
-          values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
-      x = input_layer_lib.Input(tensor=rt)
+    # Create a Keras Input
+    rt = ragged_tensor.RaggedTensor.from_row_splits(
+        values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+    x = input_layer_lib.Input(tensor=rt)
 
-      # Verify you can construct and use a model w/ this input
-      model = functional.Functional(x, x * 2)
+    # Verify you can construct and use a model w/ this input
+    model = functional.Functional(x, x * 2)
 
-      # And that the model works
-      rt = ragged_tensor.RaggedTensor.from_row_splits(
-          values=[3, 21, 4, 1, 53, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
-      self.assertAllEqual(model(rt), rt * 2)
+    # And that the model works
+    rt = ragged_tensor.RaggedTensor.from_row_splits(
+        values=[3, 21, 4, 1, 53, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+    self.assertAllEqual(model(rt), rt * 2)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testCompositeInputTensorArgInTFFunction(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      # We use a mutable model container instead of a model python variable,
-      # because python 2.7 does not have `nonlocal`
-      model_container = {}
+    # We use a mutable model container instead of a model python variable,
+    # because python 2.7 does not have `nonlocal`
+    model_container = {}
 
-      @def_function.function
-      def run_model(inp):
-        if not model_container:
-          # Create a Keras Input
-          rt = ragged_tensor.RaggedTensor.from_row_splits(
-              values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
-          x = input_layer_lib.Input(tensor=rt)
+    @def_function.function
+    def run_model(inp):
+      if not model_container:
+        # Create a Keras Input
+        rt = ragged_tensor.RaggedTensor.from_row_splits(
+            values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+        x = input_layer_lib.Input(tensor=rt)
 
-          # Verify you can construct and use a model w/ this input
-          model_container['model'] = functional.Functional(x, x * 3)
-        return model_container['model'](inp)
+        # Verify you can construct and use a model w/ this input
+        model_container['model'] = functional.Functional(x, x * 3)
+      return model_container['model'](inp)
 
-      # And verify the model works
-      rt = ragged_tensor.RaggedTensor.from_row_splits(
-          values=[3, 21, 4, 1, 53, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
-      self.assertAllEqual(run_model(rt), rt * 3)
+    # And verify the model works
+    rt = ragged_tensor.RaggedTensor.from_row_splits(
+        values=[3, 21, 4, 1, 53, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+    self.assertAllEqual(run_model(rt), rt * 3)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testNoMixingArgsWithTypeSpecArg(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      with self.assertRaisesRegexp(
-          ValueError, 'all other args except `name` must be None'):
-        input_layer_lib.Input(
-            shape=(4, 7),
-            type_spec=tensor_spec.TensorSpec((2, 7, 32), dtypes.float32))
-      with self.assertRaisesRegexp(
-          ValueError, 'all other args except `name` must be None'):
-        input_layer_lib.Input(
-            batch_size=4,
-            type_spec=tensor_spec.TensorSpec((7, 32), dtypes.float32))
-      with self.assertRaisesRegexp(
-          ValueError, 'all other args except `name` must be None'):
-        input_layer_lib.Input(
-            dtype=dtypes.int64,
-            type_spec=tensor_spec.TensorSpec((7, 32), dtypes.float32))
-      with self.assertRaisesRegexp(
-          ValueError, 'all other args except `name` must be None'):
-        input_layer_lib.Input(
-            sparse=True,
-            type_spec=tensor_spec.TensorSpec((7, 32), dtypes.float32))
-      with self.assertRaisesRegexp(
-          ValueError, 'all other args except `name` must be None'):
-        input_layer_lib.Input(
-            ragged=True,
-            type_spec=tensor_spec.TensorSpec((7, 32), dtypes.float32))
+    with self.assertRaisesRegexp(
+        ValueError, 'all other args except `name` must be None'):
+      input_layer_lib.Input(
+          shape=(4, 7),
+          type_spec=tensor_spec.TensorSpec((2, 7, 32), dtypes.float32))
+    with self.assertRaisesRegexp(
+        ValueError, 'all other args except `name` must be None'):
+      input_layer_lib.Input(
+          batch_size=4,
+          type_spec=tensor_spec.TensorSpec((7, 32), dtypes.float32))
+    with self.assertRaisesRegexp(
+        ValueError, 'all other args except `name` must be None'):
+      input_layer_lib.Input(
+          dtype=dtypes.int64,
+          type_spec=tensor_spec.TensorSpec((7, 32), dtypes.float32))
+    with self.assertRaisesRegexp(
+        ValueError, 'all other args except `name` must be None'):
+      input_layer_lib.Input(
+          sparse=True,
+          type_spec=tensor_spec.TensorSpec((7, 32), dtypes.float32))
+    with self.assertRaisesRegexp(
+        ValueError, 'all other args except `name` must be None'):
+      input_layer_lib.Input(
+          ragged=True,
+          type_spec=tensor_spec.TensorSpec((7, 32), dtypes.float32))
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testTypeSpecArg(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      # Create a Keras Input
-      x = input_layer_lib.Input(
-          type_spec=tensor_spec.TensorSpec((7, 32), dtypes.float32))
-      self.assertAllEqual(x.shape.as_list(), [7, 32])
+    # Create a Keras Input
+    x = input_layer_lib.Input(
+        type_spec=tensor_spec.TensorSpec((7, 32), dtypes.float32))
+    self.assertAllEqual(x.shape.as_list(), [7, 32])
 
-      # Verify you can construct and use a model w/ this input
-      model = functional.Functional(x, x * 2.0)
-      self.assertAllEqual(model(array_ops.ones(x.shape)),
-                          array_ops.ones(x.shape) * 2.0)
+    # Verify you can construct and use a model w/ this input
+    model = functional.Functional(x, x * 2.0)
+    self.assertAllEqual(model(array_ops.ones(x.shape)),
+                        array_ops.ones(x.shape) * 2.0)
 
-      # Test serialization / deserialization
-      model = functional.Functional.from_config(model.get_config())
-      self.assertAllEqual(model(array_ops.ones(x.shape)),
-                          array_ops.ones(x.shape) * 2.0)
+    # Test serialization / deserialization
+    model = functional.Functional.from_config(model.get_config())
+    self.assertAllEqual(model(array_ops.ones(x.shape)),
+                        array_ops.ones(x.shape) * 2.0)
 
-      model = model_config.model_from_json(model.to_json())
-      self.assertAllEqual(model(array_ops.ones(x.shape)),
-                          array_ops.ones(x.shape) * 2.0)
+    model = model_config.model_from_json(model.to_json())
+    self.assertAllEqual(model(array_ops.ones(x.shape)),
+                        array_ops.ones(x.shape) * 2.0)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testTypeSpecArgInTFFunction(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      # We use a mutable model container instead of a model python variable,
-      # because python 2.7 does not have `nonlocal`
-      model_container = {}
+    # We use a mutable model container instead of a model python variable,
+    # because python 2.7 does not have `nonlocal`
+    model_container = {}
 
-      @def_function.function
-      def run_model(inp):
-        if not model_container:
-          # Create a Keras Input
-          x = input_layer_lib.Input(
-              type_spec=tensor_spec.TensorSpec((10, 16), dtypes.float32))
-          self.assertAllEqual(x.shape.as_list(), [10, 16])
+    @def_function.function
+    def run_model(inp):
+      if not model_container:
+        # Create a Keras Input
+        x = input_layer_lib.Input(
+            type_spec=tensor_spec.TensorSpec((10, 16), dtypes.float32))
+        self.assertAllEqual(x.shape.as_list(), [10, 16])
 
-          # Verify you can construct and use a model w/ this input
-          model_container['model'] = functional.Functional(x, x * 3.0)
-        return model_container['model'](inp)
+        # Verify you can construct and use a model w/ this input
+        model_container['model'] = functional.Functional(x, x * 3.0)
+      return model_container['model'](inp)
 
-      self.assertAllEqual(run_model(array_ops.ones((10, 16))),
-                          array_ops.ones((10, 16)) * 3.0)
+    self.assertAllEqual(run_model(array_ops.ones((10, 16))),
+                        array_ops.ones((10, 16)) * 3.0)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testCompositeTypeSpecArg(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      # Create a Keras Input
-      rt = ragged_tensor.RaggedTensor.from_row_splits(
-          values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
-      x = input_layer_lib.Input(type_spec=rt._type_spec)
+    # Create a Keras Input
+    rt = ragged_tensor.RaggedTensor.from_row_splits(
+        values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+    x = input_layer_lib.Input(type_spec=rt._type_spec)
 
-      # Verify you can construct and use a model w/ this input
-      model = functional.Functional(x, x * 2)
+    # Verify you can construct and use a model w/ this input
+    model = functional.Functional(x, x * 2)
 
-      # And that the model works
-      rt = ragged_tensor.RaggedTensor.from_row_splits(
-          values=[3, 21, 4, 1, 53, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
-      self.assertAllEqual(model(rt), rt * 2)
+    # And that the model works
+    rt = ragged_tensor.RaggedTensor.from_row_splits(
+        values=[3, 21, 4, 1, 53, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+    self.assertAllEqual(model(rt), rt * 2)
 
-      # Test serialization / deserialization
-      model = functional.Functional.from_config(model.get_config())
-      self.assertAllEqual(model(rt), rt * 2)
-      model = model_config.model_from_json(model.to_json())
-      self.assertAllEqual(model(rt), rt * 2)
+    # Test serialization / deserialization
+    model = functional.Functional.from_config(model.get_config())
+    self.assertAllEqual(model(rt), rt * 2)
+    model = model_config.model_from_json(model.to_json())
+    self.assertAllEqual(model(rt), rt * 2)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testCompositeTypeSpecArgInTFFunction(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      # We use a mutable model container instead of a model pysthon variable,
-      # because python 2.7 does not have `nonlocal`
-      model_container = {}
+    # We use a mutable model container instead of a model pysthon variable,
+    # because python 2.7 does not have `nonlocal`
+    model_container = {}
 
-      @def_function.function
-      def run_model(inp):
-        if not model_container:
-          # Create a Keras Input
-          rt = ragged_tensor.RaggedTensor.from_row_splits(
-              values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
-          x = input_layer_lib.Input(type_spec=rt._type_spec)
+    @def_function.function
+    def run_model(inp):
+      if not model_container:
+        # Create a Keras Input
+        rt = ragged_tensor.RaggedTensor.from_row_splits(
+            values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+        x = input_layer_lib.Input(type_spec=rt._type_spec)
 
-          # Verify you can construct and use a model w/ this input
-          model_container['model'] = functional.Functional(x, x * 3)
-        return model_container['model'](inp)
+        # Verify you can construct and use a model w/ this input
+        model_container['model'] = functional.Functional(x, x * 3)
+      return model_container['model'](inp)
 
-      # And verify the model works
-      rt = ragged_tensor.RaggedTensor.from_row_splits(
-          values=[3, 21, 4, 1, 53, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
-      self.assertAllEqual(run_model(rt), rt * 3)
+    # And verify the model works
+    rt = ragged_tensor.RaggedTensor.from_row_splits(
+        values=[3, 21, 4, 1, 53, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+    self.assertAllEqual(run_model(rt), rt * 3)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testCompositeTypeSpecArgWithoutDtype(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      for assign_variant_dtype in [False, True]:
-        # Create a Keras Input
-        spec = TwoTensorsSpecNoOneDtype(
-            (1, 2, 3), dtypes.float32, (1, 2, 3), dtypes.int64,
-            assign_variant_dtype=assign_variant_dtype)
-        x = input_layer_lib.Input(type_spec=spec)
+    for assign_variant_dtype in [False, True]:
+      # Create a Keras Input
+      spec = TwoTensorsSpecNoOneDtype(
+          (1, 2, 3), dtypes.float32, (1, 2, 3), dtypes.int64,
+          assign_variant_dtype=assign_variant_dtype)
+      x = input_layer_lib.Input(type_spec=spec)
 
-        def lambda_fn(tensors):
-          return (math_ops.cast(tensors.x, dtypes.float64)
-                  + math_ops.cast(tensors.y, dtypes.float64))
-        # Verify you can construct and use a model w/ this input
-        model = functional.Functional(x, core.Lambda(lambda_fn)(x))
+      def lambda_fn(tensors):
+        return (math_ops.cast(tensors.x, dtypes.float64)
+                + math_ops.cast(tensors.y, dtypes.float64))
+      # Verify you can construct and use a model w/ this input
+      model = functional.Functional(x, core.Lambda(lambda_fn)(x))
 
-        # And that the model works
-        two_tensors = TwoTensors(array_ops.ones((1, 2, 3)) * 2.0,
-                                 array_ops.ones(1, 2, 3))
-        self.assertAllEqual(model(two_tensors), lambda_fn(two_tensors))
+      # And that the model works
+      two_tensors = TwoTensors(array_ops.ones((1, 2, 3)) * 2.0,
+                               array_ops.ones(1, 2, 3))
+      self.assertAllEqual(model(two_tensors), lambda_fn(two_tensors))
 
-        # Test serialization / deserialization
-        model = functional.Functional.from_config(model.get_config())
-        self.assertAllEqual(model(two_tensors), lambda_fn(two_tensors))
-        model = model_config.model_from_json(model.to_json())
-        self.assertAllEqual(model(two_tensors), lambda_fn(two_tensors))
+      # Test serialization / deserialization
+      model = functional.Functional.from_config(model.get_config())
+      self.assertAllEqual(model(two_tensors), lambda_fn(two_tensors))
+      model = model_config.model_from_json(model.to_json())
+      self.assertAllEqual(model(two_tensors), lambda_fn(two_tensors))
 
 
 if __name__ == '__main__':

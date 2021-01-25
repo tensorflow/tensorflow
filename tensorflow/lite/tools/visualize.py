@@ -221,8 +221,9 @@ def NameListToString(name_list):
     return name_list
   else:
     result = ""
-    for val in name_list:
-      result = result + chr(int(val))
+    if name_list is not None:
+      for val in name_list:
+        result = result + chr(int(val))
     return result
 
 

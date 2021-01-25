@@ -307,7 +307,8 @@ class WorkerServer(object):
         port=config.port,
         protocol=config.protocol,
         heartbeat_interval_ms=config.heartbeat_interval_ms,
-        dispatcher_timeout_ms=config.dispatcher_timeout_ms)
+        dispatcher_timeout_ms=config.dispatcher_timeout_ms,
+        data_transfer_protocol=None)
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
         config_proto.SerializeToString())
     if start:

@@ -16,8 +16,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Install ROCm packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl libnuma-dev gnupg sudo libelf1 build-essential \
-  && curl -sL http://repo.radeon.com/rocm/apt/3.9/rocm.gpg.key | apt-key add - \
-  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.9/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
+  && curl -sL http://repo.radeon.com/rocm/apt/4.0/rocm.gpg.key | apt-key add - \
+  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/4.0/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
   && apt-get update && apt-get install -y --no-install-recommends \
     rocm-dev rocm-libs hipcub rocm-utils rocm-cmake \
     rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl \
@@ -34,7 +34,7 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
 # Set target file to help determine which device(s) to build for
 RUN bash -c "ls -al /opt/roc*"
-RUN bash -c "echo -e 'gfx803\ngfx900\ngfx906' > $ROCM_PATH/bin/target.lst"
+RUN bash -c "echo -e 'gfx803\ngfx900\ngfx906\ngfx908' > $ROCM_PATH/bin/target.lst"
 
 # Copy and run the install scripts.
 COPY install/install_bootstrap_deb_packages.sh /install/
@@ -63,18 +63,14 @@ COPY install/install_bazel.sh /install/
 RUN /install/install_bazel.sh
 
 COPY install/build_and_install_python.sh /install/
-RUN /install/build_and_install_python.sh "2.7.17" "--enable-unicode=ucs4"
-RUN /install/build_and_install_python.sh "3.5.9"
 RUN /install/build_and_install_python.sh "3.6.9"
 RUN /install/build_and_install_python.sh "3.7.7"
 RUN /install/build_and_install_python.sh "3.8.2"
 
 COPY install/install_pip_packages_by_version.sh /install/
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip2.7"
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8"
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.5"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.6"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.7"
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8"
 
 ENV CLANG_VERSION="r42cab985fd95ba4f3f290e7bb26b93805edb447d"
 COPY install/install_latest_clang.sh /install/

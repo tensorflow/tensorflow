@@ -23,6 +23,8 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/framework/function.h"
@@ -91,9 +94,9 @@ std::string ImportGraphDef(const std::string &proto,
 }
 
 std::string ImportFunction(const std::string &functiondef_proto,
-                           const std::string &functiondef_library_proto,
                            const std::string &pass_pipeline,
-                           bool show_debug_info, TF_Status *status) {
+                           bool show_debug_info, TFE_Context *tfe_context,
+                           TF_Status *status) {
   FunctionDef functiondef;
   auto s = tensorflow::LoadProtoFromBuffer(functiondef_proto, &functiondef);
   if (!s.ok()) {
@@ -101,23 +104,9 @@ std::string ImportFunction(const std::string &functiondef_proto,
     return "// error";
   }
 
-  FunctionDefLibrary fdef_lib;
-  s = tensorflow::LoadProtoFromBuffer(functiondef_library_proto, &fdef_lib);
-  if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
-    return "// error";
-  }
-
   const std::string &function_name = functiondef.signature().name();
-
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
-  s = flib_def.AddFunctionDef(functiondef,
-                              flib_def.GetStackTraces(function_name));
-  if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
-    return "// error";
-  }
-
+  EagerContext *cpp_context = ContextFromInterface(unwrap(tfe_context));
+  FunctionLibraryDefinition &flib_def = *cpp_context->FuncLibDef();
   const tensorflow::FunctionDef *fdef = flib_def.Find(function_name);
   if (fdef == nullptr) {
     s = tensorflow::errors::NotFound("Cannot find function ", function_name);
@@ -180,9 +169,11 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 
   mlir::MLIRContext context;
 
+  tensorflow::MLIRImportOptions import_options;
+  import_options.upgrade_legacy = upgrade_legacy;
   auto module_or = SavedModelSignatureDefsToMlirImportLite(
       saved_model_path, tag_set, /*exported_names=*/{}, &context,
-      upgrade_legacy);
+      import_options);
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";
@@ -211,8 +202,10 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   // Convert the SavedModelBundle to an MLIR module.
 
   mlir::MLIRContext context;
+  tensorflow::MLIRImportOptions import_options;
+  import_options.upgrade_legacy = upgrade_legacy;
   auto module_or =
-      ConvertSavedModelV1ToMlir(bundle, {}, &context, upgrade_legacy);
+      ConvertSavedModelV1ToMlir(bundle, {}, &context, import_options);
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";

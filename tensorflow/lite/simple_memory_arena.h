@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 #define TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 
+#include <stddef.h>
+
 #include <cstdint>
 #include <memory>
 #include <vector>

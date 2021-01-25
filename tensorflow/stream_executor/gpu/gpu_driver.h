@@ -163,7 +163,8 @@ class GpuDriver {
   // Calculates the minimum alignment for memory allocations done through
   // cuMemCreate via cuMemGetAllocationGranularity.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g30ee906c2cf66a0347b3dfec3d7eb31a
-  static port::StatusOr<uint64> GetMinAllocationGranularity(int device_ordinal);
+  static port::StatusOr<uint64> GetMinAllocationGranularity(
+      GpuDeviceHandle device);
 
   // Allocates physical memory and returns a handle that can be mapped to
   // virtual addresses via cuMemCreate. bytes must be a multiple of the
@@ -185,9 +186,9 @@ class GpuDriver {
   // cuMemMap and sets the appropriate access settings via cuMemSetAccess.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1gff1d395423af5c5c75375516959dae56
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g1b6b12b10e8324bf462ecab4e7ef30e1
-  static port::Status MapMemory(GpuContext* context, GpuDevicePtr va,
-                                const GenericMemoryHandle& handle,
-                                const std::vector<int>& device_ordinals);
+  static port::Status MapMemory(
+      GpuContext* context, GpuDevicePtr va, const GenericMemoryHandle& handle,
+      const std::vector<GpuDeviceHandle>& device_handles);
 
   // Unmaps the backing memory from the given virtual address range. This range
   // must fully unmap a memory handle that was mapped using MapMemory; partial
@@ -408,6 +409,13 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g496bdaae1f632ebfb695b99d2c40f19e
   static bool CanEnablePeerAccess(GpuContext* from, GpuContext* to);
 
+  // Returns whether the from device can access memory in the to
+  // device via cuDeviceCanAccessPeer. Because of differences between ROCM and
+  // CUDA, this API is not supported in ROCM builds and will result in a link
+  // error if used.
+  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g496bdaae1f632ebfb695b99d2c40f19e
+  static bool CanEnablePeerAccess(GpuDeviceHandle from, GpuDeviceHandle to);
+
   // Enables peer access per CanEnablePeerAccess, via cuCtxEnablePeerAccess.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g0889ec6728e61c05ed359551d67b3f5a
   static port::Status EnablePeerAccess(GpuContext* from, GpuContext* to);
@@ -459,6 +467,12 @@ class GpuDriver {
   // Returns Gpu ISA version for the device; i.e 803, 900.
   // (supported on ROCm only)
   static port::Status GetGpuISAVersion(int* version, GpuDeviceHandle device);
+
+  // Return the full GCN Architecture Name for the the device
+  // for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
+  // (supported on ROCm only)
+  static port::Status GetGpuGCNArchName(GpuDeviceHandle device,
+                                        std::string* gcnArchName);
 
   // Returns the number of multiprocessors on the device (note that the device
   // may be multi-GPU-per-board).

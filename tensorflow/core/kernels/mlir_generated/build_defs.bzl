@@ -4,7 +4,6 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "rocm_gpu_architectures",
-    "rocm_is_configured",
 )
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load(
@@ -177,7 +176,7 @@ def gen_kernel_library(name, types, tile_size, tags = [], unroll_factors = None,
                 name = "{name}_{type}_kernel_generator".format(name = name, type = type),
                 mlir_op = "{name}_{type}.mlir".format(name = name, type = type),
                 data_type = type,
-                gpu_archs = rocm_gpu_architectures() if rocm_is_configured() else cuda_gpu_architectures(),
+                gpu_archs = rocm_gpu_architectures() + cuda_gpu_architectures(),
                 tile_size = tile_size,
                 unroll_factors = unroll_factors,
                 extra_args = extra_args,
@@ -192,7 +191,7 @@ def gen_kernel_library(name, types, tile_size, tags = [], unroll_factors = None,
                     "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
                     "$(location {name}_{type}.mlir)".format(name = name, type = type),
                 ],
-                size = "small",
+                size = "medium",
                 data = [
                     ":{name}_{type}.mlir".format(name = name, type = type),
                     "//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel",

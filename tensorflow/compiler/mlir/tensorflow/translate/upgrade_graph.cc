@@ -16,6 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 
 #include "llvm/ADT/StringSet.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/grappler_item_builder.h"
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 
@@ -26,8 +34,8 @@ const llvm::StringSet<>& GetSharedNameGenerationCompatibleOps() {
   return *ops;
 }
 
-Status GenerateResourceSharedNameIfEmpty(Graph& graph,
-                                         FunctionLibraryDefinition& flib_def) {
+Status GenerateResourceSharedNameIfEmpty(
+    GraphDef& gdef, const OpRegistryInterface* default_registry) {
   auto is_resource_op_with_empty_shared_name = [](const NodeDef& node_def,
                                                   const OpDef& op_def) {
     if (!GetSharedNameGenerationCompatibleOps().contains(op_def.name())) {
@@ -56,34 +64,83 @@ Status GenerateResourceSharedNameIfEmpty(Graph& graph,
     return iter->second.s().empty();
   };
 
-  // Upgrade nodes in the graph.
-  for (auto* node : graph.nodes()) {
-    if (is_resource_op_with_empty_shared_name(node->def(), node->op_def())) {
-      node->AddAttr("shared_name", node->name());
+  FunctionDefLibrary* library = gdef.mutable_library();
+  auto flib_def = library ? std::make_unique<FunctionLibraryDefinition>(
+                                default_registry, *library)
+                          : std::make_unique<FunctionLibraryDefinition>(
+                                default_registry, FunctionDefLibrary());
+
+  if (library) {
+    // Upgrade nodes in the functions.
+    for (FunctionDef& fdef : *library->mutable_function()) {
+      auto func_name = fdef.signature().name();
+      for (auto& node_def : *fdef.mutable_node_def()) {
+        const OpDef* op_def = nullptr;
+        TF_RETURN_IF_ERROR(flib_def->LookUpOpDef(node_def.op(), &op_def));
+        if (is_resource_op_with_empty_shared_name(node_def, *op_def)) {
+          // Use the concat of function name and node name for such ops in a
+          // function as the shared_name. "@" is used as the separator because
+          // it is not allowed in the function name or the node name.
+          (*node_def.mutable_attr())["shared_name"].set_s(
+              absl::StrCat(node_def.name(), "@", func_name));
+        }
+      }
     }
   }
 
-  // Upgrade nodes in the functions.
-  auto func_names = flib_def.ListFunctionNames();
-  for (const auto& func_name : func_names) {
-    const FunctionDef* orig = flib_def.Find(func_name);
-    DCHECK(orig);
-    auto copy = *orig;
-    for (auto& node_def : *copy.mutable_node_def()) {
-      const OpDef* op_def = nullptr;
-      TF_RETURN_IF_ERROR(flib_def.LookUpOpDef(node_def.op(), &op_def));
-      if (is_resource_op_with_empty_shared_name(node_def, *op_def)) {
-        // Use the concat of function name and node name for such ops in a
-        // function as the shared_name. "@" is used as the separator because it
-        // is not allowed in the function name or the node name.
-        (*node_def.mutable_attr())["shared_name"].set_s(
-            absl::StrCat(node_def.name(), "@", func_name));
-      }
+  // Upgrade nodes in the GraphDef.
+  for (auto& node_def : *gdef.mutable_node()) {
+    const OpDef* op_def = nullptr;
+    TF_RETURN_IF_ERROR(flib_def->LookUpOpDef(node_def.op(), &op_def));
+    if (is_resource_op_with_empty_shared_name(node_def, *op_def)) {
+      (*node_def.mutable_attr())["shared_name"].set_s(node_def.name());
     }
-    TF_RETURN_IF_ERROR(flib_def.ReplaceFunction(func_name, copy));
   }
 
   return tensorflow::Status::OK();
+}
+
+Status RunGrappler(MetaGraphDef* meta_graph_def) {
+  std::vector<std::unique_ptr<Device>> devices;
+  // Only CPU device is used so instead of calling DeviceFactory::AddDevices()
+  // with dummy session config, which will conflict with user defined options
+  // and create unwanted devices, call cpu_factory->CreateDevices() to get CPU
+  // only devices.
+  DeviceFactory* cpu_factory = DeviceFactory::GetFactory("CPU");
+  SessionOptions options;
+  TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
+      options, "/job:localhost/replica:0/task:0", &devices));
+  Device* cpu_device = devices[0].get();
+  auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+
+  DeviceSet dev_set;
+  for (auto d : device_mgr->ListDevices()) dev_set.AddDevice(d);
+
+  ConfigProto config_proto;
+  // Avoid grappler logic that lowers to v1 control flow.
+  config_proto.mutable_experimental()->set_use_tfrt(true);
+  config_proto.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_do_function_inlining(true);
+  // Do not skip grappler optimization even for small graphs.
+  config_proto.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_min_graph_nodes(-1);
+
+  grappler::ItemConfig item_config;
+  item_config.ignore_user_placement = false;
+  std::unique_ptr<grappler::GrapplerItem> item =
+      grappler::GrapplerItemFromMetaGraphDef("graph", *meta_graph_def,
+                                             item_config);
+  if (!item) {
+    return tensorflow::errors::Internal(
+        "Failed to create grappler item from MetaGraphDef.");
+  }
+
+  grappler::VirtualCluster cluster(&dev_set);
+  return grappler::RunMetaOptimizer(std::move(*item), config_proto, cpu_device,
+                                    &cluster,
+                                    meta_graph_def->mutable_graph_def());
 }
 
 }  // namespace tensorflow

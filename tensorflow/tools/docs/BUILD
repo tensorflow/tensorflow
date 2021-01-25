@@ -32,7 +32,7 @@ distribute_module = [
 py_library(
     name = "tf_doctest_lib",
     srcs = ["tf_doctest_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
     ],
@@ -46,7 +46,7 @@ py_test(
     tags = [
         "no_oss_py2",
         "no_pip",
-        "no_rocm",
+        "no_rocm",  # No need to rerun this test for ROCm config.
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",
@@ -132,7 +132,7 @@ py_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 
@@ -141,7 +141,7 @@ py_test(
     size = "medium",
     srcs = ["generate2_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
         # No reason to run sanitizers or fastbuild for this test.

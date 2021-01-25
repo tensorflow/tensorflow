@@ -63,61 +63,48 @@ void ComputeRowSums(
     const float* aux_input_ptr) {
   // Compute the row sums for dequantization
   if (!use_cifg) {
-    std::fill_n(input_to_input_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(input_to_input_weights_ptr,
                                      input_to_input_row_sums, n_cell, n_input);
   }
-  std::fill_n(input_to_forget_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(input_to_forget_weights_ptr,
                                    input_to_forget_row_sums, n_cell, n_input);
-  std::fill_n(input_to_cell_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(input_to_cell_weights_ptr,
                                    input_to_cell_row_sums, n_cell, n_input);
-  std::fill_n(input_to_output_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(input_to_output_weights_ptr,
                                    input_to_output_row_sums, n_cell, n_input);
 
   if (aux_input_ptr) {
     if (!use_cifg) {
-      std::fill_n(aux_input_to_input_row_sums, n_cell, 0);
       tensor_utils::ReductionSumVector(aux_input_to_input_weights_ptr,
                                        aux_input_to_input_row_sums, n_cell,
                                        n_aux_input);
     }
-    std::fill_n(aux_input_to_forget_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(aux_input_to_forget_weights_ptr,
                                      aux_input_to_forget_row_sums, n_cell,
                                      n_aux_input);
-    std::fill_n(aux_input_to_cell_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(aux_input_to_cell_weights_ptr,
                                      aux_input_to_cell_row_sums, n_cell,
                                      n_aux_input);
-    std::fill_n(aux_input_to_output_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(aux_input_to_output_weights_ptr,
                                      aux_input_to_output_row_sums, n_cell,
                                      n_aux_input);
   }
   if (!use_cifg) {
-    std::fill_n(recurrent_to_input_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(recurrent_to_input_weights_ptr,
                                      recurrent_to_input_row_sums, n_cell,
                                      n_output);
   }
-  std::fill_n(recurrent_to_forget_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(recurrent_to_forget_weights_ptr,
                                    recurrent_to_forget_row_sums, n_cell,
                                    n_output);
-  std::fill_n(recurrent_to_cell_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(recurrent_to_cell_weights_ptr,
                                    recurrent_to_cell_row_sums, n_cell,
                                    n_output);
-  std::fill_n(recurrent_to_output_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(recurrent_to_output_weights_ptr,
                                    recurrent_to_output_row_sums, n_cell,
                                    n_output);
 
   if (projection_weights_ptr != nullptr) {
-    std::fill_n(projection_weights_row_sums, n_output, 0);
     tensor_utils::ReductionSumVector(
         projection_weights_ptr, projection_weights_row_sums, n_output, n_cell);
   }

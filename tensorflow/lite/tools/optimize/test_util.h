@@ -63,6 +63,9 @@ extern const char* kConstInputAddModel;
 // 10] as output.
 extern const char* kFloatConcatMax5Max10Max10;
 
+// Test model with broadcast_to op.
+extern const char* kModelWithBroadcastToOp;
+
 // Test model with a custom op.
 extern const char* kModelWithCustomOp;
 
@@ -71,6 +74,9 @@ extern const char* kModelWithArgMaxOp;
 
 // Test model with a argmax op.
 extern const char* kModelWithFCOp;
+
+// Test model with a gather_nd op.
+extern const char* kModelWithGatherNDOp;
 
 // Test model with mixed quantizable and un-quantizable ops.
 // reshape->custom->custom->squeeze.

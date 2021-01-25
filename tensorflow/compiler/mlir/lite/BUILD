@@ -237,6 +237,7 @@ cc_library(
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
@@ -530,7 +531,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/passes.h",
-        "transforms/prepare_quantize_lstm.h",
+        "transforms/prepare_quantize_helper.h",
     ],
     deps = [
         "convert_type",

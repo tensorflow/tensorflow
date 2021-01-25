@@ -124,6 +124,7 @@ cc_library(
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -255,5 +256,6 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/util:incremental_barrier",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )

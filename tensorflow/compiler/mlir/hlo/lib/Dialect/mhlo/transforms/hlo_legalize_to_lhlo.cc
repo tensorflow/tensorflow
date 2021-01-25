@@ -233,6 +233,7 @@ class HloToLhloDynamicBroadcastInDimOpConverter
   LogicalResult matchAndRewrite(
       mhlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
+    if (!op.getType().isa<RankedTensorType>()) return failure();
     Value result = InsertDynamicMemrefCastOp(op, operands.front(), &rewriter);
 
     if (insert_copy_) {

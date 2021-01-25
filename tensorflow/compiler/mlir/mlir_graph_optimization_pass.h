@@ -37,7 +37,12 @@ class MlirOptimizationPass {
  public:
   virtual ~MlirOptimizationPass() = default;
   virtual llvm::StringRef name() const = 0;
-  virtual bool IsEnabled(const ConfigProto& config_proto,
+
+  // Returns true if the pass is enabled for the given graph with specified
+  // config. `device_set` can be nullptr if the devices information is not
+  // available or no device specific filtering is required.
+  virtual bool IsEnabled(const DeviceSet* device_set,
+                         const ConfigProto& config_proto,
                          const Graph& graph) const = 0;
 
   virtual Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
@@ -84,8 +89,8 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
   explicit MlirFunctionOptimizationPass(
       const MlirOptimizationPassRegistry* registry =
           &MlirOptimizationPassRegistry::Global(),
-      std::function<MlirBridgeRolloutPolicy(const Graph& graph,
-                                            absl::optional<ConfigProto>)>
+      std::function<MlirBridgeRolloutPolicy(
+          const Graph&, absl::optional<ConfigProto>, bool record_stats)>
           mlir_rollout_policy = GetMlirBridgeRolloutPolicy)
       : registry_(registry), mlir_rollout_policy_(mlir_rollout_policy) {}
 
@@ -97,7 +102,7 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
  private:
   const MlirOptimizationPassRegistry* registry_;
   std::function<MlirBridgeRolloutPolicy(
-      const tensorflow::Graph& graph, absl::optional<tensorflow::ConfigProto>)>
+      const tensorflow::Graph&, absl::optional<tensorflow::ConfigProto>, bool)>
       mlir_rollout_policy_;
 };
 
@@ -114,7 +119,12 @@ class MlirV1CompatOptimizationPass {
  public:
   virtual ~MlirV1CompatOptimizationPass() = default;
   virtual llvm::StringRef name() const = 0;
-  virtual bool IsEnabled(const ConfigProto& config_proto,
+
+  // Returns true if the pass is enabled for the given graph with specified
+  // config. `device_set` can be nullptr if the devices information is not
+  // available or no device specific filtering is required.
+  virtual bool IsEnabled(const DeviceSet* device_set,
+                         const ConfigProto& config_proto,
                          const Graph& graph) const = 0;
 
   virtual Status Run(const GraphOptimizationPassOptions& options,

@@ -11,7 +11,7 @@ py_library(
         "backports/__init__.py",
         "backports/weakref.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 genrule(
