@@ -17,6 +17,10 @@ limitations under the License.
 
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/c/eager/c_api_unified_experimental.h"
+#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -62,6 +66,39 @@ Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float* data,
 Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int* data,
                                    int64_t* dims, int num_dims,
                                    AbstractTensorHandle** tensor);
+
+// Return a tensor handle with given type, values and dimensions.
+template <class T, TF_DataType datatype>
+Status TestTensorHandleWithDims(AbstractContext* ctx, const T* data,
+                                const int64_t* dims, int num_dims,
+                                AbstractTensorHandle** tensor) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TFE_Context* eager_ctx =
+      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
+  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
+  TFE_TensorHandle* input_eager =
+      TestTensorHandleWithDims<T, datatype>(eager_ctx, data, dims, num_dims);
+  *tensor =
+      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
+  return Status::OK();
+}
+
+// Return a scalar tensor handle with given value.
+template <class T, TF_DataType datatype>
+Status TestScalarTensorHandle(AbstractContext* ctx, const T value,
+                              AbstractTensorHandle** tensor) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TFE_Context* eager_ctx =
+      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
+  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
+  TFE_TensorHandle* input_eager =
+      TestScalarTensorHandle<T, datatype>(eager_ctx, value);
+  *tensor =
+      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
+  return Status::OK();
+}
 
 // Places data from `t` into *result_tensor.
 Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor);
