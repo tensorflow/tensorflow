@@ -175,14 +175,14 @@ MetalExecutionEnvironment::GetSupportedPrecisions() const {
 
 std::vector<TensorStorageType> MetalExecutionEnvironment::GetSupportedStorages()
     const {
-  return {TensorStorageType::BUFFER};
+  return {TensorStorageType::BUFFER, TensorStorageType::TEXTURE_2D};
 }
 
 // returns storage types that support zero clamping when reading OOB in HW
 // (Height/Width) dimensions.
 std::vector<TensorStorageType>
 MetalExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport() const {
-  return {};
+  return {TensorStorageType::TEXTURE_2D};
 }
 
 absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
@@ -200,7 +200,7 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     }
     RETURN_IF_ERROR(CreateTensor(device_.device(), src_shape,
                                  op_def.src_tensors[i], &src[i]));
-    RETURN_IF_ERROR(src[i].WriteData(src_cpu[i]));
+    RETURN_IF_ERROR(src[i].WriteData(device_.device(), src_cpu[i]));
   }
 
   std::vector<MetalSpatialTensor> dst(dst_cpu.size());
@@ -249,7 +249,7 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
   for (int i = 0; i < dst_cpu.size(); ++i) {
     dst_cpu[i]->shape = dst_sizes[i];
     dst_cpu[i]->data = std::vector<float>(dst_sizes[i].DimensionsProduct(), 0);
-    RETURN_IF_ERROR(dst[i].ReadData(dst_cpu[i]));
+    RETURN_IF_ERROR(dst[i].ReadData(device_.device(), dst_cpu[i]));
   }
 
   return absl::OkStatus();
@@ -270,7 +270,7 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     }
     RETURN_IF_ERROR(CreateTensor(device_.device(), src_shape,
                                  op_def.src_tensors[i], &src[i]));
-    RETURN_IF_ERROR(src[i].WriteData(src_cpu[i]));
+    RETURN_IF_ERROR(src[i].WriteData(device_.device(), src_cpu[i]));
   }
 
   std::vector<MetalSpatialTensor> dst(dst_cpu.size());
@@ -312,7 +312,7 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
   for (int i = 0; i < dst_cpu.size(); ++i) {
     dst_cpu[i]->shape = dst_sizes[i];
     dst_cpu[i]->data = std::vector<float>(dst_sizes[i].DimensionsProduct(), 0);
-    RETURN_IF_ERROR(dst[i].ReadData(dst_cpu[i]));
+    RETURN_IF_ERROR(dst[i].ReadData(device_.device(), dst_cpu[i]));
   }
 
   return absl::OkStatus();

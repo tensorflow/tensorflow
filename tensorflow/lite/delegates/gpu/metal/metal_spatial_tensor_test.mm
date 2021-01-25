@@ -55,8 +55,8 @@ static absl::Status TensorGenericTest(const BHWC& shape,
 
   tflite::gpu::metal::MetalSpatialTensor tensor;
   RETURN_IF_ERROR(CreateTensor(device, shape, descriptor, &tensor));
-  RETURN_IF_ERROR(tensor.WriteData(tensor_cpu));
-  RETURN_IF_ERROR(tensor.ReadData(&tensor_gpu));
+  RETURN_IF_ERROR(tensor.WriteData(device, tensor_cpu));
+  RETURN_IF_ERROR(tensor.ReadData(device, &tensor_gpu));
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
@@ -84,8 +84,8 @@ static absl::Status Tensor5DGenericTest(const BHWDC& shape,
 
   tflite::gpu::metal::MetalSpatialTensor tensor;
   RETURN_IF_ERROR(CreateTensor(device, shape, descriptor, &tensor));
-  RETURN_IF_ERROR(tensor.WriteData(tensor_cpu));
-  RETURN_IF_ERROR(tensor.ReadData(&tensor_gpu));
+  RETURN_IF_ERROR(tensor.WriteData(device, tensor_cpu));
+  RETURN_IF_ERROR(tensor.ReadData(device, &tensor_gpu));
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
@@ -142,6 +142,16 @@ static absl::Status TensorTests(DataType data_type, TensorStorageType storage_ty
 - (void)testBufferF16 {
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
   XCTAssertTrue(TensorTests(DataType::FLOAT16, TensorStorageType::BUFFER, device).ok());
+}
+
+- (void)testTexture2DF32 {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  XCTAssertTrue(TensorTests(DataType::FLOAT32, TensorStorageType::TEXTURE_2D, device).ok());
+}
+
+- (void)testTexture2DF16 {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  XCTAssertTrue(TensorTests(DataType::FLOAT16, TensorStorageType::TEXTURE_2D, device).ok());
 }
 
 @end
