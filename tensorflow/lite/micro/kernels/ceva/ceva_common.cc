@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/kernels/ceva/ceva_tflm_lib.h"
 #define CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL_DEF 32768
-int32_t CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL = 32768;
+int32_t CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL = CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL_DEF;
 #ifndef WIN32
 __attribute__((section(".MODEL_DATA")))
 #endif
