@@ -965,6 +965,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":_proto_comparators",
         ":dtypes",
         ":framework_ops",
         ":platform",
@@ -6580,6 +6581,21 @@ tf_gen_op_wrapper_private_py(
     name = "encode_proto_ops_gen",
     deps = [
         "//tensorflow/core:encode_proto_ops_op_lib",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_proto_comparators",
+    srcs = ["framework/proto_comparators.cc"],
+    module_name = "_proto_comparators",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
     ],
 )
 
