@@ -199,7 +199,8 @@ Status PropagateConstIntoFuncAttr(
       fld->UniqueFunctionName(absl::StrCat(func_attr.name(), "_const_"));
   TF_RETURN_IF_ERROR(
       GraphToFunctionDef(*func_graph, new_func_name, &replace_fdef));
-  TF_RETURN_IF_ERROR(fld->AddFunctionDef(replace_fdef));
+  TF_RETURN_IF_ERROR(fld->AddFunctionDef(
+      replace_fdef, lookup_fld->GetStackTraces(func_attr.name())));
 
   // Change the node to use rewritten function.
   func_attr.set_name(new_func_name);
