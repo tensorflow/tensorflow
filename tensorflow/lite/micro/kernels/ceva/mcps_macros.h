@@ -42,12 +42,12 @@ int32_t CEVA_BX_Stack_Measurement(const int32_t count);
   clock_t c1, c2;                 \
   int ClockCEVA, Constant_cycles; \
   int StackSize;                  \
-  FILE *f_mcps_report;
+  FILE* f_mcps_report;
 #else
 #define MCPS_VARIBLES             \
   clock_t c1, c2;                 \
   int ClockCEVA, Constant_cycles; \
-  FILE *f_mcps_report;
+  FILE* f_mcps_report;
 #endif
 #define MCPS_OPEN_FILE f_mcps_report = fopen("mcps_report.txt", "at");
 
