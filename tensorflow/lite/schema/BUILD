@@ -68,6 +68,22 @@ py_test(
     ],
 )
 
+# copybara:uncomment_begin(google-only)
+# py_test(
+#     name = "schema_validation_test",
+#     srcs = ["schema_validation_test.py"],
+#     data = [
+#         "//tensorflow/lite/schema:schema_fbs_srcs",
+#         "//tensorflow/lite/schema:schema_generated.h.oss",
+#     ],
+#     python_version = "PY3",
+#     deps = [
+#         "//pyglib",
+#         "//testing/pybase",
+#     ],
+# )
+# copybara:uncomment_end
+
 exports_files([
     "schema.fbs",
     "schema_v0.fbs",
