@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-//MCPS measurement macros for CEVA optimized kernels
+// MCPS measurement macros for CEVA optimized kernels
 
 #ifndef MCPS_MACROS_
 #define MCPS_MACROS_

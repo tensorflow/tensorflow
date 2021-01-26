@@ -19,7 +19,6 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-
 // typedef int8_t int8_t;
 // typedef int16_t int16;
 // typedef int32_t int32_t;
