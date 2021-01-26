@@ -31,7 +31,8 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
                                   id<MTLTexture>* texture) {
   const int slices = DivideRoundUp(shape.c, 4);
   switch (descriptor.storage_type) {
-    case TensorStorageType::BUFFER: {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER: {
       const size_t data_size = shape.b * shape.w * shape.h * shape.d * slices *
                                4 * SizeOf(descriptor.data_type);
       if (data_ptr) {
@@ -41,6 +42,28 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
       } else {
         *buffer = [device newBufferWithLength:data_size
                                       options:MTLResourceStorageModeShared];
+      }
+      if (!*buffer) {
+        return absl::UnknownError("Failed to allocate id<MTLBuffer>");
+      }
+      if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+        MTLTextureDescriptor* texture_desc =
+            [[MTLTextureDescriptor alloc] init];
+        texture_desc.width = shape.b * shape.w * shape.h * shape.d * slices;
+        texture_desc.pixelFormat =
+            DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+        if (@available(iOS 12.0, *)) {
+          texture_desc.textureType = MTLTextureTypeTextureBuffer;
+        }
+        texture_desc.usage =
+            MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+        texture_desc.storageMode = MTLStorageModePrivate;
+        *texture = [*buffer newTextureWithDescriptor:texture_desc
+                                              offset:0
+                                         bytesPerRow:data_size];
+        if (!*texture) {
+          return absl::UnknownError("Failed to allocate id<MTLTexture>");
+        }
       }
       return absl::OkStatus();
     }
@@ -65,9 +88,48 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
       }
       return absl::OkStatus();
     }
-    case TensorStorageType::IMAGE_BUFFER:
-    case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D: {
+      MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
+      texture_desc.width = shape.w * shape.b;
+      texture_desc.height = shape.h;
+      texture_desc.depth = slices * shape.d;
+      texture_desc.pixelFormat =
+          DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+      texture_desc.textureType = MTLTextureType3D;
+      texture_desc.usage =
+          MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+      texture_desc.storageMode = MTLStorageModePrivate;
+
+      *texture = [device newTextureWithDescriptor:texture_desc];
+      if (!*texture) {
+        return absl::UnknownError("Failed to allocate id<MTLTexture>");
+      }
+      if (data_ptr) {
+        WriteDataToTexture3D(*texture, device, data_ptr);
+      }
+      return absl::OkStatus();
+    }
+    case TensorStorageType::TEXTURE_ARRAY: {
+      MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
+      texture_desc.width = shape.w * shape.b;
+      texture_desc.height = shape.h;
+      texture_desc.arrayLength = slices * shape.d;
+      texture_desc.pixelFormat =
+          DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+      texture_desc.textureType = MTLTextureType2DArray;
+      texture_desc.usage =
+          MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+      texture_desc.storageMode = MTLStorageModePrivate;
+
+      *texture = [device newTextureWithDescriptor:texture_desc];
+      if (!*texture) {
+        return absl::UnknownError("Failed to allocate id<MTLTexture>");
+      }
+      if (data_ptr) {
+        WriteDataToTexture2DArray(*texture, device, data_ptr);
+      }
+      return absl::OkStatus();
+    }
     case TensorStorageType::SINGLE_TEXTURE_2D:
     default:
       return absl::InternalError("Unsupported tensor storage type");
@@ -194,9 +256,16 @@ absl::Status MetalSpatialTensor::GetGPUResources(
     resources->buffers.push_back({"buffer", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D) {
     resources->images2d.push_back({"image2d", texture_mem_});
-  } else {
-    return absl::UnimplementedError(
-        "Only TensorStorageType BUFFER or TEXTURE_2D supported.");
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_3D) {
+    resources->images3d.push_back({"image3d", texture_mem_});
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_ARRAY) {
+    resources->image2d_arrays.push_back({"image2d_array", texture_mem_});
+  } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    if (obj_ptr->GetAccess() == AccessType::READ) {
+      resources->image_buffers.push_back({"image_buffer", texture_mem_});
+    } else {
+      resources->buffers.push_back({"buffer", memory_});
+    }
   }
 
   return absl::OkStatus();
@@ -307,14 +376,18 @@ absl::Status MetalSpatialTensor::WriteDataBHWDC(id<MTLDevice> device,
 
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
       std::memcpy([memory_ contents], data_ptr, data_size);
       break;
     case TensorStorageType::TEXTURE_2D:
       WriteDataToTexture2D(texture_mem_, device, data_ptr);
       break;
-    case TensorStorageType::IMAGE_BUFFER:
-    case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_3D:
+      WriteDataToTexture3D(texture_mem_, device, data_ptr);
+      break;
+    case TensorStorageType::TEXTURE_ARRAY:
+      WriteDataToTexture2DArray(texture_mem_, device, data_ptr);
+      break;
     case TensorStorageType::SINGLE_TEXTURE_2D:
     default:
       return absl::InternalError("Unsupported tensor storage type");
@@ -366,14 +439,18 @@ absl::Status MetalSpatialTensor::ReadDataBHWDC(id<MTLDevice> device,
 
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
       std::memcpy(data_ptr, [memory_ contents], data_size);
       break;
     case TensorStorageType::TEXTURE_2D:
       ReadDataFromTexture2D(texture_mem_, device, data_ptr);
       break;
-    case TensorStorageType::IMAGE_BUFFER:
-    case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_3D:
+      ReadDataFromTexture3D(texture_mem_, device, data_ptr);
+      break;
+    case TensorStorageType::TEXTURE_ARRAY:
+      ReadDataFromTexture2DArray(texture_mem_, device, data_ptr);
+      break;
     case TensorStorageType::SINGLE_TEXTURE_2D:
     default:
       return absl::InternalError("Unsupported tensor storage type");

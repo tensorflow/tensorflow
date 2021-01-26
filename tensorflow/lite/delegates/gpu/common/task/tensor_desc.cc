@@ -393,7 +393,7 @@ std::string TensorDescriptor::Read(
         return absl::StrCat(read_as, "(image_buffer, ", coords[0], ")");
       } else if (gpu_info.IsApiMetal()) {
         std::string result =
-            absl::Substitute("image_buffer.read($0))", coords[0]);
+            absl::Substitute("image_buffer.read(uint($0))", coords[0]);
         if (need_conversion) {
           result = metal_type + "(" + result + ")";
         }
