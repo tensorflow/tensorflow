@@ -30,10 +30,10 @@ function run_smoke_test() {
   VENV_TMP_DIR=$(mktemp -d)
 
   ${PYTHON_BIN_PATH} -m virtualenv -p ${PYTHON_BIN_PATH} "${VENV_TMP_DIR}" || \
-      die "FAILED: Unable to create virtualenv"
+      echo "WARNING: Unable to create virtualenv. Assuming we are in one already."
 
   source "${VENV_TMP_DIR}/bin/activate" || \
-      die "FAILED: Unable to activate virtualenv "
+      echo "WARNING: Unable to activate virtualenv. Assuming we are in one already."
 
   # install tensorflow
   python -m pip install ${WHL_NAME} || \
