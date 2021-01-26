@@ -175,6 +175,19 @@ cc_library(
 )
 
 cc_library(
+    name = "convolution_transposed_test_util",
+    testonly = 1,
+    srcs = ["convolution_transposed_test_util.cc"],
+    hdrs = ["convolution_transposed_test_util.h"],
+    deps = [
+        ":convolution_transposed",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "convolution_transposed_3x3",
     srcs = ["convolution_transposed_3x3.cc"],
     hdrs = ["convolution_transposed_3x3.h"],

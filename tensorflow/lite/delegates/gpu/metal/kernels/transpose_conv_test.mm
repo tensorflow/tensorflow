@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -43,9 +44,8 @@ using ::tflite::gpu::metal::SingleOpModel;
 @interface TransposeConvTest : XCTestCase
 @end
 
-@implementation TransposeConvTest
-- (void)setUp {
-  [super setUp];
+@implementation TransposeConvTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
 }
 
 - (void)testTransposeConvO2H2W1I1Stride1x1DAdjacent1x1 {
@@ -283,6 +283,16 @@ using ::tflite::gpu::metal::SingleOpModel;
                            2.0f, 4.0f, 6.0f, 12.0f, 6.0f, 12.0f, 4.0f, 8.0f,
                            2.0f, 4.0f, 5.0f, 10.0f, 5.0f, 10.0f, 3.0f, 6.0f},
                           model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvolutionTransposedSimpleWeights {
+  auto status = ConvolutionTransposedSimpleWeightsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvolutionTransposed {
+  auto status = ConvolutionTransposedTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
