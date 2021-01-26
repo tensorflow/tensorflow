@@ -439,7 +439,7 @@ StatusOr<Literal> LocalClient::TransferFromOutfeedLocal(const Shape& shape,
                       backend().stream_executor(device_ordinal));
   auto literal = Literal::CreateFromShape(shape);
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromOutfeed(
-      executor, shape, &literal));
+      executor, &literal));
   return std::move(literal);
 }
 

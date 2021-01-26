@@ -219,11 +219,9 @@ void TpuTransferManager_TransferBuffersToInfeed(XLA_TransferManager* manager,
                                                 int64_t* buffers_size_in_uint32,
                                                 int64_t buffers_array_size,
                                                 TF_Status* status);
-void TpuTransferManager_TransferLiteralFromOutfeed(XLA_TransferManager* manager,
-                                                   SE_StreamExecutor* executor,
-                                                   XLA_Shape* shape,
-                                                   XLA_Literal* c_literal,
-                                                   TF_Status* status);
+void TpuTransferManager_TransferLiteralFromOutfeed(
+    XLA_TransferManager* manager, SE_StreamExecutor* executor,
+    XLA_Shape* shape /*deprecated*/, XLA_Literal* c_literal, TF_Status* status);
 void TpuTransferManager_ResetDevices(XLA_TransferManager* manager,
                                      SE_StreamExecutor** executors,
                                      int64_t num_executors, TF_Status* status);

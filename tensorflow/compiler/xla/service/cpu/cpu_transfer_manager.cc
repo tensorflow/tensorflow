@@ -176,15 +176,14 @@ CpuTransferManager::TransferBufferToInfeedInternal(se::StreamExecutor* executor,
 }
 
 Status CpuTransferManager::TransferLiteralFromOutfeed(
-    se::StreamExecutor* executor, const Shape& literal_shape,
-    MutableBorrowingLiteral literal) {
-  if (!literal_shape.IsTuple()) {
-    int64 size = GetByteSizeRequirement(literal_shape);
+    se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
+  if (!literal.shape().IsTuple()) {
+    int64 size = GetByteSizeRequirement(literal.shape());
     // Note: OSS build didn't like implicit conversion from
-    // literal_shape.dimensions() to the array slice on 2017-07-10.
+    // literal.shape().dimensions() to the array slice on 2017-07-10.
     absl::Span<const int64> dimensions(
-        absl::bit_cast<const int64*>(literal_shape.dimensions().data()),
-        literal_shape.dimensions().size());
+        absl::bit_cast<const int64*>(literal.shape().dimensions().data()),
+        literal.shape().dimensions().size());
     TF_ASSIGN_OR_RETURN(
         Shape received_shape,
         TransferArrayBufferFromOutfeed(executor, literal.untyped_data(), size));
@@ -192,21 +191,21 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
         << "Shape received from outfeed "
         << ShapeUtil::HumanString(received_shape)
         << " did not match the shape that was requested for outfeed: "
-        << ShapeUtil::HumanString(literal_shape);
+        << ShapeUtil::HumanString(literal.shape());
     TF_RET_CHECK(size == GetByteSizeRequirement(received_shape));
     *literal.mutable_shape_do_not_use() = received_shape;
     return Status::OK();
   }
 
-  if (ShapeUtil::IsNestedTuple(literal_shape)) {
+  if (ShapeUtil::IsNestedTuple(literal.shape())) {
     return Unimplemented(
         "Nested tuple outfeeds are not yet implemented on CPU.");
   }
 
   std::vector<std::pair<void*, int64>> buffer_data;
-  for (int64 i = 0; i < literal_shape.tuple_shapes_size(); ++i) {
+  for (int64 i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
     const Shape& tuple_element_shape =
-        ShapeUtil::GetTupleElementShape(literal_shape, i);
+        ShapeUtil::GetTupleElementShape(literal.shape(), i);
     int64 size = GetByteSizeRequirement(tuple_element_shape);
     buffer_data.push_back({literal.untyped_data({i}), size});
   }
@@ -214,15 +213,15 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
   TF_ASSIGN_OR_RETURN(Shape received_shape,
                       TransferTupleBuffersFromOutfeed(executor, buffer_data));
 
-  TF_RET_CHECK(ShapeUtil::Compatible(received_shape, literal_shape))
+  TF_RET_CHECK(ShapeUtil::Compatible(received_shape, literal.shape()))
       << "Shape received from outfeed "
       << ShapeUtil::HumanString(received_shape)
       << " did not match the shape that was requested for outfeed: "
-      << ShapeUtil::HumanString(literal_shape);
-  TF_RET_CHECK(GetByteSizeRequirement(literal_shape) ==
+      << ShapeUtil::HumanString(literal.shape());
+  TF_RET_CHECK(GetByteSizeRequirement(literal.shape()) ==
                GetByteSizeRequirement(received_shape));
 
-  TF_RET_CHECK(ShapeUtil::Equal(literal.shape(), literal_shape));
+  TF_RET_CHECK(ShapeUtil::Equal(literal.shape(), literal.shape()));
   return Status::OK();
 }
 
