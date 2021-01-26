@@ -34,6 +34,7 @@
 ^tensorflow/python/feature_column/feature_column_test\.py.*\[E0110.*abstract-class-instantiated
 ^tensorflow/python/framework/dtypes_test.py.*\[W0611.*unused-import
 ^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline
+^tensorflow/python/framework/ops.py.*\[E1102.*not-callable
 ^tensorflow/python/framework/ops_test.py.*\[E1130.*invalid-unary-operand-type
 ^tensorflow/python/framework/test_util.py.*\[C0326.*bad-whitespace
 ^tensorflow/python/framework/type_spec_test.py.*\[E1003.*bad-super-call
