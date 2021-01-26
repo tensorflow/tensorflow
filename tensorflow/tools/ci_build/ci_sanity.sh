@@ -641,8 +641,8 @@ do_configure_test() {
   do
     export TF_NEED_CUDA=${WITH_CUDA}
     export CUDNN_INSTALL_PATH="/usr/local/cudnn"
-    export PYTHON_BIN_PATH=$(which python)
-    yes "" | ./configure
+    export PYTHON_BIN_PATH=$(which python3.8)
+    yes "" | ${PYTHON_BIN_PATH} configure.py
 
     RESULT=$?
     if [[ ${RESULT} != "0" ]]; then
