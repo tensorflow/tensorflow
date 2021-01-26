@@ -175,14 +175,14 @@ MetalExecutionEnvironment::GetSupportedPrecisions() const {
 
 std::vector<TensorStorageType> MetalExecutionEnvironment::GetSupportedStorages()
     const {
-  return {TensorStorageType::BUFFER, TensorStorageType::TEXTURE_2D};
+  return {TensorStorageType::BUFFER};
 }
 
 // returns storage types that support zero clamping when reading OOB in HW
 // (Height/Width) dimensions.
 std::vector<TensorStorageType>
 MetalExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport() const {
-  return {TensorStorageType::TEXTURE_2D};
+  return {};
 }
 
 absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
