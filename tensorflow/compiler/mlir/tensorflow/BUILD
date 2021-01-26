@@ -1094,6 +1094,7 @@ cc_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
     ],
 )
