@@ -54,7 +54,8 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
   def testPopulationCountOp(self):
     dtype_list = [dtypes.int8, dtypes.int16,
                   dtypes.int32, dtypes.int64,
-                  dtypes.uint8, dtypes.uint16]
+                  dtypes.uint8, dtypes.uint16,
+                  dtypes.uint32, dtypes.uint64]
     raw_inputs = [0, 1, -1, 3, -3, 5, -5, 14, -14,
                   127, 128, 255, 256, 65535, 65536,
                   2**31 - 1, 2**31, 2**32 - 1, 2**32, -2**32 + 1, -2**32,
