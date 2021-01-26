@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -213,6 +214,14 @@ class ReshapeTest(test.TestCase):
       # Even if first dimension is within int32, ensure we correctly go to int64
       y = array_ops.reshape(x, [1, 50000**2])
       self.assertEqual([1, 50000**2], y.get_shape().as_list())
+
+  @test_util.run_v2_only
+  def testTooLargeShape(self):
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "too many elements"):
+      x = array_ops.reshape([1], np.array([21943, 45817, 30516, 61760, 38987]))
+      self.evaluate(x)
+
 
 
 if __name__ == "__main__":
