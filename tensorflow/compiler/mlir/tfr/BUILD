@@ -254,7 +254,6 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
-        "//tensorflow/python:is_mlir_bridge_test_false",
         "//tensorflow/python/eager:def_function",
     ],
 )
