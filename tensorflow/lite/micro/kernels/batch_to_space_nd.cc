@@ -39,11 +39,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* block_shape = GetInput(context, node, kBlockShapeTensor);
-  const TfLiteTensor* crops = GetInput(context, node, kCropsTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  TF_LITE_ENSURE(context, input != nullptr && block_shape != nullptr &&
-                              crops != nullptr && output != nullptr);
+  TF_LITE_ENSURE(context, input != nullptr && output != nullptr);
 
   // Only 4D input and output tensors are supported for this op on TFLM.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), kInputDims);
