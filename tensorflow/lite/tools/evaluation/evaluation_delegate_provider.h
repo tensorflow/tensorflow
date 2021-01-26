@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
@@ -31,6 +32,9 @@ namespace evaluation {
 class DelegateProviders {
  public:
   DelegateProviders();
+
+  // Returns a list of commandline flags that delegate providers define.
+  std::vector<Flag> GetFlags();
 
   // Initialize delegate-related parameters from commandline arguments and
   // returns true if successful.
