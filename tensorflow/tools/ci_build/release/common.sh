@@ -246,6 +246,7 @@ function install_macos_pip_deps {
 
 function setup_venv_macos () {
   # First argument needs to be the python executable.
+  ${1} -m pip install virtualenv
   ${1} -m virtualenv tf_build_env
   source tf_build_env/bin/activate
   install_macos_pip_deps
