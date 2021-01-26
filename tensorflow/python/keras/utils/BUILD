@@ -248,6 +248,28 @@ py_library(
     ],
 )
 
+py_library(
+    name = "dataset_creator",
+    srcs = [
+        "dataset_creator.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+tf_py_test(
+    name = "dataset_creator_test",
+    srcs = ["dataset_creator_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":dataset_creator",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+    ],
+)
+
 tf_py_test(
     name = "data_utils_test",
     size = "medium",
