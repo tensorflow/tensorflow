@@ -2888,5 +2888,57 @@ TEST_F(CanShareOperandBufferWithUserTest, ConcatSliceNegativeTest) {
                                                                 fusion, {1}));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, MultipleConcatenates) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      add0 = f32[100] add(p0, p1)
+      sub0 = f32[100] subtract(p1, p1)
+      concat0 = f32[200] concatenate(p0, add0), dimensions={0}
+      slice0 = f32[100] slice(concat0), slice={[0:100]}
+      slice1 = f32[100] slice(concat0), slice={[100:200]}
+      concat1 = f32[200] concatenate(p0, sub0), dimensions={0}
+      slice2 = f32[100] slice(concat1), slice={[0:100]}
+      slice3 = f32[100] slice(concat1), slice={[100:200]}
+      ROOT tuple = (f32[100], f32[100], f32[100], f32[100])
+                       tuple(slice0, slice1, slice2, slice3)
+    }
+
+    ENTRY test {
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      ROOT fusion = (f32[100], f32[100], f32[100], f32[100])
+          fusion(p0, p1), kind=kInput, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  auto* fusion = module_->entry_computation()->root_instruction();
+  auto* param0 = module_->entry_computation()->parameter_instruction(0);
+  auto* param1 = module_->entry_computation()->parameter_instruction(1);
+
+  RunAnalysis();
+  // p0 cannot share.
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {0}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {1}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {2}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {3}));
+  // p1 can share with either fusion{1} or fusion{3}.
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                 fusion, {1}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                 fusion, {3}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                 fusion, {0}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                 fusion, {2}));
+}
+
 }  // namespace
 }  // namespace xla
