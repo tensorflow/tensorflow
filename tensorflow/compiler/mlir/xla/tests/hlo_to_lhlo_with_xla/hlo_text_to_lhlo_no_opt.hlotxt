@@ -537,3 +537,13 @@ ENTRY main {
   %arg0 = f32[1] parameter(0)
   %out = f32[10] broadcast(%arg0), dimensions={0}
 }
+
+// -----
+
+HloModule TestModule
+
+// CHECK: func @main
+// CHECK:   "lmhlo.rng_get_and_update_state"(%{{.*}}) {delta = 131072 : i64} : (memref<2xui64>) -> ()
+ENTRY main {
+  ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=131072
+}

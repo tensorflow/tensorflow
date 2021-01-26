@@ -383,6 +383,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitConstant(instr);
     case HloOpcode::kReduce:
       return EmitReduceOp(instr);
+    case HloOpcode::kRngGetAndUpdateState:
+      return EmitRngGetAndUpdateStateOp(instr);
     default:
       llvm::errs() << instr->ToString();
       return tensorflow::errors::Internal(
@@ -1191,6 +1193,16 @@ xla::StatusOr<lmhlo::DotOp> LhloDialectEmitter::EmitDotOp(
   dot.precision_configAttr(
       xla::ConvertPrecisionConfig(&hlo_dot->precision_config(), &builder_));
   return dot;
+}
+
+xla::StatusOr<lmhlo::RngGetAndUpdateStateOp>
+LhloDialectEmitter::EmitRngGetAndUpdateStateOp(
+    const xla::HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(
+      auto rng, CreateOpWithoutAttrs<lmhlo::RngGetAndUpdateStateOp>(instr));
+  auto hlo_rng = xla::Cast<xla::HloRngGetAndUpdateStateInstruction>(instr);
+  rng.deltaAttr(builder_.getI64IntegerAttr(hlo_rng->delta()));
+  return rng;
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
