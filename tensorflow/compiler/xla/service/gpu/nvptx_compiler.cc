@@ -53,6 +53,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Support/SourceMgr.h"
+
 namespace xla {
 namespace gpu {
 
@@ -202,7 +205,7 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
 // Try to load ptx from files defined in the FLAGS. If successful, return true.
 bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
                           const HloModule* module, std::string* ptx) {
-  // If the xla_gpu_ptx_file options is set, be explicit when a file is used
+  // If the xla_gpu_ptx_file option is set, be explicit if a file is used
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
@@ -232,6 +235,50 @@ bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
     return true;
   }
   return false;
+}
+
+// Try to load textual LLVM IR from files defined in the FLAGS. If
+// successful, return the llvm::Module, otherwise return nullptr.
+std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
+                                                    llvm::Module* llvm_module) {
+  // If the xla_gpu_llvm_ir_file option is set, be explicit if a file is used
+  // and warn when a file is not used to ease catching typo in filename.
+  if (module == nullptr) {
+    return nullptr;
+  }
+
+  std::string prefix = xla::FilenameFor(*module, "", "");
+  auto xla_gpu_llvm_ir_file =
+      module->config().debug_options().xla_gpu_llvm_ir_file();
+  auto matched_filename = absl::c_find_if(
+      xla_gpu_llvm_ir_file, [prefix](const string& full_filename) {
+        // To ease comparing many LLVM versions, accept different suffixes then
+        // the original filename.
+        return absl::StartsWith(tensorflow::io::Basename(full_filename),
+                                prefix);
+      });
+  if (xla_gpu_llvm_ir_file.size() > 0 &&
+      matched_filename == std::end(xla_gpu_llvm_ir_file)) {
+    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+            << "', we did not found a LLVM file to load.";
+  }
+
+  if (matched_filename != std::end(xla_gpu_llvm_ir_file)) {
+    VLOG(0) << "RunBackend() - Will load LLVM from file: " << *matched_filename;
+    llvm::LLVMContext& context = llvm_module->getContext();
+    llvm::SMDiagnostic err;
+    std::unique_ptr<llvm::Module> loaded_module =
+        llvm::parseIRFile(*matched_filename, err, context);
+
+    if (!loaded_module) {
+      err.print("ERR", llvm::errs());
+      LOG(FATAL) << "Failed to load an LLVM file. It is probably invalid LLVM.";
+    }
+    // Overwrite the dumped not optimized LLVM to show which one will be used.
+    llvm_ir::DumpIrIfEnabled(*module, *loaded_module, /*optimized=*/false);
+    return loaded_module;
+  }
+  return nullptr;
 }
 
 }  // namespace
@@ -320,13 +367,21 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     libdevice_dir = cached_libdevice_dir_;
   }
   VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
+  std::unique_ptr<llvm::Module> loaded_module =
+      MaybeLoadLLVMFromFile(debug_module, llvm_module);
+  llvm::Module* selected_module = nullptr;
+  if (loaded_module) {
+    selected_module = loaded_module.get();
+  } else {
+    selected_module = llvm_module;
+  }
 
   string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
-    TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(llvm_module, gpu_version,
+    TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
                                                  module_config, libdevice_dir));
   }
 
