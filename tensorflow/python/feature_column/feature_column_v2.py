@@ -1416,9 +1416,9 @@ def bucketized_column(source_column, boundaries):
   then the output will be
 
   ```python
-  output = [[0, 3]
-            [3, 2]
-            [1, 3]]
+  output = [[[1, 0, 0, 0], [0, 0, 0, 1]]
+            [[0, 0, 0, 1], [0, 0, 1, 0]]
+            [[0, 1, 0, 0], [0, 0, 0, 1]]]
   ```
 
   Example:
