@@ -185,6 +185,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParsePool(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_BATCH_MATMUL: {
+      return ParseBatchMatMul(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_BATCH_TO_SPACE_ND: {
       return ParseBatchToSpaceNd(op, error_reporter, allocator, builtin_data);
     }
@@ -745,19 +749,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
-    case BuiltinOperator_BATCH_MATMUL: {
-      auto params = safe_allocator.Allocate<TfLiteBatchMatMulParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* bmm_params =
-              op->builtin_options_as_BatchMatMulOptions()) {
-        params->adj_x = bmm_params->adj_x();
-        params->adj_y = bmm_params->adj_y();
-        params->asymmetric_quantize_inputs =
-            bmm_params->asymmetric_quantize_inputs();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     case BuiltinOperator_CALL_ONCE: {
       auto params = safe_allocator.Allocate<TfLiteCallOnceParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -970,6 +961,27 @@ TfLiteStatus ParseArgMin(const Operator* op, ErrorReporter* error_reporter,
     // better undertand the ramifications of changing the legacy behavior.
   }
 
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseBatchMatMul(const Operator* op, ErrorReporter* error_reporter,
+                              BuiltinDataAllocator* allocator,
+                              void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteBatchMatMulParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* bmm_params = op->builtin_options_as_BatchMatMulOptions()) {
+    params->adj_x = bmm_params->adj_x();
+    params->adj_y = bmm_params->adj_y();
+    params->asymmetric_quantize_inputs =
+        bmm_params->asymmetric_quantize_inputs();
+  }
   *builtin_data = params.release();
   return kTfLiteOk;
 }
