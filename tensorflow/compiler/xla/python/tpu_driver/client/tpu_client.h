@@ -69,7 +69,7 @@ class TpuDevice : public PjRtDevice {
     return Unimplemented("Infeed not yet implemented via this API");
   }
 
-  StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const override {
+  Status TransferFromOutfeed(MutableBorrowingLiteral literal) const override {
     return Unimplemented("Outfeed not yet implemented via this API");
   }
 

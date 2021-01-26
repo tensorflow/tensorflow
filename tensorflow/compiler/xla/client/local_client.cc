@@ -433,14 +433,12 @@ Status LocalClient::TransferToInfeedLocal(const LiteralSlice& literal,
                                                                literal);
 }
 
-StatusOr<Literal> LocalClient::TransferFromOutfeedLocal(const Shape& shape,
-                                                        int device_ordinal) {
+Status LocalClient::TransferFromOutfeedLocal(int device_ordinal,
+                                             MutableBorrowingLiteral literal) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
-  auto literal = Literal::CreateFromShape(shape);
-  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromOutfeed(
-      executor, &literal));
-  return std::move(literal);
+  return backend().transfer_manager()->TransferLiteralFromOutfeed(executor,
+                                                                  literal);
 }
 
 StatusOr<int> LocalClient::ReplicaNumberToDeviceOrdinal(int replica_number) {

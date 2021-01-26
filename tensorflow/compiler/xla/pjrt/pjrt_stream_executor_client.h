@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
@@ -106,7 +107,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   Status TransferToInfeed(const LiteralSlice& literal) const override;
 
-  StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const override;
+  Status TransferFromOutfeed(MutableBorrowingLiteral literal) const override;
 
  private:
   const int id_;

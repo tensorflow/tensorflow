@@ -146,7 +146,7 @@ PYBIND11_MODULE(xla_extension, m) {
            [](const PjRtDevice& device,
               const Shape& shape) -> StatusOr<py::object> {
              GlobalPyRefManager()->CollectGarbage();
-             std::shared_ptr<Literal> literal_shared;
+             std::shared_ptr<Literal> literal;
              {
                py::gil_scoped_release gil_release;
                Shape shape_with_layout = shape;
@@ -156,12 +156,10 @@ PYBIND11_MODULE(xla_extension, m) {
                        LayoutUtil::SetToDefaultLayout(subshape);
                      }
                    });
-               TF_ASSIGN_OR_RETURN(Literal literal, device.TransferFromOutfeed(
-                                                        shape_with_layout));
-
-               literal_shared = std::make_shared<Literal>(std::move(literal));
+               literal = std::make_shared<Literal>(shape_with_layout);
+               TF_RETURN_IF_ERROR(device.TransferFromOutfeed(literal.get()));
              }
-             return LiteralToPython(std::move(literal_shared));
+             return LiteralToPython(std::move(literal));
            });
 
   py::class_<CpuDevice, PjRtDevice, ClientAndPtr<CpuDevice>>(m, "CpuDevice")

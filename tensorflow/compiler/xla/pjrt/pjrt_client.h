@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -93,7 +94,7 @@ class PjRtDevice {
   virtual Status TransferToInfeed(const LiteralSlice& literal) const = 0;
 
   // Transfer and return a value of the given shape from the outfeed queue.
-  virtual StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const = 0;
+  virtual Status TransferFromOutfeed(MutableBorrowingLiteral literal) const = 0;
 };
 
 // Forward declaration.

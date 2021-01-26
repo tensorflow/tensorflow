@@ -910,11 +910,11 @@ Status PjRtStreamExecutorDevice::TransferToInfeed(
       literal, local_device->device_ordinal());
 }
 
-StatusOr<Literal> PjRtStreamExecutorDevice::TransferFromOutfeed(
-    const Shape& shape) const {
+Status PjRtStreamExecutorDevice::TransferFromOutfeed(
+    MutableBorrowingLiteral literal) const {
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferFromOutfeedLocal(
-      shape, local_device->device_ordinal());
+      local_device->device_ordinal(), literal);
 }
 
 StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
