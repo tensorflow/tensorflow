@@ -217,8 +217,7 @@ class SidecarEvaluator(object):
       ])
 
       if self._summary_writer:
-        with summary_ops_v2.always_record_summaries(
-        ), self._summary_writer.as_default():
+        with summary_ops_v2.record_if(True), self._summary_writer.as_default():
           for metric in self.model.compiled_metrics.metrics:
             summary_ops_v2.scalar(
                 metric.name,
