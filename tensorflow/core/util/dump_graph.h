@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_DUMP_GRAPH_H_
 
 #include <string>
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
