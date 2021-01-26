@@ -979,6 +979,7 @@ struct round : base<T, Eigen::internal::scalar_round_half_to_even_op<T>> {};
 template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 
+// Note: rint rounds half values to even, just like round_half_to_even_op.
 template <typename T>
 struct rint : base<T, Eigen::internal::scalar_rint_op<T>> {};
 

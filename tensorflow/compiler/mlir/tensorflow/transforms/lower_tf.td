@@ -241,11 +241,15 @@ def LowerReciprocal : Pat<(TF_ReciprocalOp $x),
 // Round op patterns.
 //===----------------------------------------------------------------------===//
 
+// Rint is specified as RoundHalfToEven, which happens to be the same behavior
+// as TF_RoundOp, so lower to TF_RoundOp.
+def : Pat<(TF_RintOp:$res TF_FloatTensor:$input), (TF_RoundOp $input)>;
 
 // Rounds on integers should just be bypassed.
 def : Pat<(TF_RoundOp:$res TF_IntTensor:$input), (TF_IdentityOp $input)>;
 
-// Implements TF Round on floats using basic operations.
+// Implements TF Round on floats using basic operations. TF Round is specified
+// as RoundHalfToEven to be compatible with Numpy.
 def : Pat<(TF_RoundOp:$res TF_FloatTensor:$input),
           (TF_SelectOp
            (TF_LessOp
