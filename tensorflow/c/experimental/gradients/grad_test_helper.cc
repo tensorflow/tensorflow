@@ -131,6 +131,11 @@ Model BuildGradModel(Model forward, GradientRegistry registry) {
   };
 }
 
+absl::BitGen& GetBitGen() {
+  static absl::BitGen bitgen;
+  return bitgen;
+}
+
 }  // namespace internal
 }  // namespace gradients
 }  // namespace tensorflow

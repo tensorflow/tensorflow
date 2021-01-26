@@ -66,6 +66,30 @@ Status Log1p(AbstractContext* ctx,
              absl::Span<AbstractTensorHandle* const> inputs,
              absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
+Status ArgMax(AbstractContext* ctx, AbstractTensorHandle* const input,
+              AbstractTensorHandle* const dimension,
+              absl::Span<AbstractTensorHandle*> outputs,
+              DataType output_type = DT_INT64, const char* name = nullptr);
+
+Status Equal(AbstractContext* ctx, AbstractTensorHandle* const x,
+             AbstractTensorHandle* const y,
+             absl::Span<AbstractTensorHandle*> outputs,
+             bool incompatible_shape_error = true, const char* name = nullptr);
+
+Status AddN(AbstractContext* ctx,
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs,
+            const char* name = nullptr);
+
+Status Cast(AbstractContext* ctx, AbstractTensorHandle* const x, DataType DstT,
+            absl::Span<AbstractTensorHandle*> outputs, bool Truncate = false,
+            const char* name = nullptr);
+
+Status Mean(AbstractContext* ctx, AbstractTensorHandle* const input,
+            AbstractTensorHandle* const axis,
+            absl::Span<AbstractTensorHandle*> outputs, bool keep_dims = false,
+            const char* name = nullptr);
+
 }  // namespace ops
 }  // namespace tensorflow
 

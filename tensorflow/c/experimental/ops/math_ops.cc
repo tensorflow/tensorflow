@@ -208,5 +208,92 @@ Status Log1p(AbstractContext* ctx,
   return s;
 }
 
+Status ArgMax(AbstractContext* ctx, AbstractTensorHandle* const input,
+              AbstractTensorHandle* const dimension,
+              absl::Span<AbstractTensorHandle*> outputs, DataType output_type,
+              const char* name) {
+  constexpr char op_name[] = "ArgMax";
+  AbstractOperationPtr op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op->Reset(op_name, /*raw_device_name=*/nullptr));
+  if (!name) name = op_name;
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op.get(), name));
+
+  TF_RETURN_IF_ERROR(op->AddInput(input));
+  TF_RETURN_IF_ERROR(op->AddInput(dimension));
+  TF_RETURN_IF_ERROR(op->SetAttrType("output_type", output_type));
+
+  int num_retvals = 1;
+  return op->Execute(outputs, &num_retvals);
+}
+
+Status Equal(AbstractContext* ctx, AbstractTensorHandle* const x,
+             AbstractTensorHandle* const y,
+             absl::Span<AbstractTensorHandle*> outputs,
+             bool incompatible_shape_error, const char* name) {
+  constexpr char op_name[] = "Equal";
+  AbstractOperationPtr op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op->Reset(op_name, /*raw_device_name=*/nullptr));
+  if (!name) name = op_name;
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op.get(), name));
+
+  TF_RETURN_IF_ERROR(op->AddInput(x));
+  TF_RETURN_IF_ERROR(op->AddInput(y));
+  TF_RETURN_IF_ERROR(
+      op->SetAttrBool("incompatible_shape_error", incompatible_shape_error));
+
+  int num_retvals = 1;
+  return op->Execute(outputs, &num_retvals);
+}
+
+Status AddN(AbstractContext* ctx,
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  constexpr char op_name[] = "AddN";
+  AbstractOperationPtr op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op->Reset(op_name, /*raw_device_name=*/nullptr));
+  if (!name) name = op_name;
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op.get(), name));
+
+  TF_RETURN_IF_ERROR(op->AddInputList(inputs));
+
+  int num_retvals = 1;
+  return op->Execute(outputs, &num_retvals);
+}
+
+Status Cast(AbstractContext* ctx, AbstractTensorHandle* const x, DataType DstT,
+            absl::Span<AbstractTensorHandle*> outputs, bool Truncate,
+            const char* name) {
+  constexpr char op_name[] = "Cast";
+  AbstractOperationPtr op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op->Reset(op_name, /*raw_device_name=*/nullptr));
+  if (!name) name = op_name;
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op.get(), name));
+
+  TF_RETURN_IF_ERROR(op->AddInput(x));
+  TF_RETURN_IF_ERROR(op->SetAttrType("DstT", DstT));
+  TF_RETURN_IF_ERROR(op->SetAttrBool("Truncate", Truncate));
+
+  int num_retvals = 1;
+  return op->Execute(outputs, &num_retvals);
+}
+
+Status Mean(AbstractContext* ctx, AbstractTensorHandle* const input,
+            AbstractTensorHandle* const axis,
+            absl::Span<AbstractTensorHandle*> outputs, bool keep_dims,
+            const char* name) {
+  constexpr char op_name[] = "Mean";
+  AbstractOperationPtr op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op->Reset(op_name, /*raw_device_name=*/nullptr));
+  if (!name) name = op_name;
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op.get(), name));
+
+  TF_RETURN_IF_ERROR(op->AddInput(input));
+  TF_RETURN_IF_ERROR(op->AddInput(axis));
+  TF_RETURN_IF_ERROR(op->SetAttrBool("keep_dims", keep_dims));
+
+  int num_retvals = 1;
+  return op->Execute(outputs, &num_retvals);
+}
+
 }  // namespace ops
 }  // namespace tensorflow
