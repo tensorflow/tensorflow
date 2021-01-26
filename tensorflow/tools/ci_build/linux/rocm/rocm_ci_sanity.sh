@@ -531,14 +531,6 @@ done
 echo
 echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
 
-mkdir -p "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary"
-echo '<?xml version="1.0" encoding="UTF-8"?>'\
-  '<testsuites name="1"  tests="1" failures="0" errors="0" time="0">'\
-  '<testsuite name="Kokoro Summary" tests="'"$((FAIL_COUNTER + PASS_COUNTER))"\
-  '" failures="'"${FAIL_COUNTER}"'" errors="0" time="0">'\
-  "${TESTCASE_XML}"'</testsuite></testsuites>'\
-  > "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary/sponge_log.xml"
-
 echo
 if [[ ${FAIL_COUNTER} == "0" ]]; then
   printf "Sanity checks ${COLOR_GREEN}PASSED${COLOR_NC}\n"
