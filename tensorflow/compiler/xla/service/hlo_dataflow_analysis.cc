@@ -133,32 +133,33 @@ bool IsSliceInputFusion(const HloInstruction& unnested_hlo) {
   if (!unnested_hlo.IsInputFusion()) {
     return false;
   }
-
   const HloInstruction* root = unnested_hlo.fused_expression_root();
-  if (Is1dSliceWithoutStrides(root)) {
-    return true;
-  }
-
   if (root->opcode() != HloOpcode::kTuple) {
     return false;
   }
-
   return absl::c_all_of(root->operands(), [](const HloInstruction* instr) {
     return Is1dSliceWithoutStrides(instr);
   });
 }
 
-bool ConcatHasNoEffect(const HloInstruction* concat) {
-  // Check if this concat is in the below pattern. In addition, we check
-  // that the slices combiningly are in effect a reverse function of the
-  // concat.
+// Returns whether the concat is used in an elementwise manner.
+// A concat followed by slices is considered (effectively) elementwise if the
+// slices combinedly is a reverse function of the concat.
+// prev_concat_opnd_idx: previously seen concat and its operand index.
+//     prev_concat_opnd_idx.first is nullptr if no previously seen concat.
+bool ConcatIsEffectivelyElementwise(
+    const HloInstruction& concat, const HloInstruction& operand,
+    std::pair<const HloInstruction*, int64>* prev_concat_opnd_idx,
+    const HloInstruction** slice_to_recover_opnd) {
+  // First, check if this concat is in the below pattern. Also, we check
+  // that the slices combinedly are in effect a reverse function of the concat.
   //
   //     Concat
   //     |    |
   //     v    v
   //   Slice Slice
   //
-  std::vector<HloInstruction*> users = concat->users();
+  std::vector<HloInstruction*> users = concat.users();
   if (!absl::c_all_of(users, [](const HloInstruction* i) {
         return Is1dSliceWithoutStrides(i);
       })) {
@@ -168,9 +169,9 @@ bool ConcatHasNoEffect(const HloInstruction* concat) {
   absl::c_sort(users, [](const HloInstruction* a, const HloInstruction* b) {
     return a->slice_starts().at(0) < b->slice_starts().at(0);
   });
-
   // Verify that each operand to the concat is reversed by a slice.
-  if (users.size() != concat->operand_count()) {
+  if (users.size() != concat.operand_count() ||
+      concat.operand_count() != concat.unique_operands().size()) {
     return false;
   }
   int64 prev_limit = 0;
@@ -178,24 +179,48 @@ bool ConcatHasNoEffect(const HloInstruction* concat) {
     const HloInstruction* u = users[i];
     int64 slice_size = u->slice_limits().at(0) - u->slice_starts().at(0);
     if (u->slice_starts().at(0) != prev_limit ||
-        slice_size != ShapeUtil::ElementsIn(concat->operand(i)->shape())) {
+        slice_size != ShapeUtil::ElementsIn(concat.operand(i)->shape())) {
       return false;
     }
     prev_limit = u->slice_limits().at(0);
   }
 
+  // If we have seen other concats, make sure they are identical.
+  int64 operand_idx = concat.operand_index(&operand);
+  *slice_to_recover_opnd = users.at(operand_idx);
+  if (prev_concat_opnd_idx->first == nullptr) {
+    prev_concat_opnd_idx->first = &concat;
+    prev_concat_opnd_idx->second = operand_idx;
+  } else {
+    bool is_concat_identical = prev_concat_opnd_idx->first->Identical(
+        concat,
+        /*eq_operands=*/[](const HloInstruction*, const HloInstruction*) {
+          // Operands don't need to be the same.
+          return true;
+        });
+    if (!is_concat_identical || prev_concat_opnd_idx->second != operand_idx) {
+      return false;
+    }
+  }
+
   return true;
 }
 
-// Returns whether we can prove the transitive uses are in effect elementwise
-// operations. A concat followed by slices is considered (effectively)
-// elementwise if the slices combiningly is a reverse function of the concat.
-// We can prove more patterns but we currently do just enough for
+// Returns whether we can prove the transitive uses of `param` are in effect
+// elementwise. In other words, we prove that the transitive use closure will
+// all be computed in the same iteration space without any reorder of elements.
+// Theoretically, We can prove more patterns but our primary use case is
 // SliceInputFusion.
-bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* instr) {
+bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* param,
+                                             const HloInstruction* root_tuple,
+                                             const ShapeIndex& out_shape_idx) {
+  CHECK(root_tuple->opcode() == HloOpcode::kTuple);
+  CHECK(out_shape_idx.size() == 1);
   absl::flat_hash_set<const HloInstruction*> visited;
   absl::InlinedVector<const HloInstruction*, 4> stack;
-  stack.push_back(instr);
+  stack.push_back(param);
+  std::pair<const HloInstruction*, int64> prev_concat_opnd_idx(nullptr, 0);
+  bool is_output_reachable = false;
   while (!stack.empty()) {
     const HloInstruction* current = stack.back();
     stack.pop_back();
@@ -204,24 +229,33 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* instr) {
       VLOG(3) << "Visiting: " << user->ToString();
       switch (user->opcode()) {
         case HloOpcode::kTuple:
+          if (user == root_tuple &&
+              current == root_tuple->operand(out_shape_idx.back())) {
+            // We need to know if the output is reachable by the `param` to make
+            // sure that they will be computed in the same iteration space.
+            is_output_reachable = true;
+          }
           break;
         case HloOpcode::kReshape:
           if (!ShapeUtil::ReshapeIsBitcast(current->shape(), user->shape())) {
             return false;
           }
           break;
-        case HloOpcode::kConcatenate:
-          if (!ConcatHasNoEffect(user)) {
+        case HloOpcode::kConcatenate: {
+          const HloInstruction* slice_to_recover_opnd = nullptr;
+          if (!ConcatIsEffectivelyElementwise(*user, *current,
+                                              &prev_concat_opnd_idx,
+                                              &slice_to_recover_opnd)) {
             return false;
           }
-          break;
-        case HloOpcode::kSlice:
-          if (user->operand(0)->opcode() != HloOpcode::kConcatenate) {
-            // Check that we have seen and verified a preceding concat of this
-            // Slice.
-            return false;
-          }
-          break;
+          // Early continue as we only want to traverse through the slice that
+          // recovers the operand. It is guaranteed that the operand to the
+          // concat and the slice have the same iteration space. Insert the
+          // slice instead of the concat.
+          CHECK(!visited.contains(slice_to_recover_opnd));
+          stack.push_back(slice_to_recover_opnd);
+          continue;
+        }
         default:
           if (user->IsElementwise()) {
             for (const int64 use_index : user->OperandIndices(current)) {
@@ -248,7 +282,7 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* instr) {
       }
     }
   }
-  return true;
+  return is_output_reachable;
 }
 }  // namespace
 
@@ -1411,7 +1445,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     return ShapeUtil::ElementsIn(operand_subshape) ==
                ShapeUtil::ElementsIn(user_subshape) &&
            ShapeUtil::SameElementType(operand_subshape, user_subshape) &&
-           AreTransitiveUsesEffectivelyElementwise(fusion_param);
+           AreTransitiveUsesEffectivelyElementwise(
+               fusion_param, user->fused_expression_root(), user_index);
   }
 
   // Check that operand and user emit the same shape and layout.

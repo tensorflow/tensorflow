@@ -2843,5 +2843,50 @@ TEST_F(CanShareOperandBufferWithUserTest, ConcatSliceWithElementwise) {
                                                                  fusion, {1}));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, ConcatSliceNegativeTest) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      // p0 has multiple transitive uses fed to concat. So, p0 cannot share
+      // buffer with outputs because the aliased output could be written before
+      // all the uses of p0 are finished.
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      add0 = f32[100] add(p0, p1)
+      concat0 = f32[200] concatenate(p0, add0), dimensions={0}
+      slice0 = f32[100] slice(concat0), slice={[0:100]}
+      slice1 = f32[100] slice(concat0), slice={[100:200]}
+      ROOT tuple = (f32[100], f32[100]) tuple(slice0, slice1)
+    }
+
+    ENTRY test {
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      ROOT fusion = (f32[100], f32[100]) fusion(p0, p1),
+                        kind=kInput, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  auto* fusion = module_->entry_computation()->root_instruction();
+  auto* param0 = module_->entry_computation()->parameter_instruction(0);
+  auto* param1 = module_->entry_computation()->parameter_instruction(1);
+
+  RunAnalysis();
+  // p0 cannot share with either fusion{0} or fusion{1}.
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {0}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {1}));
+  // p1 cannot share with fusion{0} because we're not sure about their
+  // relationship.
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                 fusion, {0}));
+  // p1 can share with fusion{1} because they will be executed in an
+  // elementwise manner.
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {1}));
+}
+
 }  // namespace
 }  // namespace xla
