@@ -1,3 +1,9 @@
+# copybara:uncomment_begin(oss-unused)
+# load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
+# load("//net/grpc/python:py_grpc_library.bzl", "py_grpc_library")
+# load("//net/grpc:cc_grpc_library.bzl", "cc_grpc_library")
+# copybara:uncomment_end
+
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -190,3 +196,22 @@ tf_proto_library(
         "//tensorflow/core/framework:protos_all",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# cc_grpc_library(
+#     name = "worker_service_cc_grpc_proto",
+#     srcs = [":worker_service_proto"],
+#     generate_mocks = True,
+#     service_namespace = "grpc_gen",
+#     deps = [":worker_service_proto_cc"],
+# )
+#
+# cc_grpc_library(
+#     name = "master_service_cc_grpc_proto",
+#     srcs = [":master_service_proto"],
+#     compatible_with = ["//buildenv/target:gce"],
+#     generate_mocks = True,
+#     service_namespace = "grpc_gen",
+#     deps = [":master_service_proto_cc"],
+# )
+# copybara:uncomment_end

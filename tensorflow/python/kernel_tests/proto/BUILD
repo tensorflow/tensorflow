@@ -139,3 +139,11 @@ tf_py_test(
         "//tensorflow/python:proto_ops",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "test_example_proto_py",
+#     api_version = 2,
+#     deps = [":test_example_proto"],
+# )
+# copybara:uncomment_end

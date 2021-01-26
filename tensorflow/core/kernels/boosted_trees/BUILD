@@ -139,3 +139,13 @@ tf_kernel_library(
         ":training_ops",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "boosted_trees_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":boosted_trees_proto"],
+# )
+# copybara:uncomment_end

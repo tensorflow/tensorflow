@@ -326,6 +326,17 @@ py_library(
     ],
 )
 
+# Internally six.moves.urllib.request.urlretrieve library requires Google
+# SSL context to be provided to work in python 3. This isn't needed in OSS.
+# copybara:uncomment_begin(google-only)
+# py_library(
+#     name = "url_utils",
+#     srcs = ["google/url_utils.py"],
+#     srcs_version = "PY3",
+#     deps = ["//pyglib/contrib/google_ssl"],
+# )
+# copybara:uncomment_end
+
 py_library(
     name = "testing_utils",
     srcs = [
@@ -660,3 +671,29 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# tf_py_test(
+#     name = "url_utils_test",
+#     srcs = ["google/url_utils_test.py"],
+#     python_version = "PY3",
+#     deps = [
+#         ":url_utils",
+#         "//testing/pymocks:matchers",
+#         "//tensorflow/python:client_testlib",
+#     ],
+# )
+#
+# tf_py_test(
+#     name = "gfile_utils_test",
+#     size = "small",
+#     srcs = ["google_utils/gfile_utils_test.py"],
+#     python_version = "PY3",
+#     deps = [
+#         ":keras",
+#         "//testing/pymocks:matchers",
+#         "//tensorflow/python:client_testlib",
+#         "//tensorflow/python:util",
+#     ],
+# )
+# copybara:uncomment_end

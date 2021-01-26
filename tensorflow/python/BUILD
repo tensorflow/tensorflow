@@ -7000,3 +7000,19 @@ py_library(
     srcs_version = "PY3",
     deps = ["//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "protos_all_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":protos_all"],
+# )
+#
+# py_proto_library(
+#     name = "cpp_shape_inference_proto_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":cpp_shape_inference_proto"],
+# )
+# copybara:uncomment_end

@@ -515,3 +515,10 @@ tf_cc_test(
         "//tensorflow/core/platform:logging",
     ]),
 )
+
+# copybara:uncomment_begin(google-only)
+# gensignature(
+#     name = "inspect_checkpoint.par_sig",
+#     srcs = [":inspect_checkpoint.par"],
+# )
+# copybara:uncomment_end

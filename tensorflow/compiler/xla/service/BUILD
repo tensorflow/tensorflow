@@ -5377,3 +5377,11 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "hlo_pb2",
+#     api_version = 2,
+#     deps = [":hlo_proto"],
+# )
+# copybara:uncomment_end

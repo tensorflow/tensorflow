@@ -660,3 +660,13 @@ filegroup(
     name = "compare_test_proto_src",
     srcs = ["protobuf/compare_test.proto"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "compare_test_py_pb2",
+#     testonly = 1,
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":compare_test_proto"],
+# )
+# copybara:uncomment_end
