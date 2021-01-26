@@ -102,6 +102,13 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_initializer_helper",
+    srcs = ["tpu_initializer_helper.cc"],
+    hdrs = ["tpu_initializer_helper.h"],
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
     name = "tpu_api",
     srcs = ["tpu_api.cc"],
     hdrs = ["tpu_api.h"],
