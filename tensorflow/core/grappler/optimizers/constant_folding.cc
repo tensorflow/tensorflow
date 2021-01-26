@@ -285,6 +285,11 @@ bool ConstantFolding::ForwardInputs(NodeDef* node,
         if (IsControlInput(consumer_input)) {
           break;
         }
+        // It is illegal to add control dependencies to _Retval nodes, so we
+        // can't bypass value producing `node` and forward inputs to `consumer`.
+        if (IsRetval(*consumer)) {
+          break;
+        }
         int output_idx;
         const string input_node_name =
             ParseNodeName(consumer_input, &output_idx);
