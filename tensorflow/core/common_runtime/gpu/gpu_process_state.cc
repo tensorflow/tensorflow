@@ -42,19 +42,19 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-bool useCudaMallocAllocator() {
+bool UseCudaMallocAllocator() {
   const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
   return debug_allocator_str != nullptr &&
          std::strcmp(debug_allocator_str, "cuda_malloc") == 0;
 }
 
-bool useCudaMemoryGuardAllocator() {
+bool UseCudaMemoryGuardAllocator() {
   const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
   return debug_allocator_str != nullptr &&
          std::strcmp(debug_allocator_str, "memory_guard") == 0;
 }
 
-bool useCudaMallocAsyncAllocator() {
+bool UseCudaMallocAsyncAllocator() {
   const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
   return debug_allocator_str != nullptr &&
       std::strcmp(debug_allocator_str, "cuda_malloc_async") == 0;
@@ -134,18 +134,18 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
 
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
-    if (useCudaMemoryGuardAllocator()) {
+    if (UseCudaMemoryGuardAllocator()) {
       LOG(INFO) << "Using memory guard allocator for GPU.";
       gpu_allocator = new GPUDebugAllocator(gpu_allocator, platform_gpu_id);
       gpu_allocator = new GPUNanResetAllocator(gpu_allocator, platform_gpu_id);
-    } else if (useCudaMallocAllocator()) {
+    } else if (UseCudaMallocAllocator()) {
       LOG(INFO) << "Using CUDA malloc allocator for GPU.";
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario
       gpu_allocator =
           new GPUcudaMallocAllocator(gpu_allocator, platform_gpu_id);
-    } else if (useCudaMallocAsyncAllocator()) {
+    } else if (UseCudaMallocAsyncAllocator()) {
       LOG(INFO) << "Using CUDA malloc Async allocator for GPU.";
       // If true, passes all allocation requests through to cudaMallocAsync
       // TODO: useful for doing memory debugging with tools like cuda-memcheck
