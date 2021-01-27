@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 
+#include "llvm/ADT/APFloat.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir/IR/Attributes.h"
@@ -30,6 +31,18 @@ namespace chlo {
 template <typename T>
 static LogicalResult Verify(T op) {
   return success();
+}
+
+Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val) {
+  auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
+  return getConstantLike(
+      b, loc, llvm::APFloat::getLargest(ty.getFloatSemantics()), val);
+}
+
+Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
+                      Value val) {
+  Type ty = getElementTypeOrSelf(val.getType());
+  return b.create<ConstantLikeOp>(loc, b.getFloatAttr(ty, constant), val);
 }
 
 //===----------------------------------------------------------------------===//
@@ -202,7 +215,7 @@ LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-  Type element_type = IntegerType::get(1, context);
+  Type element_type = IntegerType::get(context, 1);
   return InferBroadcastBinaryOpReturnTypeComponents(context, location, operands,
                                                     attributes, element_type,
                                                     inferedReturnShapes);

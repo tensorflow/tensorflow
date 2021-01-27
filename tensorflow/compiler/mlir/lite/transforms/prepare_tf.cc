@@ -84,9 +84,10 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
   explicit PrepareTFPass(bool unfold_batch_matmul,
-                         bool allow_bf16_type_legalization) {
+                         bool allow_bf16_and_f16_type_legalization) {
     unfold_batch_matmul_ = unfold_batch_matmul;
-    allow_bf16_type_legalization_ = allow_bf16_type_legalization;
+    allow_bf16_and_f16_type_legalization_ =
+        allow_bf16_and_f16_type_legalization;
   }
   void runOnFunction() override;
 
@@ -101,8 +102,8 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
       llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
       llvm::cl::init(true)};
 
-  Option<bool> allow_bf16_type_legalization_{
-      *this, "tfl-allow-bf16-type-legalization",
+  Option<bool> allow_bf16_and_f16_type_legalization_{
+      *this, "tfl-allow-bf16-and-f16-type-legalization",
       llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
 };
 
@@ -291,10 +292,12 @@ struct ConvertTFConvOpMatchState {
 template <typename ConcreteType, typename TFConvOpType>
 class ConvertTFConvOp : public RewritePattern {
  public:
-  ConvertTFConvOp(MLIRContext *context, bool allow_bf16_type_legalization)
+  ConvertTFConvOp(MLIRContext *context,
+                  bool allow_bf16_and_f16_type_legalization)
       : RewritePattern(TFConvOpType::getOperationName(), 1, context),
         intAttrOne(Builder(context).getI32IntegerAttr(1)),
-        allow_bf16_type_legalization_(allow_bf16_type_legalization) {}
+        allow_bf16_and_f16_type_legalization_(
+            allow_bf16_and_f16_type_legalization) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -311,8 +314,8 @@ class ConvertTFConvOp : public RewritePattern {
     TFConvOpType tf_op = cast<TFConvOpType>(op);
 
     if (!TFTypeIsFloat32Tensor(tf_op.input()) &&
-        !(allow_bf16_type_legalization_ &&
-          TFTypeIsBFloat16Tensor(tf_op.input())))
+        !(allow_bf16_and_f16_type_legalization_ &&
+          TFTypeIsBFloat16OrHalfTensor(tf_op.input())))
       return failure();
 
     if (!TFDataFormatIsNHWC(op)) return failure();
@@ -374,7 +377,7 @@ class ConvertTFConvOp : public RewritePattern {
   const IntegerAttr intAttrOne;
 
  private:
-  bool allow_bf16_type_legalization_;
+  bool allow_bf16_and_f16_type_legalization_;
 };
 
 class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
@@ -959,7 +962,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     if (!TFTypeIsFloat32Tensor(fused_batch_norm_op.x())) return failure();
 
     {
-      epsilon = fused_batch_norm_op.getAttrOfType<::mlir::FloatAttr>("epsilon");
+      epsilon =
+          fused_batch_norm_op->getAttrOfType<::mlir::FloatAttr>("epsilon");
       if (!epsilon)
         epsilon = rewriter.getFloatAttr(rewriter.getF32Type(), 0.0001f);
 
@@ -974,7 +978,7 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     }
     {
       exponential_avg_factor =
-          fused_batch_norm_op.getAttrOfType<::mlir::FloatAttr>(
+          fused_batch_norm_op->getAttrOfType<::mlir::FloatAttr>(
               "exponential_avg_factor");
       if (!exponential_avg_factor)
         exponential_avg_factor =
@@ -982,12 +986,12 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     }
     {
       data_format =
-          fused_batch_norm_op.getAttrOfType<::mlir::StringAttr>("data_format");
+          fused_batch_norm_op->getAttrOfType<::mlir::StringAttr>("data_format");
       if (!data_format) data_format = rewriter.getStringAttr("NHWC");
     }
     {
       is_training =
-          fused_batch_norm_op.getAttrOfType<::mlir::BoolAttr>("is_training");
+          fused_batch_norm_op->getAttrOfType<::mlir::BoolAttr>("is_training");
       if (!is_training) is_training = rewriter.getBoolAttr(true);
 
       if (!((!is_training.getValue()))) {
@@ -1341,7 +1345,7 @@ void PrepareTFPass::runOnFunction() {
   phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
                           ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);
   phase_2_patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
-      ctx, allow_bf16_type_legalization_);
+      ctx, allow_bf16_and_f16_type_legalization_);
 
   applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }

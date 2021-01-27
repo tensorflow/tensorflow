@@ -1461,6 +1461,7 @@ class CondV2ContainerTest(test.TestCase):
       self.assertEqual(compat.as_bytes(""), container(q5.queue_ref))
 
 
+@test_util.disable_tfrt("b/171412104: This test requires distributed support.")
 class CondV2ColocationGroupAndDeviceTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):

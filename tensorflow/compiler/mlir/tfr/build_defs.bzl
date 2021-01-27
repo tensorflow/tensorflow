@@ -25,7 +25,7 @@ def gen_op_libraries(
     py_binary(
         name = gen_op_lib_exec,
         srcs = [src],
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         python_version = "PY3",
         deps = [
             "//tensorflow/compiler/mlir/tfr:op_reg_gen",
@@ -73,7 +73,7 @@ def gen_op_libraries(
         name = name,
         dso = [":%s.so" % name],
         kernels = [":%s_cc" % name],
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         deps = [
             ":gen_%s" % name,
         ],
@@ -85,8 +85,8 @@ def gen_op_libraries(
         name = gen_tfr_lib_exec,
         main = src,
         srcs = [src],
-        srcs_version = "PY2AND3",
         python_version = "PY3",
+        srcs_version = "PY3",
         deps = [
             "//tensorflow/compiler/mlir/tfr:op_reg_gen",
             "//tensorflow/compiler/mlir/tfr:tfr_gen",
@@ -107,7 +107,7 @@ def gen_op_libraries(
     native.py_library(
         name = name + "_py",
         srcs = [src],
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         deps = [
             "//tensorflow/compiler/mlir/tfr:op_reg_gen",
             "//tensorflow/compiler/mlir/tfr:tfr_gen",

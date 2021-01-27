@@ -95,20 +95,20 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   c += "#define WG_X " + std::to_string(work_group_size_.x) + "\n";
   c += "#define WG_Y " + std::to_string(work_group_size_.y) + "\n";
 
-  c += R"(__kernel void main_function($0) {
-  int gid = get_global_id(0);
-  int2 tid = (int2)(get_local_id(0), get_local_id(1));
-  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);
+  c += R"(MAIN_FUNCTION($0) {
+  int gid = GLOBAL_ID_0;
+  int2 tid = INIT_INT2v2(LOCAL_ID_0, LOCAL_ID_1);
+  ACCUM_FLT4 s = INIT_ACCUM_FLT4(0.0f);
   if (gid < args.dst_tensor.Slices()) {
     for (int c = tid.y; c < args.src_tensor.Slices(); c += WG_Y) {
       FLT4 v = args.src_tensor.Read(0, 0, c);
 )";
   if (weights_are_buffer) {
     c += R"(FLT16 w = args.weights.Read(c * args.dst_tensor.Slices() + gid);
-      FLT4 partial = v.s0 * w.s0123;
-      partial = mad(v.s1, w.s4567, partial);
-      partial = mad(v.s2, w.s89ab, partial);
-      partial = mad(v.s3, w.scdef, partial);
+      FLT4 partial = v.x * FLT16_0123(w);
+      partial += v.y * FLT16_4567(w);
+      partial += v.z * FLT16_89ab(w);
+      partial += v.w * FLT16_cdef(w);
       s += TO_ACCUM_TYPE(partial);
 )";
   } else {
@@ -116,10 +116,10 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
       FLT4 w1 = args.weights.Read(c * 4 + 1, gid);
       FLT4 w2 = args.weights.Read(c * 4 + 2, gid);
       FLT4 w3 = args.weights.Read(c * 4 + 3, gid);
-      FLT4 partial = v.s0 * w0;
-      partial = mad(v.s1, w1, partial);
-      partial = mad(v.s2, w2, partial);
-      partial = mad(v.s3, w3, partial);
+      FLT4 partial = v.x * w0;
+      partial += v.y * w1;
+      partial += v.z * w2;
+      partial += v.w * w3;
       s += TO_ACCUM_TYPE(partial);
 )";
   }
@@ -127,7 +127,7 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   }
   __local ACCUM_FLT4 temp[WG_X][WG_Y];
   temp[tid.x][tid.y] = s;
-  barrier(CLK_LOCAL_MEM_FENCE);
+  LOCAL_MEM_BARRIER;
   if (gid >= args.dst_tensor.Slices()) {
     return;
   }
@@ -155,7 +155,8 @@ FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
   result.UploadWeights(attr.weights, UseBufferForWeights(gpu_info));
 
   TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.storage_type = gpu_info.SupportsImages() ? LinearStorageType::TEXTURE_2D
+                                                : LinearStorageType::BUFFER;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(

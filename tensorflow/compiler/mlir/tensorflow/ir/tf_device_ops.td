@@ -289,6 +289,7 @@ For example:
     bool IsPackedBlockArgument(BlockArgument block_arg);
     unsigned GetReplicaOperandIndexForBlockArgument(BlockArgument block_arg, unsigned replica);
     Value GetReplicaOperandForBlockArgument(BlockArgument block_arg, unsigned replica);
+    MutableArrayRef<OpOperand> GetOperandsForBlockArgument(BlockArgument block_arg);
     bool WrapsSingleOp();
   }];
 
@@ -381,6 +382,43 @@ This op captures all needed live-in values.
   let assemblyFormat = [{
       $host $callee `(` $callee_args `)` attr-dict `:` functional-type ( $callee_args , $results )
   }];
+}
+
+def TfDevice_SendOp : TfDevice_Op<"send", []> {
+  let summary = "Send a value to a host.";
+
+  let description = [{
+    Send the value to the given host with the given rendezvous key.
+  }];
+
+  let arguments = (ins
+    AnyType:$value,
+    StrAttr:$key,
+    StrAttr:$dst_host
+  );
+
+  let results = (outs);
+
+  let assemblyFormat = [{$value $key $dst_host attr-dict `:` type($value)}];
+}
+
+def TfDevice_ReceiveOp : TfDevice_Op<"receive", []> {
+  let summary = "Rceive a value from a host.";
+
+  let description = [{
+    Receive a value from the given host with the given rendezvous key.
+  }];
+
+  let arguments = (ins
+    StrAttr:$key,
+    StrAttr:$src_host
+  );
+
+  let results = (outs
+    AnyType:$result
+  );
+
+  let assemblyFormat = [{$key $src_host attr-dict `:` type($result)}];
 }
 
 #endif // TF_DEVICE_DIALECT

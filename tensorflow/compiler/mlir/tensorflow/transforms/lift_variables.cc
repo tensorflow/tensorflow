@@ -213,9 +213,9 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
     }
 
     // Update the function type.
-    func.setType(mlir::FunctionType::get(func.getArgumentTypes(),
-                                         func.getType().getResults(),
-                                         module.getContext()));
+    func.setType(mlir::FunctionType::get(module.getContext(),
+                                         func.getArgumentTypes(),
+                                         func.getType().getResults()));
   }
   return success();
 }

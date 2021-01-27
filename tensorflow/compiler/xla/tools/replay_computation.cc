@@ -282,9 +282,9 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     outfeed_thread_pool.emplace(tensorflow::Env::Default(), "infeed",
                                 /*num_threads=*/1);
     auto consume_outfeed = [client, outfeed_shape] {
+      Literal outfeed(*outfeed_shape);
       TF_CHECK_OK(
-          client->TransferFromOutfeedLocal(*outfeed_shape, /*device_ordinal=*/0)
-              .status());
+          client->TransferFromOutfeedLocal(/*device_ordinal=*/0, &outfeed));
       VLOG(1) << "Received outfeed data of shape "
               << ShapeUtil::HumanStringWithLayout(*outfeed_shape);
     };

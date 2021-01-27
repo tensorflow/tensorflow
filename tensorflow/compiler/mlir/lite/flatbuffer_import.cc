@@ -301,7 +301,7 @@ StatusOr<std::string> GetMlirOpName(const tflite::OperatorT& op,
     return std::string("tf.If");
   }
   if (builtin_code == tflite::BuiltinOperator_WHILE) {
-    return std::string("tf.While");
+    return std::string("tfl.while");
   }
 
   llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
@@ -590,9 +590,7 @@ llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
     auto body_attr = builder.getSymbolRefAttr(func_names.at(body_idx));
 
     return {builder.getNamedAttr("cond", cond_attr),
-            builder.getNamedAttr("body", body_attr),
-            // TODO(b/139667752): Analyze statelessness correctly
-            builder.getNamedAttr("is_stateless", builder.getBoolAttr(false))};
+            builder.getNamedAttr("body", body_attr)};
   }
   return {};
 }
@@ -670,16 +668,16 @@ StatusOr<Operation*> ConvertOp(
     if (op_name == "tfl.quantize") {
       // Special case for quantize: return type must also be in qtype attribute
       op_state.addAttribute("qtype", mlir::TypeAttr::get(type));
-    } else if (op_name == "tfl.reshape" && type.hasStaticShape() &&
-               op_state.operands.size() == 1) {
+    } else if (op_name == "tfl.reshape" && op_state.operands.size() == 1) {
       // Special case for reshape: the second op is optional in the old
       // converter and kernel, so we create the second operand, which is
-      // required by the new converter, from the result shape.
-      auto shape_type =
-          RankedTensorType::get({type.getRank()}, builder.getIntegerType(32));
+      // required by the new converter, from the reshape op's option.
+      auto new_shape = op.builtin_options.AsReshapeOptions()->new_shape;
+      auto shape_type = RankedTensorType::get(
+          {static_cast<int64_t>(new_shape.size())}, builder.getIntegerType(32));
+
       mlir::SmallVector<mlir::Attribute, 4> shape;
-      shape.reserve(type.getRank());
-      for (auto s : type.getShape()) {
+      for (auto s : new_shape) {
         shape.push_back(builder.getI32IntegerAttr(static_cast<int32_t>(s)));
       }
       auto output_shape = DenseElementsAttr::get(shape_type, shape);
@@ -714,9 +712,40 @@ StatusOr<Operation*> ConvertOp(
     TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
                                           builder));
   }
+  if (op_name == "tfl.while") {
+    // Adds two empty regions for "tfl.while". We will fill the regions after
+    // creating the callee functions because the "tfl.while" input/output types
+    // may be different with the callee functions, and the call ops need to sync
+    // with callee function types.
+    op_state.addRegion();
+    op_state.addRegion();
+  }
   if (op_name == "tfl.unidirectional_sequence_lstm") {
     TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
                                           builder));
+  }
+  if (op_name == "tfl.reshape") {
+    // Flattern reshape ops when more than one dimension shape operand is given.
+    mlir::DenseIntElementsAttr shape_attr;
+    if (matchPattern(op_state.operands[1], m_Constant(&shape_attr))) {
+      auto shape_ty =
+          op_state.operands[1].getType().dyn_cast<RankedTensorType>();
+      if (shape_ty != nullptr && shape_ty.hasRank() && shape_ty.getRank() > 1) {
+        llvm::SmallVector<mlir::Attribute, 4> shape;
+        int32_t dim_size = 0;
+        for (const auto& dim : llvm::enumerate(shape_attr.getIntValues())) {
+          const int64_t size = dim.value().getSExtValue();
+          shape.push_back(
+              builder.getI32IntegerAttr(static_cast<int32_t>(size)));
+          ++dim_size;
+        }
+        auto shape_type = RankedTensorType::get(
+            {static_cast<int32_t>(dim_size)}, builder.getIntegerType(32));
+        auto output_shape = mlir::DenseElementsAttr::get(shape_type, shape);
+        auto shape_op = builder.create<tfl::ConstOp>(loc, output_shape);
+        op_state.operands[1] = shape_op;
+      }
+    }
   }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
@@ -732,7 +761,8 @@ StatusOr<Operation*> ConvertOp(
   }
   op_state.addAttributes(attrs);
 
-  // Handle the conversion from subgraph index to functions for If and While
+  // Handle the conversion from subgraph index to functions for If and While. We
+  // will add CallOps in the region to call the functions later for While.
   auto function_ref_attrs = ConvertSubgraphIdxsToFunctionAttrs(
       op.builtin_options, func_names, builder);
   op_state.addAttributes(function_ref_attrs);
@@ -1140,6 +1170,35 @@ std::string SubgraphName(unsigned index, const tflite::SubGraphT& subgraph) {
   }
   return subgraph.name;
 }
+
+// Adds a CallOp in `region` to call the `func` and returns the results of
+// CallOp.
+void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
+  OpBuilder op_builder{region};
+  region.push_back(new mlir::Block());
+  region.addArguments(func.getType().getInputs());
+  op_builder.setInsertionPointToStart(&region.front());
+  auto call_op = op_builder.create<mlir::CallOp>(
+      region.getLoc(), func.getType().getResults(), func.sym_name(),
+      region.getArguments());
+  op_builder.create<mlir::TFL::YieldOp>(region.getLoc(), call_op.getResults());
+}
+
+// TFL::WhileOp has regions, so we add CallOp to call the FuncOp in the regions
+// if we have while ops.
+void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
+  mlir::SymbolTable symbol_table(module);
+  module.walk([&](mlir::TFL::WhileOp while_op) {
+    auto cond = symbol_table.lookup<mlir::FuncOp>(
+        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
+    AddCallOpInWhileOpRegion(while_op.cond(), cond);
+    while_op.removeAttr("cond");
+    auto body = symbol_table.lookup<mlir::FuncOp>(
+        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+    AddCallOpInWhileOpRegion(while_op.body(), body);
+    while_op.removeAttr("body");
+  });
+}
 }  // namespace
 
 OwningModuleRef tflite::FlatBufferToMlir(
@@ -1196,5 +1255,6 @@ OwningModuleRef tflite::FlatBufferToMlir(
     }
     module.push_back(func_or_error.ConsumeValueOrDie());
   }
+  AddRegionsForTflWhileOp(module);
   return OwningModuleRef(module);
 }

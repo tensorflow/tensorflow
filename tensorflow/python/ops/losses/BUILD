@@ -16,7 +16,7 @@ py_library(
         "losses_impl.py",
         "util.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:confusion_matrix",
@@ -31,18 +31,12 @@ py_library(
     ],
 )
 
-py_library(
-    name = "loss_reduction",
-    srcs = ["loss_reduction.py"],
-    srcs_version = "PY2AND3",
-)
-
 py_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":losses",
         "//tensorflow/python:client_testlib",

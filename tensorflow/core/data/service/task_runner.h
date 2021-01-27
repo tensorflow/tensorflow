@@ -31,6 +31,8 @@ class TaskIterator {
   // `end_of_sequence to `true`.
   virtual Status GetNext(std::vector<Tensor>& element,
                          bool& end_of_sequence) = 0;
+  // Reports the cardinality of the dataset that created this iterator.
+  virtual int64 Cardinality() const = 0;
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -42,6 +44,7 @@ class StandaloneTaskIterator : public TaskIterator {
   StandaloneTaskIterator(std::unique_ptr<standalone::Dataset> dataset,
                          std::unique_ptr<standalone::Iterator> iterator);
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override;
+  int64 Cardinality() const override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;
@@ -114,10 +117,6 @@ class RoundRobinTaskRunner : public TaskRunner {
                  bool& end_of_task) override;
 
  private:
-  struct Result {
-    std::vector<Tensor> element;
-    bool end_of_task = false;
-  };
   // Fills `buffer_` with `num_consumers_` elements.
   Status FillBuffer();
 
@@ -134,7 +133,8 @@ class RoundRobinTaskRunner : public TaskRunner {
   int64 first_round_ TF_GUARDED_BY(mu_) = kint64max;
   int64 current_round_ TF_GUARDED_BY(mu_) = -1;
   // Buffered results for the current round.
-  std::vector<Result> buffer_ TF_GUARDED_BY(mu_);
+  std::vector<std::vector<Tensor>> buffer_ TF_GUARDED_BY(mu_);
+  bool end_of_task_ TF_GUARDED_BY(mu_) = false;
 };
 
 }  // namespace data

@@ -1037,7 +1037,7 @@ Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
 
   TF_RETURN_IF_ERROR(
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
-          executor, Shape(arg->shape_with_layout()), &literal));
+          executor, &literal));
   *result->mutable_literal() = literal.ToProto();
   return Status::OK();
 }

@@ -16,6 +16,7 @@ exports_files([
     "src/testdata/add.bin",
     "src/testdata/add_unknown_dimensions.bin",
     "src/testdata/grace_hopper_224.jpg",
+    "src/testdata/mul_add_signature_def.bin",
     "src/testdata/tile_with_bool_input.bin",
     "AndroidManifest.xml",
     "proguard.flags",
@@ -241,6 +242,8 @@ java_test(
     javacopts = JAVACOPTS,
     tags = [
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+        # TODO(b/121204962): Re-enable test after fixing leaks when constructor exception thrown.
+        "noasan",
     ],
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
     visibility = ["//visibility:private"],
@@ -262,6 +265,7 @@ java_test(
     data = [
         "src/testdata/add.bin",
         "src/testdata/add_unknown_dimensions.bin",
+        "src/testdata/mul_add_signature_def.bin",
         "src/testdata/tile_with_bool_input.bin",
         "//tensorflow/lite:testdata/dynamic_shapes.bin",
         "//tensorflow/lite:testdata/multi_add.bin",

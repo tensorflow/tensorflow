@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util import tf_stack
+import inspect
 
 
 class TraceableObject(object):
@@ -51,26 +51,20 @@ class TraceableObject(object):
       TraceableObject.HEURISTIC_USED if the offset was larger than the stack,
       and TraceableObject.FAILURE if the stack was empty.
     """
-    # Offset is defined in "Args" as relative to the caller.  We are one frame
+    retcode = self.SUCCESS
+    frame = inspect.currentframe()
+    # Offset is defined in "Args" as relative to the caller. We are one frame
     # beyond the caller.
-    local_offset = offset + 1
-
-    frame_records = tf_stack.extract_stack(
-        limit=local_offset + 1)
-    if not frame_records:
-      return self.FAILURE
-    if len(frame_records) > local_offset:
-      frame = frame_records[len(frame_records) - (local_offset + 1)]
-      self.filename = frame.filename
-      self.lineno = frame.lineno
-      return self.SUCCESS
-    else:
-      # If the offset is too large then we use the largest offset possible,
-      # meaning we use the outermost stack frame at index 0.
-      frame = frame_records[0]
-      self.filename = frame.filename
-      self.lineno = frame.lineno
-      return self.HEURISTIC_USED
+    for _ in range(offset + 1):
+      parent = frame.f_back
+      if parent is None:
+        # If the offset is too large then we use the largest offset possible.
+        retcode = self.HEURISTIC_USED
+        break
+      frame = parent
+    self.filename = frame.f_code.co_filename
+    self.lineno = frame.f_lineno
+    return retcode
 
   def copy_metadata(self):
     """Return a TraceableObject like this one, but without the object."""

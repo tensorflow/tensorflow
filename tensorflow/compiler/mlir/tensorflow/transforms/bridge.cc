@@ -85,6 +85,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
+  pm.addNestedPass<FuncOp>(CreateTPUReorderReplicateAndPartitionedInputsPass());
   // Encode this in its own scope so that func_pm is not mistakenly used
   // later on.
   {
@@ -110,17 +111,17 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPUOutsideCompilationClusterPass());
   pm.addPass(CreateTPUExtractOutsideCompilationPass());
 
-  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
+  pm.addNestedPass<FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPUDynamicPaddingMapperPass());
   pm.addPass(CreateTPUResourceReadForWritePass());
   pm.addPass(CreateTPUShardingIdentificationPass());
+  pm.addNestedPass<FuncOp>(CreateTPUResourceReadsWritesPartitioningPass());
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addPass(CreateTPUDynamicLayoutPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
   pm.addPass(CreateTPUVariableReformattingPass());

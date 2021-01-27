@@ -260,7 +260,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
 
     Allocator* allocator =
         new BFCAllocator(sub_allocator, gpu_host_mem_limit,
-                         true /*allow_growth*/, "gpu_host_bfc" /*name*/);
+                         /*allow_growth=*/true, /*name=*/"gpu_host_bfc");
 
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging

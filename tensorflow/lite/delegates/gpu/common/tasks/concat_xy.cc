@@ -68,28 +68,27 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
   }
 
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int linear_id_0 = get_global_id(0);\n";
+    c += "  int linear_id_0 = GLOBAL_ID_0;\n";
     c += "  int X = linear_id_0 / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id_0 % args.dst_tensor.Batch();\n";
   } else {
-    c += "  int X = get_global_id(0);\n";
+    c += "  int X = GLOBAL_ID_0;\n";
   }
   if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-    c += "  int linear_id_1 = get_global_id(1);\n";
+    c += "  int linear_id_1 = GLOBAL_ID_1;\n";
     c += "  int Y = linear_id_1 / args.dst_tensor.Depth();\n";
     c += "  int D = linear_id_1 % args.dst_tensor.Depth();\n";
   } else {
-    c += "  int Y = get_global_id(1);\n";
+    c += "  int Y = GLOBAL_ID_1;\n";
   }
-  c += "  int S = get_global_id(2);\n";
+  c += "  int S = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  FLT4 result = (FLT4)(0.0f);\n";
+  c += "  FLT4 result = INIT_FLT4(0.0f);\n";
   c += "  int coord = " + axis_to_coord[attr.axis] + ";\n";
   for (int i = 0; i < op_def.src_tensors.size(); ++i) {
     const std::string field =

@@ -820,6 +820,12 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     return status;
   }
 
+  std::string gcn_arch_name;
+  status = GpuDriver::GetGpuGCNArchName(device, &gcn_arch_name);
+  if (!status.ok()) {
+    return status;
+  }
+
   internal::DeviceDescriptionBuilder builder;
 
   {
@@ -856,6 +862,11 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
     float clock_rate_ghz = static_cast<float>(prop.clockRate) / 1e6;
     builder.set_clock_rate_ghz(clock_rate_ghz);
+
+    // mem_bandwidth = 2 * mem_bus_width_in_bytes * mem_clock_rate_in_hz
+    int64 memory_bandwidth = 2 * (int64(prop.memoryBusWidth) / 8) *
+                             (int64(prop.memoryClockRate) * 1000);
+    builder.set_memory_bandwidth(memory_bandwidth);
   }
 
   {
@@ -883,7 +894,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   builder.set_platform_version(
-      absl::StrCat("AMDGPU ISA version: gfx", version));
+      absl::StrCat("AMDGPU ISA version: ", gcn_arch_name));
 
   // TODO(leary) should be a way to query this from the driver, but this is
   // unlikely to change for us any time soon.
@@ -891,6 +902,8 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
   builder.set_device_vendor("Advanced Micro Devices, Inc");
   builder.set_rocm_amdgpu_isa_version(version);
+  builder.set_rocm_amdgpu_gcn_arch_name(gcn_arch_name);
+
   builder.set_shared_memory_per_core(
       GpuDriver::GetMaxSharedMemoryPerCore(device).ValueOrDie());
   builder.set_shared_memory_per_block(

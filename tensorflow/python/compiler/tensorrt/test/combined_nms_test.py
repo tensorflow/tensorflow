@@ -92,9 +92,12 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
 
   def ShouldRunTest(self, run_params):
     should_run, reason = super().ShouldRunTest(run_params)
-    # Only run for TRT 5.1 and above.
-    return should_run and trt_test.IsTensorRTVersionGreaterEqual(
-        5, 1), reason + ' and >=TRT5.1'
+    should_run = should_run and \
+        not trt_test.IsQuantizationMode(run_params.precision_mode)
+    reason += ' and precision != INT8'
+    # Only run for TRT 7.1.3 and above.
+    return should_run and trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3), \
+        reason + ' and >= TRT 7.1.3'
 
 
 class CombinedNmsExecuteNativeSegmentTest(CombinedNmsTest):
@@ -125,6 +128,76 @@ class CombinedNmsExecuteNativeSegmentTest(CombinedNmsTest):
     # we shouldn't run the test for dynamic engines.
     return should_run and \
         not run_params.dynamic_engine, reason + ' and static engines'
+
+
+class CombinedNmsTestTopK(CombinedNmsTest):
+  """Test for CombinedNMS TopK op in TF-TRT."""
+
+  def GraphFn(self, pre_nms_boxes, pre_nms_scores, max_boxes_to_draw,
+              max_detetion_points):
+
+    iou_threshold = 0.1
+    score_threshold = 0.001
+
+    max_output_size_per_class_tensor = constant_op.constant(
+        max_detetion_points,
+        dtype=dtypes.int32,
+        name='max_output_size_per_class')
+
+    max_total_size_tensor = constant_op.constant(
+        max_boxes_to_draw, dtype=dtypes.int32, name='max_total_size')
+
+    iou_threshold_tensor = constant_op.constant(
+        iou_threshold, dtype=dtypes.float32, name='iou_threshold')
+
+    score_threshold_tensor = constant_op.constant(
+        score_threshold, dtype=dtypes.float32, name='score_threshold')
+
+    nms_output = image_ops_impl.combined_non_max_suppression(
+        pre_nms_boxes,
+        pre_nms_scores,
+        max_output_size_per_class=max_output_size_per_class_tensor,
+        max_total_size=max_total_size_tensor,
+        iou_threshold=iou_threshold_tensor,
+        score_threshold=score_threshold_tensor,
+        pad_per_class=False,
+        name='combined_nms')
+
+    return [
+        array_ops.identity(output, name=('output_%d' % i))
+        for i, output in enumerate(nms_output)
+    ]
+
+  def GetParams(self):
+
+    # Parameters
+    batch_size = 1
+    max_detetion_points = 2048
+    num_classes = 90
+    max_boxes_to_draw = 30
+
+    # Inputs
+    pre_nms_boxes_shape = [batch_size, max_detetion_points, 1, 4]
+    pre_nms_scores_shape = [batch_size, max_detetion_points, num_classes]
+
+    # Outputs
+    nmsed_boxes_shape = [batch_size, max_boxes_to_draw, 4]
+    nmsed_scores_shape = [batch_size, max_boxes_to_draw]
+    nmsed_classes_shape = [batch_size, max_boxes_to_draw]
+    valid_detections_shape = [batch_size]
+
+    def _get_graph_fn(x, y):
+      return self.GraphFn(
+          x,
+          y,
+          max_boxes_to_draw=max_boxes_to_draw,
+          max_detetion_points=max_detetion_points)
+
+    return self.BuildParams(_get_graph_fn, dtypes.float32,
+                            [pre_nms_boxes_shape, pre_nms_scores_shape], [
+                                nmsed_boxes_shape, nmsed_scores_shape,
+                                nmsed_classes_shape, valid_detections_shape
+                            ])
 
 
 if __name__ == '__main__':

@@ -169,10 +169,10 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
           filter_mem(nullptr),
           diff_dst_mem(nullptr),
           bwd_input_pd(nullptr),
-          conv_bwd_input(nullptr),
           bwd_input_desc(nullptr),
-          fwd_desc(nullptr),
           fwd_pd(nullptr),
+          fwd_desc(nullptr),
+          conv_bwd_input(nullptr),
           diff_src_md(nullptr),
           filter_md(nullptr),
           diff_dst_md(nullptr) {}
@@ -330,9 +330,10 @@ class MklConvCustomBackpropInputOp
       // allow this class to handle this case.
       TensorShape src_tf_shape;
       if (src_tensor.dim_size(0) == 2) {
-        Conv2DBackpropComputeInputShape(src_tensor, filter_tensor.shape(),
-                                        diff_dst_tensor.shape(),
-                                        this->data_format_, &src_tf_shape);
+        OP_REQUIRES_OK(context, Conv2DBackpropComputeInputShape(
+                                    src_tensor, filter_tensor.shape(),
+                                    diff_dst_tensor.shape(), this->data_format_,
+                                    &src_tf_shape));
       } else {
         src_tf_shape = MakeInputTfShape(context, src_tensor);
       }

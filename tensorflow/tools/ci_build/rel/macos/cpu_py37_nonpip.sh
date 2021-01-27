@@ -22,11 +22,9 @@ install_bazelisk
 # Pick a more recent version of xcode
 export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
-python3.7 -m virtualenv tf_build_env --system-site-packages
-source tf_build_env/bin/activate
 
-# Install macos pip dependencies
-install_macos_pip_deps virtualenv
+# Set up and install MacOS pip dependencies.
+setup_venv_macos python3.6
 
 # Run configure.
 export TF_NEED_CUDA=0

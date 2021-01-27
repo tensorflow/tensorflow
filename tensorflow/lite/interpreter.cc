@@ -15,21 +15,22 @@ limitations under the License.
 
 #include "tensorflow/lite/interpreter.h"
 
-#include <cassert>
-#include <cstdarg>
-#include <cstdint>
-#include <cstring>
-#include <utility>
+#include <stddef.h>
+#include <stdlib.h>
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/context_util.h"
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/delegates/telemetry.h"
-#include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/memory_planner.h"
+#include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/util.h"
+#include "tensorflow/lite/stderr_reporter.h"
 
 // TODO(b/139446230): Move to portable platform header.
 #if defined(__ANDROID__)

@@ -415,7 +415,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     We only provide a default implementation of this method here. If you need
     more customized way of providing input to your model, overwrite this method.
 
-    Arguments:
+    Args:
       **kwargs: key word arguments about how to create the input dictionaries
 
     Returns:
@@ -522,7 +522,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     We only provide a default implementation of this method here. If you need
     more customized way of providing input to your model, overwrite this method.
 
-    Arguments:
+    Args:
       **kwargs: key word arguments about how to create the input dictionaries
 
     Returns:

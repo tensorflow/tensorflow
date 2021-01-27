@@ -55,9 +55,11 @@ Status FunctionDefToBodyHelper(
   const StackTracesMap& stack_traces =
       lib_def->GetStackTraces(fdef.signature().name());
   for (Node* n : graph->nodes()) {
-    auto it = stack_traces.find(n->name());
-    if (n && it != stack_traces.end()) {
-      n->SetStackTrace(it->second);
+    if (n) {
+      auto it = stack_traces.find(n->name());
+      if (it != stack_traces.end()) {
+        n->SetStackTrace(it->second);
+      }
     }
   }
 

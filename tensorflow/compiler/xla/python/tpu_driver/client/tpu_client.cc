@@ -35,15 +35,15 @@ limitations under the License.
 
 namespace xla {
 
-TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
+TpuDevice::TpuDevice(int id, int task_id, const std::array<int, 3>& coords,
                      int core_on_chip)
-    : xla::PjRtStreamExecutorDevice(id, /*local_device_state=*/nullptr,
-                                    /*device_kind=*/"Cloud TPU", host_id),
+    : id_(id),
+      task_id_(task_id),
       coords_(coords),
       core_on_chip_(core_on_chip) {}
 
 std::string TpuDevice::DebugString() const {
-  return absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id(), host_id(),
+  return absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id(), task_id(),
                          coords_[0], coords_[1], coords_[2], core_on_chip_);
 }
 
@@ -53,10 +53,10 @@ TpuDevice::GetTpuDevices(const tpu_driver::SystemInfo& system_info) {
   for (const auto& chip : system_info.tpu_chip()) {
     auto& coord = chip.chip_coord();
     std::array<int, 3> coords_array = {coord.x(), coord.y(), coord.z()};
-    int host_id = chip.host_id();
+    int task_id = chip.host_id();
     for (const auto& core : chip.core()) {
       auto device = std::make_shared<TpuDevice>(
-          core.id(), host_id, coords_array, core.core_on_chip_index());
+          core.id(), task_id, coords_array, core.core_on_chip_index());
       devices.push_back(device);
     }
   }
@@ -89,17 +89,17 @@ StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
 PyTpuClient::PyTpuClient(std::string platform_name,
                          std::unique_ptr<tpu_driver::TpuDriver> driver,
                          std::vector<std::shared_ptr<PjRtDevice>> devices,
-                         int host_id)
+                         int task_id)
     : platform_name_(std::move(platform_name)),
       driver_(std::move(driver)),
       devices_(std::move(devices)),
-      host_id_(host_id) {
+      task_id_(task_id) {
   for (const std::shared_ptr<PjRtDevice>& device : devices_) {
     CHECK(id_to_device_.insert({device->id(), device}).second)
         << "Duplicate device id: " << device->id();
 
-    if (device->host_id() == host_id_) {
-      LOG(INFO) << "Detected local device, host id: " << host_id_
+    if (device->task_id() == task_id_) {
+      LOG(INFO) << "Detected local device, host id: " << task_id_
                 << ". device id: " << device->id();
       local_devices_.push_back(device);
     } else {
@@ -522,7 +522,7 @@ PyTpuExecutable::PyTpuExecutable(
     for (int partition = 0; partition < num_partitions; ++partition) {
       int device_id = device_assignment_(replica, partition);
       std::shared_ptr<PjRtDevice> device = LookupDevice(*client_, device_id);
-      if (device->host_id() != client_->host_id()) {
+      if (device->task_id() != client_->task_id()) {
         VLOG(3) << "Non-local device: " << device_id;
         continue;
       }
@@ -547,7 +547,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
     int partition, const RunId& run_id) {
   const int device_id = device_assignment_(replica, partition);
   std::shared_ptr<PjRtDevice> device = LookupDevice(*client_, device_id);
-  CHECK_EQ(device->host_id(), client_->host_id());
+  CHECK_EQ(device->task_id(), client_->task_id());
   tensorflow::profiler::TraceMe traceme("PyTpuExecutable::Execute");
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device id for execution: " << device_id;

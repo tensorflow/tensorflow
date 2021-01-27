@@ -734,10 +734,19 @@ class CopyRemover {
       // {s_0, ..., s_x, d_1, ..., d_m, s_{x+1}, ..., s_n}
       //
       // Removing the copy eliminates d_0, and uses of d_0 become uses of
-      // s_x. In the above ordering, the live range of d_m must be ordered
+      // s_x. In the above ordering, the live range of d_m will be ordered
       // before the live range of s_{x+1} and the definition and all uses of
-      // s_x must be ordered before the definition of d_1. These conditions
-      // are checked below prior to elision.
+      // s_x will be ordered before the definition of d_1. To make sure the
+      // copy elision is safe, the following code checks that this ordering is
+      // valid --- in particular we check it is safe to order d_m ahead of all
+      // the liverages at and after x_{x+1}, and it is safe to order all uses
+      // of s_x before the definition of d_1, by checking the live range
+      // constraints for each pair --- we cannot skip the later checks because
+      // the live range ordering is not guranteed to be transitive --- while it
+      // may be ok to have lr_1 before lr_2, and lr_2 before lv_3 while merging
+      // their buffers, it may not be ok to merge the buffers of lr_1 and lv_3,
+      // because the exclusiveness relation of non-overlapping computations is
+      // not transitive.
       //
       // ** Technically it might be possible to have a non-interfering
       //    non-trivial interleaving of the values of the source and
@@ -747,8 +756,8 @@ class CopyRemover {
       //    buffer (d_1 through d_m) are spliced into the point where the copy
       //    used to be.
       VLOG(2) << copy->name() << " defines the first value in its buffer";
-      ValueNode* next_dest = Next(*dest);
-      if (next_dest != nullptr) {
+      for (ValueNode* next_dest = Next(*dest); next_dest != nullptr;
+           next_dest = Next(*next_dest)) {
         // Live range of 'from' value (s_x) must be before 'next_dest' (d_1);
         if (!LiveRangeBefore(*src, *next_dest)) {
           VLOG(2) << "Not removing the copy: live range of "
@@ -757,9 +766,8 @@ class CopyRemover {
           return false;
         }
       }
-      ValueNode* next_src = Next(*src);
-
-      if (next_src != nullptr) {
+      for (ValueNode* next_src = Next(*src); next_src != nullptr;
+           next_src = Next(*next_src)) {
         // Live range of 'last_dest' (d_m) must be before 'next_src' s_{x+1}.
         ValueNode* last_dest = dest->prev;
         DCHECK(IsTail(*last_dest));
@@ -790,20 +798,21 @@ class CopyRemover {
       VLOG(2) << copy->name() << " copies the last value ("
               << src->value->ToShortString() << ") in its buffer";
 
-      ValueNode* prev_dest = Prev(*dest);
-      // nullptr condition handled above in the first 'if' case.
-      DCHECK(prev_dest != nullptr);
       ValueNode* first_src = src->next;
       DCHECK(IsHead(*first_src));
-      if (!LiveRangeBefore(*prev_dest, *first_src)) {
-        // Live range of value d_{y-1} is not before s_0.
-        VLOG(2) << "Not removing the copy: live range of "
-                << prev_dest->value->ToShortString() << " is not before "
-                << first_src->value->ToShortString();
-        return false;
+      for (ValueNode* prev_dest = Prev(*dest);
+           // nullptr condition handled above in the first 'if' case.
+           prev_dest != nullptr; prev_dest = Prev(*prev_dest)) {
+        if (!LiveRangeBefore(*prev_dest, *first_src)) {
+          // Live range of value d_{y-1} is not before s_0.
+          VLOG(2) << "Not removing the copy: live range of "
+                  << prev_dest->value->ToShortString() << " is not before "
+                  << first_src->value->ToShortString();
+          return false;
+        }
       }
-      ValueNode* next_dest = Next(*dest);
-      if (next_dest != nullptr) {
+      for (ValueNode* next_dest = Next(*dest); next_dest != nullptr;
+           next_dest = Next(*next_dest)) {
         if (!LiveRangeBefore(*src, *next_dest)) {
           // Live range of value s_n is not before d_{y+1}.
           VLOG(2) << "Not removing the copy: live range of "
@@ -814,7 +823,7 @@ class CopyRemover {
       }
 
       // Splice source buffer values list right after 'prev_dest'.
-      SpliceAfter(first_src, prev_dest);
+      SpliceAfter(first_src, Prev(*dest));
     } else {
       VLOG(2) << copy->name()
               << " copies value in middle of source buffer to value in middle "
@@ -880,9 +889,7 @@ class CopyRemover {
       VLOG(2) << "Empty uses for " << *a.value;
       return ordering_.IsDefinedBefore(*a.value, *b.value);
     }
-    return absl::c_all_of(a.uses, [&](const HloUse* use) {
-      return ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_);
-    });
+    return ordering_.UsesBeforeValueDefinition(a.uses, *b.value, dataflow_);
   }
 
   // Returns whether 'node' is the last node in its list.

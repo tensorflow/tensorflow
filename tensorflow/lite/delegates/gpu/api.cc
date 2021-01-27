@@ -98,6 +98,10 @@ bool IsObjectPresent(ObjectType type, const TensorObject& obj) {
   }
 }
 
+bool IsObjectInitialized(const TensorObject& obj) {
+  return GetType(obj) != ObjectType::UNKNOWN;
+}
+
 uint32_t NumElements(const TensorObjectDef& def) {
   const auto& d = def.dimensions;
   switch (def.object_def.data_layout) {

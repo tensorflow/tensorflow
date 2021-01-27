@@ -16,7 +16,7 @@
   "buildTargets" : [
     "//tensorflow/lite/objc:TensorFlowLite",
     "//tensorflow/lite/objc:TestApp",
-    "//tensorflow/lite/objc:Tests"
+    "//tensorflow/lite/objc:tests"
   ],
   "projectName" : "TensorFlowLite",
   "optionSet" : {

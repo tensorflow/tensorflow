@@ -22,7 +22,7 @@ REGISTER8(BinaryOp, CPU, "LeftShift", functor::left_shift, int8, int16, int32,
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED)
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER8(BinaryOp, GPU, "LeftShift", functor::left_shift, int8, int16, int32,
           int64, uint8, uint16, uint32, uint64);
 #else

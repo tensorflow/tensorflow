@@ -93,7 +93,8 @@ def TFR_singleTensorType : Type<Or<[
 // all allowed build list input types
 def TFR_allowedBuiltListType : Type<Or<[
     TFR_TensorType.predicate,
-    TF_ElementType.predicate]>, "single tfr.tensor or tensor element type">;
+    TF_ElementType.predicate,
+    TFR_AttrType.predicate]>, "single tfr.tensor or tensor element type">;
 
 // all allowed build list result types
 def TFR_allowedListResultType : Type<Or<[

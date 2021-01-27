@@ -55,7 +55,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("all_gather_dimension"), py::arg("shard_count"),
           py::arg("replica_groups") = py::list(),
           py::arg("channel_id") = absl::nullopt,
-          py::arg("shape_with_layout") = absl::nullopt);
+          py::arg("shape_with_layout") = absl::nullopt,
+          py::arg("use_global_device_ids") = absl::nullopt);
   ops.def(
       "AllReduce",
       static_cast<XlaOp (*)(

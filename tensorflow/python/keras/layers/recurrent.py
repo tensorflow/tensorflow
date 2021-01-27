@@ -62,7 +62,7 @@ class StackedRNNCells(Layer):
 
   Used to implement efficient stacked RNNs.
 
-  Arguments:
+  Args:
     cells: List of RNN cell instances.
 
   Examples:
@@ -205,7 +205,7 @@ class RNN(Layer):
   See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
-  Arguments:
+  Args:
     cell: A RNN cell instance or a list of RNN cell instances.
       A RNN cell is a class that has:
       - A `call(input_at_t, states_at_t)` method, returning
@@ -1240,7 +1240,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
   This class processes one step within the whole time sequence input, whereas
   `tf.keras.layer.SimpleRNN` processes the whole sequence.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -1439,7 +1439,7 @@ class SimpleRNN(RNN):
   See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -1690,7 +1690,7 @@ class SimpleRNN(RNN):
 class GRUCell(DropoutRNNCellMixin, Layer):
   """Cell class for the GRU layer.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -1974,7 +1974,7 @@ class GRU(RNN):
   `recurrent_kernel`. Use `'reset_after'=True` and
   `recurrent_activation='sigmoid'`.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -2244,7 +2244,7 @@ class GRU(RNN):
 class LSTMCell(DropoutRNNCellMixin, Layer):
   """Cell class for the LSTM layer.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -2647,7 +2647,7 @@ class LSTM(RNN):
    Note that this cell is not optimized for performance on GPU. Please use
   `tf.compat.v1.keras.layers.CuDNNLSTM` for better performance on GPU.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -2937,7 +2937,7 @@ def _standardize_args(inputs, initial_state, constants, num_constants):
   makes sure the arguments are separated and that `initial_state` and
   `constants` are lists of tensors (or None).
 
-  Arguments:
+  Args:
     inputs: Tensor or list/tuple of tensors. which may include constants
       and initial states. In that case `num_constant` must be specified.
     initial_state: Tensor or list of tensors or None, initial states.

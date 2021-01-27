@@ -32,7 +32,7 @@ TEST(GpuMultiStream, Basics) {
       GetGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
                    /*distributed_client=*/nullptr, /*node_id=*/0));
 
-  PjRtDevice* device = client->local_devices().at(0);
+  PjRtDevice* device = client->addressable_devices().at(0);
 
   int n = 1024;
   Shape shape = ShapeUtil::MakeShape(S32, {n});

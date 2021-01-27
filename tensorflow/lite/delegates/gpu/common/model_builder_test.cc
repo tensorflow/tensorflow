@@ -187,7 +187,9 @@ class DelegatedInterpreter {
 
 class InterpreterFp16 : public DelegatedInterpreter {
  public:
-  explicit InterpreterFp16(TfLiteBuiltinOperator op) : DelegatedInterpreter(3) {
+  explicit InterpreterFp16(TfLiteBuiltinOperator op,
+                           bool const_dequantize_inputs = true)
+      : DelegatedInterpreter(3) {
     void* builtin_data = malloc(sizeof(int));
     EXPECT_EQ(interpreter_.AddTensors(5), kTfLiteOk);
     EXPECT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
@@ -243,6 +245,15 @@ class InterpreterFp16 : public DelegatedInterpreter {
         interpreter_.SetTensorParametersReadWrite(
             2, TfLiteType::kTfLiteFloat16, "t2", dims, quantization, false),
         kTfLiteOk);
+    if (const_dequantize_inputs) {
+      // This simulates the dequantize inputs being constants in the graph.
+      // If this is not true, FP16GraphPartitionHelper should not consider the
+      // corresponding DEQUANTIZE ops.
+      auto* tensor0 = interpreter_.tensor(0);
+      auto* tensor2 = interpreter_.tensor(2);
+      tensor0->allocation_type = kTfLiteMmapRo;
+      tensor2->allocation_type = kTfLiteMmapRo;
+    }
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             1, TfLiteType::kTfLiteFloat32, "t1", dims, quantization, false),
@@ -334,6 +345,64 @@ TEST(ModelBuilderTest, GetOpsToReplaceAcceptsFp16DequantizeNodes) {
             TfLiteType::kTfLiteFloat16);
   EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
             TfLiteType::kTfLiteFloat16);
+  TfLiteIntArrayFree(ops_to_replace);
+}
+
+InterpreterFp16* interpreter_fp16_non_constant =
+    new InterpreterFp16(kTfLiteBuiltinAdd, /*const_dequantize_inputs=*/false);
+
+// Same as GetOpsToReplaceAcceptsFp16DequantizeNodes, but the DEQUANTIZE inputs
+// are not constant. As a result, we don't allow the delegate to accept them.
+TEST(ModelBuilderTest, GetOpsToReplaceRejectsNonConstantFp16DequantizeNodes) {
+  TfLiteContext* context = interpreter_fp16_non_constant->context();
+
+  // These functions are meant to be called inside delegates. Swap out
+  // for similar functions to permit direct calling of GetOpsToReplace.
+  context->GetExecutionPlan = [](struct TfLiteContext* context,
+                                 TfLiteIntArray** execution_plan) {
+    *execution_plan = interpreter_fp16_non_constant->exec_plan();
+    return kTfLiteOk;
+  };
+  context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
+                                       TfLiteNode** node,
+                                       TfLiteRegistration** registration) {
+    *node = interpreter_fp16_non_constant->node(node_index);
+    *registration = interpreter_fp16_non_constant->registration(node_index);
+    return kTfLiteOk;
+  };
+  context->PreviewDelegatePartitioning =
+      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+         TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+        // The partitioner should accept only the Add op initially.
+        EXPECT_EQ(nodes_to_replace->size, 1);
+        // Single partition output.
+        auto params = interpreter_fp16_non_constant->add_delegate_params();
+        params->nodes_to_replace = TfLiteIntArrayCreate(1);
+        params->nodes_to_replace->data[0] = 2;
+        params->input_tensors = TfLiteIntArrayCreate(2);
+        params->input_tensors->data[0] = 1;
+        params->input_tensors->data[1] = 3;
+        params->output_tensors = TfLiteIntArrayCreate(1);
+        params->output_tensors->data[0] = 4;
+
+        *partition_params_array =
+            interpreter_fp16_non_constant->delegate_params();
+        *num_partitions = interpreter_fp16_non_constant->num_delegate_params();
+        return kTfLiteOk;
+      };
+
+  TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
+
+  // Only ADD is delegated, with FP32 (dequantized) inputs.
+  EXPECT_EQ(ops_to_replace->size, 1);
+  TfLiteNode* node = nullptr;
+  TfLiteRegistration* registration = nullptr;
+  context->GetNodeAndRegistration(context, ops_to_replace->data[0], &node,
+                                  &registration);
+  EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
+            TfLiteType::kTfLiteFloat32);
+  EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
+            TfLiteType::kTfLiteFloat32);
   TfLiteIntArrayFree(ops_to_replace);
 }
 
@@ -800,6 +869,13 @@ class InterpreterMultiNode : public DelegatedInterpreter {
         interpreter_.SetTensorParametersReadWrite(
             2, TfLiteType::kTfLiteFloat16, "t2", dims, quantization, false),
         kTfLiteOk);
+    // Simulate DEQUANTIZE inputs being constants.
+    auto* tensor0 = interpreter_.tensor(0);
+    auto* tensor1 = interpreter_.tensor(1);
+    auto* tensor2 = interpreter_.tensor(2);
+    tensor0->allocation_type = kTfLiteMmapRo;
+    tensor1->allocation_type = kTfLiteMmapRo;
+    tensor2->allocation_type = kTfLiteMmapRo;
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             3, TfLiteType::kTfLiteFloat32, "t3", dims, quantization, false),

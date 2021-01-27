@@ -127,14 +127,27 @@ void WorkerGrpcDataServer::AddDataServiceToBuilder(
 }
 
 Status WorkerGrpcDataServer::StartServiceInternal() {
-  std::string worker_address = config_.worker_address();
-  if (worker_address.empty()) {
-    worker_address = absl::StrCat("localhost:", kPortPlaceholder);
+  std::string base_address = config_.worker_address();
+  if (base_address.empty()) {
+    base_address = absl::StrCat("localhost:", kPortPlaceholder);
   }
-  std::string resolved_address = str_util::StringReplace(
-      worker_address, kPortPlaceholder, absl::StrCat(bound_port()),
+  std::string worker_address = str_util::StringReplace(
+      base_address, kPortPlaceholder, absl::StrCat(bound_port()),
       /*replace_all=*/false);
-  TF_RETURN_IF_ERROR(service_->Start(resolved_address));
+  std::string transfer_address = worker_address;
+  std::string transfer_protocol = config_.data_transfer_protocol();
+  if (!transfer_protocol.empty()) {
+    TF_RETURN_IF_ERROR(DataTransferServer::Build(
+        transfer_protocol, service_->get_element_getter(), &transfer_server_));
+    TF_RETURN_IF_ERROR(transfer_server_->Start());
+    LOG(INFO) << "Data transfer server started at 0.0.0.0:"
+              << transfer_server_->get_port();
+    transfer_address =
+        str_util::StringReplace(base_address, kPortPlaceholder,
+                                absl::StrCat(transfer_server_->get_port()),
+                                /*replace_all=*/false);
+  }
+  TF_RETURN_IF_ERROR(service_->Start(worker_address, transfer_address));
   return Status::OK();
 }
 

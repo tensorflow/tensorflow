@@ -50,10 +50,6 @@ def cuda_default_copts():
         ["-O3"]
     )
 
-def cuda_is_configured():
-    """Returns true if CUDA was enabled during the configure process."""
-    return %{cuda_is_configured}
-
 def cuda_gpu_architectures():
     """Returns a list of supported GPU architectures."""
     return %{cuda_gpu_architectures}
@@ -64,7 +60,7 @@ def if_cuda_is_configured(x):
     Unlike if_cuda(), this does not require that we are building with
     --config=cuda. Used to allow non-CUDA code to depend on CUDA libraries.
     """
-    if cuda_is_configured():
+    if %{cuda_is_configured}:
       return select({"//conditions:default": x})
     return select({"//conditions:default": []})
 

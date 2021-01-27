@@ -80,7 +80,7 @@ class BatchNormalizationBase(Layer):
   *after having been trained on data that has similar statistics as the
   inference data*.
 
-  Arguments:
+  Args:
     axis: Integer or a list of integers, the axis that should be normalized
     (typically the features axis). For instance, after a `Conv2D` layer with
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
@@ -1063,7 +1063,7 @@ class LayerNormalization(Layer):
   So, this Layer Normalization implementation will not match a Group
   Normalization layer with group size set to 1.
 
-  Arguments:
+  Args:
     axis: Integer or List/Tuple. The axis or axes to normalize across. Typically
       this is the features axis/axes. The left-out axes are typically the batch
       axis/axes. This argument defaults to `-1`, the last dimension in the

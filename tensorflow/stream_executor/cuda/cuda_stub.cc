@@ -101,6 +101,8 @@ typedef void(CUDA_CB* CUhostFn)(void* userData);
 #include "tensorflow/stream_executor/cuda/cuda_10_1.inc"
 #elif CUDA_VERSION < 11000
 #include "tensorflow/stream_executor/cuda/cuda_10_2.inc"
-#else
+#elif CUDA_VERSION < 11020
 #include "tensorflow/stream_executor/cuda/cuda_11_0.inc"
+#else
+#include "tensorflow/stream_executor/cuda/cuda_11_2.inc"
 #endif

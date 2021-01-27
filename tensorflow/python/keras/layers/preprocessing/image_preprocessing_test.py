@@ -1197,8 +1197,6 @@ class RandomRotationTest(keras_parameterized.TestCase):
 
   def test_distribution_strategy(self):
     """Tests that RandomRotation can be created within distribution strategies.
-
-    And that replicas got the same random result.
     """
     input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
     with testing_utils.use_gpu():
@@ -1208,7 +1206,6 @@ class RandomRotationTest(keras_parameterized.TestCase):
         output = strat.run(lambda: layer(input_images, training=True))
       values = output.values
       self.assertAllEqual(2, len(values))
-      self.assertAllClose(values[0], values[1], rtol=1e-5)
 
   @testing_utils.run_v2_only
   def test_config_with_custom_name(self):

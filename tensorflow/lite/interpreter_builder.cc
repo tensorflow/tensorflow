@@ -14,26 +14,33 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/interpreter_builder.h"
 
-#include <fcntl.h>
+#include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <sys/stat.h>
-#include <sys/types.h>
+#include <string.h>
 
+#include <algorithm>
 #include <map>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/profiling/platform_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/shared_library.h"
+#include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
@@ -587,11 +594,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       status = kTfLiteError;
     }
 
-    size_t dims_signature_rank = 0;
-    const int* dims_signature_data = nullptr;
+    std::vector<int> dims_signature = {};
     if (tensor->shape_signature()) {
-      dims_signature_rank = tensor->shape_signature()->size();
-      dims_signature_data = tensor->shape_signature()->data();
+      dims_signature = FlatBufferIntArrayToVector(tensor->shape_signature());
     }
 
     bool is_variable = tensor->is_variable();
@@ -623,7 +628,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     } else {
       if (subgraph->SetTensorParametersReadWrite(
               i, type, get_name(tensor), dims, quantization, is_variable,
-              dims_signature_rank, dims_signature_data) != kTfLiteOk) {
+              dims_signature) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;
@@ -638,11 +643,17 @@ TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter,
                                                 int num_threads) {
   // Apply Flex delegate if applicable.
   if (has_flex_op_) {
-    if (auto flex_delegate = AcquireFlexDelegate()) {
-      return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
+    if (Interpreter::TfLiteDelegatePtr flex_delegate = AcquireFlexDelegate()) {
+      TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegate(
+          // Transfers ownership of flex_delegate to the interpreter.
+          std::move(flex_delegate)));
     }
   }
-
+  for (TfLiteDelegate* delegate : delegates_) {
+    // Note that we DON'T transfer ownership of the delegate to the interpreter.
+    // (Doing that would cause problems if operator() was invoked twice.)
+    TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegate(delegate));
+  }
   return kTfLiteOk;
 }
 
@@ -766,10 +777,19 @@ TfLiteStatus InterpreterBuilder::operator()(
         op_resolver_.GetDelegates(num_threads);
   }
 
-  if (ApplyDelegates(interpreter->get(), num_threads) != kTfLiteOk)
-    return cleanup_and_error();
+  TfLiteStatus status = ApplyDelegates(interpreter->get(), num_threads);
+  if (status != kTfLiteOk) {
+    interpreter->reset();
+  }
+  return status;
+}
 
-  return kTfLiteOk;
+void InterpreterBuilder::AddDelegate(TfLiteDelegate* delegate) {
+  if (delegate == nullptr) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Null delegate.");
+  } else {
+    delegates_.push_back(delegate);
+  }
 }
 
 }  // namespace tflite

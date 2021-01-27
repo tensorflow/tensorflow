@@ -14,18 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_grpc.h"
 
-#include <grpcpp/impl/codegen/async_stream.h>
-#include <grpcpp/impl/codegen/async_unary_call.h>
-#include <grpcpp/impl/codegen/channel_interface.h>
-#include <grpcpp/impl/codegen/client_callback.h>
-#include <grpcpp/impl/codegen/client_unary_call.h>
-#include <grpcpp/impl/codegen/method_handler.h>
-#include <grpcpp/impl/codegen/rpc_service_method.h>
-#include <grpcpp/impl/codegen/server_callback.h>
-#include <grpcpp/impl/codegen/service_type.h>
-#include <grpcpp/impl/codegen/sync_stream.h>
-
 #include <functional>
+
+#include "grpcpp/impl/codegen/async_stream.h"
+#include "grpcpp/impl/codegen/async_unary_call.h"
+#include "grpcpp/impl/codegen/channel_interface.h"
+#include "grpcpp/impl/codegen/client_callback.h"
+#include "grpcpp/impl/codegen/client_unary_call.h"
+#include "grpcpp/impl/codegen/method_handler.h"
+#include "grpcpp/impl/codegen/rpc_service_method.h"
+#include "grpcpp/impl/codegen/server_callback.h"
+#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/impl/codegen/sync_stream.h"
+
 namespace tensorflow {
 namespace tpu {
 
@@ -66,12 +67,9 @@ grpc::TpuCompilationCacheService::Stub::Stub(
 grpc::TpuCompilationCacheService::Stub::AsyncGetTpuProgramRaw(
     ::grpc::ClientContext* context, const RequestType& request,
     ::grpc::CompletionQueue* cq) {
-  ::grpc::ClientAsyncResponseReader<
-      grpc::TpuCompilationCacheService::ResponseType>* result =
-      ::grpc::internal::ClientAsyncResponseReaderHelper::Create<ResponseType>(
-          channel_.get(), cq, rpcmethod_get_tpu_program_, context, request);
-  result->StartCall();
-  return result;
+  return ::grpc::internal::ClientAsyncResponseReaderFactory<
+      ResponseType>::Create(channel_.get(), cq, rpcmethod_get_tpu_program_,
+                            context, request, true);
 }
 
 ::grpc::ClientAsyncResponseReader<
@@ -79,9 +77,9 @@ grpc::TpuCompilationCacheService::Stub::AsyncGetTpuProgramRaw(
 grpc::TpuCompilationCacheService::Stub::PrepareAsyncGetTpuProgramRaw(
     ::grpc::ClientContext* context, const RequestType& request,
     ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create<
-      ResponseType>(channel_.get(), cq, rpcmethod_get_tpu_program_, context,
-                    request);
+  return ::grpc::internal::ClientAsyncResponseReaderFactory<
+      ResponseType>::Create(channel_.get(), cq, rpcmethod_get_tpu_program_,
+                            context, request, false);
 }
 
 grpc::TpuCompilationCacheService::Service::Service() {

@@ -678,7 +678,7 @@ def _zeros(shape, dtype):
 
   device = ctx.device_name
 
-  if tensor_util.is_tensor(shape):
+  if tensor_util.is_tf_type(shape):
     shape_key = shape.ref()
   else:
     shape_key = shape
@@ -1007,11 +1007,12 @@ class GradientTape(object):
     Raises:
       RuntimeError: If called on a used, non-persistent tape.
       RuntimeError: If called inside the context of the tape.
+      TypeError: If the target is a None object.
       ValueError: If the target is a variable or if unconnected gradients is
        called with an unknown value.
     """
     if self._tape is None:
-      raise RuntimeError("A non-persistent GradientTape can only be used to"
+      raise RuntimeError("A non-persistent GradientTape can only be used to "
                          "compute one set of gradients (or jacobians)")
     if self._recording:
       if not self._persistent:
@@ -1027,6 +1028,11 @@ class GradientTape(object):
             "context if you actually want to trace the "
             "gradient in order to compute higher order "
             "derivatives.", 1)
+
+    if target is None:
+      raise TypeError("Target should be a list or nested structure"
+                      " of Tensors or Variables to be differentiated,"
+                      " but recieved %r" % (target))
 
     num_ndarrays = 0
     flat_targets = []
@@ -1148,7 +1154,7 @@ class GradientTape(object):
       ValueError: If vectorization of jacobian computation fails.
     """
     if self._tape is None:
-      raise RuntimeError("A non-persistent GradientTape can only be used to"
+      raise RuntimeError("A non-persistent GradientTape can only be used to "
                          "compute one set of gradients (or jacobians)")
 
     flat_sources = nest.flatten(sources)

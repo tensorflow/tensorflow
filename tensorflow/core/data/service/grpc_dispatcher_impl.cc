@@ -47,7 +47,7 @@ HANDLER(GetSplit);
 HANDLER(GetOrRegisterDataset);
 HANDLER(ReleaseJobClient);
 HANDLER(GetOrCreateJob);
-HANDLER(GetTasks);
+HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);
 #undef HANDLER
 

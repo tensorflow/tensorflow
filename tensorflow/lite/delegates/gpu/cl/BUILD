@@ -176,6 +176,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "@com_google_absl//absl/strings",
     ],
 )

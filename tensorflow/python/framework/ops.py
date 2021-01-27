@@ -1201,7 +1201,7 @@ class _EagerTensorBase(Tensor):
   def gpu(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
 
-    Arguments:
+    Args:
       gpu_index: Identifies which GPU to place the contents on the returned
         Tensor in.
 
@@ -2335,7 +2335,7 @@ class Operation(object):
     Note: this is generally unsafe to use. This is used in certain situations in
     conjunction with _set_type_list_attr.
 
-    Arguments:
+    Args:
       types: list of DTypes
       shapes: list of TensorShapes
     """
@@ -4963,10 +4963,13 @@ class Graph(object):
     """Specify gradient function for the given op type."""
 
     # This is an internal API and we don't need nested context for this.
+    # TODO(mdan): make it a proper context manager.
     assert not self._gradient_function_map
     self._gradient_function_map = gradient_function_map
-    yield
-    self._gradient_function_map = {}
+    try:
+      yield
+    finally:
+      self._gradient_function_map = {}
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager

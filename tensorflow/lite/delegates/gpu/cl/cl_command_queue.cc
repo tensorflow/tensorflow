@@ -346,7 +346,7 @@ std::string ProfilingInfo::GetDetailedReport() const {
     result += "  " + dispatch.label + " - " +
               std::to_string(absl::ToDoubleMilliseconds(dispatch.duration)) +
               " ms\n";
-    auto name = dispatch.label.substr(0, dispatch.label.find(" "));
+    auto name = dispatch.label.substr(0, dispatch.label.find(' '));
     if (statistics.find(name) != statistics.end()) {
       statistics[name].count++;
       statistics[name].total_time +=

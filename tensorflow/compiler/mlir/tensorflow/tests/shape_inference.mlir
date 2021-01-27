@@ -366,12 +366,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %0 : tensor<?x?x?xf32>
   }
 
-  // Tests that tensor_cast result shapes are refined.
+  // Tests that tensor.cast result shapes are refined.
   // CHECK-LABEL: func @tensor_cast_refine
   func @tensor_cast_refine(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
-    // CHECK: tensor_cast
+    // CHECK: tensor.cast
     // CHECK-SAME: tensor<4xi32> to tensor<4xi32>
-    %0 = tensor_cast %arg0 : tensor<4xi32> to tensor<*xi32>
+    %0 = tensor.cast %arg0 : tensor<4xi32> to tensor<*xi32>
     return %0 : tensor<*xi32>
   }
 
@@ -451,7 +451,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-SAME: -> tensor<1xi32>
   func @partitioned_called_func2() -> (tensor<*xi32>) {
     %0 = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
-    %1 = tensor_cast %0 : tensor<1xi32> to tensor<*xi32>
+    %1 = tensor.cast %0 : tensor<1xi32> to tensor<*xi32>
     return %1 : tensor<*xi32>
   }
 
@@ -787,10 +787,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<1xi32>
   func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<*xi32> {
-   // CHECK: %[[RESULT:.*]] = tensor_cast
+   // CHECK: %[[RESULT:.*]] = tensor.cast
    // CHECK-SAME: tensor<1xi32> to tensor<1xi32>
    // CHECK: return %[[RESULT]] : tensor<1xi32>
-    %1 = tensor_cast %arg0 : tensor<1xi32> to tensor<*xi32>
+    %1 = tensor.cast %arg0 : tensor<1xi32> to tensor<*xi32>
     return %1 : tensor<*xi32>
   }
 

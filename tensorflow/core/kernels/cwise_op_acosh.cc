@@ -22,6 +22,9 @@ REGISTER4(UnaryOp, CPU, "Acosh", functor::acosh, float, double, complex64,
 
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER2(UnaryOp, GPU, "Acosh", functor::acosh, float, double);
+#endif
 #endif
 }  // namespace tensorflow

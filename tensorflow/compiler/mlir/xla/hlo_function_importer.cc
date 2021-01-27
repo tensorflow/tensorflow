@@ -127,7 +127,7 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
   llvm::SmallVector<Type, 4> args, rets;
   TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
   TF_RETURN_IF_ERROR(GetMlirTypes({computation.root_instruction()}, &rets));
-  auto func_type = mlir::FunctionType::get(args, rets, context_);
+  auto func_type = mlir::FunctionType::get(context_, args, rets);
 
   string computation_name =
       computation.parent()->entry_computation() == &computation

@@ -390,3 +390,13 @@ tf_cc_test(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "op_performance_data_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":op_performance_data"],
+# )
+# copybara:uncomment_end
