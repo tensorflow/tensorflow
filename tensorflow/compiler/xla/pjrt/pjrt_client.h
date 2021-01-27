@@ -72,11 +72,11 @@ class PjRtDevice {
   // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
   virtual int id() const = 0;
 
-  // The task ID of this device according to TpuTopology. This is not the same
-  // as PjRtClient::host_id() in a multi-task setting, where each client can see
-  // devices from all tasks, but only a subset of them are addressable and have
-  // the same task_id as the client.
-  virtual int host_id() const = 0;
+  // The task ID of this device according to TpuTopology. This is not always
+  // identical to PjRtClient::task_id() in a multi-task setting, where each
+  // client can see devices from all tasks, but only a subset of them are
+  // addressable and have the same task_id as the client.
+  virtual int task_id() const = 0;
 
   // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
   // which GPU when interacting with non-JAX code. In general, not guaranteed to
@@ -140,9 +140,8 @@ class PjRtClient {
  public:
   virtual ~PjRtClient() = default;
 
-  // TODO(zhangqiaorjc): Rename to task_id.
   // Return the task id of this client. In single-task setting, always 0.
-  virtual int host_id() const = 0;
+  virtual int task_id() const = 0;
 
   // Return the number of devices in the entire computation. In multi-headed
   // client setting, some are addressable by this client, some are not. In a

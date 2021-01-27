@@ -202,7 +202,7 @@ static int DefaultThreadPoolSize() {
 
 PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
-    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int host_id,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int task_id,
     std::unique_ptr<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
@@ -212,7 +212,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
       owned_devices_(std::move(devices)),
-      host_id_(host_id),
+      task_id_(task_id),
       owned_allocator_(std::move(allocator)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
@@ -1815,7 +1815,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     (*device_assignment)(0, 0) = device->id();
   }
 
-  CHECK_EQ(device->host_id(), client_->host_id());
+  CHECK_EQ(device->task_id(), client_->task_id());
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->device_ordinal();
@@ -2093,7 +2093,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
       for (int partition = 0; partition < num_partitions; ++partition) {
         int device_id = (*device_assignment)(replica, partition);
         TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
-        if (device->host_id() != host_id()) {
+        if (device->task_id() != task_id()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }

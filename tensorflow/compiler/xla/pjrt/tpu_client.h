@@ -30,10 +30,10 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
  public:
   PjRtTpuDevice(const tensorflow::tpu::TpuCoreLocationExternal core,
                 std::unique_ptr<LocalDeviceState> local_device_state,
-                int host_id, const std::array<int, 3>& coords,
+                int task_id, const std::array<int, 3>& coords,
                 std::string device_kind)
       : PjRtStreamExecutorDevice(core.Id(), std::move(local_device_state),
-                                 std::move(device_kind), host_id),
+                                 std::move(device_kind), task_id),
         core_(core),
         coords_(coords) {}
 
@@ -42,7 +42,7 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
   const tensorflow::tpu::TpuCoreLocationExternal core() const { return core_; }
 
   std::string DebugString() const override {
-    return absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id(), host_id(),
+    return absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id(), task_id(),
                            coords_[0], coords_[1], coords_[2], core_.index());
   }
 

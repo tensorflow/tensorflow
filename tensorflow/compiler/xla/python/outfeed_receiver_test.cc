@@ -98,7 +98,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
   devices.push_back(absl::make_unique<CpuDevice>(1, nullptr));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
-      kCpuName, client, std::move(devices), /*host_id=*/0,
+      kCpuName, client, std::move(devices), /*task_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr));
