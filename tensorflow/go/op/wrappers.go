@@ -41210,7 +41210,7 @@ type ImageProjectiveTransformV3Attr func(optionalAttr)
 
 // ImageProjectiveTransformV3FillMode sets the optional fill_mode attribute to value.
 //
-// value: Fill mode, "REFLECT", "WRAP", or "CONSTANT".
+// value: Fill mode, "REFLECT", "WRAP", "CONSTANT", or "NEAREST".
 // If not specified, defaults to "CONSTANT"
 func ImageProjectiveTransformV3FillMode(value string) ImageProjectiveTransformV3Attr {
 	return func(m optionalAttr) {
