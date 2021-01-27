@@ -652,3 +652,34 @@ func @erfc_f16(%arg : tensor<f16>) -> tensor<f16> {
   %1 = "chlo.erfc"(%arg) : (tensor<f16>) -> tensor<f16>
   return %1 : tensor<f16>
 }
+
+// CHECK-LABEL: @is_inf_f32
+// CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
+func @is_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
+  // CHECK: %[[ABS:.*]] = "mhlo.abs"(%arg0) : (tensor<f32>) -> tensor<f32>
+  // CHECK: %[[POS_INF:.*]] = mhlo.constant dense<0x7F800000> : tensor<f32>
+  // CHECK: %[[RESULT:.*]] = "mhlo.compare"(%[[ABS]], %[[POS_INF]]) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK: return %[[RESULT]] : tensor<i1>
+  %1 = chlo.is_inf %arg : tensor<f32> -> tensor<i1>
+  return %1 : tensor<i1>
+}
+
+// CHECK-LABEL: @is_pos_inf_f32
+// CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
+func @is_pos_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
+  // CHECK: %[[POS_INF:.*]] = mhlo.constant dense<0x7F800000> : tensor<f32>
+  // CHECK: %[[RESULT:.*]] = "mhlo.compare"(%[[ARG]], %[[POS_INF]]) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK: return %[[RESULT]] : tensor<i1>
+  %1 = chlo.is_pos_inf %arg : tensor<f32> -> tensor<i1>
+  return %1 : tensor<i1>
+}
+
+// CHECK-LABEL: @is_neg_inf_f32
+// CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
+func @is_neg_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
+  // CHECK: %[[NEG_INF:.*]] = mhlo.constant dense<0xFF800000> : tensor<f32>
+  // CHECK: %[[RESULT:.*]] = "mhlo.compare"(%[[ARG]], %[[NEG_INF]]) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK: return %[[RESULT]] : tensor<i1>
+  %1 = chlo.is_neg_inf %arg : tensor<f32> -> tensor<i1>
+  return %1 : tensor<i1>
+}

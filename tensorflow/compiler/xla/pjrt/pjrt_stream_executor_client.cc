@@ -202,7 +202,7 @@ static int DefaultThreadPoolSize() {
 
 PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
-    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int host_id,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int task_id,
     std::unique_ptr<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
@@ -212,7 +212,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
       owned_devices_(std::move(devices)),
-      host_id_(host_id),
+      task_id_(task_id),
       owned_allocator_(std::move(allocator)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
@@ -604,7 +604,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, const Shape& shape,
     HostBufferSemantics host_buffer_semantics,
-    std::shared_ptr<void> buffer_reference, PjRtDevice* device) {
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
   VLOG(2) << "PjRtStreamExecutorClient::BufferFromHostBuffer: shape: "
@@ -647,19 +647,20 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       // further copies. At the time of writing we require a 16-byte alignment
       // because XLA may generate code which requires it.
       if (can_use_zero_copy) {
-        on_delete_callback = [buffer_reference{std::move(buffer_reference)}]() {
-          // Frees buffer_reference.
-        };
+        on_delete_callback = std::move(on_done_with_host_buffer);
         buffer = se::DeviceMemoryBase(const_cast<void*>(data), size);
       } else {
         void* staging_buffer = host_memory_allocator()->AllocateRaw(
             cpu_function_runtime::kMinAlign, size);
+        buffer = se::DeviceMemoryBase(staging_buffer, size);
+        std::memcpy(staging_buffer, data, size);
+        if (on_done_with_host_buffer) {
+          on_done_with_host_buffer();
+        }
         on_delete_callback = [staging_buffer, host_memory_allocator =
                                                   host_memory_allocator()]() {
           host_memory_allocator->DeallocateRaw(staging_buffer);
         };
-        buffer = se::DeviceMemoryBase(staging_buffer, size);
-        std::memcpy(staging_buffer, data, size);
       }
       absl::Span<const std::shared_ptr<BufferSequencingEvent>>
           definition_events;
@@ -702,7 +703,10 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   // thread.
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
     std::memcpy(staging_buffer.get(), data, size);
-    buffer_reference.reset();
+    if (on_done_with_host_buffer) {
+      on_done_with_host_buffer();
+      on_done_with_host_buffer = nullptr;
+    }
     data = nullptr;
   }
 
@@ -718,7 +722,8 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
                        py_buffer{py_buffer.get()}, compact_shape,
                        on_device_shape{py_buffer->on_device_shape()},
                        staging_buffer{std::move(staging_buffer)},
-                       buffer_reference{std::move(buffer_reference)},
+                       on_done_with_host_buffer{
+                           std::move(on_done_with_host_buffer)},
                        host_buffer_semantics]() {
     PjRtStreamExecutorBuffer::ScopedHold device_buffer(movable_device_buffer);
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
@@ -756,9 +761,16 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         local_device, std::move(device_buffer), event,
         local_device->host_to_device_stream()));
 
-    local_device->ThenRelease(
-        local_device->host_to_device_stream(),
-        std::make_pair(std::move(buffer_reference), std::move(staging_buffer)));
+    local_device->callback_stream()->ThenWaitFor(
+        local_device->host_to_device_stream());
+    local_device->ThenExecuteOnCallbackThread(
+        local_device->callback_stream(),
+        [staging_buffer{std::move(staging_buffer)},
+         on_done_with_host_buffer{std::move(on_done_with_host_buffer)}]() {
+          if (on_done_with_host_buffer) {
+            on_done_with_host_buffer();
+          }
+        });
   };
   if (is_cpu_platform) {
     // Using the thread_pool would be a double thread hop; the code
@@ -1306,7 +1318,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
     return dst_device->client()->BufferFromHostBuffer(
         literal_pointer->untyped_data(), literal_pointer->shape(),
         PjRtStreamExecutorClient::HostBufferSemantics::kZeroCopy,
-        std::move(literal), dst_device);
+        [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -1815,7 +1827,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     (*device_assignment)(0, 0) = device->id();
   }
 
-  CHECK_EQ(device->host_id(), client_->host_id());
+  CHECK_EQ(device->task_id(), client_->task_id());
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->device_ordinal();
@@ -2093,7 +2105,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
       for (int partition = 0; partition < num_partitions; ++partition) {
         int device_id = (*device_assignment)(replica, partition);
         TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
-        if (device->host_id() != host_id()) {
+        if (device->task_id() != task_id()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }

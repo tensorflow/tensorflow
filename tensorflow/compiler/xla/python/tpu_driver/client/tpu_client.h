@@ -42,7 +42,7 @@ constexpr char kTpuPlatform[] = "tpu";
 
 class TpuDevice : public PjRtDevice {
  public:
-  TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
+  TpuDevice(int id, int task_id, const std::array<int, 3>& coords,
             int core_on_chip);
 
   const std::array<int, 3>& coords() const { return coords_; }
@@ -59,7 +59,7 @@ class TpuDevice : public PjRtDevice {
 
   int id() const override { return id_; }
 
-  int host_id() const override { return host_id_; }
+  int task_id() const override { return task_id_; }
 
   int local_hardware_id() const override { return -1; }
 
@@ -75,7 +75,7 @@ class TpuDevice : public PjRtDevice {
 
  private:
   const int id_;
-  const int host_id_;
+  const int task_id_;
   const std::array<int, 3> coords_;
   const std::string device_kind_ = "Cloud TPU";
   // Index of the core of the same chip.
@@ -92,7 +92,7 @@ class PyTpuClient {
   explicit PyTpuClient(std::string platform_name,
                        std::unique_ptr<tpu_driver::TpuDriver> driver,
                        std::vector<std::shared_ptr<PjRtDevice>> devices,
-                       int host_id);
+                       int task_id);
   virtual ~PyTpuClient() = default;
 
   PyTpuClient(const PyTpuClient&) = delete;
@@ -115,7 +115,7 @@ class PyTpuClient {
   const std::map<int, std::shared_ptr<PjRtDevice>>& id_to_device() const {
     return id_to_device_;
   }
-  int host_id() const { return host_id_; }
+  int task_id() const { return task_id_; }
   const std::string& platform_name() const { return platform_name_; }
 
   StatusOr<Shape> ChooseCompactLayoutForShape(Shape subshape) {
@@ -140,7 +140,7 @@ class PyTpuClient {
   std::map<int, std::shared_ptr<PjRtDevice>> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<std::shared_ptr<PjRtDevice>> local_devices_;
-  int host_id_;
+  int task_id_;
 
   // A thread pool for scheduling core executions in parallel.
   std::unique_ptr<tensorflow::thread::ThreadPool> pool_;

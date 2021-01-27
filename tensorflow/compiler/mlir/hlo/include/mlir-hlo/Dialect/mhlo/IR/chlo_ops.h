@@ -71,6 +71,9 @@ Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
 
 Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val);
 
+Value getConstantLikeInfValue(OpBuilder& b, Location loc, Value val,
+                              bool negative);
+
 }  // namespace chlo
 }  // namespace mlir
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/algorithm/container.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -934,15 +935,19 @@ mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
 
 mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
     const std::vector<ReplicaGroup>& replica_groups, mlir::Builder builder) {
-  int64_t num_groups = replica_groups.size();
-  int64_t group_size =
-      num_groups == 0 ? 0 : replica_groups[0].replica_ids_size();
-  std::vector<int64_t> attr(num_groups * group_size);
-  int flat_index = 0;
-  for (const auto& group : replica_groups) {
-    assert(group_size == group.replica_ids_size());
-    for (int i = 0; i < group_size; ++i)
-      attr[flat_index++] = group.replica_ids(i);
+  const int64_t num_groups = replica_groups.size();
+  // Replica groups in HLO can be non-uniform in size, for example:
+  // replica_groups={{0},{1,2},{3}}. Since we are representing them as a 2D
+  // tensor, pad the smaller sized replica groups with -1.
+  const int64_t group_size = absl::c_accumulate(
+      replica_groups, int64_t(0), [](int64_t current, const ReplicaGroup& g) {
+        return std::max<int64_t>(current, g.replica_ids_size());
+      });
+  // Initialize all elements to -1 to support non-uniform replica groups.
+  std::vector<int64_t> attr(num_groups * group_size, -1);
+  for (int i = 0; i < num_groups; ++i) {
+    int index = i * group_size;
+    for (const int64& id : replica_groups[i].replica_ids()) attr[index++] = id;
   }
   auto type = mlir::RankedTensorType::get({num_groups, group_size},
                                           builder.getIntegerType(64));

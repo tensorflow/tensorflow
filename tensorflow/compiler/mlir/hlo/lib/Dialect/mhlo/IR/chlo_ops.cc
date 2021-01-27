@@ -39,6 +39,13 @@ Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val) {
       b, loc, llvm::APFloat::getLargest(ty.getFloatSemantics()), val);
 }
 
+Value getConstantLikeInfValue(OpBuilder& b, Location loc, Value val,
+                              bool negative) {
+  auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
+  return getConstantLike(
+      b, loc, llvm::APFloat::getInf(ty.getFloatSemantics(), negative), val);
+}
+
 Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
                       Value val) {
   Type ty = getElementTypeOrSelf(val.getType());

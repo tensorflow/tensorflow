@@ -487,6 +487,17 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
     MemCpy(acquired_pointer, /*DstAlign=*/llvm::Align(1),
            program_buffer_address,
            /*SrcAlign=*/llvm::Align(1), length_32);
+    if (emit_code_for_msan_) {
+      // Mark the outfed data as initialized for msan. The buffer gets read by
+      // the host code, which might be msan-instrumented.
+      // TODO(b/66051036): Run the msan instrumentation pass instead.
+      const llvm::DataLayout& dl = module_->getDataLayout();
+      llvm::Type* intptr_type = b_.getIntPtrTy(dl);
+      EmitCallToFunc(
+          "__msan_unpoison",
+          {acquired_pointer, llvm::ConstantInt::get(intptr_type, length)},
+          b_.getVoidTy());
+    }
   }
 
   const char* release_func_name =

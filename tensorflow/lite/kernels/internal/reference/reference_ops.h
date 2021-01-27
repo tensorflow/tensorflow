@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/depth_to_space.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/div.h"
+#include "tensorflow/lite/kernels/internal/reference/elu.h"
 #include "tensorflow/lite/kernels/internal/reference/exp.h"
 #include "tensorflow/lite/kernels/internal/reference/fill.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
@@ -82,15 +83,6 @@ limitations under the License.
 namespace tflite {
 
 namespace reference_ops {
-
-inline void Elu(const RuntimeShape& input_shape, const float* input_data,
-                const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    output_data[i] = val < 0.0f ? std::expm1(val) : val;
-  }
-}
 
 template <typename T>
 inline void Relu(const RuntimeShape& input_shape, const T* input_data,

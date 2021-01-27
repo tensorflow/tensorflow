@@ -35,20 +35,27 @@ type_to_mlir = {
     "c128": "complex<f64>",
 }
 
+def _get_mlir_type(type):
+    """Return the mlir type corresponding to 'type'"""
+    if type in type_to_mlir:
+        return type_to_mlir[type]
+    return type
+
 def _gen_mlir_op_impl(ctx):
-    # Map attr.type to MLIR type.
-    mlir_type = ctx.attr.type
-    if mlir_type in type_to_mlir:
-        mlir_type = type_to_mlir[mlir_type]
+    mlir_type = _get_mlir_type(ctx.attr.type)
+    mlir_output_type = _get_mlir_type(ctx.attr.output_type)
 
     cmd = ctx.actions.run_shell(
         inputs = [ctx.file.template],
         outputs = [ctx.outputs.out],
         command = (
-            ("cat %s | sed 's/_elem_type/_%s/g' | sed 's/elem_type/%s/g' > %s") % (
+            (("cat %s | sed 's/_elem_type/_%s/g' | sed 's/elem_type/%s/g' | " +
+              "sed 's/_output_type/_%s/g' | sed 's/output_type/%s/g' > %s")) % (
                 ctx.file.template.path,
                 ctx.attr.type,
                 mlir_type,
+                ctx.attr.output_type,
+                mlir_output_type,
                 ctx.outputs.out.path,
             )
         ),
@@ -60,16 +67,26 @@ _gen_mlir_op_rule = rule(
     attrs = {
         "template": attr.label(mandatory = True, allow_single_file = True),
         "type": attr.string(mandatory = True),
+        "output_type": attr.string(mandatory = True),
         "out": attr.output(mandatory = True),
     },
 )
 
-def _gen_mlir_op(name, type):
+def _gen_mlir_op(name, type, output_type):
     _gen_mlir_op_rule(
-        name = "generate_{name}_{type}_mlir".format(name = name, type = type),
+        name = "generate_{name}_{type}_{output_type}_mlir".format(
+            name = name,
+            type = type,
+            output_type = output_type,
+        ),
         template = "op_definitions/{name}.mlir.tmpl".format(name = name),
         type = type,
-        out = "{name}_{type}.mlir".format(name = name, type = type),
+        output_type = output_type,
+        out = "{name}_{type}_{output_type}.mlir".format(
+            name = name,
+            type = type,
+            output_type = output_type,
+        ),
     )
 
 ################################################################################
@@ -154,27 +171,49 @@ _gen_kernel_fatbin_rule = rule(
     implementation = _gen_kernel_fatbin_impl,
 )
 
-def gen_kernel_library(name, types, tile_size, tags = [], unroll_factors = None, extra_args = []):
+def gen_kernel_library(
+        name,
+        types,
+        tile_size,
+        output_types = None,
+        tags = [],
+        unroll_factors = None,
+        extra_args = []):
     """ Generate a library with kernels for a specific tensorflow op.
 
     Args:
       name: The name of the tensorflow op.
       types: The types ("f16", "f32", "f64") for which a kernel should be generated.
       tile_size: The tiling specification, e.g. "16x16".
-      unroll_factors: The unrolling specification, e.g. "4,4"
+      output_types: The output types for which a kernel should be generated. If
+                    specified, the i-th entry in types corresponds to the i-th
+                    entry in output_types. By default, output_types = types is
+                    assumed.
       tags: The tags which should be added to the library.
+      unroll_factors: The unrolling specification, e.g. "4,4"
       extra_args: Extra arguments to pass to the generator tool.
     """
 
+    if not output_types:
+        output_types = types
     if cuda_gpu_architectures() or rocm_gpu_architectures():
-        for type in types:
+        for (type, output_type) in zip(types, output_types):
             _gen_mlir_op(
                 name = name,
                 type = type,
+                output_type = output_type,
             )
             _gen_kernel_fatbin_rule(
-                name = "{name}_{type}_kernel_generator".format(name = name, type = type),
-                mlir_op = "{name}_{type}.mlir".format(name = name, type = type),
+                name = "{name}_{type}_{output_type}_kernel_generator".format(
+                    name = name,
+                    type = type,
+                    output_type = output_type,
+                ),
+                mlir_op = "{name}_{type}_{output_type}.mlir".format(
+                    name = name,
+                    type = type,
+                    output_type = output_type,
+                ),
                 data_type = type,
                 gpu_archs = rocm_gpu_architectures() + cuda_gpu_architectures(),
                 tile_size = tile_size,
@@ -184,16 +223,28 @@ def gen_kernel_library(name, types, tile_size, tags = [], unroll_factors = None,
 
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
             native.sh_test(
-                name = "{name}_{type}_gen_test".format(name = name, type = type),
+                name = "{name}_{type}_{output_type}_gen_test".format(
+                    name = name,
+                    type = type,
+                    output_type = output_type,
+                ),
                 srcs = ["build_test.sh"],
                 tags = ["no_rocm"],
                 args = [
                     "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
-                    "$(location {name}_{type}.mlir)".format(name = name, type = type),
+                    "$(location {name}_{type}_{output_type}.mlir)".format(
+                        name = name,
+                        type = type,
+                        output_type = output_type,
+                    ),
                 ],
                 size = "medium",
                 data = [
-                    ":{name}_{type}.mlir".format(name = name, type = type),
+                    ":{name}_{type}_{output_type}.mlir".format(
+                        name = name,
+                        type = type,
+                        output_type = output_type,
+                    ),
                     "//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel",
                 ],
             )
@@ -201,7 +252,11 @@ def gen_kernel_library(name, types, tile_size, tags = [], unroll_factors = None,
     native.cc_library(
         name = name + "_kernels",
         compatible_with = get_compatible_with_cloud(),
-        deps = if_gpu_is_configured([":{name}_{type}_kernel_generator".format(name = name, type = type) for type in types]),
+        deps = if_gpu_is_configured([":{name}_{type}_{output_type}_kernel_generator".format(
+            name = name,
+            type = type,
+            output_type = output_type,
+        ) for (type, output_type) in zip(types, output_types)]),
         linkstatic = 1,
         tags = tags,
     )

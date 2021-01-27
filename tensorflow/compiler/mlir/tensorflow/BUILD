@@ -17,6 +17,7 @@ package_group(
     includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/dtensor/...",
+        "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/tfrt/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/sparse_core/...",

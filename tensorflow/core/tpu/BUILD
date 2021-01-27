@@ -144,11 +144,10 @@ cc_library(
         ":tpu_api",
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
+        ":tpu_initializer_helper",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
-        "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
-        "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
@@ -166,6 +165,7 @@ cc_library(
     deps = [
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
+        ":tpu_initializer_helper",
         "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
@@ -264,8 +264,8 @@ cc_library(
         "//tensorflow/stream_executor/tpu:proto_helper",
         "//tensorflow/stream_executor/tpu:status_helper",
         "//tensorflow/stream_executor/tpu:tpu_executable_interface",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_id",
         "@com_google_absl//absl/types:span",
     ],
@@ -279,10 +279,7 @@ cc_library(
     deps = [
         ":tpu_api_dlsym_initializer",
         "//tensorflow/core/tpu:tpu_on_demand_compiler",
-        "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/core/tpu/ops",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
-        "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
     ],
 )
 

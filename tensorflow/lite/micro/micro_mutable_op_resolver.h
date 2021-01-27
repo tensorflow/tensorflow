@@ -138,6 +138,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParsePool);
   }
 
+  TfLiteStatus AddCast() {
+    return AddBuiltin(BuiltinOperator_CAST, Register_CAST(), ParseCast);
+  }
+
   TfLiteStatus AddCeil() {
     return AddBuiltin(BuiltinOperator_CEIL, tflite::ops::micro::Register_CEIL(),
                       ParseCeil);

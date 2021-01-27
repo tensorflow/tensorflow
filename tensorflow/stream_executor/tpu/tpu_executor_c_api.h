@@ -20,7 +20,6 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/tf_attrtype.h"
-#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 

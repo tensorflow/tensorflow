@@ -241,14 +241,61 @@ function install_macos_pip_deps {
   ${PIP_CMD} install --upgrade certifi
 
   # LINT.ThenChange(:linux_pip_installations_orig)
+  # LINT.ThenChange(:install_macos_pip_deps_no_venv)
   # LINT.ThenChange(:linux_pip_installations)
+}
+
+# This hack is unfortunately necessary for MacOS builds that use pip_new.sh
+# You cannot deactivate a virtualenv from a subshell.
+function install_macos_pip_deps_no_venv {
+
+  PIP_CMD="${1} -m pip"
+
+  # LINT.IfChange(mac_pip_installations)
+  # To have reproducible builds, these dependencies should be pinned always.
+  # Prefer pinning to the same version as in setup.py
+  # First, upgrade pypi wheels
+  ${PIP_CMD} install --upgrade setuptools pip wheel --user
+  # Now, install the deps, as listed in setup.py
+  ${PIP_CMD} install 'absl-py ~= 0.10' --user
+  ${PIP_CMD} install 'astunparse ~= 1.6.3' --user
+  ${PIP_CMD} install 'flatbuffers ~= 1.12.0' --user
+  ${PIP_CMD} install 'google_pasta ~= 0.2' --user
+  ${PIP_CMD} install 'h5py ~= 3.1.0' --user
+  ${PIP_CMD} install 'keras_preprocessing ~= 1.1.2' --user
+  ${PIP_CMD} install 'numpy ~= 1.19.2' --user
+  ${PIP_CMD} install 'opt_einsum ~= 3.3.0' --user
+  ${PIP_CMD} install 'protobuf >= 3.9.2' --user
+  ${PIP_CMD} install 'six ~= 1.15.0' --user
+  ${PIP_CMD} install 'termcolor ~= 1.1.0' --user
+  ${PIP_CMD} install 'typing_extensions ~= 3.7.4' --user
+  ${PIP_CMD} install 'wheel ~= 0.35' --user
+  ${PIP_CMD} install 'wrapt ~= 1.12.1' --user
+  # We need to pin gast dependency exactly
+  ${PIP_CMD} install 'gast == 0.4.0' --user
+  # Finally, install tensorboard and estimator
+  # Note that here we want the latest version that matches (b/156523241)
+  ${PIP_CMD} install --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a' --user
+  ${PIP_CMD} install --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0' --user
+  # Test dependencies
+  ${PIP_CMD} install 'grpcio ~= 1.34.0' --user
+  ${PIP_CMD} install 'portpicker ~= 1.3.1' --user
+  ${PIP_CMD} install 'scipy ~= 1.5.2' --user
+  ${PIP_CMD} install --upgrade certifi --user
+
+  # LINT.ThenChange(:install_macos_pip_deps)
 }
 
 function setup_venv_macos () {
   # First argument needs to be the python executable.
+  ${1} -m pip install virtualenv
   ${1} -m virtualenv tf_build_env
   source tf_build_env/bin/activate
   install_macos_pip_deps
+}
+
+function activate_venv_macos () {
+  source tf_build_env/bin/activate
 }
 
 function maybe_skip_v1 {
