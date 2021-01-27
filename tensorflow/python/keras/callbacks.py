@@ -27,6 +27,7 @@ import io
 import json
 import os
 import re
+import sys
 import time
 
 import numpy as np
@@ -2272,35 +2273,24 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self.update_freq == 'epoch':
       return
 
-    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
-    self._prev_summary_state.append({
-        'is_recording': summary_state.is_recording,
-        'writer': summary_state.writer,
-        'step': summary_state.step
-    })
-
-    if self.update_freq == 'epoch':
-      should_record = False
-      writer = None
-    else:
-      should_record = lambda: math_ops.equal(step % self.update_freq, 0)
-
-    summary_state.is_recording = should_record
-    summary_state.writer = writer
+    should_record = lambda: math_ops.equal(step % self.update_freq, 0)
     # TODO(b/151339474): Fix deadlock when not using .value() here.
-    summary_ops_v2.set_step(step.value())
+    summary_context = (writer.as_default(step.value()),
+                       summary_ops_v2.record_if(should_record))
+    self._prev_summary_state.append(summary_context)
+    summary_context[0].__enter__()
+    summary_context[1].__enter__()
 
   def _pop_writer(self):
     """Pops the current writer."""
     if self.update_freq == 'epoch':
       return
 
-    prev_state = self._prev_summary_state.pop()
-
-    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
-    summary_state.is_recording = prev_state['is_recording']
-    summary_state.writer = prev_state['writer']
-    summary_ops_v2.set_step(prev_state['step'])
+    # See _push_writer for the content of the previous_context, which is pair
+    # of context.
+    previous_context = self._prev_summary_state.pop()
+    previous_context[1].__exit__(*sys.exc_info())
+    previous_context[0].__exit__(*sys.exc_info())
 
   def _close_writers(self):
     for writer in self._writers.values():
