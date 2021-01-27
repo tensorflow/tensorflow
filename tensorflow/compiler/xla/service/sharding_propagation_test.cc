@@ -4140,11 +4140,9 @@ ENTRY entry {
       op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
   if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
     EXPECT_THAT(lhs->sharding(),
-                ShardingMetadata({CreateMetadata("b"), CreateMetadata("a"),
-                                  CreateMetadata("a")}));
+                ShardingMetadata({CreateMetadata("b"), CreateMetadata("a")}));
     EXPECT_THAT(rhs->sharding(),
-                ShardingMetadata({CreateMetadata("b"), CreateMetadata("a"),
-                                  CreateMetadata("b")}));
+                ShardingMetadata({CreateMetadata("b"), CreateMetadata("a")}));
     EXPECT_THAT(add->sharding(),
                 ShardingMetadata({CreateMetadata("b"), CreateMetadata("a")}));
 

@@ -212,12 +212,15 @@ bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
     new_group_members[new_group_id].erase(*device);
   });
   if (compatible) {
-    std::vector<OpMetadata> merged_metadata;
-    std::swap(merged_metadata, to_merge->metadata());
-    merged_metadata.reserve(to_merge->metadata().size() +
-                            old.metadata().size());
-    merged_metadata.insert(merged_metadata.end(), old.metadata().begin(),
-                           old.metadata().end());
+    std::vector<OpMetadata> merged_metadata(std::move(to_merge->metadata()));
+    merged_metadata.reserve(merged_metadata.size() + old.metadata().size());
+    const absl::flat_hash_set<OpMetadata, protobuf_util::ProtobufHashWrapper,
+                              protobuf_util::ProtobufEqualsWrapper>
+        metadata_set(merged_metadata.begin(), merged_metadata.end());
+    absl::c_copy_if(old.metadata(), std::back_inserter(merged_metadata),
+                    [&metadata_set](const OpMetadata& data) {
+                      return !ContainsKey(metadata_set, data);
+                    });
     if (replication == 1) {
       new_tile_dims.pop_back();
       new_tile.Reshape(new_tile_dims);
