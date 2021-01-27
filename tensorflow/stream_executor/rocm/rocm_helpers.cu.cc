@@ -5,7 +5,8 @@ namespace gpu {
 
 __global__ void broadcast_fp32_kernel(float* dst, int dst_stride, int batches,
                                       float* src, int size) {
-  dst += blockIdx.y * 4 * dst_stride;
+  dst += blockIdx.y * 4 * dst_stride + blockIdx.z * dst_stride * batches;
+  src += blockIdx.z * size;
   float* dst2 = dst + dst_stride;
   float* dst3 = dst + dst_stride*2;
   float* dst4 = dst + dst_stride*3;
@@ -24,12 +25,11 @@ __global__ void broadcast_fp32_kernel(float* dst, int dst_stride, int batches,
   }
 }
 
-void broadcast_fp32(void* stream, float* dst, int dst_stride, int batches,
+void broadcast_fp32(void* stream, float* dst, int dst_stride, int batches, int src_batches,
                     float* src, int size) {
   int x_blocks = (size+255)/256;
-  hipLaunchKernelGGL(broadcast_fp32_kernel, dim3(x_blocks, (batches+3)/4, 1), min(256, (int)size), 0,
+  hipLaunchKernelGGL(broadcast_fp32_kernel, dim3(x_blocks, (batches+3)/4, src_batches), min(256, (int)size), 0,
                      (hipStream_t)stream, dst, dst_stride, batches, src, size);
 }
-
 };  // namespace gpu
 };  // namespace stream_executor

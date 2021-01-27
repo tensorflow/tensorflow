@@ -49,7 +49,7 @@ namespace gpu {
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
 
 extern void broadcast_fp32(void* stream, float* dst, int dst_stride,
-                           int batches, float* src, int size);
+                           int batches, int src_batches, float* src, int size);
 
 namespace wrap {
 
@@ -1940,8 +1940,8 @@ struct memory_copy_op {
     uint64_t size;
     uint64_t count;
     uint64_t dst_stride;
+    uint64_t src_count;
 };
-
 
 static bool fold(memory_copy_op& y, const memory_copy_op& x) 
 {
@@ -1955,14 +1955,22 @@ static bool fold(memory_copy_op& y, const memory_copy_op& x)
     && x.size==y.size
     && (y.count==1 || x.dst_ptr==y.dst_ptr+y.count*y.dst_stride)
     && !misaligned
+    && y.src_count==1
     && !(dst_step & 3) ) {
     if(y.count==1)
       y.dst_stride=dst_step;
     y.count++;
     return true;
   }
-  else if(x.src_ptr==y.src_ptr+y.size && x.dst_ptr==y.dst_ptr+y.size && y.count==1) {
+  else if(x.src_ptr==y.src_ptr+y.size && x.dst_ptr==y.dst_ptr+y.size && y.count==1 && y.src_count==1) {
     y.size += x.size;
+    return true;
+  }
+  if(x.src_ptr == y.src_ptr+y.size*y.src_count
+      && x.dst_ptr == y.dst_ptr + y.dst_stride*y.src_count*y.count
+      && x.count == y.count
+      && x.dst_stride == y.dst_stride) {
+    y.src_count+=x.src_count;
     return true;
   }
   return false;
@@ -1988,26 +1996,29 @@ port::Status ReorganizeMemory(Stream* stream,
   size_t matrix_byte_size = batch_stride * sizeof(MAPPED_T);
 
   std::vector<memory_copy_op> ops;
-  ops.push_back(memory_copy_op{src_ptr, dst_ptr, matrix_byte_size, 1, 0});
+  ops.push_back(memory_copy_op{src_ptr, dst_ptr, matrix_byte_size, 1, 0, 1});
   for (int i = 1; i < batch_count; ++i) {
-    memory_copy_op& op = ops.back();
     src_ptr = reinterpret_cast<char*>(raw_ptrs[i]);
     dst_ptr = device_memory_ptr + i * matrix_byte_size;
 
-    memory_copy_op x{src_ptr, dst_ptr, matrix_byte_size, 1, 0};
-    if(fold(op, x))
-      continue;
-    if(ops.size()>1 && fold(ops[ops.size()-2], op))
+    memory_copy_op x{src_ptr, dst_ptr, matrix_byte_size, 1, 0, 1};
+    while(ops.size()>1 && fold(ops[ops.size()-2], ops.back())) {
       ops.pop_back();
+    }
+    memory_copy_op& op = ops.back();
+    if(fold(op, x)) {
+      continue;
+    }
     ops.push_back(x);
   }
-  if(ops.size()>1 && fold(ops[ops.size()-2], ops.back()))
+  while(ops.size()>1 && fold(ops[ops.size()-2], ops.back()))
     ops.pop_back();
+  int i=0;
   for (auto& x : ops) {
-    if(x.count>1) {
+    if(x.src_count>1 || x.count>1) {
       broadcast_fp32(AsGpuStreamValue(stream),
                      reinterpret_cast<float*>(x.dst_ptr),
-                     x.dst_stride >> 2, x.count,
+                     x.dst_stride >> 2, x.count, x.src_count,
                      reinterpret_cast<float*>(x.src_ptr),
                      x.size >> 2);
     }
@@ -2021,7 +2032,9 @@ port::Status ReorganizeMemory(Stream* stream,
           "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
       }
     }
+    i++;
   }
+  fflush(stdout);
   return port::Status::OK();
 }
 

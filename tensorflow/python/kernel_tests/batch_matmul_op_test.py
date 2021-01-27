@@ -55,13 +55,15 @@ class BatchMatmulOpTest(test.TestCase):
     return np.matmul(x, y)
 
   # Compares TensorFlow BatchMatmul with NumPy's matmul.
-  def _compare(self, x_in, y_in, adjoint_a, adjoint_b, static_shape):
+  def _compare(self, x_in, y_in, adjoint_a, adjoint_b, static_shape, dtol=None):
     x_t_shape = x_in.shape[:-2] + (x_in.shape[-1], x_in.shape[-2])
     y_t_shape = y_in.shape[:-2] + (y_in.shape[-1], y_in.shape[-2])
     x = x_in if not adjoint_a else x_in.reshape(x_t_shape)
     y = y_in if not adjoint_b else y_in.reshape(y_t_shape)
     is_floating = x.dtype != np.int32
     tol = 100 * np.finfo(x.dtype).eps if is_floating else 0
+    if dtol != None:
+      tol *= dtol
     with self.cached_session(use_gpu=is_floating) as sess:
       if static_shape:
         z0 = math_ops.matmul(x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
@@ -97,13 +99,14 @@ class BatchMatmulOpTest(test.TestCase):
 
   def _testBroadcasting(self, dtype, adjoint_a, adjoint_b, use_static_shape):
 
-    def CompareNonEmpty(self, a_shape, b_shape):
+    def CompareNonEmpty(self, a_shape, b_shape, tol=None):
       self._compare(
           GetRandomNormalInput(a_shape, dtype),
           GetRandomNormalInput(b_shape, dtype),
           adjoint_a,
           adjoint_b,
-          static_shape=use_static_shape)
+          static_shape=use_static_shape,
+          dtol=tol)
 
     CompareNonEmpty(self, [2, 3], [1, 3, 5])
     CompareNonEmpty(self, [1, 2, 3], [3, 5])
@@ -112,6 +115,10 @@ class BatchMatmulOpTest(test.TestCase):
     CompareNonEmpty(self, [2, 3], [5, 2, 3, 5])
     CompareNonEmpty(self, [4, 5, 1, 2, 3], [1, 1, 3, 5])
     CompareNonEmpty(self, [1, 2, 1, 4, 2, 1, 3, 4], [3, 2, 1, 1, 1, 2, 4, 2])
+    # need higher tolerance due to larger matrix sizes
+    CompareNonEmpty(self, [3, 8, 8, 5, 5], [3, 1, 8, 5, 7], tol=3)
+    CompareNonEmpty(self, [3, 8, 8, 5, 5], [3, 8, 1, 5, 7], tol=3)
+    CompareNonEmpty(self, [3, 1, 8, 5, 5], [3, 8, 1, 5, 7], tol=3)
 
   def _testEmpty(self, dtype, adjoint_a, adjoint_b, use_static_shape):
 
