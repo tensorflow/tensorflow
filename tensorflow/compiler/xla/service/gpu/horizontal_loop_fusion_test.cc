@@ -403,6 +403,40 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForDynamicUpdateSlice) {
   EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 }
 
+TEST_F(HorizontalLoopFusionTest, NegativeTestForSharedParam) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule BasicTest
+
+ fused_computation.1 {
+   arg.1 = f16[123]{0} parameter(0)
+   arg.2 = f16[123]{0} parameter(1)
+   ROOT mul.1 = f16[123]{0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.2 {
+   arg.1 = f16[123]{0} parameter(0)
+   arg.2 = f16[123]{0} parameter(1)
+   ROOT add.1 = f16[123]{0} add(arg.1, arg.2)
+ }
+
+ ENTRY entry_computation {
+   arg.1 = f16[123]{0} parameter(0)
+   // arg.2 is shared by fusion.1 and fusion.2
+   arg.2 = f16[123]{0} parameter(1)
+   arg.3 = f16[123]{0} parameter(2)
+   fusion.1 = f16[123]{0}
+       fusion(arg.1, arg.2), kind=kLoop, calls=fused_computation.1
+   fusion.2 = f16[123]{0}
+       fusion(arg.3, arg.2), kind=kLoop, calls=fused_computation.2
+   ROOT tuple.1 = (f16[123]{0}, f16[123]{0})
+       tuple(fusion.1, fusion.2)
+ }
+)")
+                    .ValueOrDie();
+
+  EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

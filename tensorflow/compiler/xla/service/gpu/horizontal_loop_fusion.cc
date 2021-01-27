@@ -203,6 +203,24 @@ bool HasOnlyRowMajorLayout(const HloInstruction& fusion_instr) {
   return true;
 }
 
+// Returns whether any operand of `instr` is a parameter instruction that
+// is shared with `fusion_instrs`.
+bool AnyOpndIsParamSharedAmongFusions(
+    const HloInstruction* instr,
+    const absl::flat_hash_set<HloInstruction*>& fusion_instrs) {
+  for (const HloInstruction* opnd : instr->operands()) {
+    if (opnd->opcode() != HloOpcode::kParameter) {
+      continue;
+    }
+    for (const HloInstruction* user : opnd->users()) {
+      if (user != instr && fusion_instrs.contains(user)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
     HloInstruction* consumer) {
   // First, find out all fusion instructions. We will filter out
@@ -229,6 +247,13 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
       continue;
     } else if (!HasOnlyRowMajorLayout(*instr)) {
       VLOG(2) << "Reject non-row-major fusion instr " << instr->ToString();
+      continue;
+    } else if (AnyOpndIsParamSharedAmongFusions(instr, fusion_instrs)) {
+      // Don't fuse fusions whose operands are parameter instructions that are
+      // shared among fusions because we cannot i/o alias the produced
+      // horizontal fusion due to the concat insertion.
+      VLOG(2) << "Reject the fusion instr because it shares parameter with"
+              << " other fusion candidates, instr: ", instr->ToString();
       continue;
     } else {
       VLOG(2) << "Find a fusion candidate " << instr->ToString();
