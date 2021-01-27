@@ -177,73 +177,6 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
        llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
 }
 
-int64_t GetAllocationIndex(mlir::BlockArgument func_arg) {
-  auto func_op =
-      mlir::cast<mlir::FuncOp>(func_arg.getParentRegion()->getParentOp());
-  return func_op
-      .getArgAttrOfType<mlir::IntegerAttr>(func_arg.getArgNumber(),
-                                           "lmhlo.alloc")
-      .getValue()
-      .getSExtValue();
-}
-
-static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
-  // For i1 memrefs, the underlying allocation is 8 bits.
-  if (type.getElementType().isInteger(/*width=*/1)) {
-    return type.getNumElements();
-  } else {
-    return type.getSizeInBits() / CHAR_BIT;
-  }
-}
-
-StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
-    mlir::Value v, absl::Span<const BufferAllocation> allocations) {
-  int64 size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
-
-  if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
-    return BufferAllocation::Slice(&allocations[GetAllocationIndex(arg)], 0,
-                                   size);
-  }
-
-  // We match the following patterns here:
-  //  base := ViewOp(arg) | get_global_memref (global_memref)
-  //  root := base | MemRefReinterpretCastOp(base)
-
-  if (mlir::Operation* op = v.getDefiningOp()) {
-    if (auto cast = mlir::dyn_cast<mlir::MemRefReinterpretCastOp>(op)) {
-      mlir::Value source = cast.getViewSource();
-      op = source.getDefiningOp();
-      if (!op) {
-        return Unimplemented("MemRefReinterpretCastOp has to wrap an op");
-      }
-    }
-    if (auto view = mlir::dyn_cast<mlir::ViewOp>(op)) {
-      return BufferAllocation::Slice(
-          &allocations[GetAllocationIndex(
-              view.source().cast<mlir::BlockArgument>())],
-          mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
-              .value()
-              .cast<mlir::IntegerAttr>()
-              .getValue()
-              .getSExtValue(),
-          size);
-    } else if (auto get_global = mlir::dyn_cast<mlir::GetGlobalMemrefOp>(op)) {
-      auto module = get_global->getParentOfType<mlir::ModuleOp>();
-      auto global = mlir::cast<mlir::GlobalMemrefOp>(
-          module.lookupSymbol(get_global.name()));
-      int64_t index =
-          global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-      return BufferAllocation::Slice(&allocations[index], 0,
-                                     allocations[index].size());
-    }
-    return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
-  }
-
-  return Unimplemented(
-      "Operand has to be in the form of ViewOp(arg) or "
-      "StaticMemRefCastOp(ViewOp(arg))");
-}
-
 bool BinarySearchDenseElementsAttr(::mlir::DenseIntElementsAttr elements,
                                    int64 v) {
   ::mlir::APInt value(sizeof(int64) * 8, v, /*isSigned=*/true);
@@ -1837,6 +1770,7 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
 
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   TF_ASSIGN_OR_RETURN(auto mlir_input, GetMlirEmitterInput(fusion));
+  auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(mlir_input.op);
 
   HloInstruction* root = fusion->fused_expression_root();
   if (fusion->IsInputFusion()) {
@@ -1938,16 +1872,21 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         LOG(FATAL) << "Bad opcode for input fusion: "
                    << fusion->fused_expression_root()->opcode();
     }
-  } else if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(
-                 fusion, ir_emitter_context_->buffer_assignment())) {
+  } else if (CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+                 fusion_op, ir_emitter_context_->allocations())) {
     // Fusion node with dynamic-update-slice as the root where the op's input
     // (i.e. array to update) shares the same slice as its output.  In this case
     // we have a special algorithm that modifies the output in place without
     // touching the un-updated elements.
+    CHECK_EQ(1, GetHloOutputs(mlir_input.op).size());
 
     // Set up kernel thunk and fused ir emitter.
-    std::unique_ptr<KernelThunk> fusion_thunk =
-        BuildKernelThunk(fusion, /*implements_whole_instruction=*/true);
+    std::vector<llvm_ir::IrArray> ir_arrays;
+    TF_ASSIGN_OR_RETURN(
+        auto fusion_thunk,
+        BuildKernelThunkForMlir(fusion_op, mlir_input.thunk_info,
+                                mlir_input.extra_slice, &ir_arrays));
+
     GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
                                             ir_emitter_context_->llvm_module(),
                                             &b_, GetNestedComputer());
@@ -1957,7 +1896,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
 
     // Array to write into.  Because this is an in-place operation, this is the
     // same as operand 0's array.
-    IrArray output_array = GetIrArray(*fusion, *fusion);
+    const IrArray& output_array = ir_arrays.back();
 
     LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
         update_shape, ir_emitter_context_->gpu_device_info());
@@ -1966,10 +1905,23 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     AddThunkToThunkSequence(std::move(fusion_thunk));
 
     FusedIrEmitter fused_emitter(&elemental_emitter);
-    BindFusionArguments(fusion, &fused_emitter);
+
+    TF_ASSIGN_OR_RETURN(
+        const HloComputation* fused_computation,
+        GetOrCreateSubComputationFromRegion(&fusion_op.region(),
+                                            /*is_fusion=*/true));
+
+    for (int i = 0; i < fused_computation->num_parameters(); i++) {
+      fused_emitter.BindGenerator(
+          fused_computation->parameter_instruction(i),
+          [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
+            return ir_arrays[i].EmitReadArrayElement(index, &b_);
+          });
+    }
 
     return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(
-        fusion, output_array, &fused_emitter, launch_dimensions, &b_);
+        fused_computation, output_array, &fused_emitter, launch_dimensions,
+        &b_);
   }
 
   CHECK_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kLoop)
