@@ -160,7 +160,8 @@ def HLO_CeilOp: HLO_UnaryElementwiseOp<"ceil",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_CeilOp;
 
 def HLO_ConvertOp : HLO_UnaryElementwiseOp<"convert",
-    [NoSideEffect], HLO_Tensor>, BASE_HLO_ConvertOp {
+    [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
+    BASE_HLO_ConvertOp {
   let builders = [
     OpBuilderDAG<(ins "Value":$operand, "Type":$result_element_ty)>];
 
@@ -196,7 +197,7 @@ def HLO_ImagOp: HLO_UnaryElementwiseOp<"imag",
 }
 
 def HLO_IsFiniteOp: HLO_UnaryElementwiseOp<"is_finite",
-    [NoSideEffect], HLO_Tensor>,
+    [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
     BASE_HLO_IsFiniteOp {
   let arguments = (ins HLO_FpTensor:$x);
   let results = (outs HLO_PredTensor:$y);
