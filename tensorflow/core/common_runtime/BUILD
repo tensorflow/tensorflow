@@ -1043,13 +1043,13 @@ cc_library(
     deps = [
         ":function",
         ":optimization_registry",
-        "@com_google_absl//absl/base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )
