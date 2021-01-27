@@ -3124,6 +3124,10 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
     TFL_VariadicTensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$outputs
   );
 
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r);
+  }];
+
   let hasOptions = 1;
 }
 
