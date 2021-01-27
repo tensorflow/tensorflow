@@ -49,15 +49,10 @@ done
 # Upload the built packages to pypi.
 for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
 
-  # deactivate the virtualenv for smoke test
-  deactivate
-
   # test the whl pip package
   chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
   ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${f}
   RETVAL=$?
-
-  activate_venv_macos
 
   # Upload the PIP package if whl test passes.
   if [ ${RETVAL} -eq 0 ]; then

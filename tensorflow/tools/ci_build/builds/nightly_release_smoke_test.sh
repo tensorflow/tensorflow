@@ -27,13 +27,17 @@ LINUX_GPU_MAX_WHL_SIZE=390M
 WIN_GPU_MAX_WHL_SIZE=252M
 
 function run_smoke_test() {
-  VENV_TMP_DIR=$(mktemp -d)
 
-  ${PYTHON_BIN_PATH} -m virtualenv -p ${PYTHON_BIN_PATH} "${VENV_TMP_DIR}" || \
-      die "FAILED: Unable to create virtualenv"
+  # Upload the PIP package if whl test passes.
+  if [ ${IN_VENV} -eq 0 ]; then
+    VENV_TMP_DIR=$(mktemp -d)
 
-  source "${VENV_TMP_DIR}/bin/activate" || \
-      die "FAILED: Unable to activate virtualenv "
+    ${PYTHON_BIN_PATH} -m virtualenv -p ${PYTHON_BIN_PATH} "${VENV_TMP_DIR}" || \
+        die "FAILED: Unable to create virtualenv"
+
+    source "${VENV_TMP_DIR}/bin/activate" || \
+        die "FAILED: Unable to activate virtualenv "
+  fi
 
   # install tensorflow
   python -m pip install ${WHL_NAME} || \
@@ -47,9 +51,14 @@ function run_smoke_test() {
   test_tf_whl_size
 
   RESULT=$?
-  # Deactivate from virtualenv.
-  deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
-  sudo rm -rf "${KOKORO_GFILE_DIR}/venv"
+
+  # Upload the PIP package if whl test passes.
+  if [ ${IN_VENV} -eq 0 ]; then
+    # Deactivate from virtualenv.
+    deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
+    sudo rm -rf "${KOKORO_GFILE_DIR}/venv"
+  fi
+
   return $RESULT
 }
 
@@ -133,5 +142,6 @@ if [[ -z "${1}" ]]; then
   return 1
 fi
 
+IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
 WHL_NAME=${1}
 run_smoke_test
