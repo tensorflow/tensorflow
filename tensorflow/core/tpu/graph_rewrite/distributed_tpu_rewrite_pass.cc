@@ -66,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/incomplete_nodedef_builder.h"
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/tpu/tpu_fingerprint_utils.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -4117,23 +4118,6 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
     node->ClearAttr(kTPUReplicateAttr);
     node->ClearAttr(kOutsideCompilationAttr);
   }
-  return Status::OK();
-}
-
-/* static */
-Status DistributedTPURewritePass::FingerprintFunctionLibrary(
-    const FunctionLibraryDefinition& library, uint64* fingerprint) {
-  // TODO(phawkins): rather than fingerprinting the entire function library,
-  // consider fingerprinting just the transitive dependencies of a
-  // computation.
-  std::string serialized;
-  FunctionDefLibrary library_proto = library.ToProto();
-  if (library_proto.ByteSizeLong() >= 1.5 * 1024 * 1024 * 1024) {
-    LOG(WARNING) << "Serializing large proto, size: "
-                 << library_proto.ByteSizeLong();
-  }
-  TF_RET_CHECK(SerializeToStringDeterministic(library_proto, &serialized));
-  *fingerprint = TpuCompileInterface::Get()->FingerprintString(serialized);
   return Status::OK();
 }
 

@@ -298,3 +298,16 @@ cc_library(
     ],
     alwayslink = True,
 )
+
+cc_library(
+    name = "tpu_fingerprint_utils",
+    srcs = ["tpu_fingerprint_utils.cc"],
+    hdrs = ["tpu_fingerprint_utils.h"],
+    deps = [
+        ":tpu_compile_interface",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal_impl",
+        "//tensorflow/core/lib/core:status",
+    ],
+)

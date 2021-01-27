@@ -159,6 +159,7 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:topology_proto_cc",
         "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/tpu:tpu_fingerprint_utils",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/stream_executor/tpu:tpu_topology_external",
