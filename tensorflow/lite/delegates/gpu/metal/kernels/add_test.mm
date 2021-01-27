@@ -34,10 +34,6 @@ limitations under the License.
   tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
 }
 
-- (void)setUp {
-  [super setUp];
-}
-
 - (void)testAddTwoEqualTensors {
   auto status = AddTwoEqualTensorsTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
