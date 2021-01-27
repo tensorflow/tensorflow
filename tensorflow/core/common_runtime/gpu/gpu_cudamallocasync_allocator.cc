@@ -84,6 +84,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   cerr = cudaMemPoolSetAttribute(pool_, cudaMemPoolAttrReleaseThreshold,
                                  reinterpret_cast<void*>(&pool_size));
   if (compute_stats) {
+    mutex_lock lock(lock_);
     stats_.bytes_limit = static_cast<int64>(pool_size);
   } // If not set, it means we do not compute stats.
   if (cerr != cudaSuccess) {
@@ -132,6 +133,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
   if (res != cudaSuccess) {
     size_t free, total;
     cudaMemGetInfo(&free, &total);
+    mutex_lock lock(lock_);
     LOG(ERROR) << Name() << " cudaMallocAsync failed to allocate " << num_bytes
                << "\n Error name: " << cudaGetErrorName(res)
                << "\n Error sting: " << cudaGetErrorString(res)
@@ -142,6 +144,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
 
   // Update stats.
   if (stats_.bytes_limit.has_value()) {
+    mutex_lock lock(lock_);
     ++stats_.num_allocs;
     stats_.bytes_in_use += num_bytes;
     stats_.peak_bytes_in_use =
@@ -171,6 +174,7 @@ void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
 
   // Updates the stats.
   if (stats_.bytes_limit.has_value()) {
+    mutex_lock lock(lock_);
     DCHECK(size_map_.contains(ptr));
     size_t size = size_map_[ptr];
     stats_.bytes_in_use -= size;
