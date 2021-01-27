@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-const int kBasicInputOutputSize = 16;
+constexpr int kBasicInputOutputSize = 16;
 const int basic_input_dims[] = {4, 4, 2, 2, 1};
 const float basic_input[kBasicInputOutputSize] = {
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
