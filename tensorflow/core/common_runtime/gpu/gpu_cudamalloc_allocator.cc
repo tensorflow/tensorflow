@@ -61,7 +61,14 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
 #ifdef GOOGLE_CUDA
   // free with cudaFree
   CUresult res = cuMemFree(reinterpret_cast<CUdeviceptr>(ptr));
-  if (res != CUDA_SUCCESS) {
+  if (res == CUDA_ERROR_DEINITIALIZED) {
+    // It happens with multi-GPU that TF free the GPU allocation after
+    // the driver is unloaded. It is safe to ignore this error here.
+    // cuGetErrorName and cuGetErrorString doesn't return any useful
+    // information here.
+    // TODO: Find how to fix the shutdown steps in TF.
+    VLOG(1) << "Ignoring CUDA_ERROR_DEINITIALIZED Error";
+  } else if (res != CUDA_SUCCESS) {
     const char* error_name;
     const char* error_string;
     cuGetErrorName(res, &error_name);

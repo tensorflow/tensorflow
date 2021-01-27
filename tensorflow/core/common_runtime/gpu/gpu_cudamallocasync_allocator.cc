@@ -136,7 +136,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     mutex_lock lock(lock_);
     LOG(ERROR) << Name() << " cudaMallocAsync failed to allocate " << num_bytes
                << "\n Error name: " << cudaGetErrorName(res)
-               << "\n Error sting: " << cudaGetErrorString(res)
+               << "\n Error string: " << cudaGetErrorString(res)
                << "\n Free memory/Total memory: " << free << "/" << total
                << "\n Stats: \n" << stats_.DebugString();
     return nullptr;
@@ -161,13 +161,19 @@ void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
 #if CUDA_VERSION < 11020 || !defined(GOOGLE_CUDA)
 #else
   cudaError_t res = cudaFreeAsync(ptr, cuda_stream_);
-  if (res != cudaSuccess) {
+  if (res == cudaErrorCudartUnloading) {
+    // It happens with multi-GPU that TF free the GPU allocation after
+    // the driver is unloaded. It is safe to ignore this error here.
+    // TODO: Find how to fix the shutdown steps in TF.
+    VLOG(1) << "Ignoring Error: " << cudaGetErrorName(res)
+	    << " \nError string: " << cudaGetErrorString(res);
+  } else if (res != cudaSuccess) {
     size_t free, total;
     se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
     cudaMemGetInfo(&free, &total);
     LOG(ERROR) << "cudaFreeAsync failed to free " << ptr
                << "\n Error name: " << cudaGetErrorName(res)
-               << "\n Error sting: " << cudaGetErrorString(res)
+               << "\n Error string: " << cudaGetErrorString(res)
                << "\n Free memory/Total memory: " << free << "/" << total
                << "\n Stats: \n" << stats_.DebugString();
   }
