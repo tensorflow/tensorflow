@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
@@ -242,11 +243,22 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent) {
   return changed;
 }
 
-bool GpuMultiOutputFusion::DoMultiOutputFusion() {
+StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   bool changed = false;
   RecomputeReachability();
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
+
+  auto dump_fusion_state = [&] {
+    if (computation_->parent()
+            ->config()
+            .debug_options()
+            .xla_dump_fusion_visualization()) {
+      TF_RETURN_IF_ERROR(
+          RegisterFusionState(*computation_, "GpuMultiOutputFusion"));
+    }
+    return Status::OK();
+  };
 
   while (!defs_before_uses.empty()) {
     // Traverse the HLO in uses-before-defs order by removing instruction from
@@ -290,6 +302,8 @@ bool GpuMultiOutputFusion::DoMultiOutputFusion() {
         CHECK_EQ(0, producer->user_count());
         TF_CHECK_OK(computation_->RemoveInstruction(producer));
       }
+
+      TF_RETURN_IF_ERROR(dump_fusion_state());
       RecomputeReachability();
       continue;
     }
@@ -309,6 +323,8 @@ bool GpuMultiOutputFusion::DoMultiOutputFusion() {
       CHECK_EQ(0, producer->user_count());
       TF_CHECK_OK(computation_->RemoveInstruction(producer));
     }
+
+    TF_RETURN_IF_ERROR(dump_fusion_state());
     RecomputeReachability();
   }
   return changed;
@@ -318,7 +334,8 @@ StatusOr<bool> GpuMultiOutputFusion::Run(HloModule* module) {
   bool changed = false;
   for (auto* computation : module->MakeNonfusionComputations()) {
     computation_ = computation;
-    if (DoMultiOutputFusion()) {
+    TF_ASSIGN_OR_RETURN(bool fusion_changed, DoMultiOutputFusion());
+    if (fusion_changed) {
       changed = true;
     }
   }

@@ -77,7 +77,7 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
  public:
   PjRtTpuClient(LocalClient* client,
                 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-                int host_id);
+                int task_id);
 
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -90,8 +90,8 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
 
 PjRtTpuClient::PjRtTpuClient(
     LocalClient* client,
-    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int host_id)
-    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices), host_id,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int task_id)
+    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices), task_id,
                                /*allocator=*/nullptr,
                                /*host_memory_allocator=*/nullptr,
                                /*should_stage_host_to_device_transfers=*/false,
@@ -155,7 +155,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
     auto it = core_id_to_device_ordinal.find(core.Id());
     int device_ordinal =
         (it != core_id_to_device_ordinal.end()) ? it->second : -1;
-    int host_id = topology.IdForHost(core.host_coordinates());
+    int task_id = topology.IdForHost(core.host_coordinates());
     const tf_tpu::TpuDimensionsExternal coords = core.chip_coordinates();
     std::array<int, 3> coords_array = {coords.x, coords.y, coords.z};
     std::unique_ptr<LocalDeviceState> local_device_state;
@@ -163,7 +163,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
       local_device_state = std::move(local_device_states[device_ordinal]);
     }
     auto device = absl::make_unique<PjRtTpuDevice>(
-        core, std::move(local_device_state), host_id, coords_array,
+        core, std::move(local_device_state), task_id, coords_array,
         std::string(tf_tpu::TpuVersionEnumToString(topology.version())));
     devices.push_back(std::move(device));
   }
@@ -214,10 +214,10 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
 
   TF_ASSIGN_OR_RETURN(auto devices,
                       GetTpuDevices(client, std::move(local_device_states)));
-  int host_id = platform->GetTpuHostLocation().Id();
+  int task_id = platform->GetTpuHostLocation().Id();
 
   return std::shared_ptr<PjRtClient>(
-      absl::make_unique<PjRtTpuClient>(client, std::move(devices), host_id));
+      absl::make_unique<PjRtTpuClient>(client, std::move(devices), task_id));
 }
 
 }  // namespace xla

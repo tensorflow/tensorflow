@@ -195,10 +195,6 @@ def TFL_StatefulTensor : TypeAlias<AnyTensor, "stateful tensor">;
 // Rank/Shape helpers.
 //===----------------------------------------------------------------------===//
 
-// Returns true of operand is none type.
-class TFL_OperandIsNoneType<int i> :
-  CPred<"$_op.getOperand(" # i # ").getType().isa<NoneType>()">;
-
 class TFL_OperandIsUnrankedPred<int n> :
   CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">;
 
@@ -260,44 +256,6 @@ class TFL_Operand0DOr1ElementTensor<int x> :
     Or<[TFL_OperandHasKnownRank<x, 0>,
         And<[TFL_OperandHasKnownRank<x, 1>, TFL_OperandDimEquals<x, 0, 1>]>]>>;
 
-// Return true if i-th dim of x-th operand is the same as j-th dim of y-th
-// operand or any of those operands does not have static shape.
-class TFL_OperandsHaveSameDims<int x, int y, int i, int j> :
-    Or<[TFL_OperandIsUnrankedPred<x>,
-        TFL_OperandIsUnrankedPred<y>,
-        CPred<"!$_op.getOperand(" # x #
-          ").getType().cast<ShapedType>().hasStaticShape()">,
-        CPred<"!$_op.getOperand(" # y #
-          ").getType().cast<ShapedType>().hasStaticShape()">,
-        CPred<"$_op.getOperand(" # x #
-          ").getType().cast<ShapedType>().getShape()[" # i # "] == "
-          "$_op.getOperand(" # y #
-          ").getType().cast<ShapedType>().getShape()[" # j # "]">]>;
-
-class TFL_OperandsHaveSameDimsTrait<int x, int y, int i, int j> :
-  PredOpTrait<"dim " # i # " of operand " # x # " equals to dim " # j #
-    " of operand " # y,
-    TFL_OperandsHaveSameDims<x, y, i, j>>;
-
-// Return true if number of elements of x-th operand is the same as j-th dim of
-// y-th operand or any of those operands does not have static shape.
-class TFL_NumElementsEqualsDim<int x, int y, int j> :
-  Or<[TFL_OperandIsUnrankedPred<x>,
-      TFL_OperandIsUnrankedPred<y>,
-      CPred<"!$_op.getOperand(" # x #
-        ").getType().cast<ShapedType>().hasStaticShape()">,
-      CPred<"!$_op.getOperand(" # y #
-        ").getType().cast<ShapedType>().hasStaticShape()">,
-      CPred<"$_op.getOperand(" # x #
-        ").getType().cast<ShapedType>().getNumElements() == "
-        "$_op.getOperand(" # y #
-        ").getType().cast<ShapedType>().getShape()[" # j # "]">]>;
-
-class TFL_NumElementsEqualsDimTrait<int x, int y, int j> :
-  PredOpTrait<"operand " # x # " has num of elements equals to dim " # j #
-    " of operand " # y,
-    TFL_NumElementsEqualsDim<x, y, j>>;
-
 // tf.uint8 and tf.quint8 are mapped to the same tflite types, so they are equal
 // when used as element types.
 class TFL_TFTypesWithSameBits<int i, int j, int num> :
@@ -317,7 +275,7 @@ class TFL_TFOperandTypesWithSameBits<int i, int j, int num> :
 class TFL_OperandIsNoneOrHasRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
     Or<[
-      TFL_OperandIsNoneType<n>,
+      CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
       TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() == " # m>]>>;
@@ -325,7 +283,7 @@ class TFL_OperandIsNoneOrHasRank<int n, int m> :
 class TFL_OperandIsNoneOrHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
     Or<[
-      TFL_OperandIsNoneType<n>,
+      CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
       TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
@@ -1638,17 +1596,16 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 def TFL_FillOp: TFL_Op<"fill", [
     NoSideEffect,
     PredOpTrait<"input and result must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 1>>,
-    NoQuantizableResult]> {
+      TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "Fill the tensor with given value.";
   let description = [{
     Fill the tensor with given value.
   }];
 
   let arguments = (ins TFL_I32OrI64Tensor:$dims,
-                   TFL_TensorOf<[F32, I32, I64, I1, QI8, TFL_Str]>:$input);
+                   TFL_TensorOf<[F32, I32, I64, I1, QI8, QI16, TFL_Str]>:$input);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, QI8, TFL_Str]>:$result);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, QI8, QI16, TFL_Str]>:$result);
 
   let hasOptions = 0;
 }
@@ -3166,6 +3123,10 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
     TFL_VariadicTensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$outputs
   );
 
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r);
+  }];
+
   let hasOptions = 1;
 }
 
@@ -4593,54 +4554,6 @@ the dimension is padded with zeros.
   let results = (outs
     TFL_Complex64Tensor:$output
   );
-}
-
-def TFL_Conv3DOp : TFL_Op<"conv_3d", [
-    NoSideEffect,
-    AccumulatorUniformScale<2, 0, 1>,
-    TFL_OperandHasRank<0, 5>,
-    TFL_OperandHasRank<1, 5>,
-    // Channel dimension in input and filter should match.
-    TFL_OperandsHaveSameDimsTrait<0, 1, 4, 3>,
-    PredOpTrait<"input and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    PredOpTrait<"bias and output must have same element type",
-      Or<[
-        TFL_OperandIsNoneType<2>,
-        TFL_TCresVTEtIsSameAsOp<0, 2>]>>,
-    PredOpTrait<"bias must has num of elements equals to 4th dim of filter",
-      Or<[
-        TFL_OperandIsNoneType<2>,
-        TFL_NumElementsEqualsDim<2, 1, 4>]>>]> {
-  let summary = "Convolution 3D operator";
-
-  let description = [{
-    Performs convolution operation on 3D inputs.
-    Inputs:
-      `inputs[0]`: required: the input activation tensor
-      `inputs[1]`: required: the filter weight tensor
-      `inputs[2]`: optional: the bias tensor
-  }];
-
-  let arguments = (ins
-    TFL_TensorOf<[F32]>:$input,
-    TFL_TensorOf<[F32]>:$filter,
-    TFL_TensorOfOrNone<[F32]>:$bias,
-    I32Attr:$dilation_d_factor,
-    I32Attr:$dilation_h_factor,
-    I32Attr:$dilation_w_factor,
-    TFL_AFAttr:$fused_activation_function,
-    TFL_PaddingAttr:$padding,
-    I32Attr:$stride_d,
-    I32Attr:$stride_h,
-    I32Attr:$stride_w
-  );
-
-  let results = (outs TFL_TensorOf<[F32]>:$output);
-
-  let hasOptions = 1;
-
-  let customOption = "Conv3DOptions";
 }
 
 #endif // TFL_OPS

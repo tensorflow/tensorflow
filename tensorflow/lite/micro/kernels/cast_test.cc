@@ -12,206 +12,106 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stdint.h>
 
-#include <complex>
-#include <vector>
-
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 namespace tflite {
+namespace testing {
 namespace {
 
-using ::testing::ElementsAreArray;
+void TestCastFloatToInt8(const int* input_dims_data, const float* input_data,
+                         const int8_t* expected_output_data,
+                         int8_t* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(input_dims_data);
+  const int output_dims_count = ElementCount(*output_dims);
+  constexpr int inputs_size = 1;
+  constexpr int outputs_size = 1;
+  constexpr int tensors_size = inputs_size + outputs_size;
+  TfLiteTensor tensors[tensors_size] = {
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
+  };
 
-class CastOpModel : public SingleOpModel {
- public:
-  CastOpModel(const TensorData& input, const TensorData& output) {
-    input_ = AddInput(input);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_CAST, BuiltinOptions_CastOptions,
-                 CreateCastOptions(builder_).Union());
-    BuildInterpreter({GetShape(input_)});
+  int inputs_array_data[] = {1, 0};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {1, 1};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
+
+  const TfLiteRegistration registration = Register_CAST();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+
+  for (int i = 0; i < output_dims_count; ++i) {
+    TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
   }
-
-  int input() const { return input_; }
-  int output() const { return output_; }
-
- protected:
-  int input_;
-  int output_;
-};
-
-TEST(CastOpModel, CastInt16ToFloat) {
-  CastOpModel m({TensorType_INT16, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
-  m.PopulateTensor<int16_t>(m.input(), {100, 200, 300, 400, 500, 600});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<float>(m.output()),
-              ElementsAreArray({100.f, 200.f, 300.f, 400.f, 500.f, 600.f}));
 }
 
-TEST(CastOpModel, CastInt16ToInt32) {
-  CastOpModel m({TensorType_INT16, {2, 3}}, {TensorType_INT32, {2, 3}});
-  m.PopulateTensor<int16_t>(m.input(), {100, 200, 300, 400, 500, 600});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
-              ElementsAreArray({100, 200, 300, 400, 500, 600}));
-}
+void TestCastInt8ToFloat(const int* input_dims_data, const int8_t* input_data,
+                         const float* expected_output_data,
+                         float* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(input_dims_data);
+  const int output_dims_count = ElementCount(*output_dims);
+  constexpr int inputs_size = 1;
+  constexpr int outputs_size = 1;
+  constexpr int tensors_size = inputs_size + outputs_size;
+  TfLiteTensor tensors[tensors_size] = {
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
+  };
 
-TEST(CastOpModel, CastInt32ToFloat) {
-  CastOpModel m({TensorType_INT32, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
-  m.PopulateTensor<int32_t>(m.input(), {100, 200, 300, 400, 500, 600});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<float>(m.output()),
-              ElementsAreArray({100.f, 200.f, 300.f, 400.f, 500.f, 600.f}));
-}
+  int inputs_array_data[] = {1, 0};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {1, 1};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-TEST(CastOpModel, CastFloatToInt32) {
-  CastOpModel m({TensorType_FLOAT32, {3, 2}}, {TensorType_INT32, {3, 2}});
-  m.PopulateTensor<float>(m.input(), {100.f, 20.f, 3.f, 0.4f, 0.999f, 1.1f});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
-              ElementsAreArray({100, 20, 3, 0, 0, 1}));
-}
+  const TfLiteRegistration registration = Register_CAST();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
 
-TEST(CastOpModel, CastFloatToInt16) {
-  CastOpModel m({TensorType_FLOAT32, {3, 2}}, {TensorType_INT16, {3, 2}});
-  m.PopulateTensor<float>(m.input(), {100.f, 20.f, 3.f, 0.4f, 0.999f, 1.1f});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<int16_t>(m.output()),
-              ElementsAreArray({100, 20, 3, 0, 0, 1}));
-}
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-TEST(CastOpModel, CastInt64ToFloat) {
-  CastOpModel m({TensorType_INT64, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
-  m.PopulateTensor<int64_t>(m.input(), {100, 200, 300, 400, 500, 600});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<float>(m.output()),
-              ElementsAreArray({100.f, 200.f, 300.f, 400.f, 500.f, 600.f}));
-}
-
-TEST(CastOpModel, CastFloatToInt64) {
-  CastOpModel m({TensorType_FLOAT32, {3, 2}}, {TensorType_INT64, {3, 2}});
-  m.PopulateTensor<float>(m.input(), {100.f, 20.f, 3.f, 0.4f, 0.999f, 1.1f});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<int64_t>(m.output()),
-              ElementsAreArray({100, 20, 3, 0, 0, 1}));
-}
-
-TEST(CastOpModel, CastFloatToBool) {
-  CastOpModel m({TensorType_FLOAT32, {3, 2}}, {TensorType_BOOL, {3, 2}});
-  m.PopulateTensor<float>(m.input(), {100.f, -1.0f, 0.f, 0.4f, 0.999f, 1.1f});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<bool>(m.output()),
-              ElementsAreArray({true, true, false, true, true, true}));
-}
-
-TEST(CastOpModel, CastBoolToFloat) {
-  CastOpModel m({TensorType_BOOL, {3, 2}}, {TensorType_FLOAT32, {3, 2}});
-  m.PopulateTensor<bool>(m.input(), {true, true, false, true, false, true});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<float>(m.output()),
-              ElementsAreArray({1.f, 1.0f, 0.f, 1.0f, 0.0f, 1.0f}));
-}
-
-TEST(CastOpModel, CastFloatToUInt8) {
-  CastOpModel m({TensorType_FLOAT32, {3, 2}}, {TensorType_UINT8, {3, 2}});
-  m.PopulateTensor<float>(m.input(), {100.f, 1.0f, 0.f, 0.4f, 1.999f, 1.1f});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
-              ElementsAreArray({100, 1, 0, 0, 1, 1}));
-}
-
-TEST(CastOpModel, CastUInt8ToFloat) {
-  CastOpModel m({TensorType_UINT8, {3, 2}}, {TensorType_FLOAT32, {3, 2}});
-  m.PopulateTensor<uint8_t>(m.input(), {123, 0, 1, 2, 3, 4});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<float>(m.output()),
-              ElementsAreArray({123.f, 0.f, 1.f, 2.f, 3.f, 4.f}));
-}
-
-TEST(CastOpModel, CastInt32ToUInt8) {
-  CastOpModel m({TensorType_INT32, {3, 2}}, {TensorType_UINT8, {3, 2}});
-  m.PopulateTensor<int32_t>(m.input(), {100, 1, 200, 2, 255, 3});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
-              ElementsAreArray({100, 1, 200, 2, 255, 3}));
-}
-
-TEST(CastOpModel, CastUInt8ToInt32) {
-  CastOpModel m({TensorType_UINT8, {3, 2}}, {TensorType_INT32, {3, 2}});
-  m.PopulateTensor<uint8_t>(m.input(), {100, 1, 200, 2, 255, 3});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
-              ElementsAreArray({100, 1, 200, 2, 255, 3}));
-}
-
-TEST(CastOpModel, CastComplex64ToFloat) {
-  CastOpModel m({TensorType_COMPLEX64, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
-  m.PopulateTensor<std::complex<float>>(
-      m.input(),
-      {std::complex<float>(1.0f, 11.0f), std::complex<float>(2.0f, 12.0f),
-       std::complex<float>(3.0f, 13.0f), std::complex<float>(4.0f, 14.0f),
-       std::complex<float>(5.0f, 15.0f), std::complex<float>(6.0f, 16.0f)});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<float>(m.output()),
-              ElementsAreArray({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
-}
-
-TEST(CastOpModel, CastFloatToComplex64) {
-  CastOpModel m({TensorType_FLOAT32, {2, 3}}, {TensorType_COMPLEX64, {2, 3}});
-  m.PopulateTensor<float>(m.input(), {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
-  m.Invoke();
-  EXPECT_THAT(
-      m.ExtractVector<std::complex<float>>(m.output()),
-      ElementsAreArray(
-          {std::complex<float>(1.0f, 0.0f), std::complex<float>(2.0f, 0.0f),
-           std::complex<float>(3.0f, 0.0f), std::complex<float>(4.0f, 0.0f),
-           std::complex<float>(5.0f, 0.0f), std::complex<float>(6.0f, 0.0f)}));
-}
-
-TEST(CastOpModel, CastComplex64ToInt) {
-  CastOpModel m({TensorType_COMPLEX64, {2, 3}}, {TensorType_INT32, {2, 3}});
-  m.PopulateTensor<std::complex<float>>(
-      m.input(),
-      {std::complex<float>(1.0f, 11.0f), std::complex<float>(2.0f, 12.0f),
-       std::complex<float>(3.0f, 13.0f), std::complex<float>(4.0f, 14.0f),
-       std::complex<float>(5.0f, 15.0f), std::complex<float>(6.0f, 16.0f)});
-  m.Invoke();
-  EXPECT_THAT(m.ExtractVector<int>(m.output()),
-              ElementsAreArray({1, 2, 3, 4, 5, 6}));
-}
-
-TEST(CastOpModel, CastIntToComplex64) {
-  CastOpModel m({TensorType_INT32, {2, 3}}, {TensorType_COMPLEX64, {2, 3}});
-  m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6});
-  m.Invoke();
-  EXPECT_THAT(
-      m.ExtractVector<std::complex<float>>(m.output()),
-      ElementsAreArray(
-          {std::complex<float>(1.0f, 0.0f), std::complex<float>(2.0f, 0.0f),
-           std::complex<float>(3.0f, 0.0f), std::complex<float>(4.0f, 0.0f),
-           std::complex<float>(5.0f, 0.0f), std::complex<float>(6.0f, 0.0f)}));
-}
-
-TEST(CastOpModel, CastComplex64ToComplex64) {
-  CastOpModel m({TensorType_COMPLEX64, {2, 3}}, {TensorType_COMPLEX64, {2, 3}});
-  m.PopulateTensor<std::complex<float>>(
-      m.input(),
-      {std::complex<float>(1.0f, 11.0f), std::complex<float>(2.0f, 12.0f),
-       std::complex<float>(3.0f, 13.0f), std::complex<float>(4.0f, 14.0f),
-       std::complex<float>(5.0f, 15.0f), std::complex<float>(6.0f, 16.0f)});
-  m.Invoke();
-  EXPECT_THAT(
-      m.ExtractVector<std::complex<float>>(m.output()),
-      ElementsAreArray(
-          {std::complex<float>(1.0f, 11.0f), std::complex<float>(2.0f, 12.0f),
-           std::complex<float>(3.0f, 13.0f), std::complex<float>(4.0f, 14.0f),
-           std::complex<float>(5.0f, 15.0f),
-           std::complex<float>(6.0f, 16.0f)}));
+  for (int i = 0; i < output_dims_count; ++i) {
+    TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
+  }
 }
 
 }  // namespace
+}  // namespace testing
 }  // namespace tflite
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(CastFloatToInt8) {
+  int8_t output_data[6];
+  const int input_dims[] = {1, 3, 2};
+
+  // TODO(b/178391195): Test negative and out-of-range numbers.
+  const float input_values[] = {100.f, 1.0f, 0.f, 0.4f, 1.999f, 1.1f};
+  const int8_t golden[] = {100, 1, 0, 0, 1, 1};
+  tflite::testing::TestCastFloatToInt8(input_dims, input_values, golden,
+                                       output_data);
+}
+
+TF_LITE_MICRO_TEST(CastInt8ToFloat) {
+  float output_data[6];
+  const int input_dims[] = {1, 3, 2};
+  const int8_t input_values[] = {123, 0, 1, 2, 3, 4};
+  const float golden[] = {123.f, 0.f, 1.f, 2.f, 3.f, 4.f};
+  tflite::testing::TestCastInt8ToFloat(input_dims, input_values, golden,
+                                       output_data);
+}
+
+TF_LITE_MICRO_TESTS_END

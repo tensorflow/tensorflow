@@ -383,6 +383,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitConstant(instr);
     case HloOpcode::kReduce:
       return EmitReduceOp(instr);
+    case HloOpcode::kRngGetAndUpdateState:
+      return EmitRngGetAndUpdateStateOp(instr);
     default:
       llvm::errs() << instr->ToString();
       return tensorflow::errors::Internal(
@@ -1012,9 +1014,11 @@ StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
   all_reduce_op->setAttr(replica_groups_attr.first, replica_groups_attr.second);
   all_reduce_op.constrain_layoutAttr(
       builder_.getBoolAttr(all_reduce->constrain_layout()));
-  all_reduce_op.channel_idAttr(mlir::mhlo::ChannelHandle::get(
-      builder_.getI64IntegerAttr(all_reduce->channel_id().value_or(0)),
-      builder_.getI64IntegerAttr(0), builder_.getContext()));
+  if (all_reduce->channel_id().has_value()) {
+    all_reduce_op.channel_idAttr(mlir::mhlo::ChannelHandle::get(
+        builder_.getI64IntegerAttr(all_reduce->channel_id().value()),
+        builder_.getI64IntegerAttr(0), builder_.getContext()));
+  }
   all_reduce_op.use_global_device_idsAttr(
       builder_.getBoolAttr(all_reduce->use_global_device_ids()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
@@ -1191,6 +1195,16 @@ xla::StatusOr<lmhlo::DotOp> LhloDialectEmitter::EmitDotOp(
   dot.precision_configAttr(
       xla::ConvertPrecisionConfig(&hlo_dot->precision_config(), &builder_));
   return dot;
+}
+
+xla::StatusOr<lmhlo::RngGetAndUpdateStateOp>
+LhloDialectEmitter::EmitRngGetAndUpdateStateOp(
+    const xla::HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(
+      auto rng, CreateOpWithoutAttrs<lmhlo::RngGetAndUpdateStateOp>(instr));
+  auto hlo_rng = xla::Cast<xla::HloRngGetAndUpdateStateInstruction>(instr);
+  rng.deltaAttr(builder_.getI64IntegerAttr(hlo_rng->delta()));
+  return rng;
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(

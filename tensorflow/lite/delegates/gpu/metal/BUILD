@@ -256,6 +256,7 @@ objc_library(
     ],
     sdk_frameworks = ["Metal"],
     deps = [
+        ":common",
         ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",

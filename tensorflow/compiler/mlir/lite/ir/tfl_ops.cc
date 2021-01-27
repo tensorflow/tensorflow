@@ -1654,6 +1654,16 @@ LogicalResult UnpackOp::inferReturnTypes(
   return success();
 }
 
+bool UnpackOp::isCompatibleReturnTypes(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+  if (lhs.size() != rhs.size()) return false;
+  for (auto pair : llvm::zip(lhs, rhs)) {
+    if (failed(
+            mlir::verifyCompatibleShape(std::get<0>(pair), std::get<1>(pair))))
+      return false;
+  }
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // SplitOp
 //===----------------------------------------------------------------------===//

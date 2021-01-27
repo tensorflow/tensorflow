@@ -94,14 +94,14 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
   std::shared_ptr<PjRtClient> shared_pjrt_client() { return pjrt_client_; }
 
-  const std::string& platform_name() const {
+  absl::string_view platform_name() const {
     return pjrt_client_->platform_name();
   }
   int addressable_device_count() const {
     return pjrt_client_->addressable_device_count();
   }
   int device_count() const { return pjrt_client_->device_count(); }
-  int host_id() const { return pjrt_client_->host_id(); }
+  int task_id() const { return pjrt_client_->task_id(); }
 
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();

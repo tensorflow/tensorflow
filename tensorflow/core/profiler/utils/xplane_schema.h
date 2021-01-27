@@ -146,6 +146,7 @@ enum StatType {
   kRegionType,
   kDataType,
   kTensorShapes,
+  kTensorLayout,
   kKpiName,
   kKpiValue,
   kElementId,

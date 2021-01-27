@@ -1331,6 +1331,13 @@ func @unpack(%arg0: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
 
 // -----
 
+func @unpack(%arg0: tensor<?x2x5x3xf32>) -> () {
+  %0:2 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 2 : i32} : (tensor<?x2x5x3xf32>) -> (tensor<5x5x3xf32>, tensor<5x5x3xf32>)
+  return
+}
+
+// -----
+
 // CHECK-LABEL: testMean
 func @testMean(%arg0: tensor<2x2xf32>, %arg1 : tensor<1xi32>) -> tensor<1x2xf32> {
   // CHECK: "tfl.mean"(%arg0, %arg1) {keep_dims = false}
@@ -2512,52 +2519,4 @@ func @testBroadcastToWithI64ShapeTensor(tensor<?x?x?x?x?x?xf32>, tensor<8xi64>) 
 func @testFillWithQI8(%arg0: tensor<1x4xi32>, %arg1: tensor<? x !quant.uniform<i8:f32, 0.1>>) -> tensor<? x !quant.uniform<i8:f32, 0.1>> {
   %0 = "tfl.fill"(%arg0, %arg1): (tensor<1x4xi32>, tensor<? x !quant.uniform<i8:f32, 0.1>>) -> tensor<? x !quant.uniform<i8:f32, 0.1>>
   return %0 : tensor<? x !quant.uniform<i8:f32, 0.1>>
-}
-
-// -----
-
-// CHECK-LABEL: testConv3dWithFloatInput
-func @testConv3dWithFloatInput(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x?x?x?x?xf32>,%arg2: tensor<?xf32>) -> tensor<?x?x?x?x?xf32> {
-  // CHECK: "tfl.conv_3d"(%arg0, %arg1, %arg2)
-  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>, tensor<?xf32>) -> tensor<?x?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?x?xf32>
-}
-
-// CHECK-LABEL: testConv3dNoBiasInput
-func @testConv3dNoBiasInput(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x?x?x?x?xf32>,%arg2: none) -> tensor<?x?x?x?x?xf32> {
-  // CHECK: "tfl.conv_3d"(%arg0, %arg1, %arg2)
-  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>, none) -> tensor<?x?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?x?xf32>
-}
-
-// -----
-
-func @testConv3dInvalidFilterShape(%arg0: tensor<2x3x4x5x2xf32>,%arg1:  tensor<2x2x2x3x3xf32>,%arg2: tensor<?xf32>) -> tensor<?x?x?x?x?xf32> {
-  // expected-error @+1 {{failed to verify that dim 4 of operand 0 equals to dim 3 of operand 1}}
-  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<2x3x4x5x2xf32>, tensor<2x2x2x3x3xf32>, tensor<?xf32>) -> tensor<?x?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?x?xf32>
-}
-
-// -----
-
-func @testConv3dInvalidBiasShape(%arg0: tensor<2x3x4x5x2xf32>,%arg1:  tensor<2x2x2x2x3xf32>,%arg2: tensor<4xf32>) -> tensor<?x?x?x?x?xf32> {
-  // expected-error @+1 {{failed to verify that bias must has num of elements equals to 4th dim of filter}}
-  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<2x3x4x5x2xf32>, tensor<2x2x2x2x3xf32>, tensor<4xf32>) -> tensor<?x?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?x?xf32>
-}
-
-// -----
-
-func @testConv3dMisMatchInputType(%arg0: tensor<2x3x4x5x2xi32>,%arg1:  tensor<2x2x2x2x3xf32>,%arg2: tensor<3xf32>) -> tensor<?x?x?x?x?xf32> {
-  // expected-error @+1 {{op failed to verify that input and output must have same element type}}
-  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<2x3x4x5x2xi32>, tensor<2x2x2x2x3xf32>, tensor<3xf32>) -> tensor<?x?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?x?xf32>
-}
-
-// -----
-
-func @testConv3dMisMatchBiasType(%arg0: tensor<2x3x4x5x2xf32>,%arg1:  tensor<2x2x2x2x3xf32>,%arg2: tensor<3xi32>) -> tensor<?x?x?x?x?xf32> {
-  // expected-error @+1 {{failed to verify that bias and output must have same element type}}
-  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<2x3x4x5x2xf32>, tensor<2x2x2x2x3xf32>, tensor<3xi32>) -> tensor<?x?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?x?xf32>
 }

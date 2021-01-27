@@ -34,6 +34,12 @@ if [[ "$IS_NIGHTLY" -eq 1 ]]; then
   # Copy the nightly version update script
   cp tensorflow/tools/ci_build/builds/libtensorflow_nightly_symlink.sh lib_package
 
+  echo "This package was built on $(date)" >> /lib_package/build_time.txt
+
+  tar -zcvf macos_cpu_libtensorflow_binaries.tar.gz lib_package
+
+  gsutil cp macos_cpu_libtensorflow_binaries.tar.gz gs://libtensorflow-nightly/prod/tensorflow/release/macos/latest
+
 else
   set -ex
   # Install latest bazel

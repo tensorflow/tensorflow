@@ -781,6 +781,21 @@ func @round_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   return %0 : tensor<?xf32>
 }
 
+// CHECK-LABEL: func @rint_dynamic
+func @rint_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-DAG: [[FLOOR:%.+]] = "tf.Floor"(%arg0)
+  // CHECK-DAG: [[SUB:%.+]] = "tf.Sub"(%arg0, [[FLOOR]])
+  // CHECK-DAG: [[HALF:%.+]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>}
+  // CHECK-DAG: [[CMP:%.+]] = "tf.Less"([[SUB]], [[HALF]])
+  // CHECK-DAG: [[ONE:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[ADD:%.+]] = "tf.AddV2"([[FLOOR]], [[ONE]])
+  // CHECK-DAG: [[SELECT:%.+]] = "tf.Select"([[CMP]], [[FLOOR]], [[ADD]])
+  %0 = "tf.Rint"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+
+  // CHECK: return [[SELECT]]
+  return %0 : tensor<?xf32>
+}
+
 // CHECK-LABEL: func @round_unranked
 func @round_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.Round"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>

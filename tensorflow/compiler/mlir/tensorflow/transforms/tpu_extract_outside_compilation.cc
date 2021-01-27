@@ -169,7 +169,7 @@ TF::WhileRegionOp CloneEmptyWhile(bool is_stateless,
 TF::_TPUCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
     Location loc, OpBuilder& builder) {
   auto result_type =
-      RankedTensorType::get({2}, builder.getType<TF::StringType>());
+      RankedTensorType::get({3}, builder.getType<TF::StringType>());
   return builder.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
       loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
 }

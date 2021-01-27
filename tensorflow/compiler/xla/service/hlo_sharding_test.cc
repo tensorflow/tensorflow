@@ -440,7 +440,7 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
     HloSharding sharding = HloSharding::Replicate();
     auto sharding_new_metadata =
         sharding.WithMetadata(SingleMetadata(), /*overwrite=*/false);
-    ASSERT_EQ(sharding_new_metadata.metadata().length(), 1);
+    ASSERT_EQ(sharding_new_metadata.metadata().size(), 1);
     EXPECT_TRUE(protobuf_util::ProtobufEquals(
         sharding_new_metadata.metadata().front(), SingleMetadata().front()));
   }
@@ -449,7 +449,7 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
     HloSharding sharding = HloSharding::AssignDevice(7, SingleMetadata());
     auto sharding_new_metadata =
         sharding.WithMetadata(ListMetadata(), /*overwrite=*/false);
-    ASSERT_EQ(sharding_new_metadata.metadata().length(), 1);
+    ASSERT_EQ(sharding_new_metadata.metadata().size(), 1);
     EXPECT_TRUE(protobuf_util::ProtobufEquals(
         sharding.metadata().front(), sharding_new_metadata.metadata().front()));
   }
@@ -492,7 +492,7 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
     HloSharding sharding = HloSharding::Replicate();
     auto sharding_new_metadata =
         sharding.WithMetadata(SingleMetadata(), /*overwrite=*/true);
-    ASSERT_EQ(sharding_new_metadata.metadata().length(), 1);
+    ASSERT_EQ(sharding_new_metadata.metadata().size(), 1);
     EXPECT_TRUE(protobuf_util::ProtobufEquals(
         sharding_new_metadata.metadata().front(), SingleMetadata().front()));
   }
@@ -501,7 +501,7 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
     HloSharding sharding = HloSharding::AssignDevice(7, SingleMetadata());
     auto sharding_new_metadata =
         sharding.WithMetadata(ListMetadata(), /*overwrite=*/true);
-    ASSERT_EQ(sharding_new_metadata.metadata().length(), 2);
+    ASSERT_EQ(sharding_new_metadata.metadata().size(), 2);
     for (int i = 0; i < 2; ++i) {
       EXPECT_TRUE(protobuf_util::ProtobufEquals(
           sharding_new_metadata.metadata()[i], ListMetadata()[i]));

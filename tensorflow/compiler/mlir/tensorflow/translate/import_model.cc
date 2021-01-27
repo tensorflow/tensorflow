@@ -3426,13 +3426,22 @@ class SavedModelSignatureDefImporterLite {
 
 Status SavedModelSignatureDefImporterLite::InitializeGraph(
     MLIRImportOptions import_options) {
+  GraphDef graph_def;
   if (import_options.enable_grappler) {
     // Grappler is best-effort.
-    auto status = RunGrappler(&meta_graph_def_);
-    if (!status.ok()) LOG(WARNING) << status;
+    auto statusor = RunGrappler(meta_graph_def_);
+    if (statusor.ok()) {
+      graph_def = std::move(statusor).ValueOrDie();
+    } else {
+      // If the grappler fails, use the original graph def.
+      LOG(WARNING) << "SavedModelSignatureDefImporterLite: grappler failed: "
+                   << statusor.status();
+      graph_def = meta_graph_def_.graph_def();
+    }
+  } else {
+    graph_def = meta_graph_def_.graph_def();
   }
 
-  GraphDef graph_def = meta_graph_def_.graph_def();
   if (import_options.upgrade_legacy) {
     TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(
         graph_def, graph_->flib_def().default_registry()));

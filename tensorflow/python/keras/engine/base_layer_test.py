@@ -86,12 +86,14 @@ class InvalidLayer(base_layer.Layer):
 
 class BaseLayerTest(keras_parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.keras_mode_combinations())
   def test_layer_instrumentation(self):
     layer = layers.Add()
     self.assertTrue(layer._instrumented_keras_api)
     self.assertTrue(layer._instrumented_keras_layer_class)
     self.assertFalse(layer._instrumented_keras_model_class)
+    self.assertTrue(base_layer.keras_api_gauge.get_cell('tf.keras.layers.Add'))
+    base_layer.keras_api_gauge.get_cell('tf.keras.layers.Add').set(False)
 
   @combinations.generate(combinations.keras_model_type_combinations())
   def test_dynamic_layer(self):

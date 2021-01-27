@@ -212,9 +212,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
 }  // namespace TF
 
 namespace tf_executor {
-// Returns a pass that folds switch nodes with constant predicates.
-std::unique_ptr<OperationPass<FuncOp>> CreateSwitchFoldPass();
-
 // Creates a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 

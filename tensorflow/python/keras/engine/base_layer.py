@@ -305,6 +305,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   # not available to the restoration code).
   _must_restore_from_config = False
 
+  def _get_cell_name(self):
+    canonical_name = get_canonical_name_for_symbol(
+        self.__class__, api_name='keras', add_prefix_to_v1_names=True)
+    if canonical_name is not None:
+      return 'tf.{}'.format(canonical_name)
+    return self.__class__.__module__ + '.' + self.__class__.__name__
+
   def _instrument_layer_creation(self):
     self._instrumented_keras_api = False
     self._instrumented_keras_layer_class = False
@@ -313,10 +320,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       keras_api_gauge.get_cell('layer').set(True)
       self._instrumented_keras_api = True
       if getattr(self, '_is_model_for_instrumentation', False):
-        keras_models_gauge.get_cell(self.__class__.__name__).set(True)
+        keras_models_gauge.get_cell(self._get_cell_name()).set(True)
         self._instrumented_keras_model_class = True
       else:
-        keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+        keras_layers_gauge.get_cell(self._get_cell_name()).set(True)
         self._instrumented_keras_layer_class = True
 
   @trackable.no_automatic_dependency_tracking

@@ -43,6 +43,7 @@ struct CanonicalDebugOptions {
         dump_as_dot(opts.xla_dump_hlo_as_dot()),
         dump_as_html(opts.xla_dump_hlo_as_html()),
         dump_as_url(opts.xla_dump_hlo_as_url()),
+        dump_fusion_visualization(opts.xla_dump_fusion_visualization()),
         dump_snapshots(opts.xla_dump_hlo_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
@@ -135,6 +136,7 @@ struct CanonicalDebugOptions {
   bool dump_as_dot;
   bool dump_as_html;
   bool dump_as_url;
+  bool dump_fusion_visualization;
   bool dump_snapshots;
   bool dump_include_timestamp;
   int64 dump_max_hlo_modules;
@@ -266,6 +268,24 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
     file_paths.push_back(
         DumpToFileInDirImpl(StrFormat("%s.html", filename),
                             render_graph(RenderedGraphFormat::kHtml), opts));
+  }
+
+  if (opts.dump_fusion_visualization) {
+    for (const HloComputation* computation :
+         module.MakeNonfusionComputations()) {
+      StatusOr<string> rendered_graph = RenderGraph(
+          *computation,
+          /*label=*/absl::StrCat(filename, "_", computation->name()),
+          module.config().debug_options(),
+          RenderedGraphFormat::kFusionVisualization, profile);
+      file_paths.push_back(DumpToFileInDirImpl(
+          StrFormat("%s_%s_fusion_visualization.html", filename,
+                    computation->name()),
+          rendered_graph.ok() ? *rendered_graph
+                              : StrFormat("Error rendering graph: %s",
+                                          rendered_graph.status().ToString()),
+          opts));
+    }
   }
 
   // Special case for rendering graphs as URLs.  We'll dump them to a file

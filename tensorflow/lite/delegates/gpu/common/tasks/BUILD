@@ -175,6 +175,19 @@ cc_library(
 )
 
 cc_library(
+    name = "convolution_transposed_test_util",
+    testonly = 1,
+    srcs = ["convolution_transposed_test_util.cc"],
+    hdrs = ["convolution_transposed_test_util.h"],
+    deps = [
+        ":convolution_transposed",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "convolution_transposed_3x3",
     srcs = ["convolution_transposed_3x3.cc"],
     hdrs = ["convolution_transposed_3x3.h"],
@@ -278,6 +291,19 @@ cc_library(
 )
 
 cc_library(
+    name = "depthwise_conv_test_util",
+    testonly = 1,
+    srcs = ["depthwise_conv_test_util.cc"],
+    hdrs = ["depthwise_conv_test_util.h"],
+    deps = [
+        ":depthwise_conv",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "depthwise_conv_3x3",
     srcs = ["depthwise_conv_3x3.cc"],
     hdrs = ["depthwise_conv_3x3.h"],
@@ -293,6 +319,19 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+    ],
+)
+
+cc_library(
+    name = "depthwise_conv_3x3_test_util",
+    testonly = 1,
+    srcs = ["depthwise_conv_3x3_test_util.cc"],
+    hdrs = ["depthwise_conv_3x3_test_util.h"],
+    deps = [
+        ":depthwise_conv_3x3",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
     ],
 )
 

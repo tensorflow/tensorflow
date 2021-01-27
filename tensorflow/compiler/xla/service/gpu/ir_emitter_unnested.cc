@@ -2387,20 +2387,32 @@ Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
 
 Status IrEmitterUnnested::HandleRngGetAndUpdateState(
     HloInstruction* rng_state) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(rng_state));
+  return EmitRngGetAndUpdateState(input);
+}
+
+Status IrEmitterUnnested::EmitRngGetAndUpdateState(
+    MlirEmitterInput mlir_input) {
+  auto rng_op =
+      mlir::dyn_cast<mlir::lmhlo::RngGetAndUpdateStateOp>(mlir_input.op);
+
   // Emit a kernel to increment the global state for Philox RNG algorithm.
-  AddThunkToThunkSequence(
-      BuildKernelThunk(rng_state, /*implements_whole_instruction=*/true));
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_thunk,
+      BuildKernelThunkForMlir(rng_op, rng_op.state(), mlir_input.thunk_info,
+                              mlir_input.extra_slice, &ir_arrays));
+  AddThunkToThunkSequence(std::move(kernel_thunk));
 
-  llvm::Value* old_state = llvm_ir::RngGetAndUpdateState(
-      Cast<HloRngGetAndUpdateStateInstruction>(rng_state)->delta(), module_,
-      &b_);
+  llvm::Value* old_state =
+      llvm_ir::RngGetAndUpdateState(rng_op.delta(), module_, &b_);
 
-  llvm::Value* output_address =
-      GetIrArray(*rng_state, *rng_state)
-          .EmitArrayElementAddress(
-              llvm_ir::IrArray::Index(
-                  /*linear=*/b_.getInt64(0), rng_state->shape(), &b_),
-              &b_, "rng_state_address");
+  const Shape shape = TypeToShape(rng_op.state().getType());
+
+  llvm::Value* output_address = ir_arrays[0].EmitArrayElementAddress(
+      llvm_ir::IrArray::Index(
+          /*linear=*/b_.getInt64(0), shape, &b_),
+      &b_, "rng_state_address");
   output_address = BitCast(
       output_address, llvm::PointerType::get(
                           old_state->getType(),

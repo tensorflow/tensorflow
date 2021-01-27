@@ -21,6 +21,7 @@ limitations under the License.
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
@@ -296,10 +297,10 @@ static py::object TFE_ClearScalarCache() {
 }
 
 // Returns compiler IR for a given function.
-static std::string TFE_GetCompilerIr(py::handle& ctx,
-                                     const char* concrete_function_name,
-                                     const char* stage, const char* device_name,
-                                     py::handle& inputs) {
+static py::bytes TFE_GetCompilerIr(py::handle& ctx,
+                                   const char* concrete_function_name,
+                                   const char* stage, const char* device_name,
+                                   py::handle& inputs) {
   EagerContext* context = ContextFromInterface(
       reinterpret_cast<ImmediateExecutionContext*>(InputTFE_Context(ctx)));
 
@@ -307,8 +308,12 @@ static std::string TFE_GetCompilerIr(py::handle& ctx,
   IrExportStage selected_stage = [&] {
     if (s_stage == "hlo") {
       return IrExportStage::HLO;
+    } else if (s_stage == "hlo_serialized") {
+      return IrExportStage::HLO_SERIALIZED;
     } else if (s_stage == "optimized_hlo") {
       return IrExportStage::OPTIMIZED_HLO;
+    } else if (s_stage == "optimized_hlo_serialized") {
+      return IrExportStage::OPTIMIZED_HLO_SERIALIZED;
     } else if (s_stage == "optimized_hlo_dot") {
       return IrExportStage::OPTIMIZED_HLO_DOT;
     } else {
@@ -341,19 +346,21 @@ static std::string TFE_GetCompilerIr(py::handle& ctx,
                                                   d->parsed_name());
   });
   if (selected_device == devices.end()) {
-    ThrowValueError("No matching device found");
+    ThrowValueError(
+        absl::StrFormat("No matching device found for '%s'", device_name)
+            .c_str());
   }
 
-  xla::StatusOr<std::string> hlo_text =
+  xla::StatusOr<std::string> hlo_str =
       GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
                     *selected_device, context, input_handles);
 
-  if (!hlo_text.ok()) {
+  if (!hlo_str.ok()) {
     ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",
-                                    hlo_text.status().error_message())
+                                    hlo_str.status().error_message())
                         .c_str());
   }
-  return *hlo_text;
+  return py::bytes(*hlo_str);
 }
 
 }  // namespace tensorflow

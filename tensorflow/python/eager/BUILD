@@ -41,10 +41,7 @@ cc_library(
     features = [
         "-use_header_modules",  # Required for pybind11
     ],
-    visibility = [
-        "//learning/deepmind/courier:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",

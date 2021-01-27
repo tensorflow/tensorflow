@@ -23,8 +23,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool IsMlirBridgePassEnabled(const Graph& graph,
-                             const absl::optional<ConfigProto>& config_proto);
 // This pass uses MLIR to implement all the conversion steps to target XLA from
 // a TensorFlow Function Graph. It is meant to expose a very limited set of
 // functionalities during the bring-up of MLIR-based bridge.
@@ -32,8 +30,9 @@ class MlirBridgePass : public MlirOptimizationPass {
  public:
   llvm::StringRef name() const override { return "bridge"; }
 
-  bool IsEnabled(const DeviceSet* device_set, const ConfigProto& config_proto,
-                 const Graph& graph) const override;
+  MlirOptimizationPassState GetPassState(const DeviceSet* device_set,
+                                         const ConfigProto& config_proto,
+                                         const Graph& graph) const override;
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.

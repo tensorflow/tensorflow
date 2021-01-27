@@ -223,6 +223,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":InferTypeOpInterface",
         ":Parser",
         ":Pass",
         ":StandardOps",

@@ -29,7 +29,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/padding.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/pooling.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/reduce.h"
@@ -48,8 +50,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
 #include "tensorflow/lite/delegates/gpu/metal/selectors/default_selector.h"
@@ -114,10 +114,20 @@ std::unique_ptr<GPUOperation> SelectLSTM(const OperationDef& op_def,
   return absl::make_unique<GPUOperation>(CreateLSTM(op_def, gpu_info));
 }
 
+std::unique_ptr<GPUOperation> SelectMaxUnpooling(
+    const MaxUnpooling2DAttributes& attr, const OperationDef& op_def) {
+  return absl::make_unique<GPUOperation>(CreateMaxUnpooling(op_def, attr));
+}
+
 void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr) {
   GPUOperation operation = CreatePadding(op_def, attr);
   *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+}
+
+std::unique_ptr<GPUOperation> SelectPooling(const Pooling2DAttributes& attr,
+                                            const OperationDef& op_def) {
+  return absl::make_unique<GPUOperation>(CreatePooling(op_def, attr));
 }
 
 std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
@@ -395,12 +405,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       return absl::OkStatus();
     }
     case OperationType::MAX_UNPOOLING_2D: {
-      auto gpu_op = MaxUnpooling(
-          op_def,
-          absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes));
-      gpu_operation->task_desc =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      break;
+      auto attr =
+          absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
+      gpu_operation->operation = SelectMaxUnpooling(attr, op_def);
+      return absl::OkStatus();
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
@@ -416,25 +424,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::POOLING_2D: {
       auto attr =
           absl::any_cast<Pooling2DAttributes>(node.operation.attributes);
-      auto pooling_op_def = op_def;
-      pooling_op_def.dst_tensors = {op_def.dst_tensors[0]};
-      auto gpu_op = Pooling(op_def, attr, false);
-      gpu_subgraph->operations[0].task_desc =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
-      gpu_subgraph->operations[0].input_ids = {static_cast<int>(inputs[0]->id)};
-      gpu_subgraph->operations[0].output_ids = {
-          static_cast<int>(outputs[0]->id)};
-      if (attr.type == PoolingType::MAX && attr.output_indices) {
-        gpu_subgraph->operations.push_back({});
-        auto gpu_ind_op = Pooling(op_def, attr, true);
-        gpu_subgraph->operations[1].task_desc =
-            absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_ind_op));
-        gpu_subgraph->operations[1].input_ids = {
-            static_cast<int>(inputs[0]->id)};
-        gpu_subgraph->operations[1].output_ids = {
-            static_cast<int>(outputs[1]->id)};
-      }
-      break;
+      gpu_operation->operation = SelectPooling(attr, op_def);
+      return absl::OkStatus();
     }
     case OperationType::PRELU: {
       auto attr = absl::any_cast<PReLUAttributes>(node.operation.attributes);
