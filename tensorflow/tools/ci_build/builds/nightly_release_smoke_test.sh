@@ -29,11 +29,18 @@ WIN_GPU_MAX_WHL_SIZE=252M
 function run_smoke_test() {
   VENV_TMP_DIR=$(mktemp -d)
 
+  # Check if in a virtualenv and exit if yes.
+  IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
+  if [[ "$IN_VENV" == "1" ]]; then
+    echo "It appears that we are already in a virtualenv. Deactivating..."
+    deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
+  fi
+
   ${PYTHON_BIN_PATH} -m virtualenv -p ${PYTHON_BIN_PATH} "${VENV_TMP_DIR}" || \
-      echo "WARNING: Unable to create virtualenv. Assuming we are in one already."
+      die "FAILED: Unable to create virtualenv"
 
   source "${VENV_TMP_DIR}/bin/activate" || \
-      echo "WARNING: Unable to activate virtualenv. Assuming we are in one already."
+      die "FAILED: Unable to activate virtualenv "
 
   # install tensorflow
   python -m pip install ${WHL_NAME} || \

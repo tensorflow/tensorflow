@@ -289,7 +289,7 @@ fi
 check_global_vars
 
 # Check if in a virtualenv and exit if yes.
-IN_VENV=$(python -c 'import sys; print("1" if hasattr(sys, "base_prefix") else "0")')
+IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
 if [[ "$IN_VENV" == "1" ]]; then
   echo "It appears that we are already in a virtualenv. Deactivating..."
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
