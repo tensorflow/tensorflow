@@ -103,10 +103,6 @@ class ResizeNearestNeighborOp : public OpKernel {
   bool half_pixel_centers_;
 };
 
-// Helper struct to convert a bool to the correct scaler type.
-template <bool half_pixel_centers>
-struct BoolToScaler {};
-
 struct HalfPixelScalerForNN {
   inline float operator()(const int x, const float scale) const {
     // All of the nearest neigbor code below immediately follows a call to this
@@ -117,20 +113,12 @@ struct HalfPixelScalerForNN {
   }
 };
 
-template <>
-struct BoolToScaler<true> {
-  typedef HalfPixelScalerForNN Scaler;
-};
-
-template <>
-struct BoolToScaler<false> {
-  typedef LegacyScaler Scaler;
-};
-
 template <bool half_pixel_centers, bool align_corners>
 void compute_indices(const Eigen::Index out_size, const Eigen::Index in_size,
                      const float scale, Eigen::Index* indices) {
-  typename BoolToScaler<half_pixel_centers>::Scaler scaler;
+  typedef typename std::conditional<half_pixel_centers, HalfPixelScalerForNN,
+                                    LegacyScaler>::type Scaler;
+  Scaler scaler;
   for (Eigen::Index i = 0; i < out_size; ++i) {
     Eigen::Index x = std::min(
         (align_corners) ? static_cast<Eigen::Index>(roundf(scaler(i, scale)))
@@ -344,7 +332,9 @@ struct ResizeNearestNeighborGrad<CPUDevice, T, half_pixel_centers,
                                    const float width_scale,
                                    typename TTypes<T, 4>::Tensor output,
                                    F accumulate) {
-    typename BoolToScaler<half_pixel_centers>::Scaler scaler;
+    typedef typename std::conditional<half_pixel_centers, HalfPixelScalerForNN,
+                                      LegacyScaler>::type Scaler;
+    Scaler scaler;
     const Eigen::Index batch_size = input.dimension(0);
     const Eigen::Index in_height = input.dimension(1);
     const Eigen::Index in_width = input.dimension(2);
