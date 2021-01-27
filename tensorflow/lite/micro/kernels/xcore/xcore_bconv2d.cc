@@ -335,15 +335,17 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
         context, GetInput(context, node, 2), op_data->threshold_scratch_idx));
   } else if (kernel_type == BConv2DKernelType::INT8 ||
              kernel_type == BConv2DKernelType::INT8_DIDO) {
-    TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
     TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
         context, GetInput(context, node, 2), op_data->multiplier_scratch_idx));
     TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
         context, GetInput(context, node, 3), op_data->bias_scratch_idx));
     if (kernel_type == BConv2DKernelType::INT8) {
+      TF_LITE_ENSURE_EQ(context, NumInputs(node), 5);
       TF_LITE_ENSURE_STATUS(
           request_scratch_if_needed(context, GetInput(context, node, 4),
                                     op_data->accu_modifier_scratch_idx));
+    } else {
+      TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
     }
   } else {
     UNSUPPORTED_KERNEL_TYPE;
