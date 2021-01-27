@@ -25,16 +25,16 @@ namespace tflite {
 namespace testing {
 namespace {
 
-const int basic_input_output_size = 16;
+const int kBasicInputOutputSize = 16;
 const int basic_input_dims[] = {4, 4, 2, 2, 1};
-const float basic_input[basic_input_output_size] = {
+const float basic_input[kBasicInputOutputSize] = {
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
 const int basic_block_shape_dims[] = {1, 2};
 const int32_t basic_block_shape[] = {2, 2};
 const int basic_crops_dims[] = {1, 4};
 const int basic_crops[] = {0, 0, 0, 0};
 const int basic_output_dims[] = {4, 1, 4, 4, 1};
-const float basic_golden[basic_input_output_size] = {
+const float basic_golden[kBasicInputOutputSize] = {
     1, 5, 2, 6, 9, 13, 10, 14, 3, 7, 4, 8, 11, 15, 12, 16};
 
 template <typename T>
@@ -50,11 +50,11 @@ TfLiteStatus ValidateBatchToSpaceNdGoldens(TfLiteTensor* tensors,
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array, nullptr, micro_test::reporter);
 
-  if (runner.InitAndPrepare() != kTfLiteOk || runner.Invoke() != kTfLiteOk) {
-    return kTfLiteError;
-  }
+  TF_LITE_ENSURE_STATUS(runner.InitAndPrepare());
+  TF_LITE_ENSURE_STATUS(runner.Invoke());
 
   for (int i = 0; i < output_size; ++i) {
+    // TODO(b/158102673): workaround for not having fatal test assertions.
     TF_LITE_MICRO_EXPECT_EQ(golden[i], output[i]);
     if (golden[i] != output[i]) {
       return kTfLiteError;
@@ -126,7 +126,7 @@ TfLiteStatus TestBatchToSpaceNdQuantized(
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(BatchToSpaceBasicFloat) {
-  float output[tflite::testing::basic_input_output_size];
+  float output[tflite::testing::kBasicInputOutputSize];
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk,
       tflite::testing::TestBatchToSpaceNdFloat(
@@ -138,9 +138,9 @@ TF_LITE_MICRO_TEST(BatchToSpaceBasicFloat) {
 }
 
 TF_LITE_MICRO_TEST(BatchToSpaceBasicInt8) {
-  int8_t output[tflite::testing::basic_input_output_size];
-  int8_t input_quantized[tflite::testing::basic_input_output_size];
-  int8_t golden_quantized[tflite::testing::basic_input_output_size];
+  int8_t output[tflite::testing::kBasicInputOutputSize];
+  int8_t input_quantized[tflite::testing::kBasicInputOutputSize];
+  int8_t golden_quantized[tflite::testing::kBasicInputOutputSize];
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk,
       tflite::testing::TestBatchToSpaceNdQuantized(
