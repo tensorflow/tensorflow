@@ -778,6 +778,19 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertIn('tuple',
                     f.experimental_get_compiler_ir(l)())
 
+  def testGetCompilerIrSerialized(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def fn(x):
+        return x - x
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      for stage in ('hlo_serialized', 'optimized_hlo_serialized'):
+        hlo = fn.experimental_get_compiler_ir(inputs)(
+            stage=stage, device_name=f'/device:{self.device}:0')
+        self.assertIsInstance(hlo, bytes)
+
   def testConstantOnWrongDevice(self):
     with ops.device('device:{}:0'.format(self.device)):
 
