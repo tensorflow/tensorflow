@@ -1271,7 +1271,7 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
           "Failed to get strides and offset from the output type.");
     result = builder_.create<MemRefReinterpretCastOp>(
         loc, out_memref_type, result, out_offset, out_memref_type.getShape(),
-        out_strides, llvm::None, llvm::None, llvm::None);
+        out_strides);
   }
   return cached_value = result;
 }
