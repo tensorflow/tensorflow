@@ -37,12 +37,16 @@ struct BConv2DArguments {
     int8_t *Y_int8;
   };
 
-  // for bitpacked only
+  // for bitpacked only, TODO: refactor, and use union
   const int32_t *thresholds;
 
-  // for int8 only
+  // for int8 only, TODO: refactor, and use union
   const int16_t *post_act_mult;
   const int16_t *post_act_bias;
+  const int16_t *accu_modifier;  // not used in DIDO
+  int16_t clamp_offset_close;
+  int16_t clamp_offset_far_1;
+  int16_t clamp_offset_far_2;
   int accu_shr;
   int16_t bias_multiplier;
   int final_shr;
@@ -93,9 +97,11 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_int8_deepin_deepout_thread_worker(
     bconv2d_int8_DIDO_valid(
         td->args->Y_int8, (const bnn_b256_t *)td->args->X,
         (const bnn_b256_t *)td->args->K, td->args->post_act_mult,
-        td->args->post_act_bias, td->args->accu_shr, td->args->bias_multiplier,
-        td->args->final_shr, &td->args->x, &td->args->y, &td->args->k,
-        job->left, job->top, job->cols, job->rows);
+        td->args->post_act_bias, td->args->clamp_offset_close,
+        td->args->clamp_offset_far_1, td->args->clamp_offset_far_2,
+        td->args->accu_shr, td->args->bias_multiplier, td->args->final_shr,
+        &td->args->x, &td->args->y, &td->args->k, job->left, job->top,
+        job->cols, job->rows);
     job = job->next;
   }
 }
@@ -104,11 +110,14 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_int8_thread_worker(void *context) {
   auto *td = static_cast<BConv2DThreadData *>(context);
   auto *job = td->job;
   while (job) {
-    bconv2d_int8_valid(
-        td->args->Y_int8, td->args->X, td->args->K, td->args->post_act_mult,
-        td->args->post_act_bias, td->args->accu_shr, td->args->bias_multiplier,
-        td->args->final_shr, td->thread_scratch, &td->args->x, &td->args->y,
-        &td->args->k, job->left, job->top, job->cols, job->rows);
+    bconv2d_int8_valid(td->args->Y_int8, td->args->X, td->args->K,
+                       td->args->post_act_mult, td->args->post_act_bias,
+                       td->args->accu_modifier, td->args->clamp_offset_close,
+                       td->args->clamp_offset_far_1,
+                       td->args->clamp_offset_far_2, td->args->accu_shr,
+                       td->args->bias_multiplier, td->args->final_shr,
+                       td->thread_scratch, &td->args->x, &td->args->y,
+                       &td->args->k, job->left, job->top, job->cols, job->rows);
     job = job->next;
   }
 }
@@ -150,6 +159,7 @@ struct BConv2DOpData {
   int threshold_scratch_idx = 0;
   int bias_scratch_idx = 0;
   int multiplier_scratch_idx = 0;
+  int accu_modifier_scratch_idx = 0;
 };
 
 // -------------------------------------------------------------------- //
@@ -269,6 +279,9 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
     op_data->args.bias_multiplier = q_params[0].AsInt32();
     op_data->args.accu_shr = q_params[1].AsInt32();
     op_data->args.final_shr = q_params[2].AsInt32();
+    op_data->args.clamp_offset_close = q_params[3].AsInt32();
+    op_data->args.clamp_offset_far_1 = q_params[4].AsInt32();
+    op_data->args.clamp_offset_far_2 = q_params[5].AsInt32();
   }
 
   return op_data;
@@ -327,6 +340,11 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
         context, GetInput(context, node, 2), op_data->multiplier_scratch_idx));
     TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
         context, GetInput(context, node, 3), op_data->bias_scratch_idx));
+    if (kernel_type == BConv2DKernelType::INT8) {
+      TF_LITE_ENSURE_STATUS(
+          request_scratch_if_needed(context, GetInput(context, node, 4),
+                                    op_data->accu_modifier_scratch_idx));
+    }
   } else {
     UNSUPPORTED_KERNEL_TYPE;
   }
@@ -394,6 +412,11 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
         context, op_data->args.post_act_bias, GetInput(context, node, 3),
         op_data->bias_scratch_idx));
+    if (kernel_type == BConv2DKernelType::INT8) {
+      TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
+          context, op_data->args.accu_modifier, GetInput(context, node, 4),
+          op_data->accu_modifier_scratch_idx));
+    }
   } else {
     UNSUPPORTED_KERNEL_TYPE;
   }
