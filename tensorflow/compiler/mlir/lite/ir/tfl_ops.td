@@ -1596,17 +1596,16 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 def TFL_FillOp: TFL_Op<"fill", [
     NoSideEffect,
     PredOpTrait<"input and result must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 1>>,
-    NoQuantizableResult]> {
+      TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "Fill the tensor with given value.";
   let description = [{
     Fill the tensor with given value.
   }];
 
   let arguments = (ins TFL_I32OrI64Tensor:$dims,
-                   TFL_TensorOf<[F32, I32, I64, I1, QI8, TFL_Str]>:$input);
+                   TFL_TensorOf<[F32, I32, I64, I1, QI8, QI16, TFL_Str]>:$input);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, QI8, TFL_Str]>:$result);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, QI8, QI16, TFL_Str]>:$result);
 
   let hasOptions = 0;
 }
