@@ -151,7 +151,7 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
       // TODO: useful for doing memory debugging with tools like cuda-memcheck
       // TODO: **WARNING** probably will not work in a multi-gpu scenario
       gpu_allocator =
-          new GPUcudaMallocAsyncAllocator(platform_gpu_id, total_bytes);
+          new GpuCudaMallocAsyncAllocator(platform_gpu_id, total_bytes);
     }
 
     Allocator* recording_allocator = nullptr;

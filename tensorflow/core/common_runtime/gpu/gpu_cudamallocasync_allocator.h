@@ -46,13 +46,13 @@ namespace tensorflow {
 // the GPU memory already used by the current process. This is to
 // prevent crashes of long running jobs.  Use 'reserve_memory=true' if
 // you want to preallocate the memory.
-class GPUcudaMallocAsyncAllocator : public Allocator {
+class GpuCudaMallocAsyncAllocator : public Allocator {
  public:
-  explicit GPUcudaMallocAsyncAllocator(PlatformGpuId platform_gpu_id,
+  explicit GpuCudaMallocAsyncAllocator(PlatformGpuId platform_gpu_id,
                                        size_t pool_size,
                                        bool reserve_memory = false,
                                        bool compute_stats = false);
-  ~GPUcudaMallocAsyncAllocator() override;
+  ~GpuCudaMallocAsyncAllocator() override;
   string Name() override { return name_; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
@@ -83,7 +83,7 @@ class GPUcudaMallocAsyncAllocator : public Allocator {
   CUmemoryPool pool_;
 #endif
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUcudaMallocAsyncAllocator);
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuCudaMallocAsyncAllocator);
 
   // Stats.
   // Structures mutable after construction

@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-GPUcudaMallocAsyncAllocator::GPUcudaMallocAsyncAllocator(
+GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     PlatformGpuId platform_gpu_id, size_t pool_size,
     bool reserve_memory, bool compute_stats)
     : cuda_stream_(nullptr),
@@ -104,26 +104,26 @@ GPUcudaMallocAsyncAllocator::GPUcudaMallocAsyncAllocator(
   }
 #endif
 
-  VLOG(2) << Name() << " GPUcudaMallocAsyncAllocator PoolSize " << pool_size;
+  VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator PoolSize " << pool_size;
   if (reserve_memory) {
     void* ptr = AllocateRaw(0, pool_size);
     DeallocateRaw(ptr);
-    VLOG(2) << Name() << " GPUcudaMallocAsyncAllocator reserved the pool";
+    VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator reserved the pool";
     ClearStats();
   }
 }
 
-GPUcudaMallocAsyncAllocator::~GPUcudaMallocAsyncAllocator() {
+GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {
   cuStreamDestroy(cuda_stream_);
 }
 
-void* GPUcudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
+void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                                                size_t num_bytes) {
 #if CUDA_VERSION < 11020 || !defined(GOOGLE_CUDA)
   return nullptr;
 #else
   if (pool_ == nullptr) {
-    LOG(FATAL) << "The instantiation of GPUcudaMallocAsyncAllocator failed."
+    LOG(FATAL) << "The instantiation of GpuCudaMallocAsyncAllocator failed."
                << " See previous errors.";
   }
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
@@ -154,7 +154,7 @@ void* GPUcudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
   return ptr;
 #endif
 }
-void GPUcudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
+void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
 #if CUDA_VERSION < 11020 || !defined(GOOGLE_CUDA)
 #else
   cudaError_t res = cudaFreeAsync(ptr, cuda_stream_);
@@ -181,26 +181,26 @@ void GPUcudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
 #endif  // GOOGLE_CUDA
 }
 
-bool GPUcudaMallocAsyncAllocator::TracksAllocationSizes() const {
+bool GpuCudaMallocAsyncAllocator::TracksAllocationSizes() const {
   return stats_.bytes_limit.has_value();
 }
 
-size_t GPUcudaMallocAsyncAllocator::RequestedSize(const void* ptr) const {
+size_t GpuCudaMallocAsyncAllocator::RequestedSize(const void* ptr) const {
   CHECK(ptr);
   return size_map_.at(ptr);
 }
 
-size_t GPUcudaMallocAsyncAllocator::AllocatedSize(const void* ptr) const {
+size_t GpuCudaMallocAsyncAllocator::AllocatedSize(const void* ptr) const {
   CHECK(ptr);
   return size_map_.at(ptr);
 }
 
-absl::optional<AllocatorStats> GPUcudaMallocAsyncAllocator::GetStats() {
+absl::optional<AllocatorStats> GpuCudaMallocAsyncAllocator::GetStats() {
   mutex_lock l(lock_);
   return stats_;
 }
 
-void GPUcudaMallocAsyncAllocator::ClearStats() {
+void GpuCudaMallocAsyncAllocator::ClearStats() {
   mutex_lock l(lock_);
   stats_.num_allocs = 0;
   stats_.peak_bytes_in_use = stats_.bytes_in_use;
