@@ -221,6 +221,31 @@ add {
 
 // -----
 
+HloModule AllReduceTuple
+// Test all-reduce with tuples
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL: func @test_all_reduce_tuple
+// CHECK:  "lmhlo.all_reduce"
+// CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+// CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
+// CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+// CHECK:  }) {
+// CHECK-NOT:  channel_id
+// CHECK-SAME:  replica_groups = dense<{{\[\[}}0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
+// CHECK-SAME: (memref<8xf32>, memref<5xf32>, memref<8xf32>, memref<5xf32>) -> ()
+%test_all_reduce_tuple {
+  input = f32[8] parameter(0)
+  %tuple = (f32[8], f32[5]) custom-call(),custom_call_target="make-tuple"
+  ROOT result = (f32[8], f32[5]) all-reduce(%tuple), replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
+}
+
+// -----
+
 HloModule ConvForward
 
 // CHECK-LABEL: func @main

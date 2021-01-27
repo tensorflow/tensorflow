@@ -1014,9 +1014,11 @@ StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
   all_reduce_op->setAttr(replica_groups_attr.first, replica_groups_attr.second);
   all_reduce_op.constrain_layoutAttr(
       builder_.getBoolAttr(all_reduce->constrain_layout()));
-  all_reduce_op.channel_idAttr(mlir::mhlo::ChannelHandle::get(
-      builder_.getI64IntegerAttr(all_reduce->channel_id().value_or(0)),
-      builder_.getI64IntegerAttr(0), builder_.getContext()));
+  if (all_reduce->channel_id().has_value()) {
+    all_reduce_op.channel_idAttr(mlir::mhlo::ChannelHandle::get(
+        builder_.getI64IntegerAttr(all_reduce->channel_id().value()),
+        builder_.getI64IntegerAttr(0), builder_.getContext()));
+  }
   all_reduce_op.use_global_device_idsAttr(
       builder_.getBoolAttr(all_reduce->use_global_device_ids()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
