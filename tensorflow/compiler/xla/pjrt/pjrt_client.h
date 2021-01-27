@@ -199,14 +199,14 @@ class PjRtClient {
     // The runtime may not hold references to `data` after the call to
     // `BufferFromHostBuffer` completes. The caller promises that `data` is
     // immutable and will not be freed only for the duration of the
-    // BufferFromHostBuffer call. `buffer_reference` will be freed by the time
-    // `BufferFromHostBuffer` returns.
+    // BufferFromHostBuffer call. `on_done_with_host_buffer` will be called
+    // before `BufferFromHostBuffer` returns.
     kImmutableOnlyDuringCall,
 
     // The runtime may hold onto `data` after the call to `BufferFromHostBuffer`
     // returns while the runtime completes a transfer to the device. The caller
     // promises not to mutate or free `data` until the transfer completes, at
-    // which point the runtime will release `buffer_reference`. It is also
+    // which point the runtime will call `on_done_with_host_buffer`. It is also
     // correct to wait on the host (directly or indirectly) for the buffer's
     // definition event to complete.
     kImmutableUntilTransferCompletes,
@@ -215,15 +215,17 @@ class PjRtClient {
     // `data` contents as long as the buffer is alive. The caller promises to
     // keep `data` alive and not to mutate its contents as long as the buffer is
     // alive; to notify the caller that the buffer may be freed, the runtime
-    // will release its `buffer_reference` when the PjRtBuffer is freed. On
+    // will call `on_done_with_host_buffer` when the PjRtBuffer is freed. On
     // non-CPU platforms this acts identically to
     // kImmutableUntilTransferCompletes.
     kZeroCopy,
   };
+  // on_done_with_host_buffer is optional and may be null.
+  // on_done_with_host_buffer will be called iff an OK status is returned.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
       HostBufferSemantics host_buffer_semantics,
-      std::shared_ptr<void> buffer_reference, PjRtDevice* device) = 0;
+      std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
 
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for BlockHostUntilReady() completes on

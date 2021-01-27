@@ -187,7 +187,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
       HostBufferSemantics host_buffer_semantics,
-      std::shared_ptr<void> buffer_reference, PjRtDevice* device) override;
+      std::function<void()> on_done_with_host_buffer,
+      PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override;
