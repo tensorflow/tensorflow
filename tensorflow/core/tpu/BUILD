@@ -144,6 +144,7 @@ cc_library(
         ":tpu_api",
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
+        ":tpu_initializer_helper",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
@@ -164,6 +165,7 @@ cc_library(
     deps = [
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
+        ":tpu_initializer_helper",
         "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
