@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -81,11 +82,21 @@ class TensorListPatternRewriter : public PatternRewriter {
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
     : public PassWrapper<LowerStaticTensorListPass, OperationPass<ModuleOp>> {
+  LowerStaticTensorListPass() = default;
+  LowerStaticTensorListPass(const LowerStaticTensorListPass &) {}
+
   void runOnOperation() override;
 
   // Apply type and op changes within a function.
   LogicalResult RewriteFunction(FuncOp func,
                                 TensorListPatternRewriter *rewriter);
+
+  Option<bool> allow_tensorlist_pass_through{
+      *this, "allow-tensorlist-pass-through",
+      llvm::cl::desc(
+          "If specified to true, then the tensorlist ops may pass "
+          "through if it can't be handled by this pass (default false)"),
+      llvm::cl::init(false)};
 };
 
 Value CreateI32SplatConst(Location loc, PatternRewriter *rewriter,
@@ -335,7 +346,8 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
     if (!(dtype.isF16() || dtype.isF32() || dtype.isF64() ||
           dtype.isInteger(1) || dtype.isInteger(8) || dtype.isInteger(16) ||
           dtype.isInteger(32) || dtype.isInteger(64))) {
-      op.emitError(
+      rewriter.notifyMatchFailure(
+          op,
           "requires element_dtype to be 1-bit/8-bit/16-bit/32-bit/64-bit "
           "integer or 16-bit/32-bit/64-bit float type during TF Lite "
           "transformation pass");
@@ -393,7 +405,8 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
           if (element_shape_acquired) break;
         }
         if (!element_shape_acquired) {
-          op.emitError(
+          rewriter.notifyMatchFailure(
+              op,
               "requires element_shape to be 1D tensor during TF Lite "
               "transformation pass");
           return failure();
@@ -1034,10 +1047,23 @@ void LowerStaticTensorListPass::runOnOperation() {
       funcs_in_module.push_back(func);
     }
   }
+  auto cloned_module = getOperation().clone();
   for (auto func : funcs_in_module) {
     TensorListPatternRewriter rewriter(func);
     if (failed(RewriteFunction(func, &rewriter))) {
-      signalPassFailure();
+      if (allow_tensorlist_pass_through) {
+        // If the current pass allows unsupported tensorlist ops to pass
+        // through, in terms of failure we should roll back all the changes done
+        // so far. The reason that we can't rely on dialect conversion to
+        // automatically roll back the changes is that, the dialect conversion
+        // is currently applied on function level.
+        BlockAndValueMapping mapping;
+        getOperation().body().getBlocks().clear();
+        cloned_module.body().cloneInto(&getOperation().body(), mapping);
+        break;
+      } else {
+        signalPassFailure();
+      }
       return;
     }
   }
