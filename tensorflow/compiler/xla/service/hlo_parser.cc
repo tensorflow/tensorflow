@@ -837,7 +837,7 @@ bool HloParserImpl::ParseComputations(HloModule* module) {
     }
   } while (lexer_.GetKind() != TokKind::kEof);
 
-  for (int i = 0; i < computations_.size(); i++) {
+  for (int i = 0, end = computations_.size(); i < end; i++) {
     // If entry_computation is not nullptr, it means the computation it pointed
     // to is marked with "ENTRY"; otherwise, no computation is marked with
     // "ENTRY", and we use the last computation as the entry computation. We
@@ -1291,7 +1291,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         return false;
       }
       std::vector<std::pair<int64, int64>> pairs(source_targets->size());
-      for (int i = 0; i < pairs.size(); i++) {
+      for (int i = 0, end = pairs.size(); i < end; i++) {
         if ((*source_targets)[i].size() != 2) {
           return TokenError(
               "expects 'source_target_pairs=' to be a list of pairs");
@@ -1921,6 +1921,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (operands.empty()) {
         return Error(loc, "Expected at least one operand.");
       }
+      const int64 operands_size = operands.size();
       if (!(operands.size() == 2 && operands[1]->shape().rank() == 1) &&
           operands.size() != 1 + operands[0]->shape().rank()) {
         return Error(loc, "Wrong number of operands.");
@@ -1939,7 +1940,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (operands.size() < 2) {
         return Error(loc, "Expected at least two operands.");
       }
-      if (!(operands.size() == 3 && operands[2]->shape().rank() == 1) &&
+      const int64 operands_size = operands.size();
+      if (!(operands_size == 3 && operands[2]->shape().rank() == 1) &&
           operands.size() != 2 + operands[0]->shape().rank()) {
         return Error(loc, "Wrong number of operands.");
       }
@@ -2290,7 +2292,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                               " operand layout constraints, ",
                               operand_layout_constraints->size(), " given"));
         }
-        for (int64 i = 0; i < operands.size(); ++i) {
+        for (int64 i = 0, end = operands.size(); i < end; ++i) {
           const Shape& operand_shape_with_layout =
               (*operand_layout_constraints)[i];
           if (!LayoutUtil::HasLayout(operand_shape_with_layout)) {
@@ -3071,7 +3073,7 @@ bool HloParserImpl::ParseTupleLiteral(Literal* literal, const Shape& shape) {
     // empty
   } else {
     // literal, (',' literal)*
-    for (int i = 0; i < elements.size(); i++) {
+    for (int i = 0, end = elements.size(); i < end; i++) {
       if (i > 0) {
         ParseToken(TokKind::kComma, "expects ',' to separate tuple elements");
       }
@@ -3457,7 +3459,8 @@ bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
   if (!ParseOperands(operands)) {
     return false;
   }
-  if (expected_size != operands->size()) {
+  const int64 operands_size = operands->size();
+  if (expected_size != operands_size) {
     return Error(loc, StrCat("expects ", expected_size, " operands, but has ",
                              operands->size(), " operands"));
   }
@@ -4036,7 +4039,7 @@ bool HloParserImpl::ParseWindow(Window* window, bool expect_outer_curlies) {
     return Error(loc, "expects 'pad=' has the same size as 'size='");
   }
 
-  for (int i = 0; i < size.size(); i++) {
+  for (int i = 0, end = size.size(); i < end; i++) {
     window->add_dimensions()->set_size(size[i]);
     if (!pad.empty()) {
       window->mutable_dimensions(i)->set_padding_low(pad[i][0]);
@@ -4081,7 +4084,9 @@ bool HloParserImpl::ParseConvolutionDimensionNumbers(
   absl::string_view out = split2[1];
 
   const int64 rank = lhs.length();
-  if (rank != rhs.length() || rank != out.length()) {
+  const int64 rhs_length = rhs.length();
+  const int64 out_length = out.length();
+  if (rank != rhs_length || rank != out_length) {
     return TokenError(
         "convolution lhs, rhs, and output must have the same rank");
   }
@@ -4520,7 +4525,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   }
 
   std::vector<Tile> vec_tiles(tiles.size());
-  for (int i = 0; i < tiles.size(); i++) {
+  for (int i = 0, end = tiles.size(); i < end; i++) {
     vec_tiles[i] = Tile(tiles[i]);
   }
   *layout = LayoutUtil::MakeLayout(minor_to_major, vec_tiles,
@@ -4566,7 +4571,7 @@ bool HloParserImpl::ParseShape(Shape* result) {
     return false;
   }
   result->set_element_type(primitive_type);
-  for (int i = 0; i < dimension_sizes.size(); ++i) {
+  for (int i = 0, end = dimension_sizes.size(); i < end; ++i) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
