@@ -25,16 +25,10 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
-#include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/host/host_platform_id.h"
-#include "tensorflow/stream_executor/platform.h"
 
 namespace py = pybind11;
 
@@ -364,29 +358,20 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
   }
   Shape shape =
       ShapeUtil::MakeShapeWithLayout(element_type, dimensions, minor_to_major);
-  se::DeviceMemoryBase buffer(
-      static_cast<char*>(dlmt->dl_tensor.data) + dlmt->dl_tensor.byte_offset,
-      ShapeUtil::ByteSizeOf(shape));
 
   std::function<void()> on_delete_callback;
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
   }
-  absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events;
-  auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      /*allocator=*/nullptr, dlmt->dl_tensor.ctx.device_id,
-      std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
-      std::move(on_delete_callback));
-
+  TF_ASSIGN_OR_RETURN(auto pjrt_buffer,
+                      client->pjrt_client()->CreateViewOfDeviceBuffer(
+                          static_cast<char*>(dlmt->dl_tensor.data) +
+                              dlmt->dl_tensor.byte_offset,
+                          shape, device, on_delete_callback));
   // We have taken ownership of the array inside the capsule; make sure the
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
-  // TODO(zhangqiaorjc): Add a factory method that avoids StreamExecutor
-  // specifics. The challenge may be what generic data structures to use for
-  // definition events.
-  auto pjrt_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
-      shape, shape, std::move(device_buffer), client->pjrt_client(), device);
   return std::make_unique<PyBuffer>(std::move(client), std::move(pjrt_buffer),
                                     Traceback::Get());
 }

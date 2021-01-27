@@ -913,6 +913,20 @@ void PjRtStreamExecutorClient::MakeCrossHostReceiveBuffers(
                           std::move(notifier));
 }
 
+StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
+    void* device_ptr, const Shape& shape, PjRtDevice* device,
+    std::function<void()> on_delete_callback) {
+  se::DeviceMemoryBase buffer(device_ptr, ShapeUtil::ByteSizeOf(shape));
+  absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events;
+  auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
+      /*allocator=*/nullptr, device->local_hardware_id(),
+      std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
+      std::move(on_delete_callback));
+  return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtStreamExecutorBuffer>(
+      shape, shape, std::move(device_buffer), this, device));
+}
+
 // Transfer the given literal to the infeed queue of the given local device.
 Status PjRtStreamExecutorDevice::TransferToInfeed(
     const LiteralSlice& literal) const {
