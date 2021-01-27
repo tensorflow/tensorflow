@@ -48,6 +48,12 @@ def _calibration_gen():
     yield [np.arange(9).reshape((1, 3, 3, 1)).astype(np.float32) * i]
 
 
+def _convert_model(func):
+  """Converts TF model to TFLite float model."""
+  converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+  return converter.convert()
+
+
 def _quantize_model(func, calibration_gen, debug=True):
   """Quantizes model, in debug or normal mode."""
   converter = lite.TFLiteConverterV2.from_concrete_functions([func])
@@ -70,11 +76,12 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase):
   @classmethod
   def setUpClass(cls):
     super().setUpClass()
-    cls.float_model = _get_model()
-    cls.debug_model = _quantize_model(cls.float_model, _calibration_gen)
+    cls.tf_model = _get_model()
+    cls.float_model = _convert_model(cls.tf_model)
+    cls.debug_model = _quantize_model(cls.tf_model, _calibration_gen)
 
   @test_util.run_v2_only
-  def test_quantization_debugger(self):
+  def test_quantization_debugger_layer_metrics(self):
     options = debugger.QuantizationDebugOptions(
         layer_debug_metrics={'l1_norm': lambda diffs: np.mean(np.abs(diffs))})
     quant_debugger = debugger.QuantizationDebugger(
@@ -93,6 +100,24 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase):
     }
     self.assertLen(quant_debugger.layer_statistics, 1)
     actual_metrics = next(iter(quant_debugger.layer_statistics.values()))
+
+    self.assertCountEqual(expected_metrics.keys(), actual_metrics.keys())
+    for key, value in expected_metrics.items():
+      self.assertAlmostEqual(value, actual_metrics[key], places=5)
+
+  @test_util.run_v2_only
+  def test_quantization_debugger_model_metrics(self):
+    options = debugger.QuantizationDebugOptions(
+        model_debug_metrics={'stdev': lambda x, y: np.std(x[0] - y[0])})
+    quant_debugger = debugger.QuantizationDebugger(
+        quant_debug_model_content=QuantizationDebuggerTest.debug_model,
+        float_model_content=QuantizationDebuggerTest.float_model,
+        debug_dataset=_calibration_gen,
+        debug_options=options)
+    quant_debugger.run()
+
+    expected_metrics = {'stdev': 0.050998904}
+    actual_metrics = quant_debugger.model_statistics
 
     self.assertCountEqual(expected_metrics.keys(), actual_metrics.keys())
     for key, value in expected_metrics.items():
@@ -118,7 +143,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase):
   @test_util.run_v2_only
   def test_quantization_debugger_non_debug_model_raises_ValueError(self):
     normal_quant_model = _quantize_model(
-        QuantizationDebuggerTest.float_model, _calibration_gen, debug=False)
+        QuantizationDebuggerTest.tf_model, _calibration_gen, debug=False)
 
     with self.assertRaisesRegex(
         ValueError, 'Please check if the quantized model is in debug mode'):
