@@ -24,6 +24,7 @@ limitations under the License.
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #endif
 
 
@@ -55,6 +56,8 @@ Status InitializeTpuLibrary(void* library_handle) {
         dlsym(library_handle, "TfTpu_Initialize"));
     (*initialize_fn)(/*init_library=*/true, /*argc=*/argv_ptr.size() - 1,
                      /*argv=*/argv_ptr.data());
+
+    RegisterTpuPlatform();
   }
 
   return s;
