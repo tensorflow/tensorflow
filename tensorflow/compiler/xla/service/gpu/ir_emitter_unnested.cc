@@ -117,7 +117,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #endif  // GOOGLE_CUDA
 
@@ -1133,7 +1133,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     return EmitBatchNormThunkFromMlir(input);
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(input.op)) {
     return EmitCholeskyThunkFromMlir(input);
   }
@@ -1517,7 +1517,7 @@ Status IrEmitterUnnested::EmitBatchNormThunkFromMlir(MlirEmitterInput input) {
   return Unimplemented("Unsupported batch norm operation");
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 Status IrEmitterUnnested::EmitCholeskyThunkFromMlir(MlirEmitterInput input) {
   auto cholesky_op = ::mlir::cast<mlir::lmhlo_gpu::CholeskyOp>(input.op);
 

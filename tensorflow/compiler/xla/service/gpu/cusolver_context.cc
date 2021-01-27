@@ -17,6 +17,60 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
+// we can't include core/util/gpu_device_functions.h (where these are defined),
+// because this file is not compiled with hipcc
+#if GOOGLE_CUDA
+using gpuFloatComplex = cuFloatComplex;
+using gpuDoubleComplex = cuDoubleComplex;
+using gpuStream_t = gpuStream_t;
+using gpuEvent_t = cudaEvent_t;
+#define gpuEventRecord cudaEventRecord
+#define gpuEventSynchronize cudaEventSynchronize
+#define gpuEventDestroy cudaEventDestroy
+#define gpuEventCreate cudaEventCreate
+#define gpuEventCreateWithFlags cudaEventCreateWithFlags
+#define gpuEventDisableTiming cudaEventDisableTiming
+#define gpuDeviceSynchronize cudaDeviceSynchronize
+#define gpuFree cudaFree
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_complex.h"
+
+using gpuFloatComplex = hipFloatComplex;
+using gpuDoubleComplex = hipDoubleComplex;
+using gpuStream_t = hipStream_t;
+using gpuEvent_t = hipEvent_t;
+using cudaError = int;
+using cudaError_t = int;
+#define cudaSuccess 0
+/*
+#define cudaGetLastError hipGetLastError
+#define gpuEventRecord hipEventRecord
+#define gpuEventDestroy hipEventDestroy
+#define gpuEventSynchronize hipEventSynchronize
+#define gpuEventCreate hipEventCreate
+#define gpuEventCreateWithFlags hipEventCreateWithFlags
+#define gpuEventDisableTiming hipEventDisableTiming
+#define gpuDeviceSynchronize hipDeviceSynchronize
+#define gpuFree hipFree
+*/
+using cublasFillMode_t = rocblas_fill;
+using cusolverStatus_t = rocsolver_status;
+
+#define cusolverDnCreate rocblas_create_handle
+#define cusolverDnSetStream rocblas_set_stream
+#define cusolverDnDestroy rocblas_destroy_handle
+#define cusolverDnSpotrf rocsolver_spotrf
+#define cusolverDnDpotrf rocsolver_dpotrf
+#define cusolverDnCpotrf rocsolver_cpotrf
+#define cusolverDnZpotrf rocsolver_zpotrf
+
+#define CUBLAS_FILL_MODE_UPPER rocblas_fill_upper
+#define CUBLAS_FILL_MODE_LOWER rocblas_fill_lower
+
+#endif
+
+
+
 namespace xla {
 namespace gpu {
 
@@ -27,6 +81,7 @@ template <typename T>
 struct CUDAComplexT {
   typedef T type;
 };
+#if GOOGLE_CUDA
 template <>
 struct CUDAComplexT<std::complex<float>> {
   typedef cuComplex type;
@@ -35,6 +90,18 @@ template <>
 struct CUDAComplexT<std::complex<double>> {
   typedef cuDoubleComplex type;
 };
+#else
+// can't use gpuFloatComplex, gpuDoubleComplex, because e.g.
+// hipFloatComplex and rocblas_float_complex are two unrelated types
+template <>
+struct CUDAComplexT<std::complex<float>> {
+  typedef rocblas_float_complex type;
+};
+template <>
+struct CUDAComplexT<std::complex<double>> {
+  typedef rocblas_double_complex type;
+};
+#endif
 
 template <typename T>
 inline typename CUDAComplexT<T>::type* ToDevicePointer(se::DeviceMemory<T> p) {
@@ -52,6 +119,7 @@ cublasFillMode_t CUDABlasUpperLower(se::blas::UpperLower uplo) {
   }
 }
 
+#if GOOGLE_CUDA
 // Converts a cuSolver status to a Status.
 Status CusolverStatusToStatus(cusolverStatus_t status) {
   switch (status) {
@@ -83,6 +151,41 @@ Status CusolverStatusToStatus(cusolverStatus_t status) {
       return Unknown("Unknown cuSolver error");
   }
 }
+#else
+// Converts a cuSolver status to a Status.
+Status CusolverStatusToStatus(rocblas_status status) {
+  switch(status) {
+    case rocblas_status_success:
+      return Status::OK();
+    case rocblas_status_invalid_handle:
+      return FailedPrecondition("handle not initialized, invalid or null");
+    case rocblas_status_not_implemented:
+      return Internal("function is not implemented");
+    case rocblas_status_invalid_pointer:
+      return InvalidArgument("invalid pointer argument");
+    case rocblas_status_invalid_size:
+      return InvalidArgument("invalid size argument");
+    case rocblas_status_memory_error:
+      return Internal("failed internal memory allocation, copy or dealloc");
+    case rocblas_status_internal_error:
+      return Internal("other internal library failure");
+    case rocblas_status_perf_degraded:
+      return Internal("performance degraded due to low device memory");
+    case rocblas_status_size_query_mismatch:
+      return Unknown("unmatched start/stop size query");
+    case rocblas_status_size_increased:
+      return Unknown("queried device memory size increased");
+    case rocblas_status_size_unchanged:
+      return Unknown("queried device memory size unchanged");
+    case rocblas_status_invalid_value:
+      return InvalidArgument("passed argument not valid");
+    case rocblas_status_continue:
+      return Unknown("nothing preventing function to proceed");
+    default:
+      return Unknown("Unknown rocsolver error");
+  }
+}
+#endif
 
 }  // namespace
 
@@ -93,8 +196,8 @@ StatusOr<CusolverContext> CusolverContext::Create(se::Stream* stream) {
 
   if (stream) {
     // StreamExecutor really should just expose the Cuda stream to clients...
-    const cudaStream_t* cuda_stream =
-        CHECK_NOTNULL(reinterpret_cast<const cudaStream_t*>(
+    const gpuStream_t* cuda_stream =
+        CHECK_NOTNULL(reinterpret_cast<const gpuStream_t*>(
             stream->implementation()->GpuStreamMemberHack()));
     TF_RETURN_IF_ERROR(
         CusolverStatusToStatus(cusolverDnSetStream(handle, *cuda_stream)));
@@ -139,6 +242,7 @@ CusolverContext::~CusolverContext() {
 StatusOr<int64> CusolverContext::PotrfBufferSize(PrimitiveType type,
                                                  se::blas::UpperLower uplo,
                                                  int n, int lda) {
+#if GOOGLE_CUDA  
   int size = -1;
   switch (type) {
     case F32: {
@@ -166,8 +270,12 @@ StatusOr<int64> CusolverContext::PotrfBufferSize(PrimitiveType type,
                              PrimitiveType_Name(type));
   }
   return size;
+#else
+  return 0;
+#endif  
 }
 
+#if GOOGLE_CUDA
 #define POTRF_INSTANCE(T, type_prefix)                                    \
   template <>                                                             \
   Status CusolverContext::Potrf<T>(                                       \
@@ -178,6 +286,17 @@ StatusOr<int64> CusolverContext::PotrfBufferSize(PrimitiveType type,
         ToDevicePointer(workspace), workspace.ElementCount(),             \
         ToDevicePointer(lapack_info)));                                   \
   }
+#else
+#define POTRF_INSTANCE(T, type_prefix)                                    \
+  template <>                                                             \
+  Status CusolverContext::Potrf<T>(                                       \
+      se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda,   \
+      se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace) { \
+    return CusolverStatusToStatus(DN_SOLVER_FN(potrf, type_prefix)(       \
+        handle(), CUDABlasUpperLower(uplo), n, ToDevicePointer(A), lda,   \
+        ToDevicePointer(lapack_info)));                                   \
+  }
+#endif
 
 CALL_LAPACK_TYPES(POTRF_INSTANCE);
 
