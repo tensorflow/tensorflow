@@ -226,7 +226,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
 
     llvm::SmallVector<int64_t, 8> slice_stride(slice_end.size(), 1);
     llvm::SmallVector<int64_t, 8> slice_shape(slice_end.size());
-    for (int64_t i = 0; i < slice_end.size(); ++i) {
+    for (size_t i = 0; i < slice_end.size(); ++i) {
       slice_shape[i] = slice_end[i] - slice_start[i];
     }
     Type element_type = gather.getType().cast<TensorType>().getElementType();
@@ -242,7 +242,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
           dnums.collapsed_slice_dims().getIntValues(),
           [](const llvm::APInt& i) { return i.getSExtValue(); }));
       llvm::SmallVector<int64_t, 8> reshape_shape;
-      for (int64_t i = 0; i < slice_shape.size(); ++i) {
+      for (size_t i = 0; i < slice_shape.size(); ++i) {
         if (llvm::count(collapsed_slice_dims, i) == 0) {
           reshape_shape.push_back(slice_shape[i]);
         }

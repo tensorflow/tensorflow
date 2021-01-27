@@ -388,7 +388,7 @@ class BroadcastConverter
     unsigned num_prepended_dims = llvm::size(broadcast_op.broadcast_sizes());
     SmallVector<AffineExpr, 4> input_dim_exprs;
     input_dim_exprs.reserve(input_rank);
-    for (int i = 0; i < input_rank; ++i) {
+    for (unsigned i = 0; i < input_rank; ++i) {
       input_dim_exprs.push_back(b->getAffineDimExpr(num_prepended_dims + i));
     }
 
