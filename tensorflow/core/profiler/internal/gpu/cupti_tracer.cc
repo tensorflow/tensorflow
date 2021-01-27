@@ -776,6 +776,36 @@ void AddMemsetActivityEvent(CuptiTraceCollector *collector,
   collector->AddEvent(std::move(event));
 }
 
+void AddSynchronizationActivityEvent(
+    CuptiTraceCollector *collector, const CUpti_ActivitySynchronization *sync) {
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::Generic;
+  event.source = CuptiTracerEventSource::Activity;
+  switch (sync->type) {
+    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_EVENT_SYNCHRONIZE:
+      event.name = "cuEventSynchronize";
+      break;
+    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_STREAM_WAIT_EVENT:
+      event.name = "cuStreamWaitEvent";
+      break;
+    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_STREAM_SYNCHRONIZE:
+      event.name = "cuStreamSynchronize";
+      break;
+    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_CONTEXT_SYNCHRONIZE:
+      event.name = "cuCtxSynchronize";
+      break;
+    default:
+      event.name = "unknown synchronization event";
+      break;
+  }
+  event.start_time_ns = sync->start;
+  event.end_time_ns = std::max(sync->end, sync->start + 1);
+  event.correlation_id = sync->correlationId;
+  event.context_id = sync->contextId;
+  VLOG(5) << "Cuda activity " << event.name;
+  collector->AddEvent(std::move(event));
+}
+
 // This hook uses cupti activity api to measure device side activities.
 class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
  public:
@@ -1900,6 +1930,11 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
         case CUPTI_ACTIVITY_KIND_MEMSET:
           AddMemsetActivityEvent(
               collector_, reinterpret_cast<CUpti_ActivityMemset *>(record));
+          break;
+        case CUPTI_ACTIVITY_KIND_SYNCHRONIZATION:
+          AddSynchronizationActivityEvent(
+              collector_,
+              reinterpret_cast<CUpti_ActivitySynchronization *>(record));
           break;
         default:
           LOG(ERROR) << "Activity type " << record->kind << " not supported.";

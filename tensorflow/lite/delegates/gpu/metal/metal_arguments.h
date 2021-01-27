@@ -49,8 +49,7 @@ class MetalArguments : public ArgumentsBinder {
   absl::Status SetHalf(const std::string& name, half value) override;
   absl::Status SetObjectRef(const std::string& name, const GPUObject& object);
 
-  void Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset,
-              int texture_offset = 0) const;
+  void Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset) const;
 
  private:
   // creates structure with layout:
@@ -77,24 +76,14 @@ class MetalArguments : public ArgumentsBinder {
   void AddGPUResources(const std::string& name, const GPUResources& resources,
                        Arguments* args);
 
-  std::string GetListOfArgs(int buffer_offset, int textures_offset = 0);
+  std::string GetListOfArgs(int buffer_offset);
 
   absl::Status SetGPUResources(const std::string& name,
                                const GPUResourcesWithValue& resources);
 
   void AddBuffer(const std::string& name, const GPUBufferDescriptor& desc);
-  void AddImage2D(const std::string& name, const GPUImage2DDescriptor& desc);
-  void AddImage2DArray(const std::string& name,
-                       const GPUImage2DArrayDescriptor& desc);
-  void AddImage3D(const std::string& name, const GPUImage3DDescriptor& desc);
-  void AddImageBuffer(const std::string& name,
-                      const GPUImageBufferDescriptor& desc);
 
   absl::Status SetBuffer(const std::string& name, id<MTLBuffer> handle);
-  absl::Status SetImage2D(const std::string& name, id<MTLTexture> handle);
-  absl::Status SetImage2DArray(const std::string& name, id<MTLTexture> handle);
-  absl::Status SetImage3D(const std::string& name, id<MTLTexture> handle);
-  absl::Status SetImageBuffer(const std::string& name, id<MTLTexture> handle);
 
   absl::Status SetObjectsResources(const Arguments& args);
 
@@ -145,28 +134,7 @@ class MetalArguments : public ArgumentsBinder {
     GPUBufferDescriptor desc;
     id<MTLBuffer> handle;
   };
-  struct MetalImage2DDescriptor {
-    GPUImage2DDescriptor desc;
-    id<MTLTexture> handle;
-  };
-  struct MetalImage2DArrayDescriptor {
-    GPUImage2DArrayDescriptor desc;
-    id<MTLTexture> handle;
-  };
-  struct MetalImage3DDescriptor {
-    GPUImage3DDescriptor desc;
-    id<MTLTexture> handle;
-  };
-  struct MetalImageBufferDescriptor {
-    GPUImageBufferDescriptor desc;
-    id<MTLTexture> handle;
-  };
-
   std::map<std::string, MetalBufferDescriptor> buffers_;
-  std::map<std::string, MetalImage2DDescriptor> images2d_;
-  std::map<std::string, MetalImage2DArrayDescriptor> image2d_arrays_;
-  std::map<std::string, MetalImage3DDescriptor> images3d_;
-  std::map<std::string, MetalImageBufferDescriptor> image_buffers_;
 
   std::map<std::string, GPUObjectDescriptorPtr> object_refs_;
   std::vector<GPUObjectPtr> objects_;

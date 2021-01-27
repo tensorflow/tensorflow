@@ -22,7 +22,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/c:tf_attrtype",
-        "//tensorflow/c:tf_status",
         "//tensorflow/core/tpu:libtftpu_header",
         "//tensorflow/stream_executor:stream_executor_headers",
     ],
@@ -159,7 +158,7 @@ cc_library(
         ":tpu_topology_external",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
     ],

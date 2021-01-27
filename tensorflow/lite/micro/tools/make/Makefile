@@ -259,6 +259,7 @@ tensorflow/lite/micro/testing_helpers_test.cc \
 tensorflow/lite/micro/kernels/activations_test.cc \
 tensorflow/lite/micro/kernels/add_test.cc \
 tensorflow/lite/micro/kernels/arg_min_max_test.cc \
+tensorflow/lite/micro/kernels/cast_test.cc \
 tensorflow/lite/micro/kernels/ceil_test.cc \
 tensorflow/lite/micro/kernels/circular_buffer_test.cc \
 tensorflow/lite/micro/kernels/comparisons_test.cc \
@@ -304,6 +305,7 @@ MICROLITE_CC_KERNEL_SRCS := \
 tensorflow/lite/micro/kernels/activations.cc \
 tensorflow/lite/micro/kernels/add.cc \
 tensorflow/lite/micro/kernels/arg_min_max.cc \
+tensorflow/lite/micro/kernels/cast.cc \
 tensorflow/lite/micro/kernels/ceil.cc \
 tensorflow/lite/micro/kernels/circular_buffer.cc \
 tensorflow/lite/micro/kernels/comparisons.cc \
@@ -340,6 +342,7 @@ tensorflow/lite/micro/kernels/resize_nearest_neighbor.cc \
 tensorflow/lite/micro/kernels/round.cc \
 tensorflow/lite/micro/kernels/shape.cc \
 tensorflow/lite/micro/kernels/softmax.cc \
+tensorflow/lite/micro/kernels/softmax_common.cc \
 tensorflow/lite/micro/kernels/split.cc \
 tensorflow/lite/micro/kernels/split_v.cc \
 tensorflow/lite/micro/kernels/strided_slice.cc \

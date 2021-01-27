@@ -1283,7 +1283,9 @@ Status XlaCompiler::CompileGraph(
       [this](const NameAttrList& function, const FunctionBody** fbody) {
         return FindFunctionBody(function, fbody);
       },
-      graph.get(), local_flib_def_.get()));
+      graph.get(), local_flib_def_.get(),
+      pflr_->GetFunctionLibraryDefinition()));
+
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,

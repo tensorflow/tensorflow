@@ -12,23 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_SHIMS_TEST_UTIL_H_
+#define TENSORFLOW_LITE_CORE_SHIMS_CC_SHIMS_TEST_UTIL_H_
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_RESIZE_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_RESIZE_H_
+#include "gtest/gtest.h"
+#include "tensorflow/lite/core/shims/c/shims_test_util.h"
 
-#include "tensorflow/lite/delegates/gpu/common/model.h"
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+namespace tflite_shims {
+namespace testing {
 
-namespace tflite {
-namespace gpu {
-namespace metal {
+class Test : public ::testing::Test {
+ public:
+  void SetUp() override {
+    ASSERT_EQ(TfLiteInitializeShimsForTest(), 0);
+  }
+};
 
-ComputeTaskDescriptor Resize(const OperationDef& definition,
-                             const Resize2DAttributes& attr);
+}  // namespace testing
+}  // namespace tflite_shims
 
-}  // namespace metal
-}  // namespace gpu
-}  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_RESIZE_H_
+#endif  // TENSORFLOW_LITE_CORE_SHIMS_CC_SHIMS_TEST_UTIL_H_

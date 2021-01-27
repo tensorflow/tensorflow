@@ -29,6 +29,8 @@ namespace tensorflow {
 // MLIR passes running on Tensorflow function graphs (Tensorflow V2).
 // -------------------------------------------------------------------------- //
 
+enum class MlirOptimizationPassState { Disabled, Enabled, ShadowEnabled };
+
 // An API for registering MLIR ModulePass with the Tensorflow runtime. These
 // passes are running only for function graphs built by Tensorflow V2 and
 // instantiated by the process_function_library_runtime (see
@@ -38,12 +40,19 @@ class MlirOptimizationPass {
   virtual ~MlirOptimizationPass() = default;
   virtual llvm::StringRef name() const = 0;
 
-  // Returns true if the pass is enabled for the given graph with specified
-  // config. `device_set` can be nullptr if the devices information is not
+  // Returns an enum value:
+  //   Enabled if the pass is enabled for the given graph with specified config.
+  //   Disabled if the pass is disabled.
+  //   ShadowEnabled if the pass needs to be executed in shadow mode.
+  //
+  // When the pass is ShadowEnabled, the pass is executed for metrics collection
+  // and reporting purposes only, but none of the changes it makes to the MLIR
+  // module will be committed.
+  // `device_set` can be nullptr if the devices information is not
   // available or no device specific filtering is required.
-  virtual bool IsEnabled(const DeviceSet* device_set,
-                         const ConfigProto& config_proto,
-                         const Graph& graph) const = 0;
+  virtual MlirOptimizationPassState GetPassState(
+      const DeviceSet* device_set, const ConfigProto& config_proto,
+      const Graph& graph) const = 0;
 
   virtual Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
                      const Graph& graph) = 0;
@@ -63,7 +72,7 @@ class MlirOptimizationPassRegistry {
     }
   };
 
-  using Passes = std::set<PassRegistration, PriorityComparator>;
+  using Passes = std::multiset<PassRegistration, PriorityComparator>;
 
   // Returns the global registry of MLIR optimization passes.
   static MlirOptimizationPassRegistry& Global();
@@ -88,12 +97,23 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
  public:
   explicit MlirFunctionOptimizationPass(
       const MlirOptimizationPassRegistry* registry =
-          &MlirOptimizationPassRegistry::Global(),
-      std::function<MlirBridgeRolloutPolicy(
-          const Graph&, absl::optional<ConfigProto>, bool record_stats)>
-          mlir_rollout_policy = GetMlirBridgeRolloutPolicy)
-      : registry_(registry), mlir_rollout_policy_(mlir_rollout_policy) {}
+          &MlirOptimizationPassRegistry::Global())
+      : registry_(registry) {}
 
+  // Executes all of the underlying registered MlirOptimizationPasses.
+  //
+  // The MlirFunctionOptimizationPass will be executed in fully shadow mode if
+  // all of the underlying registered MlirOptimizationPasses are ShadowEnabled.
+  // In this case, no changes should be done to the original TF graph and no
+  // failures propagated back to the user. Failures during the conversion
+  // of TF graph to MLIR module and back will be treated as a soft
+  // failures, e.g., relevant stats will be recorded and no error returned
+  // back to the caller.
+  //
+  // In case some of the passes are shadow enabled while others are enabled,
+  // failures in the enabled passes will be treated as real errors and
+  // propagated back to the caller. Failure during the shadow pass execution
+  // is a soft failure.
   Status Run(const DeviceSet& device_set, const ConfigProto& config_proto,
              std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
              std::vector<std::string>* control_ret_node_names,
@@ -101,9 +121,6 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
 
  private:
   const MlirOptimizationPassRegistry* registry_;
-  std::function<MlirBridgeRolloutPolicy(
-      const tensorflow::Graph&, absl::optional<tensorflow::ConfigProto>, bool)>
-      mlir_rollout_policy_;
 };
 
 // -------------------------------------------------------------------------- //
@@ -145,7 +162,7 @@ class MlirV1CompatOptimizationPassRegistry {
     }
   };
 
-  using Passes = std::set<PassRegistration, PriorityComparator>;
+  using Passes = std::multiset<PassRegistration, PriorityComparator>;
 
   // Returns the global registry of MLIR optimization passes.
   static MlirV1CompatOptimizationPassRegistry& Global();

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/metal/common.h"
 
 namespace tflite {
 namespace gpu {
@@ -115,15 +116,7 @@ absl::Status LinearStorage::CreateFromTensorLinearDescriptor(
       return absl::UnknownError("Failed to allocate id<MTLTexture>");
     }
 
-    MTLRegion region = {{0, 0, 0}, {static_cast<NSUInteger>(depth_), 1, 1}};
-    [texture_ replaceRegion:region
-                mipmapLevel:0
-                  withBytes:data_ptr
-                bytesPerRow:depth_ * float4_size];
-
-    if (!texture_) {
-      return absl::UnknownError("Failed to upload data to id<MTLTexture>");
-    }
+    WriteDataToTexture2D(texture_, device, data_ptr);
 
     return absl::OkStatus();
   }

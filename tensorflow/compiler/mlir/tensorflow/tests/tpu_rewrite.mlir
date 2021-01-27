@@ -1407,15 +1407,15 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       // CHECK-NOT:"tf._TPUCompileMlirPlaceholderProgramKey"
       // CHECK:    "tf.E"(%[[COMPILE_OUTPUT]]#1
       %3 = "tf_device.parallel_execute"() ( {
-         %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf.string>
-        "tf.D"(%program) : (tensor<2x!tf.string>) -> ()
+         %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf.string>
+        "tf.D"(%program) : (tensor<3x!tf.string>) -> ()
         tf_device.return
       }, {
         %4 = "tf_device.cluster_func"(%ri_0) {_tpu_replicate = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
         tf_device.return %4 : tensor<?xi32>
       }, {
-        %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf.string>
-        "tf.E"(%program) : (tensor<2x!tf.string>) -> ()
+        %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf.string>
+        "tf.E"(%program) : (tensor<3x!tf.string>) -> ()
         tf_device.return
       }) : () -> (tensor<?xi32>)
       tf_device.return %3 : tensor<?xi32>
@@ -1636,7 +1636,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   }
   func @tpu0_func(%arg0: tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>)
-    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %1, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
@@ -1704,7 +1704,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
-    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
@@ -1772,7 +1772,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
-    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
@@ -1815,7 +1815,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
-    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
@@ -1855,7 +1855,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi1>, tensor<*xi32>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
-    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %3, %4 : tensor<*xi1>, tensor<*xi32>
   }
 }
@@ -1961,7 +1961,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
-    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
@@ -2068,7 +2068,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
-    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
@@ -2152,7 +2152,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
-    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
@@ -2237,7 +2237,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
-    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
@@ -2321,7 +2321,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
-    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }

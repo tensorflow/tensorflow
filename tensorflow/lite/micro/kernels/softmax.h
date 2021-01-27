@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,23 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_LITE_MICRO_KERNELS_SOFTMAX_H_
+#define TENSORFLOW_LITE_MICRO_KERNELS_SOFTMAX_H_
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_MEAN_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_MEAN_H_
-
-#include "tensorflow/lite/delegates/gpu/common/model.h"
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
-namespace gpu {
-namespace metal {
 
-ComputeTaskDescriptor Mean(const OperationDef& definition,
-                           const MeanAttributes& attr);
+void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length);
 
-}  // namespace metal
-}  // namespace gpu
+TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node);
+
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_MEAN_H_
+#endif  // TENSORFLOW_LITE_MICRO_KERNELS_SOFTMAX_H_

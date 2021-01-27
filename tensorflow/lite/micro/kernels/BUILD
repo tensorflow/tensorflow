@@ -107,6 +107,7 @@ cc_library(
         "hard_swish.cc",
         "add.cc",
         "arg_min_max.cc",
+        "cast.cc",
         "ceil.cc",
         "circular_buffer.cc",
         "comparisons.cc",
@@ -132,6 +133,7 @@ cc_library(
         "resize_nearest_neighbor.cc",
         "round.cc",
         "shape.cc",
+        "softmax_common.cc",
         "split.cc",
         "split_v.cc",
         "strided_slice.cc",
@@ -159,6 +161,7 @@ cc_library(
     hdrs = [
         "micro_ops.h",
         "quantize.h",
+        "softmax.h",
         "svdf.h",
     ],
     copts = micro_copts(),

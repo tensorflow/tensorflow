@@ -712,3 +712,12 @@ tf_proto_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "tensor_tracer_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":tensor_tracer_proto"],
+# )
+# copybara:uncomment_end

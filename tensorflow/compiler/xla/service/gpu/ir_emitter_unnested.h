@@ -193,6 +193,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleRng(HloInstruction* random) override;
   Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
+  Status EmitRngGetAndUpdateState(MlirEmitterInput mlir_input);
   Status HandleScatter(HloInstruction* scatter) override;
   Status EmitScatterFromMlir(MlirEmitterInput mlir_input);
   Status HandleSelect(HloInstruction* select) override;

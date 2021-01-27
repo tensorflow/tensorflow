@@ -103,3 +103,19 @@ cc_library(
         tf_grpc_cc_dependency(),
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xla_py_pb2",
+#     has_services = True,
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":xla_service_proto"],
+# )
+#
+# xla_py_grpc_library(
+#     name = "xla_py_pb2_grpc",
+#     srcs = [":xla_service_proto"],
+#     deps = [":xla_py_pb2"],
+# )
+# copybara:uncomment_end

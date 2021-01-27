@@ -80,6 +80,12 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr char kRepicationAttr[] = "mhlo.is_same_data_across_replicas";
 
+// String attribute. This describes the tensor layout of an infeed operation.
+// Possible values:
+// "descending" (or "", default): left to right dimensions are major to minor.
+// "ascending": left to right dimensions are minor to major.
+constexpr char kLayoutAttr[] = "layout";
+
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
 // pointer. In particular, PrecisionConfig is passed to xla::Dot and xla::Conv
@@ -1189,6 +1195,23 @@ xla::Layout ExtractLayout(mlir::Operation* op, int rank) {
   return xla::LayoutUtil::MakeDescendingLayout(rank);
 }
 
+void InsertAscendingInfeedLayouts(xla::ShapeProto* parent) {
+  // In the case of tuples, ShapeProtos can be nested. To create an ascending
+  // layout for the entire structure, we need to recurse into all the subshapes.
+  auto tuple_shapes = parent->mutable_tuple_shapes();
+  for (int i = 0; i < tuple_shapes->size(); i++) {
+    xla::ShapeProto* tuple_shape = tuple_shapes->Mutable(i);
+    if (tuple_shape->element_type() != xla::TUPLE) {
+      int rank = tuple_shape->dimensions().size();
+      if (rank) {
+        *tuple_shape->mutable_layout() =
+            xla::LayoutUtil::MakeAscendingLayout(rank).ToProto();
+      }
+    }
+    InsertAscendingInfeedLayouts(tuple_shape);  // recurse into nested tuples
+  }
+}
+
 LogicalResult ConvertToHloModule::Lower(
     mlir::Operation* inst, bool is_entry_function,
     llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
@@ -1205,6 +1228,19 @@ LogicalResult ConvertToHloModule::Lower(
       if (shape->tuple_shapes().empty())
         *shape->mutable_layout() =
             ExtractLayout(inst, shape->dimensions().size()).ToProto();
+    }
+
+    // For infeed ops stemming back to InfeedDequeueTuple, respect the layout
+    // attribute, and create the corresponding layout in hlo.
+    if (isa<mhlo::InfeedOp>(inst)) {
+      mlir::StringAttr layout =
+          inst->getAttrOfType<mlir::StringAttr>(kLayoutAttr);
+      if (layout && layout.getValue() == "ascending") {
+        xla::ShapeProto* shape =
+            xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
+                ->mutable_shape();
+        InsertAscendingInfeedLayouts(shape);
+      }
     }
   };
 

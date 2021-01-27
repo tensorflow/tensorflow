@@ -127,14 +127,14 @@ Status TpuTransferManager::TransferBuffersToInfeed(
 }
 
 Status TpuTransferManager::TransferLiteralFromOutfeed(
-    stream_executor::StreamExecutor* executor, const xla::Shape& literal_shape,
+    stream_executor::StreamExecutor* executor,
     xla::MutableBorrowingLiteral literal) {
   StatusHelper status;
   XLA_Shape c_shape;
   XLA_Literal c_literal;
   auto* tpu_executor = static_cast<TpuExecutor*>(executor->implementation());
 
-  ApiConverter::ToC(literal_shape, &c_shape);
+  ApiConverter::ToC(literal.shape(), &c_shape);
   ApiConverter::ToC(literal, &c_literal);
 
   tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralFromOutfeedFn(

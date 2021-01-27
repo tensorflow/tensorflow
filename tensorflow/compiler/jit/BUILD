@@ -67,7 +67,10 @@ cc_library(
     ] + if_cuda_or_rocm([
         ":xla_gpu_device",
         ":xla_gpu_jit",
-    ]) + if_with_tpu_support([":xla_tpu_device"]),
+    ]) + if_with_tpu_support([
+        ":xla_tpu_device",
+        ":xla_tpu_jit",
+    ]),
     alwayslink = 1,
 )
 
@@ -97,6 +100,16 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_tpu_jit",
+    visibility = ["//visibility:public"],
+    deps = if_libtpu([
+        "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
+        "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
     ]),
     alwayslink = 1,
 )

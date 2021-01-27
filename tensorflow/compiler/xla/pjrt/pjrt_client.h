@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -71,11 +72,11 @@ class PjRtDevice {
   // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
   virtual int id() const = 0;
 
-  // The task ID of this device according to TpuTopology. This is not the same
-  // as PjRtClient::host_id() in a multi-task setting, where each client can see
-  // devices from all tasks, but only a subset of them are addressable and have
-  // the same task_id as the client.
-  virtual int host_id() const = 0;
+  // The task ID of this device according to TpuTopology. This is not always
+  // identical to PjRtClient::task_id() in a multi-task setting, where each
+  // client can see devices from all tasks, but only a subset of them are
+  // addressable and have the same task_id as the client.
+  virtual int task_id() const = 0;
 
   // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
   // which GPU when interacting with non-JAX code. In general, not guaranteed to
@@ -85,7 +86,7 @@ class PjRtDevice {
   // A vendor-dependent string that uniquely identifies the kind of device,
   // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
   // compatible compilation.
-  virtual const std::string& device_kind() const = 0;
+  virtual absl::string_view device_kind() const = 0;
 
   virtual std::string DebugString() const = 0;
 
@@ -93,7 +94,7 @@ class PjRtDevice {
   virtual Status TransferToInfeed(const LiteralSlice& literal) const = 0;
 
   // Transfer and return a value of the given shape from the outfeed queue.
-  virtual StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const = 0;
+  virtual Status TransferFromOutfeed(MutableBorrowingLiteral literal) const = 0;
 };
 
 // Forward declaration.
@@ -139,9 +140,8 @@ class PjRtClient {
  public:
   virtual ~PjRtClient() = default;
 
-  // TODO(zhangqiaorjc): Rename to task_id.
   // Return the task id of this client. In single-task setting, always 0.
-  virtual int host_id() const = 0;
+  virtual int task_id() const = 0;
 
   // Return the number of devices in the entire computation. In multi-headed
   // client setting, some are addressable by this client, some are not. In a
@@ -156,9 +156,8 @@ class PjRtClient {
   // non-addressable devices.
   virtual absl::Span<PjRtDevice* const> devices() const = 0;
 
-  // TODO(zhangqiaorjc): Rename to addressable_devices.
   // Return only addressable devices.
-  virtual absl::Span<PjRtDevice* const> local_devices() const = 0;
+  virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
   virtual StatusOr<PjRtDevice*> LookupDevice(int device_id) const = 0;
@@ -172,7 +171,7 @@ class PjRtClient {
   virtual PjRtPlatformId platform_id() const = 0;
 
   // Returns a string that identifies the platform (CPU/GPU/TPU).
-  virtual const std::string& platform_name() const = 0;
+  virtual absl::string_view platform_name() const = 0;
 
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
@@ -406,7 +405,7 @@ class PjRtExecutable {
   virtual PjRtClient* client() const = 0;
 
   // Unique name for this executable, e.g., HloModule name.
-  virtual const std::string& name() const = 0;
+  virtual absl::string_view name() const = 0;
 
   virtual int num_replicas() const = 0;
 

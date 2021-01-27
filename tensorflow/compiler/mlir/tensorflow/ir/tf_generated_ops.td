@@ -9825,6 +9825,24 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RecvOp : TF_Op<"Recv", []> {
+  let summary = "Receives the named tensor from send_device on recv_device.";
+
+  let arguments = (ins
+    StrAttr:$tensor_name,
+    StrAttr:$send_device,
+    I64Attr:$send_device_incarnation,
+    StrAttr:$recv_device,
+    DefaultValuedAttr<BoolAttr, "false">:$client_terminated
+  );
+
+  let results = (outs
+    TF_Tensor:$tensor
+  );
+
+  TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", [TF_TPUEmbeddingSideEffect]> {
   let summary = "An op that receives embedding activations on the TPU.";
 
@@ -12470,6 +12488,24 @@ Computes gradients for the scaled exponential linear (Selu) operation.
   let results = (outs
     TF_FloatTensor:$backprops
   );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SendOp : TF_Op<"Send", []> {
+  let summary = "Sends the named tensor from send_device to recv_device.";
+
+  let arguments = (ins
+    TF_Tensor:$tensor,
+
+    StrAttr:$tensor_name,
+    StrAttr:$send_device,
+    I64Attr:$send_device_incarnation,
+    StrAttr:$recv_device,
+    DefaultValuedAttr<BoolAttr, "false">:$client_terminated
+  );
+
+  let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
@@ -17157,6 +17193,52 @@ expected to create these operators.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
+}
+
+def TF__HostRecvOp : TF_Op<"_HostRecv", []> {
+  let summary = "Receives the named tensor from send_device on recv_device.";
+
+  let description = [{
+_HostRecv produces its output on host memory whereas _Recv produces its
+output on device memory.
+  }];
+
+  let arguments = (ins
+    StrAttr:$tensor_name,
+    StrAttr:$send_device,
+    I64Attr:$send_device_incarnation,
+    StrAttr:$recv_device,
+    DefaultValuedAttr<BoolAttr, "false">:$client_terminated
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The tensor to receive.}]>:$tensor
+  );
+
+  TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF__HostSendOp : TF_Op<"_HostSend", []> {
+  let summary = "Sends the named tensor from send_device to recv_device.";
+
+  let description = [{
+_HostSend requires its input on host memory whereas _Send requires its
+input on device memory.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor to send.}]>:$tensor,
+
+    StrAttr:$tensor_name,
+    StrAttr:$send_device,
+    I64Attr:$send_device_incarnation,
+    StrAttr:$recv_device,
+    DefaultValuedAttr<BoolAttr, "false">:$client_terminated
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF__ListToArrayOp : TF_Op<"_ListToArray", [NoSideEffect]> {

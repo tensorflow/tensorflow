@@ -146,10 +146,7 @@ cc_library(
         "c_api_experimental.h",
         "c_api_internal.h",
     ],
-    visibility = [
-        "//learning/deepmind/courier:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":c_api",
         ":tfe_cancellation_manager_internal",

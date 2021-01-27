@@ -143,12 +143,13 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
+void* SoftmaxInitXtensa(TfLiteContext* context, const char* buffer,
+                        size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
-TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus SoftmaxPrepareXtensa(TfLiteContext* context, TfLiteNode* node) {
   auto* params = static_cast<TfLiteSoftmaxParams*>(node->builtin_data);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
@@ -195,9 +196,9 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace
 
 TfLiteRegistration Register_SOFTMAX() {
-  return {/*init=*/SoftmaxInit,
+  return {/*init=*/SoftmaxInitXtensa,
           /*free=*/nullptr,
-          /*prepare=*/SoftmaxPrepare,
+          /*prepare=*/SoftmaxPrepareXtensa,
           /*invoke=*/SoftmaxEval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,

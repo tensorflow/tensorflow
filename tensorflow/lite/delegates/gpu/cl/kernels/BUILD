@@ -144,7 +144,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -231,7 +231,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -248,7 +248,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -340,7 +340,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling",
+        "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -392,7 +392,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:pooling",
+        "//tensorflow/lite/delegates/gpu/common/tasks:pooling_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

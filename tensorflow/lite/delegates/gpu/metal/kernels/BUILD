@@ -22,11 +22,6 @@ cc_library(
         ":conv",
         ":depthwise_conv",
         ":fully_connected",
-        ":max_unpooling",
-        ":mean",
-        ":pooling",
-        ":resize",
-        ":softmax",
         ":transpose_conv",
         ":winograd",
     ],
@@ -154,6 +149,8 @@ objc_library(
     deps = [
         ":depthwise_conv",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
     ],
 )
 
@@ -216,6 +213,7 @@ objc_library(
     deps = [
         ":fully_connected",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
     ],
 )
 
@@ -254,29 +252,14 @@ ios_unit_test(
     deps = [":lstm_test_lib"],
 )
 
-cc_library(
-    name = "max_unpooling",
-    srcs = ["max_unpooling.cc"],
-    hdrs = ["max_unpooling.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "max_unpooling_test_lib",
     testonly = 1,
     srcs = ["max_unpooling_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":max_unpooling",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling_test_util",
     ],
 )
 
@@ -290,45 +273,6 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":max_unpooling_test_lib"],
-)
-
-cc_library(
-    name = "mean",
-    srcs = ["mean.cc"],
-    hdrs = ["mean.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/types:variant",
-    ],
-)
-
-objc_library(
-    name = "mean_test_lib",
-    testonly = 1,
-    srcs = ["mean_test.mm"],
-    sdk_frameworks = ["XCTest"],
-    deps = [
-        ":mean",
-        ":test_util",
-    ],
-)
-
-ios_unit_test(
-    name = "mean_test",
-    testonly = 1,
-    minimum_os_version = "11.0",
-    runner = tflite_ios_lab_runner("IOS_LATEST"),
-    tags = [
-        "no_mac",  # TODO(b/171882133)
-        "notap",
-        "tflite_not_portable_android",
-    ],
-    deps = [":mean_test_lib"],
 )
 
 objc_library(
@@ -354,29 +298,14 @@ ios_unit_test(
     deps = [":padding_test_lib"],
 )
 
-cc_library(
-    name = "pooling",
-    srcs = ["pooling.cc"],
-    hdrs = ["pooling.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "pooling_test_lib",
     testonly = 1,
     srcs = ["pooling_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":pooling",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:pooling_test_util",
     ],
 )
 
@@ -490,26 +419,12 @@ ios_unit_test(
     deps = [":relu_test_lib"],
 )
 
-cc_library(
-    name = "resize",
-    srcs = ["resize.cc"],
-    hdrs = ["resize.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/types:variant",
-    ],
-)
-
 objc_library(
     name = "resize_test_lib",
     testonly = 1,
     srcs = ["resize_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":resize",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:resize_test_util",
     ],
@@ -573,29 +488,12 @@ ios_unit_test(
     deps = [":slice_test_lib"],
 )
 
-cc_library(
-    name = "softmax",
-    srcs = ["softmax.cc"],
-    hdrs = ["softmax.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-    ],
-)
-
 objc_library(
     name = "softmax_test_lib",
     testonly = 1,
     srcs = ["softmax_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":softmax",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
     ],
@@ -659,6 +557,7 @@ objc_library(
     deps = [
         ":test_util",
         ":transpose_conv",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
     ],
 )
 
@@ -794,7 +693,6 @@ objc_library(
         "fully_connected_test.mm",
         "lstm_test.mm",
         "max_unpooling_test.mm",
-        "mean_test.mm",
         "padding_test.mm",
         "pooling_test.mm",
         "prelu_test.mm",
@@ -822,9 +720,15 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:padding_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:pooling_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:reduce_test_util",

@@ -247,6 +247,15 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void SetLogDevicePlacement(bool enable) override {
     log_device_placement_ = enable;
   }
+
+  // When tensor transfer across functions/eager executions using send/recv ops
+  // are required, `reuse_rendezvous_for_functions_` can be set to true so that
+  // function executions and eager executions use the same rendezvous instance,
+  // instead of creating new instance per function calls.
+  void SetReuseRendezvousForFunctions(bool reuse_rendezvous_for_functions) {
+    reuse_rendezvous_for_functions_ = reuse_rendezvous_for_functions;
+  }
+
   bool AllowSoftPlacement() const { return allow_soft_placement_; }
   void SetAllowSoftPlacement(bool enable) override {
     allow_soft_placement_ = enable;
@@ -255,6 +264,13 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
   Rendezvous* CreateRendezvous(const int64 step_id) const {
+    if (reuse_rendezvous_for_functions_) {
+      // Increment reference count as `rendezvous_` will be unref'ed after
+      // function execution.
+      rendezvous_->Ref();
+      return rendezvous_;
+    }
+
     if (rendezvous_creator_ != nullptr) {
       return rendezvous_creator_(step_id);
     }
@@ -557,7 +573,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // CompositeDevice.
   // TODO(b/145922293): Consider taking device names as keys.
   absl::flat_hash_map<uint64, std::unique_ptr<CompositeDevice>>
-      composite_devices_ GUARDED_BY(composite_devices_mu_);
+      composite_devices_ ABSL_GUARDED_BY(composite_devices_mu_);
 
   FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
@@ -608,6 +624,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       has_cleanup_ TF_GUARDED_BY(executor_map_mu_);
 
   const bool log_memory_;
+
+  // Whether to use same rendezvous instance across function/eager executions.
+  bool reuse_rendezvous_for_functions_ = false;
 
   Env* const env_;
 

@@ -58,7 +58,6 @@ class SingleThreadedFlatMapDataset(dataset_ops.UnaryDataset):
     return "SingleThreadedFlatMapDataset"
 
 
-# TODO(b/119837791): Add eager benchmarks.
 class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.from_tensor_slices()`."""
 
@@ -114,8 +113,8 @@ class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
         # attributes are currently only supported in graph mode.
         @def_function.function
         def make_dataset():
-          batched = dataset_ops.Dataset.from_tensors(
-              tensor).repeat(num_rows).batch(num_rows)  # pylint: disable=cell-var-from-loop
+          batched = dataset_ops.Dataset.from_tensors(tensor).repeat(
+              num_rows).batch(num_rows)  # pylint: disable=cell-var-from-loop
           batched_tensor = get_single_element.get_single_element(batched)
 
           dataset = dataset_ops.Dataset.from_tensors(batched_tensor).repeat()
@@ -126,8 +125,8 @@ class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
             make_dataset(),
             num_elements=100000,
             iters=5,
-            name="slice_repeat_sparse_elements_per_row_%d_num_rows_%d" % (
-                non_zeros_per_row, num_rows))
+            name="slice_repeat_sparse_elements_per_row_%d_num_rows_%d" %
+            (non_zeros_per_row, num_rows))
 
   def benchmark_slice_batch_cache_repeat(self):
     input_size = 10000
@@ -144,8 +143,8 @@ class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
     self.run_and_report_benchmark(
         dataset,
         num_elements=num_elements,
-        name="slice_batch_cache_repeat_input_%d_batch_%d" % (input_size,
-                                                             batch_size))
+        name="slice_batch_cache_repeat_input_%d_batch_%d" %
+        (input_size, batch_size))
 
 
 if __name__ == "__main__":

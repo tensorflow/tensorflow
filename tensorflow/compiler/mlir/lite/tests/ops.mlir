@@ -1331,6 +1331,13 @@ func @unpack(%arg0: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
 
 // -----
 
+func @unpack(%arg0: tensor<?x2x5x3xf32>) -> () {
+  %0:2 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 2 : i32} : (tensor<?x2x5x3xf32>) -> (tensor<5x5x3xf32>, tensor<5x5x3xf32>)
+  return
+}
+
+// -----
+
 // CHECK-LABEL: testMean
 func @testMean(%arg0: tensor<2x2xf32>, %arg1 : tensor<1xi32>) -> tensor<1x2xf32> {
   // CHECK: "tfl.mean"(%arg0, %arg1) {keep_dims = false}

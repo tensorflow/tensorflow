@@ -183,6 +183,8 @@ tf_kernel_library(
         "gpu_op_less_equal.cc",
         "gpu_op_logical_and.cc",
         "gpu_op_logical_or.cc",
+        "gpu_op_maximum.cc",
+        "gpu_op_minimum.cc",
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
         "gpu_op_pow.cc",
@@ -506,14 +508,15 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        tile_size = "256,1,1",
+        tile_size = "1024",
         types = [
             "f16",
             "f32",
             "f64",
             "i64",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "square",
@@ -524,12 +527,13 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "complex",
-    tile_size = "256,1,1",
+    tile_size = "1024",
     types = [
         "f32",
         "f64",
     ],
-    unroll_factors = "2",
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "2",
 )
 
 gen_kernel_library(
@@ -543,7 +547,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "div",
-    tile_size = "256,1,1",
+    tile_size = "1024",
     types = [
         "f16",
         "f32",
@@ -551,12 +555,13 @@ gen_kernel_library(
         "i16",
         "i64",
     ],
-    unroll_factors = "4",
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
 )
 
 gen_kernel_library(
     name = "mul",
-    tile_size = "256,1,1",
+    tile_size = "1024",
     types = [
         "f16",
         "f32",
@@ -565,14 +570,15 @@ gen_kernel_library(
         "i16",
         "i64",
     ],
-    unroll_factors = "4",
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
 )
 
 # Bitwise operations.
 [
     gen_kernel_library(
         name = name,
-        tile_size = "256,1,1",
+        tile_size = "1024",
         types = [
             "i8",
             "i16",
@@ -584,7 +590,8 @@ gen_kernel_library(
             # "ui32",
             # "ui64",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "bitwise_and",
@@ -609,11 +616,12 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        tile_size = "256,1,1",
+        tile_size = "1024",
         types = [
             "i1",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "logical_and",
@@ -624,7 +632,7 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        tile_size = "256,1,1",
+        tile_size = "1024",
         types = [
             "f16",
             "f32",
@@ -635,7 +643,8 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "equal",
@@ -646,7 +655,7 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        tile_size = "256,1,1",
+        tile_size = "1024",
         types = [
             "f16",
             "f32",
@@ -656,7 +665,8 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "less",
@@ -669,7 +679,7 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        tile_size = "256,1,1",
+        tile_size = "1024",
         types = [
             "f16",
             "f32",
@@ -678,7 +688,8 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "maximum",
@@ -709,7 +720,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "floor_div",
-    tile_size = "256",
+    tile_size = "1024",
     # TODO(172804967): Enable for integer types also once unsigned integers are
     # supported.
     types = [
@@ -717,7 +728,8 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
 )
 
 # Kernels that support all floating-point types.
@@ -768,12 +780,13 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "pow",
-    tile_size = "256,1,1",
+    tile_size = "1024",
     types = [
         "f16",
         "f32",
         "f64",
         "i64",
     ],
-    unroll_factors = "4",
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
 )

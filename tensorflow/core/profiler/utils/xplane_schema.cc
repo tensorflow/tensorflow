@@ -157,6 +157,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"region_type", kRegionType},
       {"data_type", kDataType},
       {"shape", kTensorShapes},
+      {"layout", kTensorLayout},
       {"kpi_name", kKpiName},
       {"kpi_value", kKpiValue},
       {"element_id", kElementId},

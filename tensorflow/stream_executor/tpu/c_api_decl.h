@@ -20,10 +20,12 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/tf_attrtype.h"
-#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 
 extern "C" {
+
+struct TF_Status;
+typedef struct TF_Status TF_Status;
 
 // Maximum number of array elements to inline into structs for performance.
 #define TPU_C_API_MAX_INLINED 6
