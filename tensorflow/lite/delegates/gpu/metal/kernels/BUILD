@@ -596,15 +596,6 @@ ios_unit_test(
     deps = [":transpose_test_lib"],
 )
 
-cc_library(
-    name = "util",
-    srcs = ["util.cc"],
-    hdrs = ["util.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:types",
-    ],
-)
-
 objc_library(
     name = "test_util",
     testonly = 1,
