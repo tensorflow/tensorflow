@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 
 #define NUM_OUT_CH 3
 #define CNN_IMG_SIZE 32

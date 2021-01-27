@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/buffer.h"
+#include "tensorflow/lite/delegates/gpu/metal/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
+#include "tensorflow/lite/delegates/gpu/metal/texture2d.h"
 
 namespace tflite {
 namespace gpu {
@@ -129,6 +131,24 @@ absl::Status CreateMetalObject(id<MTLDevice> device, GPUObjectDescriptor* desc,
     return absl::OkStatus();
   }
 
+  const auto* texture_desc = dynamic_cast<const Texture2DDescriptor*>(desc);
+  if (texture_desc) {
+    Texture2D gpu_texture;
+    RETURN_IF_ERROR(
+        gpu_texture.CreateFromTexture2DDescriptor(*texture_desc, device));
+    *result = absl::make_unique<Texture2D>(std::move(gpu_texture));
+    return absl::OkStatus();
+  }
+
+  const auto* linear_desc = dynamic_cast<const TensorLinearDescriptor*>(desc);
+  if (linear_desc) {
+    LinearStorage gpu_storage;
+    RETURN_IF_ERROR(
+        gpu_storage.CreateFromTensorLinearDescriptor(*linear_desc, device));
+    *result = absl::make_unique<LinearStorage>(std::move(gpu_storage));
+    return absl::OkStatus();
+  }
+
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc);
   if (tensor_desc) {
     MetalSpatialTensor gpu_tensor;
@@ -144,17 +164,50 @@ absl::Status CreateMetalObject(id<MTLDevice> device, GPUObjectDescriptor* desc,
 // Static
 constexpr char MetalArguments::kArgsPrefix[];
 
-absl::Status MetalArguments::Init(id<MTLDevice> device, int buffer_offset,
-                                  Arguments* args, std::string* code) {
-  RETURN_IF_ERROR(AllocateObjects(*args, device));
+absl::Status MetalArguments::Init(
+    const std::map<std::string, std::string>& linkables, MetalDevice* device,
+    Arguments* args, std::string* code) {
+  RETURN_IF_ERROR(AllocateObjects(*args, device->device()));
   RETURN_IF_ERROR(AddObjectArgs(args));
-  RETURN_IF_ERROR(ResolveSelectorsPass(*args, {}, code));
+  RETURN_IF_ERROR(
+      ResolveSelectorsPass(device->GetInfo(), *args, linkables, code));
   object_refs_ = std::move(args->object_refs_);
   args->GetActiveArguments(kArgsPrefix, *code);
   std::string struct_desc = ScalarArgumentsToStructWithVec4Fields(args, code);
   RETURN_IF_ERROR(SetObjectsResources(*args));
   ResolveArgsPass(code);
-  *code = absl::Substitute(*code, struct_desc, GetListOfArgs(buffer_offset));
+  std::string header = R"(
+#include <metal_stdlib>
+using namespace metal;
+
+)";
+  header += struct_desc + "\n";
+  *code = header + *code;
+  std::string arguments = GetListOfArgs(/*buffer_offset*/ 0);
+  const bool use_global_id = code->find("GLOBAL_ID_") != std::string::npos;
+  const bool use_local_id = code->find("LOCAL_ID_") != std::string::npos;
+  const bool use_group_id = code->find("GROUP_ID_") != std::string::npos;
+  const bool use_group_size = code->find("GROUP_SIZE_") != std::string::npos;
+  if (use_global_id) {
+    AppendArgument("uint3 reserved_gid[[thread_position_in_grid]]", &arguments);
+  }
+  if (use_local_id) {
+    AppendArgument("uint3 reserved_lid[[thread_position_in_threadgroup]]",
+                   &arguments);
+  }
+  if (use_group_id) {
+    AppendArgument("uint3 reserved_group_id[[threadgroup_position_in_grid]]",
+                   &arguments);
+  }
+  if (use_group_size) {
+    AppendArgument("uint3 reserved_group_size[[threads_per_threadgroup]]",
+                   &arguments);
+  }
+  if (!use_global_id && !use_local_id && !use_group_id && !use_group_size &&
+      !arguments.empty()) {
+    arguments += ",\n";
+  }
+  *code = absl::Substitute(*code, arguments);
   return absl::OkStatus();
 }
 
@@ -171,6 +224,18 @@ std::string MetalArguments::ScalarArgumentsToStructWithScalarFields(
       pos++;
       struct_desc += "  float " + fvalue.first + ";\n";
       ReplaceAllWords(kArgsPrefix + fvalue.first, "U." + fvalue.first, code);
+    }
+  }
+  for (const auto& hfvalue : args->half_values_) {
+    auto& new_val = float_values_[hfvalue.first];
+    new_val.value = hfvalue.second.value;
+    new_val.active = hfvalue.second.active;
+    if (hfvalue.second.active) {
+      new_val.bytes_offset = pos * 4;
+      pos++;
+      struct_desc += "  float " + hfvalue.first + ";\n";
+      ReplaceAllWords(kArgsPrefix + hfvalue.first,
+                      "static_cast<half>(U." + hfvalue.first + ")", code);
     }
   }
   for (auto& ivalue : args->int_values_) {
@@ -228,6 +293,21 @@ std::string MetalArguments::ScalarArgumentsToStructWithVec4Fields(
       std::string new_name =
           "U.cmp_float4_" + std::to_string(pos / 4) + channels[pos % 4];
       ReplaceAllWords(kArgsPrefix + fvalue.first, new_name, code);
+      pos++;
+    }
+  }
+  for (const auto& hfvalue : args->half_values_) {
+    auto& new_val = float_values_[hfvalue.first];
+    new_val.value = hfvalue.second.value;
+    new_val.active = hfvalue.second.active;
+    if (hfvalue.second.active) {
+      new_val.bytes_offset = pos * 4;
+      if (pos % 4 == 0) {
+        struct_desc += "  float4 cmp_float4_" + std::to_string(pos / 4) + ";\n";
+      }
+      std::string new_name = "static_cast<half>(U.cmp_float4_" +
+                             std::to_string(pos / 4) + channels[pos % 4] + ")";
+      ReplaceAllWords(kArgsPrefix + hfvalue.first, new_name, code);
       pos++;
     }
   }
@@ -301,8 +381,18 @@ absl::Status MetalArguments::SetFloat(const std::string& name, float value) {
 }
 
 absl::Status MetalArguments::SetHalf(const std::string& name, half value) {
-  return absl::UnimplementedError(
-      "No support of half uniforms in Metal backend");
+  auto it = float_values_.find(name);
+  if (it == float_values_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No half argument with name - ", name));
+  }
+  it->second.value = value;
+  if (it->second.active) {
+    float* ptr =
+        reinterpret_cast<float*>(&const_data_[it->second.bytes_offset]);
+    *ptr = value;
+  }
+  return absl::OkStatus();
 }
 
 absl::Status MetalArguments::SetObjectRef(const std::string& name,
@@ -314,14 +404,7 @@ absl::Status MetalArguments::SetObjectRef(const std::string& name,
   }
   GPUResourcesWithValue resources;
   RETURN_IF_ERROR(object.GetGPUResources(it->second.get(), &resources));
-  for (const auto& r : resources.ints) {
-    RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
-  }
-  for (const auto& r : resources.floats) {
-    RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
-  }
-  return absl::OkStatus();
-  // return SetGPUResources(name, resources);
+  return SetGPUResources(name, resources);
 }
 
 void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder,
@@ -353,14 +436,7 @@ absl::Status MetalArguments::AddObjectArgs(Arguments* args) {
     AddGPUResources(t.first, t.second->GetGPUResources(), args);
   }
   for (auto& t : args->object_refs_) {
-    auto resources = t.second->GetGPUResources();
-    for (const auto& r : resources.ints) {
-      args->AddInt(absl::StrCat(t.first, "_", r));
-    }
-    for (const auto& r : resources.floats) {
-      args->AddFloat(absl::StrCat(t.first, "_", r));
-    }
-    // AddGPUResources(t.first, t.second->GetGPUResources(), args);
+    AddGPUResources(t.first, t.second->GetGPUResources(), args);
   }
   return absl::OkStatus();
 }
@@ -386,9 +462,6 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset) {
                                 buffer_offset, ")]]"),
                    &result);
     buffer_offset++;
-  }
-  if (!result.empty()) {
-    result += ",\n";
   }
   return result;
 }
@@ -438,8 +511,8 @@ absl::Status MetalArguments::SetBuffer(const std::string& name,
 }
 
 absl::Status MetalArguments::ResolveSelectorsPass(
-    const Arguments& args, const std::map<std::string, std::string>& linkables,
-    std::string* code) {
+    const GpuInfo& gpu_info, const Arguments& args,
+    const std::map<std::string, std::string>& linkables, std::string* code) {
   std::string result;
   size_t position = 0;
   size_t next_position = code->find(kArgsPrefix);
@@ -470,10 +543,10 @@ absl::Status MetalArguments::ResolveSelectorsPass(
       RETURN_IF_ERROR(ParseArgsInsideBrackets(
           *code, next_position, &close_bracket_pos, &function_args));
       for (auto& arg : function_args) {
-        RETURN_IF_ERROR(ResolveSelectorsPass(args, {}, &arg));
+        RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, args, {}, &arg));
       }
       std::string patch;
-      RETURN_IF_ERROR(ResolveSelector(args, linkables, object_name,
+      RETURN_IF_ERROR(ResolveSelector(gpu_info, args, linkables, object_name,
                                       selector_name, function_args,
                                       template_args, &patch));
       code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
@@ -487,7 +560,8 @@ absl::Status MetalArguments::ResolveSelectorsPass(
 }
 
 absl::Status MetalArguments::ResolveSelector(
-    const Arguments& args, const std::map<std::string, std::string>& linkables,
+    const GpuInfo& gpu_info, const Arguments& args,
+    const std::map<std::string, std::string>& linkables,
     const std::string& object_name, const std::string& selector,
     const std::vector<std::string>& function_args,
     const std::vector<std::string>& template_args, std::string* result) {
@@ -503,8 +577,33 @@ absl::Status MetalArguments::ResolveSelector(
         absl::StrCat("No object with name - ", object_name));
   }
   auto names = desc_ptr->GetGPUResources().GetNames();
+  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
+  if (tensor_desc && (selector == "Write" || selector == "Linking")) {
+    auto it = linkables.find(object_name);
+    if (it != linkables.end()) {
+      if (desc_ptr->GetAccess() != AccessType::WRITE &&
+          desc_ptr->GetAccess() != AccessType::READ_WRITE) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Object with name - ", object_name, " should have Write access."));
+      }
+      std::string value_name, x_coord, y_coord, s_coord;
+      RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
+          function_args, &value_name, &x_coord, &y_coord, &s_coord));
+      // x_coord can have batch size property of link_object
+      ResolveObjectNames(object_name, names, &x_coord);
+      *result = it->second;
+      ReplaceAllWords("in_out_value", value_name, result);
+      ReplaceAllWords("X_COORD", x_coord, result);
+      ReplaceAllWords("Y_COORD", y_coord, result);
+      ReplaceAllWords("S_COORD", s_coord, result);
+      RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, args, {}, result));
+      if (selector == "Linking") {
+        return absl::OkStatus();
+      }
+    }
+  }
   std::string patch;
-  RETURN_IF_ERROR(desc_ptr->PerformSelector(selector, function_args,
+  RETURN_IF_ERROR(desc_ptr->PerformSelector(gpu_info, selector, function_args,
                                             template_args, &patch));
   ResolveObjectNames(object_name, names, &patch);
   *result += patch;

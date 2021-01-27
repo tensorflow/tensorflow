@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -32,6 +34,42 @@ namespace tensorflow {
 namespace tensorrt {
 
 using absl::StrCat;
+
+ExecutionContext::~ExecutionContext() {
+  if (device_memory_) {
+    DCHECK(memory_allocator_) << "Internal error: Device memory with address "
+                              << (char*)device_memory_ << "is not freed";
+    memory_allocator_->free(device_memory_);
+  }
+  if (execution_context_) {
+    execution_context_->destroy();
+  }
+}
+
+StatusOr<ExecutionContext> ExecutionContext::Create(
+    nvinfer1::ICudaEngine* cuda_engine, TRTBaseAllocator* allocator) {
+  void* device_memory = nullptr;
+  nvinfer1::IExecutionContext* execution_context;
+  if (allocator == nullptr) {
+    execution_context = cuda_engine->createExecutionContext();
+  } else {
+    execution_context =
+        cuda_engine->createExecutionContextWithoutDeviceMemory();
+    size_t device_memory_size = cuda_engine->getDeviceMemorySize();
+    VLOG(2) << "Device memory size for cuda engine " << device_memory_size;
+
+    if (device_memory_size > 0) {
+      device_memory = allocator->allocate(device_memory_size,
+                                          /*unused alignment=*/0, /*flags=*/0);
+      if (device_memory == nullptr) {
+        return errors::InvalidArgument(
+            "Out of GPU memory when creating execution context");
+      }
+    }
+    execution_context->setDeviceMemory(device_memory);
+  }
+  return ExecutionContext(allocator, device_memory, execution_context);
+}
 
 Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
                           const nvinfer1::IExecutionContext* execution_context,

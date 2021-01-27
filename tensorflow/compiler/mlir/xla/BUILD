@@ -48,6 +48,47 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "xla_passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        ("-gen-pass-decls -name XLA", "transforms/xla_passes.h.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/xla_passes.td",
+    td_relative_includes = [
+        "../hlo/include",
+    ],
+    td_srcs = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+        "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:TensorOpsTdFiles",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+    ],
+)
+
+cc_library(
+    name = "xla_passes",
+    srcs = [
+        "transforms/passes_detail.h",
+        "transforms/prepare_for_export.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    deps = [
+        ":xla_passes_inc_gen",
+        "//tensorflow/compiler/mlir/hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "xla_legalize_tf",
     srcs = [
@@ -150,6 +191,8 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
@@ -257,6 +300,7 @@ cc_library(
     deps = [
         ":attribute_exporter",
         ":type_to_shape",
+        ":xla_passes",
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
@@ -441,6 +485,7 @@ cc_library(
         ":mhlo_to_lhlo_with_xla",
         ":xla_legalize_tf",
         ":xla_legalize_tf_with_tf2xla",
+        ":xla_passes",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",

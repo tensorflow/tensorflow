@@ -83,6 +83,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 try:
@@ -117,6 +118,15 @@ def _spec_for_value(value):
     return type_spec.type_spec_from_value(value)
   else:
     return value
+
+
+# This dummy decorator imitates ordinary decorators utilizing tf_decorator.
+def dummy_tf_decorator(method):
+
+  def wrapper(*args, **kwargs):
+    return method(*args, **kwargs)
+
+  return tf_decorator.make_decorator(method, wrapper)
 
 
 class FunctionTest(test.TestCase, parameterized.TestCase):
@@ -272,6 +282,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       self.assertEmpty(functions)
 
+  def testImplementsAttributeWorksWithGradientTape(self):
+    add = lambda x, y: x + y ** 2
+    add = def_function.function(experimental_implements='MyFunc')(add)
+    x = variables.Variable(3.0)
+    y = variables.Variable(2.0)
+
+    with backprop.GradientTape() as tape:
+      g = add(x, y)
+
+    dg_dy, dg_dx = tape.gradient(g, [y, x])
+    self.assertEqual(dg_dy.numpy(), 4.0)
+    self.assertEqual(dg_dx.numpy(), 1.0)
+
   def testImplementsAttributeWorksOnVariables(self):
     with context.graph_mode(), self.cached_session():
       v = def_function.function(
@@ -323,6 +346,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       a.initializer.run()
       numpy.testing.assert_equal(r1.eval(), [3.])
       numpy.testing.assert_equal(r2.eval(), [3., 3.])
+
+  def testImplementsWorksWithTensorSpec(self):
+    v = def_function.function(
+        experimental_implements='func')(lambda x, y: x + y)
+    v = v.get_concrete_function(
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32))
+    x = v(1., 2.)
+    self.assertEqual(x.numpy(), 3.)
 
   def testImplementsAttributeAsNameAttrList(self):
     implements_attr = (
@@ -4136,6 +4168,46 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled(x=2, y=2, z=4, u=5)  # Retrace - change in **kwargs
     self.assertEqual(trace_count[0], 3)
 
+  def testFollowTypeHintsWithTensorSpec(self):
+    def func(x: ops.Tensor, y):
+      return x + y
+    v = def_function.function(experimental_follow_type_hints=True)(func)
+    v = v.get_concrete_function(
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32), 3)
+    x = v(constant_op.constant(1.), 3)
+    self.assertEqual(x.numpy(), 4.)
+
+  def testFollowTypeHintsTraceWithKwArgsAndNoVarKws(self):
+    trace_count = [0]
+
+    def func(a: int, b: ops.Tensor,
+             x: ops.Tensor = 0, y: int = 1):
+      del a, b, y
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(0, 0, x=1, y=2)
+    enabled(0, 0, x=2, y=2,)  # No retrace, since only tensor changed
+    self.assertEqual(trace_count[0], 1)
+
+    # Pass args as keyword args.
+    enabled(a=0, b=0, x=2, y=2,)  # No retrace, args are the same
+    self.assertEqual(trace_count[0], 1)
+
+    enabled(a=1, b=0, x=2, y=2,)  # Retrace, since non-tensor arg changed
+    self.assertEqual(trace_count[0], 2)
+
+    enabled(a=1, b=2, x=2, y=2)  # No retrace, since only tensor changed
+    self.assertEqual(trace_count[0], 2)
+
+    trace_count[0] = 0
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
+    disabled(0, 0, x=1, y=2)
+    disabled(0, 0, x=2, y=2,)  # Retrace
+    self.assertEqual(trace_count[0], 2)
+
   def testFollowTypeHintsTraceWithArgsEqualsTypedKwargs(self):
     trace_count = [0]
 
@@ -4257,8 +4329,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled(1, 2, 3, 4, kwonly=5, kwarg1=600, kwarg2=700)  # No retrace
     self.assertEqual(trace_count[0], 4)
 
-  def testWithModuleNameScope(self):
-    self.skipTest('b/166158748:function does not handle this case correctly.')
+  def testWithExtraWrapper(self):
 
     class Foo(module.Module):
 
@@ -4267,16 +4338,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.var = None
 
       @def_function.function
-      @module.Module.with_name_scope
+      @dummy_tf_decorator
       def add(self, x, y, z=1):
         if self.var is None:
           return x + y + z
 
     foo = Foo()
-    self.assertEqual(foo.add(2, 3), 6)
+    self.assertEqual(foo.add(2, 3).numpy(), 6)
 
-  def testWithModuleNameScopeRedundantArgs(self):
-    self.skipTest('b/166158748:function does not handle this case correctly.')
+  @parameterized.parameters([(def_function.function, dummy_tf_decorator),
+                             (dummy_tf_decorator, def_function.function),
+                             (def_function.function, def_function.function)])
+  def testWithExtraWrapperRedundantArgs(self, decorator1, decorator2):
 
     class Foo(module.Module):
 
@@ -4284,18 +4357,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         super().__init__()
         self.var = None
 
-      @def_function.function
-      @module.Module.with_name_scope
-      def add(self, x, y):
+      @decorator1
+      @decorator2
+      def add1(self, x, y):
         if self.var is None:
           return x + y
 
     foo = Foo()
     with self.assertRaisesRegex(TypeError, 'got two values for argument'):
-      foo.add(2, x=3)  # pylint: disable=redundant-keyword-arg,no-value-for-parameter
+      foo.add1(2, x=3)  # pylint: disable=redundant-keyword-arg,no-value-for-parameter
 
-  def testWithModuleNameScopeMissingArgs(self):
-    self.skipTest('b/166158748:function does not handle this case correctly.')
+  def testWithExtraWrapperMissingArgs(self):
 
     class Foo(module.Module):
 
@@ -4304,14 +4376,115 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.var = None
 
       @def_function.function
-      @module.Module.with_name_scope
-      def add(self, x, y):
+      @dummy_tf_decorator
+      def add1(self, x, y):
+        if self.var is None:
+          return x + y
+
+      @def_function.function
+      @dummy_tf_decorator
+      def add2(self, x, y):
+        if self.var is None:
+          return x + y
+
+      @def_function.function
+      @def_function.function
+      def add3(self, x, y):
         if self.var is None:
           return x + y
 
     foo = Foo()
-    with self.assertRaisesRegex(TypeError, 'missing required arguments: y'):
-      foo.add(2)  # pylint: disable=no-value-for-parameter
+    with self.assertRaisesRegex(
+        TypeError, 'missing 1 required positional argument: \'y\''):
+      foo.add1(2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+      foo.add1(y=2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(
+        TypeError, 'missing 1 required positional argument: \'y\''):
+      foo.add2(2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+      foo.add2(y=2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(
+        TypeError, 'missing 1 required positional argument: \'y\''):
+      foo.add3(2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+      foo.add3(y=2)  # pylint: disable=no-value-for-parameter
+
+  def testMissingArgsTfFunctionedMethod(self):
+
+    class A(object):
+
+      def func(self, position_arg1, position_arg2):
+        return position_arg1, position_arg2
+
+      @def_function.function
+      def decorated_method(self, position_arg1, position_arg2):
+        return position_arg1, position_arg2
+
+    a_instance = A()
+    tf_method_pos = def_function.function(a_instance.func)
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_method_pos(position_arg2='foo')
+
+    # tf.function-decorated instance methods need to be tested because of
+    # the __get__ method implementation.
+    tf_func_decorated_method = def_function.function(
+        a_instance.decorated_method)
+    tf_func_decorated_method(position_arg1='foo', position_arg2='bar')
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_func_decorated_method(position_arg2='bar')
+
+  def testMissingArgsTfFunctionedObject(self):
+
+    class A(object):
+
+      def __call__(self, position_arg1, position_arg2):
+        return position_arg1, position_arg2
+
+    a_instance = A()
+
+    # A tf.function-decorated callable object needs to be tested because of
+    # the special inspect results.
+    tf_func_obj = def_function.function(a_instance)
+    tf_func_obj(position_arg1=1, position_arg2=2)
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_func_obj(position_arg2='bar')
+
+  def testMissingArgsTfFunctionedFunctions(self):
+
+    def func_pos(position_arg1, position_arg2):
+      return position_arg1, position_arg2
+
+    def func_with_default(position_arg, named_arg=None):
+      return position_arg, named_arg
+
+    def func_pos_3args(position_arg1, position_arg2, position_arg3):
+      return position_arg1, position_arg2, position_arg3
+
+    tf_func_pos = def_function.function(func_pos)
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_func_pos(position_arg2='foo')
+
+    tf_func_with_default = def_function.function(func_with_default)
+    tf_func_with_default(position_arg='bar')
+    with self.assertRaisesRegex(TypeError,
+                                '.* missing 1 required argument: position_arg'):
+      tf_func_with_default(named_arg='foo')
+
+    tf_func_pos_3args = def_function.function(func_pos_3args)
+    with self.assertRaisesRegex(
+        TypeError,
+        '.* missing required arguments: position_arg1, position_arg3'):
+      tf_func_pos_3args(position_arg2='foo')
 
   def testShapeInferencePropagateConstNestedStack(self):
 

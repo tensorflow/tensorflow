@@ -611,7 +611,9 @@ REGISTER_OP("XlaVariadicReduce")
       return Status::OK();
     })
     .Doc(R"doc(
-Wraps the variadic XLA Reduce operator, documented at
+Wraps the variadic XLA Reduce operator.
+
+Semantics are documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
 
 input: the input tensor(s)

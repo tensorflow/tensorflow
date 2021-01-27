@@ -384,8 +384,9 @@ absl::Status Runtime::PrepareForExecution() {
           RETURN_IF_ERROR(AllocateInternalObject(object));
           RETURN_IF_ERROR(
               MakeBindingFunc(object, ref, &internal_objects_, &binding));
+        } else {
+          return status;
         }
-        return status;
       }
       program.bindings.push_back(std::move(binding));
     }

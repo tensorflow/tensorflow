@@ -45,7 +45,7 @@ filegroup(
 ```
 
 you need to modify tflite_hexagon_nn_skel_libraries macro in
-tensorflow/lite/special_rules.bzl to specifiy the build target.
+tensorflow/lite/special_rules.bzl to specify the build target.
 
 ```
 return ["//third_party/hexagon_nn_skel:libhexagon_nn_skel"]

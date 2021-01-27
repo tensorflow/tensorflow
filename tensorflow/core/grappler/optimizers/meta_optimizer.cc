@@ -189,7 +189,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("constfold",
          new ConstantFolding(
              cpu_device_,
-             cfg_.experimental_disable_compressed_tensor_optimization()));
+             cfg_.experimental_disable_compressed_tensor_optimization(),
+             !cfg_.experimental_disable_folding_quantization_emulation()));
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
   MK_OPT("layout", new GenericLayoutOptimizer(
@@ -253,7 +254,8 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.constant_folding() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ConstantFolding>(
         cfg_.constant_folding(), cpu_device_,
-        cfg_.experimental_disable_compressed_tensor_optimization()));
+        cfg_.experimental_disable_compressed_tensor_optimization(),
+        !cfg_.experimental_disable_folding_quantization_emulation()));
   }
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());
@@ -269,9 +271,6 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
-  if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
-  }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
@@ -280,6 +279,9 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<GenericLayoutOptimizer>(
         /*optimization level*/ cfg_.layout_optimizer(),
         /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
+  }
+  if (cfg_.remapping() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
   if (cfg_.loop_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(

@@ -3,6 +3,9 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts", "cuda_gpu_architectures")
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
+# CUDA toolkit version as tuple (e.g. '(11, 1)').
+_cuda_version = %{cuda_version}
+
 def _gen_device_srcs_impl(ctx):
     ops = ["sum", "prod", "min", "max"]
     types = ["i8", "u8", "i32", "u32", "i64", "u64", "f16", "f32", "f64"]
@@ -106,15 +109,15 @@ def _device_link_impl(ctx):
     fatbin_h = ctx.actions.declare_file("%s_fatbin.h" % name)
     bin2c = ctx.file._bin2c
     arguments_list = [
-            "-64",
-            "--cmdline=--compile-only",
-            "--link",
-            "--compress-all",
-            "--create=%s" % tmp_fatbin.path,
-            "--embedded-fatbin=%s" % fatbin_h.path,
-        ]
-    if %{use_bin2c_path}:
-           arguments_list.append("--bin2c-path=%s" % bin2c.dirname)
+        "-64",
+        "--cmdline=--compile-only",
+        "--link",
+        "--compress-all",
+        "--create=%s" % tmp_fatbin.path,
+        "--embedded-fatbin=%s" % fatbin_h.path,
+    ]
+    if _cuda_version <= (10, 1):
+        arguments_list.append("--bin2c-path=%s" % bin2c.dirname)
     ctx.actions.run(
         outputs = [tmp_fatbin, fatbin_h],
         inputs = cubins,
@@ -171,55 +174,51 @@ _device_link = rule(
 
 def _prune_relocatable_code_impl(ctx):
     """Clears __nv_relfatbin section containing relocatable device code."""
-    empty_file = ctx.actions.declare_file(ctx.attr.name + "__nv_relfatbin")
-    ctx.actions.write(empty_file, "")
 
-    # Parse 'objcopy --version' and update section if it's at least v2.26.
-    # Otherwise, simply copy the file without changing it.
-    # TODO(csigg): version parsing is brittle, can we do better?
-    command = r"""
-        objcopy=$1                                         \
-        section=$2                                         \
-        input=$3                                           \
-        output=$4                                          \
-        args=""                                            \
-        pattern='([0-9])\.([0-9]+)';                       \
-        if [[ $($objcopy --version) =~ $pattern ]] && {    \
-            [ ${BASH_REMATCH[1]} -gt 2 ] ||                \
-            [ ${BASH_REMATCH[2]} -ge 26 ]; }; then         \
-          args="--update-section __nv_relfatbin=$section"; \
-        fi;                                                \
-        $objcopy $args $input $output
-    """
-    cc_toolchain = find_cpp_toolchain(ctx)
+    if _cuda_version < (11, 3):
+        # -no-relocatable-elf not supported, return unpruned input.
+        return ctx.attr.input[DefaultInfo]
+
+    # nvcc --generate-code options for the active set of cuda architectures.
+    gencodes = []
+    for code in ctx.attr.gpu_archs:
+        arch = code.replace("compute_", "sm_")
+        if code != arch:
+            gencodes.append((arch, arch))
+        gencodes.append((arch, code))
+
     outputs = []
-    for src in ctx.files.srcs:
-        out = ctx.actions.declare_file("pruned_" + src.basename, sibling = src)
-        ctx.actions.run_shell(
-            inputs = [empty_file] + ctx.files.srcs,  # + ctx.files._crosstool,
-            outputs = [out],
-            arguments = [
-                cc_toolchain.objcopy_executable,
-                empty_file.path,
-                src.path,
-                out.path,
-            ],
-            command = command,
+    for input in ctx.files.input:
+        output = ctx.actions.declare_file(
+            "pruned_" + input.basename,
+            sibling = input,
         )
-        outputs.append(out)
+        arguments = (
+            ["--generate-code=arch=%s,code=%s" % code for code in gencodes] +
+            ["-no-relocatable-elf", "--output-file=%s" % output.path, str(input.path)]
+        )
+        ctx.actions.run(
+            outputs = [output],
+            inputs = [input],
+            executable = ctx.file._nvprune,
+            arguments = arguments,
+            mnemonic = "nvprune",
+        )
+        output.append(outputs)
+
     return DefaultInfo(files = depset(outputs))
 
 _prune_relocatable_code = rule(
     implementation = _prune_relocatable_code_impl,
     attrs = {
-        "srcs": attr.label_list(mandatory = True, allow_files = True),
-        "_cc_toolchain": attr.label(
-            default = "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "input": attr.label(mandatory = True, allow_files = True),
+        "gpu_archs": attr.string_list(),
+        "_nvprune": attr.label(
+            default = Label("@local_config_cuda//cuda:cuda/bin/nvprune"),
+            allow_single_file = True,
+            executable = True,
+            cfg = "host",
         ),
-        # "_crosstool": attr.label_list(
-        #     cfg = "host",
-        #     default = ["@bazel_tools//tools/cpp:crosstool"]
-        # ),
     },
 )
 
@@ -383,7 +382,8 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
     pruned = name + "_pruned"
     _prune_relocatable_code(
         name = pruned,
-        srcs = [lib],
+        input = lib,
+        gpu_archs = cuda_gpu_architectures(),
     )
 
     # Repackage the two libs into a single archive. This is required because
@@ -392,11 +392,7 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
     merged = name + "_merged"
     _merge_archive(
         name = merged,
-
-        # TODO(b/166662245): We're deliberately not using `pruned` here.
-        # Pruning __nv_relfatbin also seems to prune out the PTX shipped with
-        # NCCL.
-        srcs = [lib, dlink],
+        srcs = [pruned, dlink],
     )
 
     # Create cc target from archive.

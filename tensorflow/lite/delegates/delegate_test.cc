@@ -42,6 +42,11 @@ using test_utils::TestFP16Delegation;
 
 namespace {
 
+TEST_F(TestDelegate, NullDelegate) {
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
+            kTfLiteDelegateError);
+}
+
 TEST_F(TestDelegate, BasicDelegate) {
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
@@ -912,6 +917,14 @@ TEST_F(TestDelegateWithDynamicTensors, ShapePropagation_FlagNotSet) {
 // =====================
 
 TEST_P(TestFP16Delegation, NonDelegatedInterpreterWorks) {
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  VerifyInvoke();
+}
+
+TEST_F(TestFP16Delegation, NullDelegate) {
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
+            kTfLiteDelegateError);
+  // Verify that resulting interpreter still works, despite null delegate.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   VerifyInvoke();
 }

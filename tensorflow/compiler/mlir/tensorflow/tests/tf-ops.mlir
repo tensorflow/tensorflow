@@ -4135,3 +4135,78 @@ func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<
   "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0], device_var_updates_indices = [-2]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
   return
 }
+
+// -----
+
+// Valid VarHandleOp operation.
+// CHECK-LABEL: func @testVarHandleOp
+func @testVarHandleOp() -> tensor<!tf.resource<tensor<*xf32>>> {
+  %0 = "tf.VarHandleOp"() {
+    container = "",
+    shared_name = "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
+  } : () -> tensor<!tf.resource<tensor<*xf32>>>
+  return %0 : tensor<!tf.resource<tensor<*xf32>>>
+}
+
+// -----
+
+// VarHandleOp operation missing the required resource subtype.
+func @testVarHandleOp() -> tensor<*x!tf.resource> {
+  // expected-error @+1 {{must have exactly one subtype in the result resource type}}
+  %0 = "tf.VarHandleOp"() {
+    container = "",
+    shared_name = "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
+  } : () -> tensor<*x!tf.resource>
+  return %0 : tensor<*x!tf.resource>
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
+  %0 = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
+  // expected-error @+1 {{broadcast_dims must have size equal to the smaller argument rank}}
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<1xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
+  return
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
+  %0 = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
+  // expected-error @+1 {{if broadcast_dims is empty, both arguments must have equal rank or at least one argument must be a scalar}}
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<0xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
+  return
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<5x2xi32>, %arg1: tensor<2x3x5xi32>) -> () {
+  %0 = "tf.Const"() {value = dense<0> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+1 {{broadcast_dims has duplicates}}
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<5x2xi32>, tensor<2x3x5xi32>, tensor<2xi64>) -> (tensor<2x1x5xi32>, tensor<2x3x5xi32>)
+  return
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<2xi32>, %arg1: tensor<i32>) -> () {
+  %0 = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2xi32>, tensor<i32>, tensor<0xi64>) -> (tensor<2xi32>, tensor<i32>)
+  return
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<5x2xi32>, %arg1: tensor<2x3x5xi32>) -> () {
+  %0 = "tf.Const"() {value = dense<[2, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<5x2xi32>, tensor<2x3x5xi32>, tensor<2xi64>) -> (tensor<2x1x5xi32>, tensor<2x3x5xi32>)
+  return
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
+  %0 = "tf.Const"() {value = dense<[2, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<2xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
+  return
+}

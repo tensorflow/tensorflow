@@ -40,7 +40,7 @@ filegroup(
 py_library(
     name = "mixed_precision_experimental",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":get_layer_policy",
         ":loss_scale_optimizer",
@@ -53,7 +53,7 @@ py_library(
     srcs = [
         "policy.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":device_compatibility_check",
         "//tensorflow/python:framework",
@@ -68,7 +68,7 @@ tf_py_test(
         "policy_test.py",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_rocm"],
     deps = [
         ":policy",
@@ -84,7 +84,7 @@ tf_py_test(
 py_library(
     name = "device_compatibility_check",
     srcs = ["device_compatibility_check.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:config",
     ],
@@ -93,7 +93,7 @@ py_library(
 cuda_py_test(
     name = "device_compatibility_check_test",
     srcs = ["device_compatibility_check_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tfrt_enabled = True,
     deps = [
         ":device_compatibility_check",
@@ -105,7 +105,7 @@ cuda_py_test(
 py_library(
     name = "get_layer_policy",
     srcs = ["get_layer_policy.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/keras/engine:base_layer",
     ],
@@ -114,7 +114,7 @@ py_library(
 tf_py_test(
     name = "get_layer_policy_test",
     srcs = ["get_layer_policy_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":get_layer_policy",
         ":policy",
@@ -128,7 +128,7 @@ py_library(
     srcs = [
         "autocast_variable.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -164,7 +164,7 @@ tf_py_test(
 py_library(
     name = "loss_scale",
     srcs = ["loss_scale.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:loss_scale",
         "//tensorflow/python/keras/utils:generic_utils",
@@ -174,7 +174,7 @@ py_library(
 py_library(
     name = "loss_scale_optimizer",
     srcs = ["loss_scale_optimizer.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":loss_scale",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
@@ -248,7 +248,7 @@ cuda_py_test(
 py_library(
     name = "test_util",
     srcs = ["test_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework",
         "//tensorflow/python/keras",
@@ -280,7 +280,7 @@ cuda_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "layer_correctness_test",
     size = "medium",
     srcs = ["layer_correctness_test.py"],

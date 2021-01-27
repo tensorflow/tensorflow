@@ -21,13 +21,13 @@ import time
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.platform import test
 
 
-# TODO(b/119837791): Add eager benchmarks.
 class DatasetBenchmarkBase(test.Benchmark):
   """Base class for dataset benchmarks."""
 
@@ -56,15 +56,35 @@ class DatasetBenchmarkBase(test.Benchmark):
       This is the median time (with respect to `iters`) it takes for the dataset
       to go through `num_elements` elements, divided by `num_elements.`
     """
-    options = dataset_ops.Options()
+
+    # The options that have been applied to the dataset are preserved so that
+    # they are not overwritten while benchmarking.
+    options = dataset.options()
     options.experimental_optimization.apply_default_optimizations = (
         apply_default_optimizations)
     dataset = dataset.with_options(options)
+
     # NOTE: We use `dataset.skip()` to perform the iterations in C++, avoiding
-    # the overhead of multiple `session.run()` calls. Note that this relies on
-    # the underlying implementation of `skip`: if it is optimized in the future,
+    # the overhead of having to execute a TensorFlow op for each step of the input
+    # pipeline. Note that this relies on the underlying implementation of `skip`
+    # to execute upstream computation. If it is optimized in the future,
     # we will have to change this code.
     dataset = dataset.skip(num_elements - 1)
+
+    if context.executing_eagerly():
+      deltas = []
+      for _ in range(iters):
+        if warmup:
+          iterator = iter(dataset)
+          next(iterator)
+
+        iterator = iter(dataset)
+        start = time.time()
+        next(iterator)
+        end = time.time()
+        deltas.append(end - start)
+      return np.median(deltas) / float(num_elements)
+
     iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     next_element = nest.flatten(next_element)[0]
@@ -95,7 +115,10 @@ class DatasetBenchmarkBase(test.Benchmark):
     # Measure the per-element wall time.
     wall_time = self.run_benchmark(dataset, num_elements, iters, warmup,
                                    apply_default_optimizations)
-
+    if context.executing_eagerly():
+      name = "{}.eager".format(name)
+    else:
+      name = "{}.graph".format(name)
     if extras is None:
       extras = {}
     extras["num_elements"] = num_elements

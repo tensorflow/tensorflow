@@ -114,6 +114,8 @@ def LHLO_IsFiniteOp: LHLO_Op<"is_finite", [SameOperandsShape]>, BASE_HLO_IsFinit
 
 def LHLO_LogOp: LHLO_UnaryElementwiseOp<"log", LHLO_FpOrComplexBuffer>, BASE_HLO_LogOp;
 
+def LHLO_LogisticOp : LHLO_UnaryElementwiseOp<"logistic", LHLO_FpOrComplexBuffer>, BASE_HLO_LogisticOp;
+
 def LHLO_Log1pOp: LHLO_UnaryElementwiseOp<"log_plus_one", LHLO_FpOrComplexBuffer>, BASE_HLO_Log1pOp;
 
 def LHLO_NegOp: LHLO_UnaryElementwiseOp<"negate">, BASE_HLO_NegOp;
@@ -214,9 +216,7 @@ def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_Reduce
   let regions = (region SizedRegion<1>:$body);
 }
 
-def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [
-      SingleBlockImplicitTerminator<"TerminatorOp">
-    ]>, BASE_HLO_ReduceWindowOp {
+def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", []>, BASE_HLO_ReduceWindowOp {
 
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
@@ -309,12 +309,22 @@ def LHLO_SliceOp: LHLO_Op<
   );
 }
 
-def HLO_DynamicUpdateSliceOp: LHLO_Op<"dynamic-update-slice", []> {
+def LHLO_DynamicSliceOp: LHLO_Op<"dynamic_slice",
+      [AllElementTypesMatch<["operand", "output"]>]>, BASE_HLO_DynamicSliceOp {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$start_indices,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    I64ElementsAttr:$slice_sizes
+  );
+}
+
+def LHLO_DynamicUpdateSliceOp: LHLO_Op<"dynamic-update-slice", []>, BASE_HLO_DynamicUpdateSliceOp {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemRead]>:$update,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$start_indices
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$start_indices,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }
 
@@ -584,7 +594,7 @@ def LHLO_InfeedOp: LHLO_Op<"infeed", []>, BASE_HLO_InfeedOp {
 
 def LHLO_OutfeedOp: LHLO_Op<"outfeed", []> {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
     DefaultValuedAttr<StrAttr, "">:$config
   );
 }

@@ -183,6 +183,11 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual ImmediateExecutionTensorHandle* TFTensorHandleFromInterface(
       ImmediateExecutionTensorHandle* handle) = 0;
 
+  virtual std::vector<std::string> GetLoggedOpsTestonly() { return {}; }
+
+  // Get a list of the names of functions that have been registered.
+  virtual std::vector<string> ListFunctionNames() = 0;
+
   //===--------------------------------------------------------------------===//
   // Distributed runtime related functions.
   //===--------------------------------------------------------------------===//

@@ -17,7 +17,7 @@
 
 The functions defined in this library have been copied over from Keras in order
 to remove the dependency from TensorFlow Lite to Keras. The functions which
-could not be copied over are accessed using the dependecy inversion principle.
+could not be copied over are accessed using the dependency inversion principle.
 (for details, refer to tensorflow/python/util/keras_deps.py).
 """
 

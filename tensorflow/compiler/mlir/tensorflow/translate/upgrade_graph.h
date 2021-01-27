@@ -21,11 +21,18 @@ limitations under the License.
 
 namespace tensorflow {
 
+class GraphDef;
+class MetaGraphDef;
+
 // Generate the shared_name for resource handle ops in the graph and functions
 // if their shared_names are empty. Resource handle ops with empty shared_name
 // may have undesired semantics.
-Status GenerateResourceSharedNameIfEmpty(Graph& graph,
-                                         FunctionLibraryDefinition& flib_def);
+Status GenerateResourceSharedNameIfEmpty(
+    GraphDef& gdef, const OpRegistryInterface* default_registry);
+
+// Run grapler passes over `meta_graph_def`.graph_def(), and optimize it in
+// place.
+Status RunGrappler(MetaGraphDef* meta_graph_def);
 
 }  // namespace tensorflow
 

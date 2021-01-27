@@ -175,7 +175,7 @@ class NNMemory {
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
 };
 
-
+// LINT.IfChange
 enum class NNAPIValidationFailureType : int {
   // The operator is not supported by either NNAPI or the NNAPI Delegate.
   kUnsupportedOperator = 0,
@@ -232,7 +232,7 @@ enum class NNAPIValidationFailureType : int {
   // for the accelerated operation.
   kUnsupportedQuantizationParameters = 15,
 };
-
+// LINT.ThenChange(nnapi_linter/linter.proto)
 
 struct NNAPIValidationFailure {
   NNAPIValidationFailureType type;

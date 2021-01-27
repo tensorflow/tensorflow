@@ -15,7 +15,7 @@ py_library(
         "client.py",
         "version.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "@six_archive//:six",
     ],
@@ -26,7 +26,7 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":client",
         "@six_archive//:six",

@@ -266,10 +266,13 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
   auto* client = compiler() ? compiler()->client() : nullptr;
   xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
-    Status status = dynamism_or_status.status();
-    errors::AppendToMessage(&status, "while evaluating input dynamism", index,
-                            " of ", context_->op_kernel().type_string());
-    return status;
+    // When failed to resolve dynamism, conservatively consider the value
+    // dynamic.
+    //
+    // TODO(b/176993339): Support resolving dynamism across computations so
+    // resolving dynamism will not fail.
+    *out = true;
+    return Status::OK();
   }
   Tensor dynamism = dynamism_or_status.ValueOrDie();
 
@@ -293,10 +296,13 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
   auto* client = compiler() ? compiler()->client() : nullptr;
   xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
-    Status status = dynamism_or_status.status();
-    errors::AppendToMessage(&status, "while evaluating input dynamism", index,
-                            " of ", context_->op_kernel().type_string());
-    return status;
+    // When failed to resolve dynamism, conservatively consider the value
+    // dynamic.
+    //
+    // TODO(b/176993339): Support resolving dynamism across computations so
+    // resolving dynamism will not fail.
+    out->resize(InputShape(index).num_elements(), false);
+    return Status::OK();
   }
   Tensor dynamism = dynamism_or_status.ValueOrDie();
 

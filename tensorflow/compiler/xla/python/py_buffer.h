@@ -20,7 +20,10 @@ limitations under the License.
 #include <stdexcept>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
+#include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
@@ -57,7 +60,7 @@ class PyBuffer : public DeviceArrayBase {
   PjRtBuffer* buffer() const { return buffer_.get(); }
 
   ClientAndPtr<PjRtDevice> device() const;
-  const std::string& platform_name() const {
+  absl::string_view platform_name() const {
     return buffer_->client()->platform_name();
   }
   bool is_deleted() const { return buffer_->IsDeleted(); }
@@ -69,12 +72,12 @@ class PyBuffer : public DeviceArrayBase {
 
   void Delete() {
     buffer_->Delete();
-    npy_value_ = pybind11::none();
+    host_value_ = nullptr;
   }
 
   // Returns xla::InvalidArgument if the buffer has been deleted.
   Status BlockHostUntilReady();
-  Status CopyToHostAsync() { return buffer_->CopyToHostAsync(); }
+  Status CopyToHostAsync();
 
   const Shape& shape() { return buffer_->on_host_shape(); }
 
@@ -95,11 +98,13 @@ class PyBuffer : public DeviceArrayBase {
   // Returns the number of dimensions of the (host) numpy array.
   int ndim() const { return buffer()->on_host_shape().dimensions_size(); }
 
+  pybind11::tuple python_shape() const;
+  pybind11::dtype python_dtype() const;
+
   void SetStickyDevice(pybind11::object sticky_device);
   pybind11::object GetStickyDevice() const { return sticky_device_.value(); }
 
-  void SetNpyValue(pybind11::object npy_value) { npy_value_ = npy_value; }
-  pybind11::object GetNpyValue() const { return npy_value_; }
+  StatusOr<pybind11::object> AsNumPyArray(pybind11::handle this_obj);
 
   void SetAval(pybind11::object aval);
   pybind11::object GetAval() const { return aval_.value(); }
@@ -107,11 +112,16 @@ class PyBuffer : public DeviceArrayBase {
  private:
   friend class PyClient;
 
+  struct HostValue {
+    absl::Notification ready;
+    Status status;
+    std::shared_ptr<xla::Literal> value;
+  };
   std::shared_ptr<PyClient> client_;
   std::unique_ptr<PjRtBuffer> buffer_;
   std::shared_ptr<Traceback> traceback_;
-  // The host numpy array caching the value when it has been copied to the host.
-  pybind11::object npy_value_ = pybind11::none();
+  std::shared_ptr<HostValue> host_value_;  // Protected by the GIL.
+
   absl::optional<pybind11::object> sticky_device_ = absl::nullopt;
   // TODO(jblespiau): It's currently there for convenience but maybe we can do
   // without it (adding `weak_type` instead).

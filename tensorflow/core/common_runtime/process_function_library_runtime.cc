@@ -995,8 +995,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 }
 
 Status ProcessFunctionLibraryRuntime::GetOutputDevices(
-    FunctionLibraryRuntime::Handle handle, std::vector<Device*>* output_devices,
-    const bool eager_lazy_copy) const {
+    FunctionLibraryRuntime::Handle handle,
+    std::vector<Device*>* output_devices) const {
   MultiDeviceFunctionData* data = IsMultiDevice(handle);
   if (data == nullptr) {
     return errors::InvalidArgument(
@@ -1015,16 +1015,6 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
     Device* target_device = nullptr;
     Device* host = nullptr;
     if (target_flr == nullptr) {
-      if (!eager_lazy_copy) {
-        return errors::Unimplemented(
-            "Currently, outputting tensors on remote devices is not supported."
-            "The ",
-            comp_data.ret_indices[0],
-            "-th return value of the function outputs to target_device: ",
-            target,
-            " Please copy the tensor to local device explicitly using "
-            "tf.identity and return the new Tensor instead.");
-      }
       if (!data->has_remote_outputs) {
         data->has_remote_outputs = true;
       }

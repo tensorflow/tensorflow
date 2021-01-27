@@ -603,7 +603,7 @@ func @dynamic_reshape_of_dynamic_reshape(%arg0: tensor<?xf16>, %shape: tensor<?x
   %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf16>, tensor<?xindex>) -> tensor<*xf16>
   %1 = shape.shape_of %0 : tensor<*xf16> -> tensor<?xindex>
   %2 = shape.num_elements %1 : tensor<?xindex> -> index
-  %3 = tensor_from_elements %2 : tensor<1xindex>
+  %3 = tensor.from_elements %2 : tensor<1xindex>
   %4 = "mhlo.dynamic_reshape"(%0, %3) : (tensor<*xf16>, tensor<1xindex>) -> tensor<?xf16>
   return %4 : tensor<?xf16>
 }
@@ -1542,8 +1542,10 @@ func @identity_broadcast_in_dim_reshape(%arg0: tensor<128xf32>) -> tensor<128xf3
 }
 
 // CHECK-LABEL: @broadcast_of_reshape
-func @broadcast_of_reshape(%arg: tensor<?xf32>, %shape: tensor<2xindex>) -> tensor<?x?xf32> {
-  %0 = "mhlo.dynamic_reshape"(%arg, %shape) : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+func @broadcast_of_reshape(%arg: tensor<?xf32>,
+                           %shape: tensor<2xindex>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dynamic_reshape"(%arg, %shape)
+      : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   %1 = "mhlo.dynamic_broadcast_in_dim"(%0, %shape) {
     broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>
   } : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
@@ -1551,3 +1553,30 @@ func @broadcast_of_reshape(%arg: tensor<?xf32>, %shape: tensor<2xindex>) -> tens
 }
 // CHECK: [[RESHAPE:%.*]] = "mhlo.dynamic_reshape"
 // CHECK: return [[RESHAPE]]
+
+// CHECK-LABEL: @permutation_broadcast_of_reshape
+func @permutation_broadcast_of_reshape(%arg: tensor<?xf32>,
+    %shape: tensor<2xindex>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dynamic_reshape"(%arg, %shape)
+      : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %1 = "mhlo.dynamic_broadcast_in_dim"(%0, %shape) {
+    broadcast_dimensions = dense<[1, 0]> : tensor<2xi64>
+  } : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  return %1 : tensor<?x?xf32>
+}
+// CHECK: mhlo.dynamic_reshape
+// CHECK: mhlo.dynamic_broadcast_in_dim
+
+// CHECK-LABEL: @reshape_of_same_shape_op_result
+func @reshape_of_same_shape_op_result(%arg: tensor<?xf32>,
+    %shape: tensor<2xindex>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dynamic_reshape"(%arg, %shape)
+    : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %1 = "mhlo.abs"(%0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  %2 = "mhlo.dynamic_reshape"(%1, %shape)
+    : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  return %2 : tensor<?x?xf32>
+}
+// CHECK: mhlo.dynamic_reshape
+// CHECK-NEXT: mhlo.abs
+// CHECK-NOT: mhlo.dynamic_reshape

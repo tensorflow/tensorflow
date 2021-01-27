@@ -657,6 +657,54 @@ ConvolveArgs MakeConvolveArgs(PrimitiveType lhs_type, PrimitiveType rhs_type) {
   return args;
 }
 
+TEST_F(ShapeInferenceTest, ConvolveWithBF16_F16) {
+  ConvolveArgs args = MakeConvolveArgs(BF16, F16);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/absl::nullopt))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWithF16_BF16) {
+  ConvolveArgs args = MakeConvolveArgs(F16, BF16);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/absl::nullopt))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWithS32_U32) {
+  ConvolveArgs args = MakeConvolveArgs(S32, U32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/absl::nullopt))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWithU32_S32) {
+  ConvolveArgs args = MakeConvolveArgs(U32, S32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/absl::nullopt))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
 TEST_F(ShapeInferenceTest, ConvolveWithPreferredElementType) {
   ConvolveArgs args = MakeConvolveArgs(S8, S16);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -690,7 +738,7 @@ TEST_F(ShapeInferenceTest,
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
           /*batch_group_count=*/1, args.window, args.dnums,
           /*preferred_element_type=*/BF16))
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 2, 3}),
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
                                inferred_shape));
 }
 
@@ -1714,7 +1762,7 @@ TEST_F(ShapeInferenceTest, FloatingPointDotWithNarrowerPreferredElementType) {
                               ShapeUtil::MakeShape(F32, {32, 32}), dot_dnums,
                               /*preferred_element_type=*/BF16));
   EXPECT_TRUE(
-      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(F32, {32, 32})));
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(BF16, {32, 32})));
 }
 
 TEST_F(ShapeInferenceTest, FloatingPointDotWithInvalidPreferredElementType) {

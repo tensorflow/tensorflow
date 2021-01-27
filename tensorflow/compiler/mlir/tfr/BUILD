@@ -233,6 +233,7 @@ cc_library(
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//mlir:IR",
     ],
@@ -253,6 +254,7 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
+        "//tensorflow/python:is_mlir_bridge_test_false",
         "//tensorflow/python/eager:def_function",
     ],
 )

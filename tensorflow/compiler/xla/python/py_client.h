@@ -94,7 +94,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
   std::shared_ptr<PjRtClient> shared_pjrt_client() { return pjrt_client_; }
 
-  const std::string& platform_name() const {
+  absl::string_view platform_name() const {
     return pjrt_client_->platform_name();
   }
   int addressable_device_count() const {
@@ -105,6 +105,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
+
+  std::vector<ClientAndPtr<PyBuffer>> LiveBuffers();
 
   StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
   GetDefaultDeviceAssignment(int num_replicas, int num_partitions);

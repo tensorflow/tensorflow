@@ -20,10 +20,12 @@ namespace ops {
 namespace custom {
 
 extern "C" void AddPerceptionOps(::tflite::MutableOpResolver* resolver) {
-  resolver->AddCustom("MaxUnpooling2D",
-                      tflite::ops::custom::RegisterMaxUnpooling2D());
+  resolver->AddCustom("DenseImageWarp",
+                      tflite::ops::custom::RegisterDenseImageWarp());
   resolver->AddCustom("MaxPoolWithArgmax",
                       tflite::ops::custom::RegisterMaxPoolWithArgmax());
+  resolver->AddCustom("MaxUnpooling2D",
+                      tflite::ops::custom::RegisterMaxUnpooling2D());
 }
 
 }  // namespace custom

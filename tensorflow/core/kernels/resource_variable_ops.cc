@@ -245,7 +245,8 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
     handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        ctx->stack_trace());
     ctx->set_output(0, handle);
   } else {
     ctx->set_output(0, resource_);

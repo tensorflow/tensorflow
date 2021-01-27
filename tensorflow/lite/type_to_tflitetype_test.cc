@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 #include <string>
+#include <type_traits>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 
 namespace tflite {
 namespace {

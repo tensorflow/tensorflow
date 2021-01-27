@@ -52,7 +52,6 @@ tf_cuda_library(
             ":immediate_execution_operation",
             ":immediate_execution_tensor_handle",
             ":immediate_execution_distributed_manager",
-            ":abstract_tensor_handle",
             ":tfe_context_internal",
             ":tfe_cancellation_manager_internal",
             ":tfe_executor_internal",
@@ -73,6 +72,7 @@ tf_cuda_library(
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:context_distributed_manager",
             "//tensorflow/core/common_runtime/eager:core",
+            "//tensorflow/core/common_runtime/eager:custom_device",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
             "//tensorflow/core/common_runtime/eager:tensor_handle",
@@ -86,6 +86,7 @@ tf_cuda_library(
         ],
     }) + [
         "@com_google_absl//absl/memory",
+        ":abstract_tensor_handle",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/eager:remote_mgr",
         "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
@@ -131,6 +132,7 @@ filegroup(
         "tfe_monitoring_internal.h",
         "tfe_op_attrs_internal.h",
         "tfe_tensor_debug_info_internal.h",
+        "tfe_tensorhandle_internal.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -144,10 +146,7 @@ cc_library(
         "c_api_experimental.h",
         "c_api_internal.h",
     ],
-    visibility = [
-        "//learning/deepmind/courier:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":c_api",
         ":tfe_cancellation_manager_internal",
@@ -480,12 +479,17 @@ cc_library(
     visibility = [
         "//tensorflow:internal",
     ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:refcount",
-        "//tensorflow/core/platform:status",
-    ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/platform:refcount",
+            "//tensorflow/core/platform:status",
+        ],
+    }),
 )
 
 cc_library(
@@ -735,9 +739,7 @@ tf_cuda_cc_test(
         "c_api_test.cc",
     ],
     tags = [
-        "noguitar",  # TODO(b/155445984): flaky
-        #"guitar",
-        "notap",  # TODO(b/156981931): flaky
+        "guitar",
         "multi_gpu",
     ],
     deps = [

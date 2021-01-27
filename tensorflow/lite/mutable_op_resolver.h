@@ -15,10 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MUTABLE_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_MUTABLE_OP_RESOLVER_H_
 
+#include <stddef.h>
+
 #include <string>
 #include <unordered_map>
+#include <utility>
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {

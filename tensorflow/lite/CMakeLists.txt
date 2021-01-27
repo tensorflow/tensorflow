@@ -206,6 +206,7 @@ endif()
 if(TFLITE_ENABLE_GPU)
   find_package(opencl_headers REQUIRED)
   find_package(vulkan_headers REQUIRED)
+  find_package(fp16_headers REQUIRED)
   # Android NDK already has OpenGL, EGL headers.
   if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
     find_package(opengl_headers REQUIRED)
@@ -263,6 +264,7 @@ if(TFLITE_ENABLE_GPU)
   list(APPEND TFLITE_DELEGATES_GPU_SRCS
     ${TFLITE_SOURCE_DIR}/delegates/gpu/api.cc
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
+    ${TFLITE_SOURCE_DIR}/experimental/acceleration/compatibility/android_info.cc
     ${TFLITE_DELEGATES_GPU_CL_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS}

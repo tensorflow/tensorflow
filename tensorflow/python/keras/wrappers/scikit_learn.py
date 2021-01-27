@@ -114,7 +114,7 @@ class BaseWrapper(object):
     Returns:
         Dictionary of parameter names mapped to their values.
     """
-    res = copy.deepcopy(self.sk_params)
+    res = self.sk_params.copy()
     res.update({'build_fn': self.build_fn})
     return res
 
@@ -261,7 +261,7 @@ class KerasClassifier(BaseWrapper):
             (instead of `(n_sample, 1)` as in Keras).
     """
     kwargs = self.filter_sk_params(Sequential.predict_proba, kwargs)
-    probs = self.model.predict_proba(x, **kwargs)
+    probs = self.model.predict(x, **kwargs)
 
     # check if binary classification
     if probs.shape[1] == 1:

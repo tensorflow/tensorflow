@@ -189,7 +189,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // the TFLite dialect.
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::TFL::CreatePrepareTFPass(
         pass_config.unfold_batch_matmul,
-        /*allow_bf16_type_legalization=*/!pass_config.runtime_verification));
+        /*allow_bf16_and_f16_type_legalization=*/!pass_config
+            .runtime_verification));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     if (pass_config.shape_inference) {
       // Add a shape inference pass to optimize away the unnecessary casts.
