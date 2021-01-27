@@ -38,6 +38,7 @@ from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
@@ -47,6 +48,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
@@ -685,6 +687,25 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     imported = load.load(path)
     self.assertEqual(imported.signatures["key"].structured_input_signature[1],
                      {"name": tensor_spec.TensorSpec((None, 1), name="name")})
+
+  def test_save_concrete_ragged_tensor(self):
+    """ Save a RaggedTensor signature.
+    """
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    spec = type_spec.type_spec_from_value(rt)
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(lambda x: math_ops.add(x, 1))
+    # The concrete function signature expands the RaggedTensor spec into its
+    # components; i.e. the DenseTensor pair (values, row_splits)
+    concrete = root.f.get_concrete_function(spec)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, signatures={"key": concrete})
+    imported = load.load(save_dir)
+    self.assertEqual(
+        imported.signatures["key"].structured_input_signature[1],
+        {"x": tensor_spec.TensorSpec((None,), dtype=spec.dtype, name="x"),
+         "x_1": tensor_spec.TensorSpec((3,), dtype=spec.row_splits_dtype,
+                                       name="x_1")})
 
 
 class VariablePolicyEnumTest(test.TestCase):
