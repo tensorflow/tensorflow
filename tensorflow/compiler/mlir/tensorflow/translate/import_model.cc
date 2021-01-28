@@ -3555,6 +3555,7 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
   GraphImportConfig specs;
   specs.prune_unused_nodes = true;
   specs.inputs = ParseInputArrays(inputs);
+  specs.enable_shape_inference = false;
   for (auto& output : outputs) specs.outputs.push_back(output.second.name());
   specs.control_outputs = control_outputs;
 
