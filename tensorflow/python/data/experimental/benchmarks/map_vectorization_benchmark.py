@@ -123,11 +123,11 @@ class MapVectorizationBenchmark(benchmark_base.DatasetBenchmarkBase):
     unoptimized_time = self._run(
         dataset=unoptimized_dataset,
         num_elements=num_elements,
-        name=name_template.format(str_id, batch_size, num_elements, "unoptimized"))
+        name=name_template.format(str_id, batch_size, num_elements, "noopt"))
     optimized_time = self._run(
         dataset=optimized_dataset,
         num_elements=num_elements,
-        name=name_template.format(str_id, batch_size, num_elements, "optimized"))
+        name=name_template.format(str_id, batch_size, num_elements, "opt"))
 
     print("Batch size: {}\n"
           "Input element size: {}\n"
