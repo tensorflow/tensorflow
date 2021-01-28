@@ -689,8 +689,9 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
       ConversionPatternRewriter& rewriter) const final {
     if (!VerifyHloOpBufferOrTensorSemantics<isLHLO>(reshape_op))
       return failure();
+    typename OpTy::Adaptor operands(args);
     ShapedType operand_type =
-        reshape_op.operand().getType().template cast<ShapedType>();
+        operands.operand().getType().template cast<ShapedType>();
     ShapedType result_type = GetHloOpResultType<isLHLO>(reshape_op);
 
     if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
@@ -708,7 +709,11 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
     unsigned curr_src_dim = 0, curr_dst_dim = 0;
     SmallVector<linalg::ReassociationExprs, 4> reassociation_map(
         dst_shape.size());
-    bool is_expanding_or_collapsing = true;
+
+    // First scan all dimensions in the source shapes to see whether we have a
+    // perfect case where consecutive dimensions in source are collapsed. For
+    // such case we can just generate one single linalg.reshape.
+    bool is_collapsing_source = true;
     while (curr_src_dim < src_shape.size() && curr_dst_dim < dst_shape.size()) {
       int64_t dst_size = dst_shape[curr_dst_dim];
       int64_t src_size = src_shape[curr_src_dim];
@@ -731,15 +736,17 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
           }
         }
       } else {
-        is_expanding_or_collapsing = false;
+        is_collapsing_source = false;
         break;
       }
       curr_dst_dim++;
     }
     if (curr_src_dim != src_shape.size() || curr_dst_dim != dst_shape.size())
-      is_expanding_or_collapsing = false;
+      is_collapsing_source = false;
 
-    if (!is_expanding_or_collapsing) {
+    // Otherwise, we need to first reduce all source dimensions into one and
+    // then expand to the destination dimensions.
+    if (!is_collapsing_source) {
       auto get_identity_exprs = [&rewriter](int n) {
         SmallVector<AffineExpr, 4> exprs;
         for (int i = 0; i < n; ++i)
@@ -751,9 +758,13 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
                                             1, std::multiplies<int64_t>());
       auto elem_type = operand_type.getElementType();
       SmallVector<linalg::ReassociationExprs, 4> collapsing_map = {
-          get_identity_exprs(dst_shape.size())};
+          // Use operand_type here because we need to collapse all operands
+          // dimensions.
+          get_identity_exprs(operand_type.getShape().size())};
       SmallVector<linalg::ReassociationExprs, 4> expanding_map = {
-          get_identity_exprs(src_shape.size())};
+          // Use result_type here because we need to expand to all result
+          // dimensions.
+          get_identity_exprs(result_type.getShape().size())};
 
       if (isLHLO) {
         auto collapsed_type = MemRefType::get({total_elems}, elem_type);
