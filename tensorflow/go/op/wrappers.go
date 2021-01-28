@@ -49035,6 +49035,14 @@ func EnqueueTPUEmbeddingSparseTensorBatchMaxSequenceLengths(value []int64) Enque
 	}
 }
 
+// EnqueueTPUEmbeddingSparseTensorBatchNumFeatures sets the optional num_features attribute to value.
+// If not specified, defaults to <>
+func EnqueueTPUEmbeddingSparseTensorBatchNumFeatures(value []int64) EnqueueTPUEmbeddingSparseTensorBatchAttr {
+	return func(m optionalAttr) {
+		m["num_features"] = value
+	}
+}
+
 // Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
 //
 // sample_indices[i], embedding_indices[i] and aggregation_weights[i] correspond
@@ -52298,6 +52306,14 @@ func EnqueueTPUEmbeddingRaggedTensorBatchCombiners(value []string) EnqueueTPUEmb
 func EnqueueTPUEmbeddingRaggedTensorBatchMaxSequenceLengths(value []int64) EnqueueTPUEmbeddingRaggedTensorBatchAttr {
 	return func(m optionalAttr) {
 		m["max_sequence_lengths"] = value
+	}
+}
+
+// EnqueueTPUEmbeddingRaggedTensorBatchNumFeatures sets the optional num_features attribute to value.
+// If not specified, defaults to <>
+func EnqueueTPUEmbeddingRaggedTensorBatchNumFeatures(value []int64) EnqueueTPUEmbeddingRaggedTensorBatchAttr {
+	return func(m optionalAttr) {
+		m["num_features"] = value
 	}
 }
 
