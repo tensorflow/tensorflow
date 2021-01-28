@@ -438,8 +438,8 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
         [](py::handle h, bool jax_enable_x64) -> xla::StatusOr<ArgSignature> {
       xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(h);
       bool weak_type = py::cast<py::bool_>(h.attr("aval").attr("weak_type"));
-      return ArgSignature(buffer->buffer()->on_host_shape().element_type(),
-                          buffer->buffer()->on_host_shape().dimensions(),
+      return ArgSignature(buffer->buffer()->on_device_shape().element_type(),
+                          buffer->buffer()->on_device_shape().dimensions(),
                           weak_type);
     };
     (*p)[py::type::handle_of<xla::DeviceArrayBase>().ptr()] = buffer_handler;
@@ -1015,8 +1015,9 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
       keep_alive.emplace_back(std::move(on_device.owned_buffer));
     }
 
-    ArgSignature sig(buffer->on_host_shape().element_type(),
-                     buffer->on_host_shape().dimensions(), on_device.weak_type);
+    ArgSignature sig(buffer->on_device_shape().element_type(),
+                     buffer->on_device_shape().dimensions(),
+                     on_device.weak_type);
     arguments.signature.dynamic_args_signatures.push_back(std::move(sig));
   }
   return xla::Status::OK();

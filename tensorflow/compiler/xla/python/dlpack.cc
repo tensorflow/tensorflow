@@ -295,15 +295,15 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   pack->tensor.deleter = DLPackTensorDeleter;
   TF_ASSIGN_OR_RETURN(dt.ctx, DLContextForDevice(*buffer->buffer()->device()));
   dt.ctx.device_id = buffer->buffer()->device()->local_hardware_id();
-  dt.ndim = buffer->buffer()->on_host_shape().dimensions_size();
+  dt.ndim = buffer->buffer()->on_device_shape().dimensions_size();
   TF_ASSIGN_OR_RETURN(dt.dtype,
                       PrimitiveTypeToDLDataType(
-                          buffer->buffer()->on_host_shape().element_type()));
+                          buffer->buffer()->on_device_shape().element_type()));
 
-  pack->shape =
-      std::vector<int64>(buffer->buffer()->on_host_shape().dimensions().begin(),
-                         buffer->buffer()->on_host_shape().dimensions().end());
-  pack->strides = StridesForShape(buffer->buffer()->on_host_shape());
+  pack->shape = std::vector<int64>(
+      buffer->buffer()->on_device_shape().dimensions().begin(),
+      buffer->buffer()->on_device_shape().dimensions().end());
+  pack->strides = StridesForShape(buffer->buffer()->on_device_shape());
   dt.shape = reinterpret_cast<std::int64_t*>(pack->shape.data());
   dt.strides = reinterpret_cast<std::int64_t*>(pack->strides.data());
   dt.byte_offset = 0;

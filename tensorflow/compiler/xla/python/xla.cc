@@ -301,13 +301,13 @@ PYBIND11_MODULE(xla_extension, m) {
           "shape",
           [](const PyBuffer& pybuffer) -> pybind11::tuple {
             return IntSpanToTuple(
-                pybuffer.buffer()->on_host_shape().dimensions());
+                pybuffer.buffer()->on_device_shape().dimensions());
           })
       .def_property_readonly(
           "dtype",
           [](const PyBuffer& buffer) {
             PrimitiveType primitive =
-                buffer.buffer()->on_host_shape().element_type();
+                buffer.buffer()->on_device_shape().element_type();
             return PrimitiveTypeToDtype(primitive).ValueOrDie();
           })
       .def_property_readonly("size", &PyBuffer::size)

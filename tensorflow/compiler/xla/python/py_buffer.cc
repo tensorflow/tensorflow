@@ -56,11 +56,11 @@ PyBuffer::~PyBuffer() {
 }
 
 pybind11::tuple PyBuffer::python_shape() const {
-  return IntSpanToTuple(buffer()->on_host_shape().dimensions());
+  return IntSpanToTuple(buffer()->on_device_shape().dimensions());
 }
 
 pybind11::dtype PyBuffer::python_dtype() const {
-  PrimitiveType primitive = buffer()->on_host_shape().element_type();
+  PrimitiveType primitive = buffer()->on_device_shape().element_type();
   return PrimitiveTypeToDtype(primitive).ValueOrDie();
 }
 
@@ -91,7 +91,8 @@ Status PyBuffer::BlockHostUntilReady() {
 Status PyBuffer::CopyToHostAsync() {
   if (!buffer_->IsOnCpu() && !host_value_) {
     host_value_ = std::make_shared<HostValue>();
-    host_value_->value = std::make_shared<Literal>(buffer_->on_host_shape());
+    host_value_->value = std::make_shared<Literal>(
+        ShapeUtil::DeviceShapeToHostShape(buffer_->on_device_shape()));
     buffer_->ToLiteral(host_value_->value.get(),
                        [host_value{host_value_}](Status status) {
                          host_value->status = std::move(status);
@@ -110,7 +111,7 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
   if (buffer_->IsOnCpu()) {
     TF_ASSIGN_OR_RETURN(
         py::dtype dtype,
-        PrimitiveTypeToDtype(buffer_->on_host_shape().element_type()));
+        PrimitiveTypeToDtype(buffer_->on_device_shape().element_type()));
     // Objects that must be kept alive while the array is alive.
     struct Hold {
       py::object buffer;
@@ -124,8 +125,8 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
     void* data = hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
     py::capsule hold_capsule(hold.release(),
                              [](void* h) { delete static_cast<Hold*>(h); });
-    py::array array(dtype, buffer_->on_host_shape().dimensions(),
-                    ByteStridesForShape(buffer_->on_host_shape()), data,
+    py::array array(dtype, buffer_->on_device_shape().dimensions(),
+                    ByteStridesForShape(buffer_->on_device_shape()), data,
                     hold_capsule);
     array.attr("flags").attr("writeable") = Py_False;
     {
@@ -171,18 +172,18 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() const {
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for array buffers.");
   }
-  if (buffer_->on_host_shape().element_type() == BF16) {
+  if (buffer_->on_device_shape().element_type() == BF16) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for bfloat16 buffers.");
   }
-  TF_RET_CHECK(
-      LayoutUtil::IsMonotonicWithDim0Major(buffer_->on_host_shape().layout()));
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
+      buffer_->on_device_shape().layout()));
 
   py::dict result;
-  result["shape"] = IntSpanToTuple(buffer_->on_host_shape().dimensions());
-  TF_ASSIGN_OR_RETURN(
-      py::str typestr,
-      TypeDescriptorForPrimitiveType(buffer_->on_host_shape().element_type()));
+  result["shape"] = IntSpanToTuple(buffer_->on_device_shape().dimensions());
+  TF_ASSIGN_OR_RETURN(py::str typestr,
+                      TypeDescriptorForPrimitiveType(
+                          buffer_->on_device_shape().element_type()));
   result["typestr"] = std::move(typestr);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
                           external_reference_hold,
@@ -235,7 +236,7 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     // If we allowed exports of formatted BF16 buffers, consumers would get
     // confused about the type because there is no way to describe BF16 to
     // Python.
-    if (buffer.on_host_shape().element_type() == BF16 &&
+    if (buffer.on_device_shape().element_type() == BF16 &&
         ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
       return InvalidArgument(
           "bfloat16 buffer format not supported by Python buffer protocol.");
@@ -249,7 +250,7 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     if (buffer.IsDeleted()) {
       return InvalidArgument("Deleted buffer used in buffer protocol.");
     }
-    const Shape& shape = buffer.on_host_shape();
+    const Shape& shape = buffer.on_device_shape();
     if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
          (flags & PyBUF_STRIDES) == PyBUF_ND) &&
         !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
