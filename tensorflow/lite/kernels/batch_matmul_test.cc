@@ -279,6 +279,67 @@ INSTANTIATE_TEST_SUITE_P(
     BatchMatMulOpTest, BatchMatMulOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
+class ConstRHSBatchMatMulOpModel : public MultiOpModel {
+ public:
+  ConstRHSBatchMatMulOpModel(const TensorData& lhs,
+                             std::initializer_list<int> rhs_shape,
+                             std::initializer_list<float> rhs_data,
+                             bool adj_x = false, bool adj_y = false) {
+    lhs_id_ = AddInput(lhs);
+    rhs_id_ = AddConstInput<float>(TensorType_FLOAT32, rhs_data, rhs_shape);
+    matmul_output_id_ = AddOutput(lhs.type);
+    std::vector<int> matmul_inputs{lhs_id_, rhs_id_};
+    std::vector<int> matmul_outputs{matmul_output_id_};
+    AddBuiltinOp(BuiltinOperator_BATCH_MATMUL,
+                 BuiltinOptions_BatchMatMulOptions,
+                 CreateBatchMatMulOptions(builder_, adj_x, adj_y).Union(),
+                 matmul_inputs, matmul_outputs);
+
+    // This is just a dummy op to check if the values of transposed RHS are
+    // polluted.
+    neg_output_id_ = AddOutput(lhs.type);
+    std::vector<int> neg_inputs{matmul_output_id_};
+    std::vector<int> neg_outputs{neg_output_id_};
+    AddBuiltinOp(BuiltinOperator_NEG, BuiltinOptions_NegOptions,
+                 CreateNegOptions(builder_).Union(), neg_inputs, neg_outputs);
+    BuildInterpreter({GetShape(lhs_id_), GetShape(rhs_id_)});
+  }
+
+  int lhs() const { return lhs_id_; }
+  std::vector<float> GetOutput() {
+    return ExtractVector<float>(neg_output_id_);
+  }
+  std::vector<int32_t> GetOutputShape() {
+    return GetTensorShape(neg_output_id_);
+  }
+
+ protected:
+  int lhs_id_;
+  int rhs_id_;
+  int matmul_output_id_;
+  int neg_output_id_;
+};
+
+TEST(ConstRHSBatchMatMulOpModel, RHSNotAdjoint) {
+  ConstRHSBatchMatMulOpModel model({TensorType_FLOAT32, {1, 6, 2}}, {2, 3},
+                                   {6, 3, 7, 4, 6, 9});
+  model.PopulateTensor<float>(model.lhs(),
+                              {6, 3, 7, 4, 6, 9, 2, 6, 7, 4, 3, 7});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({-48, -36, -69, -58, -45, -85, -72, -72, -123,
+                                -36, -42, -68, -58, -45, -85, -46, -51, -84}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 6, 3}));
+  // Eval twice to make sure constant transposed RHS is persistent.
+  model.PopulateTensor<float>(model.lhs(),
+                              {6, 3, 7, 4, 6, 9, 2, 6, 7, 4, 3, 7});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({-48, -36, -69, -58, -45, -85, -72, -72, -123,
+                                -36, -42, -68, -58, -45, -85, -46, -51, -84}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 6, 3}));
+}
+
 // In the hybrid model the weights are quantized int8. But the input
 // and output are expected to be in float precision.
 class HybridBatchMatMulOpModel : public SingleOpModel {
