@@ -1165,10 +1165,6 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
     std::array<int64_t, 1> rhs_dims{static_cast<int64_t>(op.values().size())};
     auto rhs_type = RankedTensorType::get(rhs_dims, ranked.getElementType());
     return HoistParams{args(0), args(1), axis, 0, op.getType(), rhs_type};
-  } else if (is_all_tensors(1, axis) && is_all_scalars(0)) {
-    std::array<int64_t, 1> lhs_dims{static_cast<int64_t>(op.values().size())};
-    auto lhs_type = RankedTensorType::get(lhs_dims, ranked.getElementType());
-    return HoistParams{args(0), args(1), 0, axis, lhs_type, op.getType()};
   }
 
   return None;
