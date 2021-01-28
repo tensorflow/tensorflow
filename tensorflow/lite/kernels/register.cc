@@ -300,9 +300,13 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_IF, tflite::ops::builtin::Register_IF());
   AddBuiltin(BuiltinOperator_WHILE, tflite::ops::builtin::Register_WHILE());
   AddBuiltin(BuiltinOperator_NON_MAX_SUPPRESSION_V4,
-             Register_NON_MAX_SUPPRESSION_V4());
+             Register_NON_MAX_SUPPRESSION_V4(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_NON_MAX_SUPPRESSION_V5,
-             Register_NON_MAX_SUPPRESSION_V5());
+             Register_NON_MAX_SUPPRESSION_V5(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_SCATTER_ND, Register_SCATTER_ND());
   AddBuiltin(BuiltinOperator_DENSIFY, Register_DENSIFY());
   AddBuiltin(BuiltinOperator_SEGMENT_SUM, Register_SEGMENT_SUM());

@@ -383,6 +383,46 @@ TEST(OpVersionTest, VersioningMinTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
+TEST(OpVersionTest, VersioningNonMaxSuppressionV4Test) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_NON_MAX_SUPPRESSION_V4,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8)
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_NON_MAX_SUPPRESSION_V4,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16)
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_NON_MAX_SUPPRESSION_V4,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32)
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+}
+
+TEST(OpVersionTest, VersioningNonMaxSuppressionV5Test) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_NON_MAX_SUPPRESSION_V5,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8)
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_NON_MAX_SUPPRESSION_V5,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16)
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_NON_MAX_SUPPRESSION_V5,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32)
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+}
+
 TEST(OpVersionTest, VersioningMeanTest) {
   SimpleVersioningTestExtended(BuiltinOperator_MEAN);
 }

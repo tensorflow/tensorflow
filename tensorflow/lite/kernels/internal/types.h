@@ -855,6 +855,34 @@ struct MeanParams {
   int16_t axis[4];
 };
 
+struct NonMaxSuppressionParams {
+  int32_t boxes_zero_point;
+
+  int32_t iou_zero_point;
+  int32_t iou_inverse_scale;
+
+  int32_t iou_threshold_zero_point;
+  int32_t iou_threshold_rescale_zero_point;
+  int32_t iou_threshold_rescale_multiplier;
+  int32_t iou_threshold_rescale_shift;
+
+  int32_t scores_zero_point;
+  int32_t scores_rescale_zero_point;
+  int32_t scores_rescale_multiplier;
+  int32_t scores_rescale_shift;
+
+  int32_t score_threshold_zero_point;
+  int32_t score_threshold_rescale_zero_point;
+  int32_t score_threshold_rescale_multiplier;
+  int32_t score_threshold_rescale_shift;
+
+  int32_t selected_scores_rescale_zero_point;
+  int32_t selected_scores_rescale_multiplier;
+  int32_t selected_scores_rescale_shift;
+
+  const void* soft_nms_lut{nullptr};
+};
+
 struct PackParams {
   int8_t axis;
   const int32_t* input_zeropoint;

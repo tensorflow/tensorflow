@@ -1452,11 +1452,11 @@ using the `tf.gather operation`.  For example:
   }];
 
   let arguments = (ins
-    TFL_FpTensor:$boxes,
-    TFL_FpTensor:$scores,
+    TFL_TensorOf<[F32, QI8, QI16]>:$boxes,
+    TFL_TensorOf<[F32, QI8, QI16]>:$scores,
     TFL_I32Tensor:$max_output_size,
-    TFL_FpTensor:$iou_threshold,
-    TFL_FpTensor:$score_threshold
+    TFL_TensorOf<[F32, QI8, QI16]>:$iou_threshold,
+    TFL_TensorOf<[F32, QI8, QI16]>:$score_threshold
   );
 
   let results = (outs
@@ -1476,6 +1476,7 @@ def TFL_NonMaxSuppressionV5Op : TFL_Op<"non_max_suppression_v5", [
   // Other operands are scalar params.
   TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
   TFL_OperandHasRank<4, 0>, TFL_OperandHasRank<5, 0>]> {
+  FixedOutputRangeInterface]> {
   let summary = [{
 Greedily selects a subset of bounding boxes in descending order of score,
   }];
@@ -1506,19 +1507,31 @@ larger than 0.
   }];
 
   let arguments = (ins
-    TFL_FpTensor:$boxes,
-    TFL_FpTensor:$scores,
+    TFL_TensorOf<[F32, QI8, QI16]>:$boxes,
+    TFL_TensorOf<[F32, QI8, QI16]>:$scores,
     TFL_I32Tensor:$max_output_size,
-    TFL_FpTensor:$iou_threshold,
-    TFL_FpTensor:$score_threshold,
-    TFL_FpTensor:$soft_nms_sigma
+    TFL_TensorOf<[F32, QI8, QI16]>:$iou_threshold,
+    TFL_TensorOf<[F32, QI8, QI16]>:$score_threshold,
+    TFL_TensorOf<[F32, QI8, QI16]>:$soft_nms_sigma
   );
 
   let results = (outs
     TFL_I32Tensor:$selected_indices,
-    TFL_FpTensor:$selected_scores,
+    TFL_TensorOf<[F32, QI8, QI16]>:$selected_scores,
     TFL_I32Tensor:$valid_outputs
   );
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = selected_scores().getType();
+    // zero_point = 0
+    // scale = 1. / (max_value + 1)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0 / 256, /*zero_point=*/-128);
+  }
+  }];
 }
 
 def TFL_NotEqualOp : TFL_Op<"not_equal", [

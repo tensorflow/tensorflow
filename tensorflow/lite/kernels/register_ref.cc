@@ -472,9 +472,13 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_IF, Register_IF());
   AddBuiltin(BuiltinOperator_WHILE, Register_WHILE());
   AddBuiltin(BuiltinOperator_NON_MAX_SUPPRESSION_V4,
-             Register_NON_MAX_SUPPRESSION_V4());
+             Register_NON_MAX_SUPPRESSION_V4(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_NON_MAX_SUPPRESSION_V5,
-             Register_NON_MAX_SUPPRESSION_V5());
+             Register_NON_MAX_SUPPRESSION_V5(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_SCATTER_ND, Register_SCATTER_ND());
   AddBuiltin(BuiltinOperator_DENSIFY, Register_DENSIFY());
   AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL_REF(),
