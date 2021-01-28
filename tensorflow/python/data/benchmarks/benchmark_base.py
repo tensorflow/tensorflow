@@ -113,8 +113,10 @@ class DatasetBenchmarkBase(test.Benchmark):
                                warmup=True,
                                apply_default_optimizations=False):
     # Measure the per-element wall time.
-    wall_time = self.run_benchmark(dataset, num_elements, iters, warmup,
-                                   apply_default_optimizations)
+    wall_time = self.run_benchmark(
+        dataset=dataset, num_elements=num_elements, iters=iters, warmup=warmup,
+        apply_default_optimizations=apply_default_optimizations
+    )
     if context.executing_eagerly():
       name = "{}.eager".format(name)
     else:
@@ -124,5 +126,4 @@ class DatasetBenchmarkBase(test.Benchmark):
     extras["num_elements"] = num_elements
     self.report_benchmark(
         wall_time=wall_time, iters=iters, name=name, extras=extras)
-
     return wall_time
