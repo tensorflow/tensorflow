@@ -177,6 +177,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"memalloc_details", kMemallocDetails},
       {"MemFree_details", kMemFreeDetails},
       {"Memset_details", kMemsetDetails},
+      {"MemoryResidency_details", kMemoryResidencyDetails},
       {"kernel_details", kKernelDetails},
       {"annotation", kKernelAnnotation},
       {"nvtx_range", kNVTXRange},
