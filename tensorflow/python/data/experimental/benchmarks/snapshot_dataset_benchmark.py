@@ -59,8 +59,10 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
     dataset = dataset.skip(num_elements)
     if context.executing_eagerly():
       iterator = iter(dataset)
-      for _ in range(num_elements):
+      try:
         next(iterator)
+      except StopIteration:
+        pass
     else:
       next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
       with session.Session() as sess:
