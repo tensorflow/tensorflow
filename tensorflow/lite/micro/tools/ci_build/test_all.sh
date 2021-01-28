@@ -80,4 +80,7 @@ tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 echo "Running cortex_m_generic tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_cortex_m_generic.sh
 
+echo "Running cortex_m_corstone_300 tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_cortex_m_corstone_300.sh
+
 echo "Finished all micro tests at `date`"
