@@ -227,10 +227,50 @@ LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
                                                     attributes, element_type,
                                                     inferedReturnShapes);
 }
+
 LogicalResult BroadcastCompareOp::reifyReturnTypeShapes(
     OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
   return ReifyBroadcastBinaryOpReturnTypeShapes(builder, getOperation(),
                                                 reifiedReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// IsInfOp
+//===----------------------------------------------------------------------===//
+
+static Type getIsInfLikeReturnType(Value operand) {
+  Builder b(operand.getContext());
+  return mhlo::getSameShapeTensorType(operand.getType().cast<TensorType>(),
+                                      b.getI1Type());
+}
+
+LogicalResult IsInfOp::inferReturnTypes(
+    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// IsNegInfOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult IsNegInfOp::inferReturnTypes(
+    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// IsPosInfOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult IsPosInfOp::inferReturnTypes(
+    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

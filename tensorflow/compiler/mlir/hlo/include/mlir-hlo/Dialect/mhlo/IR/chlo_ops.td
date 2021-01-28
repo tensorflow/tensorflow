@@ -524,7 +524,8 @@ def HLOClient_ErfcOp : HLOClient_UnaryElementwiseOp<"erfc",
   }];
 }
 
-def HLOClient_IsInfOp : HLOClient_UnaryElementwiseOp<"is_inf", [], HLO_FpTensor,
+def HLOClient_IsInfOp : HLOClient_UnaryElementwiseOp<"is_inf",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_FpTensor,
     HLO_PredTensor> {
   let summary = "IsInf predicate";
 
@@ -533,8 +534,9 @@ def HLOClient_IsInfOp : HLOClient_UnaryElementwiseOp<"is_inf", [], HLO_FpTensor,
   }];
 }
 
-def HLOClient_IsNegInfOp : HLOClient_UnaryElementwiseOp<"is_neg_inf", [],
-    HLO_FpTensor, HLO_PredTensor> {
+def HLOClient_IsNegInfOp : HLOClient_UnaryElementwiseOp<"is_neg_inf",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_FpTensor,
+    HLO_PredTensor> {
   let summary = "IsNegInf predicate";
 
   let description = [{
@@ -542,8 +544,9 @@ def HLOClient_IsNegInfOp : HLOClient_UnaryElementwiseOp<"is_neg_inf", [],
   }];
 }
 
-def HLOClient_IsPosInfOp : HLOClient_UnaryElementwiseOp<"is_pos_inf", [],
-    HLO_FpTensor, HLO_PredTensor> {
+def HLOClient_IsPosInfOp : HLOClient_UnaryElementwiseOp<"is_pos_inf",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_FpTensor,
+    HLO_PredTensor> {
   let summary = "IsPosInf predicate";
 
   let description = [{
