@@ -23,12 +23,20 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/include/rccl/rccl.h"
 #endif
+#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -38,33 +46,85 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* hlo,
+// Attempts to match computation to one of the possible cases in ReductionKind.
+static absl::optional<ReductionKind> MatchReductionComputation(
+    mlir::lmhlo::AllReduceOp op) {
+  mlir::Block& block = op.computation().front();
+  if (!llvm::hasSingleElement(block.without_terminator())) return absl::nullopt;
+  // The single operation should use both block arguments and produce a single
+  // result (all of the same type)
+  mlir::Operation* reduction_op = &block.front();
+  if (reduction_op->getNumOperands() != 2 || reduction_op->getNumResults() != 1)
+    return absl::nullopt;
+  mlir::BlockArgument arg0 =
+      reduction_op->getOperand(0).dyn_cast<mlir::BlockArgument>();
+  mlir::BlockArgument arg1 =
+      reduction_op->getOperand(1).dyn_cast<mlir::BlockArgument>();
+  mlir::OpResult result = reduction_op->getResult(0);
+  // Both operands should be block arguments of the reduction computation block
+  // and be different arguments of that block.
+  if (!arg0 || !arg1 || arg0.getOwner() != &block ||
+      arg1.getOwner() != &block || arg0 == arg1 ||
+      arg0.getType() != arg1.getType() || arg0.getType() != result.getType())
+    return absl::nullopt;
+  StatusOr<HloOpcode> opcode = MhloToHloOpcode(reduction_op);
+  if (!opcode.ok()) return absl::nullopt;
+  // Match the operation to a reduction kind. We can represent and/or of pred as
+  // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
+  PrimitiveType type = TypeToShape(result.getType()).element_type();
+  if (type == PRED) {
+    switch (opcode.ValueOrDie()) {
+      case HloOpcode::kAnd:
+        return ReductionKind::MIN;
+      case HloOpcode::kOr:
+        return ReductionKind::MAX;
+      default:
+        return absl::nullopt;
+    }
+  } else {
+    switch (opcode.ValueOrDie()) {
+      case HloOpcode::kAdd:
+        return ReductionKind::SUM;
+      case HloOpcode::kMultiply:
+        return ReductionKind::PRODUCT;
+      case HloOpcode::kMaximum:
+        return ReductionKind::MAX;
+      case HloOpcode::kMinimum:
+        return ReductionKind::MIN;
+      default:
+        return absl::nullopt;
+    }
+  }
+}
+
+NcclAllReduceConfig GetNcclAllReduceConfig(mlir::lmhlo::AllReduceOp op,
                                            int64 replica_count) {
-  auto reduction_kind = MatchReductionComputation(hlo->to_apply());
+  auto reduction_kind = MatchReductionComputation(op);
   CHECK(reduction_kind.has_value());
 
   NcclAllReduceConfig config;
-  config.config = GetNcclCollectiveConfig(hlo, replica_count);
+  config.config = GetNcclCollectiveConfigForMlir(op, replica_count);
   config.reduction_kind = reduction_kind.value();
   return config;
 }
 
-/*static*/ bool NcclAllReduceThunk::CanImplement(const HloInstruction* hlo) {
-  auto operands_are_supported = [hlo]() {
-    return absl::c_all_of(hlo->operands(), [](HloInstruction* operand) {
-      return LayoutUtil::IsDenseArray(operand->shape()) &&
-             ToNcclDataType(operand->shape().element_type()).ok();
-    });
-  };
-  return MatchReductionComputation(hlo->to_apply()).has_value() &&
-         hlo->IsCrossReplicaAllReduce() && operands_are_supported();
+/*static*/ bool NcclAllReduceThunk::CanImplement(mlir::lmhlo::AllReduceOp op) {
+  if (!op.IsCrossReplica()) return false;
+  bool operands_are_supported =
+      absl::c_all_of(op.operands(), [](mlir::Value operand) {
+        Shape shape = TypeToShape(operand.getType());
+        return LayoutUtil::IsDenseArray(shape) &&
+               ToNcclDataType(shape.element_type()).ok();
+      });
+  if (!operands_are_supported) return false;
+  return MatchReductionComputation(op).has_value();
 }
 
 NcclAllReduceThunk::NcclAllReduceThunk(
-    ThunkInfo thunk_info, NcclAllReduceConfig config,
+    ThunkInfo thunk_info, mlir::lmhlo::AllReduceOp op, int64 replica_count,
     std::vector<NcclAllReduceThunk::Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllReduce, thunk_info),
-      config_(std::move(config)),
+      config_(GetNcclAllReduceConfig(op, replica_count)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }

@@ -3059,50 +3059,45 @@ Status IrEmitterUnnested::HandleAllGather(HloInstruction* hlo) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
+Status IrEmitterUnnested::HandleAllReduce(HloInstruction* hlo) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitAllReduceFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitAllReduceFromMlir(MlirEmitterInput input) {
+  auto all_reduce = mlir::cast<mlir::lmhlo::AllReduceOp>(input.op);
+
   VLOG(2) << "AllReduce; replica count: " << hlo_module_config_.replica_count()
-          << "; operand count: " << crs->operand_count()
+          << "; operand count: " << all_reduce.operands().size()
           << "; NCCL is enabled: " << NcclAllReduceThunk::NcclIsEnabled();
 
   // Note the replica_count == 1 case is handled via device-to-device copy
   // below.
-  bool should_use_nccl_thunk = hlo_module_config_.replica_count() > 1 &&
-                               NcclAllReduceThunk::CanImplement(crs);
+  int64 replica_count = hlo_module_config_.replica_count();
+  bool should_use_nccl_thunk =
+      replica_count > 1 && NcclAllReduceThunk::CanImplement(all_reduce);
+
+  // Stash relevant information in NcclAllReduceThunk::Buffer even if we may
+  // not generate an NcclAllReduceThunk.
+  std::vector<NcclAllReduceThunk::Buffer> buffers;
+  buffers.reserve(all_reduce.operands().size());
+  for (auto it : llvm::zip(all_reduce.operands(), all_reduce.results())) {
+    mlir::Value operand = std::get<0>(it);
+    mlir::Value result = std::get<1>(it);
+    const Shape shape = TypeToShape(operand.getType());
+    TF_ASSIGN_OR_RETURN(auto source_slice, GetAllocationSliceForMlir(operand));
+    TF_ASSIGN_OR_RETURN(auto dest_slice, GetAllocationSliceForMlir(result));
+    buffers.push_back(NcclAllReduceThunk::Buffer{
+        /*element_count*/ ShapeUtil::ElementsIn(shape),
+        /*source_buffer*/ source_slice,
+        /*destination_buffer*/ dest_slice});
+  }
 
   if (should_use_nccl_thunk) {
-    std::vector<NcclAllReduceThunk::Buffer> buffers;
-    std::vector<BufferAllocation::Slice> tuple_element_buffers;
-    buffers.resize(crs->operand_count());
-    tuple_element_buffers.reserve(crs->operand_count());
-    CHECK(crs->shape().IsArray() && crs->operand_count() == 1 ||
-          crs->shape().IsTuple() &&
-              crs->shape().tuple_shapes_size() == crs->operand_count());
-    for (int i = 0; i < crs->operand_count(); ++i) {
-      CHECK(crs->operand(i)->shape().IsArray())
-          << "Operands to all-reduce must be arrays: " << crs->ToString();
-      buffers[i].element_count =
-          ShapeUtil::ElementsIn(crs->operand(i)->shape());
-      buffers[i].source_buffer = GetAllocationSlice(*crs->operand(i));
-      buffers[i].destination_buffer = GetAllocationSlice(
-          *crs, crs->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({}));
-      tuple_element_buffers.push_back(buffers[i].destination_buffer);
-    }
-    NcclAllReduceConfig config =
-        GetNcclAllReduceConfig(crs, hlo_module_config_.replica_count());
     auto all_reduce_thunk = absl::make_unique<NcclAllReduceThunk>(
-        GetThunkInfo(crs), std::move(config),
+        input.thunk_info, all_reduce, replica_count,
         /*buffers=*/std::move(buffers));
-    if (crs->shape().IsTuple()) {
-      std::vector<std::unique_ptr<Thunk>> thunks;
-      thunks.push_back(std::move(all_reduce_thunk));
-      thunks.push_back(absl::make_unique<TupleThunk>(
-          Thunk::ThunkInfo(), tuple_element_buffers, GetAllocationSlice(*crs)));
-      AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
-          GetThunkInfo(crs), std::move(thunks)));
-    } else {
-      AddThunkToThunkSequence(std::move(all_reduce_thunk));
-    }
-
+    AddThunkToThunkSequence(std::move(all_reduce_thunk));
     return Status::OK();
   }
 
@@ -3111,54 +3106,41 @@ Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
     string message = absl::StrFormat(
         "Requested AllReduce not implemented on GPU; replica_count: %d; "
         "operand_count: %d; IsCrossReplicaAllReduce: %d; NCCL support: %d",
-        hlo_module_config_.replica_count(), crs->operand_count(),
-        crs->IsCrossReplicaAllReduce(), NcclAllReduceThunk::NcclIsEnabled());
-    if (crs->operand_count() > 0) {
-      absl::StrAppendFormat(
-          &message, "; first operand array element-type: %s",
-          PrimitiveType_Name(crs->operand(0)->shape().element_type()));
+        hlo_module_config_.replica_count(), all_reduce.operands().size(),
+        all_reduce.IsCrossReplica(), NcclAllReduceThunk::NcclIsEnabled());
+    if (!all_reduce.operands().empty()) {
+      const Shape shape = TypeToShape(all_reduce.operands().front().getType());
+      absl::StrAppendFormat(&message, "; first operand array element-type: %s",
+                            PrimitiveType_Name(shape.element_type()));
     }
     return Unimplemented("%s", message);
   }
 
-  // CRS with one operand and one replica is simply the identity function.
-  // Buffer assignment expects a copy, so that's what we do.
+  // AllReduce with one replica is simply the identity function. Buffer
+  // assignment expects a copy, so that's what we do.
   //
   // TODO(b/80100934): We would like to eliminate one-replica CRS nodes entirely
   // in algebraic-simplifier, but currently on some platforms
   // HloModuleConfig::num_replicas changes between when the module is compiled
   // and when it's run.
-  if (crs->operand_count() == 1) {
-    CHECK(crs->operand(0)->shape().IsArray())
-        << "Operands to all-reduce must be arrays: " << crs->ToString();
-    AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
-        GetThunkInfo(crs),
-        /*source_address=*/GetAllocationSlice(*crs->operand(0)),
-        /*destination_buffer=*/GetAllocationSlice(*crs),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(crs->shape())));
-    return Status::OK();
-  }
 
-  // One-replica CRS with multiple operands produces a tuple of the inputs.
-  // Again, buffer assignment expects us to copy each.
   std::vector<std::unique_ptr<Thunk>> thunks;
-  std::vector<BufferAllocation::Slice> tuple_element_buffers;
-  for (int64 i = 0; i < crs->operand_count(); ++i) {
-    tuple_element_buffers.push_back(ir_emitter_context_->buffer_assignment()
-                                        .GetUniqueSlice(crs, {i})
-                                        .ValueOrDie());
+  thunks.reserve(all_reduce.operands().size());
+  for (int64 i = 0; i < buffers.size(); i++) {
+    const Shape shape = TypeToShape(all_reduce.operands()[i].getType());
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo(),
-        /*source_address=*/GetAllocationSlice(*crs->operand(i)),
-        /*destination_buffer=*/tuple_element_buffers.back(),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(crs->operand(i)->shape())));
+        buffers.size() == 1 ? input.thunk_info : Thunk::ThunkInfo(),
+        /*source_address=*/buffers[i].source_buffer,
+        /*destination_buffer=*/buffers[i].destination_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   }
 
-  // Output a tuple of the buffers above.
-  thunks.push_back(absl::make_unique<TupleThunk>(
-      Thunk::ThunkInfo(), tuple_element_buffers, GetAllocationSlice(*crs)));
-  AddThunkToThunkSequence(
-      absl::make_unique<SequentialThunk>(GetThunkInfo(crs), std::move(thunks)));
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+        input.thunk_info, std::move(thunks)));
+  }
   return Status::OK();
 }
 
