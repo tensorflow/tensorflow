@@ -699,7 +699,8 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   def apply_gradients(self,
                       grads_and_vars,
                       name=None,
-                      experimental_aggregate_gradients=True):
+                      experimental_aggregate_gradients=True,
+                      **kwargs):
     if distribution_strategy_context.in_cross_replica_context():
       raise ValueError('apply_gradients() must be called in a replica context.')
     # We check for the strategy here despite already checking in the constructor
@@ -709,10 +710,10 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     grads_and_vars = tuple(grads_and_vars)
     return distribution_strategy_context.get_replica_context().merge_call(
         self._apply_gradients_cross_replica,
-        args=(grads_and_vars, name, experimental_aggregate_gradients))
+        args=(grads_and_vars, name, experimental_aggregate_gradients), kwargs=kwargs)
 
   def _apply_gradients_cross_replica(self, distribution, grads_and_vars, name,
-                                     experimental_aggregate_gradients):
+                                     experimental_aggregate_gradients, **kwargs):
     grads = [g for g, _ in grads_and_vars]
     if isinstance(self._loss_scale, _DynamicLossScaleState):
       loss_scale_update_op, should_apply_grads = self._loss_scale.update(grads)
@@ -729,7 +730,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       wrapped_vars = _UnwrapPreventer([v for _, v in grads_and_vars])
       return distribution.extended.call_for_each_replica(
           self._apply_gradients,
-          args=(grads, wrapped_vars, name, experimental_aggregate_gradients))
+          args=(grads, wrapped_vars, name, experimental_aggregate_gradients), kwargs=kwargs)
 
     def do_not_apply_fn():
       # Normally self._optimizer.iterations is incremented in
@@ -746,13 +747,13 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
   def _apply_gradients(self, grads, wrapped_vars, name,
-                       experimental_aggregate_gradients):
+                       experimental_aggregate_gradients, **kwargs):
     # TODO(reedwm): This will raise a fairly cryptic error message if
     # self._optimizer.apply_gradients does not take
     # experimental_aggregate_gradients.
     return self._optimizer.apply_gradients(
         list(zip(grads, wrapped_vars.value)), name,
-        experimental_aggregate_gradients=experimental_aggregate_gradients)
+        experimental_aggregate_gradients=experimental_aggregate_gradients, **kwargs)
 
   def get_config(self):
     serialized_optimizer = optimizers.serialize(self._optimizer)
