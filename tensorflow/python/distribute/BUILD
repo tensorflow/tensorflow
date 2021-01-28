@@ -1211,6 +1211,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_oss",  # b/178656226
         "no_rocm",
         "noasan",  # b/175816710
         "notsan",  # b/168645872
