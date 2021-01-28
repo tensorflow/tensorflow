@@ -7045,9 +7045,9 @@ func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
 //
 // ```
 // # if 'input' is [[ 0,  1,  2, 3]
-//                  [-1,  0,  1, 2]
-//                  [-2, -1,  0, 1]
-//                  [-3, -2, -1, 0]],
+// #                [-1,  0,  1, 2]
+// #                [-2, -1,  0, 1]
+// #                [-3, -2, -1, 0]],
 //
 // tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
 //                                        [-1,  0,  1, 2]
