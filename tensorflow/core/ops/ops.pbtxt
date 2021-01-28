@@ -14100,6 +14100,14 @@ op {
       }
     }
   }
+  attr {
+    name: "num_features"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
   is_stateful: true
 }
 op {
@@ -14272,6 +14280,14 @@ op {
   }
   attr {
     name: "max_sequence_lengths"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "num_features"
     type: "list(int)"
     default_value {
       list {
