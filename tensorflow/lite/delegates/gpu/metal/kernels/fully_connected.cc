@@ -108,20 +108,26 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
 }
 }  // namespace
 
-ComputeTaskDescriptor FullyConnected(const OperationDef& definition,
-                                     const FullyConnectedAttributes& attr,
-                                     const GpuInfo& gpu_info) {
-  ComputeTaskDescriptor desc(definition);
-  desc.shader_source = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
-                                             attr.weights.shape.o);
+int3 FullyConnected::GetGridSize() const {
+  const int dst_channels_aligned = AlignByN(dst_[0]->Channels(), 8);
+  return int3(dst_channels_aligned, 1, 1);
+}
+
+FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
+                                    const OperationDef& definition,
+                                    const FullyConnectedAttributes& attr) {
+  FullyConnected desc(definition);
+  desc.code_ = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
+                                     attr.weights.shape.o);
 
   bool shared_memory = gpu_info.IsApple() &&
                        gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal();
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const int src_depth_sub_groups = shared_memory ? DivideRoundUp(src_depth, 32)
                                                  : DivideRoundUp(src_depth, 4);
-  desc.args.AddInt("dst_channels_alignedx8", AlignByN(attr.weights.shape.o, 8));
-  desc.args.AddInt("src_depth_sub_groups", src_depth_sub_groups);
+  desc.args_.AddInt("dst_channels_alignedx8",
+                    AlignByN(attr.weights.shape.o, 8));
+  desc.args_.AddInt("src_depth_sub_groups", src_depth_sub_groups);
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -153,7 +159,7 @@ ComputeTaskDescriptor FullyConnected(const OperationDef& definition,
   weights_desc.data = GetByteBufferConverted(filters_reordered, data_type);
   weights_desc.size = weights_desc.data.size();
 
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
   BufferDescriptor bias_desc;
@@ -163,16 +169,10 @@ ComputeTaskDescriptor FullyConnected(const OperationDef& definition,
                                                  dst_channels_aligned);
   bias_desc.size = bias_desc.data.size();
 
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "bias", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
-  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
-                                const std::vector<BHWC>& dst_shapes) {
-    const uint3 groups_size{8, 4, 1};
-    const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 8);
-    int groups_x = DivideRoundUp(dst_channels_aligned, groups_size.x);
-    return std::make_pair(groups_size, uint3{groups_x, 1, 1});
-  };
+  desc.work_group_size_ = int3(8, 4, 1);
 
   return desc;
 }

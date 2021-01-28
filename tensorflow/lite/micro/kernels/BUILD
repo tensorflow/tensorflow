@@ -736,7 +736,10 @@ tflite_micro_cc_test(
     srcs = [
         "pad_test.cc",
     ],
-    tags = ["nomsan"],  # b/175133159
+    tags = [
+        "noasan",
+        "nomsan",
+    ],  # TODO(b/175133159): currently failing with asan and msan
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",

@@ -133,7 +133,7 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
       raise IOError('Cannot parse keras metadata {}: {}.'
                     .format(path_to_metadata_pb, str(e)))
   else:
-    logging.warning('SavedModel saved prior to TF 2.4 detected when loading '
+    logging.warning('SavedModel saved prior to TF 2.5 detected when loading '
                     'Keras model. Please ensure that you are saving the model '
                     'with model.save() or tf.keras.models.save_model(), *NOT* '
                     'tf.saved_model.save(). To confirm, there should be a file '

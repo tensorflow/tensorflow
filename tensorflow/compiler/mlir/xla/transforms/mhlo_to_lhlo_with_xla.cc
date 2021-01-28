@@ -1271,7 +1271,7 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
           "Failed to get strides and offset from the output type.");
     result = builder_.create<MemRefReinterpretCastOp>(
         loc, out_memref_type, result, out_offset, out_memref_type.getShape(),
-        out_strides, llvm::None, llvm::None, llvm::None);
+        out_strides);
   }
   return cached_value = result;
 }
@@ -1311,6 +1311,9 @@ Status LhloDialectEmitter::GetOrCreateView(
 }
 
 Status LhloDialectEmitter::Initialize() {
+  mlir::IntegerAttr unique_id =
+      builder_.getI32IntegerAttr(computation_.parent()->unique_id());
+  module_->setAttr("hlo.unique_id", unique_id);
   std::string function_name =
       computation_.name().empty() ? "__compute" : computation_.name();
 

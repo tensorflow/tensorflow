@@ -233,6 +233,18 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) = 0;
 
+  // Creates a PjRtBuffer that is a non-owned view of an on-device
+  // buffer (typically allocated by another library).
+  // on_delete_callback is called when the PjRtBuffer is done with the on-device
+  // buffer. The buffer may be mutated, for example, if the buffer is donated
+  // to an Execute operation.
+  // TODO(phawkins): Currently this API assumes the buffer is ready to use
+  // immediately on the device. Extend it to support, for example, waiting for a
+  // CUDA stream/event.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      std::function<void()> on_delete_callback) = 0;
+
   // Asynchronously makes a vector of PjRtBuffers that can be used to receive
   // cross host transfers using `client` on `device'. `shapes` must be the exact
   // shapes, with identical layouts, corresponding to the buffers that will be

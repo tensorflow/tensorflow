@@ -201,6 +201,7 @@ build_test(
         "notsan",
         # TODO(b/176993122): restore once the apple_genrule issue is resolved.
         "notap",
+        "nozapfhahn",
     ],
     targets = [
         ":TensorFlowLiteCCoreML_framework",

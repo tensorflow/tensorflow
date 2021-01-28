@@ -195,19 +195,7 @@ static std::vector<std::pair<int64, int64>> Convert_source_target_pairs(
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
     mlir::DenseIntElementsAttr groups) {
-  uint64_t num_groups = groups.getType().getDimSize(0);
-  uint64_t group_size = groups.getType().getDimSize(1);
-
-  std::vector<xla::ReplicaGroup> result;
-  result.reserve(num_groups);
-  for (uint64_t i = 0; i < num_groups; ++i) {
-    xla::ReplicaGroup group;
-    for (uint64_t j = 0; j < group_size; ++j) {
-      group.add_replica_ids(groups.getValue<int64_t>({i, j}));
-    }
-    result.push_back(group);
-  }
-  return result;
+  return xla::ConvertReplicaGroups(groups).ValueOrDie();
 }
 
 // Converts StringRef to xla Transpose enum.

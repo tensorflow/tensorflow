@@ -36,6 +36,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "AdjustHue",
           "AdjustSaturation",
           "All",
+          "Angle",
           "Any",
           "ApplyAdaMax",
           "ApplyAdadelta",

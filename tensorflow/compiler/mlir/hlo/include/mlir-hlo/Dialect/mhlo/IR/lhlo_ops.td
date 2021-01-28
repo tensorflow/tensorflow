@@ -556,6 +556,10 @@ def LHLO_AllReduceOp : LHLO_Op<"all_reduce", [SameVariadicOperandSize]>,
   );
   let regions = (region SizedRegion<1>:$computation);
   let verifier = [{ return Verify(*this); }];
+  let extraClassDeclaration = [{
+    // AllReduce is cross replica if channel_id is not set.
+    bool IsCrossReplica() { return !channel_id().hasValue(); }
+  }];
 }
 
 def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]>,

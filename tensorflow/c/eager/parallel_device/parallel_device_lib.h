@@ -94,12 +94,30 @@ class ParallelDevice {
       const char* operation_name, const TFE_OpAttrs* attributes,
       int expected_max_outputs, TF_Status* status) const;
 
-  // Accepts inferred shapes for outputs, which if fully defined will avoid
-  // querying the shapes of the underlying TensorHandles. This allows async
+  // A non-blocking version of `Execute`. After each call, `Join` must be called
+  // before `StartExecute` is called again. Using `StartExecute` with `Join`
+  // allows the caller to schedule computation on multiple ParallelDevices
+  // without sequencing those operations (first call `StartExecute` on each
+  // parallel device, then call `Join` on each; even if some of the `Join`s
+  // return a bad status the caller must run all of the `Join`s or any future
+  // `StartExecute`s will deadlock).
+  void StartExecute(TFE_Context* context,
+                    const std::vector<ParallelTensor*>& inputs,
+                    const char* operation_name, const TFE_OpAttrs* attributes,
+                    int expected_max_outputs) const;
+
+  // Blocks until the previous `StartExecute` has run `TFE_Execute` on each
+  // device. If is_async=false (constructor argument) this means the ops have
+  // run and have results. If is_async=true it means that all of the
+  // device-specific executors have scheduled the op.
+  //
+  // Accepts inferred shapes for outputs (`expected_output_shapes`), which if
+  // fully defined will avoid querying the shapes of the underlying
+  // TensorHandles when ParallelTensor::Shape is called. This allows async
   // computation to continue without blocking.
-  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> Execute(
-      TFE_Context* context, const std::vector<ParallelTensor*>& inputs,
-      const char* operation_name, const TFE_OpAttrs* attributes,
+  //
+  // The return status and value is the same as `Execute`.
+  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> Join(
       const std::vector<PartialTensorShape>& expected_output_shapes,
       TF_Status* status) const;
 

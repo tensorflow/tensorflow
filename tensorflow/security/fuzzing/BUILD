@@ -49,6 +49,15 @@ tf_fuzz_target(
 )
 
 tf_fuzz_target(
+    name = "ParseAttrValue_fuzz",
+    srcs = ["ParseAttrValue_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:attr_value_util",
+    ],
+)
+
+tf_fuzz_target(
     name = "joinpath_fuzz",
     srcs = ["joinpath_fuzz.cc"],
     deps = [
@@ -144,4 +153,5 @@ tf_py_fuzz_target(
     name = "raggedCountSparseOutput_fuzz",
     srcs = ["raggedCountSparseOutput_fuzz.py"],
     tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
 )

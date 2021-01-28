@@ -96,7 +96,8 @@ class PythonAPIInfoTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        "    {index=1, name=y, is_list=0},]\n"
        "  inputs_with_type_attr=[\n"
        "    {type_attr=T, tensor_params=[0, 1], ok_dtypes=[DT_BFLOAT16, "
-       "DT_HALF, DT_FLOAT, DT_DOUBLE, DT_UINT8, DT_INT8, DT_INT16, DT_UINT32, "
+       "DT_HALF, DT_FLOAT, DT_DOUBLE, DT_UINT8, DT_UINT16, DT_UINT32, "
+       "DT_UINT64, DT_INT8, DT_INT16, "
        "DT_INT32, DT_INT64, DT_COMPLEX64, DT_COMPLEX128]},]\n"
        "  inferred_type_attrs=[T]\n"),
       # An op with an int attribute.

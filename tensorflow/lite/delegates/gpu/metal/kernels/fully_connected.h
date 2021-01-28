@@ -21,19 +21,40 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-// creates TaskDescriptor for FullyConnected
-// FullyConnected is equivalent to matrix-vector multiplication
-// Also this operation can be replaced with convolution 1x1, but it
-//   will be inefficient
-ComputeTaskDescriptor FullyConnected(const OperationDef& definition,
-                                     const FullyConnectedAttributes& attr,
-                                     const GpuInfo& gpu_info);
+class FullyConnected : public GPUOperation {
+ public:
+  FullyConnected() = default;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
+  }
+  int3 GetGridSize() const override;
+
+  // Move only
+  FullyConnected(FullyConnected&& kernel) = default;
+  FullyConnected& operator=(FullyConnected&& kernel) = default;
+  FullyConnected(const FullyConnected&) = delete;
+  FullyConnected& operator=(const FullyConnected&) = delete;
+
+ private:
+  explicit FullyConnected(const OperationDef& definition)
+      : GPUOperation(definition) {}
+  friend FullyConnected CreateFullyConnected(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const FullyConnectedAttributes& attr);
+};
+
+FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
+                                    const OperationDef& definition,
+                                    const FullyConnectedAttributes& attr);
 
 }  // namespace metal
 }  // namespace gpu

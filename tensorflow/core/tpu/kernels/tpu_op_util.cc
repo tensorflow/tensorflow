@@ -17,7 +17,9 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
@@ -68,6 +70,14 @@ std::string CreateConfigPrefix(const TPUCompileMetadataProto& metadata) {
   return config_prefix;
 }
 }  // namespace
+
+uint64 CreateFingerprintWithNameAndShapes(
+    uint64 name, const std::vector<tensorflow::TensorShape>& shapes) {
+  std::string shape_prefix = CreateShapePrefix(shapes);
+  LOG(INFO) << "name: " << name << ", shape_prefix: " << shape_prefix;
+  return TpuCompileInterface::Get()->FingerprintString(
+      absl::StrCat(name, "_", shape_prefix));
+}
 
 // Return fingerprint_in_metadata if it's not empty; otherwise read input tensor
 // data to compute the fingerprint.

@@ -16,14 +16,14 @@
 
 import atheris_no_libfuzzer as atheris
 
-_MIN_INT = -100000
-_MAX_INT = 100000
+_MIN_INT = -10000
+_MAX_INT = 10000
 
-_MIN_FLOAT = -100000.0
-_MAX_FLOAT = 100000.0
+_MIN_FLOAT = -10000.0
+_MAX_FLOAT = 10000.0
 
 _MIN_LENGTH = 0
-_MAX_LENGTH = 100000
+_MAX_LENGTH = 10000
 
 
 class FuzzingHelper(object):
@@ -99,7 +99,7 @@ class FuzzingHelper(object):
       Consumed integer list based on input bytes and constraints.
     """
     length = self.get_int(min_length, max_length)
-    return self.fdp.ConsumeRegularFloatList(length)
+    return self.fdp.ConsumeFloatListInRange(length, _MIN_FLOAT, _MAX_FLOAT)
 
   def get_int_or_float_list(self,
                             min_length=_MIN_LENGTH,
@@ -113,8 +113,7 @@ class FuzzingHelper(object):
     Returns:
       Consumed integer or float list based on input bytes and constraints.
     """
-    length = self.get_int(min_length, max_length)
     if self.get_bool():
-      return self.fdp.ConsumeRegularIntList(length)
+      return self.get_int_list(min_length, max_length)
     else:
-      return self.fdp.ConsumeRegularFloatList(length)
+      return self.get_float_list(min_length, max_length)

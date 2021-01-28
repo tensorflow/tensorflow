@@ -197,6 +197,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) override;
 
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      std::function<void()> on_delete_callback) override;
+
   StatusOr<ChannelHandle> CreateChannelHandle() override {
     return client()->CreateChannelHandle();
   }
