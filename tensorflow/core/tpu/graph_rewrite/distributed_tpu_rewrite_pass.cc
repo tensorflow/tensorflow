@@ -1192,40 +1192,49 @@ struct NodeAndSharding {
 
 // Validate sharding configuration derived from XlaSharding attribute.
 // Infer the core id from the OpSharding, if necessary.
-Status ParseAndValidateSharding(const xla::OpSharding& sharding,
-                                const Node& node,
+Status ParseAndValidateSharding(const NodeAndSharding& node_and_sharding,
                                 const int num_cores_per_replica,
                                 int64* inferred_core_id,
                                 absl::optional<NodeAndSharding>* result) {
-  if (sharding.type() == xla::OpSharding::MAXIMAL) {
-    int64 core_annotation = sharding.tile_assignment_devices(0);
+  if (node_and_sharding.sharding.type() == xla::OpSharding::MAXIMAL) {
+    int64 core_annotation =
+        node_and_sharding.sharding.tile_assignment_devices(0);
     TF_RETURN_IF_ERROR(
         ValidateCoreNumber(core_annotation, num_cores_per_replica));
     if (*inferred_core_id == -1 || *inferred_core_id > core_annotation) {
       *inferred_core_id = core_annotation;
-      result->emplace(NodeAndSharding(&node, sharding));
+      result->emplace(node_and_sharding);
     }
   } else {
-    if (sharding.type() == xla::OpSharding::OTHER) {
-      for (int64 core : sharding.tile_assignment_devices()) {
+    if (node_and_sharding.sharding.type() == xla::OpSharding::OTHER) {
+      for (int64 core : node_and_sharding.sharding.tile_assignment_devices()) {
         TF_RETURN_IF_ERROR(ValidateCoreNumber(core, num_cores_per_replica));
       }
     }
 
     if (!result->has_value()) {
-      *result = NodeAndSharding(&node, sharding);
+      *result = node_and_sharding;
     } else {
       std::string result_value_serialized;
+      xla::OpSharding result_value = result->value().sharding;
+      result_value.clear_metadata();
+      SerializeToStringDeterministic(result_value, &result_value_serialized);
+
       std::string sharding_serialized;
-      SerializeToStringDeterministic(result->value().sharding,
-                                     &result_value_serialized);
+      xla::OpSharding sharding = node_and_sharding.sharding;
+      sharding.clear_metadata();
       SerializeToStringDeterministic(sharding, &sharding_serialized);
 
+      // TODO(lyandy): Choose the more granular sharding instead of always
+      // assigning to core 0 (maximal).
       if (result_value_serialized != sharding_serialized) {
         // We see different shardings, assign to core 0.
         auto core_zero_sharding = xla::sharding_builder::AssignDevice(0);
-        *core_zero_sharding.add_metadata() = CreateOpMetadataFromNode(node);
-        result->emplace(NodeAndSharding(&node, core_zero_sharding));
+        DCHECK_NE(node_and_sharding.node, nullptr);
+        *core_zero_sharding.add_metadata() =
+            CreateOpMetadataFromNode(*node_and_sharding.node);
+        result->emplace(
+            NodeAndSharding(node_and_sharding.node, core_zero_sharding));
       }
     }
   }
@@ -1248,7 +1257,7 @@ void FindNodesMaybeContainingShardingInfo(const Node& input_node,
 // XlaSharding configuration may be derived from
 //   a) Connected Identity op node.
 //   b) Connected Cast op node.
-xla::StatusOr<absl::optional<xla::OpSharding>>
+xla::StatusOr<absl::optional<NodeAndSharding>>
 ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
                                    const Node& node) {
   // If |node| has `device` attribute or is a XlaSharding op,
@@ -1256,7 +1265,9 @@ ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
   TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
                       ParseShardingFromDevice(node, num_cores_per_replica,
                                               /*add_metadata=*/true));
-  if (sharding.has_value()) return sharding;
+  if (sharding.has_value()) {
+    return absl::optional<NodeAndSharding>(NodeAndSharding(&node, *sharding));
+  }
 
   // XlaShardingOp may be followed by an identity or followed by identity
   // and a Cast op.
@@ -1271,9 +1282,12 @@ ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
         absl::optional<xla::OpSharding> sharding_config,
         ParseShardingFromDevice(*maybe_node_with_sharding_info,
                                 num_cores_per_replica, /*add_metadata=*/true));
-    if (sharding_config.has_value()) return sharding_config;
+    if (sharding_config.has_value()) {
+      return absl::optional<NodeAndSharding>(
+          NodeAndSharding(maybe_node_with_sharding_info, *sharding_config));
+    }
   }
-  return sharding;
+  return absl::optional<NodeAndSharding>();
 }
 
 // Walk the graph from an argument node to find OpSharding configuration
@@ -1294,12 +1308,11 @@ Status ParseAndValidateShardingFromNeighbors(
   // XlaSharding information may be encoded on node directly connected to the
   // argument node.
   TF_ASSIGN_OR_RETURN(
-      absl::optional<xla::OpSharding> sharding,
+      absl::optional<NodeAndSharding> node_and_sharding,
       ParseInputShardingFromAdjacentNode(num_cores_per_replica, neighbor_node));
-  if (sharding.has_value()) {
-    TF_RETURN_IF_ERROR(ParseAndValidateSharding(*sharding, neighbor_node,
-                                                num_cores_per_replica,
-                                                inferred_core_id, result));
+  if (node_and_sharding.has_value()) {
+    TF_RETURN_IF_ERROR(ParseAndValidateSharding(
+        *node_and_sharding, num_cores_per_replica, inferred_core_id, result));
     return Status::OK();
   }
 
@@ -1317,10 +1330,10 @@ Status ParseAndValidateShardingFromNeighbors(
       }
 
       TF_ASSIGN_OR_RETURN(
-          absl::optional<xla::OpSharding> sharding,
+          absl::optional<NodeAndSharding> node_and_sharding,
           ParseInputShardingFromAdjacentNode(num_cores_per_replica, *e->dst()));
-      if (sharding.has_value()) {
-        TF_RETURN_IF_ERROR(ParseAndValidateSharding(*sharding, *e->dst(),
+      if (node_and_sharding.has_value()) {
+        TF_RETURN_IF_ERROR(ParseAndValidateSharding(*node_and_sharding,
                                                     num_cores_per_replica,
                                                     inferred_core_id, result));
         return Status::OK();
