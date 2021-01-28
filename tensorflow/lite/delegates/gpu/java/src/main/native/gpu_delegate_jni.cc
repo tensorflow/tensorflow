@@ -15,8 +15,6 @@ limitations under the License.
 
 #include <jni.h>
 
-#include <memory>
-
 #include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/delegate.h"
@@ -53,9 +51,6 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_deleteDelegate(
 namespace {
 class CompatibilityListHelper {
  public:
-  CompatibilityListHelper()
-      : compatibility_list_(
-            tflite::acceleration::GPUCompatibilityList::Create()) {}
   absl::Status ReadInfo() {
     auto status = tflite::acceleration::RequestAndroidInfo(&android_info_);
     if (!status.ok()) return status;
@@ -77,14 +72,13 @@ class CompatibilityListHelper {
   }
 
   bool IsDelegateSupportedOnThisDevice() {
-    return compatibility_list_->Includes(android_info_, gpu_info_);
+    return compatibility_list_.Includes(android_info_, gpu_info_);
   }
 
  private:
   tflite::acceleration::AndroidInfo android_info_;
   tflite::gpu::GpuInfo gpu_info_;
-  std::unique_ptr<tflite::acceleration::GPUCompatibilityList>
-      compatibility_list_;
+  tflite::acceleration::GPUCompatibilityList compatibility_list_;
 };
 }  // namespace
 

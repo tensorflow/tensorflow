@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_GPU_COMPATIBILITY_H_
 
 #include <map>
-#include <memory>
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
@@ -52,13 +51,11 @@ namespace acceleration {
 //   }
 class GPUCompatibilityList {
  public:
-  // Construct list from bundled data. Returns a unique_ptr to a nullptr if
-  // creation fails.
-  static std::unique_ptr<GPUCompatibilityList> Create();
-  // Constructs list from the given flatbuffer data. Returns a unique_ptr to a
-  // nullptr is the given flatbuffer is empty or invalid.
-  static std::unique_ptr<GPUCompatibilityList> Create(
-      const unsigned char* compatibility_list_flatbuffer, int length);
+  // Construct list from bundled data.
+  GPUCompatibilityList();
+  // Constructs list from the given flatbuffer data.
+  explicit GPUCompatibilityList(
+      const unsigned char* compatibility_list_flatbuffer);
   // Returns true if the provided device specs are supported by the database.
   bool Includes(const AndroidInfo& android_info,
                 const ::tflite::gpu::GpuInfo& gpu_info) const;
@@ -79,16 +76,13 @@ class GPUCompatibilityList {
 
   GPUCompatibilityList(const GPUCompatibilityList&) = delete;
   GPUCompatibilityList& operator=(const GPUCompatibilityList&) = delete;
+  bool IsDatabaseLoaded() const;
 
   // Checks if the provided byte array represents a valid compatibility list
   static bool IsValidFlatbuffer(const unsigned char* data, int len);
 
  protected:
   const DeviceDatabase* database_;
-
- private:
-  explicit GPUCompatibilityList(
-      const unsigned char* compatibility_list_flatbuffer);
 };
 
 }  // namespace acceleration
