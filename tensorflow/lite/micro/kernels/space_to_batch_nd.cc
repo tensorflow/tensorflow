@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,13 +44,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  SpaceToBatchParams* params =
-      static_cast<SpaceToBatchParams*>(node->user_data);
-
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TF_LITE_ENSURE(context, input != nullptr && output != nullptr);
 
+  SpaceToBatchParams* params =
+      static_cast<SpaceToBatchParams*>(node->user_data);
   params->output_offset = output->params.zero_point;
 
   // Only 4D input and output tensors are supported for this op on TFLM.
