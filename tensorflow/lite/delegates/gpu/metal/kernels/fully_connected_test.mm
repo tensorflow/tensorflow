@@ -25,18 +25,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-
-using ::tflite::gpu::BHWC;
-using ::tflite::gpu::DataType;
-using ::tflite::gpu::FullyConnectedAttributes;
-using ::tflite::gpu::Linear;
-using ::tflite::gpu::OHWI;
-using ::tflite::gpu::OperationType;
-using ::tflite::gpu::Tensor;
-using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
 
 @interface FullyConnectedMetalTest : XCTestCase
 @end
@@ -45,45 +35,52 @@ using ::tflite::gpu::metal::SingleOpModel;
   tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
 }
 
-- (void)setUp {
-  [super setUp];
-}
+namespace tflite {
+namespace gpu {
+namespace metal {
 
-- (void)testMatrixByVectorMultiplication {
-  TensorRef<BHWC> input;
-  input.type = DataType::FLOAT32;
-  input.ref = 0;
-  input.shape = BHWC(1, 1, 1, 2);
+absl::Status FullyConnectedTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 1, 1, 2);
+  src_tensor.data = {1, 2};
 
   FullyConnectedAttributes attr;
+  attr.weights.shape = OHWI(4, 1, 1, 2);
+  attr.weights.data = {1, 2, 3, 4, 5, 6, 7, 8};
+  attr.bias.shape = Linear(4);
+  attr.bias.data = {1, 2, 3, 4};
 
-  Tensor<Linear, DataType::FLOAT32> bias;
-  bias.shape.v = 4;
-  bias.id = 1;
-  bias.data = {1, 2, 3, 4};
-  attr.bias = std::move(bias);
+  for (auto storage : env->GetSupportedStorages()) {
+    for (auto precision : env->GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      FullyConnected operation = CreateFullyConnected(env->GetGpuInfo(), op_def, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, absl::make_unique<FullyConnected>(std::move(operation)), BHWC(1, 1, 1, 4),
+          &dst_tensor));
+      RETURN_IF_ERROR(PointWiseNear({6, 13, 20, 27}, dst_tensor.data, eps))
+          << "Failed using precision " << ToString(precision);
+    }
+  }
+  return absl::OkStatus();
+}
 
-  Tensor<OHWI, DataType::FLOAT32> weights;
-  weights.shape = OHWI(4, 1, 1, 2);
-  weights.id = 2;
-  weights.data = {1, 2, 3, 4, 5, 6, 7, 8};
-  attr.weights = std::move(weights);
+}  // namespace metal
+}  // namespace gpu
+}  // namespace tflite
 
-  TensorRef<BHWC> output;
-  output.type = DataType::FLOAT32;
-  output.ref = 2;
-  output.shape = BHWC(1, 1, 1, 4);
-
-  SingleOpModel model({ToString(OperationType::FULLY_CONNECTED), attr}, {input}, {output});
-  XCTAssertTrue(model.PopulateTensor(0, {1, 2}));
-  auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  status = CompareVectors({6, 13, 20, 27}, model.GetOutput(0), 1e-6f);
+- (void)testFullyConnectedMetal {
+  auto status = tflite::gpu::metal::FullyConnectedTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testFullyConnected {
-  auto status = FullyConnectedTest(&exec_env_);
+  auto status = tflite::gpu::FullyConnectedTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

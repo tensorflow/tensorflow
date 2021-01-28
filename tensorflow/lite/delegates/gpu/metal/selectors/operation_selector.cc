@@ -392,12 +392,11 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
                       node.operation.attributes));
       break;
     case OperationType::FULLY_CONNECTED: {
-      auto gpu_op = FullyConnected(
-          op_def,
-          absl::any_cast<FullyConnectedAttributes>(node.operation.attributes),
-          gpu_info);
-      gpu_operation->task_desc =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+      FullyConnected gpu_op = CreateFullyConnected(
+          gpu_info, op_def,
+          absl::any_cast<FullyConnectedAttributes>(node.operation.attributes));
+      gpu_operation->operation =
+          absl::make_unique<FullyConnected>(std::move(gpu_op));
       break;
     }
     case OperationType::LSTM: {
