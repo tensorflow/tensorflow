@@ -162,6 +162,12 @@ class ProjectiveGenerator {
     const float x = map_functor(input_x, input_.dimension(2));
     const float y = map_functor(input_y, input_.dimension(1));
 
+    // Only MODE::FILL_CONSTANT keeps cooridnates out-of-boundary
+    if (x < 0 || x > input_.dimension(2) - 1 || y < 0 ||
+        y > input_.dimension(1) - 1) {
+      return fill_value_;
+    }
+
     const DenseIndex batch = coords[0];
     const DenseIndex channels = coords[3];
     switch (interpolation_) {
