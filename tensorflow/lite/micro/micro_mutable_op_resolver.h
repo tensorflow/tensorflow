@@ -140,8 +140,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
 
   TfLiteStatus AddBatchToSpaceND() {
     return AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND,
-                      Register_BATCH_TO_SPACE_ND(),
-                      ParseBatchToSpaceNd);
+                      Register_BATCH_TO_SPACE_ND(), ParseBatchToSpaceNd);
   }
 
   TfLiteStatus AddCast() {

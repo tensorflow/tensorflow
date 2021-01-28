@@ -34,8 +34,8 @@ const int32_t basic_block_shape[] = {2, 2};
 const int basic_crops_dims[] = {1, 4};
 const int basic_crops[] = {0, 0, 0, 0};
 const int basic_output_dims[] = {4, 1, 4, 4, 1};
-const float basic_golden[kBasicInputOutputSize] = {
-    1, 5, 2, 6, 9, 13, 10, 14, 3, 7, 4, 8, 11, 15, 12, 16};
+const float basic_golden[kBasicInputOutputSize] = {1, 5, 2, 6, 9,  13, 10, 14,
+                                                   3, 7, 4, 8, 11, 15, 12, 16};
 
 template <typename T>
 TfLiteStatus ValidateBatchToSpaceNdGoldens(TfLiteTensor* tensors,
