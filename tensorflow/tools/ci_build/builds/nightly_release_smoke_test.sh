@@ -32,6 +32,8 @@ function run_smoke_test() {
   if [ ${IN_VENV} -eq 0 ]; then
     VENV_TMP_DIR=$(mktemp -d)
 
+    ${PYTHON_BIN_PATH} -m pip install virtualenv
+
     ${PYTHON_BIN_PATH} -m virtualenv -p ${PYTHON_BIN_PATH} "${VENV_TMP_DIR}" || \
         die "FAILED: Unable to create virtualenv"
 
