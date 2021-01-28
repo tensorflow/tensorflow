@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
@@ -52,7 +53,8 @@ def _GraphFn(x, add_quantization_nodes):
 def _GetParams(self):
   return self.BuildParams(self.GraphFn, dtypes.float32, [[8, 8]], [[8, 1]])
 
-
+@test_util.run_all_without_tensor_float_32(
+    "Matmul can use TF32 on GPU")
 class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):
   """Create a graph containing single segment with no quantization ranges."""
 
@@ -78,6 +80,8 @@ class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):
     return ["TRTEngineOp_0"]
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Matmul can use TF32 on GPU")
 class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
   """Create a graph containing single segment with no quantization ranges."""
 
@@ -106,6 +110,8 @@ class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
     return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-01
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Matmul can use TF32 on GPU")
 class NonQuantizedPrecisionsWithRangesTest(trt_test.TfTrtIntegrationTestBase):
   """Create a graph containing single segment with no quantization ranges."""
 

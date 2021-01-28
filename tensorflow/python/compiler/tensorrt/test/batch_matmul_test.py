@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -54,6 +55,8 @@ class BatchMatMultTestBase(trt_test.TfTrtIntegrationTestBase):
     super(BatchMatMultTestBase, cls).setUpClass()
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Matmul can use TF32 on GPU")
 class BatchMatMulTwoTensorTest(BatchMatMultTestBase):
   """Testing conversion of BatchMatMul where both inputs are tensors."""
 
@@ -72,6 +75,8 @@ class BatchMatMulTwoTensorTest(BatchMatMultTestBase):
     return {"TRTEngineOp_0": ["matmul", "relu"]}
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Matmul can use TF32 on GPU")
 class BatchMatMulWeightBroadcastTest(BatchMatMultTestBase):
   """Testing BatchMatMulV2: one operand is weight and both have same rank."""
 
@@ -91,6 +96,8 @@ class BatchMatMulWeightBroadcastTest(BatchMatMultTestBase):
     return {"TRTEngineOp_0": ["matmul", "kernel"]}
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Matmul can use TF32 on GPU")
 class BatchMatMulWeightBroadcastDims2Test(BatchMatMultTestBase):
   """Testing BatchMatMulV2: weight operand must be broadcasted."""
 
