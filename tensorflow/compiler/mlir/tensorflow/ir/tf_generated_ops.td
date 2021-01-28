@@ -1137,6 +1137,34 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   let hasCanonicalizer = 1;
 }
 
+def TF_BincountOp : TF_Op<"Bincount", [NoSideEffect]> {
+  let summary = [{
+Counts the number of occurrences of each value in an integer array.
+  }];
+
+  let description = [{
+Outputs a vector with length `size` and the same dtype as `weights`. If
+`weights` are empty, then index `i` stores the number of times the value `i` is
+counted in `arr`. If `weights` are non-empty, then index `i` stores the sum of
+the value in `weights` at each index where the corresponding value in `arr` is
+`i`.
+
+Values in `arr` outside of the range [0, size) are ignored.
+  }];
+
+  let arguments = (ins
+    TF_Int32Tensor:$arr,
+    TF_Int32Tensor:$size,
+    TensorOf<[TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$weights
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$bins
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {
   let summary = [{
 Bitcasts a tensor from one type to another without copying data.
@@ -8697,6 +8725,23 @@ def TF_OnesLikeOp : TF_Op<"OnesLike", [Idempotent, NoSideEffect, SameOperandsAnd
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_OptionalGetValueOp : TF_Op<"OptionalGetValue", [NoSideEffect]> {
+  let summary = [{
+Returns the value stored in an Optional variant or raises an error if none exists.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$optional
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$components
+  );
+
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
+  TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_OptionalHasValueOp : TF_Op<"OptionalHasValue", [NoSideEffect]> {
   let summary = [{
 Returns true if and only if the given Optional variant has a value.
@@ -9435,6 +9480,92 @@ array([0.6666667, 1. , 1. ], dtype=float32)
     TF_FloatTensor:$output
   );
 
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_RaggedGatherOp : TF_Op<"RaggedGather", [NoSideEffect]> {
+  let summary = [{
+Gather ragged slices from `params` axis `0` according to `indices`.
+  }];
+
+  let description = [{
+Outputs a `RaggedTensor` output composed from `output_dense_values` and
+`output_nested_splits`, such that:
+
+```python
+output.shape = indices.shape + params.shape[1:]
+output.ragged_rank = indices.shape.ndims + params.ragged_rank
+output[i...j, d0...dn] = params[indices[i...j], d0...dn]
+```
+
+where
+
+* `params =
+   ragged.from_nested_row_splits(params_dense_values, params_nested_splits)`
+   provides the values that should be gathered.
+* `indices` ia a dense tensor with dtype `int32` or `int64`, indicating which
+   values should be gathered.
+* `output =
+   ragged.from_nested_row_splits(output_dense_values, output_nested_splits)`
+   is the output tensor.
+
+(Note: This c++ op is used to implement the higher-level python
+`tf.ragged.gather` op, which also supports ragged indices.)
+  }];
+
+  let arguments = (ins
+    Variadic<TF_I32OrI64Tensor>:$params_nested_splits,
+    TF_Tensor:$params_dense_values,
+    TF_I32OrI64Tensor:$indices
+  );
+
+  let results = (outs
+    Variadic<TF_I32OrI64Tensor>:$output_nested_splits,
+    TF_Tensor:$output_dense_values
+  );
+
+  TF_DerivedOperandTypeAttr Tsplits = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tvalues = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultSizeAttr OUTPUT_RAGGED_RANK = TF_DerivedResultSizeAttr<0>;
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandSizeAttr PARAMS_RAGGED_RANK = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_RaggedRangeOp : TF_Op<"RaggedRange", [NoSideEffect]> {
+  let summary = [{
+Returns a `RaggedTensor` containing the specified sequences of numbers.
+  }];
+
+  let description = [{
+Returns a `RaggedTensor` `result` composed from `rt_dense_values` and
+`rt_nested_splits`, such that
+`result[i] = range(starts[i], limits[i], deltas[i])`.
+
+```python
+(rt_nested_splits, rt_dense_values) = ragged_range(
+      starts=[2, 5, 8], limits=[3, 5, 12], deltas=1)
+result = tf.ragged.from_row_splits(rt_dense_values, rt_nested_splits)
+print(result)
+<tf.RaggedTensor [[2], [], [8, 9, 10, 11]] >
+```
+
+The input tensors `starts`, `limits`, and `deltas` may be scalars or vectors.
+The vector inputs must all have the same size.  Scalar inputs are broadcast
+to match the size of the vector inputs.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$starts,
+    TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$limits,
+    TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$deltas
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$rt_nested_splits,
+    TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$rt_dense_values
+  );
+
+  TF_DerivedResultTypeAttr Tsplits = TF_DerivedResultTypeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
@@ -12524,6 +12655,23 @@ Converts the given `resource_handle` representing an iterator to a variant tenso
   let results = (outs
     TF_VariantTensor:$serialized
   );
+}
+
+def TF_SerializeSparseOp : TF_Op<"SerializeSparse", [NoSideEffect]> {
+  let summary = "Serialize a `SparseTensor` into a `[3]` `Tensor` object.";
+
+  let arguments = (ins
+    TF_Int64Tensor:$sparse_indices,
+    TF_Tensor:$sparse_values,
+    TF_Int64Tensor:$sparse_shape
+  );
+
+  let results = (outs
+    TensorOf<[TF_Str, TF_Variant]>:$serialized_sparse
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_ShapeOp : TF_Op<"Shape", [NoSideEffect]> {
@@ -15887,6 +16035,21 @@ deviations from the mean are dropped and re-picked.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_UncompressElementOp : TF_Op<"UncompressElement", [NoSideEffect]> {
+  let summary = "Uncompresses a compressed dataset element.";
+
+  let arguments = (ins
+    TF_VariantTensor:$compressed
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$components
+  );
+
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
+  TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_UniqueOp : TF_Op<"Unique", [NoSideEffect]> {
