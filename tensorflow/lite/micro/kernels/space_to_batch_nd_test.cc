@@ -32,7 +32,7 @@ const float basic_input[kBasicInputOutputSize] = {
 const int basic_block_shape_dims[] = {1, 2};
 const int32_t basic_block_shape[] = {2, 2};
 const int basic_crops_dims[] = {1, 4};
-const int basic_crops[] = {0, 0, 0, 0};
+const int32_t basic_crops[] = {0, 0, 0, 0};
 const int basic_output_dims[] = {4, 4, 2, 2, 1};
 const float basic_golden[kBasicInputOutputSize] = {1, 3, 9,  11, 2, 4, 10, 12,
                                                    5, 7, 13, 15, 6, 8, 14, 16};
