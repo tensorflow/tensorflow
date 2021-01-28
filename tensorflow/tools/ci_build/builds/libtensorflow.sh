@@ -58,7 +58,9 @@ function build_libtensorflow_tarball() {
     export TF_NEED_ROCM=0
     export TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
   else
-    BAZEL_OPTS="${BAZEL_OPTS} --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
+    if [ "$(uname)" != "Darwin" ]; then
+      BAZEL_OPTS="${BAZEL_OPTS} --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
+    fi
   fi
   bazel clean --expunge
   yes "" | ./configure
