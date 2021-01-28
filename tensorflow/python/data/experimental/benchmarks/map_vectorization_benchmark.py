@@ -95,7 +95,7 @@ def _generate_parse_single_example_test_case():
 class MapVectorizationBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for the `MapVectorization` optimization."""
 
-  def _run(self, dataset, num_elements, num_iters=100, name=None):
+  def _run(self, dataset, num_elements, num_iters=10, name=None):
 
     wall_time = self.run_benchmark(
         dataset=dataset,
