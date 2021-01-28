@@ -97,15 +97,15 @@ absl::Status SelectConcat(const ConcatAttributes& attr,
   }
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectConvolutionTransposed(
+std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
     const OperationDef& op_def, const ConvolutionTransposedAttributes& attr,
     const GpuInfo& gpu_info) {
   if (CheckConvolutionTransposed4x4Support(attr)) {
-    auto gpu_op = ConvolutionTransposed4x4(op_def, attr, gpu_info);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateConvolutionTransposed4x4(gpu_info, op_def, attr);
+    return absl::make_unique<ConvolutionTransposed4x4>(std::move(gpu_op));
   } else {
-    auto gpu_op = ConvolutionTransposed(op_def, attr, gpu_info);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateConvolutionTransposed(gpu_info, op_def, attr);
+    return absl::make_unique<ConvolutionTransposed>(std::move(gpu_op));
   }
 }
 
@@ -375,7 +375,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             "Convolution Transposed does not support more than 1 runtime "
             "tensor");
       }
-      gpu_operation->task_desc = SelectConvolutionTransposed(
+      gpu_operation->operation = SelectConvolutionTransposed(
           op_def,
           absl::any_cast<ConvolutionTransposedAttributes>(
               node.operation.attributes),
