@@ -39,6 +39,8 @@ filegroup(
     name = "enabled_unary_kernel_srcs",
     srcs = [
         "gpu_op_abs.cc",
+        "gpu_op_atan.cc",
+        "gpu_op_atanh.cc",
         "gpu_op_tanh.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
@@ -51,8 +53,6 @@ filegroup(
         "gpu_op_acosh.cc",
         "gpu_op_asin.cc",
         "gpu_op_asinh.cc",
-        "gpu_op_atan.cc",
-        "gpu_op_atanh.cc",
         "gpu_op_ceil.cc",
         "gpu_op_complex.cc",
         "gpu_op_complex_abs.cc",
