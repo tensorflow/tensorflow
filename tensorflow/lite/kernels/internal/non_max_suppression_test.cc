@@ -77,9 +77,10 @@ TEST(NonMaxSuppression, TestZeroBoxes) {
   int num_selected_indices = -1;
 
   reference_ops::NonMaxSuppression(
-      boxes.data(), /**num_boxes=**/ 0, scores.data(), max_output_size,
-      iou_threshold, score_threshold, /**sigma=**/ 0.0, selected_indices.data(),
-      selected_scores.data(), &num_selected_indices);
+      NonMaxSuppressionParams(), boxes.data(), /**num_boxes=**/ 0,
+      scores.data(), max_output_size, iou_threshold, score_threshold,
+      /**sigma=**/ 0.0, selected_indices.data(), selected_scores.data(),
+      &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 0);
 }
 
@@ -104,17 +105,18 @@ TEST(NonMaxSuppression, TestSelectFromIdenticalBoxes) {
   int num_selected_indices = -1;
 
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
-      score_threshold, /**sigma=**/ 0.0, selected_indices.data(),
-      selected_scores.data(), &num_selected_indices);
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold, score_threshold, /**sigma=**/ 0.0,
+      selected_indices.data(), selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 1);
   MatchFirstNElements(1, selected_scores, {.75});
 
   score_threshold = 0.95;
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
-      score_threshold, /**sigma=**/ 0.0, selected_indices.data(),
-      selected_scores.data(), &num_selected_indices);
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold, score_threshold,
+      /**sigma=**/ 0.0, selected_indices.data(), selected_scores.data(),
+      &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 0);
 }
 
@@ -134,7 +136,8 @@ TEST(NonMaxSuppression, TestSelectFromThreeClustersWithZeroScoreThreshold) {
   // Test a large max_output_size.
   max_output_size = 100;
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold,
       /**score_threshold=**/ 0.0, /**sigma=**/ 0.0, selected_indices.data(),
       selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 3);
@@ -144,7 +147,8 @@ TEST(NonMaxSuppression, TestSelectFromThreeClustersWithZeroScoreThreshold) {
   // Smaller max_output_size.
   max_output_size = 2;
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold,
       /**score_threshold=**/ 0.0, /**sigma=**/ 0.0, selected_indices.data(),
       selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, max_output_size);
@@ -154,7 +158,8 @@ TEST(NonMaxSuppression, TestSelectFromThreeClustersWithZeroScoreThreshold) {
   // max_output_size = 0.
   max_output_size = 0;
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold,
       /**score_threshold=**/ 0.0, /**sigma=**/ 0.0, selected_indices.data(),
       selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 0);
@@ -177,9 +182,9 @@ TEST(NonMaxSuppression, TestSelectFromThreeClustersWithScoreThreshold) {
   // Test a large max_output_size.
   max_output_size = 100;
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
-      score_threshold, /**sigma=**/ 0.0, selected_indices.data(),
-      selected_scores.data(), &num_selected_indices);
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold, score_threshold, /**sigma=**/ 0.0,
+      selected_indices.data(), selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 2);
   MatchFirstNElements(2, selected_indices, {3, 0});
   MatchFirstNElements(2, selected_scores, {0.95, 0.9});
@@ -187,9 +192,9 @@ TEST(NonMaxSuppression, TestSelectFromThreeClustersWithScoreThreshold) {
   // max_output_size = 1.
   max_output_size = 1;
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
-      score_threshold, /**sigma=**/ 0.0, selected_indices.data(),
-      selected_scores.data(), &num_selected_indices);
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold, score_threshold, /**sigma=**/ 0.0,
+      selected_indices.data(), selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 1);
   MatchFirstNElements(1, selected_indices, {3});
   MatchFirstNElements(1, selected_scores, {0.95});
@@ -213,16 +218,17 @@ TEST(NonMaxSuppression, TestSelectFromThreeClustersWithFlippedCoordinates) {
 
   // Test a large max_output_size.
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
-      score_threshold, /**sigma=**/ 0.0, selected_indices.data(),
-      selected_scores.data(), &num_selected_indices);
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold, score_threshold, /**sigma=**/ 0.0,
+      selected_indices.data(), selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 2);
   MatchFirstNElements(2, selected_indices, {3, 0});
   MatchFirstNElements(2, selected_scores, {0.95, 0.9});
 
   // score_threshold = 0.
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold,
       /**score_threshold=**/ 0.0, /**sigma=**/ 0.0, selected_indices.data(),
       selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 3);
@@ -245,7 +251,8 @@ TEST(NonMaxSuppression, TestIoUThresholdBoundaryCases) {
 
   // IoU threshold is zero. Only one index should get selected.
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size,
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size,
       /**iou_threshold=**/ 0.0, score_threshold, /**sigma=**/ 0.0,
       selected_indices.data(), selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 1);
@@ -255,7 +262,8 @@ TEST(NonMaxSuppression, TestIoUThresholdBoundaryCases) {
   // IoU threshold too high. max_output_size number of indices should be
   // selected.
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size,
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size,
       /**iou_threshold=**/ 0.9999,
       /**score_threshold=**/ 0.0, /**sigma=**/ 0.0, selected_indices.data(),
       selected_scores.data(), &num_selected_indices);
@@ -280,9 +288,9 @@ TEST(NonMaxSuppression, TestSelectFromThreeClustersWithSoftNMS) {
   int num_selected_indices = -1;
 
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
-      score_threshold, soft_nms_sigma, selected_indices.data(),
-      selected_scores.data(), &num_selected_indices);
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold, score_threshold, soft_nms_sigma,
+      selected_indices.data(), selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 6);
   // Box 0 soft-suppresses box 1, but not enough to cause it to fall under
   // `score_threshold` (which is 0.0) or the score of box 5, so in this test,
@@ -294,9 +302,9 @@ TEST(NonMaxSuppression, TestSelectFromThreeClustersWithSoftNMS) {
 
   score_threshold = 0.299;
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
-      score_threshold, soft_nms_sigma, selected_indices.data(),
-      selected_scores.data(), &num_selected_indices);
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold, score_threshold, soft_nms_sigma,
+      selected_indices.data(), selected_scores.data(), &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 4);
   MatchFirstNElements(4, selected_indices, {3, 0, 1, 5});
 }
@@ -316,8 +324,9 @@ TEST(NonMaxSuppression, TestNullSelectedScoresOutput) {
 
   max_output_size = 100;
   reference_ops::NonMaxSuppression(
-      boxes.data(), kNumBoxes, scores.data(), max_output_size, iou_threshold,
-      score_threshold, /**sigma=**/ 0.0, selected_indices.data(),
+      NonMaxSuppressionParams(), boxes.data(), kNumBoxes, scores.data(),
+      max_output_size, iou_threshold, score_threshold, /**sigma=**/ 0.0,
+      selected_indices.data(),
       /**selected_scores=**/ nullptr, &num_selected_indices);
   EXPECT_EQ(num_selected_indices, 2);
 }

@@ -301,8 +301,9 @@ constexpr int lut_size() {
 // - lut: pointer to the LUT table to fill, the table must be of size
 // lut_size<LutInT>()
 template <typename FloatT, typename LutInT, typename LutOutT>
-inline void gen_lut(FloatT (*func)(FloatT), FloatT input_min, FloatT input_max,
-                    FloatT output_min, FloatT output_max, LutOutT* lut) {
+inline void gen_lut(const std::function<FloatT(FloatT)>& func, FloatT input_min,
+                    FloatT input_max, FloatT output_min, FloatT output_max,
+                    LutOutT* lut) {
   static_assert(std::is_same<LutInT, int8_t>::value ||
                     std::is_same<LutInT, int16_t>::value,
                 "Only LUTs with int8 or int16 inputs are supported.");
