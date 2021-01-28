@@ -554,6 +554,15 @@ def HLOClient_IsPosInfOp : HLOClient_UnaryElementwiseOp<"is_pos_inf",
   }];
 }
 
+def HLOClient_LgammaOp : HLOClient_UnaryElementwiseOp<"lgamma",
+    [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
+  let summary = "Lgamma function";
+
+  let description = [{
+    Returns `Lgamma(operand)` element-wise.
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // Broadcasting compare op
 //===----------------------------------------------------------------------===//
