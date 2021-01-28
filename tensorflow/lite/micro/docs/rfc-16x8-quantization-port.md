@@ -2,10 +2,10 @@
 
 | Status        | Proposed                                             |
 :-------------- |:---------------------------------------------------- |
-| **RFC #**     | [350](https://github.com/tensorflow/community/pull/350)|
+| **RFC #**     | [46767](https://github.com/tensorflow/tensorflow/pull/46767)|
 | **Author(s)** | Daniel Situnayake (me@example.org)                   |
 | **Sponsor**   | Pete Warden (petewarden@google.com)                  |
-| **Updated**   | 2021-01-27                                           |
+| **Updated**   | 2021-01-28                                           |
 
 ## Objective
 
