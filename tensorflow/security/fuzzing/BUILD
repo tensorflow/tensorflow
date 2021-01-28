@@ -153,4 +153,5 @@ tf_py_fuzz_target(
     name = "raggedCountSparseOutput_fuzz",
     srcs = ["raggedCountSparseOutput_fuzz.py"],
     tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
 )
