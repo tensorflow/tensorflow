@@ -295,8 +295,13 @@ class ConstRHSBatchMatMulOpModel : public MultiOpModel {
                  CreateBatchMatMulOptions(builder_, adj_x, adj_y).Union(),
                  matmul_inputs, matmul_outputs);
 
-    // This is just a dummy op to check if the values of transposed RHS are
-    // polluted.
+    // Without following ops (not limited to neg), temporary allocation with
+    // kTfLiteArenaRw tends to re-claim the same memory across each evaluation,
+    // and no other ops will modify values at that memory address because no
+    // other memory allocations take place. Therefore, it's likely that results
+    // are correct even if constant transposed RHS is allocated with
+    // kTfLiteArenaRw. We thus use a dummy op to make sure constant transposed
+    // RHS behaves correctly.
     neg_output_id_ = AddOutput(lhs.type);
     std::vector<int> neg_inputs{matmul_output_id_};
     std::vector<int> neg_outputs{neg_output_id_};
