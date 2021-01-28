@@ -63,7 +63,9 @@ function build_libtensorflow_tarball() {
     fi
   fi
   bazel clean --expunge
-  yes "" | ./configure
+  export PYTHON_BIN_PATH=$(which python3.8)
+  yes "" | "$PYTHON_BIN_PATH" configure.py
+
 
   # Remove this test call when
   # https://github.com/bazelbuild/bazel/issues/2352
