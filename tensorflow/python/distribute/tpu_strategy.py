@@ -320,7 +320,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     """Synchronous training in TPU donuts or Pods.
 
     Args:
-      tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
+      tpu_cluster_resolver: A `tf.distribute.cluster_resolver.TPUClusterResolver`,
         which provides information about the TPU cluster. If None, it will
         assume running on a local TPU worker.
       experimental_device_assignment: Optional
