@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/div.h"
 #include "tensorflow/lite/kernels/internal/reference/elu.h"
 #include "tensorflow/lite/kernels/internal/reference/exp.h"
+#include "tensorflow/lite/kernels/internal/reference/fake_quant.h"
 #include "tensorflow/lite/kernels/internal/reference/fill.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/floor_div.h"
@@ -1027,30 +1028,6 @@ inline void Dequantize(const RuntimeShape& input_shape,
   for (int i = 0; i < flat_size; i++) {
     output_data[i] = Eigen::half_impl::half_to_float(input_data[i]);
   }
-}
-
-inline void FakeQuant(const tflite::FakeQuantParams& op_params,
-                      const RuntimeShape& input_shape, const float* input_data,
-                      const RuntimeShape& output_shape, float* output_data) {
-  ruy::profiler::ScopeLabel label("FakeQuant");
-  float rmin = op_params.minmax.min;
-  float rmax = op_params.minmax.max;
-  int num_bits = op_params.num_bits;
-  // 0 should always be a representable value. Let's assume that the initial
-  // min,max range contains 0.
-  TFLITE_DCHECK_LE(rmin, 0.0f);
-  TFLITE_DCHECK_GE(rmax, 0.0f);
-  TFLITE_DCHECK_LT(rmin, rmax);
-
-  // Code matches tensorflow's FakeQuantWithMinMaxArgsFunctor.
-  int quant_min = 0;
-  int quant_max = (1 << num_bits) - 1;
-  float nudged_min, nudged_max, nudged_scale;
-  NudgeQuantizationRange(rmin, rmax, quant_min, quant_max, &nudged_min,
-                         &nudged_max, &nudged_scale);
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  FakeQuantizeArray(nudged_scale, nudged_min, nudged_max, input_data,
-                    output_data, flat_size);
 }
 
 // Common subroutine for both `GatherNd` and `GatherNdString`.
