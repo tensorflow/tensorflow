@@ -675,17 +675,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return kTfLiteError;
     }
     case BuiltinOperator_FAKE_QUANT: {
-      auto params = safe_allocator.Allocate<TfLiteFakeQuantParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_FakeQuantOptions()) {
-        params->min = schema_params->min();
-        params->max = schema_params->max();
-        params->num_bits = schema_params->num_bits();
-        params->narrow_range = schema_params->narrow_range();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
+      return ParseFakeQuant(op, error_reporter, allocator, builtin_data);
     }
     case BuiltinOperator_ONE_HOT: {
       auto params = safe_allocator.Allocate<TfLiteOneHotParams>();
@@ -1207,6 +1197,27 @@ TfLiteStatus ParseExp(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseExpandDims(const Operator*, ErrorReporter*,
                              BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseFakeQuant(const Operator* op, ErrorReporter* error_reporter,
+                            BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteFakeQuantParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* schema_params =
+        op->builtin_options_as_FakeQuantOptions()) {
+    params->min = schema_params->min();
+    params->max = schema_params->max();
+    params->num_bits = schema_params->num_bits();
+    params->narrow_range = schema_params->narrow_range();
+  }
+  *builtin_data = params.release();
   return kTfLiteOk;
 }
 
