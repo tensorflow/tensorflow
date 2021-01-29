@@ -330,8 +330,7 @@ PYBIND11_MODULE(xla_extension, m) {
              return buffer_obj;
            })
       .def("block_host_until_ready", &PyBuffer::BlockHostUntilReady)
-      .def("copy_to_host_async", &PyBuffer::CopyToHostAsync,
-           py::call_guard<py::gil_scoped_release>())
+      .def("copy_to_host_async", &PyBuffer::CopyToHostAsync)
       .def("to_py",
            [](py::handle buffer_obj) {
              PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
