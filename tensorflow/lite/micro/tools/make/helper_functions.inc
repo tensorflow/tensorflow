@@ -39,18 +39,10 @@ substitute_specialized_implementation = \
 substitute_specialized_implementations = \
   $(foreach source,$(1),$(call substitute_specialized_implementation,$(source),$(2)))
 
-# Here we're first looking for specialized implementations in ref_dir/$(TAG1)
-# and then ref_dir/$(TAG2), etc, before falling back to ref_dir's
-# implementation.
-# The argument to this function should be a list of space-separated file paths,
-# with any wildcards already expanded.
-define specialize_on_tags
-$(if $(2),$(call substitute_specialized_implementations,$(call specialize_on_tags,$(1),$(wordlist 2,$(words $(2)),$(2))),$(firstword $(2))),$(1))
-endef
-
-# The entry point that most targets should use to find implementation-specific
-# versions of their source files. The only argument is a list of file paths.
-specialize = $(call specialize_on_tags,$(1),$(strip $(call reverse,$(ALL_TAGS))))
+# Tests and project generation targets use this entrypoint for to get the
+# specialized sources. It should be avoided for any new functionality.
+# The only argument is a list of file paths.
+specialize = $(call substitute_specialized_implementations,$(1),$(TARGET))
 
 # TODO(b/143904317): It would be better to have the dependency be
 # THIRD_PARTY_TARGETS instead of third_party_downloads. However, that does not

@@ -3285,6 +3285,11 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
   def value_type(self):
     return Dataset
 
+  @property
+  def element_spec(self):
+    """The inner element spec."""
+    return self._element_spec
+
   def _serialize(self):
     return (self._element_spec, self._dataset_shape)
 

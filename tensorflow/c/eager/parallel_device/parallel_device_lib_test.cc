@@ -109,9 +109,11 @@ TEST(PARALLEL_DEVICE_LIB, TestExplicitOutputShape) {
   TFE_OpSetAttrShape(handle_op.get(), "shape", /*dims=*/nullptr, /*num_dims=*/0,
                      status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-  auto outputs = parallel_device.Execute(
-      context.get(), std::vector<ParallelTensor*>(), "VarHandleOp",
-      TFE_OpGetAttrs(handle_op.get()), {PartialTensorShape({})}, status.get());
+  parallel_device.StartExecute(context.get(), std::vector<ParallelTensor*>(),
+                               "VarHandleOp", TFE_OpGetAttrs(handle_op.get()),
+                               /*expected_max_outputs=*/1);
+  auto outputs = parallel_device.Join(
+      /*expected_output_shapes=*/{PartialTensorShape({})}, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   const std::vector<std::unique_ptr<ParallelTensor>>& handles = *outputs;
   const std::vector<int64_t>* shape;

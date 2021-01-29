@@ -85,7 +85,7 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     // clang-format off
     absl::flat_hash_map<string, uint64> live_experiments = {
         {"enable_gradient_descent", 0},
-        {"map_parallelization", 5}
+        {"map_parallelization", 50}
     };
     // clang-format on
     auto hash_func = [](const string& str) { return Hash64(str); };

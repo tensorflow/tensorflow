@@ -314,10 +314,6 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       std::vector<::xla::OpSharding>* retval_sharding,
       std::vector<std::string>* arg_names);
 
-  // Computes a fingerprint of the contents of `library`.
-  static Status FingerprintFunctionLibrary(
-      const FunctionLibraryDefinition& library, uint64* fingerprint);
-
   // Populates `*variables` with the "variables" inputs to `index`-th output of
   // `node`.
   struct VariableInput {

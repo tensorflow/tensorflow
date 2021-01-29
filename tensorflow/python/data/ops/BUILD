@@ -31,6 +31,7 @@ py_library(
         "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/experimental/ops:stats_options",
         "//tensorflow/python/data/experimental/ops:threading_options",
+        "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:options",
         "//tensorflow/python/data/util:random_seed",

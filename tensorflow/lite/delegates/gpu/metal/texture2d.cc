@@ -40,18 +40,7 @@ absl::Status CreateTexture2D(int width, int height, DataType type, void* data,
   }
 
   if (data) {
-    MTLRegion region = {
-        {0, 0, 0},
-        {static_cast<NSUInteger>(width), static_cast<NSUInteger>(height), 1}};
-    const int pixel_size = PixelFormatToSizeInBytes(pixel_format);
-    [texture replaceRegion:region
-               mipmapLevel:0
-                 withBytes:data
-               bytesPerRow:width * pixel_size];
-
-    if (!texture) {
-      return absl::UnknownError("Failed to upload data to id<MTLTexture>");
-    }
+    WriteDataToTexture2D(texture, device, data);
   }
 
   *result = Texture2D(texture, width, height, pixel_format);
@@ -132,18 +121,7 @@ absl::Status Texture2D::CreateFromTexture2DDescriptor(
   }
 
   if (data_ptr) {
-    MTLRegion region = {
-        {0, 0, 0},
-        {static_cast<NSUInteger>(width_), static_cast<NSUInteger>(height_), 1}};
-    const int pixel_size = PixelFormatToSizeInBytes(pixel_format_);
-    [texture_ replaceRegion:region
-                mipmapLevel:0
-                  withBytes:data_ptr
-                bytesPerRow:width_ * pixel_size];
-
-    if (!texture_) {
-      return absl::UnknownError("Failed to upload data to id<MTLTexture>");
-    }
+    WriteDataToTexture2D(texture_, device, data_ptr);
   }
 
   return absl::OkStatus();

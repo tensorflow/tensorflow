@@ -229,6 +229,17 @@ class HloSharding {
   // value.
   absl::optional<HloSharding> ExtractSingleSharding() const;
 
+  // Returns a copy of the sharding with no metadata. If sharding is of tuple
+  // type, sub shardings will have no metadata.
+  HloSharding WithoutMetadata() const;
+
+  // Returns a copy of the sharding with specified metadata. If metadata is
+  // already present, that metadata will not be replaced unless `overwrite` is
+  // set to true. If sharding is of tuple type, sub shardings metadata will be
+  // assigned instead.
+  HloSharding WithMetadata(absl::Span<const OpMetadata> metadata,
+                           bool overwrite) const;
+
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
            manual_ == other.manual_ &&
@@ -272,6 +283,10 @@ class HloSharding {
   // Like NumTiles() but considers only some specific dimensions passed as
   // argument
   int64 NumTiles(absl::Span<const int64> dims) const;
+
+  // Gets metadata from sharding.
+  std::vector<OpMetadata>& metadata() { return metadata_; }
+  const std::vector<OpMetadata>& metadata() const { return metadata_; }
 
  private:
   explicit HloSharding(bool manual, bool replicated,

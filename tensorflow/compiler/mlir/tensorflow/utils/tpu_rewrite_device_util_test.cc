@@ -730,9 +730,10 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceName) {
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
-  module_ref->setAttr(
-      "tf.devices", builder.getStrArrayAttr(
-                        llvm::ArrayRef<llvm::StringRef>({"bad_device_name"})));
+  (*module_ref)
+      ->setAttr("tf.devices",
+                builder.getStrArrayAttr(
+                    llvm::ArrayRef<llvm::StringRef>({"bad_device_name"})));
 
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
@@ -782,11 +783,12 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceNotReplicated) {
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
-  module_ref->setAttr(
-      "tf.devices", builder.getStrArrayAttr(llvm::ArrayRef<llvm::StringRef>(
-                        {"/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0",
-                         "/job:localhost/replica:0/task:0/device:TPU:0",
-                         "/job:worker/replica:0/task:0/device:CPU:0"})));
+  (*module_ref)
+      ->setAttr("tf.devices",
+                builder.getStrArrayAttr(llvm::ArrayRef<llvm::StringRef>(
+                    {"/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0",
+                     "/job:localhost/replica:0/task:0/device:TPU:0",
+                     "/job:worker/replica:0/task:0/device:CPU:0"})));
 
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(

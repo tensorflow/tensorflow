@@ -14,12 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/arena_planner.h"
 
+#include <stddef.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <set>
-#include <type_traits>
+#include <memory>
 #include <utility>
+#include <vector>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/graph_info.h"
+#include "tensorflow/lite/simple_memory_arena.h"
 
 namespace tflite {
 namespace {

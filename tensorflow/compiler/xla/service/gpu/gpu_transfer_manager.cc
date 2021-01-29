@@ -114,13 +114,12 @@ StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
 }
 
 Status GpuTransferManager::TransferLiteralFromOutfeed(
-    se::StreamExecutor* /*executor*/, const Shape& literal_shape,
-    MutableBorrowingLiteral literal) {
+    se::StreamExecutor* /*executor*/, MutableBorrowingLiteral literal) {
   ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
-      &literal_shape);
+      &literal.shape());
 
   for (auto& leaf : outfeed_buffers.leaves()) {
-    const Shape& shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
+    const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), leaf.first);
     CHECK(shape.IsArray()) << ShapeUtil::HumanStringWithLayout(shape);
     leaf.second =
         absl::make_unique<gpu::OutfeedBuffer>(GetByteSizeRequirement(shape));
@@ -135,7 +134,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 
   // Now wait till all the buffers are written.
   for (auto& leaf : outfeed_buffers.leaves()) {
-    const Shape& shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
+    const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), leaf.first);
     CHECK(shape.IsArray()) << ShapeUtil::HumanStringWithLayout(shape);
     leaf.second->WaitUntilAvailable();
   }

@@ -512,6 +512,9 @@ struct SparseApplyAdagrad<GPUDevice, T, Tindex, has_epsilon> {
     const Tindex first_dim_size = var.dimension(0);
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
+    if (grad_size == 0) {
+      return Status::OK();
+    }
     GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
     return GpuLaunchKernel(
         SparseApplyAdagradKernel<T, Tindex, has_epsilon>, config.block_count,
@@ -570,6 +573,9 @@ struct SparseApplyProximalAdagrad<GPUDevice, T, Tindex> {
     const Tindex first_dim_size = var.dimension(0);
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
+    if (grad_size == 0) {
+      return Status::OK();
+    }
     GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
     return GpuLaunchKernel(SparseApplyProximalAdagradKernel<T, Tindex>,
                            config.block_count, config.thread_per_block, 0,
@@ -777,6 +783,9 @@ struct SparseApplyFtrl<GPUDevice, T, Tindex, has_l2_shrinkage> {
     const Tindex first_dim_size = var.dimension(0);
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
+    if (grad_size == 0) {
+      return Status::OK();
+    }
     GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
     return GpuLaunchKernel(
         SparseApplyFtrlKernel<T, Tindex, has_l2_shrinkage>, config.block_count,
@@ -846,12 +855,14 @@ struct SparseApplyKerasMomentum<GPUDevice, T, Tindex> {
     const Tindex first_dim_size = var.dimension(0);
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
-    GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
-    TF_CHECK_OK(GpuLaunchKernel(
-        SparseApplyKerasMomentumKernel<T, Tindex>, config.block_count,
-        config.thread_per_block, 0, d.stream(), var.data(), accum.data(),
-        lr.data(), grad.data(), indices.data(), momentum.data(), use_nesterov,
-        first_dim_size, grad_size, indices_size));
+    if (grad_size != 0) {
+      GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
+      TF_CHECK_OK(GpuLaunchKernel(
+          SparseApplyKerasMomentumKernel<T, Tindex>, config.block_count,
+          config.thread_per_block, 0, d.stream(), var.data(), accum.data(),
+          lr.data(), grad.data(), indices.data(), momentum.data(), use_nesterov,
+          first_dim_size, grad_size, indices_size));
+    }
     return static_cast<Tindex>(-1);
   }
 };

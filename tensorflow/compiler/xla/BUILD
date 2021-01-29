@@ -264,6 +264,7 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/time",
     ],
 )
@@ -964,7 +965,22 @@ cc_library(
     hdrs = ["union_find.h"],
 )
 
+cc_library(
+    name = "side_effect_util",
+    srcs = ["side_effect_util.cc"],
+    hdrs = ["side_effect_util.h"],
+)
+
 # -----------------------------------------------------------------------------
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xla_data_proto_py_pb2",
+#     api_version = 2,
+#     visibility = [":friends"],
+#     deps = [":xla_data_proto"],
+# )
+# copybara:uncomment_end
 
 # This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
 cc_header_only_library(

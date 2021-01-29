@@ -43,7 +43,6 @@ class ThunkEmitter {
 
   explicit ThunkEmitter(EmissionContext* context) : context_(context) {}
 
-  Status HandleCustomCall(HloInstruction* custom_call);
   Status HandleFft(HloInstruction* fft);
   Status HandleTriangularSolve(HloInstruction* hlo);
 

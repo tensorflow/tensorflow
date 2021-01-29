@@ -57,6 +57,8 @@ Delegate ConvertDelegate(proto::Delegate delegate) {
       return Delegate_XNNPACK;
     case proto::Delegate::EDGETPU:
       return Delegate_EDGETPU;
+    case proto::Delegate::EDGETPU_CORAL:
+      return Delegate_EDGETPU_CORAL;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -252,6 +254,14 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
       edgetpu_device_spec);
 }
 
+Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
+                                           FlatBufferBuilder* builder) {
+  return CreateCoralSettings(
+      *builder, builder->CreateString(settings.device()),
+      static_cast<tflite::CoralSettings_::Performance>(settings.performance()),
+      settings.usb_always_dfu(), settings.usb_max_bulk_in_queue_length());
+}
+
 Offset<TFLiteSettings> ConvertTfliteSettings(
     const proto::TFLiteSettings& settings, FlatBufferBuilder* builder) {
   return CreateTFLiteSettings(
@@ -263,6 +273,7 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       ConvertCPUSettings(settings.cpu_settings(), builder),
       /*max_delegated_partitions=*/settings.max_delegated_partitions(),
       ConvertEdgeTpuSettings(settings.edgetpu_settings(), builder),
+      ConvertCoralSettings(settings.coral_settings(), builder),
       ConvertFallbackSettings(settings.fallback_settings(), builder));
 }
 

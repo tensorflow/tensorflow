@@ -41,10 +41,7 @@ cc_library(
     features = [
         "-use_header_modules",  # Required for pybind11
     ],
-    visibility = [
-        "//learning/deepmind/courier:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
@@ -77,6 +74,7 @@ cc_library(
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -342,7 +340,7 @@ py_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",
@@ -1134,7 +1132,7 @@ py_binary(
     name = "gradient_input_output_exclusions",
     srcs = ["gradient_input_output_exclusions.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -1152,7 +1150,7 @@ py_test(
         "//tensorflow/python/eager:pywrap_gradient_exclusions.cc",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",  # No point linking the gen script in the pip package.
     ],

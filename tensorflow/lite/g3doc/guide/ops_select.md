@@ -55,9 +55,9 @@ the standard TensorFlow Lite AAR as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
     // This dependency adds the necessary TF op support.
-    implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.0.0-nightly-SNAPSHOT'
 }
 ```
 

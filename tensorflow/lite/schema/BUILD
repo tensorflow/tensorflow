@@ -54,7 +54,7 @@ py_test(
     size = "small",
     srcs = ["upgrade_schema_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
         "no_oss",
@@ -67,6 +67,22 @@ py_test(
         "//tensorflow/python:framework_test_lib",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_test(
+#     name = "schema_validation_test",
+#     srcs = ["schema_validation_test.py"],
+#     data = [
+#         "//tensorflow/lite/schema:schema_fbs_srcs",
+#         "//tensorflow/lite/schema:schema_generated.h.oss",
+#     ],
+#     python_version = "PY3",
+#     deps = [
+#         "//pyglib",
+#         "//testing/pybase",
+#     ],
+# )
+# copybara:uncomment_end
 
 exports_files([
     "schema.fbs",

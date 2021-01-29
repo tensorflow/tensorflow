@@ -965,6 +965,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":_proto_comparators",
         ":dtypes",
         ":framework_ops",
         ":platform",
@@ -1653,7 +1654,7 @@ py_test(
     srcs = ["framework/composite_tensor_test.py"],
     main = "framework/composite_tensor_test.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":composite_tensor",
         ":framework",
@@ -1863,7 +1864,7 @@ py_test(
     name = "test_combinations_test",
     srcs = ["framework/test_combinations_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":framework_test_combinations_lib",
         "//tensorflow/python/eager:test",
@@ -2003,7 +2004,7 @@ py_test(
     name = "functional_ops_test",
     srcs = ["ops/functional_ops_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":client_testlib",
         ":dtypes",
@@ -2669,9 +2670,10 @@ cuda_py_test(
     size = "small",
     srcs = ["ops/batch_ops_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
+        "no_cuda_asan",  # b/177916286
         "no_pip",
         "nomac",
     ],
@@ -3102,7 +3104,6 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_gpu",
-        "no_rocm",
         "no_windows",
     ],
     deps = [
@@ -4630,7 +4631,7 @@ py_test(
     name = "op_selector_test",
     srcs = ["ops/op_selector_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":client_testlib",
         ":constant_op",
@@ -5195,11 +5196,12 @@ py_library(
 pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
-    # add win_def_file for pywrap_tensorflow
+    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
+    # copybara:comment_end
     deps = [
         ":bfloat16_lib",
         ":cost_analyzer_lib",
@@ -5866,7 +5868,7 @@ py_test(
     name = "ops/array_ops_test",
     srcs = ["ops/array_ops_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6428,7 +6430,7 @@ py_binary(
         "grappler/cost_analyzer_tool.py",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":cost_analyzer",
         ":framework_for_generated_wrappers",
@@ -6579,6 +6581,21 @@ tf_gen_op_wrapper_private_py(
     name = "encode_proto_ops_gen",
     deps = [
         "//tensorflow/core:encode_proto_ops_op_lib",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_proto_comparators",
+    srcs = ["framework/proto_comparators.cc"],
+    module_name = "_proto_comparators",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
     ],
 )
 
@@ -6737,7 +6754,7 @@ py_binary(
         "grappler/graph_analyzer.py",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":_pywrap_graph_analyzer",
         ":framework_for_generated_wrappers",
@@ -6791,7 +6808,7 @@ py_test(
     name = "tf2_test",
     srcs = ["framework/tf2_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":client_testlib",
         ":framework_combinations",
@@ -6999,3 +7016,19 @@ py_library(
     srcs_version = "PY3",
     deps = ["//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "protos_all_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":protos_all"],
+# )
+#
+# py_proto_library(
+#     name = "cpp_shape_inference_proto_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":cpp_shape_inference_proto"],
+# )
+# copybara:uncomment_end

@@ -1186,6 +1186,15 @@ class Context(object):
     self.ensure_initialized()
     return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
 
+  def list_function_names(self):
+    """Get a list of names of registered functions.
+
+    Returns:
+      A set of names of all registered functions for the context.
+    """
+    self.ensure_initialized()
+    return set(pywrap_tfe.TFE_ContextListFunctionNames(self._handle))
+
   def remove_function(self, name):
     """Remove a function from the context.
 
@@ -1429,11 +1438,16 @@ class Context(object):
 
     self._visible_device_list = visible_device_list
 
-  def get_total_memory_usage(self, dev):
-    """Returns total memory usage in bytes for the current device."""
+  def get_memory_info(self, dev):
+    """Returns a dict of memory info for the device."""
     self._initialize_physical_devices()
     self.ensure_initialized()
-    return pywrap_tfe.TFE_GetTotalMemoryUsage(self._context_handle, dev)
+    return pywrap_tfe.TFE_GetMemoryInfo(self._context_handle, dev)
+
+  # TODO(reedwm): Remove this function
+  def get_total_memory_usage(self, dev):
+    """Returns total memory usage in bytes for the current device."""
+    return self.get_memory_info(dev)["current"]
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""

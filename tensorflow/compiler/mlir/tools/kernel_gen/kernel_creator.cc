@@ -38,6 +38,8 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/Utils.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
@@ -65,6 +67,7 @@ namespace tensorflow {
 namespace kernel_gen {
 namespace {
 
+using mlir::scf::ParallelOp;
 using tensorflow::Status;
 using xla::InternalError;
 using xla::StatusOr;
@@ -91,7 +94,7 @@ struct RemoveUnusedTensorToMemrefOperations
 struct CollapseParallelLoopsTo1D
     : public mlir::PassWrapper<CollapseParallelLoopsTo1D, mlir::FunctionPass> {
   void runOnFunction() override {
-    getFunction().walk([&](mlir::scf::ParallelOp op) {
+    getFunction().walk([&](ParallelOp op) {
       unsigned num_loops = op.getNumLoops();
       if (num_loops == 1) return;
       std::vector<unsigned> combinedLoops;
@@ -103,7 +106,32 @@ struct CollapseParallelLoopsTo1D
     });
   }
 };
-}  // end anonymous namespace
+
+class TileForUnrolling
+    : public mlir::PassWrapper<TileForUnrolling, mlir::FunctionPass> {
+ public:
+  explicit TileForUnrolling(llvm::ArrayRef<int64_t> tile_sizes)
+      : tile_sizes_(tile_sizes) {}
+
+  void runOnFunction() override {
+    llvm::SmallVector<ParallelOp, 2> innermostPloops;
+    mlir::getInnermostParallelLoops(this->getFunction().getOperation(),
+                                    innermostPloops);
+    for (ParallelOp ploop : innermostPloops) {
+      // Support unrolling only for the simple shapes (same shapes or when  one
+      // of the arguments is a constant), i.e. it's not inside `shape.assuming`.
+      // TODO(b/178388085): Relax this condition.
+      if (ploop->getParentOfType<mlir::shape::AssumingOp>() != nullptr)
+        continue;
+      tileParallelLoop(ploop, tile_sizes_);
+    }
+  }
+
+ private:
+  llvm::ArrayRef<int64_t> tile_sizes_;
+};
+
+}  // namespace
 
 Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
                     llvm::ArrayRef<uint32_t> unroll_factors,
@@ -115,6 +143,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
       /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
   pm.addNestedPass<mlir::FuncOp>(mlir::createTransformUnrankedHloPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLowerComplexPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
@@ -168,7 +197,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
       ::mlir::createParallelLoopTilingPass(tiling_for_unrolling));
   if (!unroll_factors.empty()) {
     pm.addNestedPass<mlir::FuncOp>(
-        ::mlir::createParallelLoopTilingPass(inner_tile));
+        std::make_unique<TileForUnrolling>(inner_tile));
   }
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());

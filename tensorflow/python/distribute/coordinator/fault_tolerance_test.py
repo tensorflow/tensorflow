@@ -126,6 +126,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     self.thread_coord = thread_coordinator.Coordinator(
         clean_stop_exception_types=[])
     self.num_workers = num_workers
+    self.num_ps = num_ps
 
   def tearDown(self):
     super(BaseFaultToleranceTest, self).tearDown()
@@ -495,6 +496,29 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
                             errors.FailedPreconditionError)):
       self.cluster_coord.schedule(def_function.function(lambda: None))
+
+  def testWorkerExecutionAfterPsFailureRaisesExpectedError(self):
+    model = self._create_model_and_run_indefinitely()
+    for i in range(self.num_ps):
+      self._cluster.kill_task("ps", i)
+    while self.cluster_coord._cluster._closure_queue._error is None:
+      time.sleep(1)
+
+    @def_function.function
+    def trivial_function():
+      return model.iterations + 1
+
+    for i in range(self.num_workers):
+      try:
+        with ops.device("/job:worker/replica:0/task:{}".format(i)):
+          trivial_function()
+      except Exception as e:  # pylint: disable=broad-except
+        if cluster_coordinator._is_ps_failure(e):
+          if i < self.num_workers - 1:
+            continue
+          return
+      raise AssertionError("Executing a function after PS fails, should "
+                           "result in a PS failure.")
 
 
 class MultiWorkerFaultToleranceTest(BaseFaultToleranceTest, test.TestCase):

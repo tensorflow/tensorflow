@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
@@ -63,9 +64,23 @@ class InferenceContext {
 
   InferenceContext() = default;
 
+  // IMPORTANT: If InitFromGraph used, RunGraphTransforms must be applied for
+  // this graph upfront, otherwise not guaranteed correct behavior
   absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
                              const GraphFloat32& graph,
                              id<MTLDevice> device_id);
+
+  // Applies specific transformations to the graph before the
+  // initialization. These transformations are either impossible or useless in
+  // other backends.
+  absl::Status InitFromGraphWithTransforms(
+      const CreateInferenceInfo& create_info, GraphFloat32* graph,
+      id<MTLDevice> device_id);
+
+  // Updates MTLBuffer handles in MetalSpatialTensors and kernels that use this
+  // tensors.
+  void UpdatePreallocatedTensors(
+      const std::map<ValueId, id<MTLBuffer>>& preallocated);
 
   /// Inserts all GPU compute tasks into the command encoder.
   /// @param inputOutputBuffers Must be created and passed into the method
@@ -74,9 +89,7 @@ class InferenceContext {
   /// resources must be created
   ///             with the same device which has been used in
   ///             compileModelWithDevice() method.
-  void EncodeWithEncoder(
-      id<MTLComputeCommandEncoder> command_encoder,
-      const std::map<ValueId, id<MTLBuffer>>& in_out_buffers);
+  void EncodeWithEncoder(id<MTLComputeCommandEncoder> command_encoder);
 
   /// Inserts all GPU compute tasks into the command buffer. For every task will
   /// be used separate
@@ -87,9 +100,7 @@ class InferenceContext {
   /// resources must be created
   ///             with the same device which has been used in
   ///             compileModelWithDevice() method.
-  void EncodeWithCommandBuffer(
-      id<MTLCommandBuffer> command_buffer,
-      const std::map<ValueId, id<MTLBuffer>>& in_out_buffers);
+  void EncodeWithCommandBuffer(id<MTLCommandBuffer> command_buffer);
 
   /// Adds all GPU compute tasks to the command queue. For every task will be
   /// used separate
@@ -101,9 +112,8 @@ class InferenceContext {
   /// resources must be created
   ///             with the same device which has been used in
   ///             compileModelWithDevice() method.
-  void EncodeWithCommandQueue(
-      id<MTLCommandQueue> command_queue,
-      const std::map<ValueId, id<MTLBuffer>>& in_out_buffers, int flush_period);
+  void EncodeWithCommandQueue(id<MTLCommandQueue> command_queue,
+                              int flush_period);
 
  private:
   absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
@@ -112,16 +122,16 @@ class InferenceContext {
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
                            const GpuInfo& gpu_info, const GraphFloat32& graph);
 
-  absl::Status CompileModelWithDevice(MetalDevice* device);
+  absl::Status CompileOperations(MetalDevice* device);
 
   absl::Status Merge();
   absl::Status AllocateTensors(MetalDevice* device);
   absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   void BindTensorsToOperations();
+  absl::Status UpdateParams(const GpuInfo& gpu_info);
   MetalSpatialTensor* GetTensor(ValueId tensor_id);
   void GetUsages(std::map<ValueId, int2>* usages);
-  void UpdatePreallocatedTensors(
-      const std::map<ValueId, id<MTLBuffer>>& preallocated);
+  absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
   struct DummyTensor {
     BHWC shape;
@@ -191,6 +201,9 @@ class InferenceContext {
       shared_buffer_tensors_;  // use references to memory
                                // from _sharedBuffers
 };
+
+// Runs specific transforms for the graph.
+absl::Status RunGraphTransforms(GraphFloat32* graph);
 
 }  // namespace metal
 }  // namespace gpu

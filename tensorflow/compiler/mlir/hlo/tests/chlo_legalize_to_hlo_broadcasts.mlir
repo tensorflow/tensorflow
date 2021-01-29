@@ -237,3 +237,13 @@ func @xorWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4x
   %0 = chlo.broadcast_xor %arg0, %arg1 : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
   return %0 : tensor<4xi1>
 }
+
+// -----
+// CHECK-LABEL: @ZetaWithoutBroadcast
+func @ZetaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
+    -> tensor<4xf32> {
+  // CHECK: chlo.zeta %arg0, %arg1
+  %0 = chlo.broadcast_zeta %arg0, %arg1
+      : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}

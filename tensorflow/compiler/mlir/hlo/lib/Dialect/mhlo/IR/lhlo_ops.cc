@@ -48,12 +48,47 @@ limitations under the License.
 namespace mlir {
 namespace lmhlo {
 
-LmhloDialect::LmhloDialect(MLIRContext *context)
+LmhloDialect::LmhloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context, TypeID::get<LmhloDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
       >();
+}
+
+//===----------------------------------------------------------------------===//
+// AllReduceOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AllReduceOp op) {
+  // AllReduce had variadic operands and results that have the same size.
+  // Each memeber of the operand should have the same type as the corresponding
+  // member of the result.
+  for (auto it : llvm::enumerate(
+           llvm::zip(op.operands().getTypes(), op.results().getTypes()))) {
+    Type operandType = std::get<0>(it.value());
+    Type resultType = std::get<1>(it.value());
+    if (operandType != resultType)
+      return op.emitOpError("requires operand #")
+             << it.index() << " (type: " << operandType << ") and result #"
+             << it.index() << " (type: " << resultType << ") to have same type";
+  }
+
+  // Since AllReduce has a single reduction computation attached to it (which is
+  // applied over all the operands and results), they all need to have the same
+  // element type. Since we already check that each operand and corresponding
+  // result has the same type, its sufficient to check just the memref element
+  // type for each operands.
+  Type elementType =
+      op.operands().front().getType().cast<MemRefType>().getElementType();
+  bool allMatch = llvm::all_of(
+      op.operands().drop_front().getType(), [elementType](Type type) {
+        return type.cast<MemRefType>().getElementType() == elementType;
+      });
+  if (!allMatch)
+    return op.emitOpError("requires all operands to have same element type");
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -99,10 +134,10 @@ namespace lmhlo {
 
 // TODO(cheshire): Support folding, reuse code from hlo_ops.cc.
 
-void FusionOp::build(OpBuilder &builder, OperationState &result,
+void FusionOp::build(OpBuilder& builder, OperationState& result,
                      ArrayRef<NamedAttribute> attributes) {
   result.addAttributes(attributes);
-  Region *bodyRegion = result.addRegion();
+  Region* bodyRegion = result.addRegion();
   FusionOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 

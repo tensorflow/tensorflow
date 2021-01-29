@@ -15,30 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
 
-#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
-#endif
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
-    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -112,46 +96,6 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildGemmThunk(
       GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
       GetAllocationSlice(*inst),  // The output buffer.
       /*implements_whole_instruction=*/true);
-}
-
-Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
-  // A CustomCall on the GPU backend can either be a custom-call to a
-  // user-supplied kernel, or a call into a library like cudnn.
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
-    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
-      custom_call->custom_call_target(), std::string(platform_name()));
-  if (call_target) {
-    auto get_slices_for_instr =
-        [&](const HloInstruction* instr,
-            std::vector<BufferAllocation::Slice>& slices) {
-          std::vector<ShapeUtil::IndexedShape> leaf_shapes =
-              ShapeUtil::GetLeafShapes(instr->shape());
-          for (ShapeUtil::IndexedShape& indexed_shape : leaf_shapes) {
-            TF_ASSIGN_OR_RETURN(
-                BufferAllocation::Slice slice,
-                MaybeGetAllocationSlice(*instr, indexed_shape.index));
-            slices.push_back(slice);
-          }
-          return Status::OK();
-        };
-
-    std::vector<BufferAllocation::Slice> operands;
-    for (const HloInstruction* operand : custom_call->operands()) {
-      TF_RETURN_IF_ERROR(get_slices_for_instr(operand, operands));
-    }
-    std::vector<BufferAllocation::Slice> results;
-    TF_RETURN_IF_ERROR(get_slices_for_instr(custom_call, results));
-    AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
-        context_->GetThunkInfo(custom_call), call_target, std::move(operands),
-        std::move(results),
-        Cast<HloCustomCallInstruction>(custom_call)->opaque()));
-    return Status::OK();
-  }
-#endif
-
-  return Unimplemented("No registered implementation for custom call to \"%s\"",
-                       custom_call->custom_call_target());
 }
 
 Status ThunkEmitter::HandleFft(HloInstruction* fft) {

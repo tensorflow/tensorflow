@@ -917,8 +917,7 @@ def convolution(
   input channel number, and z is the N-D spatial offset within the filter. Here,
   `padded_input` is obtained by zero padding the input using an effective
   spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
-  output striding `strides` as described in the
-  [comment here](https://tensorflow.org/api_guides/python/nn#Convolution).
+  output striding `strides`.
 
   In the case that `data_format` does start with `"NC"`, the `input` and output
   (but not the `filter`) are simply transposed as follows:

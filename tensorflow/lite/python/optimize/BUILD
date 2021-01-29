@@ -65,7 +65,7 @@ py_test(
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":calibrator",

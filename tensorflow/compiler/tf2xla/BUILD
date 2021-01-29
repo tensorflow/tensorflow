@@ -350,11 +350,16 @@ cc_library(
         ":xla_helpers",
         ":xla_op_registry",
         ":xla_resource",
+        "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/mlir:array_container_utils",
-        "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -373,12 +378,9 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
-    ],
+    ] + if_libtpu([
+        ":xla_tpu_backend_registration",
+    ]),
     alwayslink = 1,
 )
 
@@ -401,6 +403,18 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
         "//tensorflow/core/common_runtime:core_cpu_internal",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_tpu_backend_registration",
+    srcs = ["xla_tpu_backend.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_op_registry",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/tpu:tpu_node_device_util",
     ],
     alwayslink = 1,
 )

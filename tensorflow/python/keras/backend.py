@@ -1524,6 +1524,19 @@ def dtype(x):
   return x.dtype.base_dtype.name
 
 
+@doc_controls.do_not_generate_docs
+def dtype_numpy(x):
+  """Returns the numpy dtype of a Keras tensor or variable.
+
+  Args:
+      x: Tensor or variable.
+
+  Returns:
+      numpy.dtype, dtype of `x`.
+  """
+  return dtypes_module.as_dtype(x.dtype).as_numpy_dtype
+
+
 @keras_export('keras.backend.eval')
 @doc_controls.do_not_generate_docs
 def eval(x):
@@ -3807,7 +3820,7 @@ def batch_set_value(tuples):
   """
   if ops.executing_eagerly_outside_functions():
     for x, value in tuples:
-      x.assign(np.asarray(value, dtype=dtype(x)))
+      x.assign(np.asarray(value, dtype=dtype_numpy(x)))
   else:
     with get_graph().as_default():
       if tuples:

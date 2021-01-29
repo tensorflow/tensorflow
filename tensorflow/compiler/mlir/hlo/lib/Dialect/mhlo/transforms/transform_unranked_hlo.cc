@@ -34,13 +34,14 @@ namespace mlir {
 namespace {
 
 // TODO(herhut): Generate these out of op definitions.
-#define MAP_XLA_OPERATION_CWISE_UNARY(fn, sep)                                 \
-  fn(AbsOp) sep fn(CeilOp) sep fn(ClzOp) sep fn(CosOp) sep fn(ExpOp)           \
-      sep fn(Expm1Op) sep fn(FloorOp) sep fn(ImagOp) sep fn(IsFiniteOp)        \
-          sep fn(LogOp) sep fn(Log1pOp) sep fn(LogisticOp) sep fn(NotOp)       \
-              sep fn(NegOp) sep fn(PopulationCountOp) sep fn(RealOp)           \
-                  sep fn(RoundOp) sep fn(RsqrtOp) sep fn(SignOp) sep fn(SinOp) \
-                      sep fn(SqrtOp) sep fn(TanhOp)
+#define MAP_XLA_OPERATION_CWISE_UNARY(fn, sep)                                \
+  fn(AbsOp) sep fn(CeilOp) sep fn(ClzOp) sep fn(ConvertOp) sep fn(CosOp)      \
+      sep fn(ExpOp) sep fn(Expm1Op) sep fn(FloorOp) sep fn(ImagOp)            \
+          sep fn(IsFiniteOp) sep fn(LogOp) sep fn(Log1pOp) sep fn(LogisticOp) \
+              sep fn(NotOp) sep fn(NegOp) sep fn(PopulationCountOp)           \
+                  sep fn(RealOp) sep fn(RoundOp) sep fn(RsqrtOp)              \
+                      sep fn(SignOp) sep fn(SinOp) sep fn(SqrtOp)             \
+                          sep fn(TanhOp)
 
 // TODO(herhut): Generate these out of op definitions.
 #define MAP_XLA_OPERATION_CWISE_BINARY(fn, sep)                            \
@@ -50,9 +51,10 @@ namespace {
               sep fn(ShiftRightLogicalOp) sep fn(SubOp) sep fn(XorOp)
 
 // TODO(herhut): Generate these out of op definitions.
-#define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep)                           \
-  fn(AcosOp) sep fn(AsinOp) sep fn(AsinhOp) sep fn(AtanOp) sep fn(ConjOp) \
-      sep fn(CoshOp) sep fn(ErfOp) sep fn(ErfcOp) sep fn(SinhOp) sep fn(TanOp)
+#define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep)                            \
+  fn(AcosOp) sep fn(AcoshOp) sep fn(AsinOp) sep fn(AsinhOp) sep fn(AtanOp) \
+      sep fn(AtanhOp) sep fn(ConjOp) sep fn(CoshOp) sep fn(ErfOp)          \
+          sep fn(ErfcOp) sep fn(LgammaOp) sep fn(SinhOp) sep fn(TanOp)
 
 template <typename OpTy>
 inline void AddLegalOpOnRankedTensor(ConversionTarget *target) {
@@ -100,7 +102,7 @@ struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
     Type indexTy = rewriter.getIndexType();
     Value numElements =
         rewriter.create<shape::NumElementsOp>(loc, indexTy, shape);
-    Value flatShape = rewriter.create<TensorFromElementsOp>(loc, numElements);
+    Value flatShape = rewriter.create<tensor::FromElementsOp>(loc, numElements);
 
     // Flatten operands.
     SmallVector<Value, 3> flatOperands;
@@ -175,7 +177,7 @@ struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
         rewriter.create<shape::ShapeOfOp>(loc, lhs_is_scalar ? rhs : lhs);
     Value num_elements = rewriter.create<shape::NumElementsOp>(loc, shape);
     Value size_tensor =
-        rewriter.create<TensorFromElementsOp>(loc, num_elements);
+        rewriter.create<tensor::FromElementsOp>(loc, num_elements);
     Value reshaped = rewriter.create<mhlo::DynamicReshapeOp>(
         loc, RankedTensorType::get({-1}, scalar_element_type),
         lhs_is_scalar ? rhs : lhs, size_tensor);

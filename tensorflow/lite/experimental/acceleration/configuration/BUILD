@@ -50,6 +50,8 @@ genrule(
     """,
 )
 
+exports_files(["configuration.proto"])
+
 proto_library(
     name = "configuration_proto",
     srcs = [
@@ -94,11 +96,12 @@ cc_library(
 
 cc_library(
     name = "delegate_registry",
-    srcs = ["delegate_registry.cc"],
     hdrs = ["delegate_registry.h"],
     deps = [
         ":configuration_fbs",
+        "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
     ],
 )

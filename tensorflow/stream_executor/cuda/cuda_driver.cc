@@ -916,11 +916,11 @@ GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64 bytes) {
 }
 
 /* static */ port::StatusOr<uint64> GpuDriver::GetMinAllocationGranularity(
-    int device_ordinal) {
+    GpuDeviceHandle device) {
   CUmemAllocationProp props = {};
   props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
   props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  props.location.id = device_ordinal;
+  props.location.id = device;
 
   size_t granularity;
   CUresult res = cuMemGetAllocationGranularity(
@@ -970,7 +970,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
 /* static */ port::Status GpuDriver::MapMemory(
     GpuContext* context, CUdeviceptr va,
     const GpuDriver::GenericMemoryHandle& handle,
-    const std::vector<int>& device_ordinals) {
+    const std::vector<GpuDeviceHandle>& device_handles) {
   ScopedActivateContext activation(context);
 
   auto device = DeviceFromContext(context);
@@ -986,9 +986,9 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
         "Failed to map %d bytes at %d: %s", handle.bytes, va, ToString(res)));
   }
 
-  std::vector<CUmemAccessDesc> access_descriptors(device_ordinals.size());
+  std::vector<CUmemAccessDesc> access_descriptors(device_handles.size());
   for (int i = 0; i < access_descriptors.size(); ++i) {
-    access_descriptors[i].location.id = device_ordinals[i];
+    access_descriptors[i].location.id = device_handles[i];
     access_descriptors[i].location.type = CU_MEM_LOCATION_TYPE_DEVICE;
     access_descriptors[i].flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
   }
@@ -1574,7 +1574,6 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
     return true;  // A context can always access its own memory.
   }
 
-  int can_access_peer = -1;
   auto from_device = DeviceFromContext(from);
   if (!from_device.ok()) {
     LOG(ERROR) << "failed to resolve 'from' peer access context to a device: "
@@ -1587,13 +1586,18 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
                << to_device.status();
     return false;
   }
-  CUresult res = cuDeviceCanAccessPeer(
-      &can_access_peer, from_device.ValueOrDie(), to_device.ValueOrDie());
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to detect peer access capability: " << ToString(res);
+  return CanEnablePeerAccess(from_device.ValueOrDie(), to_device.ValueOrDie());
+}
+
+/* static */ bool GpuDriver::CanEnablePeerAccess(GpuDeviceHandle from,
+                                                 GpuDeviceHandle to) {
+  int can_access_peer = -1;
+  CUresult result = cuDeviceCanAccessPeer(&can_access_peer, from, to);
+  if (result != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to detect peer access capability: "
+               << ToString(result);
     return false;
   }
-
   return can_access_peer;
 }
 

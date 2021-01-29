@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,78 +12,67 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include "tensorflow/lite/kernels/internal/reference/exp.h"
+
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace builtin {
-namespace exp {
+namespace {
 
-// This file has reference implementation of Exp.
-enum KernelType {
-  kReference,
-};
-
-struct ExpContext {
-  ExpContext(TfLiteContext* context, TfLiteNode* node) {
-    input = GetInput(context, node, 0);
-    output = GetOutput(context, node, 0);
-  }
-  const TfLiteTensor* input;
-  TfLiteTensor* output;
-};
+constexpr int kInputTensor = 0;
+constexpr int kOutputTensor = 0;
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-  ExpContext op_context(context, node);
-  TfLiteIntArray* output_dims = TfLiteIntArrayCopy(op_context.input->dims);
-  op_context.output->type = op_context.input->type;
-  return context->ResizeTensor(context, op_context.output, output_dims);
-}
-
-template <KernelType kernel_type>
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  ExpContext op_context(context, node);
-
-#define TF_LITE_EXP(kernel_type, data_type)                               \
-  kernel_type::Exp<data_type>(GetTensorData<data_type>(op_context.input), \
-                              NumElements(op_context.input),              \
-                              GetTensorData<data_type>(op_context.output))
-
-  // TODO(kanlig): supports half, bfloat16, float64, complex64, and complex128.
-  if (kernel_type == kReference) {
-    switch (op_context.input->type) {
-      case kTfLiteFloat32:
-        TF_LITE_EXP(reference_ops, float);
-        break;
-      default:
-        TF_LITE_KERNEL_LOG(context,
-                           "Type %d is currently not supported by Exp.",
-                           op_context.input->type);
-        return kTfLiteError;
-    }
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
+  TF_LITE_ENSURE_EQ(context, output->bytes, input->bytes);
+  TF_LITE_ENSURE_EQ(context, output->dims->size, input->dims->size);
+  for (int i = 0; i < output->dims->size; ++i) {
+    TF_LITE_ENSURE_EQ(context, output->dims->data[i], input->dims->data[i]);
   }
-#undef TF_LITE_EXP
   return kTfLiteOk;
 }
 
-}  // namespace exp
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+  int flat_size = MatchingFlatSize(tflite::micro::GetTensorShape(input),
+                                   tflite::micro::GetTensorShape(output));
 
-TfLiteRegistration* Register_EXP_REF() {
-  static TfLiteRegistration r = {nullptr, nullptr, exp::Prepare,
-                                 exp::Eval<exp::kReference>};
-  return &r;
+  if (input->type == kTfLiteFloat32) {
+    reference_ops::Exp(tflite::micro::GetTensorData<float>(input),
+                       static_cast<size_t>(flat_size),
+                       tflite::micro::GetTensorData<float>(output));
+  } else {
+    TF_LITE_KERNEL_LOG(context, "Type %s (%d) currently not supported by Exp.",
+                       TfLiteTypeGetName(input->type), input->type);
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+}  // namespace
+
+TfLiteRegistration Register_EXP() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-// TODO(kanlig): add optimized implementation of Exp.
-TfLiteRegistration* Register_EXP() { return Register_EXP_REF(); }
-
-}  // namespace builtin
-}  // namespace ops
 }  // namespace tflite

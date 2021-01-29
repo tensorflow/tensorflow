@@ -64,9 +64,11 @@ DataServiceWorkerImpl::~DataServiceWorkerImpl() {
   heartbeat_cv_.notify_one();
 }
 
-Status DataServiceWorkerImpl::Start(const std::string& worker_address) {
+Status DataServiceWorkerImpl::Start(const std::string& worker_address,
+                                    const std::string& transfer_address) {
   VLOG(3) << "Starting tf.data service worker at address " << worker_address;
   worker_address_ = worker_address;
+  transfer_address_ = transfer_address;
 
   dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
       config_.dispatcher_address(), config_.protocol());
@@ -356,8 +358,9 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   }
   std::vector<TaskDef> new_tasks;
   std::vector<int64> tasks_to_delete;
-  TF_RETURN_IF_ERROR(dispatcher_->WorkerHeartbeat(
-      worker_address_, current_tasks, new_tasks, tasks_to_delete));
+  TF_RETURN_IF_ERROR(
+      dispatcher_->WorkerHeartbeat(worker_address_, transfer_address_,
+                                   current_tasks, new_tasks, tasks_to_delete));
   mutex_lock l(mu_);
   for (const auto& task : new_tasks) {
     Status s = ProcessTaskInternal(task);

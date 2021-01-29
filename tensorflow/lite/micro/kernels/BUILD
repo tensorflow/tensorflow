@@ -107,6 +107,7 @@ cc_library(
         "hard_swish.cc",
         "add.cc",
         "arg_min_max.cc",
+        "cast.cc",
         "ceil.cc",
         "circular_buffer.cc",
         "comparisons.cc",
@@ -114,6 +115,7 @@ cc_library(
         "dequantize.cc",
         "detection_postprocess.cc",
         "elementwise.cc",
+        "exp.cc",
         "floor.cc",
         "l2norm.cc",
         "logical.cc",
@@ -131,6 +133,7 @@ cc_library(
         "resize_nearest_neighbor.cc",
         "round.cc",
         "shape.cc",
+        "softmax_common.cc",
         "split.cc",
         "split_v.cc",
         "strided_slice.cc",
@@ -158,6 +161,7 @@ cc_library(
     hdrs = [
         "micro_ops.h",
         "quantize.h",
+        "softmax.h",
         "svdf.h",
     ],
     copts = micro_copts(),
@@ -731,7 +735,10 @@ tflite_micro_cc_test(
     srcs = [
         "pad_test.cc",
     ],
-    tags = ["nomsan"],  # b/175133159
+    tags = [
+        "noasan",
+        "nomsan",
+    ],  # TODO(b/175133159): currently failing with asan and msan
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",

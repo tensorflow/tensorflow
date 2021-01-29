@@ -297,12 +297,13 @@ using ::tflite::gpu::metal::SingleOpModel;
   auto gpu_op0 = ConvolutionGeneric(op_def, dst_shape, attr, env.GetGpuInfo());
   auto op0_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op0));
   auto status = env.ExecuteGPUOperation(src_tensor, std::move(op0_ptr), dst_shape, &output0);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 
   tflite::gpu::metal::Winograd4x4To36Attributes wino_up_attr;
   wino_up_attr.padding = attr.padding;
-  auto gpu_op1 = tflite::gpu::metal::Winograd4x4To36(op_def, wino_up_attr);
-  auto op1_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op1));
+  auto gpu_op1 = tflite::gpu::metal::CreateWinograd4x4To36(op_def, wino_up_attr);
+  std::unique_ptr<tflite::gpu::GPUOperation> op1_ptr =
+      absl::make_unique<tflite::gpu::metal::Winograd4x4To36>(std::move(gpu_op1));
 
   auto gpu_op2 = ConvolutionWino4x4To6x6(op_def, conv_shape, attr, env.GetGpuInfo());
   auto op2_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op2));
@@ -310,27 +311,28 @@ using ::tflite::gpu::metal::SingleOpModel;
   tflite::gpu::metal::Winograd36To4x4Attributes wino_down_attr;
   wino_down_attr.output_shape = dst_shape;
   wino_down_attr.biases = attr.bias;
-  auto gpu_op3 = tflite::gpu::metal::Winograd36To4x4(op_def, wino_down_attr);
-  auto op3_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op3));
+  auto gpu_op3 = tflite::gpu::metal::CreateWinograd36To4x4(op_def, wino_down_attr);
+  std::unique_ptr<tflite::gpu::GPUOperation> op3_ptr =
+      absl::make_unique<tflite::gpu::metal::Winograd36To4x4>(std::move(gpu_op3));
 
   TensorFloat32 output1;
   BHWC output1_shape = conv_shape;
   output1_shape.c = src_shape.c;
-  status = env.ExecuteGPUOperation(src_tensor, std::move(op1_ptr), output1_shape, &output1);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = env.ExecuteGPUOperation({src_tensor}, std::move(op1_ptr), {output1_shape}, {&output1});
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 
   TensorFloat32 output2;
   BHWC output2_shape = conv_shape;
   status = env.ExecuteGPUOperation(output1, std::move(op2_ptr), output2_shape, &output2);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 
   TensorFloat32 output3;
   BHWC output3_shape = dst_shape;
-  status = env.ExecuteGPUOperation(output2, std::move(op3_ptr), output3_shape, &output3);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = env.ExecuteGPUOperation({output2}, std::move(op3_ptr), {output3_shape}, {&output3});
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 
   status = CompareVectors(output0.data, output3.data, 1e-4f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 @end

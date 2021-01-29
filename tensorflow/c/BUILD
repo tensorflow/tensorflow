@@ -4,6 +4,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -172,6 +173,13 @@ tf_cuda_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+# Check that c_api_no_xla does not depend on xla.
+check_deps(
+    name = "c_api_no_xla_check_deps",
+    disallowed_deps = ["//tensorflow/compiler/jit:xla_kernel_creator"],
+    deps = [":c_api_no_xla"],
 )
 
 tf_cuda_library(

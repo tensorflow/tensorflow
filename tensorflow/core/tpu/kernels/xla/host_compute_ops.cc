@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/side_effect_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -152,8 +153,9 @@ class HostComputeOp : public XlaOpKernel {
                                                 input_shapes[i], &xla_shape));
       // Specify frontend attributes.
       xla::FrontendAttributes attrs;
-      (*attrs.mutable_map())[kXlaHostTransferRendezvousNameAttr] = channel_name;
-      (*attrs.mutable_map())[kXlaHostTransferOriginalTypeAttr] =
+      (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] =
+          channel_name;
+      (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
           xla::primitive_util::LowercasePrimitiveTypeName(
               xla_shape.element_type());
       b->SetFrontendAttributes(attrs);
@@ -211,8 +213,9 @@ class HostComputeOp : public XlaOpKernel {
       const string channel_name = absl::StrCat(key_, "_htod_", i);
       // Specify frontend attributes.
       xla::FrontendAttributes attrs;
-      (*attrs.mutable_map())[kXlaHostTransferRendezvousNameAttr] = channel_name;
-      (*attrs.mutable_map())[kXlaHostTransferOriginalTypeAttr] =
+      (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] =
+          channel_name;
+      (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
           xla::primitive_util::LowercasePrimitiveTypeName(
               xla_output_shapes->at(i).element_type());
       b->SetFrontendAttributes(attrs);
@@ -416,8 +419,8 @@ class SendToHostOp : public XlaOpKernel {
                                               &xla_shape));
     // Specify frontend attributes.
     xla::FrontendAttributes attrs;
-    (*attrs.mutable_map())[kXlaHostTransferRendezvousNameAttr] = key_;
-    (*attrs.mutable_map())[kXlaHostTransferOriginalTypeAttr] =
+    (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] = key_;
+    (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
         xla::primitive_util::LowercasePrimitiveTypeName(
             xla_shape.element_type());
     b->SetFrontendAttributes(attrs);
@@ -468,8 +471,8 @@ class RecvFromHostOp : public XlaOpKernel {
         ctx, TensorShapeToXLAShape(output_dtype_, output_shape_, &xla_shape));
     // Specify frontend attributes.
     xla::FrontendAttributes attrs;
-    (*attrs.mutable_map())[kXlaHostTransferRendezvousNameAttr] = key_;
-    (*attrs.mutable_map())[kXlaHostTransferOriginalTypeAttr] =
+    (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] = key_;
+    (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
         xla::primitive_util::LowercasePrimitiveTypeName(
             xla_shape.element_type());
     b->SetFrontendAttributes(attrs);

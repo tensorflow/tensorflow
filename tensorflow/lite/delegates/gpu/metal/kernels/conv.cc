@@ -509,7 +509,7 @@ kernel void ComputeFunction(
       for (int z = 0; z < params.block_size.z; ++z) {
         std::string r_id =
             std::to_string(z) + std::to_string(y) + std::to_string(x);
-        c += "  r" + r_id + " += TO_ACCUM4_TYPE(" + bias_name + "[" +
+        c += "  r" + r_id + " += TO_ACCUM_TYPE(" + bias_name + "[" +
              std::to_string(z) + "]);\n";
       }
     }

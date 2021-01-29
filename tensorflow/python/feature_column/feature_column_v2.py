@@ -1142,16 +1142,27 @@ def categorical_column_with_hash_bucket(key,
   Example:
 
   ```python
-  keywords = categorical_column_with_hash_bucket("keywords", 10K)
-  columns = [keywords, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = linear_model(features, columns)
+  import tensorflow as tf
+  keywords = tf.feature_column.categorical_column_with_hash_bucket("keywords",
+  10000)
+  columns = [keywords]
+  features = {'keywords': tf.constant([['Tensorflow', 'Keras', 'RNN', 'LSTM',
+  'CNN'], ['LSTM', 'CNN', 'Tensorflow', 'Keras', 'RNN'], ['CNN', 'Tensorflow',
+  'LSTM', 'Keras', 'RNN']])}
+  linear_prediction, _, _ = tf.compat.v1.feature_column.linear_model(features,
+  columns)
 
   # or
-  keywords_embedded = embedding_column(keywords, 16)
-  columns = [keywords_embedded, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = input_layer(features, columns)
+  import tensorflow as tf
+  keywords = tf.feature_column.categorical_column_with_hash_bucket("keywords",
+  10000)
+  keywords_embedded = tf.feature_column.embedding_column(keywords, 16)
+  columns = [keywords_embedded]
+  features = {'keywords': tf.constant([['Tensorflow', 'Keras', 'RNN', 'LSTM',
+  'CNN'], ['LSTM', 'CNN', 'Tensorflow', 'Keras', 'RNN'], ['CNN', 'Tensorflow',
+  'LSTM', 'Keras', 'RNN']])}
+  input_layer = tf.keras.layers.DenseFeatures(columns)
+  dense_tensor = input_layer(features)
   ```
 
   Args:
@@ -1208,12 +1219,16 @@ def categorical_column_with_vocabulary_file(key,
   ID 50-54.
 
   ```python
-  states = categorical_column_with_vocabulary_file(
-      key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
-      num_oov_buckets=5)
-  columns = [states, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = linear_model(features, columns)
+  import tensorflow as tf
+  states = tf.feature_column.categorical_column_with_vocabulary_file(
+    key='states', vocabulary_file='states.txt', vocabulary_size=5,
+    num_oov_buckets=1)
+  columns = [states]
+  features = {'states':tf.constant([['california', 'georgia', 'michigan',
+  'texas', 'new york'], ['new york', 'georgia', 'california', 'michigan',
+  'texas']])}
+  linear_prediction = tf.compat.v1.feature_column.linear_model(features,
+  columns)
   ```
 
   Example with `default_value`:
@@ -1223,20 +1238,31 @@ def categorical_column_with_vocabulary_file(key,
   others are assigned the corresponding line number 1-50.
 
   ```python
-  states = categorical_column_with_vocabulary_file(
-      key='states', vocabulary_file='/us/states.txt', vocabulary_size=51,
-      default_value=0)
-  columns = [states, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction, _, _ = linear_model(features, columns)
+  import tensorflow as tf
+  states = tf.feature_column.categorical_column_with_vocabulary_file(
+    key='states', vocabulary_file='states.txt', vocabulary_size=6,
+    default_value=0)
+  columns = [states]
+  features = {'states':tf.constant([['california', 'georgia', 'michigan',
+  'texas', 'new york'], ['new york', 'georgia', 'california', 'michigan',
+  'texas']])}
+  linear_prediction = tf.compat.v1.feature_column.linear_model(features,
+  columns)
   ```
 
   And to make an embedding with either:
 
   ```python
-  columns = [embedding_column(states, 3),...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = input_layer(features, columns)
+  import tensorflow as tf
+  states = tf.feature_column.categorical_column_with_vocabulary_file(
+    key='states', vocabulary_file='states.txt', vocabulary_size=5,
+    num_oov_buckets=1)
+  columns = [tf.feature_column.embedding_column(states, 3)]
+  features = {'states':tf.constant([['california', 'georgia', 'michigan',
+  'texas', 'new york'], ['new york', 'georgia', 'california', 'michigan',
+  'texas']])}
+  input_layer = tf.keras.layers.DenseFeatures(columns)
+  dense_tensor = input_layer(features)
   ```
 
   Args:
@@ -1534,19 +1560,27 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   Linear model:
 
   ```python
-  video_id = categorical_column_with_identity(
+  import tensorflow as tf
+  video_id = tf.feature_column.categorical_column_with_identity(
       key='video_id', num_buckets=1000000, default_value=0)
-  columns = [video_id, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction, _, _ = linear_model(features, columns)
+  columns = [video_id]
+  features = {'video_id': tf.sparse.from_dense([[2, 85, 0, 0, 0],
+  [33,78, 2, 73, 1]])}
+  linear_prediction = tf.compat.v1.feature_column.linear_model(features,
+  columns)
   ```
 
   Embedding for a DNN model:
 
   ```python
-  columns = [embedding_column(video_id, 9),...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = input_layer(features, columns)
+  import tensorflow as tf
+  video_id = tf.feature_column.categorical_column_with_identity(
+      key='video_id', num_buckets=1000000, default_value=0)
+  columns = [tf.feature_column.embedding_column(video_id, 9)]
+  features = {'video_id': tf.sparse.from_dense([[2, 85, 0, 0, 0],
+  [33,78, 2, 73, 1]])}
+  input_layer = tf.keras.layers.DenseFeatures(columns)
+  dense_tensor = input_layer(features)
   ```
 
   Args:

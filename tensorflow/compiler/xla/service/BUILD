@@ -7,7 +7,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -520,6 +520,7 @@ cc_library(
         ":hlo_graph_dumper",
         ":hlo_pass",
         ":hlo_sharding_util",
+        "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -532,6 +533,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -541,12 +543,16 @@ tf_cc_test(
         "sharding_propagation_test.cc",
     ],
     deps = [
-        "hlo_matchers",
+        ":hlo",
+        ":hlo_matchers",
         ":hlo_parser",
         ":sharding_propagation",
+        "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1319,6 +1325,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -1355,6 +1362,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1650,6 +1658,7 @@ cc_library(
     deps = [
         ":fusion_queue",
         ":hlo",
+        ":hlo_graph_dumper",
         ":hlo_pass",
         ":hlo_reachability",
         ":pattern_matcher",
@@ -2489,6 +2498,7 @@ cc_library(
         ":hlo",
         ":hlo_evaluator",
         ":pattern_matcher",
+        "//tensorflow/compiler/xla/service:hlo_reachability",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:optional",
     ],
@@ -2872,6 +2882,9 @@ cc_library(
     hdrs = ["computation_placer.h"],
     deps = [
         ":global_device_id",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -2883,11 +2896,47 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-    ],
+        "//tensorflow/stream_executor:platform",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/stream_executor/host:host_platform_id",
+        "//tensorflow/stream_executor/rocm:rocm_platform_id",
+    ] + if_libtpu([":tpu_computation_placer"]),
     alwayslink = True,  # Contains per-platform computation placer registration
+)
+
+cc_library(
+    name = "computation_placer_hdr",
+    hdrs = ["computation_placer.h"],
+    deps = [
+        ":global_device_id",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/stream_executor:stream_header",
+    ],
+)
+
+cc_library(
+    name = "tpu_computation_placer",
+    srcs = ["tpu_computation_placer.cc"],
+    hdrs = ["tpu_computation_placer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":computation_placer_hdr",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/stream_executor/tpu:status_helper",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_platform_hdr",
+        "//tensorflow/stream_executor/tpu:tpu_platform_id",
+        "//tensorflow/stream_executor/tpu:tpu_topology_external",
+    ],
+    alwayslink = True,  # Contains TPU computation placer registration
 )
 
 cc_library(
@@ -2980,7 +3029,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
     ],
@@ -3757,6 +3805,7 @@ cc_library(
         ":call_graph",
         ":flatten_call_graph",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_dce",
         ":hlo_memory_scheduler",
         ":hlo_ordering",
@@ -5331,3 +5380,11 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "hlo_pb2",
+#     api_version = 2,
+#     deps = [":hlo_proto"],
+# )
+# copybara:uncomment_end

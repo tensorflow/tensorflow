@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -290,6 +291,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<QrExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
+  pipeline.AddPass<AllGatherDecomposer>();
 
   // Inline computations with a single call site.
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);

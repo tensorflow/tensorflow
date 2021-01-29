@@ -773,6 +773,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_gpu",  # TODO(b/177961887): Fails after NCCL update
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -1048,7 +1049,6 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm",
         "optonly",
     ],
     deps = [

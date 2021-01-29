@@ -27,6 +27,7 @@ from enum import Enum
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
@@ -38,7 +39,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.tpu import tpu
 from tensorflow.python.util import tf_decorator
 
 NEG_INF = -1e10
@@ -77,7 +77,7 @@ def update_state_wrapper(update_state_fn):
     # replica.
 
     for weight in metric_obj.weights:
-      if (tpu.is_tpu_strategy(strategy) and
+      if (backend.is_tpu_strategy(strategy) and
           not strategy.extended.variable_created_in_scope(weight)
           and not distribution_strategy_context.in_cross_replica_context()):
         raise ValueError(
@@ -518,16 +518,14 @@ def ragged_assert_compatible_and_get_flat_values(values, mask=None):
     if isinstance(mask, ragged_tensor.RaggedTensor):
       assertion_list_for_mask = _assert_splits_match(
           [nested_row_split_list[0], mask.nested_row_splits])
-      tmp = control_flow_ops.with_dependencies(assertion_list_for_mask,
-                                               mask.flat_values)
-      mask = array_ops.expand_dims(tmp, -1)
+      with ops.control_dependencies(assertion_list_for_mask):
+        mask = array_ops.expand_dims(mask.flat_values, -1)
 
     # values has at least 1 element.
     flat_values = []
     for value in values:
-      tmp = control_flow_ops.with_dependencies(assertion_list,
-                                               value.flat_values)
-      flat_values.append(array_ops.expand_dims(tmp, -1))
+      with ops.control_dependencies(assertion_list):
+        flat_values.append(array_ops.expand_dims(value.flat_values, -1))
 
     values = flat_values[0] if to_be_stripped else flat_values
 

@@ -1006,11 +1006,11 @@ tf_module {
   }
   member_method {
     name: "DataServiceDataset"
-    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
   }
   member_method {
     name: "DataServiceDatasetV2"
-    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
   }
   member_method {
     name: "DatasetCardinality"
@@ -1346,7 +1346,7 @@ tf_module {
   }
   member_method {
     name: "EnqueueTPUEmbeddingRaggedTensorBatch"
-    argspec: "args=[\'sample_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'table_ids\', \'device_ordinal\', \'combiners\', \'max_sequence_lengths\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'[]\', \'None\'], "
+    argspec: "args=[\'sample_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'table_ids\', \'device_ordinal\', \'combiners\', \'max_sequence_lengths\', \'num_features\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'[]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "EnqueueTPUEmbeddingSparseBatch"
@@ -1354,7 +1354,7 @@ tf_module {
   }
   member_method {
     name: "EnqueueTPUEmbeddingSparseTensorBatch"
-    argspec: "args=[\'sample_indices\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'table_ids\', \'device_ordinal\', \'combiners\', \'max_sequence_lengths\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'[]\', \'None\'], "
+    argspec: "args=[\'sample_indices\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'table_ids\', \'device_ordinal\', \'combiners\', \'max_sequence_lengths\', \'num_features\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'[]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "EnsureShape"

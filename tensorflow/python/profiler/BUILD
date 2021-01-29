@@ -207,7 +207,7 @@ py_test(
     srcs = ["pprof_profiler_test.py"],
     main = "pprof_profiler_test.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_pip"],  # TODO(annarev): get it working with pip.
     deps = [
         ":pprof_profiler",

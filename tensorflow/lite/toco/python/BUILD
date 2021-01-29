@@ -90,7 +90,7 @@ py_binary(
     name = "toco_from_protos",
     srcs = ["toco_from_protos.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:platform",

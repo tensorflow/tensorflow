@@ -685,8 +685,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "8456c3a789285079ad35d146e487436b5a27b027"
-    LLVM_SHA256 = "cc17723a31207ffa9c0636bf83752de0e2a20cf99d9a9955c796d7e109b4c68d"
+    LLVM_COMMIT = "b92a39ac1319c796777bca19a3af2856acbc69c1"
+    LLVM_SHA256 = "2125d1151fb4fd147c795d5f81f457cad7e333dd46bc045cab6fa888ca38ace0"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -789,11 +789,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "nccl_archive",
         build_file = clean_dep("//third_party:nccl/archive.BUILD"),
         patch_file = clean_dep("//third_party/nccl:archive.patch"),
-        sha256 = "b8eaed1fb2d0cc2f951625dc4e17185bab9ff3ab188ba4d34a6e3a01ce9f0d57",
-        strip_prefix = "nccl-195232556936b39b01cc908296e1650b80d4a3e9",
+        sha256 = "3ae89ddb2956fff081e406a94ff54ae5e52359f5d645ce977c7eba09b3b782e6",
+        strip_prefix = "nccl-2.8.3-1",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/195232556936b39b01cc908296e1650b80d4a3e9.tar.gz",
-            "https://github.com/nvidia/nccl/archive/195232556936b39b01cc908296e1650b80d4a3e9.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/v2.8.3-1.tar.gz",
+            "https://github.com/nvidia/nccl/archive/v2.8.3-1.tar.gz",
         ],
     )
 
@@ -1064,10 +1064,10 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     # https://github.com/bazelbuild/bazel-skylib/releases
     tf_http_archive(
         name = "bazel_skylib",
-        sha256 = "1dde365491125a3db70731e25658dfdd3bc5dbdfd11b840b3e987ecf043c7ca0",
+        sha256 = "1c531376ac7e5a180e0237938a2536de0c54d93f5c278634818e0efc952dd56c",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/0.9.0/bazel_skylib-0.9.0.tar.gz",
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/0.9.0/bazel_skylib-0.9.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
         ],
     )
 
