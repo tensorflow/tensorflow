@@ -12,24 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""This is a Python API fuzzer for tf.raw_ops.RaggedCountSparseOutput."""
+"""This is a Python API fuzzer for tf.raw_ops.ImmutableConst."""
 import sys
 import atheris_no_libfuzzer as atheris
 from python_fuzzing import FuzzingHelper
 import tensorflow as tf
 
+_DEFAULT_FILENAME = '/tmp/test.txt'
+
 
 def TestOneInput(input_bytes):
-  """Test randomized integer/float fuzzing input for tf.raw_ops.RaggedCountSparseOutput."""
+  """Test randomized integer fuzzing input for tf.raw_ops.ImmutableConst."""
   fh = FuzzingHelper(input_bytes)
 
-  splits = fh.get_int_list()
-  values = fh.get_int_or_float_list()
-  weights = fh.get_int_list()
+  dtype = fh.get_tf_dtype()
+  shape = fh.get_int_list()
   try:
-    _, _, _, = tf.raw_ops.RaggedCountSparseOutput(
-        splits=splits, values=values, weights=weights, binary_output=False)
-  except tf.errors.InvalidArgumentError:
+    with open(_DEFAULT_FILENAME, 'w') as f:
+      f.write(fh.get_string())
+    _ = tf.raw_ops.ImmutableConst(
+        dtype=dtype, shape=shape, memory_region_name=_DEFAULT_FILENAME)
+  except (tf.errors.InvalidArgumentError, tf.errors.InternalError,
+          UnicodeEncodeError, UnicodeDecodeError):
     pass
 
 
@@ -38,5 +42,5 @@ def main():
   atheris.Fuzz()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   main()
