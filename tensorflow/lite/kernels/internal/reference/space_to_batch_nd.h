@@ -42,9 +42,13 @@ inline void SpaceToBatchND(const SpaceToBatchParams& params,
 
   // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
   const RuntimeShape input1_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
+      (unextended_input1_shape.DimensionsCount() == 4)
+          ? unextended_input1_shape
+          : RuntimeShape::ExtendedShape(4, unextended_input1_shape);
   const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+      (unextended_output_shape.DimensionsCount() == 4)
+          ? unextended_output_shape
+          : RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   const int depth = input1_shape.Dims(3);
   const int input_width = input1_shape.Dims(2);
