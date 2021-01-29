@@ -231,6 +231,7 @@ selects.config_setting_group(
         ":macos_x86_64",
         ":macos_arm64",
     ],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
