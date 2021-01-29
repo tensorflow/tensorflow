@@ -41,6 +41,7 @@ from tensorflow.python.keras.saving.saved_model.serialized_attributes import Com
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as tf_load
@@ -1111,6 +1112,8 @@ def infer_inputs_from_restored_call_function(fn):
     common_shape = get_common_shape(x.shape, y.shape)
     if isinstance(x, sparse_tensor.SparseTensorSpec):
       return sparse_tensor.SparseTensorSpec(common_shape, x.dtype)
+    elif isinstance(x, ragged_tensor.RaggedTensorSpec):
+      return ragged_tensor.RaggedTensorSpec(common_shape, x.dtype)
     return tensor_spec.TensorSpec(common_shape, x.dtype, x.name)
 
   spec = fn.concrete_functions[0].structured_input_signature[0][0]
