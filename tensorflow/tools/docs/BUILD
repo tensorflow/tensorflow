@@ -46,10 +46,7 @@ py_test(
     tags = [
         "no_oss_py2",
         "no_pip",
-<<<<<<< HEAD
-=======
         "no_rocm",  # No need to rerun this test for ROCm config.
->>>>>>> upstream/master
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",

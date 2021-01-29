@@ -213,10 +213,7 @@ cc_library(
     name = "thunk_emitter",
     srcs = ["thunk_emitter.cc"],
     hdrs = ["thunk_emitter.h"],
-<<<<<<< HEAD
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
-=======
->>>>>>> upstream/master
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",

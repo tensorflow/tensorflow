@@ -853,13 +853,7 @@ cuda_py_test(
     srcs = ["gru_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
-<<<<<<< HEAD
-    tags = [
-        "no_rocm",
-    ],
-=======
     tags = ["no_rocm"],
->>>>>>> upstream/master
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

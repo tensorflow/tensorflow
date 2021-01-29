@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 
-<<<<<<< HEAD
 #if (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #endif
@@ -34,8 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #endif
 
-=======
->>>>>>> upstream/master
 namespace xla {
 namespace gpu {
 
