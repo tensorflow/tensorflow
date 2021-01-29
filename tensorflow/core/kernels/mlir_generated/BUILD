@@ -43,6 +43,8 @@ filegroup(
         "gpu_op_atanh.cc",
         "gpu_op_cos.cc",
         "gpu_op_cosh.cc",
+        "gpu_op_sqrt.cc",
+        "gpu_op_square.cc",
         "gpu_op_tan.cc",
         "gpu_op_tanh.cc",
     ],
@@ -79,8 +81,6 @@ filegroup(
         "gpu_op_sign.cc",
         "gpu_op_sin.cc",
         "gpu_op_sinh.cc",
-        "gpu_op_sqrt.cc",
-        "gpu_op_square.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
