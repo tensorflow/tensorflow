@@ -189,6 +189,7 @@ tf_kernel_library(
         "gpu_op_not_equal.cc",
         "gpu_op_pow.cc",
         "gpu_op_right_shift.cc",
+        "gpu_op_squared_difference.cc",
         "gpu_op_sub.cc",
     ],
     tags = [
@@ -217,6 +218,7 @@ tf_kernel_library(
         ":not_equal_kernels",
         ":pow_kernels",
         ":right_shift_kernels",
+        ":squared_difference_kernels",
         ":sub_kernels",
         "//third_party/eigen3",
     ],
@@ -521,6 +523,7 @@ gen_kernel_library(
     for name in [
         "square",
         "add_v2",
+        "squared_difference",
         "sub",
     ]
 ]
