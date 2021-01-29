@@ -1919,7 +1919,7 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
               reinterpret_cast<CUpti_ActivitySynchronization *>(record));
           break;
         default:
-          LOG(ERROR) << "Activity type " << record->kind << " not supported.";
+          VLOG(3) << "Activity type " << record->kind << " is not supported.";
           break;
       }
     } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
