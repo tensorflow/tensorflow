@@ -2949,8 +2949,13 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
 }
 
 Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
-  AddThunkToThunkSequence(absl::make_unique<ReplicaIdThunk>(
-      GetThunkInfo(hlo), GetAllocationSlice(*hlo)));
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  auto replica_id_op = mlir::cast<mlir::lmhlo::ReplicaIdOp>(input.op);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                      GetAllocationSliceForMlir(replica_id_op.getOperand()));
+  AddThunkToThunkSequence(
+      absl::make_unique<ReplicaIdThunk>(input.thunk_info, result_slice));
+
   return Status::OK();
 }
 

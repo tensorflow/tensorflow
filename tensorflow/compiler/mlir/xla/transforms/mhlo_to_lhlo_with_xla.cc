@@ -339,6 +339,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitReduceWindowOp(instr);
     case HloOpcode::kRemainder:
       return CreateOpWithoutAttrs<lmhlo::RemOp>(instr);
+    case HloOpcode::kReplicaId:
+      return CreateOpWithoutAttrs<lmhlo::ReplicaIdOp>(instr);
     case HloOpcode::kReverse:
       return EmitReverseOp(instr);
     case HloOpcode::kRoundNearestAfz:

@@ -597,3 +597,14 @@ HloModule TestModule
 ENTRY main {
   ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=131072
 }
+
+
+// -----
+HloModule TestReplicaId
+
+// CHECK: func @main
+// CHECK: "lmhlo.replica_id"
+// CHECK-SAME: (memref<ui32>) -> ()
+ENTRY main {
+  ROOT %replica_id = u32[] replica-id()
+}
