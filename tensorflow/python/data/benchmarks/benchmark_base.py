@@ -150,7 +150,7 @@ class DatasetBenchmarkBase(test.Benchmark):
     return wall_time
 
   def consume_dataset(self, dataset, num_elements):
-    """Consume the `num_elements` of the dataset.
+    """Consumes num_elements of the dataset.
 
     Args:
       dataset: A tf.data.Dataset to consume data from.
@@ -162,7 +162,7 @@ class DatasetBenchmarkBase(test.Benchmark):
     # pipeline. Note that this relies on the underlying implementation of `skip`
     # to execute upstream computation. If it is optimized in the future,
     # we will have to change this code.
-    dataset = dataset.skip(num_elements)
+    dataset = dataset.skip(num_elements - 1)
     if context.executing_eagerly():
       iterator = iter(dataset)
       try:
