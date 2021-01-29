@@ -38,21 +38,6 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 	return list, start + size, nil
 }
 
-// Operator that connects the output of an XLA computation to other consumer graph nodes.
-func XlaClusterOutput(scope *Scope, input tf.Output) (outputs tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "XlaClusterOutput",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // An op used by XLA SPMD partitioner to switch from manual partitioning to
 //
 // automatic partitioning. It converts the shard-shaped, manually partitioned input
