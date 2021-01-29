@@ -726,13 +726,8 @@ cc_library(
         "while_thunk.cc",
     ] + if_cuda_is_configured([
         "cholesky_thunk.cc",
-<<<<<<< HEAD
-        "custom_call_thunk.cc",
     ]) + if_rocm_is_configured([
         "cholesky_thunk.cc",
-        "custom_call_thunk.cc",
-=======
->>>>>>> upstream/master
     ]),
     hdrs = [
         "collective_permute_thunk.h",
@@ -757,13 +752,8 @@ cc_library(
         "while_thunk.h",
     ] + if_cuda_is_configured([
         "cholesky_thunk.h",
-<<<<<<< HEAD
-        "custom_call_thunk.h",
     ]) + if_rocm_is_configured([
         "cholesky_thunk.h",
-        "custom_call_thunk.h",
-=======
->>>>>>> upstream/master
     ]),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
