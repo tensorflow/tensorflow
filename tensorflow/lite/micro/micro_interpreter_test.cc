@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/micro_profiler.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/recording_micro_allocator.h"
 #include "tensorflow/lite/micro/test_helpers.h"
@@ -28,28 +29,15 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-class MockProfiler : public tflite::Profiler {
+class MockProfiler : public MicroProfiler {
  public:
   MockProfiler() : event_starts_(0), event_ends_(0) {}
-  ~MockProfiler() override = default;
 
-  // AddEvent is unused for Tf Micro.
-  void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                uint64_t end, int64_t event_metadata1,
-                int64_t event_metadata2) override{};
-
-  // BeginEvent followed by code followed by EndEvent will profile the code
-  // enclosed. Multiple concurrent events are unsupported, so the return value
-  // is always 0. Event_metadata1 and event_metadata2 are unused. The tag
-  // pointer must be valid until EndEvent is called.
-  uint32_t BeginEvent(const char* tag, EventType event_type,
-                      int64_t event_metadata1,
-                      int64_t event_metadata2) override {
+  uint32_t BeginEvent(const char* tag) override {
     event_starts_++;
     return 0;
   }
 
-  // Event_handle is ignored since TF Micro does not support concurrent events.
   void EndEvent(uint32_t event_handle) override { event_ends_++; }
 
   int event_starts() { return event_starts_; }
@@ -58,7 +46,6 @@ class MockProfiler : public tflite::Profiler {
  private:
   int event_starts_;
   int event_ends_;
-  TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
 }  // namespace

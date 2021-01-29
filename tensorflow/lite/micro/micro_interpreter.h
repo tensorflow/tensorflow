@@ -21,10 +21,10 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
+#include "tensorflow/lite/micro/micro_profiler.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -86,7 +86,7 @@ class MicroInterpreter {
   MicroInterpreter(const Model* model, const MicroOpResolver& op_resolver,
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter,
-                   tflite::Profiler* profiler = nullptr);
+                   MicroProfiler* profiler = nullptr);
 
   // Create an interpreter instance using an existing MicroAllocator instance.
   // This constructor should be used when creating an allocator that needs to
@@ -95,7 +95,7 @@ class MicroInterpreter {
   // as long as that of the interpreter object.
   MicroInterpreter(const Model* model, const MicroOpResolver& op_resolver,
                    MicroAllocator* allocator, ErrorReporter* error_reporter,
-                   tflite::Profiler* profiler = nullptr);
+                   MicroProfiler* profiler = nullptr);
 
   ~MicroInterpreter();
 
@@ -179,7 +179,7 @@ class MicroInterpreter {
  private:
   // TODO(b/158263161): Consider switching to Create() function to enable better
   // error reporting during initialization.
-  void Init(tflite::Profiler* profiler);
+  void Init(MicroProfiler* profiler);
 
   NodeAndRegistration* node_and_registrations_ = nullptr;
 
