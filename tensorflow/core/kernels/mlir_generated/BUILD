@@ -334,6 +334,7 @@ cc_library(
 #     ],
 # )
 
+# TODO(b/25387198): Add an int32 kernel.
 gen_kernel_library(
     name = "abs",
     tile_size = "256",
@@ -341,7 +342,6 @@ gen_kernel_library(
         "f16",
         "f32",
         "f64",
-        "i32",
         "i64",
     ],
     unroll_factors = "4",
