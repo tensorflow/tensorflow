@@ -28,8 +28,8 @@ REGISTER4(BinaryOp, GPU, "Greater", functor::greater, uint8, uint16, uint32,
           uint64);
 #else
 // TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
-REGISTER(BinaryOp, GPU, "Greater", functor::greater, uint8, uint16, uint32,
-         uint64);
+REGISTER4(BinaryOp, GPU, "Greater", functor::greater, uint8, uint16, uint32,
+          uint64);
 #endif
 
 // A special GPU kernel for int32.
