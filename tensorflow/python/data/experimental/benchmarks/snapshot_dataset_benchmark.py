@@ -55,22 +55,6 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
 
     return dataset
 
-  def _consumeDataset(self, dataset, num_elements):
-    dataset = dataset.skip(num_elements)
-    if context.executing_eagerly():
-      iterator = iter(dataset)
-      try:
-        next(iterator)
-      except StopIteration:
-        pass
-    else:
-      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
-      with session.Session() as sess:
-        try:
-          sess.run(next_element)
-        except errors.OutOfRangeError:
-          pass
-
   def benchmarkWriteSnapshotGzipCompression(self):
     num_elements = 500000
     dataset = self._createSimpleDataset(
@@ -123,7 +107,7 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
     )
 
     # Consume only 1 element, thus making sure we don't finalize.
-    self._consumeDataset(dataset=dataset, num_elements=1)
+    self._consume_dataset(dataset=dataset, num_elements=1)
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
@@ -139,7 +123,7 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
     )
 
     # consume all the elements to let snapshot write things to disk
-    self._consumeDataset(dataset=dataset, num_elements=num_elements)
+    self._consume_dataset(dataset=dataset, num_elements=num_elements)
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
@@ -155,7 +139,7 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
         compression=snapshot.COMPRESSION_GZIP
     )
 
-    self._consumeDataset(dataset=dataset, num_elements=num_elements)
+    self._consume_dataset(dataset=dataset, num_elements=num_elements)
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
@@ -171,7 +155,7 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
         compression=snapshot.COMPRESSION_SNAPPY
     )
 
-    self._consumeDataset(dataset=dataset, num_elements=num_elements)
+    self._consume_dataset(dataset=dataset, num_elements=num_elements)
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
