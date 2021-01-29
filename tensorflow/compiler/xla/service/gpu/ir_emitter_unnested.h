@@ -205,7 +205,12 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitAllReduceFromMlir(MlirEmitterInput mlir_input);
   Status HandleAllToAll(HloInstruction* hlo) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
+
+  template <typename ThunkType, typename OpT>
+  Status EmitReplicaOrPartitionIdFromMlir(MlirEmitterInput input);
   Status HandleReplicaId(HloInstruction* hlo) override;
+  Status HandlePartitionId(HloInstruction* hlo) override;
+
   Status HandleCollectivePermute(HloInstruction* hlo) override;
 
   Status EmitOp(MlirEmitterInput mlir_input);

@@ -608,6 +608,10 @@ def LHLO_ReplicaIdOp : LHLO_Op<"replica_id", []>, BASE_HLO_ReplicaIdOp {
   let arguments = (ins Arg<MemRefOf<[UI32]>, "", [MemWrite]>);
 }
 
+def LHLO_PartitionIdOp : LHLO_Op<"partition_id", []>, BASE_HLO_PartitionIdOp {
+  let arguments = (ins Arg<MemRefOf<[UI32]>, "", [MemWrite]>);
+}
+
 def LHLO_TriangularSolveOp: LHLO_Op<"triangular_solve", [SameOperandsElementType]>,
                             BASE_HLO_TriangularSolveOp {
   let arguments = (ins
