@@ -149,7 +149,7 @@ class DatasetBenchmarkBase(test.Benchmark):
         wall_time=wall_time, iters=iters, name=name, extras=extras)
     return wall_time
 
-  def _consume_dataset(self, dataset, num_elements):
+  def consume_dataset(self, dataset, num_elements):
     """Consume the `num_elements` of the dataset.
 
     Args:

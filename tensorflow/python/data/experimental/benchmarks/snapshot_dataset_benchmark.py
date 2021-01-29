@@ -107,7 +107,7 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
     )
 
     # Consume only 1 element, thus making sure we don't finalize.
-    self._consume_dataset(dataset=dataset, num_elements=1)
+    self.consume_dataset(dataset=dataset, num_elements=1)
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
@@ -123,7 +123,7 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
     )
 
     # consume all the elements to let snapshot write things to disk
-    self._consume_dataset(dataset=dataset, num_elements=num_elements)
+    self.consume_dataset(dataset=dataset, num_elements=num_elements)
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
@@ -139,7 +139,7 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
         compression=snapshot.COMPRESSION_GZIP
     )
 
-    self._consume_dataset(dataset=dataset, num_elements=num_elements)
+    self.consume_dataset(dataset=dataset, num_elements=num_elements)
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
@@ -155,7 +155,7 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
         compression=snapshot.COMPRESSION_SNAPPY
     )
 
-    self._consume_dataset(dataset=dataset, num_elements=num_elements)
+    self.consume_dataset(dataset=dataset, num_elements=num_elements)
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
