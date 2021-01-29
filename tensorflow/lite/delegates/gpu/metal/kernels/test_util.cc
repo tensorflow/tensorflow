@@ -87,7 +87,8 @@ absl::Status SingleOpModel::Invoke() {
   create_info.storage_type = TensorStorageType::BUFFER;
   InferenceContext inference_context;
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  RETURN_IF_ERROR(inference_context.InitFromGraph(create_info, graph_, device));
+  RETURN_IF_ERROR(inference_context.InitFromGraphWithTransforms(
+      create_info, &graph_, device));
 
   std::map<ValueId, BHWC> input_dimensions;
   std::map<ValueId, id<MTLBuffer>> input_buffers;
@@ -120,11 +121,12 @@ absl::Status SingleOpModel::Invoke() {
   std::map<ValueId, id<MTLBuffer>> inout_buffers(input_buffers.begin(),
                                                  input_buffers.end());
   inout_buffers.insert(output_buffers.begin(), output_buffers.end());
+  inference_context.UpdatePreallocatedTensors(inout_buffers);
   id<MTLCommandQueue> command_queue = [device newCommandQueue];
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   id<MTLComputeCommandEncoder> command_encoder =
       [command_buffer computeCommandEncoder];
-  inference_context.EncodeWithEncoder(command_encoder, inout_buffers);
+  inference_context.EncodeWithEncoder(command_encoder);
   [command_encoder endEncoding];
   [command_buffer commit];
   [command_buffer waitUntilCompleted];
@@ -174,14 +176,17 @@ MetalExecutionEnvironment::GetSupportedPrecisions() const {
 
 std::vector<TensorStorageType> MetalExecutionEnvironment::GetSupportedStorages()
     const {
-  return {TensorStorageType::BUFFER};
+  return {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER,
+          TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
+          TensorStorageType::TEXTURE_ARRAY};
 }
 
 // returns storage types that support zero clamping when reading OOB in HW
 // (Height/Width) dimensions.
 std::vector<TensorStorageType>
 MetalExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport() const {
-  return {};
+  return {TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
+          TensorStorageType::TEXTURE_ARRAY};
 }
 
 absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
@@ -199,8 +204,7 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     }
     RETURN_IF_ERROR(CreateTensor(device_.device(), src_shape,
                                  op_def.src_tensors[i], &src[i]));
-    RETURN_IF_ERROR(src[i].WriteData(src_cpu[i]));
-    operation->SetSrc(&src[i], i);
+    RETURN_IF_ERROR(src[i].WriteData(device_.device(), src_cpu[i]));
   }
 
   std::vector<MetalSpatialTensor> dst(dst_cpu.size());
@@ -212,7 +216,6 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     }
     RETURN_IF_ERROR(CreateTensor(device_.device(), dst_shape,
                                  op_def.dst_tensors[i], &dst[i]));
-    operation->SetDst(&dst[i], i);
   }
 
   std::vector<BHWC> src_shapes;
@@ -230,13 +233,19 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
 
   ComputeTask gpu_task;
   gpu_task.Init(std::move(operation));
-  RETURN_IF_ERROR(gpu_task.CompileOp(&device_));
-  RETURN_IF_ERROR(gpu_task.UpdateOpParams());
+  RETURN_IF_ERROR(gpu_task.Compile(&device_));
+  for (int i = 0; i < src_cpu.size(); ++i) {
+    gpu_task.SetSrcTensor(&src[i], i);
+  }
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    gpu_task.SetDstTensor(&dst[i], i);
+  }
+  RETURN_IF_ERROR(gpu_task.UpdateOperationParams());
 
   id<MTLCommandQueue> command_queue = [device_.device() newCommandQueue];
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-  gpu_task.EncodeOpWithEncoder(encoder);
+  gpu_task.Encode(encoder);
   [encoder endEncoding];
   [command_buffer commit];
   [command_buffer waitUntilCompleted];
@@ -244,7 +253,7 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
   for (int i = 0; i < dst_cpu.size(); ++i) {
     dst_cpu[i]->shape = dst_sizes[i];
     dst_cpu[i]->data = std::vector<float>(dst_sizes[i].DimensionsProduct(), 0);
-    RETURN_IF_ERROR(dst[i].ReadData(dst_cpu[i]));
+    RETURN_IF_ERROR(dst[i].ReadData(device_.device(), dst_cpu[i]));
   }
 
   return absl::OkStatus();
@@ -265,7 +274,7 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     }
     RETURN_IF_ERROR(CreateTensor(device_.device(), src_shape,
                                  op_def.src_tensors[i], &src[i]));
-    RETURN_IF_ERROR(src[i].WriteData(src_cpu[i]));
+    RETURN_IF_ERROR(src[i].WriteData(device_.device(), src_cpu[i]));
   }
 
   std::vector<MetalSpatialTensor> dst(dst_cpu.size());
@@ -286,20 +295,20 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
 
   ComputeTask gpu_task;
   gpu_task.Init(std::move(operation));
-  RETURN_IF_ERROR(gpu_task.Compile(op_def.precision, &device_));
-  RETURN_IF_ERROR(
-      gpu_task.UpdateParams(device_.GetInfo(), src_shapes, dst_sizes));
+  RETURN_IF_ERROR(gpu_task.Compile(&device_));
   for (int i = 0; i < src_cpu.size(); ++i) {
-    gpu_task.SetSrcTensor(src[i], i);
+    gpu_task.SetSrcTensor(&src[i], i);
   }
   for (int i = 0; i < dst_cpu.size(); ++i) {
-    gpu_task.SetDstTensor(dst[i], i);
+    gpu_task.SetDstTensor(&dst[i], i);
   }
+  RETURN_IF_ERROR(
+      gpu_task.UpdateParams(device_.GetInfo(), src_shapes, dst_sizes));
 
   id<MTLCommandQueue> command_queue = [device_.device() newCommandQueue];
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-  gpu_task.EncodeWithEncoder(encoder);
+  gpu_task.Encode(encoder);
   [encoder endEncoding];
   [command_buffer commit];
   [command_buffer waitUntilCompleted];
@@ -307,7 +316,7 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
   for (int i = 0; i < dst_cpu.size(); ++i) {
     dst_cpu[i]->shape = dst_sizes[i];
     dst_cpu[i]->data = std::vector<float>(dst_sizes[i].DimensionsProduct(), 0);
-    RETURN_IF_ERROR(dst[i].ReadData(dst_cpu[i]));
+    RETURN_IF_ERROR(dst[i].ReadData(device_.device(), dst_cpu[i]));
   }
 
   return absl::OkStatus();

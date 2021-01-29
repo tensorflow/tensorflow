@@ -214,9 +214,9 @@ void PortableReductionSumVector(const IN* input_vector, OUT* output_vector,
 }
 
 // Layer norm for each batch.
-void PortableMeanStddevNormalization(const float* input_vector,
-                                     float* output_vector, int v_size,
-                                     int n_batch);
+void PortableMeanStddevNormalization(const float* __restrict__ input_vector,
+                                     float* __restrict__ output_vector,
+                                     int v_size, int n_batch);
 
 // Saturate Add.
 void PortableTwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,

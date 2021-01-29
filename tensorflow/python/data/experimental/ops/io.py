@@ -19,15 +19,22 @@ from __future__ import division
 from __future__ import print_function
 
 import multiprocessing
+import os
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_GZIP = "GZIP"
 COMPRESSION_SNAPPY = "NONE"
+DATASET_SPEC_FILENAME = "dataset_spec.pb"
+# TODO(b/176933539): Use the regular import.
+nested_structure_coder = lazy_loader.LazyLoader(
+    "nested_structure_coder", globals(),
+    "tensorflow.python.saved_model.nested_structure_coder")
 
 
 @tf_export("data.experimental.save", v1=[])
@@ -89,6 +96,12 @@ def save(dataset, path, compression=None, shard_func=None):
       input_structure=dataset.element_spec,
       add_to_graph=False)
 
+  coder = nested_structure_coder.StructureCoder()
+  encoded = coder.encode_structure(dataset.element_spec)
+  os.makedirs(path, exist_ok=True)
+  with open(os.path.join(path, DATASET_SPEC_FILENAME), "wb") as f:
+    f.write(encoded.SerializeToString())
+
   path = ops.convert_to_tensor(path, dtype=dtypes.string, name="path")
   shard_func = wrapped_func.function
   shard_func.add_to_graph(ops.get_default_graph())
@@ -107,7 +120,8 @@ def save(dataset, path, compression=None, shard_func=None):
 class _LoadDataset(dataset_ops.DatasetSource):
   """A dataset that loads previously saved dataset."""
 
-  def __init__(self, path, element_spec, compression=None, reader_func=None):
+  def __init__(self, path, element_spec=None, compression=None,
+               reader_func=None):
 
     if reader_func is None:
       reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
@@ -116,15 +130,23 @@ class _LoadDataset(dataset_ops.DatasetSource):
           num_parallel_calls=dataset_ops.AUTOTUNE)
 
     self._path = path
-    self._element_spec = element_spec
+    if element_spec is None:
+      with open(os.path.join(path, DATASET_SPEC_FILENAME), "rb") as f:
+        encoded_spec = f.read()
+      struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
+      struct_pb.ParseFromString(encoded_spec)
+      coder = nested_structure_coder.StructureCoder()
+      spec = coder.decode_proto(struct_pb)
+      self._element_spec = spec
+    else:
+      self._element_spec = element_spec
     self._compression = compression
-
     self._reader_func = dataset_ops.StructuredFunctionWrapper(
         reader_func,
         "load()",
         # Dataset of datasets of input elements
         input_structure=dataset_ops.DatasetSpec(
-            dataset_ops.DatasetSpec(element_spec)))
+            dataset_ops.DatasetSpec(self._element_spec)))
 
     variant_tensor = gen_experimental_dataset_ops.load_dataset(
         path,
@@ -143,7 +165,7 @@ class _LoadDataset(dataset_ops.DatasetSource):
 
 
 @tf_export("data.experimental.load", v1=[])
-def load(path, element_spec, compression=None, reader_func=None):
+def load(path, element_spec=None, compression=None, reader_func=None):
   """Loads a previously saved dataset.
 
   Example usage:
@@ -153,8 +175,7 @@ def load(path, element_spec, compression=None, reader_func=None):
   >>> # Save a dataset
   >>> dataset = tf.data.Dataset.range(2)
   >>> tf.data.experimental.save(dataset, path)
-  >>> new_dataset = tf.data.experimental.load(path,
-  ...     tf.TensorSpec(shape=(), dtype=tf.int64))
+  >>> new_dataset = tf.data.experimental.load(path)
   >>> for elem in new_dataset:
   ...   print(elem)
   tf.Tensor(0, shape=(), dtype=int64)
@@ -186,9 +207,10 @@ def load(path, element_spec, compression=None, reader_func=None):
 
   Args:
     path: Required. A path pointing to a previously saved dataset.
-    element_spec: Required. A nested structure of `tf.TypeSpec` objects matching
+    element_spec: Optional. A nested structure of `tf.TypeSpec` objects matching
       the structure of an element of the saved dataset and specifying the type
-      of individual element components.
+      of individual element components. If not provided, the nested structure of
+      `tf.TypeSpec` saved with the saved dataset is used.
     compression: Optional. The algorithm to use to decompress the data when
       reading it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
     reader_func: Optional. A function to control how to read data from shards.
@@ -196,6 +218,10 @@ def load(path, element_spec, compression=None, reader_func=None):
 
   Returns:
     A `tf.data.Dataset` instance.
+
+  Raises:
+    FileNotFoundError: If `element_spec` is not specified and the saved nested
+      structure of `tf.TypeSpec` can not be located with the saved dataset.
   """
 
   return _LoadDataset(

@@ -243,7 +243,8 @@ Status KernelAndDeviceOp::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<EagerKernelRet>* outputs,
     CancellationManager* cancellation_manager,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const absl::optional<ManagedStackTrace>& stack_trace) {
   OpKernelContext::Params params;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
@@ -255,6 +256,7 @@ Status KernelAndDeviceOp::Run(
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendezvous_;
+  params.stack_trace = stack_trace;
   OpExecutionState* op_execution_state = nullptr;
 
   CancellationManager default_cancellation_manager;
@@ -320,7 +322,8 @@ Status KernelAndDeviceFunc::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<EagerKernelRet>* outputs,
     CancellationManager* cancellation_manager,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const absl::optional<ManagedStackTrace>& stack_trace) {
   Notification n;
   Status status;
   RunAsync(step_container, inputs, outputs, cancellation_manager,

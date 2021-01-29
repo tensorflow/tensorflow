@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "grpcpp/impl/codegen/client_context.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -82,6 +83,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // tasks it should delete. This is stored into `new_tasks` and
   // `tasks_to_delete`.
   Status WorkerHeartbeat(const std::string& worker_address,
+                         const std::string& transfer_address,
                          const std::vector<int64>& current_tasks,
                          std::vector<TaskDef>& new_tasks,
                          std::vector<int64>& tasks_to_delete);
@@ -114,11 +116,10 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // read from the job.
   Status ReleaseJobClient(int64 job_client_id);
 
-  // Queries the dispatcher for the tasks associated with the specified job.
-  // The tasks will be stored in `tasks`, and whether the job is finished will
-  // be stored in `job_finished`.
-  Status GetTasks(int64 job_client_id, std::vector<TaskInfo>& tasks,
-                  bool& job_finished);
+  // Heartbeats to the dispatcher, getting back the tasks that should be
+  // running, and whether the job is finished.
+  Status ClientHeartbeat(int64 job_client_id, std::vector<TaskInfo>& tasks,
+                         bool& job_finished);
 
   // Queries the dispatcher for its registered workers. The worker info will be
   // stored in `workers`.
@@ -138,8 +139,10 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
 class DataServiceWorkerClient : public DataServiceClientBase {
  public:
   DataServiceWorkerClient(const std::string& address,
-                          const std::string& protocol)
-      : DataServiceClientBase(address, protocol) {}
+                          const std::string& protocol,
+                          const std::string& transfer_protocol)
+      : DataServiceClientBase(address, protocol),
+        transfer_protocol_(transfer_protocol) {}
 
   // Fetches the next element for the specified task_id. The optional
   // `consumer_index` and `round_index` must be specified for tasks which use
@@ -158,16 +161,11 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   Status EnsureInitialized() override;
 
  private:
+  const std::string transfer_protocol_;
   mutex mu_;
   // Initialization is guarded by `mu_`, but using the stub does not require
   // holding `mu_`
-  std::unique_ptr<WorkerService::Stub> stub_;
-  // Set of all currently active clients contexts. Used to support
-  // cancellation.
-  absl::flat_hash_set<::grpc::ClientContext*> active_contexts_ GUARDED_BY(mu_);
-  // Indicates that the client has been cancelled, so no further requests should
-  // be accepted.
-  bool cancelled_ GUARDED_BY(mu_) = false;
+  std::unique_ptr<DataTransferClient> client_;
 };
 
 // Creates and initializes a new tf.data service dispatcher client.
@@ -178,6 +176,7 @@ Status CreateDataServiceDispatcherClient(
 // Creates and initializes a new tf.data service worker client.
 Status CreateDataServiceWorkerClient(
     const std::string& address, const std::string& protocol,
+    const std::string& transfer_protocol,
     std::unique_ptr<DataServiceWorkerClient>& out);
 
 }  // namespace data

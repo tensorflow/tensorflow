@@ -28,13 +28,19 @@ sudo apt-get install realpath
 export TF_NEED_CUDA=1
 
 # Update the version string to nightly
-if [ -n "${IS_NIGHTLY_BUILD}" ]; then
+if [ -n "${IS_NIGHTLY}" ]; then
   ./tensorflow/tools/ci_build/update_version.py --nightly
 fi
 
 ./tensorflow/tools/ci_build/linux/libtensorflow.sh
 
 # Copy the nightly version update script
-if [ -n "${IS_NIGHTLY_BUILD}" ]; then
+if [ -n "${IS_NIGHTLY}" ]; then
   cp tensorflow/tools/ci_build/builds/libtensorflow_nightly_symlink.sh lib_package
+
+  echo "This package was built on $(date)" >> lib_package/build_time.txt
+
+  tar -zcvf ubuntu_gpu_libtensorflow_binaries.tar.gz lib_package
+
+  gsutil cp ubuntu_gpu_libtensorflow_binaries.tar.gz gs://libtensorflow-nightly/prod/tensorflow/release/ubuntu_16/latest/gpu
 fi

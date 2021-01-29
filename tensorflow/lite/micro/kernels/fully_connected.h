@@ -71,7 +71,7 @@ TfLiteRegistration Register_FULLY_CONNECTED();
 // part of the build. As a result, we use defined(ARDUINO) as proxy for the
 // CMSIS kernels for this one special case.
 
-// Returns a TfLiteRegistration struct for cmsis-nn kernel variant that only
+// Returns a TfLiteRegistration struct for cmsis_nn kernel variant that only
 // supports int8.
 TfLiteRegistration Register_FULLY_CONNECTED_INT8();
 

@@ -93,41 +93,37 @@ do_pylint() {
   # Usage: do_pylint [--incremental]
   #
   # Options:
-  #   --incremental  Performs check on only the python files changed in the
-  #                  last non-merge git commit.
+  #   --incremental  Performs check only if there are python files that changed
+  #                  since last non-merge git commit. We always check all Python
+  #                  files if one changed to capture the case when a function
+  #                  signature changes affects unchanged files.
 
-  # Use this list to allowlist pylint errors
-  ERROR_ALLOWLIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
-"^tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function\salready\sdefined "\
-"^tensorflow/python/feature_column/feature_column_test\.py.*\[E0110.*abstract-class-instantiated "\
-"^tensorflow/contrib/layers/python/layers/feature_column\.py.*\[E0110.*abstract-class-instantiated "\
-"^tensorflow/contrib/eager/python/evaluator\.py.*\[E0202.*method-hidden "\
-"^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden "\
-"^tensorflow/contrib/rate/rate\.py.*\[E0202.*method-hidden "\
-"^tensorflow/python/training/tracking/tracking\.py.*\[E0202.*method-hidden "\
-"^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/python/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
-"^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
-"^tensorflow/python/keras/engine/base_layer.py.*\[E1102.*not-callable "\
-"^tensorflow/python/keras/layers/preprocessing/.*\[E1102.*not-callable "\
-"^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
-"^tensorflow/python/keras/legacy_tf_layers/base\.py.*\[E0203.*access-member-before-definition "\
-"^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
-"^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
-"^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "\
-"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "\
-"^tensorflow/\.py.*\[C0326.*bad-whitespace.*No space allowed around keyword argument assignment "
+  # Validate arguments, see if we can do no work
+  if [[ $# == 1 ]] && [[ "$1" == "--incremental" ]]; then
+    PYTHON_SRC_FILES=$(get_py_files_to_check --incremental)
 
-  echo "ERROR_ALLOWLIST=\"${ERROR_ALLOWLIST}\""
-
-  if [[ $# != "0" ]]  && [[ $# != "1" ]]; then
-    echo "Invalid syntax when invoking do_pylint"
+    if [[ -z "${PYTHON_SRC_FILES}" ]]; then
+      echo "do_pylint will NOT run due to --incremental flag and due to the "\
+"absence of Python code changes in the last commit."
+      return 0
+    fi
+  elif [[ $# != 0 ]]; then
+    echo "Invalid syntax for invoking do_pylint"
     echo "Usage: do_pylint [--incremental]"
     return 1
   fi
 
-  PYLINT_BIN="python3 -m pylint"
+  # Get all Python files, regardless of mode.
+  PYTHON_SRC_FILES=$(get_py_files_to_check)
+
+  # Something happened. TF no longer has Python code if this branch is taken
+  if [[ -z ${PYTHON_SRC_FILES} ]]; then
+    echo "do_pylint found no Python files to check. Returning."
+    return 0
+  fi
+
+  # Now that we know we have to do work, check if `pylint` is installed
+  PYLINT_BIN="python3.8 -m pylint"
 
   echo ""
   echo "check whether pylint is available or not."
@@ -140,42 +136,19 @@ do_pylint() {
     echo ""
   else
     echo ""
-    echo "pylint not available." >&2
+    echo "pylint not available."
     echo ""
     return 1
   fi
 
-  if [[ "$1" == "--incremental" ]]; then
-    PYTHON_SRC_FILES=$(get_py_files_to_check --incremental)
-
-    if [[ -z "${PYTHON_SRC_FILES}" ]]; then
-      echo "do_pylint will NOT run due to --incremental flag and due to the "\
-"absence of Python code changes in the last commit."
-      return 0
-    else
-      # For incremental builds, we still check all Python files in cases there
-      # are function signature changes that affect unchanged Python files.
-      PYTHON_SRC_FILES=$(get_py_files_to_check)
-    fi
-  elif [[ -z "$1" ]]; then
-    PYTHON_SRC_FILES=$(get_py_files_to_check)
-  else
-    echo "Invalid syntax for invoking do_pylint"
-    echo "Usage: do_pylint [--incremental]"
-    return 1
-  fi
-
-  if [[ -z ${PYTHON_SRC_FILES} ]]; then
-    echo "do_pylint found no Python files to check. Returning."
-    return 0
-  fi
-
+  # Configure pylint using the following file
   PYLINTRC_FILE="${SCRIPT_DIR}/pylintrc"
 
   if [[ ! -f "${PYLINTRC_FILE}" ]]; then
     die "ERROR: Cannot find pylint rc file at ${PYLINTRC_FILE}"
   fi
 
+  # Run pylint in parallel, after some disk setup
   NUM_SRC_FILES=$(echo ${PYTHON_SRC_FILES} | wc -w)
   NUM_CPUS=$(num_cpus)
 
@@ -186,15 +159,19 @@ do_pylint() {
   PYLINT_START_TIME=$(date +'%s')
   OUTPUT_FILE="$(mktemp)_pylint_output.log"
   ERRORS_FILE="$(mktemp)_pylint_errors.log"
-  NONWL_ERRORS_FILE="$(mktemp)_pylint_nonwl_errors.log"
+  PERMIT_FILE="$(mktemp)_pylint_permit.log"
+  FORBID_FILE="$(mktemp)_pylint_forbid.log"
 
   rm -rf ${OUTPUT_FILE}
   rm -rf ${ERRORS_FILE}
-  rm -rf ${NONWL_ERRORS_FILE}
-  touch ${NONWL_ERRORS_FILE}
+  rm -rf ${PERMIT_FILE}
+  rm -rf ${FORBID_FILE}
 
+  # When running, filter to only contain the error code lines. Removes module
+  # header, removes lines of context that show up from some lines.
+  # Also, don't redirect stderr as this would hide pylint fatal errors.
   ${PYLINT_BIN} --rcfile="${PYLINTRC_FILE}" --output-format=parseable \
-      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} > ${OUTPUT_FILE} 2>&1
+      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} | grep '\[[CEFW]' > ${OUTPUT_FILE}
   PYLINT_END_TIME=$(date +'%s')
 
   echo ""
@@ -211,35 +188,47 @@ do_pylint() {
   # C0326 bad-whitespace
   # W0611 unused-import
   # W0622 redefined-builtin
-  # W9015 missing-param-doc
-  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622|\[W9015)' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
-  N_ERRORS=0
-  while read -r LINE; do
-    IS_ALLOWLISTED=0
-    for WL_REGEX in ${ERROR_ALLOWLIST}; do
-      if echo ${LINE} | grep -q "${WL_REGEX}"; then
-        echo "Found an allowlisted error:"
-        echo "  ${LINE}"
-        IS_ALLOWLISTED=1
-      fi
-    done
+  # Split the pylint reported errors into permitted ones and those we want to
+  # block submit on until fixed.
+  # We use `${ALLOW_LIST_FILE}` to record the errors we temporarily accept. Goal
+  # is to make that file only contain errors caused by difference between
+  # internal and external versions.
+  ALLOW_LIST_FILE="${SCRIPT_DIR}/pylint_allowlist"
 
-    if [[ ${IS_ALLOWLISTED} == "0" ]]; then
-      echo "${LINE}" >> ${NONWL_ERRORS_FILE}
-      echo "" >> ${NONWL_ERRORS_FILE}
-      ((N_ERRORS++))
-    fi
-  done <${ERRORS_FILE}
+  if [[ ! -f "${ALLOW_LIST_FILE}" ]]; then
+    die "ERROR: Cannot find pylint allowlist file at ${ALLOW_LIST_FILE}"
+  fi
+
+  # We can split with just 2 grep invocations
+  grep    -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} > ${PERMIT_FILE}
+  grep -v -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} > ${FORBID_FILE}
+
+  # Determine counts of errors
+  N_PERMIT_ERRORS=$(wc -l ${PERMIT_FILE} | cut -d' ' -f1)
+  N_FORBID_ERRORS=$(wc -l ${FORBID_FILE} | cut -d' ' -f1)
+
+  # First print all allowed errors
+  echo ""
+  if [[ ${N_PERMIT_ERRORS} != 0 ]]; then
+    echo "Found ${N_PERMIT_ERRORS} allowlisted pylint errors:"
+    cat ${PERMIT_FILE}
+  fi
+
+  # Now, print the errors we should fix
+  echo ""
+  if [[ ${N_FORBID_ERRORS} != 0 ]]; then
+    echo "Found ${N_FORBID_ERRORS} non-allowlisted pylint errors:"
+    cat ${FORBID_FILE}
+  fi
 
   echo ""
-  if [[ ${N_ERRORS} != 0 ]]; then
-    echo "FAIL: Found ${N_ERRORS} non-allowlisted pylint errors:"
-    cat "${NONWL_ERRORS_FILE}"
+  if [[ ${N_FORBID_ERRORS} != 0 ]]; then
+    echo "FAIL: Found ${N_FORBID_ERRORS} non-allowlisted errors and ${N_PERMIT_ERRORS} allowlisted errors"
     return 1
   else
-    echo "PASS: No non-allowlisted pylint errors were found."
-    return 0
+    echo "PASS: Found only ${N_PERMIT_ERRORS} allowlisted errors"
   fi
 }
 
@@ -652,8 +641,8 @@ do_configure_test() {
   do
     export TF_NEED_CUDA=${WITH_CUDA}
     export CUDNN_INSTALL_PATH="/usr/local/cudnn"
-    export PYTHON_BIN_PATH=$(which python)
-    yes "" | ./configure
+    export PYTHON_BIN_PATH=$(which python3.8)
+    yes "" | ${PYTHON_BIN_PATH} configure.py
 
     RESULT=$?
     if [[ ${RESULT} != "0" ]]; then

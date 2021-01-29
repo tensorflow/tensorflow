@@ -93,6 +93,7 @@ struct ComputeTaskDescriptor {
                     const TensorDescriptor& desc);
 
   absl::Status AddTask(ComputeTaskDescriptor* task_desc);
+  absl::Status AddOperation(GPUOperation* operation);
   void AssembleCode();
 
  private:

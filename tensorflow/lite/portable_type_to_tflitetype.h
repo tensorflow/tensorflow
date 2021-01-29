@@ -25,6 +25,8 @@ limitations under the License.
 #undef abs
 #endif
 
+#include <stdint.h>
+
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {

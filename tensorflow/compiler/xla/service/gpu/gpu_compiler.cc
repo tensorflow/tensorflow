@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -73,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
@@ -90,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
@@ -149,6 +152,11 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
+
+    pipeline.AddPass<AllGatherDecomposer>(
+        [](const HloAllGatherInstruction& ag) {
+          return !NcclAllGatherThunk::CanImplement(&ag);
+        });
 
     pipeline.AddPass<OperandUpcaster>();
 
@@ -652,6 +660,16 @@ static Status CompileModuleToLlvmIrImpl(
   return Status::OK();
 }
 
+static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,
+                                  void* context) {
+  std::string error_string;
+  llvm::raw_string_ostream string_printer(error_string);
+  llvm::DiagnosticPrinterRawOStream diagnostic_printer(string_printer);
+  diag_info.print(diagnostic_printer);
+
+  VLOG(1) << error_string;
+}
+
 StatusOr<std::pair<std::string, std::vector<uint8>>>
 GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                    std::unique_ptr<llvm::Module> llvm_module,
@@ -667,6 +685,9 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     {
       XLA_SCOPED_LOGGING_TIMER(
           "GpuCompiler::RunBackend - Running LLVM verifier");
+
+      llvm_module->getContext().setDiagnosticHandlerCallBack(
+          NullDiagnosticHandler, nullptr);
 
       std::string err;
       llvm::raw_string_ostream err_stream(err);
@@ -789,13 +810,6 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
       llvm::LLVMContext context;
       std::string buffer;
       llvm::raw_string_ostream error(buffer);
-      llvm::DiagnosticPrinterRawOStream printer(error);
-      auto DiagnosticHandler = [](const llvm::DiagnosticInfo& diag_info,
-                                  void* Context) {
-        auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
-        diag_info.print(*printer);
-      };
-      context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
 
       std::unique_ptr<llvm::Module> new_llvm_module;
       // Switch to a new context by dumping and re-parsing LLVM IR. Each thread

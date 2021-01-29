@@ -113,6 +113,25 @@ absl::Status ComputeTaskDescriptor::AddTask(ComputeTaskDescriptor* task_desc) {
   return absl::OkStatus();
 }
 
+absl::Status ComputeTaskDescriptor::AddOperation(GPUOperation* operation) {
+  linkable_count += 1;
+  std::string code = operation->code_;
+  std::string unique_postfix = absl::StrCat("_link", linkable_count);
+  operation->args_.RenameArgs(unique_postfix, &code);
+  elementwise_code += "{\n" + code + "\n}\n";
+  RETURN_IF_ERROR(args.Merge(std::move(operation->args_), unique_postfix));
+  for (int i = 0; i < operation->src_tensors_names_.size(); ++i) {
+    definition.src_tensors.push_back(operation->definition_.src_tensors[i + 1]);
+    src_tensors_names.push_back(operation->src_tensors_names_[i] +
+                                unique_postfix);
+  }
+  for (int i = 0; i < operation->dst_tensors_names_.size(); ++i) {
+    dst_tensors_names.push_back(operation->dst_tensors_names_[i] +
+                                unique_postfix);
+  }
+  return absl::OkStatus();
+}
+
 void ComputeTaskDescriptor::AssembleCode() {
   if (is_linkable) {
     auto src_desc =

@@ -189,7 +189,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("constfold",
          new ConstantFolding(
              cpu_device_,
-             cfg_.experimental_disable_compressed_tensor_optimization()));
+             cfg_.experimental_disable_compressed_tensor_optimization(),
+             !cfg_.experimental_disable_folding_quantization_emulation()));
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
   MK_OPT("layout", new GenericLayoutOptimizer(
@@ -253,7 +254,8 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.constant_folding() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ConstantFolding>(
         cfg_.constant_folding(), cpu_device_,
-        cfg_.experimental_disable_compressed_tensor_optimization()));
+        cfg_.experimental_disable_compressed_tensor_optimization(),
+        !cfg_.experimental_disable_folding_quantization_emulation()));
   }
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());

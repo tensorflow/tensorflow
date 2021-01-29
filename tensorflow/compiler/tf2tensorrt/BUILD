@@ -271,7 +271,7 @@ tf_gen_op_wrapper_py(
 
 tf_custom_op_py_library(
     name = "trt_ops_loader",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":_pywrap_py_utils",
         ":trt_ops",
@@ -624,3 +624,12 @@ pybind_extension(
         "@pybind11",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "trt_engine_instance_proto_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":trt_engine_instance_proto"],
+# )
+# copybara:uncomment_end

@@ -31,38 +31,49 @@ class MockMlirOptimizationPass : public MlirOptimizationPass {
   // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
   // instead.
   MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD3(IsEnabled,
-                     bool(const DeviceSet* device_set,
-                          const ConfigProto& config_proto, const Graph& graph));
+  MOCK_CONST_METHOD3(GetPassState,
+                     MlirOptimizationPassState(const DeviceSet* device_set,
+                                               const ConfigProto& config_proto,
+                                               const Graph& graph));
   MOCK_METHOD3(Run, Status(const ConfigProto& config_proto,
                            mlir::ModuleOp module, const Graph& graph));
 };
 
 class MlirGraphOptimizationPassTest : public Test {
  public:
-  void Init(MlirBridgeRolloutPolicy rollout_policy, Status pass_run_result) {
+  void Init(Status pass_run_result,
+            const std::vector<MlirOptimizationPassState>& pass_states) {
     graph_ = std::make_unique<Graph>(OpRegistry::Global());
 
-    function_optimization_pass_ = MlirFunctionOptimizationPass(
-        &MlirOptimizationPassRegistry::Global(),
-        [rollout_policy](const Graph&, absl::optional<ConfigProto>, bool) {
-          return rollout_policy;
-        });
+    int pass_priority = 0;
+    for (const MlirOptimizationPassState& pass_state : pass_states) {
+      auto optimization_pass =
+          std::make_unique<NiceMock<MockMlirOptimizationPass>>();
 
-    auto optimization_pass =
-        std::make_unique<NiceMock<MockMlirOptimizationPass>>();
-
-    EXPECT_CALL(*optimization_pass, IsEnabled(_, _, _))
-        .WillRepeatedly(Return(true));
-    EXPECT_CALL(*optimization_pass, Run(_, _, _))
-        .WillOnce(Return(pass_run_result));
-    MlirOptimizationPassRegistry::Global().Add(0, std::move(optimization_pass));
+      ON_CALL(*optimization_pass, GetPassState(_, _, _))
+          .WillByDefault(Return(pass_state));
+      ON_CALL(*optimization_pass, Run(_, _, _))
+          .WillByDefault(Return(pass_run_result));
+      MlirOptimizationPassRegistry::Global().Add(pass_priority++,
+                                                 std::move(optimization_pass));
+    }
 
     flib_.reset(new FunctionLibraryDefinition(graph_->flib_def()));
   }
 
   void TearDown() override {
     MlirOptimizationPassRegistry::Global().ClearPasses();
+  }
+
+  void verifyGraphUnchanged(const GraphDef& original_graph_def) {
+// Proto matchers might be unavailable in the OSS.
+#if defined(PLATFORM_GOOGLE)
+    GraphDef resulted_graph_def;
+    graph_->ToGraphDef(&resulted_graph_def);
+    EXPECT_THAT(resulted_graph_def,
+                ::testing::proto::IgnoringRepeatedFieldOrdering(
+                    ::testing::EquivToProto(original_graph_def)));
+#endif
   }
 
   ConfigProto config_proto_;
@@ -75,8 +86,8 @@ class MlirGraphOptimizationPassTest : public Test {
 };
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoShadow) {
-  Init(MlirBridgeRolloutPolicy::kEnabledByUser,
-       Status(error::Code::ABORTED, "aborted"));
+  Init(Status(error::Code::ABORTED, "aborted"),
+       {MlirOptimizationPassState::Enabled});
 
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
@@ -85,20 +96,13 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoShadow) {
                 device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             Status(error::Code::ABORTED, "aborted"));
-
-// Proto matchers might be unavailable.
-#if defined(PLATFORM_GOOGLE)
-  GraphDef resulted_graph_def;
-  graph_->ToGraphDef(&resulted_graph_def);
-  EXPECT_THAT(resulted_graph_def,
-              ::testing::proto::IgnoringRepeatedFieldOrdering(
-                  ::testing::EquivToProto(original_graph_def)));
-#endif
+  verifyGraphUnchanged(original_graph_def);
 }
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsShadow) {
-  Init(MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis,
-       Status(error::Code::ABORTED, "aborted"));
+  Init(Status(error::Code::ABORTED, "aborted"),
+       {MlirOptimizationPassState::ShadowEnabled,
+        MlirOptimizationPassState::ShadowEnabled});
 
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
@@ -107,15 +111,44 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsShadow) {
                 device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             Status::OK());
+  verifyGraphUnchanged(original_graph_def);
+}
 
-// Proto matchers might be unavailable.
-#if defined(PLATFORM_GOOGLE)
-  GraphDef resulted_graph_def;
-  graph_->ToGraphDef(&resulted_graph_def);
-  EXPECT_THAT(resulted_graph_def,
-              ::testing::proto::IgnoringRepeatedFieldOrdering(
-                  ::testing::EquivToProto(original_graph_def)));
-#endif
+TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailShadow) {
+  Init(Status::OK(), {MlirOptimizationPassState::Disabled,
+                      MlirOptimizationPassState::ShadowEnabled});
+
+  GraphDef original_graph_def;
+  graph_->ToGraphDef(&original_graph_def);
+
+  EXPECT_EQ(function_optimization_pass_.Run(
+                device_set_, config_proto_, &graph_, flib_.get(),
+                &control_ret_node_names_, &control_rets_updated_),
+            Status::OK());
+  verifyGraphUnchanged(original_graph_def);
+}
+
+TEST_F(MlirGraphOptimizationPassTest,
+       OptimizationPassFailsMixShadowAndEnabled) {
+  Init(Status(error::Code::ABORTED, "aborted"),
+       {MlirOptimizationPassState::Disabled, MlirOptimizationPassState::Enabled,
+        MlirOptimizationPassState::ShadowEnabled});
+
+  GraphDef original_graph_def;
+  graph_->ToGraphDef(&original_graph_def);
+
+  EXPECT_EQ(function_optimization_pass_.Run(
+                device_set_, config_proto_, &graph_, flib_.get(),
+                &control_ret_node_names_, &control_rets_updated_),
+            Status(error::Code::ABORTED, "aborted"));
+}
+
+TEST(MlirOptimizationPassRegistry, RegisterPassesWithTheSamePriorityFails) {
+  MlirOptimizationPassRegistry::Global().Add(
+      0, std::make_unique<NiceMock<MockMlirOptimizationPass>>());
+  EXPECT_DEATH(MlirOptimizationPassRegistry::Global().Add(
+                   0, std::make_unique<NiceMock<MockMlirOptimizationPass>>()),
+               "Pass priority must be unique.");
 }
 
 }  // namespace tensorflow

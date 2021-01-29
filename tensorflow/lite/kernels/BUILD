@@ -2277,6 +2277,7 @@ cc_library(
         ":variable_op_kernels",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],

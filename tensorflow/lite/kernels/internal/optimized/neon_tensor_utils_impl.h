@@ -172,6 +172,11 @@ void NeonVectorBatchVectorCwiseProductAccumulate(
     const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
     int32_t multiplier, int shift, int16_t* result);
 
+// Layer norm for each batch.
+void NeonMeanStddevNormalization(const float* __restrict__ input_vector,
+                                 float* __restrict__ output_vector, int v_size,
+                                 int n_batch);
+
 #endif  // USE_NEON
 
 }  // namespace tensor_utils

@@ -143,3 +143,12 @@ cc_library(
         "//tensorflow/compiler/xrt/kernels:xrt_ops",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xrt_proto_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":xrt_proto"],
+# )
+# copybara:uncomment_end

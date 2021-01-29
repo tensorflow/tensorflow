@@ -26,6 +26,7 @@ package_group(
     includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/quantization/...",
+        "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//tensorflow/compiler/mlir/...",
     ],
 )
@@ -111,6 +112,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/tools/optimize:quantization_utils",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

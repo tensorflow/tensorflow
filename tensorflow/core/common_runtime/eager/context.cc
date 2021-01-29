@@ -760,6 +760,10 @@ const FunctionDef* EagerContext::GetFunctionDef(const string& function_name) {
   return func_lib_def_.Find(function_name);
 }
 
+std::vector<string> EagerContext::ListFunctionNames() {
+  return func_lib_def_.ListFunctionNames();
+}
+
 Status EagerContext::RemoveFunction(const string& func) {
   bool is_last_ref = false;
   {

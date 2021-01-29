@@ -135,13 +135,13 @@ func @broadcast(%operand: tensor<5xf32>) -> tensor<10x5xf32> {
 func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
   // CHECK-SAME: %[[OPERAND:.*]]: memref<?x?xf32>
   %c1 = constant 1 : i64
-  %shape = tensor_from_elements %c1, %c1, %c1 : tensor<3xi64>
+  %shape = tensor.from_elements %c1, %c1, %c1 : tensor<3xi64>
   %result = "mhlo.dynamic_broadcast_in_dim"(%operand, %shape) {
     broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
   } : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
   return %result : tensor<?x?x?xf32>
 }
-// CHECK: %[[SHAPE:.*]] = tensor_from_elements
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements
 
 // CHECK: %[[C0:.*]] = constant 0 : index
 // CHECK: %[[C1:.*]] = constant 1 : index
@@ -463,7 +463,7 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK: %[[C1:.*]] = constant 1 : index
   // CHECK: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
-  // CHECK: %[[SHAPE:.*]] = tensor_from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
+  // CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
   // CHECK: %[[EE0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<2xi64>
   // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
   // CHECK: %[[EE1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xi64>
@@ -487,7 +487,7 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK: %[[C1:.*]] = constant 1 : index
   // CHECK: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
-  // CHECK: %[[SHAPE:.*]] = tensor_from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
+  // CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
   // CHECK: %[[EE0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<2xi64>
   // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
   // CHECK: %[[EE1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xi64>

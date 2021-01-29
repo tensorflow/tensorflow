@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
+#include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
@@ -109,6 +110,7 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   const experimental::WorkerConfig config_;
   // Owned. We use a raw pointer because GrpcWorkerImpl is forward-declared.
   GrpcWorkerImpl* service_;
+  std::shared_ptr<DataTransferServer> transfer_server_;
 };
 
 // Creates a dispatch tf.data server and stores it in `out_server`.

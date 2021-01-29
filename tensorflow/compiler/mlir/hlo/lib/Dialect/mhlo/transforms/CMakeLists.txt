@@ -127,6 +127,7 @@ add_mlir_library(MhloLhloToLinalg
 
   LINK_LIBS PUBLIC
   MhloDialect
+  MLIRComplex
   MLIRIR
   MLIRPass
 )

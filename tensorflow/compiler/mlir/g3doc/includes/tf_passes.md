@@ -108,6 +108,9 @@ op. The order of ops will be preserved. Functions named `main` with no
 have been imported from a V1 TensorFlow graph, where feeds/fetches/targets are
 not provided at certain stages of IR transformation (e.g. pre-placement).
 
+Option `ops-to-preserve` allows to specify ops that should not be pruned,
+regardless of their reachability.
+
 For example, the following:
 
 ```mlir
@@ -138,6 +141,11 @@ func @graph(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
   }
   return %graph : tensor<i32>
 }
+```
+
+#### Options
+```
+-ops-to-preserve : Comma separated list of ops that should not be pruned regardless of reachability
 ```
 ### `-tf-executor-to-functional-conversion`: Lifts tf_executor.island inner ops from a tf_executor.graph
 This pass converts tf_executor.graphs consisting of only tf_executor.islands and
@@ -388,6 +396,39 @@ func @outside_compilation() -> tensor<f32> {
     tf_device.return %1 : tensor<f32>
   }) : () -> tensor<f32>
   return %0 : tensor<f32>
+}
+```
+### `-tf-tpu-reorder-replicate-partitioned-inputs`: Reorder replicated and partitioned input ops.
+This pass rewrites how data parallelism and model parallelism is expressed for
+inputs. It reorders `tf.TPUPartitionedInput` (model parallelism) and
+`tf.TPUReplicatedInput` (data parallelism) ops. It transforms a DAG where
+multiple `tf.TPUPartitionedInput` ops are feeding into a single
+`tf.TPUReplicatedInput` into a DAG where multiple `tf.TPUReplicatedInput` ops
+are feeding into a single `tf.TPUPartitionedInput`. Transforming the IR in such
+a manner will allow subsequent cluster formation pass to handle IR with both
+data and model parallelism in an easier manner.
+
+For example, the following:
+
+```mlir
+!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
+  %pi_0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (!rtype, !rtype) -> !rtype
+  return %ri : !rtype
+}
+```
+
+will be transformed into:
+
+```mlir
+!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
+  %ri_0 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
+  %ri_1 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype
+  %pi = "tf.TPUPartitionedInput"(%ri_0, %ri_1) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  return %pi : !rtype
 }
 ```
 ### `-tf-tpu-resource-partition`: Partitions unpartitioned resource read/write to partitioned resource variables.

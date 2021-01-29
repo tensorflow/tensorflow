@@ -66,31 +66,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "cluster_coordinator_mpr_test",
-    srcs = ["cluster_coordinator_mpr_test.py"],
-    python_version = "PY3",
-    shard_count = 5,
-    tags = [
-        "notsan",  # TODO(b/171406091)
-    ],
-    deps = [
-        ":cluster_coordinator",
-        ":remote_eager_lib",
-        ":utils",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:multi_process_runner",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/distribute:parameter_server_strategy_v2",
-        "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
-tf_py_test(
     name = "fault_tolerance_test",
     srcs = ["fault_tolerance_test.py"],
     python_version = "PY3",

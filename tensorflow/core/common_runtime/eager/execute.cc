@@ -390,6 +390,10 @@ Status GetOrCreateKernelAndDevice(
   /// Include soft placement policy in cache key since the placement strategy
   // can change and thus affect which kernel is picked.
   cache_key = FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
+  // The launch-time rendezvous reuse setting is bundled with the kernel, so we
+  // need to include it in the cache key.
+  cache_key =
+      FingerprintCat128(cache_key, ctx.GetReuseRendezvousForFunctions());
 
   std::vector<Device*> input_dev_ptrs;
   absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
@@ -525,9 +529,7 @@ Status GetOrCreateKernelAndDevice(
           std::move(composite_devices),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
-          function_outputs_on_op_device,
-          [&ctx](const int64 step_id) { return ctx.CreateRendezvous(step_id); },
-          get_op_id));
+          function_outputs_on_op_device, ctx.RendezvousCreator(), get_op_id));
     } else {
       DVLOG(2) << "Running " << ndef.op() << " using op kernel. "
                << ". Full node_def=" << ndef.DebugString();
@@ -664,7 +666,8 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
     ExecuteNode node(&ctx, *inputs, remote_func_params, kernel, graph_collector,
                      op->GetCancellationManager(),
-                     {retvals, static_cast<size_t>(num_outputs)});
+                     {retvals, static_cast<size_t>(num_outputs)},
+                     op->GetStackTrace());
     Status s = executor.SyncExecute(&node);
     // We release the inputs AFTER executing the operation in sync mode since
     // ExecuteNode does not increment the reference count and thus does not have
@@ -1106,7 +1109,8 @@ Status EagerKernelExecute(
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
     const core::RefCountPtr<KernelAndDevice>& kernel,
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,
-    absl::Span<TensorHandle*> retvals) {
+    absl::Span<TensorHandle*> retvals,
+    const absl::optional<ManagedStackTrace>& stack_trace) {
   profiler::TraceMe activity("EagerKernelExecute",
                              profiler::TraceMeLevel::kInfo);
   std::vector<EagerKernelRet> outputs(1);
@@ -1121,7 +1125,8 @@ Status EagerKernelExecute(
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
   TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
-                                 cancellation_manager, remote_func_params));
+                                 cancellation_manager, remote_func_params,
+                                 stack_trace));
   if (graph_collector != nullptr) {
     CollectGraphs(ctx);
   }

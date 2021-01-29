@@ -21,6 +21,7 @@ limitations under the License.
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/dlpack.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -295,10 +297,10 @@ static py::object TFE_ClearScalarCache() {
 }
 
 // Returns compiler IR for a given function.
-static std::string TFE_GetCompilerIr(py::handle& ctx,
-                                     const char* concrete_function_name,
-                                     const char* stage, const char* device_name,
-                                     py::handle& inputs) {
+static py::bytes TFE_GetCompilerIr(py::handle& ctx,
+                                   const char* concrete_function_name,
+                                   const char* stage, const char* device_name,
+                                   py::handle& inputs) {
   EagerContext* context = ContextFromInterface(
       reinterpret_cast<ImmediateExecutionContext*>(InputTFE_Context(ctx)));
 
@@ -306,8 +308,12 @@ static std::string TFE_GetCompilerIr(py::handle& ctx,
   IrExportStage selected_stage = [&] {
     if (s_stage == "hlo") {
       return IrExportStage::HLO;
+    } else if (s_stage == "hlo_serialized") {
+      return IrExportStage::HLO_SERIALIZED;
     } else if (s_stage == "optimized_hlo") {
       return IrExportStage::OPTIMIZED_HLO;
+    } else if (s_stage == "optimized_hlo_serialized") {
+      return IrExportStage::OPTIMIZED_HLO_SERIALIZED;
     } else if (s_stage == "optimized_hlo_dot") {
       return IrExportStage::OPTIMIZED_HLO_DOT;
     } else {
@@ -340,19 +346,21 @@ static std::string TFE_GetCompilerIr(py::handle& ctx,
                                                   d->parsed_name());
   });
   if (selected_device == devices.end()) {
-    ThrowValueError("No matching device found");
+    ThrowValueError(
+        absl::StrFormat("No matching device found for '%s'", device_name)
+            .c_str());
   }
 
-  xla::StatusOr<std::string> hlo_text =
+  xla::StatusOr<std::string> hlo_str =
       GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
                     *selected_device, context, input_handles);
 
-  if (!hlo_text.ok()) {
+  if (!hlo_str.ok()) {
     ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",
-                                    hlo_text.status().error_message())
+                                    hlo_str.status().error_message())
                         .c_str());
   }
-  return *hlo_text;
+  return py::bytes(*hlo_str);
 }
 
 }  // namespace tensorflow
@@ -516,7 +524,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
 
   m.def(
-      "TFE_GetTotalMemoryUsage", [](py::handle& ctx, const char* device_name) {
+      "TFE_GetMemoryInfo", [](py::handle& ctx, const char* device_name) {
         tensorflow::EagerContext* context = tensorflow::ContextFromInterface(
             reinterpret_cast<tensorflow::ImmediateExecutionContext*>(
                 tensorflow::InputTFE_Context(ctx)));
@@ -567,7 +575,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
         if (absl::optional<tensorflow::AllocatorStats> stats =
                 allocator->GetStats()) {
-          return stats->bytes_in_use;
+          return std::map<std::string, int64_t>{
+              {"current", stats->bytes_in_use},
+              {"peak", stats->peak_bytes_in_use}};
         }
 
         tensorflow::ThrowTypeError(
@@ -669,6 +679,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         TFE_ContextHasFunction(tensorflow::InputTFE_Context(ctx), name);
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     return output;
+  });
+  m.def("TFE_ContextListFunctionNames", [](py::handle& ctx) {
+    return tensorflow::unwrap(tensorflow::InputTFE_Context(ctx))
+        ->ListFunctionNames();
   });
   m.def("TFE_ContextEnableRunMetadata", [](py::handle& ctx) {
     TFE_ContextEnableRunMetadata(tensorflow::InputTFE_Context(ctx));

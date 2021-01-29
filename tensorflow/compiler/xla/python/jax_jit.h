@@ -22,18 +22,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace jax {
 
 // Describes the abstract shape and dtype of an argument.
 struct ArgSignature {
-  ArgSignature(xla::PrimitiveType dtype, absl::Span<const int64> shape,
+  ArgSignature(xla::PrimitiveType dtype, absl::Span<const xla::int64> shape,
                bool weak_type)
       : dtype(dtype), shape(shape.begin(), shape.end()), weak_type(weak_type) {}
   // This is the XLA dtype of the object.
   const xla::PrimitiveType dtype;
-  const absl::InlinedVector<int64, 4> shape;
+  const absl::InlinedVector<xla::int64, 4> shape;
   // JAX arguments can be of weak type, if and only if they are Python scalars
   // or `DeviceArray` values such that `aval.weak_type` is true.
   const bool weak_type;

@@ -70,6 +70,7 @@ namespace mhlo {
 namespace {
 
 constexpr char kShardingAttr[] = "mhlo.sharding";
+constexpr char kLayoutAttr[] = "layout";
 
 class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -4184,12 +4185,31 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
     const int64_t feature_group_count = in_depth / filter_in_depth;
 
     if (feature_group_count != 1) {
-      /*
-      // TODO(parkers): Convert this code to mlir.
-    filter = TransposeFilterForGroupConvolutionBackpropInput(
-        filter, filter_shape, feature_group_count, attrs.num_spatial_dims);
-        */
-      return failure();
+      // 1. Reshape filter from
+      //   [H, W, ..., filter_in_depth, out_depth] to
+      //   [H, W, ..., filter_in_depth, G, out_depth / G].
+      auto new_shape = llvm::to_vector<6>(filter_shape);
+      new_shape.back() = feature_group_count;
+      new_shape.push_back(filter_shape.back() / feature_group_count);
+      Type filter_element_ty = filter_ty.getElementType();
+      auto ty = RankedTensorType::get(new_shape, filter_element_ty);
+      filter = rewriter.create<ReshapeOp>(op.getLoc(), ty, filter);
+
+      // 2. Transpose to [H, W, ..., G, filter_in_depth, out_depth / G].
+      llvm::SmallVector<int64_t, 6> perm(num_dims + 1);
+      std::iota(perm.begin(), perm.end(), 0);
+      std::swap(perm[num_spatial_dims], perm[num_spatial_dims + 1]);
+      std::swap(new_shape[num_spatial_dims], new_shape[num_spatial_dims + 1]);
+      ty = RankedTensorType::get(new_shape, filter_element_ty);
+      filter = rewriter.create<TransposeOp>(
+          op.getLoc(), ty, filter, GetI64ElementsAttr(perm, &rewriter));
+
+      // 3. Reshape to [H, W, ..., in_depth, out_depth / G].
+      new_shape[num_spatial_dims] *= new_shape[num_spatial_dims + 1];
+      new_shape[num_spatial_dims + 1] = new_shape.back();
+      new_shape.pop_back();
+      ty = RankedTensorType::get(new_shape, filter_element_ty);
+      filter = rewriter.create<ReshapeOp>(op.getLoc(), ty, filter);
     }
 
     auto kernel_spatial_dims_attr =
@@ -4563,6 +4583,13 @@ class ConvertInfeedDequeueTupleOp
     auto data_and_token =
         rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
                                   /*infeed_config=*/rewriter.getStringAttr(""));
+
+    // Tuples are always serialized with an ascending layout. See
+    // LiteralLinearizer::LinearizeToBuffers.
+    // TODO(kramm): In the optimal case, we would be storing the actual layout
+    // here (instead of just a symbolic description).
+    data_and_token->setAttr(kLayoutAttr, rewriter.getStringAttr("ascending"));
+
     if (op._XlaSharding().hasValue()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
       // proto, so convert to a text form here.

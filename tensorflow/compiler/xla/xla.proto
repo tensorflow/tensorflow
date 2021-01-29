@@ -250,6 +250,9 @@ message DebugOptions {
   // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
   bool xla_dump_hlo_as_html = 116;
 
+  // Dump the visualization of the fusion progress.
+  bool xla_dump_fusion_visualization = 149;
+
   // If true, every time an HLO module is run, we will dump an HloSnapshot
   // (essentially, a serialized module plus its inputs) to the --xla_dump_to
   // directory.
@@ -311,7 +314,7 @@ message DebugOptions {
   // Compilation errors out if these ops are encountered.
   bool xla_gpu_deterministic_ops = 148;
 
-  // Next id: 149
+  // Next id: 150
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

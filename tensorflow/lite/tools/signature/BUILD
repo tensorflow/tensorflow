@@ -1,6 +1,6 @@
 # Utilities for signature_defs in TFLite
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
@@ -14,7 +14,7 @@ cc_library(
     name = "signature_def_util",
     srcs = ["signature_def_util.cc"],
     hdrs = ["signature_def_util.h"],
-    copts = tflite_copts() + tflite_copts_warnings(),
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
@@ -83,7 +83,7 @@ py_test(
     srcs = ["signature_def_utils_test.py"],
     data = ["//tensorflow/lite:testdata/add.bin"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_mac",
     ],

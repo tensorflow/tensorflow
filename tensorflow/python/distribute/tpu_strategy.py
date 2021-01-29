@@ -154,17 +154,26 @@ def _maybe_partial_apply_variables(fn, args, kwargs):
   positional_args = []
   index_of_star_args = None
   for i, p in enumerate(tf_inspect.signature(fn).parameters.values()):
+    # Class methods define "self" as first argument, but we don't pass "self".
+    # Note that this is a heuristic, as a method can name its first argument
+    # something else, and a function can define a first argument "self" as well.
+    # In both of these cases, using a Variable will fail with an unfortunate
+    # error about the number of arguments.
+    # inspect.is_method() seems not to work here, possibly due to the use of
+    # tf.function().
+    if i == 0 and p.name == "self":
+      continue
 
     if p.kind == tf_inspect.Parameter.POSITIONAL_OR_KEYWORD:
       positional_args.append(p.name)
 
-    if p.kind == tf_inspect.Parameter.VAR_POSITIONAL:
+    elif p.kind == tf_inspect.Parameter.VAR_POSITIONAL:
       # We'll raise an error later if a variable is passed to *args, since we
       # can neither pass it by name nor partially apply it. This case only
       # happens once at most.
       index_of_star_args = i
 
-    if p.kind == tf_inspect.Parameter.POSITIONAL_ONLY:
+    elif p.kind == tf_inspect.Parameter.POSITIONAL_ONLY:
       # This is a rare Python feature, indicating a / in the arg list.
       if var_kwargs or any(is_distributed_var(a) for a in args):
         raise ValueError(

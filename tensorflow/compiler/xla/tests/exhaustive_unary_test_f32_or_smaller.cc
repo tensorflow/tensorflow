@@ -169,8 +169,11 @@ class Exhaustive32BitOrLessUnaryTest
     : public ExhaustiveUnaryTest<T>,
       public ::testing::WithParamInterface<std::pair<int64, int64>> {
  public:
-  // Sets error parameters appropriately for testing sin/cos/tan.
-  void SetParamsForSinCosTan();
+  // Sets error parameters appropriately for testing sin/cos.
+  void SetParamsForSinCos();
+
+  // Sets error parameters appropriately for testing sin/cos.
+  void SetParamsForTan();
 
  protected:
   using typename ExhaustiveUnaryTest<T>::NativeT;
@@ -459,7 +462,35 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Tanh, {
 })
 
 template <PrimitiveType T>
-void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForSinCosTan() {
+void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForSinCos() {
+  if (this->platform_ == "Host" || this->platform_ == "CUDA") {
+    return;
+  }
+
+  // Non CPU/GPU targets may have used the Cody-Waite range reduction technique
+  // and will not provide meaningful results for sin/cos/tan if magnitudes
+  // exceed 2**p.
+  const int kFirstWrongVal = 1 << 16;
+  if (T == F32) {
+    this->known_incorrect_fn_ = [](int64 v) {
+      float f = BitCast<float>(static_cast<uint32>(v));
+      return std::abs(f) > kFirstWrongVal;
+    };
+  } else if (T == BF16) {
+    this->known_incorrect_fn_ = [](int64 v) {
+      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16>(v)));
+      return std::abs(f) > kFirstWrongVal;
+    };
+  } else if (T == F16) {
+    this->known_incorrect_fn_ = [](int64 v) {
+      float f = static_cast<float>(BitCast<half>(static_cast<uint16>(v)));
+      return std::abs(f) > kFirstWrongVal;
+    };
+  }
+}
+
+template <PrimitiveType T>
+void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForTan() {
   if (this->platform_ == "Host" || this->platform_ == "CUDA") {
     return;
   }
@@ -475,13 +506,18 @@ void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForSinCosTan() {
   } else if (T == BF16) {
     this->known_incorrect_fn_ = [](int64 v) {
       float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16>(v)));
-      return std::abs(f) > (1 << 13);
+      return std::abs(f) > (1 << 16);
+    };
+  } else if (T == F16) {
+    this->known_incorrect_fn_ = [](int64 v) {
+      float f = static_cast<float>(BitCast<half>(static_cast<uint16>(v)));
+      return std::abs(f) > (1 << 15);
     };
   }
 }
 
 UNARY_TEST_F32(Cos, {
-  SetParamsForSinCosTan();
+  SetParamsForSinCos();
   Run(
       Cos, std::cos, +[](NativeT) {
         return ErrorSpec{0.001, 0.001};
@@ -489,17 +525,17 @@ UNARY_TEST_F32(Cos, {
 })
 
 UNARY_TEST_F16(Cos, {
-  SetParamsForSinCosTan();
+  SetParamsForSinCos();
   Run(Cos, std::cos);
 })
 
 UNARY_TEST_BF16(Cos, {
-  SetParamsForSinCosTan();
+  SetParamsForSinCos();
   Run(Cos, std::cos);
 })
 
 UNARY_TEST_F32(Sin, {
-  SetParamsForSinCosTan();
+  SetParamsForSinCos();
   Run(
       Sin, std::sin, +[](NativeT) {
         return ErrorSpec{0.001, 0.001};
@@ -507,17 +543,17 @@ UNARY_TEST_F32(Sin, {
 })
 
 UNARY_TEST_F16(Sin, {
-  SetParamsForSinCosTan();
+  SetParamsForSinCos();
   Run(Sin, std::sin);
 })
 
 UNARY_TEST_BF16(Sin, {
-  SetParamsForSinCosTan();
+  SetParamsForSinCos();
   Run(Sin, std::sin);
 })
 
 UNARY_TEST_F32(Tan, {
-  SetParamsForSinCosTan();
+  SetParamsForTan();
   Run(
       Tan, std::tan, +[](NativeT) {
         return ErrorSpec{0.001, 0.001};
@@ -525,12 +561,12 @@ UNARY_TEST_F32(Tan, {
 })
 
 UNARY_TEST_F16(Tan, {
-  SetParamsForSinCosTan();
+  SetParamsForTan();
   Run(Tan, std::tan);
 })
 
 UNARY_TEST_BF16(Tan, {
-  SetParamsForSinCosTan();
+  SetParamsForTan();
   Run(Tan, std::tan);
 })
 

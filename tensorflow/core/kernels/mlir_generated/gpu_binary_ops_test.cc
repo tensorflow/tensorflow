@@ -564,27 +564,6 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Double, double, double, test::DefaultInput<double>(),
     test::DefaultInputNonZero<double>(), baseline_floor_div);
 
-/// Test `tf.RealDiv`.
-
-template <typename T>
-T baseline_real_div(T lhs, T rhs) {
-  return lhs / rhs;
-}
-
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    RealDiv,
-    /*test_name=*/Half, Eigen::half, Eigen::half,
-    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
-    baseline_real_div);
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    RealDiv,
-    /*test_name=*/Float, float, float, test::DefaultInput<float>(),
-    test::DefaultInputNonZero<float>(), baseline_real_div);
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    RealDiv,
-    /*test_name=*/Double, double, double, test::DefaultInput<double>(),
-    test::DefaultInputNonZero<double>(), baseline_real_div);
-
 /// Test `tf.Greater`.
 
 template <typename T>
@@ -700,6 +679,44 @@ GENERATE_DEFAULT_TESTS_2(LogicalOr, /*test_name=*/Bool, /*T=*/bool,
                          test::DefaultInput<bool>(), baseline_logical_or,
                          test::GpuOpsTestConfig().ExpectStrictlyEqual().NoT())
 
+/// Test `tf.Maximum`.
+
+template <typename T>
+T baseline_maximum(T lhs, T rhs) {
+  if (std::isnan(lhs) || std::isnan(rhs)) {
+    return lhs + rhs;
+  }
+  return std::max(lhs, rhs);
+}
+
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_maximum)
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Float, float, float,
+                       baseline_maximum)
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Double, double, double,
+                       baseline_maximum)
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Int64, int64, int64,
+                       baseline_maximum)
+
+/// Test `tf.Minmum`.
+
+template <typename T>
+T baseline_minimum(T lhs, T rhs) {
+  if (std::isnan(lhs) || std::isnan(rhs)) {
+    return lhs + rhs;
+  }
+  return std::min(lhs, rhs);
+}
+
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_minimum)
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Float, float, float,
+                       baseline_minimum)
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Double, double, double,
+                       baseline_minimum)
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Int64, int64, int64,
+                       baseline_minimum)
+
 /// Test `tf.Mul`.
 
 template <typename T>
@@ -737,6 +754,71 @@ GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int16, int16, bool,
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int64, int64, bool,
                        baseline_not_equal)
 
+/// Test `tf.Pow`.
+
+template <typename T>
+T baseline_pow(T lhs, T rhs) {
+  return std::pow(lhs, rhs);
+}
+
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
+absl::InlinedVector<T, 10> PowInput() {
+  return test::InputAsVector<T, double>({0.0, 0.1, 0.2, 0.3, 1.0, 2.0, 3.0});
+}
+
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
+                           bool> = true>
+absl::InlinedVector<T, 10> PowInput() {
+  return test::InputAsVector<T, double>({-2, -1, -1, 1, 1, 3});
+}
+
+template <>
+Eigen::half baseline_pow(Eigen::half lhs, Eigen::half rhs) {
+  return static_cast<Eigen::half>(
+      std::pow(static_cast<float>(lhs), static_cast<float>(rhs)));
+}
+
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(Pow,
+                                                  /*test_name=*/Half,
+                                                  Eigen::half, Eigen::half,
+                                                  PowInput<Eigen::half>(),
+                                                  PowInput<Eigen::half>(),
+                                                  baseline_pow)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(Pow,
+                                                  /*test_name=*/Float, float,
+                                                  float, PowInput<float>(),
+                                                  PowInput<float>(),
+                                                  baseline_pow)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(Pow,
+                                                  /*test_name=*/Double, double,
+                                                  double, PowInput<double>(),
+                                                  PowInput<double>(),
+                                                  baseline_pow)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(Pow,
+                                                  /*test_name=*/Int64, int64,
+                                                  int64, PowInput<int64>(),
+                                                  PowInput<int64>(),
+                                                  baseline_pow)
+
+/// Test `tf.RealDiv`.
+
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Half, Eigen::half, Eigen::half,
+    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
+    baseline_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Float, float, float, test::DefaultInput<float>(),
+    test::DefaultInputNonZero<float>(), baseline_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RealDiv,
+    /*test_name=*/Double, double, double, test::DefaultInput<double>(),
+    test::DefaultInputNonZero<double>(), baseline_div);
+
 /// Test `tf.RightShift`.
 
 template <typename T>
@@ -761,6 +843,22 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputLessThanBitwidth<int64>(), baseline_right_shift)
 
+/// Test `tf.SquaredDifference`.
+
+template <typename T>
+T baseline_squared_difference(T lhs, T rhs) {
+  return (lhs - rhs) * (lhs - rhs);
+}
+
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Half, Eigen::half,
+                       Eigen::half, baseline_squared_difference)
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Float, float, float,
+                       baseline_squared_difference)
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Double, double, double,
+                       baseline_squared_difference)
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Int64, int64, int64,
+                       baseline_squared_difference)
+
 /// Test `tf.Sub`.
 
 template <typename T>
@@ -778,5 +876,16 @@ GENERATE_DEFAULT_TESTS(Sub,
 GENERATE_DEFAULT_TESTS(Sub,
                        /*test_name=*/Int64, int64, int64, baseline_sub)
 
+/// Test `tf.TruncateDiv`.
+
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    TruncateDiv,
+    /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
+    test::DefaultInputNonZero<int16>(), baseline_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    TruncateDiv,
+    /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
+    test::DefaultInputNonZero<int64>(), baseline_div);
+
 }  // namespace
-}  // end namespace tensorflow
+}  // namespace tensorflow

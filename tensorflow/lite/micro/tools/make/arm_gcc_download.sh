@@ -55,7 +55,7 @@ else
     EXPECTED_MD5="8312c4c91799885f222f663fc81f9a31"
   elif [ ${UNAME_S} == Darwin ]; then
     GCC_URL="https://developer.arm.com/-/media/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-mac.tar.bz2"
-    EXPECTED_MD5="bc8ae26d7c429f30d583a605a4bcf9bc"
+    EXPECTED_MD5="e588d21be5a0cc9caa60938d2422b058"
   else
     echo "OS type ${UNAME_S} not supported."
     exit 1

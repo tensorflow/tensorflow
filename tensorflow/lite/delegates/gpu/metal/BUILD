@@ -115,6 +115,7 @@ objc_library(
         ":metal_arguments",
         ":metal_device",
         ":metal_spatial_tensor",
+        "//tensorflow/lite/delegates/gpu/common:kernel_info",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -122,6 +123,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -179,6 +181,10 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
+        "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
+        "//tensorflow/lite/delegates/gpu/common/transformations:add_bias",
+        "//tensorflow/lite/delegates/gpu/common/transformations:global_pooling_to_reduce_op",
+        "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
         "//tensorflow/lite/delegates/gpu/metal/selectors:operation_selector",
         "//tensorflow/lite/delegates/gpu/metal/selectors:subgraph",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -194,6 +200,7 @@ objc_library(
     ],
     sdk_frameworks = ["Metal"],
     deps = [
+        ":common",
         ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -249,6 +256,7 @@ objc_library(
     ],
     sdk_frameworks = ["Metal"],
     deps = [
+        ":common",
         ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",

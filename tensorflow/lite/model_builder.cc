@@ -14,20 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/model_builder.h"
 
-#include <fcntl.h>
+#include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/verifier.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/util.h"
-#include "tensorflow/lite/version.h"
+#include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 

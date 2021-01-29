@@ -16,6 +16,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -59,7 +60,7 @@ Value CalculateShapeValue(Location loc, Value operand,
   for (int64_t i = 0; i < rank; ++i) {
     shape_values.push_back(rewriter.create<mlir::DimOp>(loc, operand, i));
   }
-  return rewriter.create<TensorFromElementsOp>(loc, shape_values);
+  return rewriter.create<tensor::FromElementsOp>(loc, shape_values);
 }
 
 Value MaterializeEpsilon(Operation* op, FloatAttr epsilon_attr,

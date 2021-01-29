@@ -4,7 +4,14 @@
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
-load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "VERSION",
+    "if_oss",
+    "tf_cc_shared_object",
+    "tf_custom_op_library_additional_deps_impl",
+    "tf_native_cc_binary",
+)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
@@ -114,6 +121,29 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "chromiumos_x86_64",
+#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     values = {"cpu": "k8"},
+#     visibility = ["//visibility:public"],
+# )
+#
+# config_setting(
+#     name = "chromiumos_arm64",
+#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     values = {"cpu": "arm"},
+#     visibility = ["//visibility:public"],
+# )
+#
+# config_setting(
+#     name = "chromiumos_armv7",
+#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     values = {"cpu": "armeabi-v7a"},
+#     visibility = ["//visibility:public"],
+# )
+# copybara:uncomment_end
+
 config_setting(
     name = "emscripten",
     values = {"crosstool_top": "//external:android/emscripten"},
@@ -201,6 +231,7 @@ selects.config_setting_group(
         ":macos_x86_64",
         ":macos_arm64",
     ],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -263,6 +294,12 @@ config_setting(
 config_setting(
     name = "linux_mips64",
     values = {"cpu": "mips64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_riscv64",
+    values = {"cpu": "riscv64"},
     visibility = ["//visibility:public"],
 )
 
@@ -440,16 +477,20 @@ config_setting(
 
 # Config setting to use in select()s to distinguish open source build from
 # google internal build on configurable attributes.
+#
+# For non-configurable distinction between OSS and Google builds, see
+# `if_oss()` and `if_google()` macros in tensorflow.bzl.
 config_setting(
     name = "oss",
     flag_values = {":oss_setting": "True"},
     visibility = ["//visibility:public"],
 )
 
-# Fixed setting to indicate open source build.
+# Non-configurable setting to indicate open source build.
 bool_setting(
     name = "oss_setting",
-    build_setting_default = True,
+    build_setting_default = if_oss(True, False),
+    visibility = ["//visibility:private"],
 )
 
 config_setting(
@@ -567,6 +608,17 @@ selects.config_setting_group(
     ],
 )
 
+# This flag disables all google production dependencies, intended for
+# applications run with non-prod environment.
+# TODO(timshen): Currently this option only disables some dependencies.
+# See b/122528503.
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "no_prod_deps",
+#     define_values = {"tf_no_prod_deps": "1"},
+# )
+# copybara:uncomment_end
+
 config_setting(
     name = "lite_protos_legacy",
     define_values = {"TENSORFLOW_PROTOS": "lite"},
@@ -599,6 +651,14 @@ selects.config_setting_group(
         ":mobile",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "portable_proto_force_third_party",
+#     define_values = {"PORTABLE_PROTO_TRANSITION_MODE": "third_party"},
+#     visibility = ["//visibility:public"],
+# )
+# copybara:uncomment_end
 
 # 'enable_registration_v2' opts-in to a different implementation of op and
 # kernel registration - REGISTER_OP, REGISTER_KERNEL_BUILDER, etc.
@@ -671,6 +731,7 @@ bzl_library(
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
+        "@bazel_skylib//lib:new_sets",
         "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
@@ -833,12 +894,12 @@ tf_cc_shared_object(
     per_os_targets = True,
     soversion = VERSION,
     visibility = ["//visibility:public"],
-    # add win_def_file for tensorflow
+    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
         "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
+    # copybara:comment_end
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
@@ -866,12 +927,12 @@ tf_cc_shared_object(
     per_os_targets = True,
     soversion = VERSION,
     visibility = ["//visibility:public"],
-    # add win_def_file for tensorflow_cc
+    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
         "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
+    # copybara:comment_end
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
         "//tensorflow:tf_version_script.lds",

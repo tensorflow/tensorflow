@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -41,7 +42,7 @@ template <>
 struct LhloToScalarOp<lmhlo::AddOp> {
   using FOp = ::mlir::AddFOp;
   using IOp = ::mlir::AddIOp;
-  using COp = ::mlir::AddCFOp;
+  using COp = ::mlir::complex::AddOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::CompareOp> {
@@ -67,7 +68,7 @@ template <>
 struct LhloToScalarOp<lmhlo::SubOp> {
   using FOp = ::mlir::SubFOp;
   using IOp = ::mlir::SubIOp;
-  using COp = ::mlir::SubCFOp;
+  using COp = ::mlir::complex::SubOp;
 };
 
 // Alias for the map from LHLO binary op type to STD floating-point op type.
@@ -261,8 +262,8 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::ComplexOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
     OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<CreateComplexOp>{}(loc, result_types, args,
-                                                       b);
+  return MapLhloOpToStdScalarOpImpl<complex::CreateOp>{}(loc, result_types,
+                                                         args, b);
 }
 
 template <>
@@ -270,7 +271,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::RealOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<ReOp>{}(loc, result_types, args, b);
+  return MapLhloOpToStdScalarOpImpl<complex::ReOp>{}(loc, result_types, args,
+                                                     b);
 }
 
 template <>
@@ -278,7 +280,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ImagOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<ImOp>{}(loc, result_types, args, b);
+  return MapLhloOpToStdScalarOpImpl<complex::ImOp>{}(loc, result_types, args,
+                                                     b);
 }
 
 template <>
@@ -288,7 +291,12 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
   Type sourceType = getElementTypeOrSelf(args.front().getType());
   Type targetType = getElementTypeOrSelf(result_types.front());
 
-  if (mlir::SIToFPOp::areCastCompatible(sourceType, targetType)) {
+  // A boolean value is considered to be unsigned when converting to
+  // floating-point. Otherwise, it will become `-1`.
+  if (sourceType.isInteger(/*width=*/1) &&
+      mlir::UIToFPOp::areCastCompatible(sourceType, targetType)) {
+    return b->create<mlir::UIToFPOp>(loc, result_types, args, mlir::None);
+  } else if (mlir::SIToFPOp::areCastCompatible(sourceType, targetType)) {
     return b->create<mlir::SIToFPOp>(loc, result_types, args, mlir::None);
   } else if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
     FloatType src = sourceType.cast<FloatType>();
@@ -429,16 +437,43 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::LogOp>(Location loc,
       loc, result_types, args, b);
 }
 
+inline Value LhloAlwaysPropagateNaN(Value v, ArrayRef<Value> args, Location loc,
+                                    OpBuilder* b) {
+  Type element_type = getElementTypeOrSelf(args.front().getType());
+  if (auto float_type = element_type.dyn_cast<FloatType>()) {
+    Value isnan =
+        b->create<mlir::CmpFOp>(loc, CmpFPredicate::UNO, args[0], args[1]);
+
+    auto nan_apfloat = APFloat::getQNaN(float_type.getFloatSemantics());
+    Value nan = b->create<mlir::ConstantFloatOp>(loc, nan_apfloat, float_type);
+    if (VectorType vec_type = args[0].getType().dyn_cast<VectorType>()) {
+      nan = b->create<::mlir::SplatOp>(loc, vec_type, nan);
+    }
+    v = b->create<mlir::SelectOp>(loc, isnan, nan, v);
+  }
+  return v;
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::LogisticOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  auto ty = result_types.front().cast<FloatType>();
+  Value one = b->create<ConstantOp>(loc, b->getFloatAttr(ty, 1.0));
+  Value x = args.front();
+  Value neg_x = b->create<NegFOp>(loc, x);
+  Value exp_neg_x = b->create<::mlir::ExpOp>(loc, neg_x);
+  Value one_add_exp_neg_x = b->create<AddFOp>(loc, one, exp_neg_x);
+  return b->create<DivFOp>(loc, one, one_add_exp_neg_x);
+}
+
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::Log1pOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
                                                     OpBuilder* b) {
-  auto ty = result_types.front().cast<FloatType>();
-  Value x = args.front();
-  Value one = b->create<ConstantOp>(loc, b->getFloatAttr(ty, 1.0));
-  Value x_plus_one = b->create<AddFOp>(loc, x, one);
-  return b->create<::mlir::LogOp>(loc, x_plus_one);
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::Log1pOp>{}(
+      loc, result_types, args, b);
 }
 
 template <>
@@ -446,10 +481,13 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MaxOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return CompareSelectOpToStdScalarOp<
-      IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
-      ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "GT", result_types,
-                                                       args, b);
+  return LhloAlwaysPropagateNaN(
+      CompareSelectOpToStdScalarOp<
+          IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
+          ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "GT",
+                                                           result_types, args,
+                                                           b),
+      args, loc, b);
 }
 
 template <>
@@ -457,10 +495,13 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MinOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return CompareSelectOpToStdScalarOp<
-      IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
-      ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "LT", result_types,
-                                                       args, b);
+  return LhloAlwaysPropagateNaN(
+      CompareSelectOpToStdScalarOp<
+          IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
+          ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "LT",
+                                                           result_types, args,
+                                                           b),
+      args, loc, b);
 }
 
 template <>

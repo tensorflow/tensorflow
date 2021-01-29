@@ -59,6 +59,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
                processing_mode,
                address,
                protocol,
+               data_transfer_protocol,
                job_name=None,
                consumer_index=None,
                num_consumers=None,
@@ -76,6 +77,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
       address: The tf.data service address, e.g. "localhost:5000".
       protocol: The protocol to use for communicating with the tf.data service,
         e.g. "grpc".
+      data_transfer_protocol: The protocol to use for transferring data with the
+        tf.data service, e.g. "grpc".
       job_name: (Optional.) The name of the job. This argument makes it possible
         for multiple datasets to share the same job. The default behavior is
         that the dataset creates anonymous, exclusively owned jobs.
@@ -138,6 +141,10 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     # represented by scalar DT_VARIANTs.
     self._element_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
 
+    compat_kwargs = {}
+    if data_transfer_protocol is not None:
+      compat_kwargs["data_transfer_protocol"] = data_transfer_protocol
+
     if num_consumers is None:
       variant_tensor = gen_experimental_dataset_ops.data_service_dataset(
           dataset_id=self._dataset_id,
@@ -149,6 +156,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
           task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
           iteration_counter=gen_experimental_dataset_ops
           .dummy_iteration_counter(),
+          **compat_kwargs,
           **self._flat_structure)
     else:
       variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v2(
@@ -163,6 +171,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
           task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
           iteration_counter=gen_experimental_dataset_ops
           .dummy_iteration_counter(),
+          **compat_kwargs,
           **self._flat_structure)
     super(_DataServiceDatasetV2, self).__init__(variant_tensor)
 
@@ -175,15 +184,16 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
   """A `Dataset` that executes its input through the tf.data service."""
 
   @functools.wraps(_DataServiceDatasetV2.__init__)
-  def __init__(self, dataset_id, processing_mode, address, protocol, job_name,
-               consumer_index, num_consumers, max_outstanding_requests,
-               task_refresh_interval_hint_ms):
+  def __init__(self, dataset_id, processing_mode, address, protocol,
+               data_transfer_protocol, job_name, consumer_index, num_consumers,
+               max_outstanding_requests, task_refresh_interval_hint_ms):
 
     self._wrapped = _DataServiceDatasetV2(
         dataset_id=dataset_id,
         processing_mode=processing_mode,
         address=address,
         protocol=protocol,
+        data_transfer_protocol=data_transfer_protocol,
         job_name=job_name,
         consumer_index=consumer_index,
         num_consumers=num_consumers,
@@ -233,7 +243,8 @@ def _from_dataset_id(processing_mode,
                      consumer_index=None,
                      num_consumers=None,
                      max_outstanding_requests=None,
-                     task_refresh_interval_hint_ms=None):
+                     task_refresh_interval_hint_ms=None,
+                     data_transfer_protocol=None):
   """Creates a dataset which reads data from the tf.data service.
 
   This transformation is similar to `from_dataset_id`, but supports additional
@@ -274,6 +285,8 @@ def _from_dataset_id(processing_mode,
       `max_outstanding_requests` of memory.
     task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
       dispatcher for task changes.
+    data_transfer_protocol: (Optional.) The protocol to use for transferring
+      data with the tf.data service.
 
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
@@ -294,6 +307,7 @@ def _from_dataset_id(processing_mode,
       processing_mode=processing_mode,
       address=address,
       protocol=protocol,
+      data_transfer_protocol=data_transfer_protocol,
       job_name=job_name,
       consumer_index=consumer_index,
       num_consumers=num_consumers,
@@ -317,7 +331,8 @@ def _distribute(processing_mode,
                 consumer_index=None,
                 num_consumers=None,
                 max_outstanding_requests=None,
-                task_refresh_interval_hint_ms=None):
+                task_refresh_interval_hint_ms=None,
+                data_transfer_protocol=None):
   """A transformation that moves dataset processing to the tf.data service.
 
   This transformation is similar to `distribute`, but supports additional
@@ -352,6 +367,8 @@ def _distribute(processing_mode,
       `max_outstanding_requests` of memory.
     task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
       dispatcher for task changes.
+    data_transfer_protocol: (Optional.) The protocol to use for transferring
+      data with the tf.data service.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
@@ -369,7 +386,8 @@ def _distribute(processing_mode,
         consumer_index=consumer_index,
         num_consumers=num_consumers,
         max_outstanding_requests=max_outstanding_requests,
-        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
+        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+        data_transfer_protocol=data_transfer_protocol)
 
   return _apply_fn
 
@@ -380,7 +398,8 @@ def distribute(processing_mode,
                job_name=None,
                consumer_index=None,
                num_consumers=None,
-               max_outstanding_requests=None):
+               max_outstanding_requests=None,
+               data_transfer_protocol=None):
   """A transformation that moves dataset processing to the tf.data service.
 
   When you iterate over a dataset containing the `distribute` transformation,
@@ -580,6 +599,8 @@ def distribute(processing_mode,
       requested at the same time. You can use this option to control the amount
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
+    data_transfer_protocol: (Optional.) The protocol to use for transferring
+      data with the tf.data service, e.g. "grpc".
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
@@ -590,7 +611,8 @@ def distribute(processing_mode,
       job_name=job_name,
       consumer_index=consumer_index,
       num_consumers=num_consumers,
-      max_outstanding_requests=max_outstanding_requests)
+      max_outstanding_requests=max_outstanding_requests,
+      data_transfer_protocol=data_transfer_protocol)
 
 
 @tf_export("data.experimental.service.register_dataset")

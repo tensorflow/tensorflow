@@ -3425,7 +3425,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     }
   }
 
-  if (has_negative) {
+  if (has_negative && options_.enable_negative_padding_replacement()) {
     // Pad has negative padding. Replace with a pad with the non-negative
     // padding followed by a slice which effectively performs the negative
     // padding.
@@ -3624,6 +3624,7 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
           new_operands.push_back(
               computation_->AddInstruction(HloInstruction::CreateBroadcast(
                   changed_shape, user_operand->mutable_operand(0), {})));
+          user_operand->SetupDerivedInstruction(new_operands.back());
         } else {
           // For the non-scalar broadcasts we guarantee that the shape of the
           // operand of the broadcast needs to be already a compatible shape.
@@ -3646,6 +3647,7 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
     HloInstruction* new_broadcast =
         computation_->AddInstruction(HloInstruction::CreateBroadcast(
             user->shape(), new_user, broadcast->dimensions()));
+    broadcast->SetupDerivedInstruction(new_broadcast);
     VLOG(4) << "  new broadcast: " << new_broadcast->ToString();
     TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(new_broadcast));
     changed = true;

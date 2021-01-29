@@ -86,16 +86,16 @@ class InvalidLayer(base_layer.Layer):
 
 class BaseLayerTest(keras_parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.keras_mode_combinations())
   def test_layer_instrumentation(self):
     layer = layers.Add()
     self.assertTrue(layer._instrumented_keras_api)
     self.assertTrue(layer._instrumented_keras_layer_class)
     self.assertFalse(layer._instrumented_keras_model_class)
+    self.assertTrue(base_layer.keras_api_gauge.get_cell('tf.keras.layers.Add'))
+    base_layer.keras_api_gauge.get_cell('tf.keras.layers.Add').set(False)
 
-  @combinations.generate(combinations.times(
-      combinations.keras_model_type_combinations(),
-      combinations.keras_tensor_combinations()))
+  @combinations.generate(combinations.keras_model_type_combinations())
   def test_dynamic_layer(self):
     model = testing_utils.get_model_from_layers([DynamicLayer(dynamic=True)],
                                                 input_shape=(3,))
@@ -104,9 +104,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertEqual(model.run_eagerly, True)
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
 
-  @combinations.generate(combinations.times(
-      combinations.keras_model_type_combinations(),
-      combinations.keras_tensor_combinations()))
+  @combinations.generate(combinations.keras_model_type_combinations())
   def test_dynamic_layer_error(self):
     # Functional Models hit the `dyanamic=True` error during construction.
     # Subclass Models should just throw the original autograph error during
@@ -125,9 +123,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
         raised_error = True
     self.assertTrue(raised_error)
 
-  @combinations.generate(combinations.times(
-      combinations.keras_model_type_combinations(),
-      combinations.keras_tensor_combinations()))
+  @combinations.generate(combinations.keras_model_type_combinations())
   def test_dynamic_layer_error_running_in_graph_mode(self):
     with ops.get_default_graph().as_default():
       model = testing_utils.get_model_from_layers([DynamicLayer(dynamic=True)],
@@ -292,7 +288,6 @@ class BaseLayerTest(keras_parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           combinations.keras_model_type_combinations(),
-          combinations.keras_tensor_combinations(),
           combinations.combine(mode=['graph', 'eager'])))
   def test_build_with_numpy_data(self):
     model_layers = [
@@ -393,8 +388,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
   # b/124459427: can't test with `run_eagerly=True` for now.
   @combinations.generate(
       combinations.times(combinations.keras_mode_combinations(),
-                         combinations.keras_model_type_combinations(),
-                         combinations.keras_tensor_combinations()))
+                         combinations.keras_model_type_combinations()))
   def test_training_arg_in_defun(self):
     layer = self._get_layer_with_training_arg()
     model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
@@ -419,8 +413,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(combinations.keras_mode_combinations(),
-                         combinations.keras_model_type_combinations(),
-                         combinations.keras_tensor_combinations()))
+                         combinations.keras_model_type_combinations()))
   def test_raw_variable_assignment(self):
 
     class RawVariableLayer(base_layer.Layer):
@@ -488,65 +481,47 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_layer_names(self):
-    with testing_utils.use_keras_tensors_scope(False):
-      inputs = input_layer.Input(shape=[2])
-      add1 = inputs + inputs
-      add2 = layers.Add()([inputs, inputs])
-      add3 = inputs + inputs
-      add4 = layers.Add()([inputs, inputs])
-      model = training_lib.Model(
-          inputs=[inputs], outputs=[add1, add2, add3, add4])
-      actual_names = [l.name for l in model.layers]
-      graph_names = [
-          'input_1', 'tf_op_layer_AddV2', 'add', 'tf_op_layer_AddV2_1', 'add_1'
-      ]
-      eager_names = [
-          'input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'
-      ]
-      for actual, eager, graph in zip(actual_names, graph_names, eager_names):
-        self.assertIn(actual, {eager, graph})
-    if context.executing_eagerly():
-      backend.clear_session()
-      with testing_utils.use_keras_tensors_scope(True):
-        inputs = input_layer.Input(shape=[2])
-        add1 = inputs + inputs
-        add2 = layers.Add()([inputs, inputs])
-        add3 = inputs + inputs
-        add4 = layers.Add()([inputs, inputs])
-        model = training_lib.Model(
-            inputs=[inputs], outputs=[add1, add2, add3, add4])
-        actual_names = [l.name for l in model.layers]
-        expected_names = [
-            'input_1', 'tf.__operators__.add', 'add', 'tf.__operators__.add_1',
-            'add_1'
-        ]
-        self.assertAllEqual(actual_names, expected_names)
+    inputs = input_layer.Input(shape=[2])
+    add1 = inputs + inputs
+    add2 = layers.Add()([inputs, inputs])
+    add3 = inputs + inputs
+    add4 = layers.Add()([inputs, inputs])
+    model = training_lib.Model(inputs=[inputs],
+                               outputs=[add1, add2, add3, add4])
+    actual_names = [l.name for l in model.layers]
+    graph_names = [
+        'input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'
+    ]
+    eager_names = [
+        'input_1', 'tf.__operators__.add', 'add', 'tf.__operators__.add_1',
+        'add_1'
+    ]
+    for actual, eager, graph in zip(actual_names, graph_names, eager_names):
+      self.assertIn(actual, {eager, graph})
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_layer_names_after_loading(self):
-    if context.executing_eagerly():
-      backend.clear_session()
-      with testing_utils.use_keras_tensors_scope(True):
-        # Mimic loading a model that already contained add layers with
-        # name = 'add_1' and 'tf.__operators__.add'
-        layers.Add(name='add_1')
-        layers.Add(name='tf.__operators__.add')
+    backend.clear_session()
+    # Mimic loading a model that already contained add layers with
+    # name = 'add_1' and 'tf.__operators__.add'
+    layers.Add(name='add_1')
+    layers.Add(name='tf.__operators__.add')
 
-        inputs = input_layer.Input(shape=[2])
-        add1 = inputs + inputs
-        add2 = layers.Add()([inputs, inputs])
-        add3 = inputs + inputs
-        add4 = layers.Add()([inputs, inputs])
-        model = training_lib.Model(
-            inputs=[inputs], outputs=[add1, add2, add3, add4])
-        actual_names = [l.name for l in model.layers]
-        # The generated op layer names should have avoided layer names seen in
-        # the loaded model. (This avoiance should not apply to non-op-layers)
-        expected_names = [
-            'input_1', 'tf.__operators__.add_1',
-            'add', 'tf.__operators__.add_2', 'add_1'
-        ]
-        self.assertAllEqual(actual_names, expected_names)
+    inputs = input_layer.Input(shape=[2])
+    add1 = inputs + inputs
+    add2 = layers.Add()([inputs, inputs])
+    add3 = inputs + inputs
+    add4 = layers.Add()([inputs, inputs])
+    model = training_lib.Model(
+        inputs=[inputs], outputs=[add1, add2, add3, add4])
+    actual_names = [l.name for l in model.layers]
+    # The generated op layer names should have avoided layer names seen in
+    # the loaded model. (This avoiance should not apply to non-op-layers)
+    expected_names = [
+        'input_1', 'tf.__operators__.add_1',
+        'add', 'tf.__operators__.add_2', 'add_1'
+    ]
+    self.assertAllEqual(actual_names, expected_names)
 
   def test_add_trainable_weight_on_frozen_layer(self):
 
@@ -999,7 +974,7 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
 
     tmp_dir = self.get_temp_dir()
     writer = summary_ops_v2.create_file_writer_v2(tmp_dir)
-    with writer.as_default(), summary_ops_v2.record_if(True):
+    with writer.as_default(step=1), summary_ops_v2.record_if(True):
       my_layer = MyLayer()
       x = array_ops.ones((10, 10))
 
