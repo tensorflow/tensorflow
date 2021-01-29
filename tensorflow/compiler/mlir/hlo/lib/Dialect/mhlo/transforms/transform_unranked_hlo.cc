@@ -54,7 +54,7 @@ namespace {
 #define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep)                            \
   fn(AcosOp) sep fn(AcoshOp) sep fn(AsinOp) sep fn(AsinhOp) sep fn(AtanOp) \
       sep fn(AtanhOp) sep fn(ConjOp) sep fn(CoshOp) sep fn(ErfOp)          \
-          sep fn(ErfcOp) sep fn(SinhOp) sep fn(TanOp)
+          sep fn(ErfcOp) sep fn(LgammaOp) sep fn(SinhOp) sep fn(TanOp)
 
 template <typename OpTy>
 inline void AddLegalOpOnRankedTensor(ConversionTarget *target) {
