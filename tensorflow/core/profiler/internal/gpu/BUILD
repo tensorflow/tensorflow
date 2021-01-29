@@ -31,10 +31,9 @@ tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
     copts = tf_profiler_copts() + tf_copts(),
-    cuda_deps = if_cuda_is_configured_compat([
+    cuda_deps = if_gpu_is_configured_compat([
         "//tensorflow/core/profiler/internal/gpu:cupti_tracer",
         "//tensorflow/core/profiler/internal/gpu:cupti_wrapper",
-    ]) + if_rocm_is_configured_compat([
         "//tensorflow/core/profiler/internal/gpu:rocm_tracer",
     ]),
     deps = [
