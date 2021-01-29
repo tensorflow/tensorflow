@@ -1457,7 +1457,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   Status status;
 
   string x_format = fused_node.attr().at(kDataFormat).s();
-  if (x_format == "NCHW" or x_format == "NCDHW") {
+  if (x_format == "NCHW" || x_format == "NCDHW") {
     // Need to reshape the last 4 inputs
     NodeDef new_shape;
     const string new_shape_name =
