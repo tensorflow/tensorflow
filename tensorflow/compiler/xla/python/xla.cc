@@ -372,6 +372,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("execute", &PyExecutable::Execute, py::arg("arguments"))
       .def("execute_on_local_devices", &PyExecutable::ExecuteOnLocalDevices,
            py::arg("arguments"))
+      .def("execute_sharded_on_local_devices",
+           &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)
       .def_property_readonly("traceback", &PyExecutable::traceback);
 
