@@ -45,6 +45,7 @@ load(
     "if_mkl_open_source_only",
     "if_mkldnn_threadpool",
 )
+load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
 # version for the shared libraries, can
@@ -1783,20 +1784,27 @@ def _dep_label(dep):
 
 # This rule checks that the transitive dependencies of targets listed
 # in the 'deps' attribute don't depend on the targets listed in
-# the 'disallowed_deps' attribute.
+# the 'disallowed_deps' attribute, but do depend on the targets listed in the
+# 'required_deps' attribute.
 def _check_deps_impl(ctx):
+    required_deps = ctx.attr.required_deps
     disallowed_deps = ctx.attr.disallowed_deps
     for input_dep in ctx.attr.deps:
         if not hasattr(input_dep, "tf_collected_deps"):
             continue
-        for dep in input_dep.tf_collected_deps.to_list():
-            for disallowed_dep in disallowed_deps:
-                if dep == disallowed_dep.label:
-                    fail(
-                        _dep_label(input_dep) + " cannot depend on " + _dep_label(
-                            disallowed_dep,
-                        ),
-                    )
+        collected_deps = sets.make(input_dep.tf_collected_deps.to_list())
+        for disallowed_dep in disallowed_deps:
+            if sets.contains(collected_deps, disallowed_dep.label):
+                fail(
+                    _dep_label(input_dep) + " cannot depend on " +
+                    _dep_label(disallowed_dep),
+                )
+        for required_dep in required_deps:
+            if not sets.contains(collected_deps, required_dep.label):
+                fail(
+                    _dep_label(input_dep) + " must depend on " +
+                    _dep_label(required_dep),
+                )
     return struct()
 
 check_deps = rule(
@@ -1808,7 +1816,11 @@ check_deps = rule(
             allow_files = True,
         ),
         "disallowed_deps": attr.label_list(
-            mandatory = True,
+            default = [],
+            allow_files = True,
+        ),
+        "required_deps": attr.label_list(
+            default = [],
             allow_files = True,
         ),
     },
