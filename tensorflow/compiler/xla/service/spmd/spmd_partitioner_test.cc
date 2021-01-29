@@ -5731,34 +5731,6 @@ ENTRY entry {
 }
 
 TEST_F(SpmdPartitioningTest,
-       PartialReplicateToPartialReplicateReshard_DynamicSlice2) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  %param0 = f32[8,8] parameter(0)
-  %copy = f32[8,8] copy(%param0),
-    sharding={devices=[1,1,8]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
-  ROOT %copy0 = f32[8,8] copy(%copy),
-    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
-  VLOG(1) << module->ToString();
-  auto partially_replicated =
-      AllOf(op::Shape("f32[8,8]"),
-            op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
-                                      op::Constant())));
-  auto tiled =
-      AllOf(op::Shape("f32[4,4]"),
-            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
-                                      op::Subtract())));
-  auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, tiled);
-}
-
-TEST_F(SpmdPartitioningTest,
        PartialReplicateToPartialReplicateReshardWithCollectivePermute) {
   absl::string_view hlo_string = R"(
 HloModule module
