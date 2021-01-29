@@ -20,12 +20,9 @@ from __future__ import print_function
 import os
 import shutil
 
-from tensorflow.python.eager import context
-from tensorflow.python.client import session
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import snapshot
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import errors_impl as errors
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import test
 
