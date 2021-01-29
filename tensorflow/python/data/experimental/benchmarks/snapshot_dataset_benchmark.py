@@ -107,7 +107,14 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
     )
 
     # Consume only 1 element, thus making sure we don't finalize.
-    self.consume_dataset(dataset=dataset, num_elements=1)
+    self.run_benchmark(
+        dataset=dataset,
+        num_elements=1,
+        iters=1,
+        warmup=False,
+        apply_default_optimizations=True
+    )
+    # Now run the actual benchmarks and report them
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
@@ -123,7 +130,14 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
     )
 
     # consume all the elements to let snapshot write things to disk
-    self.consume_dataset(dataset=dataset, num_elements=num_elements)
+    self.run_benchmark(
+        dataset=dataset,
+        num_elements=num_elements,
+        iters=1,
+        warmup=False,
+        apply_default_optimizations=True
+    )
+    # Now run the actual benchmarks and report them
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
@@ -139,7 +153,15 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
         compression=snapshot.COMPRESSION_GZIP
     )
 
-    self.consume_dataset(dataset=dataset, num_elements=num_elements)
+    # consume all the elements to let snapshot write things to disk
+    self.run_benchmark(
+        dataset=dataset,
+        num_elements=num_elements,
+        iters=1,
+        warmup=False,
+        apply_default_optimizations=True
+    )
+    # Now run the actual benchmarks and report them
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,
@@ -155,7 +177,15 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
         compression=snapshot.COMPRESSION_SNAPPY
     )
 
-    self.consume_dataset(dataset=dataset, num_elements=num_elements)
+    # consume all the elements to let snapshot write things to disk
+    self.run_benchmark(
+        dataset=dataset,
+        num_elements=num_elements,
+        iters=1,
+        warmup=False,
+        apply_default_optimizations=True
+    )
+    # Now run the actual benchmarks and report them
     self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=num_elements,

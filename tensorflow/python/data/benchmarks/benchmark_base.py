@@ -70,9 +70,9 @@ class DatasetBenchmarkBase(test.Benchmark):
     # to execute upstream computation. If it is optimized in the future,
     # we will have to change this code.
     dataset = dataset.skip(num_elements - 1)
+    deltas = []
 
     if context.executing_eagerly():
-      deltas = []
       for _ in range(iters):
         if warmup:
           iterator = iter(dataset)
@@ -89,7 +89,6 @@ class DatasetBenchmarkBase(test.Benchmark):
     next_element = iterator.get_next()
     next_element = nest.flatten(next_element)[0]
 
-    deltas = []
     for _ in range(iters):
       with session.Session() as sess:
         if warmup:
@@ -148,31 +147,3 @@ class DatasetBenchmarkBase(test.Benchmark):
     self.report_benchmark(
         wall_time=wall_time, iters=iters, name=name, extras=extras)
     return wall_time
-
-  def consume_dataset(self, dataset, num_elements):
-    """Consumes num_elements of the dataset.
-
-    Args:
-      dataset: A tf.data.Dataset to consume data from.
-      num_elements: Number of dataset elements to iterate through.
-    """
-
-    # NOTE: We use `dataset.skip()` to perform the iterations in C++, avoiding
-    # the overhead of having to execute a TensorFlow op for each step of the input
-    # pipeline. Note that this relies on the underlying implementation of `skip`
-    # to execute upstream computation. If it is optimized in the future,
-    # we will have to change this code.
-    dataset = dataset.skip(num_elements - 1)
-    if context.executing_eagerly():
-      iterator = iter(dataset)
-      try:
-        next(iterator)
-      except StopIteration:
-        pass
-    else:
-      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
-      with session.Session() as sess:
-        try:
-          sess.run(next_element)
-        except errors.OutOfRangeError:
-          pass
