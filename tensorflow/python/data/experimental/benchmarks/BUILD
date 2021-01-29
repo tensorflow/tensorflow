@@ -36,6 +36,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "parameter_value_benchmark",
+    srcs = ["parameter_value_benchmark.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "choose_fastest_benchmark",
     srcs = ["choose_fastest_benchmark.py"],
     deps = [
