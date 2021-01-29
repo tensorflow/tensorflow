@@ -40,9 +40,13 @@ inline void BatchToSpaceND(const RuntimeShape& unextended_input1_shape,
                    unextended_output_shape.DimensionsCount());
 
   const RuntimeShape input1_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
+      (unextended_input1_shape.DimensionsCount() == 4)
+          ? unextended_input1_shape
+          : RuntimeShape::ExtendedShape(4, unextended_input1_shape);
   const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+      (unextended_output_shape.DimensionsCount() == 4)
+          ? unextended_output_shape
+          : RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   const int output_width = output_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
