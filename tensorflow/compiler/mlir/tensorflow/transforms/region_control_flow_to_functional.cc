@@ -217,8 +217,18 @@ bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
   for (auto it : llvm::zip(first.getArgOperands(), second.getArgOperands())) {
     // Get the defining Op, skipping over casts.
     auto get_defining_op = [](Value value) {
-      while (llvm::isa_and_nonnull<CastOp>(value.getDefiningOp()))
-        value = cast<CastOp>(value.getDefiningOp()).getOperand();
+      while (auto cast_op =
+                 llvm::dyn_cast_or_null<CastOp>(value.getDefiningOp())) {
+        // Consider cast compatibility in case
+        //    %cast = "tf.Cast"(%0) : (tensor<2xi64>) -> tensor<2xf32>
+        // is skipped.
+        if (AreCastCompatible(
+                llvm::ArrayRef<Type>{cast_op.SrcT(), cast_op.DstT()})) {
+          value = cast_op.getOperand();
+        } else {
+          break;
+        }
+      }
       return value;
     };
     Value first_arg = get_defining_op(std::get<0>(it));
