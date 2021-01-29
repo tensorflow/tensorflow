@@ -60,17 +60,17 @@ namespace gpu {
 namespace metal {
 namespace {
 
-std::unique_ptr<ComputeTaskDescriptor> SelectDepthWiseConv(
+std::unique_ptr<GPUOperation> SelectDepthWiseConv(
     const OperationDef& op_def, const DepthwiseConvolution2DAttributes& attr) {
   if (CheckDepthWiseConv3x3Stride1x1Support(attr)) {
-    auto gpu_op = DepthWiseConv3x3Stride1x1(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateDepthWiseConv3x3Stride1x1(op_def, attr);
+    return absl::make_unique<DepthWiseConv3x3Stride1x1>(std::move(gpu_op));
   } else if (CheckDepthWiseConv3x3Stride2Support(attr)) {
-    auto gpu_op = DepthWiseConv3x3Stride2(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateDepthWiseConv3x3Stride2(op_def, attr);
+    return absl::make_unique<DepthWiseConv3x3Stride2>(std::move(gpu_op));
   } else {
-    auto gpu_op = DepthWiseConvolution(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateDepthWiseConvolution(op_def, attr);
+    return absl::make_unique<DepthWiseConvolution>(std::move(gpu_op));
   }
 }
 
@@ -387,7 +387,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             "DepthWise Convolution does not support more than 1 runtime "
             "tensor");
       }
-      gpu_operation->task_desc = SelectDepthWiseConv(
+      gpu_operation->operation = SelectDepthWiseConv(
           op_def, absl::any_cast<DepthwiseConvolution2DAttributes>(
                       node.operation.attributes));
       break;
