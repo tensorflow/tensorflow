@@ -616,7 +616,8 @@ Status DatasetOpsTestBase::CheckIteratorSkip(
 
   bool end_of_sequence = false;
   int num_skipped = 0;
-  iterator->Skip(ctx, num_to_skip, &end_of_sequence, &num_skipped);
+  TF_RETURN_IF_ERROR(
+      iterator->Skip(ctx, num_to_skip, &end_of_sequence, &num_skipped));
   EXPECT_TRUE(num_skipped == expected_num_skipped);
   if (get_next) {
     EXPECT_TRUE(!end_of_sequence);

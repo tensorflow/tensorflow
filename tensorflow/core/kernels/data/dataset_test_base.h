@@ -386,7 +386,7 @@ struct SkipTestCase {
   SkipTestCase(T dataset_params, int num_to_skip,
                int expected_num_skipped, bool get_next = false,
                std::vector<Tensor> expected_outputs = {},
-               bool compare_ordered = true)
+               bool compare_order = true)
       : dataset_params(std::move(dataset_params)),
         num_to_skip(num_to_skip),
         expected_num_skipped(expected_num_skipped),
