@@ -787,8 +787,8 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       for stage in ('hlo_serialized', 'optimized_hlo_serialized'):
-        # pylint: disable=syntax-error
         hlo = fn.experimental_get_compiler_ir(inputs)(
+        # pylint: disable=syntax-error
             stage=stage, device_name=f'/device:{self.device}:0')
         self.assertIsInstance(hlo, bytes)
 
