@@ -56,7 +56,7 @@ class ParameterValueBenchmark(benchmark_base.DatasetBenchmarkBase):
 
     parameters_list.sort(key=lambda x: wall_time_map[x])
     for parameters in parameters_list:
-      print("num_parameter_calls_%d_buffer_size_%d_wall_time:" % parameters,
+      print("num_parallel_calls_%d_buffer_size_%d_wall_time:" % parameters,
             wall_time_map[parameters])
 
   def _benchmark_map_and_batch(self, num_parallel_calls, buffer_size):
@@ -93,7 +93,7 @@ class ParameterValueBenchmark(benchmark_base.DatasetBenchmarkBase):
 
     parameters_list.sort(key=lambda x: wall_time_map[x])
     for parameters in parameters_list:
-      print("num_parameter_calls_%d_buffer_size_%d_wall_time:" % parameters,
+      print("num_parallel_calls_%d_buffer_size_%d_wall_time:" % parameters,
             wall_time_map[parameters])
 
   def _benchmark_interleave(self, num_parallel_calls, buffer_size):
@@ -129,7 +129,7 @@ class ParameterValueBenchmark(benchmark_base.DatasetBenchmarkBase):
 
     parameters_list.sort(key=lambda x: wall_time_map[x])
     for parameters in parameters_list:
-      print("num_parameter_calls_%d_buffer_size_%d_wall_time:" % parameters,
+      print("num_parallel_calls_%d_buffer_size_%d_wall_time:" % parameters,
             wall_time_map[parameters])
 
 
