@@ -168,11 +168,11 @@ func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
 
 // -----
 
-// Do not skip incompatible cast for trivial transform.
+// Do not skip extern incompatible cast for trivial transform.
 
 func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
 func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
-func @testIfIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2xi64>) -> tensor<2xf32> {
+func @testIfExternIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2xi64>) -> tensor<2xf32> {
   // CHECK: %[[CAST:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
   // CHECK: "tf.If"(%arg0, %[[CAST]]) {else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
   %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
@@ -188,7 +188,7 @@ func @testIfIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2x
 
 // -----
 
-// Do not skip incompatible cast for non-trivial transform.
+// Do not skip incompatible cast for trivial transform.
 
 // CHECK: func private @tf.IfRegion_else(%arg0: tensor<2xi64>) -> tensor<*xf32>
 // CHECK-NEXT:    "tf.Cast"
@@ -196,7 +196,7 @@ func @testIfIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2x
 // CHECK-NEXT:    "tf.Cast"
 func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
 func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
-func @testIfIncompatibleCastNonTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2xi64>) -> tensor<2xf32> {
+func @testIfIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2xi64>) -> tensor<2xf32> {
   // CHECK: "tf.If"(%arg0, %arg1) {else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then}
   %0 = "tf.IfRegion"(%arg0) ( {
     %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
