@@ -203,6 +203,22 @@ slice_sets:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=20.04
               - PYTHON=python3.7
+        - add_to_name: "-7"
+          dockerfile_exclusive_name: "centos-7"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/cpu
+              - onednn/centos/python
+              - onednn/centos/yum-py2
+              - tensorflow
+              - shell
+          tests:
+              - import-onednn.sh
+          args:
+              - TF_PACKAGE=intel-tensorflow
+              - CENTOS_VERSION=7
+              - PYTHON=python3
         - add_to_name: "-8"
           dockerfile_exclusive_name: "centos-8"
           dockerfile_subdirectory: "onednn"
