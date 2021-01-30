@@ -2157,8 +2157,7 @@ def _enable_get_next_as_optional(strategy, dataset):
     # dataset is created in eager mode, as we need to evaluate the dataset
     # cardinality.
     with ops.device(dataset._variant_tensor.device):  # pylint: disable=protected-access
-      if dataset.cardinality().numpy() == cardinality.INFINITE:
-        return False
+      return dataset.cardinality().numpy() != cardinality.INFINITE
 
   return not _is_statically_shaped(
       dataset.element_spec) or strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
