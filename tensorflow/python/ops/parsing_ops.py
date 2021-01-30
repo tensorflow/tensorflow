@@ -893,7 +893,8 @@ def encode_raw(tensor, name=None):
     tensor:
       The tensor to encode. The first dimension of the tensor will be
       regard as batch dimension and it will be converted into a batch of
-      string tensor.
+      string tensor. Acceptable types are `half`, `float`, `double`,
+      `int32`, `uint16`, `uint8`, `int16`, `int8`, `int64`.
     name: A name for the operation (optional).
 
   Returns:
