@@ -164,7 +164,8 @@ def _get_default_cuda_paths(cuda_version):
             cuda_version)
     ]
   return ["/usr/local/cuda-%s" % cuda_version, "/usr/local/cuda", "/usr",
-         "/usr/local/cudnn"] + _get_ld_config_paths()
+          "/usr/local/cudnn"
+          ] + _get_ld_config_paths() + _list_from_env("CUDA_PATH")
 
 
 def _header_paths():
