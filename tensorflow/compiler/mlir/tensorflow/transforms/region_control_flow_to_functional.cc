@@ -222,12 +222,10 @@ bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
         // Consider cast compatibility in case
         //    %cast = "tf.Cast"(%0) : (tensor<2xi64>) -> tensor<2xf32>
         // is skipped.
-        if (AreCastCompatible(
-                llvm::ArrayRef<Type>{cast_op.SrcT(), cast_op.DstT()})) {
-          value = cast_op.getOperand();
-        } else {
+        if ((cast_op.SrcT() != cast_op.DstT()) || cast_op.Truncate()) {
           break;
         }
+        value = cast_op.getOperand();
       }
       return value;
     };
