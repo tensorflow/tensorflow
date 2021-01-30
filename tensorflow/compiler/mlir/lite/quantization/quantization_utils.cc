@@ -301,6 +301,11 @@ void ExtractMinMaxFromAttr(DenseFPElementsAttr values, int dim_size,
       mins[channel_index] = std::min(mins[channel_index], ele_value);
       maxs[channel_index] = std::max(maxs[channel_index], ele_value);
     }
+    // Expand range to include 0.
+    for (int i = 0; i < dim_size; ++i) {
+      maxs[i] = std::max(maxs[i], 0.0);
+      mins[i] = std::min(mins[i], 0.0);
+    }
     if (symmetric) {
       for (int i = 0; i < dim_size; ++i) {
         maxs[i] = std::max(std::abs(mins[i]), std::abs(maxs[i]));

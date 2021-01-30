@@ -692,6 +692,25 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_int_output_explicit_vocab_with_special_tokens(self):
+    vocab_data = ["", "[OOV]", "earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        vocabulary=vocab_data,
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        dtype=dtypes.string)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
   def test_vocab_with_max_cap(self):
     vocab_data = ["", "[OOV]", "wind", "and", "fire"]
     layer = get_layer_class()(

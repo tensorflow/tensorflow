@@ -600,6 +600,7 @@ class BFCAllocator : public Allocator {
 #endif
 
   friend class GPUBFCAllocatorPrivateMethodsTest;
+  friend class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific;
   TF_DISALLOW_COPY_AND_ASSIGN(BFCAllocator);
 };
 

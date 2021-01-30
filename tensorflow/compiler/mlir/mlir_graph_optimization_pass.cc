@@ -207,8 +207,7 @@ Status MlirFunctionOptimizationPass::Run(
          overall_state == MlirOptimizationPassState::ShadowEnabled)) {
       pass_status =
           pass_registration.pass->Run(config_proto, *module_ref, **graph);
-    } else if (per_pass_state[per_pass_state_index] ==
-               MlirOptimizationPassState::ShadowEnabled) {
+    } else if (pass_state == MlirOptimizationPassState::ShadowEnabled) {
       // Make sure that the pass does not modify MLIR module if it's shadow
       // enabled.
       auto module_ref_clone = module_ref->clone();

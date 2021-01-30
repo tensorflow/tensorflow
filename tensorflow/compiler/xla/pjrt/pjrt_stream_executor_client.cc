@@ -359,6 +359,7 @@ void RecordUsage(PjRtStreamExecutorBuffer::ScopedHold device_buffer,
 //
 // The caller may optionally provide a definition event to be recorded in
 // the buffer.
+// TODO(phawkins): replace on_host_shape here with on_device_shape.
 StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>> AllocateDestinationBuffer(
     const Shape& on_host_shape, PjRtDevice* device,
     LocalDeviceState* local_device, se::Stream* copy_stream,
@@ -453,8 +454,7 @@ StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>> AllocateDestinationBuffer(
                                                   definition_events);
 
   auto py_buffer = absl::make_unique<PjRtStreamExecutorBuffer>(
-      on_host_shape, on_device_shape, std::move(dst_device_buffer), client,
-      device);
+      on_device_shape, std::move(dst_device_buffer), client, device);
 
   if (on_device_shape.IsTuple()) {
     // Add a usage hold for the tuple table write and immediately convert it to
@@ -604,7 +604,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, const Shape& shape,
     HostBufferSemantics host_buffer_semantics,
-    std::shared_ptr<void> buffer_reference, PjRtDevice* device) {
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
   VLOG(2) << "PjRtStreamExecutorClient::BufferFromHostBuffer: shape: "
@@ -647,19 +647,20 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       // further copies. At the time of writing we require a 16-byte alignment
       // because XLA may generate code which requires it.
       if (can_use_zero_copy) {
-        on_delete_callback = [buffer_reference{std::move(buffer_reference)}]() {
-          // Frees buffer_reference.
-        };
+        on_delete_callback = std::move(on_done_with_host_buffer);
         buffer = se::DeviceMemoryBase(const_cast<void*>(data), size);
       } else {
         void* staging_buffer = host_memory_allocator()->AllocateRaw(
             cpu_function_runtime::kMinAlign, size);
+        buffer = se::DeviceMemoryBase(staging_buffer, size);
+        std::memcpy(staging_buffer, data, size);
+        if (on_done_with_host_buffer) {
+          on_done_with_host_buffer();
+        }
         on_delete_callback = [staging_buffer, host_memory_allocator =
                                                   host_memory_allocator()]() {
           host_memory_allocator->DeallocateRaw(staging_buffer);
         };
-        buffer = se::DeviceMemoryBase(staging_buffer, size);
-        std::memcpy(staging_buffer, data, size);
       }
       absl::Span<const std::shared_ptr<BufferSequencingEvent>>
           definition_events;
@@ -669,7 +670,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
           definition_events, std::move(on_delete_callback));
       return std::unique_ptr<PjRtBuffer>(
           std::make_unique<PjRtStreamExecutorBuffer>(
-              shape, shape, std::move(device_buffer), this, device));
+              shape, std::move(device_buffer), this, device));
     }
   }
 
@@ -702,7 +703,10 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   // thread.
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
     std::memcpy(staging_buffer.get(), data, size);
-    buffer_reference.reset();
+    if (on_done_with_host_buffer) {
+      on_done_with_host_buffer();
+      on_done_with_host_buffer = nullptr;
+    }
     data = nullptr;
   }
 
@@ -715,10 +719,11 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   auto transfer_h2d = [local_client = client(), transfer_manager, local_device,
                        data, size,
                        movable_device_buffer{device_buffer.ToClosure()}, shape,
-                       py_buffer{py_buffer.get()}, compact_shape,
+                       py_buffer{py_buffer.get()},
                        on_device_shape{py_buffer->on_device_shape()},
                        staging_buffer{std::move(staging_buffer)},
-                       buffer_reference{std::move(buffer_reference)},
+                       on_done_with_host_buffer{
+                           std::move(on_done_with_host_buffer)},
                        host_buffer_semantics]() {
     PjRtStreamExecutorBuffer::ScopedHold device_buffer(movable_device_buffer);
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
@@ -727,8 +732,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     // memory that has already been allocated, and a possible Event
     // allocation.
 
-    ShapedBuffer buffer =
-        device_buffer->AsShapedBuffer(compact_shape, on_device_shape);
+    ShapedBuffer buffer = device_buffer->AsShapedBuffer(on_device_shape);
     // If applicable on the backend, stage the transfer via host memory
     // allocated via the host_memory_allocator. On GPU, this is pinned
     // memory.
@@ -756,9 +760,16 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         local_device, std::move(device_buffer), event,
         local_device->host_to_device_stream()));
 
-    local_device->ThenRelease(
-        local_device->host_to_device_stream(),
-        std::make_pair(std::move(buffer_reference), std::move(staging_buffer)));
+    local_device->callback_stream()->ThenWaitFor(
+        local_device->host_to_device_stream());
+    local_device->ThenExecuteOnCallbackThread(
+        local_device->callback_stream(),
+        [staging_buffer{std::move(staging_buffer)},
+         on_done_with_host_buffer{std::move(on_done_with_host_buffer)}]() {
+          if (on_done_with_host_buffer) {
+            on_done_with_host_buffer();
+          }
+        });
   };
   if (is_cpu_platform) {
     // Using the thread_pool would be a double thread hop; the code
@@ -834,7 +845,7 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
   // put the transfer into the calling thread for small literals.
   auto transfer_h2d = [local_client = client(), transfer_manager, local_device,
                        movable_device_buffer{device_buffer.ToClosure()},
-                       literal, py_buffer{py_buffer.get()}, compact_shape,
+                       literal, py_buffer{py_buffer.get()},
                        on_device_shape{py_buffer->on_device_shape()}]() {
     PjRtStreamExecutorBuffer::ScopedHold device_buffer(movable_device_buffer);
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
@@ -844,8 +855,7 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
     // allocation.
 
     se::Stream* h2d_stream = local_device->host_to_device_stream();
-    ShapedBuffer buffer =
-        device_buffer->AsShapedBuffer(compact_shape, on_device_shape);
+    ShapedBuffer buffer = device_buffer->AsShapedBuffer(on_device_shape);
     TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
         h2d_stream, literal, buffer));
 
@@ -901,6 +911,20 @@ void PjRtStreamExecutorClient::MakeCrossHostReceiveBuffers(
                           std::move(notifier));
 }
 
+StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
+    void* device_ptr, const Shape& shape, PjRtDevice* device,
+    std::function<void()> on_delete_callback) {
+  se::DeviceMemoryBase buffer(device_ptr, ShapeUtil::ByteSizeOf(shape));
+  absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events;
+  auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
+      /*allocator=*/nullptr, device->local_hardware_id(),
+      std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
+      std::move(on_delete_callback));
+  return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtStreamExecutorBuffer>(
+      shape, std::move(device_buffer), this, device));
+}
+
 // Transfer the given literal to the infeed queue of the given local device.
 Status PjRtStreamExecutorDevice::TransferToInfeed(
     const LiteralSlice& literal) const {
@@ -929,11 +953,9 @@ StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
 }
 
 PjRtStreamExecutorBuffer::PjRtStreamExecutorBuffer(
-    Shape on_host_shape, Shape on_device_shape,
-    std::shared_ptr<TrackedDeviceBuffer> device_buffer, PjRtClient* client,
-    PjRtDevice* device)
+    Shape on_device_shape, std::shared_ptr<TrackedDeviceBuffer> device_buffer,
+    PjRtClient* client, PjRtDevice* device)
     : client_(tensorflow::down_cast<PjRtStreamExecutorClient*>(client)),
-      on_host_shape_(std::move(on_host_shape)),
       on_device_shape_(std::move(on_device_shape)),
       device_(tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)),
       device_buffer_(std::move(device_buffer)),
@@ -1169,8 +1191,7 @@ void PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal,
   }
 
   WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
-  ShapedBuffer shaped_buffer =
-      device_buffer->AsShapedBuffer(literal->shape(), on_device_shape_);
+  ShapedBuffer shaped_buffer = device_buffer->AsShapedBuffer(on_device_shape_);
   StatusOr<EventPool::Handle> event_or =
       local_device->event_pool().AllocateEvent(stream->parent());
   if (!event_or.ok()) {
@@ -1207,7 +1228,7 @@ StatusOr<ShapedBuffer> PjRtStreamExecutorBuffer::AsShapedBuffer() const {
     return InvalidArgument(
         "Attempted to fetch value of invalid/deleted buffer.");
   }
-  return device_buffer_->AsShapedBuffer(on_host_shape_, on_device_shape_);
+  return device_buffer_->AsShapedBuffer(on_device_shape_);
 }
 
 PjRtStreamExecutorBuffer::ScopedHold
@@ -1231,11 +1252,11 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
     PjRtDevice* dst_device, LocalDeviceState* dst_local_device,
     LocalDeviceState* transfer_local_device, se::Stream* transfer_stream,
     std::shared_ptr<TrackedDeviceBuffer> src_device_buffer) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtStreamExecutorBuffer> py_buffer,
-      AllocateDestinationBuffer(on_host_shape_, dst_device, dst_local_device,
-                                transfer_stream,
-                                /*is_uninitialized_create=*/false, client_));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtStreamExecutorBuffer> py_buffer,
+                      AllocateDestinationBuffer(
+                          ShapeUtil::DeviceShapeToHostShape(on_device_shape_),
+                          dst_device, dst_local_device, transfer_stream,
+                          /*is_uninitialized_create=*/false, client_));
 
   TF_ASSIGN_OR_RETURN(ShapedBuffer src_buffer, AsShapedBuffer());
 
@@ -1243,8 +1264,7 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
 
   ScopedHold dst_device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(dst_device_buffer.ok());
-  ShapedBuffer dst_buffer =
-      dst_device_buffer->AsShapedBuffer(on_host_shape_, on_device_shape_);
+  ShapedBuffer dst_buffer = dst_device_buffer->AsShapedBuffer(on_device_shape_);
 
   // Copy the leaf buffers.
   StatusOr<std::shared_ptr<BufferSequencingEvent>> copy_event_or =
@@ -1306,7 +1326,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
     return dst_device->client()->BufferFromHostBuffer(
         literal_pointer->untyped_data(), literal_pointer->shape(),
         PjRtStreamExecutorClient::HostBufferSemantics::kZeroCopy,
-        std::move(literal), dst_device);
+        [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -1425,10 +1445,8 @@ StatusOr<TupleHandle> MakeTupleHelper(
   host_shapes.reserve(py_buffers.size());
   device_shapes.reserve(py_buffers.size());
   for (const PjRtBuffer* buffer : py_buffers) {
-    host_shapes.push_back(buffer->on_host_shape());
     device_shapes.push_back(buffer->on_device_shape());
   }
-  Shape on_host_shape = ShapeUtil::MakeTupleShape(host_shapes);
   Shape on_device_shape = ShapeUtil::MakeTupleShape(device_shapes);
 
   se::DeviceMemoryAllocator* allocator =
@@ -1443,7 +1461,7 @@ StatusOr<TupleHandle> MakeTupleHelper(
       se::OwningDeviceMemory root_table_memory,
       allocator->Allocate(
           device_ordinal,
-          transfer_manager->GetByteSizeRequirement(on_host_shape)));
+          transfer_manager->GetByteSizeRequirement(on_device_shape)));
 
   if (local_device->allocation_model() ==
       LocalDeviceState::kComputeSynchronized) {
@@ -1453,7 +1471,7 @@ StatusOr<TupleHandle> MakeTupleHelper(
         local_device->compute_stream()->parent(), root_table_memory.cref()));
   }
 
-  ExecutionInput execution_input(on_device_shape, on_host_shape);
+  ExecutionInput execution_input(on_device_shape);
   ShapeTree<MaybeOwningDeviceMemory>::iterator input_iterator =
       execution_input.MutableBuffers()->begin();
   ShapeTree<MaybeOwningDeviceMemory>::iterator iterator_end =
@@ -1495,8 +1513,7 @@ std::unique_ptr<PjRtBuffer> OutputBufferHelper(
       TrackedDeviceBuffer::FromScopedShapedBuffer(result_buffer,
                                                   {definition_event});
   auto pjrt_buffer = absl::make_unique<PjRtStreamExecutorBuffer>(
-      result_buffer->on_host_shape(), result_buffer->on_device_shape(),
-      std::move(out_buffer), client, device);
+      result_buffer->on_device_shape(), std::move(out_buffer), client, device);
   RecordUsage(pjrt_buffer->GetBufferWithUsageHold(), local_device, local_device,
               definition_event, local_device->compute_stream(),
               /*prefer_to_retain_reference=*/false);
@@ -1595,8 +1612,7 @@ PjRtStreamExecutorExecutable::MakeExecutionInputsAndWaitForEvents(
       PjRtBuffer* handle = argument_handles[i];
 
       // Make an ExecutionInput from the device buffer.
-      execution_inputs.emplace_back(handle->on_device_shape(),
-                                    handle->on_host_shape());
+      execution_inputs.emplace_back(handle->on_device_shape());
       ExecutionInput& execution_input = execution_inputs.back();
       ShapeTree<MaybeOwningDeviceMemory>::iterator input_iterator =
           execution_input.MutableBuffers()->begin();
@@ -1768,8 +1784,8 @@ PjRtStreamExecutorExecutable::MakeOutputBuffers(
     PjRtDevice* device) const {
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
-  if (options.untuple_result && result_buffer.on_host_shape().IsTuple()) {
-    int tuple_count = result_buffer.on_host_shape().tuple_shapes_size();
+  if (options.untuple_result && result_buffer.on_device_shape().IsTuple()) {
+    int tuple_count = result_buffer.on_device_shape().tuple_shapes_size();
     outputs.reserve(tuple_count);
     // Take ownership of each of the output values, leaving only the root table
     // in result_buffer.

@@ -203,7 +203,8 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
       [this, gr, cp, response, done_and_cleanup](Status status) {
         if (status.ok()) {
           // Now source_rank should be known, so retrieve it.
-          InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+          bool created_irec;
+          InstanceRec* ir = GetOrCreateInstanceRec(gr, cp, &created_irec);
           {
             mutex_lock l(ir->mu);
             status = ir->status;
@@ -340,7 +341,8 @@ Status CollectiveParamResolverDistributed::UpdateInstanceCache(
     const GroupRec* gr, CollectiveParams* cp,
     const CompleteInstanceResponse& resp) {
   int32 source_rank = resp.source_rank();
-  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+  bool created_irec;
+  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp, &created_irec);
   mutex_lock l(ir->mu);
   if (!ir->status.ok()) {
     return ir->status;

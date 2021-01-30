@@ -40,6 +40,9 @@ op. The order of ops will be preserved. Functions named `main` with no
 have been imported from a V1 TensorFlow graph, where feeds/fetches/targets are
 not provided at certain stages of IR transformation (e.g. pre-placement).
 
+Option `ops-to-preserve` allows to specify ops that should not be pruned,
+regardless of their reachability.
+
 For example, the following:
 
 ```mlir
@@ -74,6 +77,13 @@ func @graph(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
   }];
 
   let constructor = "tf_executor::CreateTFExecutorGraphPruningPass()";
+
+  let options = [
+   ListOption<"ops_to_preserve_", "ops-to-preserve", "std::string",
+               "Comma separated list of ops that should not be pruned "
+               "regardless of reachability",
+               "llvm::cl::MiscFlags::CommaSeparated">
+  ];
 }
 
 def ExecutorDialectToFunctionalPass : FunctionPass<"tf-executor-to-functional-conversion"> {

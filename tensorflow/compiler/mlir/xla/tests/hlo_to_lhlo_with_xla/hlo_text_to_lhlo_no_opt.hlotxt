@@ -215,7 +215,7 @@ add {
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
-  // CHECK-SAME:  replica_groups = dense<{{\[\[}}0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
 }
 
@@ -236,12 +236,37 @@ add {
 // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
 // CHECK:  }) {
 // CHECK-NOT:  channel_id
-// CHECK-SAME:  replica_groups = dense<{{\[\[}}0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
+// CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
 // CHECK-SAME: (memref<8xf32>, memref<5xf32>, memref<8xf32>, memref<5xf32>) -> ()
 %test_all_reduce_tuple {
   input = f32[8] parameter(0)
   %tuple = (f32[8], f32[5]) custom-call(),custom_call_target="make-tuple"
   ROOT result = (f32[8], f32[5]) all-reduce(%tuple), replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
+}
+
+// -----
+
+HloModule AllReduceNonUniformReplicaGroups
+
+// Test all-reduce
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL: func @test_all_reduce
+// CHECK-SAME:  ([[INPUT:%.*]]: memref<8xf32>
+%test_all_reduce {
+  input = f32[8] parameter(0)
+  // CHECK:  "lmhlo.all_reduce"([[INPUT]], {{.*}})
+  // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+  // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
+  // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:  }) {
+  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, -1], [3, 4, 5, 6]]> : tensor<2x4xi64>
+  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2}, {3,4,5,6}}, to_apply=add
 }
 
 // -----
@@ -571,4 +596,15 @@ HloModule TestModule
 // CHECK:   "lmhlo.rng_get_and_update_state"(%{{.*}}) {delta = 131072 : i64} : (memref<2xui64>) -> ()
 ENTRY main {
   ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=131072
+}
+
+
+// -----
+HloModule TestReplicaId
+
+// CHECK: func @main
+// CHECK: "lmhlo.replica_id"
+// CHECK-SAME: (memref<ui32>) -> ()
+ENTRY main {
+  ROOT %replica_id = u32[] replica-id()
 }

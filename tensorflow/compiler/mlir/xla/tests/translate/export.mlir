@@ -37,7 +37,36 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
 // CHECK-SAME:  channel_id=5
-// CHECK-SAME:  replica_groups={{[{][{]}}0,2,4,6},{1,3,5,7{{[}][}]}}
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
+// CHECK-SAME:  to_apply=%[[COMPUTATION]]
+
+// -----
+// Test non-uniform sized replica groups.
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = "mhlo.all_reduce"(%arg0) ({
+  // Perform max reduction inside the region
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    channel_id = {
+      handle = 5 : i64,
+      type = 2 : i64
+    }
+  } : (tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+}
+
+// CHECK:  %[[COMPUTATION:.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[]
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
+// CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
+// CHECK-SAME:  channel_id=5
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4},{1,3,5,7}}
 // CHECK-SAME:  to_apply=%[[COMPUTATION]]
 
 // -----
@@ -369,7 +398,7 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  ENTRY
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
-// CHECK-SAME:  replica_groups={{[{][{]}}0,2,4,6},{1,3,5,7{{[}][}]}}
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME:  to_apply=%[[SUM_COMPUTATION]]
 
 // -----
@@ -496,14 +525,14 @@ func @main(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
 // -----
 
 // CHECK:  HloModule
-func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3xi32>, tensor<i1>>, !mhlo.token> {
-  %0 = "mhlo.infeed"(%arg0) {infeed_config = "foobar"} : (!mhlo.token) -> tuple<tuple<tensor<3xi32>, tensor<i1>>, !mhlo.token>
-  return %0 : tuple<tuple<tensor<3xi32>, tensor<i1>>, !mhlo.token>
+func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token> {
+  %0 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[[0,1], [0]], unit]} : (!mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
+  return %0 : tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
 }
 
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = token[] parameter(0)
-// CHECK:  ROOT %[[RESULT:.*]] = ((s32[3], pred[]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
+// CHECK:  ROOT %[[RESULT:.*]] = ((s32[3,3], pred[]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
 
 // -----
 

@@ -6,23 +6,23 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
 -->
 
 <!--ts-->
+   * [Contributing Guidelines](#contributing-guidelines)
+      * [General Pull Request Guidelines](#general-pull-request-guidelines)
+      * [Guidelines for Specific Contribution Categories](#guidelines-for-specific-contribution-categories)
+         * [Bug Fixes](#bug-fixes)
+         * [Reference Kernel Implementations](#reference-kernel-implementations)
+         * [Optimized Kernel Implementations](#optimized-kernel-implementations)
+         * [New Target / Platform / IDE / Examples](#new-target--platform--ide--examples)
+         * [New Features](#new-features)
+   * [Development Workflow Notes](#development-workflow-notes)
+      * [Initial Setup](#initial-setup)
+      * [Before submitting your PR](#before-submitting-your-pr)
+      * [During the PR review](#during-the-pr-review)
+      * [Reviewer notes](#reviewer-notes)
+      * [Python notes](#python-notes)
+   * [Continuous Integration System](#continuous-integration-system)
 
-*   [Contributing Guidelines](#contributing-guidelines)
-    *   [General Pull Request Guidelines](#general-pull-request-guidelines)
-    *   [Guidelines for Specific Contribution Categories](#guidelines-for-specific-contribution-categories)
-        *   [Bug Fixes](#bug-fixes)
-        *   [Reference Kernel Implementations](#reference-kernel-implementations)
-        *   [Optimized Kernel Implementations](#optimized-kernel-implementations)
-        *   [New Target / Platform / IDE / Examples](#new-target--platform--ide--examples)
-        *   [New Features](#new-features)
-*   [Development Workflow Notes](#development-workflow-notes)
-    *   [Before submitting your PR](#before-submitting-your-pr)
-    *   [During the PR review](#during-the-pr-review)
-    *   [Reviewer notes](#reviewer-notes)
-    *   [Python notes](#python-notes)
-*   [Continuous Integration System](#continuous-integration-system)
-
-<!-- Added by: advaitjain, at: Tue 15 Dec 2020 03:06:29 PM PST -->
+<!-- Added by: advaitjain, at: Wed 27 Jan 2021 02:25:07 PM PST -->
 
 <!--te-->
 
@@ -182,6 +182,29 @@ to determine if the requested feature aligns with the TFLM roadmap.
 
 # Development Workflow Notes
 
+## Initial Setup
+
+Below are some tips that might be useful and improve the development experience.
+
+* Add the [Refined GitHub](https://github.com/sindresorhus/refined-github)
+  plugin to make the github experience even better.
+
+* Code search the [TfLite Micro codebase](https://sourcegraph.com/github.com/tensorflow/tensorflow@master/-/tree/tensorflow/lite/micro)
+  on Sourcegraph. And optionally install the [plugin that enables GitHub integration](https://docs.sourcegraph.com/integration/github#github-integration-with-sourcegraph).
+
+* Install [bazel](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/install/install_bazel.sh) and [buildifier](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/install/install_buildifier.sh).
+
+* Install the latest clang and clang-format. For example,
+  [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/Dockerfile.micro)
+  is the  what we do for the TFLM continuous integration Docker container.
+
+* Get a copy of [cpplint](https://github.com/google/styleguide/tree/gh-pages/cpplint)
+
+* Add a git hook to check for code style etc. prior to creating a pull request:
+  ```
+  cp tensorflow/lite/micro/tools/dev_setup/pre-push.tflm .git/hooks/pre-push
+  ```
+
 ## Before submitting your PR
 
 1.  Run in-place clang-format on all the files that are modified in your git
@@ -193,11 +216,6 @@ to determine if the requested feature aligns with the TFLM roadmap.
     ```
 
 1.  Make sure your code is lint-free.
-
-    Get a copy of
-    [cpplint](https://github.com/google/styleguide/tree/gh-pages/cpplint)
-
-    Run cpplint.py on all modified files in your git tree:
 
     ```
     cpplint.py `git ls-files -m`
@@ -212,15 +230,15 @@ to determine if the requested feature aligns with the TFLM roadmap.
     Please check the READMEs in the optimized kernel directories for specific
     instructions.
 
-1.  Sometimes, bugs are caught by the address sanitizer that can go unnoticed
-    via the Makefile. To run a test with the address sanitizer, use the
-    following command (replace `micro_interpreter_test` with the target that you
+1.  Sometimes, bugs are caught by the sanitizers that can go unnoticed
+    via the Makefile. To run a test with the different sanitizers, use the
+    following commands (replace `micro_interpreter_test` with the target that you
     want to test:
 
     ```
-    CC=clang BAZEL_COMPILER=llvm bazel run --copt=-DADDRESS_SANITIZER \
-    --copt=-fsanitize=address --linkopt=-fsanitize=address \
-    tensorflow/lite/micro:micro_interpreter_test
+    CC=clang bazel test ---config=asan tensorflow/lite/micro:micro_interpreter_test
+    CC=clang bazel test ---config=msan tensorflow/lite/micro:micro_interpreter_test
+    CC=clang bazel test ---config=ubsan tensorflow/lite/micro:micro_interpreter_test
     ```
 
 ## During the PR review

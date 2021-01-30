@@ -23,6 +23,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
+        "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
         "//tensorflow/compiler/mlir/...",
         "//third_party/iree/...",

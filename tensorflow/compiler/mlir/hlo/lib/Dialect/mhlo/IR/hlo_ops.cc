@@ -976,6 +976,10 @@ OpFoldResult ComplexOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+//===----------------------------------------------------------------------===//
+// ImagOp
+//===----------------------------------------------------------------------===//
+
 namespace {
 Type CreateRealType(Type type) {
   auto element_ty = getElementTypeOrSelf(type);
@@ -1008,6 +1012,33 @@ OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
 
   return {};
 }
+
+//===----------------------------------------------------------------------===//
+// IsFiniteOp
+//===----------------------------------------------------------------------===//
+
+TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type) {
+  if (auto ranked_tensor_ty = tensor_type.dyn_cast<RankedTensorType>()) {
+    return RankedTensorType::get(ranked_tensor_ty.getShape(), element_type);
+  }
+  if (auto unranked_tensor_ty = tensor_type.dyn_cast<UnrankedTensorType>()) {
+    return UnrankedTensorType::get(element_type);
+  }
+  llvm_unreachable("unhandled type");
+}
+
+LogicalResult IsFiniteOp::inferReturnTypes(
+    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto arg_ty = operands.front().getType().cast<TensorType>();
+  Builder b(ctx);
+  inferredReturnTypes.push_back(getSameShapeTensorType(arg_ty, b.getI1Type()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// RealOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult RealOp::inferReturnTypes(
     MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr,

@@ -148,6 +148,7 @@ cc_library(
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
@@ -168,6 +169,7 @@ cc_library(
         ":tpu_initializer_helper",
         "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
     alwayslink = True,
@@ -295,4 +297,17 @@ cc_library(
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_fingerprint_utils",
+    srcs = ["tpu_fingerprint_utils.cc"],
+    hdrs = ["tpu_fingerprint_utils.h"],
+    deps = [
+        ":tpu_compile_interface",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal_impl",
+        "//tensorflow/core/lib/core:status",
+    ],
 )

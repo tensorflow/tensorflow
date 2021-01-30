@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <queue>
 #include <string>
 #include <utility>
 
@@ -207,6 +208,66 @@ bool HasCapturedStringOperand(Operation* op) {
   return string_operand;
 }
 
+bool IsVariant(Value value) {
+  return getElementTypeOrSelf(value.getType()).isa<TF::VariantType>();
+}
+
+bool HasOutsideCompiledAncestor(Operation* op) {
+  Operation* parent = op->getParentOp();
+  while (parent) {
+    if (parent->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+      return true;
+    parent = parent->getParentOp();
+  }
+  return false;
+}
+
+// If any tf.variants are inputs/outputs to the another outside compiled
+// Operation, `op`, mark  them for outside compilation unless they are already
+// marks with outside compilation attribute.
+void MarkVariantInputsOutputs(tf_device::ClusterOp tpu_cluster) {
+  std::queue<Operation*> outside_compiled_ops;
+  tpu_cluster.walk([&](Operation* op) {
+    if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+      outside_compiled_ops.push(op);
+  });
+
+  while (!outside_compiled_ops.empty()) {
+    Operation* host_op = outside_compiled_ops.front();
+    outside_compiled_ops.pop();
+    host_op->walk([&](Operation* op) {
+      // Add any operations that provide variant inputs to the cluster.
+      for (auto value : op->getOperands()) {
+        Operation* input_defining_op = value.getDefiningOp();
+        if (IsVariant(value) && input_defining_op &&
+            !HasOutsideCompiledAncestor(input_defining_op) &&
+            !input_defining_op->hasAttrOfType<StringAttr>(
+                kXlaOutsideCompilationAttr)) {
+          input_defining_op->setAttr(
+              kXlaOutsideCompilationAttr,
+              StringAttr::get("auto", input_defining_op->getContext()));
+          outside_compiled_ops.push(input_defining_op);
+        }
+      }
+      // Mark for outside compilation any operations that consume variant
+      // outputs from an outside compiled operation.
+      for (auto value : op->getResults()) {
+        if (IsVariant(value)) {
+          for (auto user : value.getUsers()) {
+            if (!user->isKnownTerminator() &&
+                !HasOutsideCompiledAncestor(user) &&
+                !user->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+              user->setAttr(kXlaOutsideCompilationAttr,
+                            StringAttr::get("auto", user->getContext()));
+              outside_compiled_ops.push(user);
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
 // Marks uncompilable ops that are in `tf_dialect` for outside compilation.
 LogicalResult MarkUncompilableOps(
     const Dialect* tf_dialect, Block* block,
@@ -289,12 +350,12 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     // for outside compilation.
     auto soft_placement_attr =
         cluster->getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
-    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
-      return WalkResult::advance();
+    if ((soft_placement_attr && soft_placement_attr.getValue())) {
+      if (failed(MarkUncompilableOps(tf_dialect, &cluster.GetBody(),
+                                     supported_ops)))
+        return WalkResult::interrupt();
     }
-    if (failed(
-            MarkUncompilableOps(tf_dialect, &cluster.GetBody(), supported_ops)))
-      return WalkResult::interrupt();
+    MarkVariantInputsOutputs(cluster);
 
     return WalkResult::advance();
   });

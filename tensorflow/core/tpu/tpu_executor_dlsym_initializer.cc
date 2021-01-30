@@ -25,6 +25,7 @@ limitations under the License.
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #endif
 
 namespace tensorflow {
@@ -41,17 +42,20 @@ Status InitializeTpuLibrary(void* library_handle) {
   Status s = SetExecutorStructFn(library_handle);
 
   // Retrieve arguments from environment if applicable
-  std::vector<const char*> argv_ptr = GetLibTpuInitArguments();
+  std::pair<std::vector<std::string>, std::vector<const char*> > args =
+      GetLibTpuInitArguments();
 
   // TPU platform registration must only be performed after the library is
   // loaded. We do not want to register a TPU platform in XLA without the
   // supporting library providing the necessary APIs.
   if (s.ok()) {
-    void (*initialize_fn)(bool init_library, int argc, const char** argv);
+    void (*initialize_fn)(bool init_library, int num_args, const char** args);
     initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
         dlsym(library_handle, "TfTpu_Initialize"));
-    (*initialize_fn)(/*init_library=*/true, /*argc=*/argv_ptr.size() - 1,
-                     /*argv=*/argv_ptr.data());
+    (*initialize_fn)(/*init_library=*/true, args.second.size(),
+                     args.second.data());
+
+    RegisterTpuPlatform();
   }
 
   return s;

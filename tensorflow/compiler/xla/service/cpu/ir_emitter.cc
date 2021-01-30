@@ -487,6 +487,17 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
     MemCpy(acquired_pointer, /*DstAlign=*/llvm::Align(1),
            program_buffer_address,
            /*SrcAlign=*/llvm::Align(1), length_32);
+    if (emit_code_for_msan_) {
+      // Mark the outfed data as initialized for msan. The buffer gets read by
+      // the host code, which might be msan-instrumented.
+      // TODO(b/66051036): Run the msan instrumentation pass instead.
+      const llvm::DataLayout& dl = module_->getDataLayout();
+      llvm::Type* intptr_type = b_.getIntPtrTy(dl);
+      EmitCallToFunc(
+          "__msan_unpoison",
+          {acquired_pointer, llvm::ConstantInt::get(intptr_type, length)},
+          b_.getVoidTy());
+    }
   }
 
   const char* release_func_name =
@@ -3124,8 +3135,10 @@ Status IrEmitter::EmitTargetElementLoop(
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(target_op));
   llvm_ir::IrArray target_array = GetIrArrayFor(target_op);
 
-  if (target_shape.IsTuple() && (target_op->opcode() == HloOpcode::kFusion ||
-                                 target_op->opcode() == HloOpcode::kReduce)) {
+  if (target_shape.IsTuple() &&
+      (target_op->opcode() == HloOpcode::kFusion ||
+       target_op->opcode() == HloOpcode::kReduce ||
+       target_op->opcode() == HloOpcode::kReduceWindow)) {
     // For multiple outputs fusion, we need to emit each operand and the root.
     TF_RET_CHECK(num_dynamic_loop_bounds_ == 0);
     std::vector<llvm_ir::IrArray> output_arrays;

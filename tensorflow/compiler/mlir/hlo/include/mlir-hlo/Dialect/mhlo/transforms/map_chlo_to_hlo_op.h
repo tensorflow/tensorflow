@@ -53,7 +53,7 @@ struct HloCompareAdaptor {
 };
 
 // Populate a pattern for each Broadcasting CHlo op. This requires the pattern
-// to take a ChloOpTy, MhloOpTy, and an Adaptor as templated values.
+// to take a ChloOpTy, NonBroadcastingOpTy, and an Adaptor as templated values.
 template <template <typename, typename, typename> class Pattern,
           typename... ConstructorArgs>
 void PopulateForBroadcastingBinaryOp(MLIRContext *context,
@@ -79,6 +79,7 @@ void PopulateForBroadcastingBinaryOp(MLIRContext *context,
   POPULATE_BCAST(BroadcastShiftRightLogicalOp, mhlo::ShiftRightLogicalOp);
   POPULATE_BCAST(BroadcastSubOp, mhlo::SubOp);
   POPULATE_BCAST(BroadcastXorOp, mhlo::XorOp);
+  POPULATE_BCAST(BroadcastZetaOp, ZetaOp);
 
   // Broadcasting ops requiring special construction.
   patterns

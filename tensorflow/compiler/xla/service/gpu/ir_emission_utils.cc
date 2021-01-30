@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -717,6 +716,101 @@ bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
       effects, [](const mlir::MemoryEffects::EffectInstance& instance) {
         return mlir::isa<mlir::MemoryEffects::Write>(instance.getEffect());
       });
+}
+
+static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
+  // For i1 memrefs, the underlying allocation is 8 bits.
+  if (type.getElementType().isInteger(/*width=*/1)) {
+    return type.getNumElements();
+  } else {
+    return type.getSizeInBits() / CHAR_BIT;
+  }
+}
+
+static int64_t GetAllocationIndex(mlir::BlockArgument func_arg) {
+  auto func_op =
+      mlir::cast<mlir::FuncOp>(func_arg.getParentRegion()->getParentOp());
+  return func_op
+      .getArgAttrOfType<mlir::IntegerAttr>(func_arg.getArgNumber(),
+                                           "lmhlo.alloc")
+      .getValue()
+      .getSExtValue();
+}
+
+StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
+    mlir::Value v, absl::Span<const BufferAllocation> allocations) {
+  int64 size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
+
+  if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
+    return BufferAllocation::Slice(&allocations[GetAllocationIndex(arg)], 0,
+                                   size);
+  }
+
+  // We match the following patterns here:
+  //  base := ViewOp(arg) | get_global_memref (global_memref)
+  //  root := base | MemRefReinterpretCastOp(base)
+
+  if (mlir::Operation* op = v.getDefiningOp()) {
+    if (auto cast = mlir::dyn_cast<mlir::MemRefReinterpretCastOp>(op)) {
+      mlir::Value source = cast.getViewSource();
+      op = source.getDefiningOp();
+      if (!op) {
+        return Unimplemented("MemRefReinterpretCastOp has to wrap an op");
+      }
+    }
+    if (auto view = mlir::dyn_cast<mlir::ViewOp>(op)) {
+      return BufferAllocation::Slice(
+          &allocations[GetAllocationIndex(
+              view.source().cast<mlir::BlockArgument>())],
+          mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
+              .value()
+              .cast<mlir::IntegerAttr>()
+              .getValue()
+              .getSExtValue(),
+          size);
+    } else if (auto get_global = mlir::dyn_cast<mlir::GetGlobalMemrefOp>(op)) {
+      auto module = get_global->getParentOfType<mlir::ModuleOp>();
+      auto global = mlir::cast<mlir::GlobalMemrefOp>(
+          module.lookupSymbol(get_global.name()));
+      int64_t index =
+          global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+      return BufferAllocation::Slice(&allocations[index], 0,
+                                     allocations[index].size());
+    }
+    return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
+  }
+
+  return Unimplemented(
+      "Operand has to be in the form of ViewOp(arg) or "
+      "StaticMemRefCastOp(ViewOp(arg))");
+}
+
+bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+    mlir::lmhlo::FusionOp fusion,
+    absl::Span<const BufferAllocation> allocations) {
+  auto results = fusion.getFusionResults();
+  if (results.size() != 1) {
+    return false;
+  }
+  auto dus = mlir::dyn_cast<mlir::mhlo::DynamicUpdateSliceOp>(
+      results[0].getDefiningOp());
+  if (!dus) {
+    return false;
+  }
+
+  auto output_buffers = fusion.getOutputBuffers();
+  CHECK_EQ(1, output_buffers.size());
+  auto parameter =
+      mlir::dyn_cast<mlir::TensorLoadOp>(dus.operand().getDefiningOp());
+
+  if (!parameter) {
+    return false;
+  }
+
+  auto maybe_lhs = GetAllocationSliceForMlir(parameter.memref(), allocations);
+  auto maybe_rhs = GetAllocationSliceForMlir(output_buffers[0], allocations);
+  LOG(ERROR) << "TIM: ";
+  return maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs;
 }
 
 }  // namespace gpu

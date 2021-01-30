@@ -148,6 +148,22 @@ TEST(TfOpUtilsTest, JaxOpNameWithMetadataTest) {
   EXPECT_TRUE(IsJaxOpNameAndType(kOpName, kOpType));
 }
 
+TEST(TfOpUtilsTest, OtherXlaOpTest) {
+  const absl::string_view kName =
+      "namescope.1/namespace__opname2d:namespace__opname2d";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kJax);
+  EXPECT_EQ(tf_op.name, "namescope.1/namespace__opname2d");
+  EXPECT_EQ(tf_op.type, "namespace__opname2d");
+  EXPECT_EQ(TfOpEventName(kName), "namespace__opname2d");
+}
+
+TEST(TfOpUtilsTest, OtherXlaOpNameTest) {
+  const absl::string_view kOpName = "namescope.1/namespace__opname2d";
+  const absl::string_view kOpType = "namespace__opname2d";
+  EXPECT_TRUE(IsJaxOpNameAndType(kOpName, kOpType));
+}
+
 TEST(TfOpUtilsTest, OpWithoutTypeTest) {
   const absl::string_view kName = "OpName:";  // with trailing ':'
   TfOp tf_op = ParseTfOpFullname(kName);

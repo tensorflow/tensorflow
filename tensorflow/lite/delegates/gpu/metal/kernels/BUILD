@@ -136,6 +136,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
@@ -200,6 +201,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
@@ -544,6 +546,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
@@ -596,15 +599,6 @@ ios_unit_test(
     deps = [":transpose_test_lib"],
 )
 
-cc_library(
-    name = "util",
-    srcs = ["util.cc"],
-    hdrs = ["util.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:types",
-    ],
-)
-
 objc_library(
     name = "test_util",
     testonly = 1,
@@ -652,6 +646,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings:str_format",
     ],

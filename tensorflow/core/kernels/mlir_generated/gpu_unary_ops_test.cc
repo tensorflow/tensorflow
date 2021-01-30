@@ -17,6 +17,7 @@ limitations under the License.
 #include <complex>
 #include <functional>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <vector>
@@ -185,10 +186,6 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     Abs, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
     test::NearZeroAndExtremeInput<Eigen::half>(), std::abs,
-    test::GpuOpsTestConfig().ExpectStrictlyEqual())
-
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Abs, DT_INT32, DT_INT32, test::NearZeroAndExtremeInput<int32>(), std::abs,
     test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
@@ -574,6 +571,52 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     IsNan, DT_HALF, DT_FLOAT, DT_BOOL, DT_BOOL,
     test::NearZeroInfAndNanInput<Eigen::half>(), std::isnan,
     test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+/// Test `tf.Lgamma`.
+
+static constexpr std::initializer_list<double> kLgammaValues = {
+    -std::numeric_limits<double>::infinity(),
+    -9.0,
+    -8.5,
+    -8.3,
+    -2.0,
+    -1.5,
+    -1.3,
+    -1.0,
+    -0.5,
+    -0.3,
+    0.0,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    1.0,
+    1.5,
+    2.0,
+    3.0,
+    4.0,
+    5.0,
+    100.0,
+    std::numeric_limits<double>::infinity(),
+};
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Lgamma, DT_FLOAT, DT_FLOAT, test::InputAsVector<float>(kLgammaValues),
+    std::lgamma, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Lgamma, DT_DOUBLE, DT_DOUBLE, test::InputAsVector<double>(kLgammaValues),
+    std::lgamma, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Lgamma, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::InputAsVector<Eigen::half>(kLgammaValues), std::lgamma,
+    test::GpuOpsTestConfig())
 
 /// Test `tf.Log`.
 

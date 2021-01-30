@@ -159,6 +159,18 @@ absl::Status CreateMetalObject(id<MTLDevice> device, GPUObjectDescriptor* desc,
 
   return absl::InvalidArgumentError("Unknown GPU descriptor.");
 }
+
+std::string AccessToMetalTextureAccess(AccessType access_type) {
+  if (access_type == AccessType::READ) {
+    return "access::read";
+  } else if (access_type == AccessType::READ_WRITE) {
+    return "access::read_write";
+  } else if (access_type == AccessType::WRITE) {
+    return "access::write";
+  } else {
+    return "access::unknown";
+  }
+}
 }  // namespace
 
 // Static
@@ -408,11 +420,28 @@ absl::Status MetalArguments::SetObjectRef(const std::string& name,
 }
 
 void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder,
-                            int buffer_offset) const {
+                            int buffer_offset, int texture_offset) const {
   for (auto& b : buffers_) {
     [encoder setBuffer:b.second.handle offset:0 atIndex:buffer_offset];
     buffer_offset++;
   }
+  for (auto& image : images2d_) {
+    [encoder setTexture:image.second.handle atIndex:texture_offset];
+    texture_offset++;
+  }
+  for (auto& image : image2d_arrays_) {
+    [encoder setTexture:image.second.handle atIndex:texture_offset];
+    texture_offset++;
+  }
+  for (auto& image : images3d_) {
+    [encoder setTexture:image.second.handle atIndex:texture_offset];
+    texture_offset++;
+  }
+  for (auto& image : image_buffers_) {
+    [encoder setTexture:image.second.handle atIndex:texture_offset];
+    texture_offset++;
+  }
+
   if (!const_data_.empty()) {
     [encoder setBytes:const_data_.data()
                length:const_data_.size()
@@ -441,21 +470,51 @@ absl::Status MetalArguments::AddObjectArgs(Arguments* args) {
   return absl::OkStatus();
 }
 
-std::string MetalArguments::GetListOfArgs(int buffer_offset) {
+std::string MetalArguments::GetListOfArgs(int buffer_offset,
+                                          int textures_offset) {
   std::string result;
   for (auto& t : buffers_) {
-    std::string attributes;
-    for (const auto& attr : t.second.desc.attributes) {
-      attributes += absl::StrCat("  __attribute__((", attr, "))");
-    }
     AppendArgument(
         absl::StrCat(MemoryTypeToMetalType(t.second.desc.memory_type), " ",
                      ToMetalDataType(t.second.desc.data_type,
                                      t.second.desc.element_size),
-                     "* ", t.first, "[[buffer(", buffer_offset, ")]]",
-                     attributes),
+                     "* ", t.first, "[[buffer(", buffer_offset, ")]]"),
         &result);
     buffer_offset++;
+  }
+  for (auto& t : images2d_) {
+    std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
+    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    AppendArgument(absl::StrCat("texture2d<", data_type, ", ", access, "> ",
+                                t.first, "[[texture(", textures_offset, ")]]"),
+                   &result);
+    textures_offset++;
+  }
+  for (auto& t : image2d_arrays_) {
+    std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
+    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    AppendArgument(
+        absl::StrCat("texture2d_array<", data_type, ", ", access, "> ", t.first,
+                     "[[texture(", textures_offset, ")]]"),
+        &result);
+    textures_offset++;
+  }
+  for (auto& t : images3d_) {
+    std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
+    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    AppendArgument(absl::StrCat("texture3d<", data_type, ", ", access, "> ",
+                                t.first, "[[texture(", textures_offset, ")]]"),
+                   &result);
+    textures_offset++;
+  }
+  for (auto& t : image_buffers_) {
+    std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
+    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    AppendArgument(
+        absl::StrCat("texture_buffer<", data_type, ", ", access, "> ", t.first,
+                     "[[texture(", textures_offset, ")]]"),
+        &result);
+    textures_offset++;
   }
   if (!const_data_.empty()) {
     AppendArgument(absl::StrCat("constant uniforms_buffer& U[[buffer(",
@@ -477,12 +536,45 @@ absl::Status MetalArguments::SetGPUResources(
   for (const auto& r : resources.buffers) {
     RETURN_IF_ERROR(SetBuffer(absl::StrCat(name, "_", r.first), r.second));
   }
+  for (const auto& r : resources.images2d) {
+    RETURN_IF_ERROR(SetImage2D(absl::StrCat(name, "_", r.first), r.second));
+  }
+  for (const auto& r : resources.image2d_arrays) {
+    RETURN_IF_ERROR(
+        SetImage2DArray(absl::StrCat(name, "_", r.first), r.second));
+  }
+  for (const auto& r : resources.images3d) {
+    RETURN_IF_ERROR(SetImage3D(absl::StrCat(name, "_", r.first), r.second));
+  }
+  for (const auto& r : resources.image_buffers) {
+    RETURN_IF_ERROR(SetImageBuffer(absl::StrCat(name, "_", r.first), r.second));
+  }
   return absl::OkStatus();
 }
 
 void MetalArguments::AddBuffer(const std::string& name,
                                const GPUBufferDescriptor& desc) {
   buffers_[name].desc = desc;
+}
+
+void MetalArguments::AddImage2D(const std::string& name,
+                                const GPUImage2DDescriptor& desc) {
+  images2d_[name].desc = desc;
+}
+
+void MetalArguments::AddImage2DArray(const std::string& name,
+                                     const GPUImage2DArrayDescriptor& desc) {
+  image2d_arrays_[name].desc = desc;
+}
+
+void MetalArguments::AddImage3D(const std::string& name,
+                                const GPUImage3DDescriptor& desc) {
+  images3d_[name].desc = desc;
+}
+
+void MetalArguments::AddImageBuffer(const std::string& name,
+                                    const GPUImageBufferDescriptor& desc) {
+  image_buffers_[name].desc = desc;
 }
 
 void MetalArguments::AddGPUResources(const std::string& name,
@@ -497,6 +589,18 @@ void MetalArguments::AddGPUResources(const std::string& name,
   for (const auto& r : resources.buffers) {
     AddBuffer(absl::StrCat(name, "_", r.first), r.second);
   }
+  for (const auto& r : resources.images2d) {
+    AddImage2D(absl::StrCat(name, "_", r.first), r.second);
+  }
+  for (const auto& r : resources.image2d_arrays) {
+    AddImage2DArray(absl::StrCat(name, "_", r.first), r.second);
+  }
+  for (const auto& r : resources.images3d) {
+    AddImage3D(absl::StrCat(name, "_", r.first), r.second);
+  }
+  for (const auto& r : resources.image_buffers) {
+    AddImageBuffer(absl::StrCat(name, "_", r.first), r.second);
+  }
 }
 
 absl::Status MetalArguments::SetBuffer(const std::string& name,
@@ -505,6 +609,50 @@ absl::Status MetalArguments::SetBuffer(const std::string& name,
   if (it == buffers_.end()) {
     return absl::NotFoundError(
         absl::StrCat("No buffer argument with name - ", name));
+  }
+  it->second.handle = handle;
+  return absl::OkStatus();
+}
+
+absl::Status MetalArguments::SetImage2D(const std::string& name,
+                                        id<MTLTexture> handle) {
+  auto it = images2d_.find(name);
+  if (it == images2d_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No image2d argument with name - ", name));
+  }
+  it->second.handle = handle;
+  return absl::OkStatus();
+}
+
+absl::Status MetalArguments::SetImage2DArray(const std::string& name,
+                                             id<MTLTexture> handle) {
+  auto it = image2d_arrays_.find(name);
+  if (it == image2d_arrays_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No image2d array argument with name - ", name));
+  }
+  it->second.handle = handle;
+  return absl::OkStatus();
+}
+
+absl::Status MetalArguments::SetImage3D(const std::string& name,
+                                        id<MTLTexture> handle) {
+  auto it = images3d_.find(name);
+  if (it == images3d_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No image3d argument with name - ", name));
+  }
+  it->second.handle = handle;
+  return absl::OkStatus();
+}
+
+absl::Status MetalArguments::SetImageBuffer(const std::string& name,
+                                            id<MTLTexture> handle) {
+  auto it = image_buffers_.find(name);
+  if (it == image_buffers_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No image buffer argument with name - ", name));
   }
   it->second.handle = handle;
   return absl::OkStatus();

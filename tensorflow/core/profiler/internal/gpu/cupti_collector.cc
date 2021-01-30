@@ -248,6 +248,15 @@ class PerDeviceCollector {
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kMemsetDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
+    } else if (event.type == CuptiTracerEventType::MemoryResidency) {
+      VLOG(7) << "Add MemoryResidency stat";
+      std::string value = absl::StrCat(
+          "kind:", GetMemoryKindName(event.memory_residency_info.kind),
+          " num_bytes:", event.memory_residency_info.num_bytes,
+          " addr:", event.memory_residency_info.address);
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
+                              StatType::kMemoryResidencyDetails)),
+                          *plane->GetOrCreateStatMetadata(std::move(value)));
     }
 
     std::vector<Annotation> annotation_stack =
@@ -448,11 +457,14 @@ class PerDeviceCollector {
       int64 line_id = CuptiTracerEvent::kInvalidThreadId;
       bool is_host_event = IsHostEvent(event, &line_id);
       if (line_id == CuptiTracerEvent::kInvalidThreadId ||
-          line_id == CuptiTracerEvent::kInvalidStreamId)
+          line_id == CuptiTracerEvent::kInvalidStreamId) {
+        VLOG(9) << "Ignoring event, type=" << static_cast<int>(event.type);
         continue;
+      }
       auto* plane = is_host_event ? host_plane : device_plane;
-      VLOG(7) << "Event"
-              << " type=" << (int)event.type << " line_id=" << line_id
+      VLOG(9) << "Event"
+              << " type=" << static_cast<int>(event.type)
+              << " line_id=" << line_id
               << (is_host_event ? " host plane=" : " device plane=")
               << plane->Name();
       XLineBuilder line = plane->GetOrCreateLine(line_id);

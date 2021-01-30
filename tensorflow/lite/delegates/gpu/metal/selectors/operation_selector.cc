@@ -60,17 +60,17 @@ namespace gpu {
 namespace metal {
 namespace {
 
-std::unique_ptr<ComputeTaskDescriptor> SelectDepthWiseConv(
+std::unique_ptr<GPUOperation> SelectDepthWiseConv(
     const OperationDef& op_def, const DepthwiseConvolution2DAttributes& attr) {
   if (CheckDepthWiseConv3x3Stride1x1Support(attr)) {
-    auto gpu_op = DepthWiseConv3x3Stride1x1(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateDepthWiseConv3x3Stride1x1(op_def, attr);
+    return absl::make_unique<DepthWiseConv3x3Stride1x1>(std::move(gpu_op));
   } else if (CheckDepthWiseConv3x3Stride2Support(attr)) {
-    auto gpu_op = DepthWiseConv3x3Stride2(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateDepthWiseConv3x3Stride2(op_def, attr);
+    return absl::make_unique<DepthWiseConv3x3Stride2>(std::move(gpu_op));
   } else {
-    auto gpu_op = DepthWiseConvolution(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateDepthWiseConvolution(op_def, attr);
+    return absl::make_unique<DepthWiseConvolution>(std::move(gpu_op));
   }
 }
 
@@ -97,15 +97,15 @@ absl::Status SelectConcat(const ConcatAttributes& attr,
   }
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectConvolutionTransposed(
+std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
     const OperationDef& op_def, const ConvolutionTransposedAttributes& attr,
     const GpuInfo& gpu_info) {
   if (CheckConvolutionTransposed4x4Support(attr)) {
-    auto gpu_op = ConvolutionTransposed4x4(op_def, attr, gpu_info);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateConvolutionTransposed4x4(gpu_info, op_def, attr);
+    return absl::make_unique<ConvolutionTransposed4x4>(std::move(gpu_op));
   } else {
-    auto gpu_op = ConvolutionTransposed(op_def, attr, gpu_info);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateConvolutionTransposed(gpu_info, op_def, attr);
+    return absl::make_unique<ConvolutionTransposed>(std::move(gpu_op));
   }
 }
 
@@ -190,27 +190,27 @@ void SelectTranspose(const TransposeAttributes& attr,
   *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectWinograd4x4To36(
+std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
     const OperationDef& op_def, const Winograd4x4To36Attributes& attr,
     const GpuInfo& gpu_info) {
   if (gpu_info.IsApple()) {
-    auto gpu_op = Winograd4x4To36(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateWinograd4x4To36(op_def, attr);
+    return absl::make_unique<Winograd4x4To36>(std::move(gpu_op));
   } else {
-    auto gpu_op = Winograd4x4To36TileX6(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateWinograd4x4To36TileX6(op_def, attr);
+    return absl::make_unique<Winograd4x4To36TileX6>(std::move(gpu_op));
   }
 }
 
-std::unique_ptr<ComputeTaskDescriptor> SelectWinograd36To4x4(
+std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
     const OperationDef& op_def, const Winograd36To4x4Attributes& attr,
     const GpuInfo& gpu_info) {
   if (gpu_info.IsApple()) {
-    auto gpu_op = Winograd36To4x4(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateWinograd36To4x4(op_def, attr);
+    return absl::make_unique<Winograd36To4x4>(std::move(gpu_op));
   } else {
-    auto gpu_op = Winograd36To4x4Tile4x1(op_def, attr);
-    return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+    auto gpu_op = CreateWinograd36To4x4Tile4x1(op_def, attr);
+    return absl::make_unique<Winograd36To4x4Tile4x1>(std::move(gpu_op));
   }
 }
 
@@ -267,7 +267,7 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   auto& winograd_up = gpu_subgraph->operations[0];
   Winograd4x4To36Attributes wino_up_attr;
   wino_up_attr.padding = attr.padding;
-  winograd_up.task_desc =
+  winograd_up.operation =
       SelectWinograd4x4To36(winograd_up_def, wino_up_attr, gpu_info);
   winograd_up.input_ids = {static_cast<int>(inputs[0]->id)};
   winograd_up.output_ids = {-1};
@@ -291,7 +291,7 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   Winograd36To4x4Attributes wino_down_attr;
   wino_down_attr.output_shape = outputs[0]->tensor.shape;
   wino_down_attr.biases = attr.bias;
-  winograd_down.task_desc =
+  winograd_down.operation =
       SelectWinograd36To4x4(winograd_down_def, wino_down_attr, gpu_info);
   return absl::OkStatus();
 }
@@ -375,7 +375,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             "Convolution Transposed does not support more than 1 runtime "
             "tensor");
       }
-      gpu_operation->task_desc = SelectConvolutionTransposed(
+      gpu_operation->operation = SelectConvolutionTransposed(
           op_def,
           absl::any_cast<ConvolutionTransposedAttributes>(
               node.operation.attributes),
@@ -387,17 +387,16 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             "DepthWise Convolution does not support more than 1 runtime "
             "tensor");
       }
-      gpu_operation->task_desc = SelectDepthWiseConv(
+      gpu_operation->operation = SelectDepthWiseConv(
           op_def, absl::any_cast<DepthwiseConvolution2DAttributes>(
                       node.operation.attributes));
       break;
     case OperationType::FULLY_CONNECTED: {
-      auto gpu_op = FullyConnected(
-          op_def,
-          absl::any_cast<FullyConnectedAttributes>(node.operation.attributes),
-          gpu_info);
-      gpu_operation->task_desc =
-          absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+      FullyConnected gpu_op = CreateFullyConnected(
+          gpu_info, op_def,
+          absl::any_cast<FullyConnectedAttributes>(node.operation.attributes));
+      gpu_operation->operation =
+          absl::make_unique<FullyConnected>(std::move(gpu_op));
       break;
     }
     case OperationType::LSTM: {

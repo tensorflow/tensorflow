@@ -201,8 +201,8 @@ class MicroInterpreter {
 
   // TODO(b/162311891): Clean these pointers up when this class supports buffers
   // from TfLiteEvalTensor.
-  TfLiteTensor* input_tensor_;
-  TfLiteTensor* output_tensor_;
+  TfLiteTensor** input_tensors_;
+  TfLiteTensor** output_tensors_;
 };
 
 }  // namespace tflite

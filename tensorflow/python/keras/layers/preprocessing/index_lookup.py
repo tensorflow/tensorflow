@@ -305,11 +305,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           (self.mask_token, self.oov_token, self.oov_token,
            oov_start, oov_end, self.mask_token, vocab[0]))
 
-    insert_special_tokens = not has_oov and not has_mask
-
     special_tokens = [] if self.mask_token is None else [self.mask_token]
     special_tokens.extend([self.oov_token] * self.num_oov_indices)
 
+    insert_special_tokens = special_tokens and not has_oov and not has_mask
     num_special_tokens = len(special_tokens)
     tokens = vocab if insert_special_tokens else vocab[num_special_tokens:]
     if self.mask_token in tokens:
@@ -325,25 +324,24 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                        "OOV token for this layer." %
                        (self.oov_token, tokens.index(self.oov_token)))
 
-    if insert_special_tokens:
-      total_vocab_size = len(vocab) + num_special_tokens
-    else:
-      total_vocab_size = len(vocab)
+    total_vocab_size = len(tokens) + num_special_tokens
     if self.max_tokens is not None and total_vocab_size > self.max_tokens:
       raise ValueError(
           "Attempted to set a vocabulary larger than the maximum vocab size. "
           "Passed vocab size is %s, max vocab size is %s." %
           (total_vocab_size, self.max_tokens))
 
-    start_index = num_special_tokens
-    values = np.arange(start_index, len(vocab) + start_index, dtype=np.int64)
-
     self._table_handler.clear()
-    self._table_handler.insert(vocab, values)
-
-    if insert_special_tokens and num_special_tokens > 0:
+    if insert_special_tokens:
+      start_index = num_special_tokens
+      values = np.arange(start_index, len(tokens) + start_index, dtype=np.int64)
+      self._table_handler.insert(tokens, values)
       special_token_values = np.arange(num_special_tokens, dtype=np.int64)
       self._table_handler.insert(special_tokens, special_token_values)
+    else:
+      values = np.arange(len(vocab), dtype=np.int64)
+      self._table_handler.insert(vocab, values)
+
     return total_vocab_size
 
   def _set_inverse_vocabulary(self, vocab):

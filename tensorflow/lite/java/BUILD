@@ -23,10 +23,13 @@ exports_files([
     "tflite_version_script.lds",
 ])
 
-JAVA_SRCS = glob([
-    "src/main/java/org/tensorflow/lite/*.java",
-    "src/main/java/org/tensorflow/lite/annotations/*.java",
-]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"]
+filegroup(
+    name = "java_srcs",
+    srcs = glob([
+        "src/main/java/org/tensorflow/lite/*.java",
+        "src/main/java/org/tensorflow/lite/annotations/*.java",
+    ]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"],
+)
 
 # Building tensorflow-lite.aar including 4 variants of .so
 # To build an aar for release, run below command:
@@ -66,7 +69,7 @@ aar_with_jni(
 
 android_library(
     name = "tensorflowlite",
-    srcs = JAVA_SRCS,
+    srcs = [":java_srcs"],
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
     deps = [
@@ -111,7 +114,7 @@ android_library(
 
 android_library(
     name = "tensorflowlite_java",
-    srcs = JAVA_SRCS,
+    srcs = [":java_srcs"],
     proguard_specs = ["proguard.flags"],
     deps = [
         "@org_checkerframework_qual",
@@ -120,7 +123,7 @@ android_library(
 
 java_library(
     name = "tensorflowlite_javalib",
-    srcs = JAVA_SRCS,
+    srcs = [":java_srcs"],
     javacopts = JAVACOPTS,
     deps = [
         "@org_checkerframework_qual",
@@ -129,7 +132,7 @@ java_library(
 
 java_library(
     name = "tensorflowlitelib",
-    srcs = JAVA_SRCS,
+    srcs = [":java_srcs"],
     javacopts = JAVACOPTS,
     deps = [
         ":libtensorflowlite_jni.so",
@@ -180,7 +183,7 @@ java_test(
 java_test(
     name = "TensorFlowLiteNoNativeLibTest",
     size = "small",
-    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
+    srcs = [":java_srcs"] + ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorFlowLiteNoNativeLibTest",
     visibility = ["//visibility:private"],
@@ -194,7 +197,7 @@ java_test(
 java_test(
     name = "TensorFlowLiteInvalidNativeLibTest",
     size = "small",
-    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
+    srcs = [":java_srcs"] + ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorFlowLiteInvalidNativeLibTest",
     visibility = ["//visibility:private"],

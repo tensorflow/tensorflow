@@ -68,6 +68,12 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
+// These are currently aliases and the alias will be removed, verified
+// equivalent until then.
+// TODO(b/178519687): Remvoe once addressed.
+static_assert(std::is_same<tensorflow::int64, std::int64_t>::value,
+              "tensorflow::int64 is expected to match std::int64_t");
+
 namespace mlir {
 namespace TF {
 
