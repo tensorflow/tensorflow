@@ -17,4 +17,36 @@ limitations under the License.
 
 #include "tensorflow/core/platform/ctstring.h"
 
+#ifdef SWIG
+#define TF_CAPI_EXPORT
+#else
+#if defined(_WIN32)
+#ifdef TF_COMPILE_LIBRARY
+#define TF_CAPI_EXPORT __declspec(dllexport)
+#else
+#define TF_CAPI_EXPORT __declspec(dllimport)
+#endif  // TF_COMPILE_LIBRARY
+#else
+#define TF_CAPI_EXPORT __attribute__((visibility("default")))
+#endif  // _WIN32
+#endif  // SWIG
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+TF_CAPI_EXPORT extern TF_TString* TF_StringInit();
+
+TF_CAPI_EXPORT extern void TF_StringCopy(TF_TString *dst, const char *src, size_t size);
+
+TF_CAPI_EXPORT extern const char* TF_StringGetDataPointer(TF_TString* tstr);
+
+TF_CAPI_EXPORT extern size_t TF_StringGetSize(TF_TString* tstr);
+
+TF_CAPI_EXPORT extern void TF_StringDealloc(TF_TString* tstr);
+
+#ifdef __cplusplus
+} /* end extern "C" */
+#endif
+
 #endif  // THIRD_PARTY_TENSORFLOW_C_TF_TSTRING_H_
