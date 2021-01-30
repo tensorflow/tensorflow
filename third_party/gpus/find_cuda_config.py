@@ -121,7 +121,7 @@ def _at_least_version(actual_version, required_version):
 def _get_header_version(path, name):
   """Returns preprocessor defines in C header file."""
   for line in io.open(path, "r", encoding="utf-8").readlines():
-    match = re.match("#define %s +(\d+)" % name, line)
+    match = re.match(r"#define %s +(\d+)" % name, line)
     if match:
       return match.group(1)
   return ""
@@ -261,7 +261,7 @@ def _find_cuda_config(base_paths, required_version):
   cuda_library_path = _find_library(base_paths, "cudart", cuda_version)
 
   def get_nvcc_version(path):
-    pattern = "Cuda compilation tools, release \d+\.\d+, V(\d+\.\d+\.\d+)"
+    pattern = r"Cuda compilation tools, release \d+\.\d+, V(\d+\.\d+\.\d+)"
     for line in subprocess.check_output([path, "--version"]).splitlines():
       match = re.match(pattern, line.decode("ascii"))
       if match:
@@ -269,7 +269,7 @@ def _find_cuda_config(base_paths, required_version):
     return None
 
   nvcc_name = "nvcc.exe" if _is_windows() else "nvcc"
-  nvcc_path, nvcc_version = _find_versioned_file(base_paths, [
+  nvcc_path, _ = _find_versioned_file(base_paths, [
       "",
       "bin",
       "local/cuda/bin",
@@ -541,14 +541,16 @@ def _find_tensorrt_config(base_paths, required_version):
   }
 
 
-def _list_from_env(env_name, default=[]):
+def _list_from_env(env_name, default=None):
   """Returns comma-separated list from environment variable."""
   if env_name in os.environ:
     return os.environ[env_name].split(",")
+  if default is None:
+    return []
   return default
 
 
-def _get_legacy_path(env_name, default=[]):
+def _get_legacy_path(env_name, default=None):
   """Returns a path specified by a legacy environment variable.
 
   CUDNN_INSTALL_PATH, NCCL_INSTALL_PATH, TENSORRT_INSTALL_PATH set to
@@ -556,9 +558,11 @@ def _get_legacy_path(env_name, default=[]):
   paths. Detect those and return '/usr', otherwise forward to _list_from_env().
   """
   if env_name in os.environ:
-    match = re.match("^(/[^/ ]*)+/lib/\w+-linux-gnu/?$", os.environ[env_name])
+    match = re.match(r"^(/[^/ ]*)+/lib/\w+-linux-gnu/?$", os.environ[env_name])
     if match:
       return [match.group(1)]
+  if default is None:
+    return _list_from_env(env_name)
   return _list_from_env(env_name, default)
 
 
@@ -646,7 +650,7 @@ def main():
     for key, value in sorted(find_cuda_config().items()):
       print("%s: %s" % (key, value))
   except ConfigError as e:
-    sys.stderr.write(str(e) + '\n')
+    sys.stderr.write(str(e) + "\n")
     sys.exit(1)
 
 
