@@ -361,7 +361,7 @@ REGISTER_OP("Rint")
 #define BINARY_MORE()                                                          \
   Input("x: T").Input("y: T").Output("z: T").Attr(                             \
       "T: {bfloat16, half, float, double, uint8, int8, uint16, int16, int32, " \
-      "int64, complex64, complex128}")
+      "uint32, uint64, int64, complex64, complex128}")
 
 #define BINARY_FEWER()                                               \
   Input("x: T").Input("y: T").Output("z: T").Attr(                   \
@@ -382,8 +382,8 @@ REGISTER_OP("AddV2")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {bfloat16, half, float, double, uint8, int8, int16, uint32, int32, "
-        "int64, complex64, complex128}")
+        "T: {bfloat16, half, float, double, uint8, uint16, uint32, uint64, "
+        "int8, int16, int32, int64, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .SetIsAggregate()
     .SetIsCommutative();
@@ -433,7 +433,7 @@ REGISTER_OP("Sub")
     .Output("z: T")
     .Attr(
         "T: {bfloat16, half, float, double, uint8, int8, uint16, int16, int32, "
-        "int64, complex64, complex128, uint32}")
+        "int64, complex64, complex128, uint32, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("_MklSub")
@@ -542,7 +542,9 @@ REGISTER_OP("Maximum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double, uint8, int16, int32, int64}")
+    .Attr(
+        "T: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "uint8, uint16, uint32, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 // Note: This op is not commutative w.r.t. to all its inputs.
@@ -595,8 +597,8 @@ REGISTER_OP("Pow")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {bfloat16, float, half, double, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, float, half, double, int8, int16, int32, int64, "
+        "complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Igammac")

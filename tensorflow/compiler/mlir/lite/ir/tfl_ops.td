@@ -4556,4 +4556,41 @@ the dimension is padded with zeros.
   );
 }
 
+
+def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {
+  let summary = "Assigns a new value to a variable.";
+
+  let description = [{
+Any ReadVariableOp with a control dependency on this op is guaranteed to return
+this value or a subsequent newer value of the variable.
+  }];
+
+  let arguments = (ins
+    // TODO(b/149099381): Remove integer IDs after adding the new variable
+    // handle type.
+    TFL_TensorOf<[I32]>:$resource_id,
+    // TODO(b/149099381): Support other types too.
+    TFL_TensorOf<[F32]>:$value
+  );
+
+  let results = (outs);
+}
+
+def TFL_ReadVariableOp : TFL_Op<"read_variable", []> {
+  let summary = "Reads variable value.";
+
+  let description = [{
+Read variable data identified by 'resource_id'.
+  }];
+
+  let arguments = (ins
+    // TODO(b/149099381): Remove integer IDs after adding the new variable
+    // handle type.
+    TFL_TensorOf<[I32]>:$resource_id
+  );
+
+  // TODO(b/149099381): Support other types too.
+  let results = (outs TFL_TensorOf<[F32]>:$result);
+}
+
 #endif // TFL_OPS

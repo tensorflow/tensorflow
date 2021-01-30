@@ -489,9 +489,7 @@ absl::Status InferenceContext::Tune(TuningType tuning_type,
 }
 
 void InferenceContext::EncodeWithEncoder(
-    id<MTLComputeCommandEncoder> command_encoder,
-    const std::map<ValueId, id<MTLBuffer>>& in_out_buffers) {
-  UpdatePreallocatedTensors(in_out_buffers);
+    id<MTLComputeCommandEncoder> command_encoder) {
   for (int i = 0; i < nodes_.size(); ++i) {
     auto& task = nodes_[i].task;
     task.Encode(command_encoder);
@@ -499,9 +497,7 @@ void InferenceContext::EncodeWithEncoder(
 }
 
 void InferenceContext::EncodeWithCommandBuffer(
-    id<MTLCommandBuffer> command_buffer,
-    const std::map<ValueId, id<MTLBuffer>>& in_out_buffers) {
-  UpdatePreallocatedTensors(in_out_buffers);
+    id<MTLCommandBuffer> command_buffer) {
   for (int i = 0; i < nodes_.size(); ++i) {
     id<MTLComputeCommandEncoder> encoder =
         [command_buffer computeCommandEncoder];
@@ -511,10 +507,8 @@ void InferenceContext::EncodeWithCommandBuffer(
   }
 }
 
-void InferenceContext::EncodeWithCommandQueue(
-    id<MTLCommandQueue> command_queue,
-    const std::map<ValueId, id<MTLBuffer>>& in_out_buffers, int flush_period) {
-  UpdatePreallocatedTensors(in_out_buffers);
+void InferenceContext::EncodeWithCommandQueue(id<MTLCommandQueue> command_queue,
+                                              int flush_period) {
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   for (int i = 0; i < nodes_.size(); ++i) {
     id<MTLComputeCommandEncoder> encoder =

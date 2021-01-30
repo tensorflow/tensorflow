@@ -18,11 +18,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-ReplicaIdThunk::ReplicaIdThunk(ThunkInfo thunk_info,
-                               const BufferAllocation::Slice& dest)
-    : Thunk(Kind::kReplicaId, thunk_info), dest_(dest) {}
-
-Status ReplicaIdThunk::ExecuteOnStream(const ExecuteParams& params) {
+Status ReplicaOrPartitionIdThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
 
@@ -30,9 +26,10 @@ Status ReplicaIdThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
-  TF_ASSIGN_OR_RETURN(int replica_id,
-                      params.device_assn->ReplicaIdForDevice(global_device_id));
-  params.stream->ThenMemset32(&dest_addr, replica_id, /*size=*/4);
+  TF_ASSIGN_OR_RETURN(auto logical_ids, params.device_assn->LogicalIdsForDevice(
+                                            global_device_id));
+  int id = kind() == Kind::kReplicaId ? logical_ids.first : logical_ids.second;
+  params.stream->ThenMemset32(&dest_addr, id, /*size=*/4);
   return Status::OK();
 }
 

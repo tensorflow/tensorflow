@@ -489,6 +489,16 @@ func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %updates:
 
 // -----
 
+// CHECK-LABEL: @do_not_decompose_scalar_update
+func @do_not_decompose_scalar_update(%resource : tensor<*x!tf.resource>, %indices : tensor<?xi32>, %updates: tensor<i32>) {
+  // CHECK: ResourceScatterUpdate
+  // CHECK-NOT: TensorScatterUpdate
+  "tf.ResourceScatterUpdate"(%resource, %indices, %updates) {device = ""} : (tensor<*x!tf.resource>, tensor<?xi32>, tensor<i32>) -> ()
+  return
+}
+
+// -----
+
 // Tests that tf.VariableShape operation is decomposed.
 
 // CHECK-LABEL: @decompose_variable_shape_i32

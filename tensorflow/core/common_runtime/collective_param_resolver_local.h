@@ -118,12 +118,14 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
   // Find the InstanceRec with the same instance_key as cp.  If it doesn't
   // already exist, create and initialize from gr and cp.
+  // created is set to true if a new IRec is created, false otherwise.
   //
   // Precondition: *gr must be a complete GroupRec, i.e. the value set
   // by CompleteGroupLocal. *cp must be populated with all the fields
   // required by InitInstanceSharedParams.  Ownership of InstanceRec stays
   // with this object and does not pass to the callback.
-  InstanceRec* GetOrCreateInstanceRec(const GroupRec* gr, CollectiveParams* cp)
+  InstanceRec* GetOrCreateInstanceRec(const GroupRec* gr, CollectiveParams* cp,
+                                      bool* created)
       TF_LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
 
   // Populate *ir with device membership from gr, then initialize to be specific

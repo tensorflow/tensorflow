@@ -471,6 +471,191 @@ struct ConvertErfcOp : public OpConversionPattern<ErfcOp> {
   }
 };
 
+// Coefficients for the Lanczos approximation of the gamma function. The
+// coefficients are uniquely determined by the choice of g and n (kLanczosGamma
+// and kLanczosCoefficients.size() + 1). The coefficients below correspond to
+// [7, 9]. [5, 7], [7, 9], [9, 10], and [607/128.0, 15] were evaluated and
+// [7, 9] seemed to be the least sensitive to the quality of the log function.
+// In particular, [5, 7] is the only choice where -1.5e-5 <= lgamma(2) <= 1.5e-5
+// for a particularly inaccurate log function.
+constexpr double kLanczosGamma = 7;  // aka g
+constexpr double kBaseLanczosCoeff = 0.99999999999980993227684700473478;
+constexpr std::array<double, 8> kLanczosCoefficients = {
+    676.520368121885098567009190444019, -1259.13921672240287047156078755283,
+    771.3234287776530788486528258894,   -176.61502916214059906584551354,
+    12.507343278686904814458936853,     -0.13857109526572011689554707,
+    9.984369578019570859563e-6,         1.50563273514931155834e-7};
+
+// Compute the Lgamma function using Lanczos' approximation from "A Precision
+// Approximation of the Gamma Function". SIAM Journal on Numerical Analysis
+// series B. Vol. 1:
+//   lgamma(z + 1) = (log(2) + log(pi)) / 2
+//                     + (z + 1/2) * log(t(z))
+//                     - t(z) + log(a(z))
+//   with   t(z) = z + kLanczosGamma + 1/2
+//          a(z) = kBaseLanczosCoeff
+//                   + sum(k = 1, n, kLanczosCoefficients[i] / (z + k))
+Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
+                        Value x) {
+  // If the input is less than 0.5 use Euler's reflection formula.
+  //   gamma(x) = pi / (sin(pi * x) * gamma(1 - x))
+  // Let z be
+  //   z = -x      if x < 1/2
+  //   z = x - 1   otheriwse
+  const StringAttr kLT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
+  Value half = getConstantLike(rewriter, loc, 0.5, x);
+  Value need_to_reflect = rewriter.create<mhlo::CompareOp>(loc, x, half, kLT);
+  Value neg_x = rewriter.create<mhlo::NegOp>(loc, x);
+  Value one = getConstantLike(rewriter, loc, 1, x);
+  Value x_sub_one = rewriter.create<mhlo::SubOp>(loc, x, one);
+  Value z =
+      rewriter.create<mhlo::SelectOp>(loc, need_to_reflect, neg_x, x_sub_one);
+
+  // Materialize
+  //   a(z) = kBaseLanczosCoeff
+  //            + sum(k = 1, n, kLanczosCoefficients[i] / (z + k))
+  Value a = getConstantLike(rewriter, loc, kBaseLanczosCoeff, x);
+  for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
+    Value coeff = getConstantLike(rewriter, loc, kLanczosCoefficients[i], x);
+    Value one_based_index = getConstantLike(rewriter, loc, i + 1, x);
+    Value quotient = rewriter.create<mhlo::DivOp>(
+        loc, coeff, rewriter.create<mhlo::AddOp>(loc, z, one_based_index));
+    a = rewriter.create<mhlo::AddOp>(loc, a, quotient);
+  }
+
+  // To improve accuracy on platforms with less-precise log implementations,
+  // compute log(kLanczosGamma + 1/2) at compile time and use log1p on the
+  // device.
+  // Materialize as
+  //   log(t) = log(kLanczosGamma + 1/2 + z)
+  //          = log(kLanczosGamma + 1/2) + log1p(z / (kLanczosGamma + 1/2)).
+  Value lanczos_plus_half =
+      getConstantLike(rewriter, loc, kLanczosGamma + 0.5, x);
+  Value t = rewriter.create<mhlo::AddOp>(loc, lanczos_plus_half, z);
+  Value log_term =
+      getConstantLike(rewriter, loc, std::log(kLanczosGamma + 0.5), x);
+  Value log1p_term = rewriter.create<mhlo::Log1pOp>(
+      loc, rewriter.create<mhlo::DivOp>(loc, z, lanczos_plus_half));
+  Value log_t = rewriter.create<mhlo::AddOp>(loc, log_term, log1p_term);
+
+  // Note that t(z) may be large and we need to be careful not to overflow to
+  // infinity in the relevant term
+  //   r = (z + 1/2) * log(t(z)) - t(z).
+  // Therefore, we compute this as
+  //   r = (z + 1/2 - t(z) / log(t(z))) * log(t(z)).
+  Value t_div_log_t = rewriter.create<mhlo::DivOp>(loc, t, log_t);
+  Value sum = rewriter.create<mhlo::SubOp>(
+      loc, rewriter.create<mhlo::AddOp>(loc, z, half), t_div_log_t);
+  Value r = rewriter.create<mhlo::MulOp>(loc, sum, log_t);
+
+  // Compute the final result (modulo reflection) as
+  //   lgamma(z + 1) = (log(2) + log(pi)) / 2 + r + log(a(z)).
+  Value log_a = rewriter.create<mhlo::LogOp>(loc, a);
+  Value lgamma = rewriter.create<mhlo::AddOp>(
+      loc,
+      rewriter.create<mhlo::AddOp>(
+          loc,
+          getConstantLike(rewriter, loc, (std::log(2) + std::log(M_PI)) / 2, x),
+          r),
+      log_a);
+
+  // Compute the reflected value for x < 0.5 as
+  //   lgamma(x) = log(pi) - lgamma(1-x) - log(abs(sin(pi * x))).
+  //
+  // The abs is needed because lgamma is the log of the absolute value of the
+  // gamma function.
+  //
+  // We have to be careful when computing the final term above. gamma(x) goes
+  // to +/-inf at every integer x < 0, and this is controlled by the sin(pi * x)
+  // term. The slope is large, so precision is particularly important.
+  //
+  // Because abs(sin(pi * x)) has period of 1 we can equivalently use
+  // abs(sin(pi * frac(x))) where frac(x) is the fractional part of x. This is
+  // more numerically accurate: It doesn't overflow to inf like pi * x would and
+  // if x is an integer it evaluates to exactly 0 which is important because we
+  // then take the log of this value, and log(0) is inf.
+  //
+  // We don't have a frac(x) primitive in HLO and computing it is tricky, but
+  // because abs(sin(pi * x)) = abs(sin(pi * abs(x))), it's good enough for our
+  // purposes to use abs(frac(x)) = abs(x) - floor(abs(x)).
+  //
+  // Furthermore, pi * abs(frac(x)) loses precision when abs(frac(x)) is close
+  // to 1. To remedy this, we can use the fact that sin(pi * x) in the domain
+  // [0, 1] is symmetric across the line Y=0.5.
+  //
+
+  // Convert values of abs_frac > 0.5 to (1 - abs_frac) to improve precision of
+  // pi * abs_frac for values of abs_frac close to 1.
+  Value abs = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value abs_frac = rewriter.create<mhlo::SubOp>(
+      loc, abs, rewriter.create<mhlo::FloorOp>(loc, abs));
+  Value reduce_abs_frac =
+      rewriter.create<mhlo::CompareOp>(loc, half, abs_frac, kLT);
+  abs_frac = rewriter.create<mhlo::SelectOp>(
+      loc, reduce_abs_frac, rewriter.create<mhlo::SubOp>(loc, one, abs_frac),
+      abs_frac);
+
+  // Materialize reflection.
+  Value reflection_denom = rewriter.create<mhlo::LogOp>(
+      loc,
+      rewriter.create<mhlo::SinOp>(
+          loc, rewriter.create<mhlo::MulOp>(
+                   loc, getConstantLike(rewriter, loc, M_PI, x), abs_frac)));
+  Value lgamma_reflection = rewriter.create<mhlo::SubOp>(
+      loc,
+      rewriter.create<mhlo::SubOp>(
+          loc, getConstantLike(rewriter, loc, std::log(M_PI), x),
+          reflection_denom),
+      lgamma);
+
+  // Avoid computing -inf - inf, which is nan. If reflection_denom is +/-inf,
+  // then it "wins" and the result is +/-inf.
+  Value finite_reflection_denom =
+      rewriter.create<mhlo::IsFiniteOp>(loc, reflection_denom);
+  Value neg_reflection_denom =
+      rewriter.create<mhlo::NegOp>(loc, reflection_denom);
+  lgamma_reflection = rewriter.create<mhlo::SelectOp>(
+      loc, finite_reflection_denom, lgamma_reflection, neg_reflection_denom);
+
+  // Select whether or not to rely on the reflection.
+  lgamma = rewriter.create<mhlo::SelectOp>(loc, need_to_reflect,
+                                           lgamma_reflection, lgamma);
+
+  // Materialize +/-inf behavior as
+  //   lgamma(+/-inf) = +inf.
+  Value x_is_inf = rewriter.create<chlo::IsInfOp>(loc, x);
+  return rewriter.create<mhlo::SelectOp>(
+      loc, x_is_inf,
+      chlo::getConstantLikeInfValue(rewriter, loc, x, /*negative=*/false),
+      lgamma);
+}
+
+struct ConvertLgammaOp : public OpConversionPattern<LgammaOp> {
+  using OpConversionPattern<LgammaOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      LgammaOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    LgammaOp::Adaptor transformed(operands);
+    Value x = transformed.operand();
+    Type ty = getElementTypeOrSelf(op.getType());
+
+    if (ty.isF32() || ty.isF64()) {
+      rewriter.replaceOp(op, MaterializeLgamma(rewriter, loc, x));
+      return success();
+    }
+
+    // Materialize lgamma with upcast to f32.
+    x = rewriter.create<mhlo::ConvertOp>(loc, x, rewriter.getF32Type());
+    Value result = MaterializeLgamma(rewriter, loc, x);
+    result = rewriter.create<mhlo::ConvertOp>(loc, result, ty);
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
 // Converts binary ops that statically are determined to not broadcast directly
 // to the corresponding mhlo non-broadcasting op.
 template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
@@ -622,7 +807,8 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
       context, patterns, 5);
 
   // Other patterns.
-  patterns->insert<ConvertConstantLikeOp, ConvertErfOp, ConvertErfcOp>(context);
+  patterns->insert<ConvertConstantLikeOp, ConvertErfOp, ConvertErfcOp,
+                   ConvertLgammaOp>(context);
 }
 
 }  // namespace chlo

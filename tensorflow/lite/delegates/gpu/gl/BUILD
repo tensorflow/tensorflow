@@ -282,12 +282,23 @@ cc_library(
     deps = [
         ":gl_call",
         ":gl_errors",
+        ":gl_texture_helper",
         ":portable",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gl_texture_helper",
+    srcs = ["gl_texture_helper.cc"],
+    hdrs = ["gl_texture_helper.h"],
+    deps = [
+        ":portable",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
     ],
 )
 

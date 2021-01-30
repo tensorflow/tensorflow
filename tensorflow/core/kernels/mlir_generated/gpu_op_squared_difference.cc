@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,23 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#include "tensorflow/core/distributed_runtime/rpc/grpc_rpc_factory.h"
-#include "tensorflow/core/util/rpc/rpc_factory.h"
-#include "tensorflow/core/util/rpc/rpc_factory_registry.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
 
 namespace tensorflow {
-namespace {
 
-// Used for adding the grpc factory to the RPC factory registry.
-struct Value {
-  static RPCFactory* Function(OpKernelConstruction* ctx, bool fail_fast,
-                              int64 timeout_in_ms) {
-    return new GrpcRPCFactory(ctx, fail_fast, timeout_in_ms);
-  }
-};
+GENERATE_AND_REGISTER_BINARY_KERNEL(SquaredDifference, f16, DT_HALF,
+                                    Eigen::half);
+GENERATE_AND_REGISTER_BINARY_KERNEL(SquaredDifference, f32, DT_FLOAT, float);
+GENERATE_AND_REGISTER_BINARY_KERNEL(SquaredDifference, f64, DT_DOUBLE, double);
+GENERATE_AND_REGISTER_BINARY_KERNEL(SquaredDifference, i64, DT_INT64, int64);
 
-REGISTER_RPC_FACTORY("grpc", Value::Function);
-
-}  // namespace
 }  // namespace tensorflow

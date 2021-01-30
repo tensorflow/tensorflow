@@ -33,7 +33,8 @@ using Graph = ::tensorflow::Graph;
 
 Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
                                       ModuleOp module, const Graph& graph) {
-  if (!config_proto.experimental().enable_mlir_graph_optimization()) {
+  if (GetPassState(/*device_set=*/nullptr, config_proto, graph) ==
+      ::tensorflow::MlirOptimizationPassState::Disabled) {
     VLOG(1) << "Skipping MLIR Graph Optimization Pass"
             << ", session flag not enabled";
     return Status::OK();

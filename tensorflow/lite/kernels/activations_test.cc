@@ -988,13 +988,15 @@ TEST_P(TanhOpTest, TanhInt16General) {
   const float kMax = 32767.f / 32768.f;
   QuantizedActivationsOpModel m(
       GetRegistration(), BuiltinOperator_TANH,
-      /*input=*/{TensorType_INT16, {6}, 11 * kMin, 11 * kMax},
-      /*output=*/{TensorType_INT16, {5}, kMin, kMax});
-  m.SetInput<int16_t>({-10, -4, 0, 6, 7.0909090909, 8});
+      /*input=*/{TensorType_INT16, {10}, 11 * kMin, 11 * kMax},
+      /*output=*/{TensorType_INT16, {10}, kMin, kMax});
+  m.SetInput<int16_t>({-10, -4, 1, 0.5, 0.25,  //
+                       0, -0.1, 6, 7.0909090909, 8});
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
-                  {-0.999969, -0.99408, 0, 0.999664, 0.999939, 0.999969},
+                  {-1.0, -0.999329, 0.761594, 0.462117, 0.244919,  //
+                   0.0, -0.099668, 0.999988, 0.999999, 1.0},
                   kQuantizedToleranceInt16)));
 }
 
@@ -1219,18 +1221,18 @@ TEST_P(LogisticOpTest, SigmoidInt16General) {
   const float kMax = 32767.f / 32768.f;
   QuantizedActivationsOpModel m(
       GetRegistration(), BuiltinOperator_LOGISTIC,
-      /*input=*/{TensorType_INT16, {8}, 10 * kMin, 10 * kMax},
-      /*output=*/{TensorType_INT16, {8}, kMin, kMax});
+      /*input=*/{TensorType_INT16, {12}, 13 * kMin, 13 * kMax},
+      /*output=*/{TensorType_INT16, {12}, kMin, kMax});
   m.SetInput<int16_t>({
-      0, -6, 2, 4,   //
-      3, -2, 10, 1,  //
+      0, -6, 2, 4, 0.1, 12,    //
+      3, -2, 10, 1, 0.25, -12  //
   });
   m.Invoke();
-  EXPECT_THAT(
-      m.GetDequantizedOutput<int16_t>(),
-      ElementsAreArray(ArrayFloatNear({0.5, 0.00814819, 0.832031, 0.960846,  //
-                                       0.916809, 0.167969, 0.999664, 0.689972},
-                                      kQuantizedToleranceInt16)));
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {0.5, 0.002473, 0.880797, 0.982014, 0.524979, 0.999994,  //
+                   0.952574, 0.119203, 0.999955, 0.731059, 0.562177, 0},
+                  kQuantizedToleranceInt16)));
 }
 
 TEST(FloatActivationsOpTest, Softmax4D) {

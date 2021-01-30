@@ -331,21 +331,16 @@ ParallelDevice::Execute(TFE_Context* context,
                         const TFE_OpAttrs* attributes, int expected_max_outputs,
                         TF_Status* status) const {
   std::vector<PartialTensorShape> expected_output_shapes(expected_max_outputs);
-  return Execute(context, inputs, operation_name, attributes,
-                 expected_output_shapes, status);
+  StartExecute(context, inputs, operation_name, attributes,
+               expected_max_outputs);
+  return Join(expected_output_shapes, status);
 }
 
-absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
-ParallelDevice::Execute(
-    TFE_Context* context, const std::vector<ParallelTensor*>& inputs,
-    const char* operation_name, const TFE_OpAttrs* attributes,
-    const std::vector<PartialTensorShape>& expected_output_shapes,
-    TF_Status* status) const {
-  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> result;
-  // Compute per-device per-output tensors
-  std::vector<std::vector<TensorHandlePtr>> per_device_output_tensors;
-  per_device_output_tensors.reserve(underlying_devices_.size());
-  int first_op_output_count = 0;
+void ParallelDevice::StartExecute(TFE_Context* context,
+                                  const std::vector<ParallelTensor*>& inputs,
+                                  const char* operation_name,
+                                  const TFE_OpAttrs* attributes,
+                                  int expected_max_outputs) const {
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {
     DeviceThread* device_thread = device_threads_[device_index].get();
@@ -357,8 +352,19 @@ ParallelDevice::Execute(
     }
     device_thread->StartExecute(context, operation_name,
                                 std::move(device_inputs), attributes,
-                                expected_output_shapes.size());
+                                expected_max_outputs);
   }
+}
+
+absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
+ParallelDevice::Join(
+    const std::vector<PartialTensorShape>& expected_output_shapes,
+    TF_Status* status) const {
+  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> result;
+  // Compute per-device per-output tensors
+  std::vector<std::vector<TensorHandlePtr>> per_device_output_tensors;
+  per_device_output_tensors.reserve(underlying_devices_.size());
+  int first_op_output_count = 0;
   StatusPtr first_bad_status(nullptr);
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {

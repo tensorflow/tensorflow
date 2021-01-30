@@ -221,7 +221,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // KernelAndDevices.
   Status AddFunctionDef(const FunctionDef& fdef,
                         const FunctionDefLibrary& library,
-                        const bool add_to_local_only = false,
+                        bool add_to_local_only = false,
                         const StackTracesMap& stack_traces = {});
 
   const FunctionDef* GetFunctionDef(const string& function_name);
@@ -255,6 +255,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void SetReuseRendezvousForFunctions(bool reuse_rendezvous_for_functions) {
     reuse_rendezvous_for_functions_ = reuse_rendezvous_for_functions;
   }
+  bool GetReuseRendezvousForFunctions() const {
+    return reuse_rendezvous_for_functions_;
+  }
 
   bool AllowSoftPlacement() const { return allow_soft_placement_; }
   void SetAllowSoftPlacement(bool enable) override {
@@ -263,31 +266,25 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
-  Rendezvous* CreateRendezvous(const int64 step_id) const {
+
+  // Returns a function which maps from step_id to rendezvous. This closure
+  // respects the value of `SetReuseRendezvousForFunctions` at the time the
+  // closure was created, which allows the setting to be toggled around async op
+  // launches.
+  //
+  // The caller of the returned function owns a reference to the resulting
+  // Rendezvous.
+  std::function<Rendezvous*(int64)> RendezvousCreator() {
     if (reuse_rendezvous_for_functions_) {
-      // Increment reference count as `rendezvous_` will be unref'ed after
-      // function execution.
-      rendezvous_->Ref();
-      return rendezvous_;
+      return [this](int64 step_id) {
+        // Increment reference count as `rendezvous_` will be unref'ed after
+        // function execution.
+        rendezvous_->Ref();
+        return rendezvous_;
+      };
+    } else {
+      return [this](int64 step_id) { return CreateRendezvous(step_id); };
     }
-
-    if (rendezvous_creator_ != nullptr) {
-      return rendezvous_creator_(step_id);
-    }
-
-#if !defined(IS_MOBILE_PLATFORM)
-    if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
-      auto* remote_r = worker_env_->rendezvous_mgr->Find(step_id);
-      remote_r->Initialize(worker_session_.get()).IgnoreError();
-      return remote_r;
-    }
-#endif
-
-    if (remote_device_mgr() == nullptr) {
-      return new IntraProcessRendezvous(local_device_mgr());
-    }
-
-    return nullptr;
   }
 
   CollectiveExecutorMgrInterface* collective_executor_mgr() {
@@ -491,6 +488,26 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   const SessionOptions& session_options() const { return opts_; }
 
  private:
+  Rendezvous* CreateRendezvous(int64 step_id) const {
+    if (rendezvous_creator_ != nullptr) {
+      return rendezvous_creator_(step_id);
+    }
+
+#if !defined(IS_MOBILE_PLATFORM)
+    if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
+      auto* remote_r = worker_env_->rendezvous_mgr->Find(step_id);
+      remote_r->Initialize(worker_session_.get()).IgnoreError();
+      return remote_r;
+    }
+#endif
+
+    if (remote_device_mgr() == nullptr) {
+      return new IntraProcessRendezvous(local_device_mgr());
+    }
+
+    return nullptr;
+  }
+
   ~EagerContext() override;
 
   void InitPrioritizedDeviceTypeList();

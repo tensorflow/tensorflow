@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
@@ -2847,6 +2848,72 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                            int64 concat_dimension, int64 split_count,
                            const std::vector<ReplicaGroup>& replica_groups,
                            const absl::optional<Layout>& layout) {
+  // Array all_to_all may need to violate layout constraint to be legal so use
+  // the tuple version.
+  if (layout.has_value()) {
+    return AllToAllTuple(operand, split_dimension, concat_dimension,
+                         split_count, replica_groups, layout);
+  }
+  return AllToAllArray(operand, split_dimension, concat_dimension, split_count,
+                       replica_groups);
+}
+
+XlaOp XlaBuilder::AllToAllArray(
+    XlaOp operand, int64 split_dimension, int64 concat_dimension,
+    int64 split_count, const std::vector<ReplicaGroup>& replica_groups) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(
+        const Shape all_to_all_shape,
+        ShapeInference::InferAllToAllShape(*operand_shape, split_dimension,
+                                           concat_dimension, split_count));
+    HloInstructionProto instr;
+    *instr.mutable_shape() = operand_shape->ToProto();
+    if (replica_groups.empty()) {
+      auto* group = instr.add_replica_groups();
+      for (int64 i = 0; i < split_count; ++i) {
+        group->add_replica_ids(i);
+      }
+    } else {
+      for (const ReplicaGroup& group : replica_groups) {
+        *instr.add_replica_groups() = group;
+      }
+    }
+    instr.add_dimensions(split_dimension);
+    TF_ASSIGN_OR_RETURN(
+        XlaOp all_to_all,
+        AddInstruction(std::move(instr), HloOpcode::kAllToAll, {operand}));
+    if (split_dimension == concat_dimension) {
+      return all_to_all;
+    }
+    DimensionVector sizes;
+    for (int64 i = 0; i < operand_shape->rank(); ++i) {
+      if (i != split_dimension) {
+        sizes.push_back(operand_shape->dimensions(i));
+        continue;
+      }
+      sizes.push_back(split_count);
+      sizes.push_back(operand_shape->dimensions(i) / split_count);
+    }
+    all_to_all = Reshape(all_to_all, sizes);
+
+    std::vector<int64> permutation;
+    for (int64 i = 0; i < operand_shape->rank(); ++i) {
+      int64 dim_after_reshape = i >= split_dimension ? i + 1 : i;
+      if (i == concat_dimension) {
+        permutation.push_back(split_dimension);
+      }
+      permutation.push_back(dim_after_reshape);
+    }
+    all_to_all = Transpose(all_to_all, permutation);
+    return Reshape(all_to_all_shape, all_to_all);
+  });
+}
+
+XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64 split_dimension,
+                                int64 concat_dimension, int64 split_count,
+                                const std::vector<ReplicaGroup>& replica_groups,
+                                const absl::optional<Layout>& layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
@@ -4579,6 +4646,15 @@ XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
                const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
                                      split_count, replica_groups, layout);
+}
+
+XlaOp AllToAllTuple(const XlaOp operand, int64 split_dimension,
+                    int64 concat_dimension, int64 split_count,
+                    const std::vector<ReplicaGroup>& replica_groups,
+                    const absl::optional<Layout>& layout) {
+  return operand.builder()->AllToAllTuple(operand, split_dimension,
+                                          concat_dimension, split_count,
+                                          replica_groups, layout);
 }
 
 XlaOp CollectivePermute(

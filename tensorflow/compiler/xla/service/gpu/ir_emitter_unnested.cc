@@ -177,73 +177,6 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
        llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
 }
 
-int64_t GetAllocationIndex(mlir::BlockArgument func_arg) {
-  auto func_op =
-      mlir::cast<mlir::FuncOp>(func_arg.getParentRegion()->getParentOp());
-  return func_op
-      .getArgAttrOfType<mlir::IntegerAttr>(func_arg.getArgNumber(),
-                                           "lmhlo.alloc")
-      .getValue()
-      .getSExtValue();
-}
-
-static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
-  // For i1 memrefs, the underlying allocation is 8 bits.
-  if (type.getElementType().isInteger(/*width=*/1)) {
-    return type.getNumElements();
-  } else {
-    return type.getSizeInBits() / CHAR_BIT;
-  }
-}
-
-StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
-    mlir::Value v, absl::Span<const BufferAllocation> allocations) {
-  int64 size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
-
-  if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
-    return BufferAllocation::Slice(&allocations[GetAllocationIndex(arg)], 0,
-                                   size);
-  }
-
-  // We match the following patterns here:
-  //  base := ViewOp(arg) | get_global_memref (global_memref)
-  //  root := base | MemRefReinterpretCastOp(base)
-
-  if (mlir::Operation* op = v.getDefiningOp()) {
-    if (auto cast = mlir::dyn_cast<mlir::MemRefReinterpretCastOp>(op)) {
-      mlir::Value source = cast.getViewSource();
-      op = source.getDefiningOp();
-      if (!op) {
-        return Unimplemented("MemRefReinterpretCastOp has to wrap an op");
-      }
-    }
-    if (auto view = mlir::dyn_cast<mlir::ViewOp>(op)) {
-      return BufferAllocation::Slice(
-          &allocations[GetAllocationIndex(
-              view.source().cast<mlir::BlockArgument>())],
-          mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
-              .value()
-              .cast<mlir::IntegerAttr>()
-              .getValue()
-              .getSExtValue(),
-          size);
-    } else if (auto get_global = mlir::dyn_cast<mlir::GetGlobalMemrefOp>(op)) {
-      auto module = get_global->getParentOfType<mlir::ModuleOp>();
-      auto global = mlir::cast<mlir::GlobalMemrefOp>(
-          module.lookupSymbol(get_global.name()));
-      int64_t index =
-          global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-      return BufferAllocation::Slice(&allocations[index], 0,
-                                     allocations[index].size());
-    }
-    return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
-  }
-
-  return Unimplemented(
-      "Operand has to be in the form of ViewOp(arg) or "
-      "StaticMemRefCastOp(ViewOp(arg))");
-}
-
 bool BinarySearchDenseElementsAttr(::mlir::DenseIntElementsAttr elements,
                                    int64 v) {
   ::mlir::APInt value(sizeof(int64) * 8, v, /*isSigned=*/true);
@@ -1837,6 +1770,7 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
 
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   TF_ASSIGN_OR_RETURN(auto mlir_input, GetMlirEmitterInput(fusion));
+  auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(mlir_input.op);
 
   HloInstruction* root = fusion->fused_expression_root();
   if (fusion->IsInputFusion()) {
@@ -1938,16 +1872,21 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         LOG(FATAL) << "Bad opcode for input fusion: "
                    << fusion->fused_expression_root()->opcode();
     }
-  } else if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(
-                 fusion, ir_emitter_context_->buffer_assignment())) {
+  } else if (CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+                 fusion_op, ir_emitter_context_->allocations())) {
     // Fusion node with dynamic-update-slice as the root where the op's input
     // (i.e. array to update) shares the same slice as its output.  In this case
     // we have a special algorithm that modifies the output in place without
     // touching the un-updated elements.
+    CHECK_EQ(1, GetHloOutputs(mlir_input.op).size());
 
     // Set up kernel thunk and fused ir emitter.
-    std::unique_ptr<KernelThunk> fusion_thunk =
-        BuildKernelThunk(fusion, /*implements_whole_instruction=*/true);
+    std::vector<llvm_ir::IrArray> ir_arrays;
+    TF_ASSIGN_OR_RETURN(
+        auto fusion_thunk,
+        BuildKernelThunkForMlir(fusion_op, mlir_input.thunk_info,
+                                mlir_input.extra_slice, &ir_arrays));
+
     GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
                                             ir_emitter_context_->llvm_module(),
                                             &b_, GetNestedComputer());
@@ -1957,7 +1896,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
 
     // Array to write into.  Because this is an in-place operation, this is the
     // same as operand 0's array.
-    IrArray output_array = GetIrArray(*fusion, *fusion);
+    const IrArray& output_array = ir_arrays.back();
 
     LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
         update_shape, ir_emitter_context_->gpu_device_info());
@@ -1966,10 +1905,23 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     AddThunkToThunkSequence(std::move(fusion_thunk));
 
     FusedIrEmitter fused_emitter(&elemental_emitter);
-    BindFusionArguments(fusion, &fused_emitter);
+
+    TF_ASSIGN_OR_RETURN(
+        const HloComputation* fused_computation,
+        GetOrCreateSubComputationFromRegion(&fusion_op.region(),
+                                            /*is_fusion=*/true));
+
+    for (int i = 0; i < fused_computation->num_parameters(); i++) {
+      fused_emitter.BindGenerator(
+          fused_computation->parameter_instruction(i),
+          [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
+            return ir_arrays[i].EmitReadArrayElement(index, &b_);
+          });
+    }
 
     return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(
-        fusion, output_array, &fused_emitter, launch_dimensions, &b_);
+        fused_computation, output_array, &fused_emitter, launch_dimensions,
+        &b_);
   }
 
   CHECK_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kLoop)
@@ -2996,10 +2948,27 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
-  AddThunkToThunkSequence(absl::make_unique<ReplicaIdThunk>(
-      GetThunkInfo(hlo), GetAllocationSlice(*hlo)));
+template <typename ThunkType, typename OpT>
+Status IrEmitterUnnested::EmitReplicaOrPartitionIdFromMlir(
+    MlirEmitterInput input) {
+  auto op = mlir::cast<OpT>(input.op);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                      GetAllocationSliceForMlir(op.getOperand()));
+  AddThunkToThunkSequence(
+      absl::make_unique<ThunkType>(input.thunk_info, result_slice));
   return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitReplicaOrPartitionIdFromMlir<ReplicaIdThunk,
+                                          mlir::lmhlo::ReplicaIdOp>(input);
+}
+
+Status IrEmitterUnnested::HandlePartitionId(HloInstruction* hlo) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitReplicaOrPartitionIdFromMlir<PartitionIdThunk,
+                                          mlir::lmhlo::PartitionIdOp>(input);
 }
 
 Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
@@ -3107,50 +3076,45 @@ Status IrEmitterUnnested::HandleAllGather(HloInstruction* hlo) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
+Status IrEmitterUnnested::HandleAllReduce(HloInstruction* hlo) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitAllReduceFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitAllReduceFromMlir(MlirEmitterInput input) {
+  auto all_reduce = mlir::cast<mlir::lmhlo::AllReduceOp>(input.op);
+
   VLOG(2) << "AllReduce; replica count: " << hlo_module_config_.replica_count()
-          << "; operand count: " << crs->operand_count()
+          << "; operand count: " << all_reduce.operands().size()
           << "; NCCL is enabled: " << NcclAllReduceThunk::NcclIsEnabled();
 
   // Note the replica_count == 1 case is handled via device-to-device copy
   // below.
-  bool should_use_nccl_thunk = hlo_module_config_.replica_count() > 1 &&
-                               NcclAllReduceThunk::CanImplement(crs);
+  int64 replica_count = hlo_module_config_.replica_count();
+  bool should_use_nccl_thunk =
+      replica_count > 1 && NcclAllReduceThunk::CanImplement(all_reduce);
+
+  // Stash relevant information in NcclAllReduceThunk::Buffer even if we may
+  // not generate an NcclAllReduceThunk.
+  std::vector<NcclAllReduceThunk::Buffer> buffers;
+  buffers.reserve(all_reduce.operands().size());
+  for (auto it : llvm::zip(all_reduce.operands(), all_reduce.results())) {
+    mlir::Value operand = std::get<0>(it);
+    mlir::Value result = std::get<1>(it);
+    const Shape shape = TypeToShape(operand.getType());
+    TF_ASSIGN_OR_RETURN(auto source_slice, GetAllocationSliceForMlir(operand));
+    TF_ASSIGN_OR_RETURN(auto dest_slice, GetAllocationSliceForMlir(result));
+    buffers.push_back(NcclAllReduceThunk::Buffer{
+        /*element_count*/ ShapeUtil::ElementsIn(shape),
+        /*source_buffer*/ source_slice,
+        /*destination_buffer*/ dest_slice});
+  }
 
   if (should_use_nccl_thunk) {
-    std::vector<NcclAllReduceThunk::Buffer> buffers;
-    std::vector<BufferAllocation::Slice> tuple_element_buffers;
-    buffers.resize(crs->operand_count());
-    tuple_element_buffers.reserve(crs->operand_count());
-    CHECK(crs->shape().IsArray() && crs->operand_count() == 1 ||
-          crs->shape().IsTuple() &&
-              crs->shape().tuple_shapes_size() == crs->operand_count());
-    for (int i = 0; i < crs->operand_count(); ++i) {
-      CHECK(crs->operand(i)->shape().IsArray())
-          << "Operands to all-reduce must be arrays: " << crs->ToString();
-      buffers[i].element_count =
-          ShapeUtil::ElementsIn(crs->operand(i)->shape());
-      buffers[i].source_buffer = GetAllocationSlice(*crs->operand(i));
-      buffers[i].destination_buffer = GetAllocationSlice(
-          *crs, crs->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({}));
-      tuple_element_buffers.push_back(buffers[i].destination_buffer);
-    }
-    NcclAllReduceConfig config =
-        GetNcclAllReduceConfig(crs, hlo_module_config_.replica_count());
     auto all_reduce_thunk = absl::make_unique<NcclAllReduceThunk>(
-        GetThunkInfo(crs), std::move(config),
+        input.thunk_info, all_reduce, replica_count,
         /*buffers=*/std::move(buffers));
-    if (crs->shape().IsTuple()) {
-      std::vector<std::unique_ptr<Thunk>> thunks;
-      thunks.push_back(std::move(all_reduce_thunk));
-      thunks.push_back(absl::make_unique<TupleThunk>(
-          Thunk::ThunkInfo(), tuple_element_buffers, GetAllocationSlice(*crs)));
-      AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
-          GetThunkInfo(crs), std::move(thunks)));
-    } else {
-      AddThunkToThunkSequence(std::move(all_reduce_thunk));
-    }
-
+    AddThunkToThunkSequence(std::move(all_reduce_thunk));
     return Status::OK();
   }
 
@@ -3159,54 +3123,41 @@ Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
     string message = absl::StrFormat(
         "Requested AllReduce not implemented on GPU; replica_count: %d; "
         "operand_count: %d; IsCrossReplicaAllReduce: %d; NCCL support: %d",
-        hlo_module_config_.replica_count(), crs->operand_count(),
-        crs->IsCrossReplicaAllReduce(), NcclAllReduceThunk::NcclIsEnabled());
-    if (crs->operand_count() > 0) {
-      absl::StrAppendFormat(
-          &message, "; first operand array element-type: %s",
-          PrimitiveType_Name(crs->operand(0)->shape().element_type()));
+        hlo_module_config_.replica_count(), all_reduce.operands().size(),
+        all_reduce.IsCrossReplica(), NcclAllReduceThunk::NcclIsEnabled());
+    if (!all_reduce.operands().empty()) {
+      const Shape shape = TypeToShape(all_reduce.operands().front().getType());
+      absl::StrAppendFormat(&message, "; first operand array element-type: %s",
+                            PrimitiveType_Name(shape.element_type()));
     }
     return Unimplemented("%s", message);
   }
 
-  // CRS with one operand and one replica is simply the identity function.
-  // Buffer assignment expects a copy, so that's what we do.
+  // AllReduce with one replica is simply the identity function. Buffer
+  // assignment expects a copy, so that's what we do.
   //
   // TODO(b/80100934): We would like to eliminate one-replica CRS nodes entirely
   // in algebraic-simplifier, but currently on some platforms
   // HloModuleConfig::num_replicas changes between when the module is compiled
   // and when it's run.
-  if (crs->operand_count() == 1) {
-    CHECK(crs->operand(0)->shape().IsArray())
-        << "Operands to all-reduce must be arrays: " << crs->ToString();
-    AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
-        GetThunkInfo(crs),
-        /*source_address=*/GetAllocationSlice(*crs->operand(0)),
-        /*destination_buffer=*/GetAllocationSlice(*crs),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(crs->shape())));
-    return Status::OK();
-  }
 
-  // One-replica CRS with multiple operands produces a tuple of the inputs.
-  // Again, buffer assignment expects us to copy each.
   std::vector<std::unique_ptr<Thunk>> thunks;
-  std::vector<BufferAllocation::Slice> tuple_element_buffers;
-  for (int64 i = 0; i < crs->operand_count(); ++i) {
-    tuple_element_buffers.push_back(ir_emitter_context_->buffer_assignment()
-                                        .GetUniqueSlice(crs, {i})
-                                        .ValueOrDie());
+  thunks.reserve(all_reduce.operands().size());
+  for (int64 i = 0; i < buffers.size(); i++) {
+    const Shape shape = TypeToShape(all_reduce.operands()[i].getType());
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo(),
-        /*source_address=*/GetAllocationSlice(*crs->operand(i)),
-        /*destination_buffer=*/tuple_element_buffers.back(),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(crs->operand(i)->shape())));
+        buffers.size() == 1 ? input.thunk_info : Thunk::ThunkInfo(),
+        /*source_address=*/buffers[i].source_buffer,
+        /*destination_buffer=*/buffers[i].destination_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   }
 
-  // Output a tuple of the buffers above.
-  thunks.push_back(absl::make_unique<TupleThunk>(
-      Thunk::ThunkInfo(), tuple_element_buffers, GetAllocationSlice(*crs)));
-  AddThunkToThunkSequence(
-      absl::make_unique<SequentialThunk>(GetThunkInfo(crs), std::move(thunks)));
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+        input.thunk_info, std::move(thunks)));
+  }
   return Status::OK();
 }
 

@@ -209,8 +209,9 @@ def RealDivWithConstDivisor : Pat<
 def RedundantReshape : Pat<(TF_ReshapeOp (TF_ReshapeOp $arg, $unused), $shape),
                            (TF_ReshapeOp $arg, $shape)>;
 
-def ReshapeToSelfShape : Pat<(TF_ReshapeOp $x, (TF_ShapeOp $x)),
-                         (replaceWithValue $x)>;
+def ReshapeToSelfShape : Pat<(TF_ReshapeOp:$op $x, (TF_ShapeOp $x)),
+                         (replaceWithValue $x),
+                         [(SingleResultAndOperandHaveSameType $x, $op)]>;
 
 //===----------------------------------------------------------------------===//
 // Select op patterns.

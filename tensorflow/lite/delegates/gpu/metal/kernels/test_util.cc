@@ -121,11 +121,12 @@ absl::Status SingleOpModel::Invoke() {
   std::map<ValueId, id<MTLBuffer>> inout_buffers(input_buffers.begin(),
                                                  input_buffers.end());
   inout_buffers.insert(output_buffers.begin(), output_buffers.end());
+  inference_context.UpdatePreallocatedTensors(inout_buffers);
   id<MTLCommandQueue> command_queue = [device newCommandQueue];
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   id<MTLComputeCommandEncoder> command_encoder =
       [command_buffer computeCommandEncoder];
-  inference_context.EncodeWithEncoder(command_encoder, inout_buffers);
+  inference_context.EncodeWithEncoder(command_encoder);
   [command_encoder endEncoding];
   [command_buffer commit];
   [command_buffer waitUntilCompleted];
@@ -175,14 +176,17 @@ MetalExecutionEnvironment::GetSupportedPrecisions() const {
 
 std::vector<TensorStorageType> MetalExecutionEnvironment::GetSupportedStorages()
     const {
-  return {TensorStorageType::BUFFER};
+  return {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER,
+          TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
+          TensorStorageType::TEXTURE_ARRAY};
 }
 
 // returns storage types that support zero clamping when reading OOB in HW
 // (Height/Width) dimensions.
 std::vector<TensorStorageType>
 MetalExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport() const {
-  return {};
+  return {TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
+          TensorStorageType::TEXTURE_ARRAY};
 }
 
 absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(

@@ -143,13 +143,12 @@ TEST_F(MlirGraphOptimizationPassTest,
             Status(error::Code::ABORTED, "aborted"));
 }
 
-TEST(MlirOptimizationPassRegistry, RegisterPassesWithTheSamePriority) {
+TEST(MlirOptimizationPassRegistry, RegisterPassesWithTheSamePriorityFails) {
   MlirOptimizationPassRegistry::Global().Add(
       0, std::make_unique<NiceMock<MockMlirOptimizationPass>>());
-  MlirOptimizationPassRegistry::Global().Add(
-      0, std::make_unique<NiceMock<MockMlirOptimizationPass>>());
-
-  EXPECT_EQ(MlirOptimizationPassRegistry::Global().passes().size(), 2);
+  EXPECT_DEATH(MlirOptimizationPassRegistry::Global().Add(
+                   0, std::make_unique<NiceMock<MockMlirOptimizationPass>>()),
+               "Pass priority must be unique.");
 }
 
 }  // namespace tensorflow

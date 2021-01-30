@@ -172,6 +172,26 @@ int GetBiggestDivider(int number, int max_divider) {
   return 1;
 }
 
+int GetOptimalSizeForMetal(int grid_size) {
+  if (grid_size % 8 == 0 || grid_size % 8 >= 4 || grid_size >= 16) {
+    return 8;
+  }
+  if (grid_size % 4 == 0 || grid_size % 4 >= 2 || grid_size >= 8) {
+    return 4;
+  }
+  if (grid_size % 2 == 0 || grid_size >= 4) {
+    return 2;
+  }
+  return 1;
+}
+
+int3 GetWorkGroupSizeForMetal(const uint3& grid_size) {
+  int x_size = GetOptimalSizeForMetal(grid_size.x);
+  int y_size = GetOptimalSizeForMetal(grid_size.y);
+  int z_size = std::max(1, 32 / (x_size * y_size));
+  return {x_size, y_size, z_size};
+}
+
 }  // namespace
 
 int3 GetWorkGroupXY128ConvLinear(const int3& grid) {
@@ -251,7 +271,7 @@ void GetPossibleWorkGroups(TuningType tuning_type, const GpuInfo& gpu_info,
                            const KernelInfo& kernel_info, const int3& grid,
                            std::vector<int3>* work_groups) {
   if (gpu_info.IsApiMetal()) {
-    work_groups->push_back({8, 8, 1});
+    work_groups->push_back(GetWorkGroupSizeForMetal(grid));
     return;
   }
   switch (tuning_type) {
@@ -273,7 +293,7 @@ void GetPossibleWorkGroupsConv(TuningType tuning_type, const GpuInfo& gpu_info,
                                const KernelInfo& kernel_info, const int3& grid,
                                std::vector<int3>* work_groups) {
   if (gpu_info.IsApiMetal()) {
-    work_groups->push_back({8, 8, 1});
+    work_groups->push_back(GetWorkGroupSizeForMetal(grid));
     return;
   }
   switch (tuning_type) {

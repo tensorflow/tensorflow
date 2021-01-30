@@ -187,7 +187,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
       HostBufferSemantics host_buffer_semantics,
-      std::shared_ptr<void> buffer_reference, PjRtDevice* device) override;
+      std::function<void()> on_done_with_host_buffer,
+      PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override;
@@ -195,6 +196,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
   void MakeCrossHostReceiveBuffers(
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) override;
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      std::function<void()> on_delete_callback) override;
 
   StatusOr<ChannelHandle> CreateChannelHandle() override {
     return client()->CreateChannelHandle();
@@ -450,7 +455,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
   };
 
-  PjRtStreamExecutorBuffer(Shape on_host_shape, Shape on_device_shape,
+  PjRtStreamExecutorBuffer(Shape on_device_shape,
                            std::shared_ptr<TrackedDeviceBuffer> device_buffer,
                            PjRtClient* client, PjRtDevice* device);
   ~PjRtStreamExecutorBuffer() override;
@@ -460,14 +465,14 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   PjRtStreamExecutorBuffer& operator=(const PjRtStreamExecutorBuffer&) = delete;
   PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
 
-  const Shape& on_host_shape() const override { return on_host_shape_; }
   const Shape& on_device_shape() const override { return on_device_shape_; }
   PjRtStreamExecutorDevice* device() const override { return device_; }
   PjRtPlatformId platform_id() const { return client_->platform_id(); }
   absl::string_view platform_name() const { return client_->platform_name(); }
   PjRtStreamExecutorClient* client() const override { return client_; }
   bool IsEmptyTuple() const {
-    return on_host_shape_.IsTuple() && on_host_shape_.tuple_shapes_size() == 0;
+    return on_device_shape_.IsTuple() &&
+           on_device_shape_.tuple_shapes_size() == 0;
   }
 
   int64 OnDeviceSizeInBytes() const override;
@@ -598,7 +603,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
                      std::shared_ptr<TrackedDeviceBuffer> src_device_buffer);
 
   PjRtStreamExecutorClient* const client_;
-  const Shape on_host_shape_;
   const Shape on_device_shape_;
   PjRtStreamExecutorDevice* const device_;
 

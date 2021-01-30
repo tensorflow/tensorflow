@@ -1385,8 +1385,7 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
             absl::c_linear_search(scatter_dims.update_window_dims(),
                                   dimension)) {
           return Unimplemented(
-              "Dynamic dimension of update window dims is not supported "
-              "is not supported: %s",
+              "Dynamic dimension of update window dims is not supported: %s",
               hlo->ToString());
         }
         // The dynamic dimension is collapsed and won't show up in the output.

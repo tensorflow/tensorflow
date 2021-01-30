@@ -123,15 +123,23 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
         py::cast<std::string>(py::repr(argument)));
   }
 
-  std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-      GlobalPyRefManager()->ManageReference(std::move(c->array));
+  std::function<void()> on_done_with_host_buffer;
+  if (host_buffer_semantics !=
+      PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall) {
+    std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
+        GlobalPyRefManager()->ManageReference(std::move(c->array));
+    on_done_with_host_buffer =
+        [py_buffer_ref{
+            std::move(py_buffer_ref)}]() { /* keeps py_buffer_ref alive */ };
+  }
 
   std::unique_ptr<PjRtBuffer> buffer;
   {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(buffer, pjrt_client_->BufferFromHostBuffer(
-                                    c->buf_ptr, c->shape, host_buffer_semantics,
-                                    std::move(py_buffer_ref), device));
+    TF_ASSIGN_OR_RETURN(buffer,
+                        pjrt_client_->BufferFromHostBuffer(
+                            c->buf_ptr, c->shape, host_buffer_semantics,
+                            std::move(on_done_with_host_buffer), device));
   }
   return buffer;
 }

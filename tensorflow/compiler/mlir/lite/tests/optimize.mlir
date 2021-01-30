@@ -1427,6 +1427,18 @@ func @SoftMaxWithoutNormalization(%arg0: tensor<8x128xf32>) -> tensor<8x128xf32>
 // CHECK: return %[[RESULT]] : tensor<8x128xf32>
 }
 
+func @SoftMaxWithoutNormalizationNegAxis(%arg0: tensor<8x128xf32>) -> tensor<8x128xf32> {
+  %cst = constant dense<-1> : tensor<1xi32>
+  %0 = "tfl.exp"(%arg0) : (tensor<8x128xf32>) -> tensor<8x128xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8x1xf32>
+  %2 = "tfl.div"(%0, %1) {fused_activation_function = "NONE"} : (tensor<8x128xf32>, tensor<8x1xf32>) -> tensor<8x128xf32>
+  return %2 : tensor<8x128xf32>
+
+// CHECK-LABEL: SoftMaxWithoutNormalizationNegAxis
+// CHECK: %[[RESULT:.*]] = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<8x128xf32>) -> tensor<8x128xf32>
+// CHECK: return %[[RESULT]] : tensor<8x128xf32>
+}
+
 // CHECK-LABEL: fuseScalarAddIntoConv2d
 func @fuseScalarAddIntoConv2d(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>) -> tensor<256x30x30x16xf32> {
   %cst = constant dense<1.5> : tensor<f32>

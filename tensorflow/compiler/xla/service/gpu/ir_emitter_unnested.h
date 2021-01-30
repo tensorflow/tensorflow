@@ -201,10 +201,16 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleAllGather(HloInstruction* hlo) override;
-  Status HandleAllReduce(HloInstruction* crs) override;
+  Status HandleAllReduce(HloInstruction* hlo) override;
+  Status EmitAllReduceFromMlir(MlirEmitterInput mlir_input);
   Status HandleAllToAll(HloInstruction* hlo) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
+
+  template <typename ThunkType, typename OpT>
+  Status EmitReplicaOrPartitionIdFromMlir(MlirEmitterInput input);
   Status HandleReplicaId(HloInstruction* hlo) override;
+  Status HandlePartitionId(HloInstruction* hlo) override;
+
   Status HandleCollectivePermute(HloInstruction* hlo) override;
 
   Status EmitOp(MlirEmitterInput mlir_input);

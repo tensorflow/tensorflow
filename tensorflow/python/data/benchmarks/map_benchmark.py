@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.ops import dataset_ops
@@ -113,6 +115,43 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
         num_elements=1,
         name="parallel_control_flow",
         apply_default_optimizations=True)
+
+  def _benchmark_nested_parallel_map(self, cycle_length, num_parallel_calls):
+    k = 1024 * 1024
+    num_map_elements = 10
+    num_range_elements = 2000
+
+    def g(_):
+      return np.random.rand(50 * k).sum()
+
+    def f(_):
+      return dataset_ops.Dataset.range(num_map_elements).map(
+          g, num_parallel_calls=num_parallel_calls)
+
+    dataset = dataset_ops.Dataset.range(num_range_elements)
+    dataset = dataset.interleave(
+        f, cycle_length=cycle_length, num_parallel_calls=dataset_ops.AUTOTUNE)
+
+    cycle_length_str = ("default"
+                        if cycle_length is None else str(cycle_length))
+    num_parallel_calls_str = ("autotune"
+                              if num_parallel_calls == dataset_ops.AUTOTUNE else
+                              str(num_parallel_calls))
+    map_dataset_str = ("map" if num_parallel_calls is None else
+                       "parallel_map_num_parallel_calls_%s" %
+                       num_parallel_calls_str)
+
+    self.run_and_report_benchmark(
+        dataset,
+        num_elements=num_map_elements * num_range_elements,
+        name=("%s_cycle_length_%s" % (map_dataset_str, cycle_length_str)))
+
+  def benchmark_nested_parallel_map(self):
+    cycle_lengths = [None, 100]
+    nums_parallel_calls = [None, 1, 10, 100, dataset_ops.AUTOTUNE]
+    for cycle_length in cycle_lengths:
+      for num_parallel_calls in nums_parallel_calls:
+        self._benchmark_nested_parallel_map(cycle_length, num_parallel_calls)
 
 
 if __name__ == "__main__":

@@ -509,6 +509,7 @@ cc_library(
         "reference/sub.h",
         "reference/svdf.h",
         "reference/tanh.h",
+        "reference/transpose.h",
         "reference/transpose_conv.h",
     ] + select({
         "//tensorflow/lite:tf_lite_static_memory": [],
@@ -616,6 +617,7 @@ cc_library(
         "reference/string_comparisons.h",
         "reference/sub.h",
         "reference/tanh.h",
+        "reference/transpose.h",
         "reference/transpose_conv.h",
     ],
     copts = tflite_copts(),

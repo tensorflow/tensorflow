@@ -233,7 +233,8 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandInliningPass();
 
 // Creates a pass to prune tf_executor.graph from dead nodes.
-std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass(
+    llvm::ArrayRef<std::string> ops_to_preserve = {});
 }  // namespace tf_executor
 
 namespace TFDevice {
@@ -371,11 +372,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
 // attribute value in a tf_device.launch op with host device assignment.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateOutsideCompiledToHostLaunchPass();
-
-// Creates a pass that groups outside compiled operations (CPU ops inside TPU
-// cluster) into clusters that can be extracted and run on the CPU.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUOutsideCompilationClusterPass();
 
 // Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
 // at head/tail of TPU cluster to run before/after TPU computation.

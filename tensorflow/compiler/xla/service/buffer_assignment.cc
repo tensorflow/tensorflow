@@ -22,6 +22,7 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
@@ -792,6 +793,78 @@ string BufferAssignment::ToString() const {
     absl::StrAppend(&output, value->ToString());
   }
   return output;
+}
+
+string BufferAssignment::BufferInfoString() const {
+  string binfo;
+  // Columns in buffer information:
+  // buffer_id: int. This value can be used to match the allocation in
+  // allocation information.
+  // buffer_name: string.
+  // offset: int. Starting position of the buffer in the memory space.
+  // size: int. Size of the buffer in bytes.
+  // definition_time: int. Position in the schedule where the buffer starts
+  // being live (inclusive).
+  // end_time: int. Position in the schedule where the buffer stops being live
+  // (exclusive).
+  // num_uses: int. Number of uses of the buffer.
+  // use_names: string. This is a semicolon-separated list of string
+  // representation of uses.
+  // Append the column names.
+  absl::StrAppend(&binfo,
+                  "buffer_id,buffer_name,offset,size,"
+                  "definition_time,end_time,num_uses,use_times,use_names\n");
+  const HloLiveRange& live_ranges = hlo_live_range();
+  const auto& instruction_schedule = live_ranges.instruction_schedule();
+  const auto& buffer_live_ranges = live_ranges.buffer_live_ranges();
+  // Sort the buffers by Id.
+  std::vector<std::pair<const HloValue*, BufferAllocation::OffsetSize>> buffers;
+  for (const BufferAllocation& allocation : allocations_) {
+    absl::c_copy(allocation.assigned_buffers(), std::back_inserter(buffers));
+  }
+  absl::c_sort(
+      buffers,
+      [](const std::pair<const HloValue*, BufferAllocation::OffsetSize>& b1,
+         const std::pair<const HloValue*, BufferAllocation::OffsetSize>& b2) {
+        return b1.first->id() < b2.first->id();
+      });
+  for (const auto& buffer_pair : buffers) {
+    const HloValue& buffer = *buffer_pair.first;
+    const BufferAllocation::OffsetSize& offset_size = buffer_pair.second;
+    if (!buffer_live_ranges.contains(&buffer)) {
+      continue;
+    }
+    // Ordering uses by their use position.
+    std::vector<std::pair<int64, std::string>> uses;
+    uses.reserve(buffer.uses().size());
+    for (const HloUse& use : buffer.uses()) {
+      uses.emplace_back(instruction_schedule.at(use.instruction),
+                        use.ToString());
+    }
+    absl::c_sort(uses);
+    std::vector<int64> use_positions;
+    std::vector<std::string> use_names;
+    use_positions.reserve(uses.size());
+    use_names.reserve(uses.size());
+    for (const auto& use : uses) {
+      use_positions.push_back(use.first);
+      use_names.push_back(use.second);
+    }
+    const int64 definition_time =
+        instruction_schedule.at(buffer.defining_position().instruction);
+    const int64 end_t = buffer_live_ranges.at(&buffer).end;
+    absl::StrAppend(&binfo, buffer.id(), ",");
+    absl::StrAppend(&binfo, "\"", buffer.ToShortString(), "\",");
+    absl::StrAppend(&binfo, offset_size.offset, ",");
+    absl::StrAppend(&binfo, offset_size.size, ",");
+    absl::StrAppend(&binfo, definition_time, ",");
+    absl::StrAppend(&binfo, end_t, ",");
+    absl::StrAppend(&binfo, use_positions.size(), ",");
+    absl::StrAppend(&binfo, "\"", absl::StrJoin(use_positions, ";"), "\",");
+    absl::StrAppend(&binfo, "\"", absl::StrJoin(use_names, ";"), "\"");
+    absl::StrAppend(&binfo, "\n");
+  }
+  return binfo;
 }
 
 BufferAssignmentProto BufferAssignment::ToProto() const {

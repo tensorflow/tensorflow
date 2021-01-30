@@ -395,33 +395,37 @@ kernel void ComputeFunction($0
 
 }  // namespace
 
-ComputeTaskDescriptor ConvolutionTransposed(
-    const OperationDef& definition,
-    const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info) {
-  ComputeTaskDescriptor desc(definition);
+int3 ConvolutionTransposed::GetGridSize() const {
+  return int3(dst_[0]->Width(), dst_[0]->Height(), 1);
+}
+
+ConvolutionTransposed CreateConvolutionTransposed(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  ConvolutionTransposed desc(definition);
 
   const int src_local_size_x =
-      (kThreadGroupWidth + params.weights.shape.w) / params.stride.w;
+      (kThreadGroupWidth + attr.weights.shape.w) / attr.stride.w;
   const int src_local_size_y =
-      (kThreadGroupHeight + params.weights.shape.h) / params.stride.h;
-  const int src_depth = DivideRoundUp(params.weights.shape.i, 4);
+      (kThreadGroupHeight + attr.weights.shape.h) / attr.stride.h;
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const int shared_size =
       sizeof(float) * 4 * src_depth * src_local_size_x * src_local_size_y;
   if (shared_size < 1000 * 16 &&
       gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-    desc.shader_source =
-        GetDeconvolutionShared(params, kThreadGroupWidth, kThreadGroupHeight);
+    desc.code_ =
+        GetDeconvolutionShared(attr, kThreadGroupWidth, kThreadGroupHeight);
   } else {
-    desc.shader_source = GetDeconvolution(params);
+    desc.code_ = GetDeconvolution(attr);
   }
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  const int src_ch_aligned = AlignByN(params.weights.shape.i, 4);
-  const int dst_ch_aligned = AlignByN(params.weights.shape.o, 4);
-  const int kernel_x = params.weights.shape.w;
-  const int kernel_y = params.weights.shape.h;
+  const int src_ch_aligned = AlignByN(attr.weights.shape.i, 4);
+  const int dst_ch_aligned = AlignByN(attr.weights.shape.o, 4);
+  const int kernel_x = attr.weights.shape.w;
+  const int kernel_y = attr.weights.shape.h;
   const int filters_aligned_size =
       src_ch_aligned * dst_ch_aligned * kernel_x * kernel_y;
   std::vector<float> filters_reordered(filters_aligned_size);
@@ -432,13 +436,13 @@ ComputeTaskDescriptor ConvolutionTransposed(
       for (int ch = 0; ch < src_depth; ++ch) {
         for (int f = 0; f < dst_ch_aligned; ++f) {
           for (int i = 0; i < 4; ++i) {
-            if (ch * 4 + i >= params.weights.shape.i ||
-                f >= params.weights.shape.o) {
+            if (ch * 4 + i >= attr.weights.shape.i ||
+                f >= attr.weights.shape.o) {
               filters_reordered[counter++] = 0.0f;
             } else {
               const int f_index =
-                  params.weights.shape.LinearIndex({f, y, x, ch * 4 + i});
-              filters_reordered[counter++] = params.weights.data[f_index];
+                  attr.weights.shape.LinearIndex({f, y, x, ch * 4 + i});
+              filters_reordered[counter++] = attr.weights.data[f_index];
             }
           }
         }
@@ -452,35 +456,34 @@ ComputeTaskDescriptor ConvolutionTransposed(
   weights_desc.element_size = 4;
   weights_desc.data = GetByteBufferConverted(filters_reordered, data_type);
   weights_desc.size = weights_desc.data.size();
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
   BufferDescriptor bias_desc;
   bias_desc.element_type = data_type;
   bias_desc.element_size = 4;
-  bias_desc.data = GetByteBufferConvertedResized(params.bias.data, data_type,
-                                                 dst_ch_aligned);
+  bias_desc.data =
+      GetByteBufferConvertedResized(attr.bias.data, data_type, dst_ch_aligned);
   bias_desc.size = bias_desc.data.size();
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
-  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
-                            const std::vector<BHWC>& dst_shapes) {
-    const uint3 groups_size{kThreadGroupWidth, kThreadGroupHeight, 1};
-    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
-    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
-    int groups_z = 1;
-    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
-  };
-
+  desc.work_group_size_ = int3(kThreadGroupWidth, kThreadGroupHeight, 1);
   return desc;
 }
 
-ComputeTaskDescriptor ConvolutionTransposed4x4(
-    const OperationDef& definition,
-    const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info) {
-  const int src_depth = DivideRoundUp(params.weights.shape.i, 4);
-  const int dst_depth = DivideRoundUp(params.weights.shape.o, 4);
+int3 ConvolutionTransposed4x4::GetGridSize() const {
+  const int grid_x = DivideRoundUp(dst_[0]->Width() + 2, 2 * block_size_.x);
+  const int grid_y = DivideRoundUp(dst_[0]->Height() + 2, 2 * block_size_.y);
+  const int grid_z = dst_[0]->Slices();
+  return int3(grid_x, grid_y, grid_z);
+}
+
+ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const int kernel_x = 4;
   const int kernel_y = 4;
 
@@ -502,11 +505,10 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
             for (int i = 0; i < 4; ++i) {
               const int s_ch = s * 4 + i;
               const int d_ch = d * 4 + j;
-              if (s_ch < params.weights.shape.i &&
-                  d_ch < params.weights.shape.o) {
-                const int f_index = params.weights.shape.LinearIndex(
+              if (s_ch < attr.weights.shape.i && d_ch < attr.weights.shape.o) {
+                const int f_index = attr.weights.shape.LinearIndex(
                     {d_ch, kernel_index_y, kernel_index_x, s_ch});
-                filters[j][i] = params.weights.data[f_index];
+                filters[j][i] = attr.weights.data[f_index];
               } else {
                 filters[j][i] = 0.0f;
               }
@@ -525,11 +527,11 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   auto filters = GetByteBufferConverted(gpu_data, data_type);
-  const int dst_ch_aligned = AlignByN(params.weights.shape.o, 4);
-  auto biases = GetByteBufferConvertedResized(params.bias.data, data_type,
-                                              dst_ch_aligned);
+  const int dst_ch_aligned = AlignByN(attr.weights.shape.o, 4);
+  auto biases =
+      GetByteBufferConvertedResized(attr.bias.data, data_type, dst_ch_aligned);
 
-  ComputeTaskDescriptor desc(definition);
+  ConvolutionTransposed4x4 desc(definition);
 
   bool recommended_2x = false;
   if (gpu_info.IsApple()) {
@@ -544,7 +546,8 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
   }
 
   const int2 block_size(recommended_2x ? 2 : 1, 1);
-  desc.shader_source = GetDeconvolution4x4(block_size, gpu_info);
+  desc.code_ = GetDeconvolution4x4(block_size, gpu_info);
+  desc.block_size_ = block_size;
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -554,7 +557,7 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
   weights_desc.element_size = 4;
   weights_desc.data = filters;
   weights_desc.size = weights_desc.data.size();
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
   BufferDescriptor bias_desc;
@@ -562,21 +565,11 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
   bias_desc.element_size = 4;
   bias_desc.data = biases;
   bias_desc.size = bias_desc.data.size();
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
-  desc.resize_function = [block_size](const std::vector<BHWC>& src_shapes,
-                                      const std::vector<BHWC>& dst_shapes) {
-    const int grid_x = DivideRoundUp(dst_shapes[0].w + 2, 2 * block_size.x);
-    const int grid_y = DivideRoundUp(dst_shapes[0].h + 2, 2 * block_size.y);
-    const int grid_z = DivideRoundUp(dst_shapes[0].c, 4);
-    const uint3 group_size{8, 4, 1};
-    int groups_x = DivideRoundUp(grid_x, group_size.x);
-    int groups_y = DivideRoundUp(grid_y, group_size.y);
-    int groups_z = DivideRoundUp(grid_z, group_size.z);
-    return std::make_pair(group_size, uint3{groups_z, groups_x, groups_y});
-  };
-
+  desc.work_group_size_ = int3(8, 4, 1);
+  desc.work_group_launch_order_ = int3(2, 0, 1);
   return desc;
 }
 
