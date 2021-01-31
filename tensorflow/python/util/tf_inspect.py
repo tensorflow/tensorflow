@@ -406,6 +406,20 @@ def ismethod(object):  # pylint: disable=redefined-builtin
   return _inspect.ismethod(tf_decorator.unwrap(object)[1])
 
 
+def isanytargetmethod(object):  # pylint: disable=redefined-builtin
+  # pylint: disable=g-doc-args,g-doc-return-or-yield
+  """Checks all the decorated targets along the chain of decorators.
+
+  Returns True if any of the decorated targets in the chain is a method.
+  """
+  decorators, _ = tf_decorator.unwrap(object)
+  for decorator in decorators:
+    if _inspect.ismethod(decorator.decorated_target):
+      return True
+
+  return False
+
+
 def ismodule(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.ismodule."""
   return _inspect.ismodule(tf_decorator.unwrap(object)[1])

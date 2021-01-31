@@ -37,10 +37,8 @@ py_test(
         "//tensorflow/lite/python/testdata:test_delegate.so",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
-        "no_windows",
         "noasan",  # TODO(b/137568139): enable after this is fixed.
         "nomsan",  # TODO(b/137568139): enable after this is fixed.
     ],
@@ -59,7 +57,7 @@ py_binary(
     name = "tflite_convert",
     srcs = ["tflite_convert.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_convert_main_lib",
@@ -96,7 +94,6 @@ py_library(
 
 py_library(
     name = "test_util",
-    testonly = 1,
     srcs = ["test_util.py"],
     srcs_version = "PY3",
     deps = [
@@ -130,7 +127,7 @@ py_test(
     python_version = "PY3",
     # Increased thread count for reducing timeout failures.
     shard_count = 10,
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_oss",
         "no_pip",
@@ -195,7 +192,7 @@ py_test(
     ],
     python_version = "PY3",
     shard_count = 4,
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",
     ],
@@ -216,9 +213,8 @@ py_test(
     ],
     python_version = "PY3",
     shard_count = 12,
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
     ],
     deps = [
@@ -252,7 +248,7 @@ py_test(
     name = "lite_flex_test",
     srcs = ["lite_flex_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":lite",
         ":test_util",
@@ -292,9 +288,8 @@ py_test(
     name = "util_test",
     srcs = ["util_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
     ],
     deps = [
@@ -386,7 +381,7 @@ py_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":convert",
         ":interpreter",
@@ -418,7 +413,7 @@ py_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",
     ],
@@ -439,7 +434,7 @@ py_binary(
     name = "convert_file_to_c_source",
     srcs = ["convert_file_to_c_source.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":util",

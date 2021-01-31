@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/util.h"
 
+#include <stddef.h>
+#include <stdlib.h>
+
+#include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"

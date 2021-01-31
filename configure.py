@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import errno
+import glob
 import os
 import platform
 import re
@@ -1238,9 +1239,12 @@ def validate_cuda_config(environ_cp):
     if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')
 
+  paths = glob.glob('**/third_party/gpus/find_cuda_config.py', recursive=True)
+  if not paths:
+    raise FileNotFoundError(
+        "Can't find 'find_cuda_config.py' script inside working directory")
   proc = subprocess.Popen(
-      [environ_cp['PYTHON_BIN_PATH'], 'third_party/gpus/find_cuda_config.py'] +
-      cuda_libraries,
+      [environ_cp['PYTHON_BIN_PATH'], paths[0]] + cuda_libraries,
       stdout=subprocess.PIPE,
       env=maybe_encode_env(environ_cp))
 

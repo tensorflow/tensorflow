@@ -19,13 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-
-
-# TODO(sourabhbajaj): Remove this once we use the same API for all strategies.
-def is_tpu_strategy(strategy):
-  """We're executing TPU Strategy."""
-  return (strategy is not None and
-          strategy.__class__.__name__.startswith('TPUStrategy'))
+from tensorflow.python.keras import backend
 
 
 # TODO(b/118776054): Currently we support global batch size for TPUStrategy and
@@ -59,7 +53,7 @@ def call_replica_local_fn(fn, *args, **kwargs):
       strategy = ds_context.get_strategy()
 
   # TODO(b/120571621): TPUStrategy does not implement replica-local variables.
-  is_tpu = is_tpu_strategy(strategy)
+  is_tpu = backend.is_tpu_strategy(strategy)
   if ((not is_tpu) and strategy and ds_context.in_cross_replica_context()):
     with strategy.scope():
       return strategy.extended.call_for_each_replica(fn, args, kwargs)

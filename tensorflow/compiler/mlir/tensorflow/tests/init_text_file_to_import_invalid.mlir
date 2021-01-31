@@ -16,8 +16,7 @@ func @init_all_tables() {
 // unsupported key_index, -1.
 
 func @init_all_tables() {
-  %cst = constant dense<"vocab_file_does_not_exist.txt"> : tensor<!tf.string>
-  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_/tmp/vocab.txt_-2_-1", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
+  %cst = constant dense<"vocab_file_does_not_exist.txt"> : tensor<!tf.string> %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_/tmp/vocab.txt_-2_-1", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
   "tf.InitializeTableFromTextFileV2"(%0, %cst) {delimiter = " ", device = "", key_index = -1 : i64, value_index = -1 : i64, vocab_size = -1 : i64} : (tensor<!tf.resource>, tensor<!tf.string>) -> ()
   return
   // CHECK: [[VAL:%.*]] = "tf.HashTableV2"()
@@ -33,20 +32,6 @@ func @init_all_tables() {
   %cst = constant dense<"vocab_file_does_not_exist.txt"> : tensor<!tf.string>
   %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_/tmp/vocab.txt_-2_-1", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
   "tf.InitializeTableFromTextFileV2"(%0, %cst) {delimiter = " ", device = "", key_index = -2 : i64, value_index = 0 : i64, vocab_size = -1 : i64} : (tensor<!tf.resource>, tensor<!tf.string>) -> ()
-  return
-  // CHECK: [[VAL:%.*]] = "tf.HashTableV2"()
-  // CHECK: tf.InitializeTableFromTextFileV2"
-}
-
-// -----
-
-// Tests that the tf.InitializeTableFromTextFileV2 op is not converted since
-// unsupported vocab_size, 1.
-
-func @init_all_tables() {
-  %cst = constant dense<"vocab_file_does_not_exist.txt"> : tensor<!tf.string>
-  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_/tmp/vocab.txt_-2_-1", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
-  "tf.InitializeTableFromTextFileV2"(%0, %cst) {delimiter = " ", device = "", key_index = -2 : i64, value_index = -1 : i64, vocab_size = 1 : i64} : (tensor<!tf.resource>, tensor<!tf.string>) -> ()
   return
   // CHECK: [[VAL:%.*]] = "tf.HashTableV2"()
   // CHECK: tf.InitializeTableFromTextFileV2"

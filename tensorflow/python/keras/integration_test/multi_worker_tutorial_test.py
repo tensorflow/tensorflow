@@ -34,8 +34,14 @@ NUM_STEPS_PER_EPOCH = 50
 
 
 def _is_chief(task_type, task_id):
-  return task_type is None or task_type == 'chief' or (task_type == 'worker' and
-                                                       task_id == 0)
+  # Note: there are two possible `TF_CONFIG` configuration.
+  #   1) In addition to `worker` tasks, a `chief` task type is use;
+  #      in this case, this function should be modified to
+  #      `return task_type == 'chief'`.
+  #   2) Only `worker` task type is used; in this case, worker 0 is
+  #      regarded as the chief. The implementation demonstrated here
+  #      is for this case.
+  return task_type == 'worker' and task_id == 0
 
 
 def _get_temp_dir(dirpath, task_id):

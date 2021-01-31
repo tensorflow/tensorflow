@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -30,9 +31,10 @@ class MetaGraphDef;
 Status GenerateResourceSharedNameIfEmpty(
     GraphDef& gdef, const OpRegistryInterface* default_registry);
 
-// Run grapler passes over `meta_graph_def`.graph_def(), and optimize it in
-// place.
-Status RunGrappler(MetaGraphDef* meta_graph_def);
+// Run grapler passes over `meta_graph_def`.graph_def() and returns the
+// optimized graphdef.
+stream_executor::port::StatusOr<GraphDef> RunGrappler(
+    const MetaGraphDef& meta_graph_def);
 
 }  // namespace tensorflow
 

@@ -31,13 +31,13 @@ tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
     copts = tf_profiler_copts() + tf_copts(),
-    cuda_deps = if_cuda_is_configured_compat([
+    cuda_deps = [
         "//tensorflow/core/profiler/internal/gpu:cupti_tracer",
         "//tensorflow/core/profiler/internal/gpu:cupti_wrapper",
-    ]) + if_rocm_is_configured_compat([
         "//tensorflow/core/profiler/internal/gpu:rocm_tracer",
-    ]),
+    ],
     deps = [
+        ":cupti_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -55,10 +55,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-    ] + if_cuda_is_configured_compat([
-        ":cupti_utils",
-    ]) + if_rocm_is_configured_compat([
-    ]),
+    ],
     alwayslink = 1,
 )
 
@@ -71,6 +68,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "nomac",
         "gpu_cupti",
+        "no_rocm",
     ],
     deps = [
         ":device_tracer",

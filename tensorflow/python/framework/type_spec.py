@@ -33,6 +33,7 @@ from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -406,6 +407,13 @@ class TypeSpec(object):
     return a == b
 
   @staticmethod
+  def __is_named_tuple(t):
+    """Returns true if the given tuple t is a namedtuple."""
+    return (hasattr(t, "_fields") and
+            isinstance(t._fields, collections_abc.Sequence) and
+            all(isinstance(f, six.string_types) for f in t._fields))
+
+  @staticmethod
   def __most_specific_compatible_type_serialization(a, b):
     """Helper for most_specific_compatible_type.
 
@@ -439,6 +447,13 @@ class TypeSpec(object):
     if isinstance(a, (list, tuple)):
       if len(a) != len(b):
         raise ValueError("Types are not compatible: %r vs %r" % (a, b))
+      if TypeSpec.__is_named_tuple(a):
+        if not hasattr(b, "_fields") or not isinstance(
+            b._fields, collections_abc.Sequence) or a._fields != b._fields:
+          raise ValueError("Types are not compatible: %r vs %r" % (a, b))
+        return type(a)(*[
+            TypeSpec.__most_specific_compatible_type_serialization(x, y)
+            for (x, y) in zip(a, b)])
       return tuple(TypeSpec.__most_specific_compatible_type_serialization(x, y)
                    for (x, y) in zip(a, b))
     if isinstance(a, collections.OrderedDict):

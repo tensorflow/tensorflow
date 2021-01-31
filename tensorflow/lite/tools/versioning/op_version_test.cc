@@ -682,6 +682,13 @@ TEST(OpVersionTest, VersioningGatherNdOperatorTest) {
           std::vector<TensorType>{TensorType_STRING, TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_GATHER_ND,
+      .input_types =
+          std::vector<TensorType>{TensorType_INT16, TensorType_INT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 TEST(OpVersionTest, VersioningDivTest) {
   OpSignature fake_op_sig = {
@@ -700,7 +707,15 @@ TEST(OpVersionTest, VersioningDivTest) {
 TEST(OpVersionTEst, VersioningFillTest) {
   OpSignature fake_op_sig = {.op = BuiltinOperator_FILL,
                              .input_types = std::vector<TensorType>{
-                                 TensorType_INT32, TensorType_BOOL}};
+                                 TensorType_INT32, TensorType_INT8}};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  fake_op_sig = {.op = BuiltinOperator_FILL,
+                 .input_types = std::vector<TensorType>{TensorType_INT64,
+                                                        TensorType_INT16}};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  fake_op_sig = {.op = BuiltinOperator_FILL,
+                 .input_types = std::vector<TensorType>{TensorType_INT32,
+                                                        TensorType_BOOL}};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
   fake_op_sig = {.op = BuiltinOperator_FILL,
                  .input_types = std::vector<TensorType>{TensorType_INT32,

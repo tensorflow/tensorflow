@@ -37,9 +37,29 @@ namespace xla {
 // determine live range overlap of HLO instruction output buffers.
 class HloOrdering {
  public:
-  HloOrdering(const HloModule* module)
+  explicit HloOrdering(const HloModule* module)
       : module_(module), call_graph_(CallGraph::Build(module)) {}
   virtual ~HloOrdering() = default;
+
+  // Specify the ordering constraints between a pair of instructions a and b.
+  enum class ExecutionConstraint {
+    // Indicate a and b are the same instruction;
+    kIsSame,
+    // Indicate a runs before b;
+    kRunBefore,
+    // Only one of a or b runs each time their common ancestor is evaluated,
+    // and a is in an earlier branch than b.
+    kRunExclusiveBefore,
+    // Only one of a or b runs each time, and a is in a later branch than b.
+    kRunExclusiveAfter,
+    // Indicate a runs after b
+    kRunAfter,
+    // An order cannot be detrermined as a and b do not have a common ancestor.
+    kUnordered,
+  };
+  // Return the execution constraint between a and b.
+  HloOrdering::ExecutionConstraint GetExecutionConstraint(
+      const HloInstruction* a, const HloInstruction* b) const;
 
   // Returns true if instruction 'a' executes before instruction 'b'. This is
   // not reflexive, that is, an instruction does not execute before itself.
@@ -51,8 +71,9 @@ class HloOrdering {
 
   // Returns whether the given use is before the given value definition under
   // the given ordering.
-  bool UseIsBeforeValueDefinition(const HloUse& use, const HloValue& value,
-                                  const HloDataflowAnalysis& dataflow) const;
+  bool UsesBeforeValueDefinition(absl::Span<const HloUse* const> uses,
+                                 const HloValue& value,
+                                 const HloDataflowAnalysis& dataflow) const;
   // Returns whether the given values interfere. Two values interfere if they
   // may both be simultaneously live.
   bool MayInterfere(const HloValue& a, const HloValue& b,
@@ -181,8 +202,8 @@ class DependencyHloOrdering : public PredecessorHloOrdering {
 // interference is reduced relative to DependencyHloOrdering.
 class SequentialHloOrdering : public HloOrdering {
  public:
-  SequentialHloOrdering(const HloSchedule& schedule);
-  SequentialHloOrdering(HloSchedule&& schedule);
+  explicit SequentialHloOrdering(const HloSchedule& schedule);
+  explicit SequentialHloOrdering(HloSchedule&& schedule);
   ~SequentialHloOrdering() override = default;
 
   // Returns the sequential instruction order for the given computation.

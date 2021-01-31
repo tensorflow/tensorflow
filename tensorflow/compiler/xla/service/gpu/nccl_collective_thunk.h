@@ -17,6 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
 #include "absl/synchronization/mutex.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
+#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -49,6 +53,33 @@ struct NcclCollectiveConfig {
 NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction* hlo,
                                              int64 replica_count);
 
+template <typename OpT>
+NcclCollectiveConfig GetNcclCollectiveConfigForMlir(OpT op,
+                                                    int64 replica_count) {
+  NcclCollectiveConfig config;
+  config.operand_count = op.operands().size();
+  config.operand_element_type.reserve(config.operand_count);
+  for (int i = 0; i < config.operand_count; i++) {
+    const Shape shape = TypeToShape(op.operands()[i].getType());
+    config.operand_element_type.push_back(shape.element_type());
+  }
+  config.replica_count = replica_count;
+  config.replica_groups =
+      ConvertReplicaGroups(op.replica_groups()).ValueOrDie();
+
+  if (!op.IsCrossReplica()) {
+    config.collective_op_kind = RendezvousKey::kCrossModule;
+    config.op_id = op.channel_id()->handle().getUInt();
+  } else {
+    config.collective_op_kind = RendezvousKey::kCrossReplica;
+    mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
+    mlir::IntegerAttr unique_id =
+        parent->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
+    config.op_id = static_cast<int64>(unique_id.getInt());
+  }
+  return config;
+}
+
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
@@ -62,19 +93,12 @@ class NcclCollectiveThunk : public Thunk {
   // error.
   static bool NcclIsEnabled();
 
-  Status ExecuteOnStream(const ExecuteParams& params) override
-      ABSL_LOCKS_EXCLUDED(mu_);
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
   virtual Status RunNcclCollective(const ExecuteParams& params,
                                    ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
-
- private:
-  // Creating NCCL cliques is expensive, so we cache them.
-  absl::Mutex mu_;
-  absl::flat_hash_set<std::shared_ptr<NcclClique>> cliques_
-      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

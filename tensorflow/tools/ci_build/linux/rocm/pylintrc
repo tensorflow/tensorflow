@@ -13,6 +13,7 @@ profile=no
 # Add files or directories to the denylist. They should be base names, not
 # paths.
 ignore=CVS
+ignore=def_function_xla_jit_test.py
 
 # Pickle collected data for later comparisons.
 persistent=yes

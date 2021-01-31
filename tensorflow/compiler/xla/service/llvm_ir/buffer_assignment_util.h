@@ -27,6 +27,7 @@ string SanitizeConstantName(const HloInstruction& instr);
 string SanitizeConstantName(absl::string_view name);
 
 string ConstantHloToGlobalName(const HloInstruction& instr);
+string ConstantNameToGlobalName(absl::string_view name);
 
 // In XLA:GPU we map constant buffer allocations to globals in the generated
 // LLVM IR.  This function gives us the name of the global variable a constant

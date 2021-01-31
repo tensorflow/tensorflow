@@ -1,3 +1,4 @@
+# copybara:uncomment(oss-unused) load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
@@ -42,9 +43,17 @@ exports_files([
         ),
     },
     conversion_mode = conversion_mode,
-    data = [
-        ":zip_%s" % test_name,
-    ],
+    # copybara:uncomment_begin(no special handling for Android in OSS)
+    # data = select({
+    # "//tensorflow:android": [],
+    # "//conditions:default": [
+    # ":zip_%s" % test_name,
+    # "//third_party/unzip",
+    # ],
+    # }),
+    # copybara:uncomment_end_and_comment_begin
+    data = [":zip_%s" % test_name],
+    # copybara:comment_end
     shard_count = 20,
     test_args = args + select({
         "//tensorflow:android": [],
@@ -144,7 +153,7 @@ py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":generate_examples_lib",
         ":toco_convert",
@@ -637,11 +646,18 @@ edgetpu_ops = [
     "transpose_conv",
 ]
 
-[gen_zipped_test_file(
-    name = "zip_%s_edgetpu" % op_name,
-    file = "%s_edgetpu.zip" % op_name,
-    flags = " --make_edgetpu_tests",
-    toco = "//tensorflow/lite/toco:toco",  # Unused
-) for op_name in edgetpu_ops]
-
-edgetpu_targets = [":zip_%s_edgetpu" % op_name for op_name in edgetpu_ops]
+# copybara:uncomment_begin(google-only)
+# [gen_zipped_test_file(
+#     name = "zip_%s_edgetpu" % op_name,
+#     file = "%s_edgetpu.zip" % op_name,
+#     flags = " --make_edgetpu_tests",
+#     toco = "//tensorflow/lite/toco:toco",  # Unused
+# ) for op_name in edgetpu_ops]
+#
+# edgetpu_targets = [":zip_%s_edgetpu" % op_name for op_name in edgetpu_ops]
+#
+# build_test(
+#     name = "gen_edgetpu_tests",
+#     targets = edgetpu_targets,
+# )
+# copybara:uncomment_end

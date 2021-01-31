@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/match.h"
-#include "tensorflow/core/platform/status.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/platform/stack_frame.h"
 
 namespace tensorflow {
 

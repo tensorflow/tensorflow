@@ -160,7 +160,8 @@ def HLO_CeilOp: HLO_UnaryElementwiseOp<"ceil",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_CeilOp;
 
 def HLO_ConvertOp : HLO_UnaryElementwiseOp<"convert",
-    [NoSideEffect], HLO_Tensor>, BASE_HLO_ConvertOp {
+    [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
+    BASE_HLO_ConvertOp {
   let builders = [
     OpBuilderDAG<(ins "Value":$operand, "Type":$result_element_ty)>];
 
@@ -195,8 +196,8 @@ def HLO_ImagOp: HLO_UnaryElementwiseOp<"imag",
   let hasFolder = 1;
 }
 
-def HLO_IsFiniteOp: HLO_UnaryElementwiseOp<"is_finite",
-    [NoSideEffect], HLO_Tensor>,
+def HLO_IsFiniteOp: HLO_UnaryElementwiseOp<"is_finite", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_Tensor>,
     BASE_HLO_IsFiniteOp {
   let arguments = (ins HLO_FpTensor:$x);
   let results = (outs HLO_PredTensor:$y);
@@ -713,7 +714,7 @@ def HLO_SliceOp: HLO_Op<
 }
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
-      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]> {
+      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]>, BASE_HLO_DynamicSliceOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     Variadic<HLO_ScalarIntTensor>:$start_indices,
@@ -726,7 +727,7 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
 
 def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "update", "result"]>,
-       AllShapesMatch<["operand", "result"]>]> {
+       AllShapesMatch<["operand", "result"]>]>, BASE_HLO_DynamicUpdateSliceOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$update,

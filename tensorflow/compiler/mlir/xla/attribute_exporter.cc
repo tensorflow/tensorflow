@@ -84,4 +84,30 @@ StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
   }
 }
 
+// Convert replica group from MLIR encoding to HLO.
+// See HloFunctionImporter::ConvertReplicaGroups for the MLIR encoding.
+StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
+    mlir::DenseIntElementsAttr input) {
+  mlir::RankedTensorType type =
+      input.getType().dyn_cast<mlir::RankedTensorType>();
+  if (!type || type.getRank() != 2 ||
+      !type.getElementType().isInteger(/*width=*/64)) {
+    return InternalError("Execpted replica group to be a rank 2 tensor of i64");
+  }
+  // rank 0 is num_groups, rank 1 is group size.
+  auto replica_group_values_it = input.getValues<uint64_t>().begin();
+  std::vector<ReplicaGroup> replica_groups(type.getDimSize(0));
+  for (ReplicaGroup &group : replica_groups) {
+    for (int64 element_idx = 0; element_idx < type.getDimSize(1);
+         ++element_idx, ++replica_group_values_it) {
+      // For replica group attribute, -1 indicates padding added by
+      // ConvertReplicaGroups. This show always be at the end and can be dropped
+      // when converting back to XLA HLO ReplicaGroups.
+      if (*replica_group_values_it != -1) {
+        group.add_replica_ids(*replica_group_values_it);
+      }
+    }
+  }
+  return replica_groups;
+}
 }  // namespace xla

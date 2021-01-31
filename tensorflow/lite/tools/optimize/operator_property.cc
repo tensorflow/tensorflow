@@ -192,6 +192,13 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.outputs = {{0, {}}};
       property.version = 1;
       break;
+    case BuiltinOperator_FILL: {
+      property.inputs = {{1, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
+    }
     case BuiltinOperator_FULLY_CONNECTED: {
       TensorProperty tensor_property;
       tensor_property.symmetric = true;
@@ -207,6 +214,12 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.restrict_same_input_output_scale = true;
       property.quantize_input_as_activations = true;
       property.version = 2;
+      break;
+    case BuiltinOperator_GATHER_ND:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
       break;
     case BuiltinOperator_HARD_SWISH: {
       property.inputs = {{0, {}}};

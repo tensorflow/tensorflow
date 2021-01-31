@@ -18,9 +18,11 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
 
 // Defines an interface for TFLite delegate plugins.
 //
@@ -44,12 +46,28 @@ namespace delegates {
 using TfLiteDelegatePtr =
     std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
-class DelegatePluginInterface {
+// A shared pointer to `TfLiteExternalContext`, similar to `TfLiteDelegatePtr`.
+using TfLiteExternalContextPtr = std::shared_ptr<TfLiteExternalContext>;
+
+template <typename AcceleratorType, typename AcceleratorPtrType>
+class AcceleratorPluginInterface {
  public:
-  virtual TfLiteDelegatePtr Create() = 0;
-  virtual int GetDelegateErrno(TfLiteDelegate* from_delegate) = 0;
-  virtual ~DelegatePluginInterface() = default;
+  virtual AcceleratorPtrType Create() = 0;
+  // Some accelerators require their own custom ops, such as the Coral plugin.
+  // Default to an empty MutableOpResolver.
+  virtual std::unique_ptr<MutableOpResolver> CreateOpResolver() {
+    return absl::make_unique<MutableOpResolver>();
+  }
+  virtual int GetDelegateErrno(AcceleratorType* from_delegate) = 0;
+  virtual ~AcceleratorPluginInterface() = default;
 };
+
+// `AcceleratorPluginInterface` implemented for `TfLiteDelegate`.
+using DelegatePluginInterface =
+    AcceleratorPluginInterface<TfLiteDelegate, TfLiteDelegatePtr>;
+// `AcceleratorPluginInterface` implemented for `TfLiteExternalContext`.
+using ContextPluginInterface =
+    AcceleratorPluginInterface<TfLiteExternalContext, TfLiteExternalContextPtr>;
 
 // A stripped-down registry that allows delegate plugins to be created by name.
 //
@@ -57,39 +75,72 @@ class DelegatePluginInterface {
 // - Doesn't allow deregistration.
 // - Doesn't check for duplication registration.
 //
-class DelegatePluginRegistry {
+template <typename AcceleratorType, typename AcceleratorPtrType>
+class AcceleratorRegistry {
  public:
-  typedef std::function<std::unique_ptr<DelegatePluginInterface>(
-      const TFLiteSettings&)>
+  typedef std::function<std::unique_ptr<AcceleratorPluginInterface<
+      AcceleratorType, AcceleratorPtrType>>(const TFLiteSettings&)>
       CreatorFunction;
-  // Returns a DelegatePluginInterface registered with `name` or nullptr if no
-  // matching plugin found.
-  // TFLiteSettings is per-plugin, so that the corresponding delegate options
-  // data lifetime is maintained.
-  static std::unique_ptr<DelegatePluginInterface> CreateByName(
-      const std::string& name, const TFLiteSettings& settings);
+  // Returns a AcceleratorPluginInterface registered with `name` or nullptr if
+  // no matching plugin found. TFLiteSettings is per-plugin, so that the
+  // corresponding delegate options data lifetime is maintained.
+  static std::unique_ptr<
+      AcceleratorPluginInterface<AcceleratorType, AcceleratorPtrType>>
+  CreateByName(const std::string& name, const TFLiteSettings& settings) {
+    auto* const instance = AcceleratorRegistry::GetSingleton();
+    return instance->CreateImpl(name, settings);
+  }
 
   // Struct to be statically allocated for registration.
   struct Register {
-    Register(const std::string& name, CreatorFunction creator_function);
+    Register(const std::string& name, CreatorFunction creator_function) {
+      auto* const instance = AcceleratorRegistry::GetSingleton();
+      instance->RegisterImpl(name, creator_function);
+    }
   };
 
  private:
-  void RegisterImpl(const std::string& name, CreatorFunction creator_function);
-  std::unique_ptr<DelegatePluginInterface> CreateImpl(
-      const std::string& name, const TFLiteSettings& settings);
-  static DelegatePluginRegistry* GetSingleton();
-  std::unordered_map<std::string, CreatorFunction> factories_;
+  void RegisterImpl(const std::string& name, CreatorFunction creator_function) {
+    absl::MutexLock lock(&mutex_);
+    factories_[name] = creator_function;
+  }
+
+  std::unique_ptr<
+      AcceleratorPluginInterface<AcceleratorType, AcceleratorPtrType>>
+  CreateImpl(const std::string& name, const TFLiteSettings& settings) {
+    absl::MutexLock lock(&mutex_);
+    auto it = factories_.find(name);
+    return (it != factories_.end()) ? it->second(settings) : nullptr;
+  }
+
+  static AcceleratorRegistry* GetSingleton() {
+    static auto* instance = new AcceleratorRegistry();
+    return instance;
+  }
+
   absl::Mutex mutex_;
+  std::unordered_map<std::string, CreatorFunction> factories_
+      ABSL_GUARDED_BY(mutex_);
 };
+
+using DelegatePluginRegistry =
+    AcceleratorRegistry<TfLiteDelegate, TfLiteDelegatePtr>;
+using ContextPluginRegistry =
+    AcceleratorRegistry<TfLiteExternalContext, TfLiteExternalContextPtr>;
 
 }  // namespace delegates
 }  // namespace tflite
 
-#define TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION_VNAME(name, f) \
-  static auto* g_delegate_plugin_##name##_ =                     \
-      new DelegatePluginRegistry::Register(#name, f);
-#define TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION(name, f) \
-  TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION_VNAME(name, f);
+#define TFLITE_REGISTER_ACCELERATOR_FACTORY_FUNCTION_VNAME( \
+    name, f, accelerator_type, accelerator_ptr_type)        \
+  static auto* g_delegate_plugin_##name##_ =                \
+      new AcceleratorRegistry<accelerator_type,             \
+                              accelerator_ptr_type>::Register(#name, f);
+#define TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION(name, f)                    \
+  TFLITE_REGISTER_ACCELERATOR_FACTORY_FUNCTION_VNAME(name, f, TfLiteDelegate, \
+                                                     TfLiteDelegatePtr);
+#define TFLITE_REGISTER_EXTERNAL_CONTEXT_FACTORY_FUNCTION(name, f) \
+  TFLITE_REGISTER_ACCELERATOR_FACTORY_FUNCTION_VNAME(              \
+      name, f, TfLiteExternalContext, TfLiteExternalContextPtr);
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_

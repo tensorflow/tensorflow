@@ -301,7 +301,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return strategy.experimental_local_results(
           strategy.run(step_fn, args=(next(iterator),)))
 
-    with self.assertRaises(errors.InternalError):
+    with self.assertRaises(errors.InvalidArgumentError):
       logging.info(train_fn(iterator))
 
   def test_computation_on_subset_cores(self, enable_packed_var):
@@ -542,6 +542,17 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
         strategy.run(named_args, args=(2, 3, 4))
 
       step()
+
+    class DummyClass:
+
+      @def_function.function
+      def method(self, arg_1):
+        del arg_1
+
+      def step(self):
+        strategy.run(self.method, args=(tpu_vars,))
+
+    DummyClass().step()
     # pylint:enable=function-redefined
 
   def test_using_external_variable_inside_tf_function(self, enable_packed_var):

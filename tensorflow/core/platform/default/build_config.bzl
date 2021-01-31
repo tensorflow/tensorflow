@@ -54,7 +54,7 @@ def pyx_library(
         py_deps = [],
         srcs = [],
         testonly = None,
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -454,7 +454,7 @@ def tf_proto_library_py(
         deps = [],
         visibility = None,
         testonly = 0,
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         use_grpc_plugin = False):
     py_deps = tf_deps(protodeps, "_py")
     py_name = name + "_py"
@@ -552,7 +552,7 @@ def tf_proto_library(
         testonly = testonly,
         srcs = srcs,
         protodeps = protodeps,
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         use_grpc_plugin = has_services,
         visibility = visibility,
     )

@@ -84,3 +84,7 @@ zip libtensorflow-gpu-windows-$(uname -m).zip \
   LICENSE \
   THIRD_PARTY_TF_C_LICENSES
 rm -rf lib include
+
+cd ..
+
+tar -zcvf windows_gpu_libtensorflow_binaries.tar.gz lib_package

@@ -121,6 +121,14 @@ message RewriterConfig {
   // is experimental and may be removed in the future.
   bool experimental_disable_compressed_tensor_optimization = 26;
 
+  // Disable folding quantization emulation ops such as FakeQuantWithMinMax* and
+  // QuantizeAndDequantize*. Some compilers (e.g. the TF-to-tflite converter)
+  // have to extract quantization configs (e.g. min/max range, number of bits,
+  // and per-channel) from the quantization emulation ops. Note that this flag
+  // is experimental and may be removed in the future. See b/174138564 for more
+  // details.
+  bool experimental_disable_folding_quantization_emulation = 27;
+
   enum MemOptType {
     // The default setting (SCHEDULING and SWAPPING HEURISTICS only)
     DEFAULT_MEM_OPT = 0;

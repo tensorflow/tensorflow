@@ -43,26 +43,29 @@ class DotOperationTest : public ClientLibraryTestBase {
   ErrorSpec error_spec_{0.0001, 1e-5};
 };
 
-#if defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
-    defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
-using TypesF16F32 = ::testing::Types<float>;
-using TypesF16F32F64 = ::testing::Types<float>;
-using TypesF16F32F64CF64 = ::testing::Types<float>;
-#elif !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
-    !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
-using TypesF16F32 = ::testing::Types<Eigen::half, float>;
-using TypesF16F32F64 = ::testing::Types<Eigen::half, float, double>;
-using TypesF16F32F64CF64 =
-    ::testing::Types<Eigen::half, float, double, complex64>;
-#elif !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
-    defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64) &&    \
-    defined(XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX)
-using TypesF16F32 = ::testing::Types<Eigen::half, float>;
-using TypesF16F32F64 = ::testing::Types<Eigen::half, float>;
-using TypesF16F32F64CF64 = ::testing::Types<Eigen::half, float>;
-#else
-#error "Situation not handled yet"
+using TypesF16F32 = ::testing::Types<
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
+    Eigen::half,
 #endif
+    float>;
+
+using TypesF16F32F64 = ::testing::Types<
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
+    Eigen::half,
+#endif
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
+    double,
+#endif
+    float>;
+
+using TypesF16F32F64CF64 = ::testing::Types<
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
+    Eigen::half,
+#endif
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
+    double, complex64,
+#endif
+    float>;
 
 // Check that we can safely pass an input tuple's elements to a dot operation.
 XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {

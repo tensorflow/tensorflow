@@ -33,5 +33,8 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
 StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
     llvm::StringRef input);
 
+StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
+    mlir::DenseIntElementsAttr input);
+
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_

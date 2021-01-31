@@ -23,9 +23,8 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
-install_macos_pip_deps sudo python3.8
-
-sudo pip3.8 install 'twine ~= 3.2.0'
+# Set up and install MacOS pip dependencies.
+setup_venv_macos python3.8
 
 # For python3 path on Mac
 export PATH=$PATH:/usr/local/bin
@@ -58,7 +57,8 @@ for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
   # Upload the PIP package if whl test passes.
   if [ ${RETVAL} -eq 0 ]; then
     echo "Basic PIP test PASSED, Uploading package: ${f}"
-    python3.8 -m twine upload -r pypi-warehouse "${f}"
+    python -m pip install twine
+    python -m twine upload -r pypi-warehouse "${f}"
   else
     echo "Basic PIP test FAILED, will not upload ${f} package"
     return 1

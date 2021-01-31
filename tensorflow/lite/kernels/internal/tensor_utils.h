@@ -630,8 +630,9 @@ void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size);
 
 // Layer norm for each batch.
-void MeanStddevNormalization(const float* input_vector, float* output_vector,
-                             int v_size, int n_batch);
+void MeanStddevNormalization(const float* __restrict__ input_vector,
+                             float* __restrict__ output_vector, int v_size,
+                             int n_batch);
 
 // Saturate Add with rescale on both inputs.
 void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,

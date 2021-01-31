@@ -1952,6 +1952,20 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     if (attr->ends.b < 0) {
       attr->ends.b = input_shape.b + attr->ends.b;
     }
+
+    if (attr->starts.h < 0) {
+      attr->starts.h = input_shape.h + attr->starts.h;
+    }
+    if (attr->starts.w < 0) {
+      attr->starts.w = input_shape.w + attr->starts.w;
+    }
+    if (attr->starts.c < 0) {
+      attr->starts.c = input_shape.c + attr->starts.c;
+    }
+    if (attr->starts.b < 0) {
+      attr->starts.b = input_shape.b + attr->starts.b;
+    }
+
     return absl::OkStatus();
   }
 

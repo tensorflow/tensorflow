@@ -57,20 +57,18 @@ CXX_TOOL := g++
 CC_TOOL := gcc
 AR_TOOL := ar
 
-# Specify which specialized kernel implementation should be pulled in. This was
-# previously supported via TAGS, but that is soon going to be removed. The
-# reason for removing TAGS is that we no longer support more than a single
-# specialized implementation and we also want to be explicit about what
-# makefiles get included for a given command line invocation.
-#
-# Currently, we are keeping the support for optimized kernels via TAGS for
-# backwards compatibility, but will be removing that in the near future.
+ifneq ($(TAGS),)
+  $(error The TAGS command line option is no longer supported in the TFLM Makefile.)
+endif
+
+# Specify which specialized kernel implementation should be pulled in.
 OPTIMIZED_KERNEL_DIR :=
 
-# Specify TAGS on the command line to add a particular set of specialized
-# implementations, for example TAGS="CMSIS disco_f746ng" to target a Discovery
-# STM32F746NG board, using the CMSIS library's implementations where possible.
-ALL_TAGS := $(TAGS) $(TARGET)
+# Specify which co-processor's kernel implementation should be pulled in.
+# If the same kernel is implemented in both kernels/OPTIMIZED_KERNEL_DIR and
+# kernels/CO_PROCESSOR, then the implementation from kernels/CO_PROCESSOR will
+# be used.
+CO_PROCESSOR :=
 
 # This is obviously horrible.  We need to generate these 3 versions of the
 # include directories from one source.
@@ -99,28 +97,20 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
-# For each tag specified on the command line we add -D<tag> to the cflags to
-# allow for #idefs in the code.
+# For the target, optimized_kernel_dir, and co-processor as specified on the
+# command line we add -D<tag> to the cflags to allow for #idefs in the code.
 #
 # We apply the following transformations (via the tr command):
-#   1. Convert the tag name to uppercase (TAGS=xtensa_hifimini -> -DXTENSA_HIFIMINI)
-#   2. (Temporarily) Replace dash with underscore (TAGS=cmsis-nn -> -DCMSIS_NN)
-#
-# Transformation 2 is needed because CMSIS-NN is not a valid macro name.
-#
-# TODO(b/168824958): remove dash->underscore transformation once the cmsis-nn
-# and ethos-u directories have been renamed.
-TAG_DEFINES := $(foreach TAG,$(TAGS),-D$(shell echo $(TAG) | tr [a-z] [A-Z] | tr - _))
+#   1. Convert to uppercase (TARGET=xtensa -> -DXTENSA)
 
-OPTIMIZED_KERNEL_DEFINES :=
+ADDITIONAL_DEFINES := -D$(shell echo $(TARGET) | tr [a-z] [A-Z])
+
 ifneq ($(OPTIMIZED_KERNEL_DIR),)
-  # For backwards compatibility, we are using an empty OPTIMIZED_KERNEL_DIR to
-  # impy that we want to fall-back to TAGS. So, we are additionally using
-  # OPTIMIZED_KERNEL_DIR==none to signify that we do not want any optimized
-  # implementations.
-  ifneq ($(OPTIMIZED_KERNEL_DIR), none)
-    OPTIMIZED_KERNEL_DEFINES := -D$(shell echo $(OPTIMIZED_KERNEL_DIR) | tr [a-z] [A-Z] | tr - _)
-  endif
+  ADDITIONAL_DEFINES += -D$(shell echo $(OPTIMIZED_KERNEL_DIR) | tr [a-z] [A-Z])
+endif
+
+ifneq ($(CO_PROCESSOR),)
+  ADDITIONAL_DEFINES += -D$(shell echo $(CO_PROCESSOR) | tr [a-z] [A-Z])
 endif
 
 OPTIMIZATION_LEVEL := -O3
@@ -149,8 +139,7 @@ COMMON_FLAGS := \
   -DTF_LITE_DISABLE_X86_NEON \
   $(OPTIMIZATION_LEVEL) \
   $(CC_WARNINGS) \
-  $(OPTIMIZED_KERNEL_DEFINES) \
-  $(TAG_DEFINES)
+  $(ADDITIONAL_DEFINES)
 
 ifeq ($(TARGET), $(HOST_OS))
   # If we are not doing a cross-compilation then -DTF_LITE_USE_CTIME is what we
@@ -270,6 +259,7 @@ tensorflow/lite/micro/testing_helpers_test.cc \
 tensorflow/lite/micro/kernels/activations_test.cc \
 tensorflow/lite/micro/kernels/add_test.cc \
 tensorflow/lite/micro/kernels/arg_min_max_test.cc \
+tensorflow/lite/micro/kernels/cast_test.cc \
 tensorflow/lite/micro/kernels/ceil_test.cc \
 tensorflow/lite/micro/kernels/circular_buffer_test.cc \
 tensorflow/lite/micro/kernels/comparisons_test.cc \
@@ -279,6 +269,7 @@ tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
 tensorflow/lite/micro/kernels/dequantize_test.cc \
 tensorflow/lite/micro/kernels/detection_postprocess_test.cc \
 tensorflow/lite/micro/kernels/elementwise_test.cc \
+tensorflow/lite/micro/kernels/exp_test.cc \
 tensorflow/lite/micro/kernels/floor_test.cc \
 tensorflow/lite/micro/kernels/fully_connected_test.cc \
 tensorflow/lite/micro/kernels/hard_swish_test.cc \
@@ -315,6 +306,7 @@ MICROLITE_CC_KERNEL_SRCS := \
 tensorflow/lite/micro/kernels/activations.cc \
 tensorflow/lite/micro/kernels/add.cc \
 tensorflow/lite/micro/kernels/arg_min_max.cc \
+tensorflow/lite/micro/kernels/cast.cc \
 tensorflow/lite/micro/kernels/ceil.cc \
 tensorflow/lite/micro/kernels/circular_buffer.cc \
 tensorflow/lite/micro/kernels/comparisons.cc \
@@ -326,6 +318,7 @@ tensorflow/lite/micro/kernels/dequantize.cc \
 tensorflow/lite/micro/kernels/detection_postprocess.cc \
 tensorflow/lite/micro/kernels/elementwise.cc \
 tensorflow/lite/micro/kernels/ethosu.cc \
+tensorflow/lite/micro/kernels/exp.cc \
 tensorflow/lite/micro/kernels/flexbuffers_generated_data.cc \
 tensorflow/lite/micro/kernels/floor.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
@@ -351,6 +344,7 @@ tensorflow/lite/micro/kernels/resize_nearest_neighbor.cc \
 tensorflow/lite/micro/kernels/round.cc \
 tensorflow/lite/micro/kernels/shape.cc \
 tensorflow/lite/micro/kernels/softmax.cc \
+tensorflow/lite/micro/kernels/softmax_common.cc \
 tensorflow/lite/micro/kernels/split.cc \
 tensorflow/lite/micro/kernels/split_v.cc \
 tensorflow/lite/micro/kernels/strided_slice.cc \
@@ -409,6 +403,7 @@ tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/dequantize.h \
+tensorflow/lite/kernels/internal/reference/exp.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/hard_swish.h \
@@ -557,31 +552,27 @@ ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
 endif
 
 ifneq ($(OPTIMIZED_KERNEL_DIR),)
-  # The new way of using optimized kernels enforces that only that specific
-  # makefile is included. For backwards compatibility, we are using an empty
-  # OPTIMIZED_KERNEL_DIR to impy that we want to fall-back to TAGS. So, we are
-  # additionally using OPTIMIZED_KERNEL_DIR==none to signify that we do not want
-  # any optimized implementations.
-  ifneq ($(OPTIMIZED_KERNEL_DIR), none)
-    include $(MAKEFILE_DIR)/ext_libs/$(OPTIMIZED_KERNEL_DIR).inc
-    # Specialize for the optimized kernels
-    MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(OPTIMIZED_KERNEL_DIR))
-  endif
-
-  # Specialize for debug_log. micro_time etc.
-  MICROLITE_CC_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_SRCS),$(TARGET))
-  MICROLITE_CC_SRCS += $(MICROLITE_CC_KERNEL_SRCS)
-else
-  # This is the deprecated way of pulling in optimized kernel implementations.
-  # Load dependencies for optimized kernel implementations.
-  include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)
-
-  # Call specialize here so that platform-specific tags can be taken into account.
-  MICROLITE_CC_SRCS += $(MICROLITE_CC_KERNEL_SRCS)
-  MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
+  include $(MAKEFILE_DIR)/ext_libs/$(OPTIMIZED_KERNEL_DIR).inc
+  # Specialize for the optimized kernels
+  MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(OPTIMIZED_KERNEL_DIR))
 endif
 
-ALL_TAGS += $(TARGET_ARCH)
+# If a co-processor is specified on the command line with
+# CO_PROCESSOR=<co_processor> then we will include ext_libs/<co_processor>.inc
+# and find additional kernel sources in kernels/<co_processor>/
+#
+# That the co-processor specialization of the kernel sources happens after the
+# optimized_kernel_dir means that if there is an implementation of the same
+# kernel in both directories, the one from co_processor will be used.
+ifneq ($(CO_PROCESSOR),)
+  include $(MAKEFILE_DIR)/ext_libs/$(CO_PROCESSOR).inc
+  # Specialize for the coprocessor kernels.
+  MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(CO_PROCESSOR))
+endif
+
+# Specialize for debug_log. micro_time etc.
+MICROLITE_CC_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_SRCS),$(TARGET))
+MICROLITE_CC_SRCS += $(MICROLITE_CC_KERNEL_SRCS)
 
 ALL_SRCS := \
 	$(MICROLITE_CC_SRCS) \

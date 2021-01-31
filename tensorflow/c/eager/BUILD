@@ -146,10 +146,7 @@ cc_library(
         "c_api_experimental.h",
         "c_api_internal.h",
     ],
-    visibility = [
-        "//learning/deepmind/courier:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":c_api",
         ":tfe_cancellation_manager_internal",
@@ -742,9 +739,7 @@ tf_cuda_cc_test(
         "c_api_test.cc",
     ],
     tags = [
-        "noguitar",  # TODO(b/155445984): flaky
-        #"guitar",
-        "notap",  # TODO(b/156981931): flaky
+        "guitar",
         "multi_gpu",
     ],
     deps = [

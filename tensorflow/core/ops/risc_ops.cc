@@ -21,16 +21,46 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+Status RiscBinaryNonBroadcastOpShapeFn(shape_inference::InferenceContext* c) {
+  const auto rank = c->Rank(c->input(0));
+  if (rank != c->Rank(c->input(1))) {
+    return errors::InvalidArgument("Mismatch rank for input.");
+  }
+  for (int i = 0; i < rank; ++i) {
+    if (!c->ValueKnown(c->Dim(c->input(0), i)) ||
+        !c->ValueKnown(c->Dim(c->input(1), i))) {
+      continue;
+    }
+    if (c->Value(c->Dim(c->input(0), i)) != c->Value(c->Dim(c->input(1), i))) {
+      return errors::InvalidArgument("Mismatch shapes for input.");
+    }
+  }
+  c->set_output(0, c->input(0));
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data != nullptr) {
+    c->set_output_handle_shapes_and_types(0, *handle_data);
+  }
+  return Status::OK();
+}
+}  // namespace
+
+REGISTER_OP("RiscAbs")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("RiscAdd")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
     .Attr("T: {bfloat16, half, float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetShapeFn(RiscBinaryNonBroadcastOpShapeFn)
     .SetIsAggregate()
     .SetIsCommutative();
 
-// TODO(b/171294012): include RiscMax here as well.
+// TODO(b/178234771): retire this.
 REGISTER_OP("RiscBinaryArithmetic")
     .Input("x: T")
     .Input("y: T")
@@ -45,9 +75,9 @@ REGISTER_OP("RiscBinaryComparison")
     .Output("z: bool")
     .Attr("op_type: {'EQ', 'NE', 'GE', 'GT', 'LE', 'LT'}")
     .Attr("T: {bfloat16, half, float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape);
+    .SetShapeFn(RiscBinaryNonBroadcastOpShapeFn);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscBitcast")
     .Input("x: SrcT")
     .Output("y: DstT")
@@ -55,7 +85,7 @@ REGISTER_OP("RiscBitcast")
     .Attr("DstT: type")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscBroadcast")
     .Input("input: T")
     .Input("shape: Tidx")
@@ -71,7 +101,13 @@ REGISTER_OP("RiscCast")
     .Attr("DstT: type")
     .SetShapeFn(shape_inference::UnchangedShape);
 
-// TODO(b/171294012): change shape function.
+REGISTER_OP("RiscCeil")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscCholesky")
     .Input("input: T")
     .Output("output: T")
@@ -87,7 +123,7 @@ REGISTER_OP("RiscConcat")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ConcatV2Shape);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscCondition")
     .Input("pred: bool")
     .Input("input_true: SrcT")
@@ -99,7 +135,7 @@ REGISTER_OP("RiscCondition")
     .Attr("DstT: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscConv")
     .Input("input: T")
     .Input("filter: T")
@@ -110,6 +146,19 @@ REGISTER_OP("RiscConv")
     .SetShapeFn(shape_inference::UnknownShape)
     .Attr("dilations: list(int) = [1, 1, 1, 1]");
 
+REGISTER_OP("RiscCos")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("RiscDiv")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(RiscBinaryNonBroadcastOpShapeFn);
+
 REGISTER_OP("RiscDot")
     .Input("a: T")
     .Input("b: T")
@@ -119,14 +168,26 @@ REGISTER_OP("RiscDot")
     .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::MatMulShape);
 
-// TODO(b/171294012): change shape function.
+REGISTER_OP("RiscExp")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscFft")
     .Input("input: Tcomplex")
     .Output("output: Tcomplex")
     .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/171294012): change shape function.
+REGISTER_OP("RiscFloor")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscGather")
     .Input("params: Tparams")
     .Input("indices: Tindices")
@@ -138,37 +199,72 @@ REGISTER_OP("RiscGather")
     .Attr("Taxis: {int32,int64}")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("RiscImag")
+    .Input("input: T")
+    .Output("output: Tout")
+    .Attr("T: {complex64, complex128} = DT_COMPLEX64")
+    .Attr("Tout: {float, double} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("RiscIsFinite")
     .Input("x: T")
     .Output("y: bool")
     .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("RiscLog")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscLogicalAnd")
     .Input("x: bool")
     .Input("y: bool")
     .Output("z: bool")
-    .SetShapeFn(shape_inference::UnchangedShape);
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("RiscLogicalNot")
     .Input("x: bool")
     .Output("z: bool")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscLogicalOr")
     .Input("x: bool")
     .Input("y: bool")
     .Output("z: bool")
-    .SetShapeFn(shape_inference::UnchangedShape);
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("RiscMax")
     .Input("x: T")
     .Input("y: T")
     .Output("max: T")
     .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(RiscBinaryNonBroadcastOpShapeFn);
+
+REGISTER_OP("RiscMin")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(RiscBinaryNonBroadcastOpShapeFn);
+
+REGISTER_OP("RiscMul")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(RiscBinaryNonBroadcastOpShapeFn);
+
+REGISTER_OP("RiscNeg")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscPad")
     .Input("input: T")
     .Input("paddings: Tpaddings")
@@ -178,7 +274,7 @@ REGISTER_OP("RiscPad")
     .Attr("Tpaddings: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscPool")
     .Input("value: T")
     .Output("output: T")
@@ -189,6 +285,13 @@ REGISTER_OP("RiscPool")
     .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("RiscPow")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(RiscBinaryNonBroadcastOpShapeFn);
+
 REGISTER_OP("RiscRandomUniform")
     .Input("shape: T")
     .Output("output: float")
@@ -196,7 +299,14 @@ REGISTER_OP("RiscRandomUniform")
     .Attr("T: {int32, int64}")
     .SetShapeFn(shape_inference::RandomShape);
 
-// TODO(b/171294012): change shape function.
+REGISTER_OP("RiscReal")
+    .Input("input: T")
+    .Output("output: Tout")
+    .Attr("T: {complex64, complex128} = DT_COMPLEX64")
+    .Attr("Tout: {float, double} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscReduce")
     .Input("tensor: T")
     .Input("axis: Index")
@@ -206,7 +316,14 @@ REGISTER_OP("RiscReduce")
     .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/171294012): change shape function.
+REGISTER_OP("RiscRem")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(RiscBinaryNonBroadcastOpShapeFn);
+
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscReshape")
     .Input("tensor: T")
     .Input("shape: Tshape")
@@ -215,6 +332,7 @@ REGISTER_OP("RiscReshape")
     .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnknownShape);
 
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscReverse")
     .Input("tensor: T")
     .Input("axis: Tidx")
@@ -223,7 +341,7 @@ REGISTER_OP("RiscReverse")
     .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscScatter")
     .Input("indices: Tindices")
     .Input("updates: T")
@@ -233,13 +351,19 @@ REGISTER_OP("RiscScatter")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscShape")
     .Input("input: T")
     .Output("output: out_type")
     .Attr("T: {bfloat16, half, float, double}")
     .Attr("out_type: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("RiscSign")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("RiscSlice")
     .Input("input: T")
@@ -259,7 +383,7 @@ REGISTER_OP("RiscSort")
     .Attr("direction: {'ASCENDING', 'DESCENDING'}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscSqueeze")
     .Input("input: T")
     .Output("output: T")
@@ -267,7 +391,14 @@ REGISTER_OP("RiscSqueeze")
     .Attr("squeeze_dims: list(int) >= 0 = []")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/171294012): change shape function.
+REGISTER_OP("RiscSub")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(RiscBinaryNonBroadcastOpShapeFn);
+
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscTranspose")
     .Input("x: T")
     .Input("perm: Tperm")
@@ -276,7 +407,7 @@ REGISTER_OP("RiscTranspose")
     .Attr("Tperm: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscTriangularSolve")
     .Input("matrix: T")
     .Input("rhs: T")
@@ -286,6 +417,7 @@ REGISTER_OP("RiscTriangularSolve")
     .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::UnknownShape);
 
+// TODO(b/178234771): retire this.
 REGISTER_OP("RiscUnary")
     .Input("x: T")
     .Output("y: T")
@@ -295,7 +427,7 @@ REGISTER_OP("RiscUnary")
     .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
-// TODO(b/171294012): change shape function.
+// TODO(b/178234771): change shape function.
 REGISTER_OP("RiscWhile")
     .Input("input: T")
     .Output("output: T")

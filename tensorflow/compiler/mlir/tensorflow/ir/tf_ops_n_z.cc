@@ -2970,6 +2970,92 @@ void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// XlaBroadcastHelperOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto loc = location ? *location : mlir::UnknownLoc::get(context);
+  XlaBroadcastHelperOpAdaptor op(operands, attributes);
+  if (failed(op.verify(loc))) {
+    return failure();
+  }
+
+  Value lhs = op.lhs();
+  Value rhs = op.rhs();
+  auto set_unranked_results = [&]() {
+    auto unranked_lhs = UnrankedTensorType::get(getElementTypeOrSelf(lhs));
+    inferredReturnTypes.push_back(unranked_lhs);
+    auto unranked_rhs = UnrankedTensorType::get(getElementTypeOrSelf(rhs));
+    inferredReturnTypes.push_back(unranked_rhs);
+    return success();
+  };
+
+  RankedTensorType lhs_ty = lhs.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType rhs_ty = rhs.getType().dyn_cast<RankedTensorType>();
+  if (!lhs_ty || !rhs_ty) return set_unranked_results();
+
+  int64_t lhs_rank = lhs_ty.getRank();
+  int64_t rhs_rank = rhs_ty.getRank();
+
+  DenseIntElementsAttr dims;
+  if (!matchPattern(op.broadcast_dims(), m_Constant(&dims))) {
+    return set_unranked_results();
+  }
+
+  if (dims.size() == 0) {
+    if (lhs_rank != rhs_rank && lhs_rank != 0 && rhs_rank != 0) {
+      return emitOptionalError(
+          location,
+          "if broadcast_dims is empty, both arguments must have equal rank or "
+          "at least one argument must be a scalar");
+    }
+    inferredReturnTypes.push_back(lhs_ty);
+    inferredReturnTypes.push_back(rhs_ty);
+    return success();
+  }
+
+  const bool broadcast_lhs = lhs_rank < rhs_rank;
+  RankedTensorType min_rank_ty = broadcast_lhs ? lhs_ty : rhs_ty;
+  RankedTensorType max_rank_ty = broadcast_lhs ? rhs_ty : lhs_ty;
+
+  if (dims.size() != min_rank_ty.getRank()) {
+    return emitOptionalError(
+        location,
+        "broadcast_dims must have size equal to the smaller argument rank");
+  }
+
+  int64_t output_rank = max_rank_ty.getRank();
+  llvm::SmallVector<int64_t, 4> broadcast_shape(output_rank, 1LL);
+  llvm::SmallVector<bool, 4> is_broadcasted(output_rank, false);
+  for (auto item : llvm::enumerate(dims)) {
+    int64_t index = item.index();
+    int64_t dim = item.value().getSExtValue();
+    if (dim < 0 || dim > output_rank) {
+      return emitOptionalError(location, "out of range broadcast dim");
+    }
+    if (is_broadcasted[dim]) {
+      return emitOptionalError(location, "broadcast_dims has duplicates");
+    }
+    broadcast_shape[dim] = min_rank_ty.getDimSize(index);
+    is_broadcasted[dim] = true;
+  }
+
+  if (broadcast_lhs) {
+    inferredReturnTypes.push_back(
+        RankedTensorType::get(broadcast_shape, lhs_ty.getElementType()));
+    inferredReturnTypes.push_back(rhs_ty);
+  } else {
+    inferredReturnTypes.push_back(lhs_ty);
+    inferredReturnTypes.push_back(
+        RankedTensorType::get(broadcast_shape, rhs_ty.getElementType()));
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // XlaSetDynamicDimensionSizeOp
 //===----------------------------------------------------------------------===//
 

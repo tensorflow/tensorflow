@@ -138,6 +138,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParsePool);
   }
 
+  TfLiteStatus AddCast() {
+    return AddBuiltin(BuiltinOperator_CAST, Register_CAST(), ParseCast);
+  }
+
   TfLiteStatus AddCeil() {
     return AddBuiltin(BuiltinOperator_CEIL, tflite::ops::micro::Register_CEIL(),
                       ParseCeil);
@@ -190,6 +194,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
       return AddCustom(tflite::GetString_ETHOSU(), registration);
     }
     return kTfLiteOk;
+  }
+
+  TfLiteStatus AddExp() {
+    return AddBuiltin(BuiltinOperator_EXP, Register_EXP(), ParseExp);
   }
 
   TfLiteStatus AddFloor() {

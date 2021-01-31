@@ -20,6 +20,8 @@ load(
     "tf_cc_test",
 )
 
+package_group(name = "data_transfer_visibility")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -52,6 +54,9 @@ tf_proto_library(
     protodeps = tf_additional_all_protos() + [
         ":common_proto",
         "//tensorflow/core/data:dataset_proto",
+    ],
+    visibility = [
+        ":data_transfer_visibility",
     ],
 )
 
@@ -86,6 +91,7 @@ cc_library(
     ],
     deps = [
         ":credentials_factory",
+        ":data_transfer",
         ":dispatcher_cc_grpc_proto",
         ":grpc_util",
         ":worker_cc_grpc_proto",
@@ -122,6 +128,37 @@ tf_cc_test(
         "//tensorflow/core/kernels/data:dataset_test_base",
         tf_grpc_cc_dependency(),
     ] + tf_protos_profiler_service(),
+)
+
+cc_library(
+    name = "data_transfer",
+    srcs = ["data_transfer.cc"],
+    hdrs = ["data_transfer.h"],
+    visibility = [
+        ":data_transfer_visibility",
+    ],
+    deps = [
+        ":worker_proto_cc",
+        "//tensorflow/core/data:dataset_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "data_transfer_test",
+    srcs = ["data_transfer_test.cc"],
+    deps = [
+        ":data_transfer",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 cc_library(
@@ -335,6 +372,7 @@ cc_library(
     ],
     deps = [
         ":credentials_factory",
+        ":data_transfer",
         ":grpc_dispatcher_impl",
         ":grpc_util",
         ":grpc_worker_impl",

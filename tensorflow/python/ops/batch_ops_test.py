@@ -415,6 +415,9 @@ class BatchOpsTest(test.TestCase):
 
   def testBatchFunctionOpWithLargeBatchSplitted(self):
     """Tests that the batch_function op works with large batch splitted."""
+    if test_util.is_xla_enabled():
+      self.skipTest("b/178649404")
+
     if context.executing_eagerly():
       return
 

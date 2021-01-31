@@ -74,7 +74,8 @@ void DispatcherState::RegisterWorker(
     const RegisterWorkerUpdate& register_worker) {
   std::string address = register_worker.worker_address();
   DCHECK(!workers_.contains(address));
-  workers_[address] = std::make_shared<Worker>(address);
+  workers_[address] =
+      std::make_shared<Worker>(address, register_worker.transfer_address());
   tasks_by_worker_[address] =
       absl::flat_hash_map<int64, std::shared_ptr<Task>>();
 }
@@ -146,7 +147,8 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   DCHECK_EQ(task, nullptr);
   auto& job = jobs_[create_task.job_id()];
   DCHECK_NE(job, nullptr);
-  task = std::make_shared<Task>(task_id, job, create_task.worker_address());
+  task = std::make_shared<Task>(task_id, job, create_task.worker_address(),
+                                create_task.transfer_address());
   tasks_by_job_[create_task.job_id()].push_back(task);
   tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);

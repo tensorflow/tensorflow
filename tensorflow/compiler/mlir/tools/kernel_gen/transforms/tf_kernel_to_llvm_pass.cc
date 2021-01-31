@@ -16,9 +16,11 @@ limitations under the License.
 #include <stdexcept>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
@@ -253,6 +255,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
 
     populateStdExpandOpsPatterns(ctx, patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
+    populateComplexToLLVMConversionPatterns(type_converter, patterns);
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
                                                               &patterns);
     patterns.insert<ConvertLaunchFuncOpToTfRuntimeCallPattern>(
@@ -260,8 +263,9 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     // Set target.
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addIllegalDialect<gpu::GPUDialect, StandardOpsDialect,
-                             tf_framework::TFFrameworkDialect>();
+    target
+        .addIllegalDialect<StandardOpsDialect, complex::ComplexDialect,
+                           gpu::GPUDialect, tf_framework::TFFrameworkDialect>();
     target.addIllegalOp<LLVM::DialectCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, ModuleTerminatorOp, gpu::GPUModuleOp>();

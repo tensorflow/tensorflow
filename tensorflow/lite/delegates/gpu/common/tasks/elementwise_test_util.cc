@@ -133,7 +133,7 @@ absl::Status EluTest(TestExecutionEnvironment* env) {
 absl::Status ExpTest(TestExecutionEnvironment* env) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 1, 1, 7);
-  src_tensor.data = {0.0f, 1.0f, -1.0f, 100.0f, -100.0f, 0.01f, -0.01f};
+  src_tensor.data = {0.0f, 1.0f, -1.0f, 2.5f, -1.7f, 0.01f, -0.01f};
 
   for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
@@ -150,8 +150,8 @@ absl::Status ExpTest(TestExecutionEnvironment* env) {
           src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 1, 1, 7), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
-          {std::exp(0.0f), std::exp(1.0f), std::exp(-1.0f), std::exp(100.0f),
-           std::exp(-100.0f), std::exp(0.01f), std::exp(-0.01f)},
+          {std::exp(0.0f), std::exp(1.0f), std::exp(-1.0f), std::exp(2.5f),
+           std::exp(-1.7f), std::exp(0.01f), std::exp(-0.01f)},
           dst_tensor.data, eps));
     }
   }
@@ -376,7 +376,7 @@ absl::Status SquareTest(TestExecutionEnvironment* env) {
 absl::Status TanhTest(TestExecutionEnvironment* env) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 1, 2);
-  src_tensor.data = {-50.0f, -0.1f, 0.1f, 50.0f};
+  src_tensor.data = {-4.0f, -0.1f, 0.1f, 2.0f};
 
   for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
@@ -392,8 +392,8 @@ absl::Status TanhTest(TestExecutionEnvironment* env) {
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
-      RETURN_IF_ERROR(PointWiseNear({std::tanh(-50.0f), std::tanh(-0.1f),
-                                     std::tanh(0.1f), std::tanh(50.0f)},
+      RETURN_IF_ERROR(PointWiseNear({std::tanh(-4.0f), std::tanh(-0.1f),
+                                     std::tanh(0.1f), std::tanh(2.0f)},
                                     dst_tensor.data, eps));
     }
   }

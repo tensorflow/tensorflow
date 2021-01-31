@@ -73,11 +73,8 @@ class SequenceFeatures(kfc._BaseFeaturesLayer):
     sequence_input_layer = tf.keras.experimental.SequenceFeatures(columns)
     sequence_input, sequence_length = sequence_input_layer(
        features, training=training)
-
     sequence_length_mask = tf.sequence_mask(sequence_length)
-
     hidden_size = 32
-
     rnn_cell = tf.keras.layers.SimpleRNNCell(hidden_size)
     rnn_layer = tf.keras.layers.RNN(rnn_cell)
     outputs, state = rnn_layer(sequence_input, mask=sequence_length_mask)

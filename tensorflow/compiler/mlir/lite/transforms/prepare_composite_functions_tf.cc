@@ -63,6 +63,7 @@ constexpr char kTFTextAPIPrefix[] = "tftext:";
 constexpr char kCustomSSDPostprocessing[] = "TFLite_Detection_PostProcess";
 constexpr char kTfNMSPadded[] = "non_max_suppression_padded_v2";
 constexpr char kCustomMaxUnpooling[] = "addons:MaxUnpooling2D";
+constexpr char kCustomDenseImageWarp[] = "addons:DenseImageWarp";
 
 using mlir::TF::FuncAttr;
 
@@ -278,6 +279,12 @@ void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
       return signalPassFailure();
     }
     convert_nms_padded.RewriteFunc();
+  } else if (attr.getValue() == kCustomDenseImageWarp) {
+    ConvertDenseImageWarpFunc image_warping(func);
+    if (failed(image_warping.VerifySignature()) ||
+        failed(image_warping.RewriteFunc())) {
+      return signalPassFailure();
+    }
   }
 }
 

@@ -250,6 +250,7 @@ distribute_py_test(
     tags = [
         "no_rocm",  # Intermitently times out on ROCm
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":strategy_combinations",
