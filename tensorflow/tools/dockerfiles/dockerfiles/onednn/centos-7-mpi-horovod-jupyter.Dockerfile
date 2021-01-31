@@ -43,6 +43,9 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
     ln -sf $(which ${PYTHON}) /usr/bin/python
 
+# On CentOS 7, yum needs to run with Python2.7
+RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
+
 # Options:
 #   tensorflow
 #   tensorflow-gpu
@@ -85,18 +88,24 @@ RUN cat /etc/ssh/sshd_config | grep -v StrictHostKeyChecking > /etc/ssh/sshd_con
 ARG HOROVOD_WITHOUT_PYTORCH=1
 ARG HOROVOD_WITHOUT_MXNET=1
 ARG HOROVOD_WITH_TENSORFLOW=1
-ARG HOROVOD_VERSION=0.21.0
+ARG HOROVOD_VERSION=
 
-RUN yum update -y && yum install -y \
-    cmake \
-    gcc \
-    gcc-c++ \
-    git \
-    make \
-    python36-devel && \
+ENV LC_ALL=en_US.UTF-8
+ENV LC_CTYPE=en_US.UTF-8
+
+RUN yum update -y && \
+    yum install -y centos-release-scl && \
+    yum install -y \
+        devtoolset-8 \
+        devtoolset-8-make \
+        llvm-toolset-7-cmake \
+        python3-devel \
+        sclo-git25 && \
     yum clean all
 
-RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@v${HOROVOD_VERSION}
+ENV PATH=/opt/rh/devtoolset-8/root/usr/bin:/opt/rh/sclo-git25/root/usr/bin:/opt/rh/llvm-toolset-7/root/usr/bin:${PATH}
+
+RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

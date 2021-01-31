@@ -43,6 +43,9 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
     ln -sf $(which ${PYTHON}) /usr/bin/python
 
+# On CentOS 7, yum needs to run with Python2.7
+RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
+
 # Options:
 #   tensorflow
 #   tensorflow-gpu
@@ -54,26 +57,25 @@ ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
 RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
+# install mpich, openssh for MPI to communicate between containers
 RUN yum update -y && yum install -y \
-    openmpi \
-    openmpi-devel \
+    mpich \
+    mpich-devel \
     openssh \
     openssh-server \
+    redhat-rpm-config \
     which && \
     yum clean all
 
-ENV PATH="/usr/lib64/openmpi/bin:${PATH}"
+ENV PATH="/usr/lib64/mpich/bin:${PATH}"
 
-# Create a wrapper for OpenMPI to allow running as root by default
+# Create a wrapper for MPICH to allow running as root by default
 RUN mv -f $(which mpirun) /usr/bin/mpirun.real && \
     echo '#!/bin/bash' > /usr/bin/mpirun && \
-    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/bin/mpirun && \
+    echo 'mpirun.real "$@"' >> /usr/bin/mpirun && \
     chmod a+x /usr/bin/mpirun
 
-# Configure OpenMPI to run good defaults:
-RUN echo "btl_tcp_if_exclude = lo,docker0" >> /etc/openmpi-x86_64/openmpi-mca-params.conf
-
-# Install OpenSSH for MPI to communicate between containers
+# Set up SSH
 RUN mkdir -p /var/run/sshd
 
 # Allow OpenSSH to talk to containers without asking for confirmation
@@ -85,32 +87,24 @@ RUN cat /etc/ssh/sshd_config | grep -v StrictHostKeyChecking > /etc/ssh/sshd_con
 ARG HOROVOD_WITHOUT_PYTORCH=1
 ARG HOROVOD_WITHOUT_MXNET=1
 ARG HOROVOD_WITH_TENSORFLOW=1
-ARG HOROVOD_VERSION=0.21.0
+ARG HOROVOD_VERSION=
 
-RUN yum update -y && yum install -y \
-    cmake \
-    gcc \
-    gcc-c++ \
-    git \
-    make \
-    python36-devel && \
+ENV LC_ALL=en_US.UTF-8
+ENV LC_CTYPE=en_US.UTF-8
+
+RUN yum update -y && \
+    yum install -y centos-release-scl && \
+    yum install -y \
+        devtoolset-8 \
+        devtoolset-8-make \
+        llvm-toolset-7-cmake \
+        python3-devel \
+        sclo-git25 && \
     yum clean all
 
-RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@v${HOROVOD_VERSION}
+ENV PATH=/opt/rh/devtoolset-8/root/usr/bin:/opt/rh/sclo-git25/root/usr/bin:/opt/rh/llvm-toolset-7/root/usr/bin:${PATH}
+
+RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
-
-RUN python3 -m pip install --no-cache-dir jupyter matplotlib
-# Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN python3 -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
-RUN jupyter serverextension enable --py jupyter_http_over_ws
-
-RUN mkdir -p /tf/ && chmod -R a+rwx /tf/
-RUN mkdir /.local && chmod a+rwx /.local
-WORKDIR /tf
-EXPOSE 8888
-
-RUN python3 -m ipykernel.kernelspec
-
-CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/tf --ip 0.0.0.0 --no-browser --allow-root"]

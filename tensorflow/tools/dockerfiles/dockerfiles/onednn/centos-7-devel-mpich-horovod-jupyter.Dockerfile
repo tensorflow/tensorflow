@@ -21,7 +21,45 @@
 
 ARG CENTOS_VERSION=8
 
-FROM centos:${CENTOS_VERSION} as base
+FROM centos:${CENTOS_VERSION} AS base
+
+ARG CENTOS_VERSION=8
+
+# Enable both PowerTools and EPEL otherwise some packages like hdf5-devel fail to install
+RUN yum clean all && \
+    yum update -y && \
+    yum install -y epel-release
+
+RUN yum update -y && \
+    yum install -y \
+        curl \
+        freetype-devel \
+        gcc \
+        gcc-c++ \
+        git \
+        hdf5-devel \
+        java-1.8.0-openjdk \
+        java-1.8.0-openjdk-devel \
+        java-1.8.0-openjdk-headless \
+        libcurl-devel \
+        make \
+        pkg-config \
+        rsync \
+        sudo \
+        unzip \
+        zeromq-devel \
+        zip \
+        zlib-devel && \
+        yum clean all
+
+ENV CI_BUILD_PYTHON python
+
+# CACHE_STOP is used to rerun future commands, otherwise cloning tensorflow will be cached and will not pull the most recent version
+ARG CACHE_STOP=1
+# Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
+ARG CHECKOUT_TF_SRC=0
+ARG TF_BRANCH=master
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git --branch "${TF_BRANCH}" --single-branch /tensorflow_src || true
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
@@ -43,37 +81,36 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
     ln -sf $(which ${PYTHON}) /usr/bin/python
 
-# Options:
-#   tensorflow
-#   tensorflow-gpu
-#   tf-nightly
-#   tf-nightly-gpu
-# Set --build-arg TF_PACKAGE_VERSION=1.11.0rc0 to install a specific version.
-# Installs the latest version by default.
-ARG TF_PACKAGE=tensorflow
-ARG TF_PACKAGE_VERSION=
-RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
+# On CentOS 7, yum needs to run with Python2.7
+RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
 
+# Install bazel
+ARG BAZEL_VERSION=3.7.2
+RUN mkdir /bazel && \
+    curl -fSsL -o /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
+    curl -fSsL -o /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
+    bash /bazel/installer.sh && \
+    rm -f /bazel/installer.sh
+
+# install mpich, openssh for MPI to communicate between containers
 RUN yum update -y && yum install -y \
-    openmpi \
-    openmpi-devel \
+    mpich \
+    mpich-devel \
     openssh \
     openssh-server \
+    redhat-rpm-config \
     which && \
     yum clean all
 
-ENV PATH="/usr/lib64/openmpi/bin:${PATH}"
+ENV PATH="/usr/lib64/mpich/bin:${PATH}"
 
-# Create a wrapper for OpenMPI to allow running as root by default
+# Create a wrapper for MPICH to allow running as root by default
 RUN mv -f $(which mpirun) /usr/bin/mpirun.real && \
     echo '#!/bin/bash' > /usr/bin/mpirun && \
-    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/bin/mpirun && \
+    echo 'mpirun.real "$@"' >> /usr/bin/mpirun && \
     chmod a+x /usr/bin/mpirun
 
-# Configure OpenMPI to run good defaults:
-RUN echo "btl_tcp_if_exclude = lo,docker0" >> /etc/openmpi-x86_64/openmpi-mca-params.conf
-
-# Install OpenSSH for MPI to communicate between containers
+# Set up SSH
 RUN mkdir -p /var/run/sshd
 
 # Allow OpenSSH to talk to containers without asking for confirmation
@@ -81,22 +118,10 @@ RUN cat /etc/ssh/sshd_config | grep -v StrictHostKeyChecking > /etc/ssh/sshd_con
     echo "    StrictHostKeyChecking no" >> /etc/ssh/sshd_config.new && \
     mv -f /etc/ssh/sshd_config.new /etc/ssh/sshd_config
 
-# Install Horovod
-ARG HOROVOD_WITHOUT_PYTORCH=1
-ARG HOROVOD_WITHOUT_MXNET=1
-ARG HOROVOD_WITH_TENSORFLOW=1
-ARG HOROVOD_VERSION=0.21.0
-
-RUN yum update -y && yum install -y \
-    cmake \
-    gcc \
-    gcc-c++ \
-    git \
-    make \
-    python36-devel && \
-    yum clean all
-
-RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@v${HOROVOD_VERSION}
+# Check out horovod source code if --build-arg CHECKOUT_HOROVOD_SRC=1
+ARG CHECKOUT_HOROVOD_SRC=0
+ARG HOROVOD_BRANCH=master
+RUN test "${CHECKOUT_HOROVOD_SRC}" -eq 1 && git clone --branch "${HOROVOD_BRANCH}" --single-branch --recursive https://github.com/uber/horovod.git /horovod_src || true
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
