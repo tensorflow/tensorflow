@@ -279,8 +279,9 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   auto& conv = gpu_subgraph->operations[1];
   conv.input_ids = {-1};
   conv.output_ids = {-2};
-  auto gpu_op = ConvolutionWino4x4To6x6(conv_def, shape_1, attr, gpu_info);
-  conv.task_desc = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+  auto gpu_op =
+      CreateConvolutionWino4x4To6x6(conv_def, shape_1, attr, gpu_info);
+  conv.operation = absl::make_unique<ConvolutionGeneric>(std::move(gpu_op));
   OperationDef winograd_down_def;
   winograd_down_def.precision = op_def.precision;
   winograd_down_def.src_tensors.push_back(op_def.src_tensors[0]);
@@ -363,9 +364,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
               .ok()) {
         return absl::OkStatus();
       } else {
-        auto gpu_op = ConvolutionGeneric(op_def, output_shape, attr, gpu_info);
-        gpu_operation->task_desc =
-            absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+        auto gpu_op =
+            CreateConvolutionGeneric(op_def, output_shape, attr, gpu_info);
+        gpu_operation->operation =
+            absl::make_unique<ConvolutionGeneric>(std::move(gpu_op));
       }
       break;
     }

@@ -241,9 +241,15 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
 
   for (const auto *def : defs) {
     StringRef op_name = def->getName().drop_front(4);
+    auto operator_name = GetOperatorName(*def);
+    // TODO(b/149099381): Remove this part after kernels are added as
+    // builtin op.
+    if (operator_name == "ASSIGN_VARIABLE" ||
+        operator_name == "READ_VARIABLE") {
+      continue;
+    }
     os << "  if (isa<mlir::TFL::" << op_name << ">(op))\n"
-       << "    return tflite::BuiltinOperator_" << GetOperatorName(*def)
-       << ";\n";
+       << "    return tflite::BuiltinOperator_" << operator_name << ";\n";
   }
 
   os << "  return llvm::None;\n"
