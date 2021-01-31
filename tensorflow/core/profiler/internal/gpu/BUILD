@@ -1,4 +1,4 @@
-oad(
+load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_is_configured_compat",
     "if_rocm_is_configured_compat",
