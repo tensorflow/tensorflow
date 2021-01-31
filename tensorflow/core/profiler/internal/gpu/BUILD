@@ -1,4 +1,4 @@
-load(
+oad(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_is_configured_compat",
     "if_rocm_is_configured_compat",
@@ -68,6 +68,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "nomac",
         "gpu_cupti",
+        "no_rocm",
     ],
     deps = [
         ":device_tracer",
