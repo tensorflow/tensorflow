@@ -128,7 +128,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user 'google_pasta ~= 0.2'
   "${PIP_CMD}" install --user 'h5py ~= 3.1.0'
   "${PIP_CMD}" install --user 'keras_preprocessing ~= 1.1.2'
-  "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
+  "${PIP_CMD}" install --user 'numpy ~= 1.19.5'
   "${PIP_CMD}" install --user 'opt_einsum ~= 3.3.0'
   "${PIP_CMD}" install --user 'protobuf >= 3.9.2'
   "${PIP_CMD}" install --user 'six ~= 1.15.0'
