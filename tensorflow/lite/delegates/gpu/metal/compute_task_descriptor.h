@@ -102,29 +102,6 @@ struct ComputeTaskDescriptor {
   std::string elementwise_code;  // temporary, used during op construction
 };
 
-/// Helper function to convert buffer's content into stream of bytes
-template <typename T>
-std::vector<uint8_t> GetByteBuffer(const std::vector<T>& input_vector) {
-  std::vector<uint8_t> result;
-  result.insert(result.begin(),
-                reinterpret_cast<const uint8_t*>(input_vector.data()),
-                reinterpret_cast<const uint8_t*>(input_vector.data()) +
-                    input_vector.size() * sizeof(*input_vector.data()));
-  return result;
-}
-
-/// Converts float to destination type (if needed) and stores as bytes array.
-/// supports DataType::FLOAT32 and DataType::FLOAT16
-std::vector<uint8_t> GetByteBufferConverted(
-    const std::vector<float>& input_vector, DataType data_type);
-
-/// Resizes, Converts float to destination type (if needed) and stores as bytes
-/// array.
-/// supports DataType::FLOAT32 and DataType::FLOAT16
-std::vector<uint8_t> GetByteBufferConvertedResized(
-    const std::vector<float>& input_vector, DataType data_type,
-    size_t elements_count);
-
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite
