@@ -179,7 +179,7 @@ $(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva/cev
 	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
 	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' > $$@
 	
-$(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva_bx1/%.tpl
+$(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva/%.tpl
 	@cp $$< $$@
 
 $(foreach var,$(CEVA_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
