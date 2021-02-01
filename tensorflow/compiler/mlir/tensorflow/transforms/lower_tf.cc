@@ -1279,23 +1279,22 @@ class Lower_UnaryOpsComposition
 //
 // For example, a scaling with image shape [1, 3, 3, 1] to [2, 2] and unaligned
 // corners would generate a [0, 1] lookup along both the x and y direction.
-// Then when combined to form the 1-D spatial index the values would be
-// [0, 1, 3, 4] which would gather along the reshape image tensor of shape
-// [1, 9, 1], reshaped to the final [1, 3, 3, 1].
+// Then when combined to form the 2-D spatial index the values would be
+// [[0, 1], [3, 4]] which would gather along the reshape image tensor of shape
+// [1, 9, 1], and get the resized image of shape [1, 2, 2, 1].
 class LowerResizeNearestNeighbor : public RewritePattern {
  public:
   explicit LowerResizeNearestNeighbor(MLIRContext *context)
       : RewritePattern(ResizeNearestNeighborOp::getOperationName(),
                        {
-                           BroadcastToOp::getOperationName(),
                            ConstOp::getOperationName(),
                            DivOp::getOperationName(),
+                           MulOp::getOperationName(),
                            PackOp::getOperationName(),
                            RangeOp::getOperationName(),
                            ReshapeOp::getOperationName(),
                            ShapeOp::getOperationName(),
-                           SplitOp::getOperationName(),
-                           TransposeOp::getOperationName(),
+                           UnpackOp::getOperationName(),
                        },
                        1, context) {}
 
@@ -1311,6 +1310,8 @@ class LowerResizeNearestNeighbor : public RewritePattern {
     auto out_size = op.size();
     auto out_size_ty = out_size.getType().cast<ShapedType>();
     auto out_size_element_ty = out_size_ty.getElementType();
+    bool align_corners = op.align_corners();
+    bool half_pixel_centers = op.half_pixel_centers();
 
     // Input should be rank 4.
     if (!input_ty.hasRank() || input_ty.getRank() != 4) {
@@ -1323,9 +1324,14 @@ class LowerResizeNearestNeighbor : public RewritePattern {
       return failure();
     }
 
+    // TODO(suderman): Add support for these optional parameters.
+    if (align_corners) {
+      return failure();
+    }
+
     // Extract the output width / height dim size.
-    int out_height_constant = -1;
-    int out_width_constant = -1;
+    int64_t out_y_cst = -1;
+    int64_t out_x_cst = -1;
     DenseIntElementsAttr out_size_cst;
     if (matchPattern(out_size, m_Constant(&out_size_cst))) {
       llvm::SmallVector<int64_t, 2> cst_size;
@@ -1333,34 +1339,19 @@ class LowerResizeNearestNeighbor : public RewritePattern {
         cst_size.push_back(val.getSExtValue());
       }
 
-      out_height_constant = cst_size[0];
-      out_width_constant = cst_size[1];
+      out_y_cst = cst_size[0];
+      out_x_cst = cst_size[1];
 
-      if (out_height_constant < 0 || out_width_constant < 0) return failure();
+      if (out_y_cst < 0 || out_x_cst < 0) return failure();
     }
 
-    int out_spatial_cst = out_height_constant < 0 || out_width_constant < 0
-                              ? -1
-                              : out_height_constant * out_width_constant;
+    int64_t batch_cst = input_ty.getShape()[0];
+    int64_t channels_cst = input_ty.getShape()[3];
 
-    // Input rank should be 4. Might be able to drop this requirement entirely
-    // as its an input requirement.
-    if (!input_ty.hasRank() || input_ty.getRank() != 4) {
-      return failure();
-    }
-
-    int batch_cst = input_ty.getShape()[0];
-    int channels_cst = input_ty.getShape()[3];
-
-    int in_y_cst = input_ty.getShape()[1];
-    int in_x_cst = input_ty.getShape()[2];
-    int in_spatial_cst =
+    int64_t in_y_cst = input_ty.getShape()[1];
+    int64_t in_x_cst = input_ty.getShape()[2];
+    int64_t in_spatial_cst =
         in_y_cst < 0 || in_x_cst < 0 ? -1 : in_y_cst * in_x_cst;
-
-    // TODO(suderman): Add support for these optional parameters.
-    if (op.align_corners() == true || op.half_pixel_centers() == true) {
-      return failure();
-    }
 
     auto one =
         rewriter.create<ConstOp>(loc, GetScalarOfType(out_size_element_ty, 1));
@@ -1393,100 +1384,86 @@ class LowerResizeNearestNeighbor : public RewritePattern {
     auto out_y = split_out_size.getResult(0);
     auto out_x = split_out_size.getResult(1);
 
-    auto out_count = rewriter.create<MulOp>(
-        loc, RankedTensorType::get({}, out_size_element_ty), out_y, out_x);
-
-    // Generate what the final output shape will look like.
-    auto out_shape = rewriter.create<PackOp>(
-        loc, RankedTensorType::get({4}, out_size_element_ty),
-        ValueRange({batch, out_y, out_x, channels}));
-
     // Compute the indices along the vertical dimension.
     auto in_y_f32 = rewriter.create<CastOp>(
         loc, RankedTensorType::get({}, rewriter.getF32Type()), in_y);
-    auto out_w_f32 = rewriter.create<CastOp>(
+    auto out_y_f32 = rewriter.create<CastOp>(
         loc, RankedTensorType::get({}, rewriter.getF32Type()), out_y);
 
     Value y_scale = rewriter.create<DivOp>(
         loc, RankedTensorType::get({}, rewriter.getF32Type()), in_y_f32,
-        out_w_f32);
+        out_y_f32);
 
     Value zero_f32 = rewriter.create<ConstOp>(
         loc, GetScalarOfFloatType(rewriter.getF32Type(), 0.0));
     Value one_f32 = rewriter.create<ConstOp>(
         loc, GetScalarOfFloatType(rewriter.getF32Type(), 1.0));
+    Value half_f32 = rewriter.create<ConstOp>(
+        loc, GetScalarOfFloatType(rewriter.getF32Type(), 0.5));
 
     Value y_range = rewriter.create<RangeOp>(
-        loc,
-        RankedTensorType::get({out_height_constant}, rewriter.getF32Type()),
-        zero_f32, out_w_f32, one_f32);
+        loc, RankedTensorType::get({out_y_cst}, rewriter.getF32Type()),
+        zero_f32, out_y_f32, one_f32);
+
+    if (half_pixel_centers) {
+      y_range = rewriter.create<AddV2Op>(
+          loc, RankedTensorType::get({out_y_cst}, rewriter.getF32Type()),
+          y_range, half_f32);
+    }
 
     y_range = rewriter.create<MulOp>(
-        loc,
-        RankedTensorType::get({out_height_constant}, rewriter.getF32Type()),
-        y_range, y_scale);
+        loc, RankedTensorType::get({out_y_cst}, rewriter.getF32Type()), y_range,
+        y_scale);
 
     y_range = rewriter.create<CastOp>(
-        loc, RankedTensorType::get({out_height_constant}, out_size_element_ty),
-        y_range);
+        loc, RankedTensorType::get({out_y_cst}, out_size_element_ty), y_range);
 
     y_range = rewriter.create<ReshapeOp>(
-        loc,
-        RankedTensorType::get({out_height_constant, 1}, out_size_element_ty),
+        loc, RankedTensorType::get({out_y_cst, 1}, out_size_element_ty),
         y_range,
         rewriter.create<PackOp>(loc,
                                 RankedTensorType::get({2}, out_size_element_ty),
                                 ValueRange({out_y, one})));
 
     Value y_indices = rewriter.create<MulOp>(
-        loc,
-        RankedTensorType::get({out_height_constant, 1}, out_size_element_ty),
+        loc, RankedTensorType::get({out_y_cst, 1}, out_size_element_ty),
         y_range, in_x);
 
     // Compute the indices for the nearest neighbour lookup across the width
     // dim.
     auto in_x_f32 = rewriter.create<CastOp>(
         loc, RankedTensorType::get({}, rewriter.getF32Type()), in_x);
-    auto out_h_f32 = rewriter.create<CastOp>(
+    auto out_x_f32 = rewriter.create<CastOp>(
         loc, RankedTensorType::get({}, rewriter.getF32Type()), out_x);
 
     Value x_scale = rewriter.create<DivOp>(
         loc, RankedTensorType::get({}, rewriter.getF32Type()), in_x_f32,
-        out_h_f32);
+        out_x_f32);
 
     Value x_range = rewriter.create<RangeOp>(
-        loc, RankedTensorType::get({out_width_constant}, rewriter.getF32Type()),
-        zero_f32, out_h_f32, one_f32);
+        loc, RankedTensorType::get({out_x_cst}, rewriter.getF32Type()),
+        zero_f32, out_x_f32, one_f32);
+
+    if (half_pixel_centers) {
+      x_range = rewriter.create<AddV2Op>(
+          loc, RankedTensorType::get({out_x_cst}, rewriter.getF32Type()),
+          x_range, half_f32);
+    }
 
     x_range = rewriter.create<MulOp>(
-        loc, RankedTensorType::get({out_width_constant}, rewriter.getF32Type()),
-        x_range, x_scale);
+        loc, RankedTensorType::get({out_x_cst}, rewriter.getF32Type()), x_range,
+        x_scale);
 
     x_range = rewriter.create<CastOp>(
-        loc, RankedTensorType::get({out_width_constant}, out_size_element_ty),
-        x_range);
+        loc, RankedTensorType::get({out_x_cst}, out_size_element_ty), x_range);
 
-    Value x_indices = rewriter.create<ReshapeOp>(
-        loc,
-        RankedTensorType::get({1, out_width_constant}, out_size_element_ty),
-        x_range,
-        rewriter.create<PackOp>(loc,
-                                RankedTensorType::get({2}, out_size_element_ty),
-                                ValueRange({one, out_x})));
+    Value x_indices = x_range;
 
-    // Generate the combined index array, reshape to be 1-D.
+    // Generate the combined index array of shape (out_height, out_width) with
+    // y_indices of shape (out_height, 1) and x_indices of shape (out_width).
     Value indices = rewriter.create<AddV2Op>(
-        loc,
-        RankedTensorType::get({out_height_constant, out_width_constant},
-                              out_size_element_ty),
+        loc, RankedTensorType::get({out_y_cst, out_x_cst}, out_size_element_ty),
         y_indices, x_indices);
-
-    indices = rewriter.create<ReshapeOp>(
-        loc, RankedTensorType::get({out_spatial_cst}, out_size_element_ty),
-        indices,
-        rewriter.create<ReshapeOp>(
-            loc, RankedTensorType::get({1}, out_size_element_ty), out_count,
-            rewriter.create<ConstOp>(loc, rewriter.getI64TensorAttr({1}))));
 
     // Group the spatial indices and gather along that combined index.
     Value input_collapsed_spatial = rewriter.create<ReshapeOp>(
@@ -1500,12 +1477,9 @@ class LowerResizeNearestNeighbor : public RewritePattern {
 
     Value gathered_values = rewriter.create<GatherV2Op>(
         loc,
-        RankedTensorType::get({batch_cst, out_spatial_cst, channels_cst},
+        RankedTensorType::get({batch_cst, out_y_cst, out_x_cst, channels_cst},
                               input_element_ty),
         input_collapsed_spatial, indices, /*axis=*/one);
-
-    gathered_values =
-        rewriter.create<ReshapeOp>(loc, result_ty, gathered_values, out_shape);
 
     rewriter.replaceOp(op, gathered_values);
     return success();
