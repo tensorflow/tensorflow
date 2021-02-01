@@ -1427,6 +1427,13 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
     check_output_dtype("float64")
     check_output_dtype(np.float64)
 
+  def testInvalidLengthsDTypeD(self):
+    with self.cached_session():
+      with self.assertRaisesRegex(ValueError,
+                                  "lengths must be integer for sequence_mask"):
+        array_ops.sequence_mask(
+            lengths=np.array([3.05524638e+307], dtype=np.float64))
+
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 

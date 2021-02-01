@@ -4382,10 +4382,12 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   Returns:
     A mask tensor of shape `lengths.shape + (maxlen,)`, cast to specified dtype.
   Raises:
-    ValueError: if `maxlen` is not a scalar.
+    ValueError: if `maxlen` is not a scalar or lengths is not an integer tensor.
   """
   with ops.name_scope(name, "SequenceMask", [lengths, maxlen]):
     lengths = ops.convert_to_tensor(lengths)
+    if not lengths.dtype.is_integer:
+      raise ValueError("lengths must be integer for sequence_mask")
 
     if maxlen is None:
       maxlen = gen_math_ops._max(lengths, _all_dimensions(lengths))
