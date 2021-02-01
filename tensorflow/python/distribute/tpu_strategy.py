@@ -55,6 +55,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
@@ -1277,6 +1278,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       for value in var.values:
         values_and_devices.append((value, value.device))
 
+    if (var.synchronization != variables_lib.VariableSynchronization.ON_READ and
+        var.synchronization != variables_lib.VariableAggregation.NONE):
+      distribute_utils.assert_mirrored(args)
+      distribute_utils.assert_mirrored(kwargs)
     for i, value_and_device in enumerate(values_and_devices):
       value = value_and_device[0]
       device = value_and_device[1]
@@ -1286,8 +1291,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
            ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(
-            fn(value, *distribute_utils.select_replica_mirrored(i, args),
-               **distribute_utils.select_replica_mirrored(i, kwargs)))
+            fn(value, *distribute_utils.select_replica(i, args),
+               **distribute_utils.select_replica(i, kwargs)))
     return distribute_utils.update_regroup(self, updates, group)
 
   def read_var(self, var):
