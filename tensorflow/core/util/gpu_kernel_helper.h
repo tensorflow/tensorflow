@@ -18,6 +18,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include <type_traits>
+
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
 #endif
@@ -195,6 +197,56 @@ __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleXorSync(
 }
 // Aliased in gpu_device_functions.h
 #endif
+
+#ifdef __CUDA_ARCH__
+#define UNROLL_ON_DEVICE _Pragma("unroll")
+#else
+#define UNROLL_ON_DEVICE
+#endif
+
+// Represents an aligned array of N elements of T. Data pointers can be
+// reinterpreted as this type to generate vectorized loads/stores in a kernel.
+template <typename T, int N>
+class alignas(alignof(T) * N) AlignedVector {
+ public:
+  typedef T value_type;
+  static constexpr const int kSize = N;
+
+  AlignedVector() = default;
+
+  // Explicitly construct with uniform value.
+  // Note: This emulates an explicit constructor of T, so that
+  // AlignedVector(args...) works whenever T(args...) does.
+  template <
+      typename... Args,
+      typename std::enable_if<std::is_constructible<value_type, Args...>::value,
+                              int>::type = 0>
+  __host__ __device__ explicit AlignedVector(Args&&... args) {
+    value_type uniform(std::forward<Args>(args)...);
+    UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) { values_[i] = uniform; }
+  }
+
+ private:
+  value_type values_[N];
+};
+
+#undef UNROLL_ON_DEVICE
+
+// Returns the maximum power-of-two alignment of a stride or pointer value.
+inline int64 alignment_of(int64 stride) { return stride & -stride; }
+template <typename T>
+inline int64 alignment_of(T* ptr) {
+  const intptr_t ptr_val = reinterpret_cast<std::uintptr_t>(ptr);
+  return alignment_of(ptr_val);
+}
+
+// Returns the optimal number of (aligned) elements of T to load/store in a
+// single instruction inside a kernel.
+template <typename T>
+constexpr const int gpu_optimal_vector_size_for() {
+  constexpr const int kOptimalVecSizeBytes = 16;
+  return (kOptimalVecSizeBytes - 1) / sizeof(T) + 1;
+}
 
 namespace gpu_helper {
 template <typename T, typename OutType = int32>
