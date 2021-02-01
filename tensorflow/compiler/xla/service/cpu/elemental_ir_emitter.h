@@ -37,7 +37,8 @@ class CpuElementalIrEmitter : public ElementalIrEmitter {
 
  protected:
   StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
-                                   llvm::Value* rhs) override;
+                                   llvm::Value* rhs,
+                                   absl::string_view name = "") override;
   StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                   llvm::Value* value) override;
 

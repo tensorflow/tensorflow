@@ -91,7 +91,7 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
-      return GetIrArray(*operand, *hlo).EmitReadArrayElement(index, &b_);
+      return GetIrArray(*operand, *hlo).EmitReadArrayElement(index, &b_, operand->name());
     };
   }
   return EmitTargetElementLoop(
@@ -688,7 +688,8 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
     fused_emitter->BindGenerator(
         fusion->fused_parameter(i),
         [this, operand, fusion](llvm_ir::IrArray::Index index) {
-          return GetIrArray(*operand, *fusion).EmitReadArrayElement(index, &b_);
+          return GetIrArray(*operand, *fusion).EmitReadArrayElement(
+              index, &b_, operand->name());
         });
   }
 }

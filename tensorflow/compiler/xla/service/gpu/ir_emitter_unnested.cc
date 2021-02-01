@@ -1900,10 +1900,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
               GetNestedComputer());
           FusedIrEmitter operand_fused_emitter(&operand_elemental_emitter);
           for (int i = 0; i < fused_computation->num_parameters(); i++) {
+            auto fused_operand = fused_computation->parameter_instruction(i);
             operand_fused_emitter.BindGenerator(
-                fused_computation->parameter_instruction(i),
-                [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
-                  return ir_arrays[i].EmitReadArrayElement(index, &b_);
+                fused_operand,
+                [this, &ir_arrays, i, fused_operand](llvm_ir::IrArray::Index index) {
+                  return ir_arrays[i].EmitReadArrayElement(
+                      index, &b_, fused_operand->name());
                 });
           }
           TF_ASSIGN_OR_RETURN(
@@ -1942,10 +1944,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
               GetNestedComputer());
           FusedIrEmitter scatter_fused_emitter(&scatter_elemental_emitter);
           for (int i = 0; i < fused_computation->num_parameters(); i++) {
+            auto fused_operand = fused_computation->parameter_instruction(i);
             scatter_fused_emitter.BindGenerator(
-                fused_computation->parameter_instruction(i),
-                [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
-                  return ir_arrays[i].EmitReadArrayElement(index, &b_);
+                fused_operand,
+                [this, &ir_arrays, i, fused_operand](llvm_ir::IrArray::Index index) {
+                  return ir_arrays[i].EmitReadArrayElement(
+                      index, &b_, fused_operand->name());
                 });
           }
 
@@ -2049,10 +2053,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
                                             /*is_fusion=*/true));
 
     for (int i = 0; i < fused_computation->num_parameters(); i++) {
+      auto fused_operand = fused_computation->parameter_instruction(i);
       fused_emitter.BindGenerator(
-          fused_computation->parameter_instruction(i),
-          [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
-            return ir_arrays[i].EmitReadArrayElement(index, &b_);
+          fused_operand,
+          [this, &ir_arrays, i, fused_operand](llvm_ir::IrArray::Index index) {
+            return ir_arrays[i].EmitReadArrayElement(
+                index, &b_, fused_operand->name());
           });
     }
 
@@ -4165,8 +4171,10 @@ void IrEmitterUnnested::EmitTileElementForFusion(
       };
     } else {
       auto array = operand_arrays[i];
-      gen = [this, array](llvm_ir::IrArray::Index index) {
-        return array.EmitReadArrayElement(index, &b_);
+      auto name = fused_computation->parameter_instruction(i)->name();
+    gen = [this, array, name](llvm_ir::IrArray::Index index) {
+        return array.EmitReadArrayElement(
+            index, &b_, name);
       };
     }
     fused_emitter.BindGenerator(fused_computation->parameter_instruction(i),
@@ -5621,10 +5629,12 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
     CHECK_LT(fused_computation->num_parameters(), ir_arrays.size());
     for (int i = 0; i < fused_computation->num_parameters(); i++) {
       auto ir_array = ir_arrays[i];
+      auto fused_operand = fused_computation->parameter_instruction(i);
       fused_emitter->BindGenerator(
-          fused_computation->parameter_instruction(i),
-          [this, ir_array](llvm_ir::IrArray::Index index) {
-            return ir_array.EmitReadArrayElement(index, &b_);
+          fused_operand,
+          [this, ir_array, fused_operand](llvm_ir::IrArray::Index index) {
+            return ir_array.EmitReadArrayElement(
+                index, &b_, fused_operand->name());
           });
     }
     result_ir_arrays = absl::MakeSpan(ir_arrays).subspan(

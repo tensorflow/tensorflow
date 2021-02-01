@@ -83,36 +83,39 @@ string DumpModuleToString(const llvm::Module& module) {
 
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b,
+    absl::string_view name) {
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
-  return b->CreateCall(intrinsic, AsArrayRef(operands));
+  return b->CreateCall(intrinsic, AsArrayRef(operands), name.data());
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b, bool enable_fast_min_max) {
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value);
+    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
     auto cmp_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
     auto sel_lhs = b->CreateOr(cmp_ge, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value);
+    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
   }
 }
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b, bool enable_fast_min_max) {
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value);
+    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
     auto cmp_le = b->CreateFCmpOLE(lhs_value, rhs_value);
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
     auto sel_lhs = b->CreateOr(cmp_le, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value);
+    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
   }
 }
 
@@ -351,12 +354,12 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
 
 llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                             llvm::Value* lhs_value, llvm::Value* rhs_value,
-                            llvm::IRBuilder<>* b) {
+                            llvm::IRBuilder<>* b, absl::string_view name) {
   llvm::Value* comparison_result;
   if (lhs_value->getType()->isIntegerTy()) {
-    comparison_result = b->CreateICmp(predicate, lhs_value, rhs_value);
+    comparison_result = b->CreateICmp(predicate, lhs_value, rhs_value, name.data());
   } else {
-    comparison_result = b->CreateFCmp(predicate, lhs_value, rhs_value);
+    comparison_result = b->CreateFCmp(predicate, lhs_value, rhs_value, name.data());
   }
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.

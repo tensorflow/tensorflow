@@ -78,7 +78,8 @@ GpuElementalIrEmitter::GpuElementalIrEmitter(
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
     TargetDeviceFunctionID funcid, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+    absl::string_view name) {
   // Device functions dont have f16 math functions, so we convert the operands
   // to f32 before calling the function and then convert the result back to f16.
   bool cast_result_to_fp16 = false;
@@ -109,7 +110,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
   const string& munged_callee =
       ObtainDeviceFunctionName(funcid, output_type, b());
   llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
-                                     converted_input_types, output_type)
+                                     converted_input_types, output_type, name)
                             .ValueOrDie();
   if (cast_result_to_fp16) {
     result = FPCast(result, b()->getHalfTy());
@@ -142,7 +143,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     const string& callee_name, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+    absl::string_view name) {
   // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
@@ -154,7 +156,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
 
   return EmitDeviceFunctionCall(
       callee_name, operands, input_types, output_type,
-      {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind}, b());
+      {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind}, b(), name);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
@@ -222,7 +224,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(PrimitiveType prim_type,
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(PrimitiveType prim_type,
-                                                      llvm::Value* value) {
+                                                      llvm::Value* value,
+                                                      absl::string_view name) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kExp, {value}, {prim_type},
                             prim_type);
 }
@@ -235,9 +238,10 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(PrimitiveType prim_type,
                                                       llvm::Value* lhs,
-                                                      llvm::Value* rhs) {
+                                                      llvm::Value* rhs,
+                                                      absl::string_view name) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kPow, {lhs, rhs},
-                            {prim_type, prim_type}, prim_type);
+                            {prim_type, prim_type}, prim_type, name);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSqrt(PrimitiveType prim_type,
@@ -254,9 +258,10 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRsqrt(PrimitiveType prim_type,
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
                                                         llvm::Value* lhs,
-                                                        llvm::Value* rhs) {
+                                                        llvm::Value* rhs,
+                                                        absl::string_view name) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kAtan2, {lhs, rhs},
-                            {prim_type, prim_type}, prim_type);
+                            {prim_type, prim_type}, prim_type, name);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,

@@ -828,15 +828,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
     case HloOpcode::kComplex:
       return EmitComposeComplex(op, lhs_value, rhs_value);
     case HloOpcode::kAdd:
-      return FAdd(lhs_value, rhs_value);
+      return FAdd(lhs_value, rhs_value, op->name());
     case HloOpcode::kSubtract:
-      return FSub(lhs_value, rhs_value);
+      return FSub(lhs_value, rhs_value, op->name());
     case HloOpcode::kMultiply:
-      return FMul(lhs_value, rhs_value);
+      return FMul(lhs_value, rhs_value, op->name());
     case HloOpcode::kDivide:
-      return FDiv(lhs_value, rhs_value);
+      return FDiv(lhs_value, rhs_value, op->name());
     case HloOpcode::kRemainder:
-      return FRem(lhs_value, rhs_value);
+      return FRem(lhs_value, rhs_value, op->name());
     // LLVM comparisons can be "unordered" (U) or "ordered" (O) -- ordered
     // comparisons always return false when one of the operands is NaN, whereas
     // unordered comparisons return true.
@@ -848,32 +848,32 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       switch (op->comparison_direction()) {
         case ComparisonDirection::kEq:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
         case ComparisonDirection::kNe:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
         case ComparisonDirection::kLt:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
         case ComparisonDirection::kGt:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
         case ComparisonDirection::kLe:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLE, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
         case ComparisonDirection::kGe:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGE, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
       }
     }
     case HloOpcode::kMaximum:
-      return EmitFloatMax(lhs_value, rhs_value);
+      return EmitFloatMax(lhs_value, rhs_value, op->name());
     case HloOpcode::kMinimum:
-      return EmitFloatMin(lhs_value, rhs_value);
+      return EmitFloatMin(lhs_value, rhs_value, op->name());
     case HloOpcode::kPower:
-      return EmitPow(op->shape().element_type(), lhs_value, rhs_value);
+      return EmitPow(op->shape().element_type(), lhs_value, rhs_value, op->name());
     case HloOpcode::kAtan2:
-      return EmitAtan2(op->shape().element_type(), lhs_value, rhs_value);
+      return EmitAtan2(op->shape().element_type(), lhs_value, rhs_value, op->name());
     default:
       return Unimplemented("binary floating point op '%s'",
                            HloOpcodeString(op->opcode()));
@@ -1314,13 +1314,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
 }
 
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
-                                              llvm::Value* rhs_value) {
-  return llvm_ir::EmitFloatMax(lhs_value, rhs_value, b_, fast_min_max());
+                                              llvm::Value* rhs_value,
+                                              absl::string_view name) {
+  return llvm_ir::EmitFloatMax(lhs_value, rhs_value, b_, fast_min_max(), name);
 }
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
-                                              llvm::Value* rhs_value) {
-  return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_, fast_min_max());
+                                              llvm::Value* rhs_value,
+                                              absl::string_view name) {
+  return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_, fast_min_max(), name);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog(PrimitiveType prim_type,
@@ -1404,9 +1406,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitCos(PrimitiveType prim_type,
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitExp(PrimitiveType prim_type,
-                                                   llvm::Value* value) {
+                                                   llvm::Value* value,
+                                                   absl::string_view name) {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},
-                                      {value->getType()}, b_);
+                                      {value->getType()}, b_, name);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
@@ -1438,9 +1441,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(PrimitiveType prim_type,
                                                    llvm::Value* lhs,
-                                                   llvm::Value* rhs) {
+                                                   llvm::Value* rhs,
+                                                   absl::string_view name) {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::pow, {lhs, rhs},
-                                      {lhs->getType()}, b_);
+                                      {lhs->getType()}, b_, name);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitCbrt(PrimitiveType prim_type,
@@ -1458,7 +1462,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitCbrt(PrimitiveType prim_type,
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
                                                      llvm::Value* lhs,
-                                                     llvm::Value* rhs) {
+                                                     llvm::Value* rhs,
+                                                     absl::string_view name) {
   return Unimplemented("atan2");
 }
 

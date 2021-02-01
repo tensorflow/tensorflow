@@ -105,10 +105,12 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                      llvm::Value* rhs_value);
 
   virtual llvm::Value* EmitFloatMax(llvm::Value* lhs_value,
-                                    llvm::Value* rhs_value);
+                                    llvm::Value* rhs_value,
+                                    absl::string_view name = "");
 
   virtual llvm::Value* EmitFloatMin(llvm::Value* lhs_value,
-                                    llvm::Value* rhs_value);
+                                    llvm::Value* rhs_value,
+                                    absl::string_view name = "");
 
   llvm::Value* EmitIntegralMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                                bool is_signed);
@@ -117,7 +119,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                bool is_signed);
 
   virtual StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
-                                           llvm::Value* lhs, llvm::Value* rhs);
+                                           llvm::Value* lhs, llvm::Value* rhs,
+                                           absl::string_view name = "");
 
   virtual StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                          llvm::Value* value);
@@ -141,13 +144,15 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                          llvm::Value* value);
 
   virtual StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
-                                         llvm::Value* value);
+                                         llvm::Value* value,
+                                         absl::string_view name = "");
 
   virtual StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
                                            llvm::Value* value);
 
   virtual StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type,
-                                         llvm::Value* lhs, llvm::Value* rhs);
+                                         llvm::Value* lhs, llvm::Value* rhs,
+                                         absl::string_view name = "");
 
   virtual StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                           llvm::Value* value);
