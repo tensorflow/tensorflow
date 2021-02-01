@@ -222,7 +222,7 @@ bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
         // Consider cast compatibility in case
         //    %cast = "tf.Cast"(%0) : (tensor<2xi64>) -> tensor<2xf32>
         // is skipped.
-        if ((cast_op.SrcT() != cast_op.DstT()) || cast_op.Truncate()) {
+        if (cast_op.SrcT() != cast_op.DstT()) {
           break;
         }
         value = cast_op.getOperand();
