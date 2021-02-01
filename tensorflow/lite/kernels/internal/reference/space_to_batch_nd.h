@@ -23,6 +23,17 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
+inline RuntimeShape ExtendShape(const RuntimeShape& shape) {
+  if (shape.DimensionsCount() == 4) {
+    return shape;
+  }
+  RuntimeShape new_shape(4, 1);
+  new_shape.SetDim(0, shape.Dims(0));
+  new_shape.SetDim(1, shape.Dims(1));
+  new_shape.SetDim(3, shape.Dims(2));
+  return new_shape;
+}
+
 template <typename T>
 inline void SpaceToBatchND(const SpaceToBatchParams& params,
                            const RuntimeShape& unextended_input1_shape,
@@ -40,14 +51,8 @@ inline void SpaceToBatchND(const SpaceToBatchParams& params,
                    unextended_output_shape.DimensionsCount());
 
   // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
-  const RuntimeShape input1_shape =
-      (unextended_input1_shape.DimensionsCount() == 4)
-          ? unextended_input1_shape
-          : RuntimeShape::ExtendedShape(4, unextended_input1_shape);
-  const RuntimeShape output_shape =
-      (unextended_output_shape.DimensionsCount() == 4)
-          ? unextended_output_shape
-          : RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  const RuntimeShape input1_shape = ExtendShape(unextended_input1_shape);
+  const RuntimeShape output_shape = ExtendShape(unextended_output_shape);
 
   const int depth = input1_shape.Dims(3);
   const int input_width = input1_shape.Dims(2);
