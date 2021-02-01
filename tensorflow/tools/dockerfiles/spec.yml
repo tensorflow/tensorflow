@@ -289,7 +289,7 @@ slice_sets:
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/centos/version
-              - onednn/centos/devel-centos7
+              - onednn/centos/devel-7
               - onednn/centos/devel
               - onednn/centos/python
               - onednn/centos/yum-py2
@@ -308,7 +308,7 @@ slice_sets:
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/centos/version
-              - onednn/centos/devel-centos8
+              - onednn/centos/devel-8
               - onednn/centos/devel
               - onednn/centos/python
               - onednn/centos/bazel
@@ -385,7 +385,7 @@ slice_sets:
               - onednn/centos/yum-py2
               - tensorflow
               - onednn/centos/mpi
-              - onednn/centos/horovod-centos7
+              - onednn/centos/horovod-7
               - shell
           tests:
               - import-onednn-horovod.sh
@@ -473,7 +473,7 @@ slice_sets:
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/centos/version
-              - onednn/centos/devel-centos7
+              - onednn/centos/devel-7
               - onednn/centos/devel
               - onednn/centos/python
               - onednn/centos/yum-py2
@@ -495,7 +495,7 @@ slice_sets:
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/centos/version
-              - onednn/centos/devel-centos8
+              - onednn/centos/devel-8
               - onednn/centos/devel
               - onednn/centos/python
               - onednn/centos/bazel
@@ -574,7 +574,7 @@ slice_sets:
               - onednn/centos/yum-py2
               - tensorflow
               - onednn/centos/mpich
-              - onednn/centos/horovod-centos7
+              - onednn/centos/horovod-7
               - shell
           tests:
               - import-onednn-horovod.sh
@@ -663,7 +663,7 @@ slice_sets:
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/centos/version
-              - onednn/centos/devel-centos7
+              - onednn/centos/devel-7
               - onednn/centos/devel
               - onednn/centos/python
               - onednn/centos/yum-py2
@@ -684,7 +684,7 @@ slice_sets:
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/centos/version
-              - onednn/centos/devel-centos8
+              - onednn/centos/devel-8
               - onednn/centos/devel
               - onednn/centos/python
               - onednn/centos/bazel
