@@ -1,5 +1,4 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
-load("@build_bazel_rules_apple//apple:macos.bzl", "macos_unit_test")
 load(
     "//tensorflow/lite:special_rules.bzl",
     "tflite_ios_lab_runner",
@@ -78,6 +77,7 @@ cc_library(
     srcs = ["conv.cc"],
     hdrs = ["conv.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -87,7 +87,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -116,21 +115,12 @@ ios_unit_test(
     deps = [":conv_test_lib"],
 )
 
-macos_unit_test(
-    name = "macos_conv_test",
-    minimum_os_version = "10.13",
-    tags = [
-        "local",
-        "no_mac",  # TODO(b/171882133)
-    ],
-    deps = [":conv_test_lib"],
-)
-
 cc_library(
     name = "depthwise_conv",
     srcs = ["depthwise_conv.cc"],
     hdrs = ["depthwise_conv.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -138,7 +128,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -196,6 +185,7 @@ cc_library(
     srcs = ["fully_connected.cc"],
     hdrs = ["fully_connected.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -203,7 +193,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -542,13 +531,13 @@ cc_library(
     srcs = ["transpose_conv.cc"],
     hdrs = ["transpose_conv.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -637,10 +626,21 @@ objc_library(
 )
 
 cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_library(
     name = "winograd",
     srcs = ["winograd.cc"],
     hdrs = ["winograd.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -648,7 +648,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

@@ -24,10 +24,9 @@ namespace gpu {
 
 absl::flat_hash_set<GlobalDeviceId> DevicesWithOpenNcclChannels() {
   absl::flat_hash_set<GlobalDeviceId> devices;
-  NcclCliqueCache().ForEach(
-      [&](const NcclCliqueKey& k, const std::shared_ptr<NcclClique>&) {
-        devices.insert(k.devices().begin(), k.devices().end());
-      });
+  NcclCliqueCache().ForEach([&](const NcclCliqueKey& k, const NcclClique&) {
+    devices.insert(k.devices().begin(), k.devices().end());
+  });
   return devices;
 }
 

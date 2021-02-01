@@ -48,35 +48,6 @@ MAIN_FUNCTION($0) {
 
 }  // namespace
 
-/// Converts float to destination type (if needed) and stores as bytes array.
-std::vector<uint8_t> GetByteBufferConverted(
-    const std::vector<float>& input_vector, DataType data_type) {
-  if (data_type == DataType::FLOAT32) {
-    return GetByteBuffer(input_vector);
-  } else {
-    std::vector<uint8_t> result;
-    result.reserve(input_vector.size() * sizeof(HalfBits));
-    for (const float value : input_vector) {
-      const HalfBits converted = fp16_ieee_from_fp32_value(value);
-      const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&converted);
-      result.insert(result.end(), bytes, bytes + sizeof(HalfBits));
-    }
-    return result;
-  }
-}
-
-/// Resizes, Converts float to destination type (if needed) and stores as bytes
-/// array.
-std::vector<uint8_t> GetByteBufferConvertedResized(
-    const std::vector<float>& input_vector, DataType data_type,
-    size_t elements_count) {
-  auto result = GetByteBufferConverted(input_vector, data_type);
-  const size_t type_size =
-      data_type == DataType::FLOAT32 ? sizeof(float) : sizeof(HalfBits);
-  result.resize(type_size * elements_count);
-  return result;
-}
-
 ComputeTaskDescriptor::ComputeTaskDescriptor(const OperationDef& def)
     : definition(def) {}
 

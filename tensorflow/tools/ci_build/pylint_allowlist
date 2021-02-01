@@ -1,5 +1,6 @@
 ^tensorflow/compiler/tests/binary_ops_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/compiler/tests/image_ops_test.py.*\[E1121.*too-many-function-args
+^tensorflow/compiler/tests/unary_ops_test.py.*\[E1130.*invalid-unary-operand-type
 ^tensorflow/contrib/eager/python/evaluator\.py.*\[E0202.*method-hidden
 ^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden
 ^tensorflow/contrib/layers/python/layers/feature_column\.py.*\[E0110.*abstract-class-instantiated
@@ -51,6 +52,7 @@
 ^tensorflow/python/keras/engine/base_layer_v1.py.*\[E1102.*not-callable
 ^tensorflow/python/keras/engine/base_preprocessing_layer.py.*\[E0202.*method-hidden
 ^tensorflow/python/keras/engine/base_preprocessing_layer_test.py.*\[E0202.*method-hidden
+^tensorflow/python/keras/engine/sequential.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/keras/layers/convolutional_transpose_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/python/keras/layers/preprocessing/.*\[E1102.*not-callable
 ^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition

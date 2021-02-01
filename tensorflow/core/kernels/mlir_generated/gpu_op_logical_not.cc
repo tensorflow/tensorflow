@@ -20,6 +20,6 @@ namespace tensorflow {
 GENERATE_UNARY_KERNEL(LogicalNot, i1, DT_BOOL, bool);
 // LogicalNot does not have a "T" attribute because it only works with type
 // bool. So we need to register it without TypeConstraint<bool>("T").
-REGISTER_KERNEL_NO_TYPE_CONSTRAINT(LogicalNot, i1);
+REGISTER_KERNEL_NO_TYPE_CONSTRAINT(LogicalNot, i1, i1);
 
 }  // namespace tensorflow

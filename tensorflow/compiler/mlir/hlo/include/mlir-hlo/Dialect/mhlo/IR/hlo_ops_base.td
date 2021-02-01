@@ -645,6 +645,15 @@ class BASE_HLO_PartitionIdOp {
   }];
 }
 
+class BASE_HLO_AllGatherOp {
+  string summary = "AllGather operator";
+
+  string description = [{
+    Performs concatenation across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allgather
+  }];
+}
 
 class BASE_HLO_AllReduceOp {
   string summary = "AllReduce operator";
