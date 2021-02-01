@@ -513,6 +513,10 @@ tf_cuda_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
     ] + if_nccl([
         ":virtual_nccl",
         ":virtual_nccl_utils",
@@ -597,6 +601,10 @@ tf_cuda_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
     ] + if_nccl([
         ":virtual_nccl",
         ":virtual_nccl_utils",

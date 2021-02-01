@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_TO_ALL_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_TO_ALL_THUNK_H_
 
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
@@ -31,9 +32,6 @@ struct NcclAllToAllConfig {
   bool has_split_dimension;
 };
 
-NcclAllToAllConfig GetNcclAllToAllConfig(const HloInstruction* hlo,
-                                         int64 replica_count);
-
 // Thunk that performs a NCCL-based All-to-All among CUDA GPU-based replicas.
 class NcclAllToAllThunk : public NcclCollectiveThunk {
  public:
@@ -43,12 +41,12 @@ class NcclAllToAllThunk : public NcclCollectiveThunk {
     BufferAllocation::Slice destination_buffer;
   };
 
-  NcclAllToAllThunk(ThunkInfo thunk_info, NcclAllToAllConfig config,
-                    std::vector<Buffer> buffers);
+  NcclAllToAllThunk(ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op,
+                    int64 replica_count, std::vector<Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl all-to-all
   // call.
-  static bool CanImplement(const HloInstruction* hlo);
+  static bool CanImplement(mlir::lmhlo::AllToAllOp op);
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,

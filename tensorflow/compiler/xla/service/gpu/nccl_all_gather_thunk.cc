@@ -37,10 +37,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-NcclAllGatherConfig GetNcclAllGatherConfig(const HloInstruction* hlo,
-                                           int64 replica_count) {
+static NcclAllGatherConfig GetNcclAllGatherConfig(mlir::lmhlo::AllGatherOp op,
+                                                  int64 replica_count) {
   NcclAllGatherConfig config;
-  config.config = GetNcclCollectiveConfig(hlo, replica_count);
+  config.config = GetNcclCollectiveConfigForMlir(op, replica_count);
   return config;
 }
 
@@ -55,11 +55,21 @@ NcclAllGatherConfig GetNcclAllGatherConfig(const HloInstruction* hlo,
          operands_are_supported();
 }
 
+/*static*/ bool NcclAllGatherThunk::CanImplement(mlir::lmhlo::AllGatherOp op) {
+  bool operands_are_supported =
+      absl::c_all_of(op.operands(), [](mlir::Value operand) {
+        Shape shape = TypeToShape(operand.getType());
+        return LayoutUtil::IsDenseArray(shape) &&
+               ToNcclDataType(shape.element_type()).ok();
+      });
+  return op.all_gather_dimension() == 0 && operands_are_supported;
+}
+
 NcclAllGatherThunk::NcclAllGatherThunk(
-    ThunkInfo thunk_info, NcclAllGatherConfig config,
+    ThunkInfo thunk_info, mlir::lmhlo::AllGatherOp op, int64 replica_count,
     std::vector<NcclAllGatherThunk::Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllGather, thunk_info),
-      config_(std::move(config)),
+      config_(GetNcclAllGatherConfig(op, replica_count)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }

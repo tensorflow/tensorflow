@@ -2980,49 +2980,43 @@ Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleAllGather(HloInstruction* hlo) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitAllGatherFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitAllGatherFromMlir(MlirEmitterInput input) {
+  auto all_gather = mlir::cast<mlir::lmhlo::AllGatherOp>(input.op);
   VLOG(2) << "AllGather; replica count: " << hlo_module_config_.replica_count()
-          << "; operand count: " << hlo->operand_count()
+          << "; operand count: " << all_gather.operands().size()
           << "; NCCL is enabled: " << NcclAllGatherThunk::NcclIsEnabled();
 
   // Note the replica_count == 1 case is handled via device-to-device copy
   // below.
-  bool should_use_nccl_thunk = hlo_module_config_.replica_count() > 1 &&
-                               NcclAllGatherThunk::CanImplement(hlo);
+  int64 replica_count = hlo_module_config_.replica_count();
+  bool should_use_nccl_thunk =
+      replica_count > 1 && NcclAllGatherThunk::CanImplement(all_gather);
+
+  // Stash relevant information in NcclAllGatherThunk::Buffer even if we may
+  // not generate an NcclAllGatherThunk.
+  std::vector<NcclAllGatherThunk::Buffer> buffers;
+  buffers.reserve(all_gather.operands().size());
+  for (auto it : llvm::zip(all_gather.operands(), all_gather.results())) {
+    mlir::Value operand = std::get<0>(it);
+    mlir::Value result = std::get<1>(it);
+    const Shape shape = TypeToShape(operand.getType());
+    TF_ASSIGN_OR_RETURN(auto source_slice, GetAllocationSliceForMlir(operand));
+    TF_ASSIGN_OR_RETURN(auto dest_slice, GetAllocationSliceForMlir(result));
+    buffers.push_back(NcclAllGatherThunk::Buffer{
+        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*source_buffer=*/source_slice,
+        /*destination_buffer=*/dest_slice});
+  }
 
   if (should_use_nccl_thunk) {
-    std::vector<NcclAllGatherThunk::Buffer> buffers;
-    std::vector<BufferAllocation::Slice> tuple_element_buffers;
-    buffers.resize(hlo->operand_count());
-    tuple_element_buffers.reserve(hlo->operand_count());
-    CHECK(hlo->shape().IsArray() && hlo->operand_count() == 1 ||
-          hlo->shape().IsTuple() &&
-              hlo->shape().tuple_shapes_size() == hlo->operand_count());
-    for (int i = 0; i < hlo->operand_count(); ++i) {
-      CHECK(hlo->operand(i)->shape().IsArray())
-          << "Operands to all-gather must be arrays: " << hlo->ToString();
-      buffers[i].element_count =
-          ShapeUtil::ElementsIn(hlo->operand(i)->shape());
-      buffers[i].source_buffer = GetAllocationSlice(*hlo->operand(i));
-      buffers[i].destination_buffer = GetAllocationSlice(
-          *hlo, hlo->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({}));
-      tuple_element_buffers.push_back(buffers[i].destination_buffer);
-    }
-    NcclAllGatherConfig config =
-        GetNcclAllGatherConfig(hlo, hlo_module_config_.replica_count());
     auto all_gather_thunk = absl::make_unique<NcclAllGatherThunk>(
-        GetThunkInfo(hlo), std::move(config),
+        input.thunk_info, all_gather, replica_count,
         /*buffers=*/std::move(buffers));
-    if (hlo->shape().IsTuple()) {
-      std::vector<std::unique_ptr<Thunk>> thunks;
-      thunks.push_back(std::move(all_gather_thunk));
-      thunks.push_back(absl::make_unique<TupleThunk>(
-          Thunk::ThunkInfo(), tuple_element_buffers, GetAllocationSlice(*hlo)));
-      AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
-          GetThunkInfo(hlo), std::move(thunks)));
-    } else {
-      AddThunkToThunkSequence(std::move(all_gather_thunk));
-    }
-
+    AddThunkToThunkSequence(std::move(all_gather_thunk));
     return Status::OK();
   }
 
@@ -3030,49 +3024,33 @@ Status IrEmitterUnnested::HandleAllGather(HloInstruction* hlo) {
     string message = absl::StrFormat(
         "Requested AllGather not implemented on GPU; replica_count: %d; "
         "operand_count: %d; NCCL support: %d",
-        hlo_module_config_.replica_count(), hlo->operand_count(),
+        replica_count, all_gather.operands().size(),
         NcclAllGatherThunk::NcclIsEnabled());
-    if (hlo->operand_count() > 0) {
-      absl::StrAppendFormat(
-          &message, "; first operand array element-type: %s",
-          PrimitiveType_Name(hlo->operand(0)->shape().element_type()));
+    if (!all_gather.operands().empty()) {
+      const Shape shape = TypeToShape(all_gather.operands().front().getType());
+      absl::StrAppendFormat(&message, "; first operand array element-type: %s",
+                            PrimitiveType_Name(shape.element_type()));
     }
     return Unimplemented("%s", message);
   }
 
-  // All-gather with one operand and one replica is simply the identity
-  // function. Buffer assignment expects a copy, so that's what we do.
-  if (hlo->operand_count() == 1) {
-    CHECK(hlo->operand(0)->shape().IsArray())
-        << "Operands to all-gather must be arrays: " << hlo->ToString();
-    AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
-        GetThunkInfo(hlo),
-        /*source_address=*/GetAllocationSlice(*hlo->operand(0)),
-        /*destination_buffer=*/GetAllocationSlice(*hlo),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->shape())));
-    return Status::OK();
-  }
-
-  // One-replica all-gather with multiple operands produces a tuple of the
-  // inputs. Again, buffer assignment expects us to copy each.
+  // All-gather with one replica is simply the identity function. Buffer
+  // assignment expects a copy, so that's what we do.
   std::vector<std::unique_ptr<Thunk>> thunks;
-  std::vector<BufferAllocation::Slice> tuple_element_buffers;
-  for (int64 i = 0; i < hlo->operand_count(); ++i) {
-    tuple_element_buffers.push_back(ir_emitter_context_->buffer_assignment()
-                                        .GetUniqueSlice(hlo, {i})
-                                        .ValueOrDie());
+  for (int64 i = 0; i < buffers.size(); i++) {
+    const Shape shape = TypeToShape(all_gather.operands()[i].getType());
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo(),
-        /*source_address=*/GetAllocationSlice(*hlo->operand(i)),
-        /*destination_buffer=*/tuple_element_buffers.back(),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->operand(i)->shape())));
+        buffers.size() == 1 ? input.thunk_info : Thunk::ThunkInfo(),
+        /*source_address=*/buffers[i].source_buffer,
+        /*destination_buffer=*/buffers[i].destination_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   }
-
-  // Output a tuple of the buffers above.
-  thunks.push_back(absl::make_unique<TupleThunk>(
-      Thunk::ThunkInfo(), tuple_element_buffers, GetAllocationSlice(*hlo)));
-  AddThunkToThunkSequence(
-      absl::make_unique<SequentialThunk>(GetThunkInfo(hlo), std::move(thunks)));
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+        input.thunk_info, std::move(thunks)));
+  }
   return Status::OK();
 }
 
@@ -3105,9 +3083,9 @@ Status IrEmitterUnnested::EmitAllReduceFromMlir(MlirEmitterInput input) {
     TF_ASSIGN_OR_RETURN(auto source_slice, GetAllocationSliceForMlir(operand));
     TF_ASSIGN_OR_RETURN(auto dest_slice, GetAllocationSliceForMlir(result));
     buffers.push_back(NcclAllReduceThunk::Buffer{
-        /*element_count*/ ShapeUtil::ElementsIn(shape),
-        /*source_buffer*/ source_slice,
-        /*destination_buffer*/ dest_slice});
+        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*source_buffer=*/source_slice,
+        /*destination_buffer=*/dest_slice});
   }
 
   if (should_use_nccl_thunk) {
@@ -3118,12 +3096,12 @@ Status IrEmitterUnnested::EmitAllReduceFromMlir(MlirEmitterInput input) {
     return Status::OK();
   }
 
-  if (hlo_module_config_.replica_count() != 1) {
+  if (replica_count != 1) {
     // TODO(b/33011107): Support more AllReduce configurations on GPU.
     string message = absl::StrFormat(
         "Requested AllReduce not implemented on GPU; replica_count: %d; "
         "operand_count: %d; IsCrossReplicaAllReduce: %d; NCCL support: %d",
-        hlo_module_config_.replica_count(), all_reduce.operands().size(),
+        replica_count, all_reduce.operands().size(),
         all_reduce.IsCrossReplica(), NcclAllReduceThunk::NcclIsEnabled());
     if (!all_reduce.operands().empty()) {
       const Shape shape = TypeToShape(all_reduce.operands().front().getType());
@@ -3162,99 +3140,79 @@ Status IrEmitterUnnested::EmitAllReduceFromMlir(MlirEmitterInput input) {
 }
 
 Status IrEmitterUnnested::HandleAllToAll(HloInstruction* hlo) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitAllToAllFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitAllToAllFromMlir(MlirEmitterInput input) {
+  auto all_to_all = mlir::cast<mlir::lmhlo::AllToAllOp>(input.op);
   VLOG(2) << "AllToAll; replica count: " << hlo_module_config_.replica_count()
-          << "; operand count: " << hlo->operand_count()
+          << "; operand count: " << all_to_all.operands().size()
           << "; NCCL is enabled: " << NcclAllToAllThunk::NcclIsEnabled();
 
   // Note the replica_count == 1 case is handled via device-to-device copy
   // below.
-  bool should_use_nccl_thunk = hlo_module_config_.replica_count() > 1 &&
-                               NcclAllToAllThunk::CanImplement(hlo);
+  int64 replica_count = hlo_module_config_.replica_count();
+  bool should_use_nccl_thunk =
+      replica_count > 1 && NcclAllToAllThunk::CanImplement(all_to_all);
+
+  // Stash relevant information in NcclAllReduceThunk::Buffer even if we may
+  // not generate an NcclAllReduceThunk.
+  std::vector<NcclAllToAllThunk::Buffer> buffers;
+  buffers.reserve(all_to_all.operands().size());
+  for (auto it : llvm::zip(all_to_all.operands(), all_to_all.results())) {
+    mlir::Value operand = std::get<0>(it);
+    mlir::Value result = std::get<1>(it);
+    const Shape shape = TypeToShape(operand.getType());
+    TF_ASSIGN_OR_RETURN(auto source_slice, GetAllocationSliceForMlir(operand));
+    TF_ASSIGN_OR_RETURN(auto dest_slice, GetAllocationSliceForMlir(result));
+    buffers.push_back(NcclAllToAllThunk::Buffer{
+        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*source_buffer=*/source_slice,
+        /*destination_buffer=*/dest_slice});
+  }
 
   if (should_use_nccl_thunk) {
-    std::vector<NcclAllToAllThunk::Buffer> buffers;
-    std::vector<BufferAllocation::Slice> tuple_element_buffers;
-    buffers.resize(hlo->operand_count());
-    tuple_element_buffers.reserve(hlo->operand_count());
-    CHECK(hlo->shape().IsArray() && hlo->operand_count() == 1 ||
-          hlo->shape().IsTuple() &&
-              hlo->shape().tuple_shapes_size() == hlo->operand_count());
-    for (int i = 0; i < hlo->operand_count(); ++i) {
-      CHECK(hlo->operand(i)->shape().IsArray())
-          << "Operands to all-to-all must be arrays: " << hlo->ToString();
-      buffers[i].element_count =
-          ShapeUtil::ElementsIn(hlo->operand(i)->shape());
-      buffers[i].source_buffer = GetAllocationSlice(*hlo->operand(i));
-      buffers[i].destination_buffer = GetAllocationSlice(
-          *hlo, hlo->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({}));
-      tuple_element_buffers.push_back(buffers[i].destination_buffer);
-    }
-    NcclAllToAllConfig config =
-        GetNcclAllToAllConfig(hlo, hlo_module_config_.replica_count());
     auto all_to_all_thunk = absl::make_unique<NcclAllToAllThunk>(
-        GetThunkInfo(hlo), std::move(config),
+        input.thunk_info, all_to_all, replica_count,
         /*buffers=*/std::move(buffers));
-    if (hlo->shape().IsTuple()) {
-      std::vector<std::unique_ptr<Thunk>> thunks;
-      thunks.push_back(std::move(all_to_all_thunk));
-      thunks.push_back(absl::make_unique<TupleThunk>(
-          Thunk::ThunkInfo(), tuple_element_buffers, GetAllocationSlice(*hlo)));
-      AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
-          GetThunkInfo(hlo), std::move(thunks)));
-    } else {
-      AddThunkToThunkSequence(std::move(all_to_all_thunk));
-    }
-
+    AddThunkToThunkSequence(std::move(all_to_all_thunk));
     return Status::OK();
   }
 
-  if (hlo_module_config_.replica_count() != 1) {
+  if (replica_count != 1) {
     string message = absl::StrFormat(
         "Requested AllToAll not implemented on GPU; replica_count: %d; "
         "operand_count: %d; NCCL support: %d",
-        hlo_module_config_.replica_count(), hlo->operand_count(),
+        replica_count, all_to_all.operands().size(),
         NcclAllToAllThunk::NcclIsEnabled());
-    if (hlo->operand_count() > 0) {
-      absl::StrAppendFormat(
-          &message, "; first operand array element-type: %s",
-          PrimitiveType_Name(hlo->operand(0)->shape().element_type()));
+    if (!all_to_all.operands().empty()) {
+      const Shape shape = TypeToShape(all_to_all.operands().front().getType());
+      absl::StrAppendFormat(&message, "; first operand array element-type: %s",
+                            PrimitiveType_Name(shape.element_type()));
     }
     return Unimplemented("%s", message);
   }
 
-  // All-to-all with one operand and one replica is simply the identity
-  // function. Buffer assignment expects a copy, so that's what we do.
-  if (hlo->operand_count() == 1) {
-    CHECK(hlo->operand(0)->shape().IsArray())
-        << "Operands to all-to-all must be arrays: " << hlo->ToString();
-    AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
-        GetThunkInfo(hlo),
-        /*source_address=*/GetAllocationSlice(*hlo->operand(0)),
-        /*destination_buffer=*/GetAllocationSlice(*hlo),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->shape())));
-    return Status::OK();
-  }
-
-  // One-replica all-to-all with multiple operands produces a tuple of the
-  // inputs. Again, buffer assignment expects us to copy each.
+  // All-to-all with one replica is simply the identity function. Buffer
+  // assignment expects a copy, so that's what we do.
   std::vector<std::unique_ptr<Thunk>> thunks;
-  std::vector<BufferAllocation::Slice> tuple_element_buffers;
-  for (int64 i = 0; i < hlo->operand_count(); ++i) {
-    tuple_element_buffers.push_back(ir_emitter_context_->buffer_assignment()
-                                        .GetUniqueSlice(hlo, {i})
-                                        .ValueOrDie());
+  thunks.reserve(all_to_all.operands().size());
+  for (int64 i = 0; i < buffers.size(); i++) {
+    const Shape shape = TypeToShape(all_to_all.operands()[i].getType());
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo(),
-        /*source_address=*/GetAllocationSlice(*hlo->operand(i)),
-        /*destination_buffer=*/tuple_element_buffers.back(),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->operand(i)->shape())));
+        buffers.size() == 1 ? input.thunk_info : Thunk::ThunkInfo(),
+        /*source_address=*/buffers[i].source_buffer,
+        /*destination_buffer=*/buffers[i].destination_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   }
 
-  // Output a tuple of the buffers above.
-  thunks.push_back(absl::make_unique<TupleThunk>(
-      Thunk::ThunkInfo(), tuple_element_buffers, GetAllocationSlice(*hlo)));
-  AddThunkToThunkSequence(
-      absl::make_unique<SequentialThunk>(GetThunkInfo(hlo), std::move(thunks)));
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+        input.thunk_info, std::move(thunks)));
+  }
   return Status::OK();
 }
 
