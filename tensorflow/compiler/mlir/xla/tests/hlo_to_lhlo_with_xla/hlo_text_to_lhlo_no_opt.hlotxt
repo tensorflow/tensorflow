@@ -215,8 +215,8 @@ add {
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
-  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
-  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
+  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
 }
 
 // -----
@@ -236,12 +236,12 @@ add {
 // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
 // CHECK:  }) {
 // CHECK-NOT:  channel_id
-// CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
+// CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 4]]> : tensor<2x4xi64>
 // CHECK-SAME: (memref<8xf32>, memref<5xf32>, memref<8xf32>, memref<5xf32>) -> ()
 %test_all_reduce_tuple {
   input = f32[8] parameter(0)
   %tuple = (f32[8], f32[5]) custom-call(),custom_call_target="make-tuple"
-  ROOT result = (f32[8], f32[5]) all-reduce(%tuple), replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
+  ROOT result = (f32[8], f32[5]) all-reduce(%tuple), replica_groups={{0,1,2,3}, {5,6,7,4}}, to_apply=add
 }
 
 // -----
