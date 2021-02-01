@@ -694,6 +694,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//learning/brain/keras/...",
         "//learning/brain/mlir/...",
         "//learning/lib/ami/simple_ml/...",
         "//tensorflow/...",

@@ -64,6 +64,8 @@ _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.int8: _types_pb2.INT8,
     dtypes.float64: _types_pb2.FLOAT64,
     dtypes.complex128: _types_pb2.COMPLEX128,
+    dtypes.resource: _types_pb2.RESOURCE,
+    dtypes.variant: _types_pb2.VARIANT,
 }
 
 _MAP_TFLITE_ENUM_TO_TF_TYPES = {

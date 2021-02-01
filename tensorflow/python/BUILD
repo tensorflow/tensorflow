@@ -5206,7 +5206,6 @@ pywrap_tensorflow_macro(
         ":bfloat16_lib",
         ":cost_analyzer_lib",
         ":model_analyzer_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/python/util:cpp_python_util",

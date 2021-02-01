@@ -58,4 +58,10 @@ enum IODataType {
 
   // Uint64, not quantized
   UINT64 = 13;
+
+  // Resource type
+  RESOURCE = 14;
+
+  // Variant type
+  VARIANT = 15;
 }

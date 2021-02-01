@@ -90,11 +90,14 @@ Status PyBuffer::BlockHostUntilReady() {
 
 Status PyBuffer::CopyToHostAsync() {
   if (!buffer_->IsOnCpu() && !host_value_) {
-    host_value_ = std::make_shared<HostValue>();
-    host_value_->value = std::make_shared<Literal>(
+    std::shared_ptr<HostValue> host_value = std::make_shared<HostValue>();
+    host_value_ = host_value;
+    py::gil_scoped_release gil;
+    host_value->value = std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(buffer_->on_device_shape()));
-    buffer_->ToLiteral(host_value_->value.get(),
-                       [host_value{host_value_}](Status status) {
+    Literal* literal = host_value->value.get();
+    buffer_->ToLiteral(literal,
+                       [host_value{std::move(host_value)}](Status status) {
                          host_value->status = std::move(status);
                          host_value->ready.Notify();
                        });

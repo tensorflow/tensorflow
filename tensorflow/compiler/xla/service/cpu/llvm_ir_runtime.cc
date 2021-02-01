@@ -121,8 +121,9 @@ void RewriteCalls(
   }
 
   // Generate the vectorized code.
-  CHECK_EQ(vector_width,
-           llvm::cast<llvm::VectorType>(input->getType())->getNumElements());
+  CHECK_EQ(
+      vector_width,
+      llvm::cast<llvm::FixedVectorType>(input->getType())->getNumElements());
   llvm::Value* result = fn_body_generator(&b, input, vector_width);
 
   // Downcast result to scalar type if necessary.

@@ -525,14 +525,14 @@ func @main(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
 // -----
 
 // CHECK:  HloModule
-func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3xi32>, tensor<i1>>, !mhlo.token> {
-  %0 = "mhlo.infeed"(%arg0) {infeed_config = "foobar"} : (!mhlo.token) -> tuple<tuple<tensor<3xi32>, tensor<i1>>, !mhlo.token>
-  return %0 : tuple<tuple<tensor<3xi32>, tensor<i1>>, !mhlo.token>
+func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token> {
+  %0 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[[0,1], [0]], unit]} : (!mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
+  return %0 : tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
 }
 
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = token[] parameter(0)
-// CHECK:  ROOT %[[RESULT:.*]] = ((s32[3], pred[]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
+// CHECK:  ROOT %[[RESULT:.*]] = ((s32[3,3], pred[]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
 
 // -----
 
