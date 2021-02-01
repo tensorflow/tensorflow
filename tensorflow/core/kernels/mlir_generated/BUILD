@@ -411,8 +411,8 @@ gen_kernel_library(
     name = "conj",
     tile_size = "256",
     types = [
-        "f32",
-        "f64",
+        "c64",
+        "c128",
     ],
     unroll_factors = "2",
 )
@@ -451,10 +451,14 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "imag",
-    tile_size = "256",
-    types = [
+    output_types = [
         "f32",
         "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
     ],
 )
 
@@ -478,10 +482,14 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "real",
-    tile_size = "256",
-    types = [
+    output_types = [
         "f32",
         "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
     ],
 )
 
@@ -532,6 +540,10 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "complex",
+    output_types = [
+        "c64",
+        "c128",
+    ],
     tile_size = "1024",
     types = [
         "f32",
@@ -543,10 +555,14 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "complex_abs",
-    tile_size = "256",
-    types = [
+    output_types = [
         "f32",
         "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
     ],
 )
 
@@ -637,6 +653,7 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
+        output_types = ["i1"] * 8,
         tile_size = "1024",
         types = [
             "f16",
@@ -660,6 +677,7 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
+        output_types = ["i1"] * 7,
         tile_size = "1024",
         types = [
             "f16",
@@ -754,15 +772,32 @@ gen_kernel_library(
         "exp",
         "expm1",
         "floor",
-        "is_finite",
-        "is_inf",
-        "is_nan",
         "lgamma",
         "log",
         "log1p",
         "rsqrt",
         "sqrt",
         "tanh",
+    ]
+]
+
+# Kernels that support all floating-point types but have i1 output.
+[
+    gen_kernel_library(
+        name = name,
+        output_types = ["i1"] * 3,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+        unroll_factors = "4",
+    )
+    for name in [
+        "is_finite",
+        "is_inf",
+        "is_nan",
     ]
 ]
 
