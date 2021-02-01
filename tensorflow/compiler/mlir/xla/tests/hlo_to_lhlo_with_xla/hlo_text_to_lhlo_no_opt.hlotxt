@@ -598,6 +598,35 @@ ENTRY main {
   ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=131072
 }
 
+// -----
+
+HloModule TestAllGather
+
+// CHECK: func @main
+// CHECK: "lmhlo.all_gather"
+// CHECK_SAME: all_gather_dimension = 1 : i64
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+// CHECK-SAME: use_global_device_ids = false
+ENTRY main {
+  param0 = f32[10,20] parameter(0)
+  ROOT ag = f32[10,80] all-gather(param0), replica_groups={{0,1,2,3}},
+    dimensions={1}
+}
+
+// -----
+
+// CHECK: func @entry
+// CHECK: "lmhlo.all_to_all"
+// CHECK-SAME: constrain_layout = false
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+HloModule TestAllToAll
+ENTRY entry {
+  p0 = f32[128,4]{0,1} parameter(0)
+  p1 = f32[128,4]{1,0} parameter(1)
+  ROOT a2a = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(p0, p1),
+    replica_groups={{0,1}}
+}
+
 
 // -----
 HloModule TestReplicaId
