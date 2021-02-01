@@ -124,3 +124,5 @@ class DatasetBenchmarkBase(test.Benchmark):
     extras["num_elements"] = num_elements
     self.report_benchmark(
         wall_time=wall_time, iters=iters, name=name, extras=extras)
+
+    return wall_time

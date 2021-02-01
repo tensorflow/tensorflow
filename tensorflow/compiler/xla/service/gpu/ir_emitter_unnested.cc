@@ -2948,15 +2948,27 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
   return Status::OK();
 }
 
+template <typename ThunkType, typename OpT>
+Status IrEmitterUnnested::EmitReplicaOrPartitionIdFromMlir(
+    MlirEmitterInput input) {
+  auto op = mlir::cast<OpT>(input.op);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                      GetAllocationSliceForMlir(op.getOperand()));
+  AddThunkToThunkSequence(
+      absl::make_unique<ThunkType>(input.thunk_info, result_slice));
+  return Status::OK();
+}
+
 Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
-  auto replica_id_op = mlir::cast<mlir::lmhlo::ReplicaIdOp>(input.op);
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                      GetAllocationSliceForMlir(replica_id_op.getOperand()));
-  AddThunkToThunkSequence(
-      absl::make_unique<ReplicaIdThunk>(input.thunk_info, result_slice));
+  return EmitReplicaOrPartitionIdFromMlir<ReplicaIdThunk,
+                                          mlir::lmhlo::ReplicaIdOp>(input);
+}
 
-  return Status::OK();
+Status IrEmitterUnnested::HandlePartitionId(HloInstruction* hlo) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitReplicaOrPartitionIdFromMlir<PartitionIdThunk,
+                                          mlir::lmhlo::PartitionIdOp>(input);
 }
 
 Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {

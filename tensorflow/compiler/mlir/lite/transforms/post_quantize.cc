@@ -132,6 +132,12 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
     if (auto q = llvm::dyn_cast_or_null<QuantizeOp>(input_op)) {
       if (!q->getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
 
+      // Don't remove leading and tailing QDQ for PQT workflow, so the io
+      // modifying lib can work correctly.
+      if (!q.input().getDefiningOp()) return failure();
+      if (op->hasOneUse() && op->user_begin()->isKnownTerminator())
+        return failure();
+
       op.replaceAllUsesWith(q.input());
       return success();
     }

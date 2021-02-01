@@ -1547,7 +1547,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     auto shard_type = accumulator_shard->getType()->getPointerElementType();
     if (auto vector_type = llvm::dyn_cast<llvm::VectorType>(shard_type)) {
       initial_value =
-          VectorSplat(vector_type->getNumElements(), init_value_ssa);
+          VectorSplat(vector_type->getElementCount(), init_value_ssa);
     } else {
       initial_value = init_value_ssa;
     }
@@ -3135,8 +3135,10 @@ Status IrEmitter::EmitTargetElementLoop(
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(target_op));
   llvm_ir::IrArray target_array = GetIrArrayFor(target_op);
 
-  if (target_shape.IsTuple() && (target_op->opcode() == HloOpcode::kFusion ||
-                                 target_op->opcode() == HloOpcode::kReduce)) {
+  if (target_shape.IsTuple() &&
+      (target_op->opcode() == HloOpcode::kFusion ||
+       target_op->opcode() == HloOpcode::kReduce ||
+       target_op->opcode() == HloOpcode::kReduceWindow)) {
     // For multiple outputs fusion, we need to emit each operand and the root.
     TF_RET_CHECK(num_dynamic_loop_bounds_ == 0);
     std::vector<llvm_ir::IrArray> output_arrays;

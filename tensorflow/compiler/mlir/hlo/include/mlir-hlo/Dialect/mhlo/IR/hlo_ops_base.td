@@ -637,6 +637,14 @@ class BASE_HLO_ReplicaIdOp {
   }];
 }
 
+class BASE_HLO_PartitionIdOp {
+  string summary = "PartitionId operator";
+
+  string description = [{
+    Returns the unique ID (int32 scalar) of the partition.
+  }];
+}
+
 
 class BASE_HLO_AllReduceOp {
   string summary = "AllReduce operator";

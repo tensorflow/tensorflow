@@ -645,7 +645,7 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
       // allocator must have been initialized already, so the
       // GetGPUAllocator() call won't create a new allocator.
       dev_allocator = GPUProcessState::singleton()->GetGPUAllocator(
-          gpu_options, tf_gpu_id, 1);
+          gpu_options, tf_gpu_id, /*total_bytes=*/1, /*peer_gpu_ids=*/{});
     }
     return std::make_pair(cuda_device_id, dev_allocator);
   }
