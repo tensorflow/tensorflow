@@ -89,7 +89,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -764,9 +763,9 @@ Status IrEmitterUnnested::EmitConstant(MlirEmitterInput mlir_input) {
 
   // These globals will be looked up by name by GpuExecutable so we need to
   // give them an external linkage.  Not all of their uses are visible in
-  // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
-  // merely preserves their names (like available_externally), we also need
-  // to ensure that they stick around even if they're "unused".
+  // the LLVM IR so we can't give then a linkage that merely preserves their
+  // names (like available_externally), we also need to ensure that they stick
+  // around even if they're "unused".
   //
   // We may have to be more clever here in the future if we notice that we're
   // keeping around too many globals because of their linkage.
@@ -2003,45 +2002,13 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
 }
 
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
-  // For the root node of the entry computation we can elide writing the tuple
-  // buffer. We can always figure out the contents of the tuples from buffer
-  // assignment because we insert copies to ensure non-ambiguous output buffers.
-  // GpuExecutable never reads the tuple buffer.
-  if (tuple ==
-      tuple->parent()->parent()->entry_computation()->root_instruction()) {
-    return Status::OK();
-  }
-  bool all_tuple_elements_have_buffer =
-      absl::c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
-        return ir_emitter_context_->buffer_assignment()
-            .GetUniqueTopLevelSlice(tuple_element)
-            .ok();
-      });
-  // TODO(b/111689850): This logic isn't quite correct.
-  //
-  // Tuples (especially tuples that are the final result of a computation) can
-  // be so huge that if we were to emit a kernel that took each tuple element as
-  // a parameter, we would exceed the max allowable number of parameters to a
-  // GPU kernel, b/31336476. As an optimization, if all tuple elements have a
-  // buffer, we collect their buffer addresses in a host array, and then copy
-  // that array to the tuple's buffer.
-  //
-  // Some tuple elements might not have an unambiguous buffer (like the result
-  // of a select-tuple). In that case, we fall back to emitting kernels which
-  // have access to their buffer addresses in code.
-  if (all_tuple_elements_have_buffer) {
-    std::vector<BufferAllocation::Slice> tuple_element_buffers;
-    for (const HloInstruction* tuple_element : tuple->operands()) {
-      tuple_element_buffers.push_back(GetAllocationSlice(*tuple_element));
-    }
-    AddThunkToThunkSequence(absl::make_unique<TupleThunk>(
-        GetThunkInfo(tuple), tuple_element_buffers,
-        GetAllocationSlice(*tuple)));
-    return Status::OK();
-  }
-  AddThunkToThunkSequence(
-      BuildKernelThunk(tuple, /*implements_whole_instruction=*/true));
-  return IrEmitter::HandleTuple(tuple);
+  // For all tuples, we expect the elements of the tuple to be directly consumed
+  // by instructions that read from that tuple either directly, or through a
+  // GTE instruction. This is possible we do not support "dynamic tuples" since
+  // tuple-select is not supported. As a result, we never need to materialize a
+  // tuple (which has a runtime representation of an array of pointers) in
+  // memory at runtime. So there is no need to generate any code for tuples.
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleGetTupleElement(HloInstruction*) {
