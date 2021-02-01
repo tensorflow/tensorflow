@@ -33,18 +33,20 @@ namespace tensorflow {
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     PlatformGpuId platform_gpu_id, size_t pool_size,
     bool reserve_memory, bool compute_stats)
-    : cuda_stream_(nullptr),
-      name_(absl::StrCat("gpu_async_", platform_gpu_id.value())) {
+    : name_(absl::StrCat("gpu_async_", platform_gpu_id.value())) {
   stream_exec_ =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                 platform_gpu_id).ValueOrDie();
 
 #if CUDA_VERSION < 11020
   LOG(FATAL) << "TF_GPU_ALLOCATOR=cuda_malloc_async need CUDA 11.2 or higher to compile.";
+#elif !defined(GOOGLE_CUDA)
+  LOG(FATAL) << "GOOGLE_CUDA not defined";
 #else
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.
   pool_ = nullptr;
+  cuda_stream_ = nullptr;
   // WAR an CUDA 11.2 driver bug for multiple-GPU. It currently
   // request that the context on GPU 0 is initialized. Which isn't the
   // case for TF+horovod.
@@ -115,7 +117,9 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 }
 
 GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {
+#ifdef GOOGLE_CUDA
   cuStreamDestroy(cuda_stream_);
+#endif
 }
 
 void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,

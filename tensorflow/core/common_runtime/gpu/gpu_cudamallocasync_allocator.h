@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <memory>
 
+#ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#endif  // GOOGLE_CUDA
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
@@ -74,14 +76,16 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   // compute stream and already synchronize with the h2d, d2h and d2d
   // stream. So we do not need to ask cudaMallocAsync to add extra
   // synchronization.
+#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
   cudaStream_t cuda_stream_;
-  string name_;
+
   //Not owned. The default pool of the associated GPU.
   //If null, then the instanciation failed and the first allocation
   //will return an error.
-#if CUDA_VERSION >= 11020
   CUmemoryPool pool_;
-#endif
+#endif  // GOOGLE_CUDA
+
+  string name_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCudaMallocAsyncAllocator);
 
