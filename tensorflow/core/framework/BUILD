@@ -125,6 +125,7 @@ exports_files(
         "graph_transfer_info.proto",
         "kernel_def.proto",
         "log_memory.proto",
+        "model.proto",
         "node_def.proto",
         "op_def.proto",
         "reader_base.proto",
@@ -1653,6 +1654,13 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "model_proto",
+    srcs = ["model.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
     name = "protos_all",
     cc_api_version = 2,
     make_default_target_header_only = True,
@@ -1667,6 +1675,7 @@ tf_proto_library(
         ":graph_transfer_info_proto",
         ":kernel_def_proto",
         ":log_memory_proto",
+        ":model_proto",
         ":node_def_proto",
         ":op_def_proto",
         ":reader_base_proto",
