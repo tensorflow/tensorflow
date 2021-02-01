@@ -166,9 +166,9 @@ endef
 
 define generate_ceva_bx1_project
 ifeq ($(TARGET), ceva)
-ifeq ($(TARGET_ARCH), bx1)
+ifeq ($(TARGET_ARCH), CEVA_BX1)
 
-$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
+$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva/ceva_app_makefile_v18.0.5.tpl
 	@mkdir -p $$(dir $$@)
 	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
 	sed -E 's#\%\{CC\}\%#$(CC_TOOL)#g' | \
@@ -177,16 +177,8 @@ $(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_bx1
 	sed -E 's#\%\{EXECUTABLE\}\%#$(3).elf#g' | \
 	sed -E 's#\%\{LD_FLAGS\}\%#$(6)#g' | \
 	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
-	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' | \
-	sed -E 's#\%\{EXTRA_APP_SETTINGS\}\%#$(ARC_EXTRA_APP_SETTINGS)#g' | \
-	sed -E 's#\%\{EXTRA_APP_RULES\}\%#$(ARC_EXTRA_APP_RULES)#g' | \
-	sed -E 's#\%\{BIN_DEPEND\}\%#$(ARC_BIN_DEPEND)#g' | \
-	sed -E 's#\%\{BIN_RULE\}\%#$(ARC_BIN_RULE)#g' | \
-	sed -E 's#\%\{EXTRA_RM_TARGETS\}\%#$(ARC_EXTRA_RM_TARGETS)#g' | \
-	sed -E 's#\%\{APP_RUN_CMD\}\%#$(ARC_APP_RUN_CMD)#g' | \
-	sed -E 's#\%\{APP_DEBUG_CMD\}\%#$(ARC_APP_DEBUG_CMD)#g' | \
-	sed -E 's#\%\{EXTRA_EXECUTE_RULES\}\%#$(ARC_EXTRA_EXECUTE_RULES)#g' > $$@
-
+	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' > $$@
+	
 $(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva_bx1/%.tpl
 	@cp $$< $$@
 
