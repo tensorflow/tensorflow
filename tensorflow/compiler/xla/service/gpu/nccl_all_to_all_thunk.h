@@ -35,18 +35,14 @@ struct NcclAllToAllConfig {
 // Thunk that performs a NCCL-based All-to-All among CUDA GPU-based replicas.
 class NcclAllToAllThunk : public NcclCollectiveThunk {
  public:
-  struct Buffer {
-    int64 element_count;
-    BufferAllocation::Slice source_buffer;
-    BufferAllocation::Slice destination_buffer;
-  };
-
   NcclAllToAllThunk(ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op,
                     int64 replica_count, std::vector<Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl all-to-all
   // call.
   static bool CanImplement(mlir::lmhlo::AllToAllOp op);
+
+  static const char* GetName() { return "AllToAll"; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,

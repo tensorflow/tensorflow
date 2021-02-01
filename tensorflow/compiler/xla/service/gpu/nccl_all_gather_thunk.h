@@ -34,12 +34,6 @@ struct NcclAllGatherConfig {
 // Thunk that performs a NCCL-based All-Gather among CUDA GPU-based replicas.
 class NcclAllGatherThunk : public NcclCollectiveThunk {
  public:
-  struct Buffer {
-    int64 element_count;
-    BufferAllocation::Slice source_buffer;
-    BufferAllocation::Slice destination_buffer;
-  };
-
   NcclAllGatherThunk(ThunkInfo thunk_info, mlir::lmhlo::AllGatherOp op,
                      int64 replica_count, std::vector<Buffer> buffers);
 
@@ -49,6 +43,8 @@ class NcclAllGatherThunk : public NcclCollectiveThunk {
   // HLO version is still needed for AllGatherDecomposer pass.
   static bool CanImplement(const HloInstruction* hlo);
   static bool CanImplement(mlir::lmhlo::AllGatherOp op);
+
+  static const char* GetName() { return "AllGather"; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
