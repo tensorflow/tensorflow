@@ -143,7 +143,7 @@ class MlirUnrankedOp : public OpKernel {
 };
 
 #define MLIR_FUNCTION(tf_op, mlir_type, mlir_output_type) \
-  _mlir_ciface_##tf_op##_##mlir_type##_##mlir_output_type
+  _mlir_ciface_##tf_op##_GPU_##mlir_type##_##mlir_output_type
 
 #define REGISTER_ALIASED_KERNEL(tf_op, mlir_op, mlir_type, mlir_output_type, \
                                 data_type)                                   \
