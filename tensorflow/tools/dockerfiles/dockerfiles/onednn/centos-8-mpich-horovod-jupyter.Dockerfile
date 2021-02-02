@@ -84,7 +84,7 @@ RUN cat /etc/ssh/sshd_config | grep -v StrictHostKeyChecking > /etc/ssh/sshd_con
 ARG HOROVOD_WITHOUT_PYTORCH=1
 ARG HOROVOD_WITHOUT_MXNET=1
 ARG HOROVOD_WITH_TENSORFLOW=1
-ARG HOROVOD_VERSION=0.21.0
+ARG HOROVOD_VERSION=v0.21.1
 
 RUN yum update -y && yum install -y \
     cmake \
@@ -92,7 +92,7 @@ RUN yum update -y && yum install -y \
     gcc-c++ \
     git \
     make \
-    python36-devel && \
+    ${PYTHON}-devel && \
     yum clean all
 
 RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
@@ -100,9 +100,9 @@ RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVO
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
-RUN python3 -m pip install --no-cache-dir jupyter matplotlib
+RUN ${PYTHON} -m pip install --no-cache-dir jupyter matplotlib
 # Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN python3 -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
+RUN ${PYTHON} -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/ && chmod -R a+rwx /tf/
@@ -110,6 +110,6 @@ RUN mkdir /.local && chmod a+rwx /.local
 WORKDIR /tf
 EXPOSE 8888
 
-RUN python3 -m ipykernel.kernelspec
+RUN ${PYTHON} -m ipykernel.kernelspec
 
 CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/tf --ip 0.0.0.0 --no-browser --allow-root"]

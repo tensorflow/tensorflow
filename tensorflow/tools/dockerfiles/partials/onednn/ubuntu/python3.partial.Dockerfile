@@ -8,11 +8,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
 
 RUN add-apt-repository ppa:deadsnakes/ppa
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends --fix-missing \
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     ${PYTHON}
 
 RUN curl -fSsL https://bootstrap.pypa.io/get-pip.py | ${PYTHON}
+
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
     pip \
     setuptools

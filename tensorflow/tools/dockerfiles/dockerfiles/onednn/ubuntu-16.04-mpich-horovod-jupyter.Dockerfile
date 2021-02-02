@@ -33,11 +33,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
 
 RUN add-apt-repository ppa:deadsnakes/ppa
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends --fix-missing \
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     ${PYTHON}
 
 RUN curl -fSsL https://bootstrap.pypa.io/get-pip.py | ${PYTHON}
+
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
     pip \
     setuptools
@@ -92,7 +92,7 @@ RUN cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_confi
 ARG HOROVOD_WITHOUT_PYTORCH=1
 ARG HOROVOD_WITHOUT_MXNET=1
 ARG HOROVOD_WITH_TENSORFLOW=1
-ARG HOROVOD_VERSION=
+ARG HOROVOD_VERSION=v0.21.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     software-properties-common
@@ -107,19 +107,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     cmake \
     g++-8 \
     gcc-8 \
-    python3-dev
+    git \
+    ${PYTHON}-dev
 
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 500 --slave /usr/bin/g++ g++ /usr/bin/g++-5 && \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8
 
-RUN python3 -m pip install --no-cache-dir horovod${HOROVOD_VERSION:+==${HOROVOD_VERSION}}
+RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
-RUN python3 -m pip install --no-cache-dir jupyter matplotlib
+RUN ${PYTHON} -m pip install --no-cache-dir jupyter matplotlib
 # Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN python3 -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
+RUN ${PYTHON} -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/ && chmod -R a+rwx /tf/
@@ -127,6 +128,6 @@ RUN mkdir /.local && chmod a+rwx /.local
 WORKDIR /tf
 EXPOSE 8888
 
-RUN python3 -m ipykernel.kernelspec
+RUN ${PYTHON} -m ipykernel.kernelspec
 
 CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/tf --ip 0.0.0.0 --no-browser --allow-root"]

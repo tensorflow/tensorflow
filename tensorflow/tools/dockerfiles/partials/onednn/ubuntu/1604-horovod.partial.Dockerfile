@@ -2,7 +2,7 @@
 ARG HOROVOD_WITHOUT_PYTORCH=1
 ARG HOROVOD_WITHOUT_MXNET=1
 ARG HOROVOD_WITH_TENSORFLOW=1
-ARG HOROVOD_VERSION=
+ARG HOROVOD_VERSION=v0.21.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     software-properties-common
@@ -17,9 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     cmake \
     g++-8 \
     gcc-8 \
-    python3-dev
+    git \
+    ${PYTHON}-dev
 
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 500 --slave /usr/bin/g++ g++ /usr/bin/g++-5 && \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8
 
-RUN python3 -m pip install --no-cache-dir horovod${HOROVOD_VERSION:+==${HOROVOD_VERSION}}
+RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
