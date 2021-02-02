@@ -6287,6 +6287,7 @@ filegroup(
         "//tensorflow/core/kernels/image:sample_distorted_bounding_box_op.cc",
         "//tensorflow/core/kernels/linalg:linalg_ops_common.cc",
         "//tensorflow/core/kernels/linalg:cholesky_op.cc",
+        "//tensorflow/core/kernels/linalg:determinant_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_diag_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_inverse_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_set_diag_op.cc",
