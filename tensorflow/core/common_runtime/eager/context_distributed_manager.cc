@@ -677,6 +677,46 @@ Status EagerContextDistributedManager::SetOrUpdateServerDef(
                                     keep_alive_secs);
 }
 
+Status EagerContextDistributedManager::EnableCollectiveOps(
+    const ServerDef& server_def) {
+  // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
+  // server object (which currently CHECK-fails) and we miss the error, instead,
+  // we log the error, and then return to allow the user to see the error
+  // message.
+#define LOG_AND_RETURN_IF_ERROR(...)                    \
+  do {                                                  \
+    const ::tensorflow::Status _status = (__VA_ARGS__); \
+    if (TF_PREDICT_FALSE(!_status.ok())) {              \
+      LOG(ERROR) << _status.error_message();            \
+      return _status;                                   \
+    }                                                   \
+  } while (0);
+
+  tensorflow::GrpcServer* grpc_server =
+      dynamic_cast<tensorflow::GrpcServer*>(context_->GetServer());
+  if (grpc_server == nullptr) {
+    std::unique_ptr<tensorflow::ServerInterface> new_server;
+    LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &new_server));
+    grpc_server = dynamic_cast<tensorflow::GrpcServer*>(new_server.get());
+    if (grpc_server == nullptr) {
+      LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
+          "Currently, TF eager runtime only supports tensorflow::GrpcServer."));
+    }
+    LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+
+    LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
+        std::move(new_server), grpc_server->worker_env()->device_mgr,
+        grpc_server->worker_env()->collective_executor_mgr.get()));
+  } else {
+    LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
+    LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
+        /*new_server=*/nullptr, grpc_server->worker_env()->device_mgr,
+        grpc_server->worker_env()->collective_executor_mgr.get()));
+  }
+#undef LOG_AND_RETURN_IF_ERROR
+  return Status::OK();
+}
+
 Status EagerContextDistributedManager::CheckRemoteAlive(
     const std::string& remote_task_name, bool* is_alive) {
   *is_alive = false;
