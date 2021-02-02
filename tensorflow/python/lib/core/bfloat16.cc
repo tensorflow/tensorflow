@@ -697,15 +697,20 @@ void NPyCast(void* from_void, void* to_void, npy_intp n, void* fromarr,
 }
 
 // Registers a cast between bfloat16 and type 'T'. 'numpy_type' is the NumPy
-// type corresponding to 'T'.
+// type corresponding to 'T'. If 'cast_is_safe', registers that bfloat16 can be
+// safely coerced to T.
 template <typename T>
-bool RegisterBfloat16Cast(int numpy_type) {
-  PyArray_Descr* descr = PyArray_DescrFromType(numpy_type);
-  if (PyArray_RegisterCastFunc(descr, npy_bfloat16, NPyCast<T, bfloat16>) < 0) {
+bool RegisterBfloat16Cast(int numpy_type, bool cast_is_safe) {
+  if (PyArray_RegisterCastFunc(PyArray_DescrFromType(numpy_type), npy_bfloat16,
+                               NPyCast<T, bfloat16>) < 0) {
     return false;
   }
   if (PyArray_RegisterCastFunc(&NPyBfloat16_Descr, numpy_type,
                                NPyCast<bfloat16, T>) < 0) {
+    return false;
+  }
+  if (cast_is_safe && PyArray_RegisterCanCast(&NPyBfloat16_Descr, numpy_type,
+                                              NPY_NOSCALAR) < 0) {
     return false;
   }
   return true;
@@ -1361,90 +1366,63 @@ bool Initialize() {
   }
 
   // Register casts
-  if (!RegisterBfloat16Cast<Eigen::half>(NPY_HALF)) {
+  if (!RegisterBfloat16Cast<Eigen::half>(NPY_HALF, /*cast_is_safe=*/false)) {
     return false;
   }
-
-  if (!RegisterBfloat16Cast<float>(NPY_FLOAT)) {
+  if (!RegisterBfloat16Cast<float>(NPY_FLOAT, /*cast_is_safe=*/true)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<double>(NPY_DOUBLE)) {
+  if (!RegisterBfloat16Cast<double>(NPY_DOUBLE, /*cast_is_safe=*/true)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<bool>(NPY_BOOL)) {
+  if (!RegisterBfloat16Cast<bool>(NPY_BOOL, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<uint8>(NPY_UINT8)) {
+  if (!RegisterBfloat16Cast<uint8>(NPY_UINT8, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<uint16>(NPY_UINT16)) {
+  if (!RegisterBfloat16Cast<uint16>(NPY_UINT16, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<unsigned int>(NPY_UINT)) {
+  if (!RegisterBfloat16Cast<unsigned int>(NPY_UINT, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<unsigned long>(NPY_ULONG)) {  // NOLINT
+  if (!RegisterBfloat16Cast<unsigned long>(NPY_ULONG,  // NOLINT
+                                           /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<unsigned long long>(NPY_ULONGLONG)) {  // NOLINT
+  if (!RegisterBfloat16Cast<unsigned long long>(  // NOLINT
+          NPY_ULONGLONG, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<uint64>(NPY_UINT64)) {
+  if (!RegisterBfloat16Cast<uint64>(NPY_UINT64, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<int8>(NPY_INT8)) {
+  if (!RegisterBfloat16Cast<int8>(NPY_INT8, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<int16>(NPY_INT16)) {
+  if (!RegisterBfloat16Cast<int16>(NPY_INT16, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<int>(NPY_INT)) {
+  if (!RegisterBfloat16Cast<int>(NPY_INT, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<long>(NPY_LONG)) {  // NOLINT
+  if (!RegisterBfloat16Cast<long>(NPY_LONG,  // NOLINT
+                                  /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<long long>(NPY_LONGLONG)) {  // NOLINT
+  if (!RegisterBfloat16Cast<long long>(  // NOLINT
+          NPY_LONGLONG, /*cast_is_safe=*/false)) {
     return false;
   }
   // Following the numpy convention. imag part is dropped when converting to
   // float.
-  if (!RegisterBfloat16Cast<std::complex<float>>(NPY_COMPLEX64)) {
+  if (!RegisterBfloat16Cast<std::complex<float>>(NPY_COMPLEX64,
+                                                 /*cast_is_safe=*/true)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<std::complex<double>>(NPY_COMPLEX128)) {
-    return false;
-  }
-
-  // Safe casts from bfloat16 to other types
-  if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_FLOAT, NPY_NOSCALAR) <
-      0) {
-    return false;
-  }
-  if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_DOUBLE, NPY_NOSCALAR) <
-      0) {
-    return false;
-  }
-  if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_COMPLEX64, NPY_NOSCALAR) <
-      0) {
-    return false;
-  }
-  if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_COMPLEX128,
-                              NPY_NOSCALAR) < 0) {
-    return false;
-  }
-
-  // Safe casts to bfloat16 from other types
-  if (PyArray_RegisterCanCast(PyArray_DescrFromType(NPY_BOOL), npy_bfloat16,
-                              NPY_NOSCALAR) < 0) {
-    return false;
-  }
-  if (PyArray_RegisterCanCast(PyArray_DescrFromType(NPY_UINT8), npy_bfloat16,
-                              NPY_NOSCALAR) < 0) {
-    return false;
-  }
-  if (PyArray_RegisterCanCast(PyArray_DescrFromType(NPY_INT8), npy_bfloat16,
-                              NPY_NOSCALAR) < 0) {
+  if (!RegisterBfloat16Cast<std::complex<double>>(NPY_COMPLEX128,
+                                                  /*cast_is_safe=*/true)) {
     return false;
   }
 
