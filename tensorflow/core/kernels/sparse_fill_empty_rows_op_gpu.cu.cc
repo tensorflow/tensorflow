@@ -427,11 +427,28 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
                                    &input_index_map_t),
             done);
         input_index_map = input_index_map_t.vec<Tindex>().data();
+
+        // Allocate temp storage for sort indices input.
+        Tensor input_indexes_t;
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            context->allocate_temp(index_type, TensorShape({N}),
+                                   &input_indexes_t),
+            done);
+
+        // Allocate temp storage for sorted_row_indices_t.
+        Tensor sorted_row_indices_t;
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            context->allocate_temp(index_type, TensorShape({N}),
+                                   &sorted_row_indices_t),
+            done);
+
         // Sort element indices by row indices.
         OP_REQUIRES_OK_ASYNC(
             context,
-            RadixArgSort(context, row_indices_t, &input_index_map_t,
-                         &row_indices_t, &input_index_map_t),
+            RadixArgSort(context, row_indices_t, &input_indexes_t,
+                         &sorted_row_indices_t, &input_index_map_t),
             done);
       }
 
