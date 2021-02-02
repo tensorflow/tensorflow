@@ -95,7 +95,7 @@ RUN yum update -y && yum install -y \
     python36-devel && \
     yum clean all
 
-RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@v${HOROVOD_VERSION}
+RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
