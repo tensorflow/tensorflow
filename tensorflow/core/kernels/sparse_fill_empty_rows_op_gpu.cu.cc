@@ -372,6 +372,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
          rows_are_not_ordered_host, num_empty_rows_through_t,
          num_empty_rows_through, input_row_ends_t, input_row_ends,
          empty_row_indicator_t, empty_row_indicator, done]() -> void {
+      CHECK(done);  // Crash OK
       Tensor* output_indices_t;
       Tindex num_empty_rows = *num_empty_rows_host.data();
       const Tindex N_full = N + num_empty_rows;
@@ -467,7 +468,6 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
                            empty_row_indicator, output_indices, output_values),
           done);
 
-      CHECK(done);  // Crash OK
       done();
     };
 
