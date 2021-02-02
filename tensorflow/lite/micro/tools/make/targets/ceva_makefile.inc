@@ -2,8 +2,8 @@ TARGET_ARCH :=
 
 ifeq ($(TARGET_ARCH), )
   $(error TARGET_ARCH must be specified on the command line)
-
 endif
+
 # Create a cflag based on the specified TARGET_ARCH. For example:
 #   TARGET_ARCH=CEVA_BX1 --> -DCEVA_BX1
 #   TARGET_ARCH=CEVA_SP500 --> -DCEVA_SP500
@@ -86,4 +86,3 @@ MICROLITE_CC_HDRS += \
 
 MICROLITE_CC_SRCS += \
   tensorflow/lite/micro/kernels/ceva/ceva_common.cc
-
