@@ -620,6 +620,7 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/core:framework",
     ],
 )
@@ -706,6 +707,19 @@ cc_header_only_library(
     ],
     deps = [
         ":tfe_tensorhandle_internal",
+    ],
+)
+
+cc_header_only_library(
+    name = "tfe_cancellationmanager_internal_hdrs_only",
+    extra_deps = [
+        "@com_google_absl//absl/strings",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":tfe_cancellation_manager_internal",
     ],
 )
 

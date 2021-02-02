@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/metal/selectors/subgraph.h"
 
 namespace tflite {
 namespace gpu {

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 #include "tensorflow/lite/delegates/gpu/metal/selectors/operation_selector.h"
-#include "tensorflow/lite/delegates/gpu/metal/selectors/subgraph.h"
 
 namespace tflite {
 namespace gpu {
