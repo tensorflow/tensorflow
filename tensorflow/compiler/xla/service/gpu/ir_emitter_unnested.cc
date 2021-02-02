@@ -176,12 +176,12 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
        llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
 }
 
-bool BinarySearchDenseElementsAttr(::mlir::DenseIntElementsAttr elements,
+bool BinarySearchDenseElementsAttr(mlir::DenseIntElementsAttr elements,
                                    int64 v) {
-  ::mlir::APInt value(sizeof(int64) * 8, v, /*isSigned=*/true);
+  mlir::APInt value(sizeof(int64) * 8, v, /*isSigned=*/true);
   return std::binary_search(
       elements.begin(), elements.end(), value,
-      [](const ::mlir::APInt& x, const ::mlir::APInt& y) { return x.slt(y); });
+      [](const mlir::APInt& x, const mlir::APInt& y) { return x.slt(y); });
 }
 
 // Returns true if the fusion contains any instruction that is likely
@@ -615,7 +615,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
 }
 
 StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSliceForMlir(
-    ::mlir::Value v) {
+    mlir::Value v) {
   return xla::gpu::GetAllocationSliceForMlir(
       v, ir_emitter_context_->allocations());
 }
@@ -807,7 +807,7 @@ Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
 // Output = {static array, dynamic_dim0, dynamic_dim1}
 Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
   // TODO(jurahul): Create an op to represent PadToStatic.
-  auto pad_to_static = ::mlir::cast<::mlir::lmhlo::CustomCallOp>(mlir_input.op);
+  auto pad_to_static = mlir::cast<mlir::lmhlo::CustomCallOp>(mlir_input.op);
   int unroll_factor = 1;
   std::string ir_name = mlir::GetNameFromLoc(pad_to_static.getLoc());
 
@@ -934,8 +934,7 @@ Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
 Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
     MlirEmitterInput mlir_input) {
   // TODO(jurahul): Create an op to represent SliceToDynamic.
-  auto slice_to_dynamic =
-      ::mlir::cast<::mlir::lmhlo::CustomCallOp>(mlir_input.op);
+  auto slice_to_dynamic = mlir::cast<mlir::lmhlo::CustomCallOp>(mlir_input.op);
   int unroll_factor = 1;
   std::string ir_name = mlir::GetNameFromLoc(slice_to_dynamic.getLoc());
 
@@ -1475,7 +1474,7 @@ Status IrEmitterUnnested::EmitBatchNormThunkFromMlir(MlirEmitterInput input) {
 
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitCholeskyThunkFromMlir(MlirEmitterInput input) {
-  auto cholesky_op = ::mlir::cast<mlir::lmhlo_gpu::CholeskyOp>(input.op);
+  auto cholesky_op = mlir::cast<mlir::lmhlo_gpu::CholeskyOp>(input.op);
 
   const Shape shape = TypeToShape(cholesky_op.input().getType());
   int ndim = shape.dimensions_size();
@@ -1524,7 +1523,7 @@ Status IrEmitterUnnested::EmitCholeskyThunkFromMlir(MlirEmitterInput input) {
 #endif  // GOOGLE_CUDA
 
 Status IrEmitterUnnested::EmitCustomCallThunkFromMlir(MlirEmitterInput input) {
-  auto custom_call = ::mlir::cast<mlir::lmhlo::CustomCallOp>(input.op);
+  auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(input.op);
   const std::string call_target_name = custom_call.call_target_name().str();
 
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
@@ -2052,7 +2051,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
 Status IrEmitterUnnested::EmitSelectAndScatterFromMlir(
     MlirEmitterInput mlir_input) {
   auto select_and_scatter_op =
-      ::mlir::cast<::mlir::lmhlo::SelectAndScatterOp>(mlir_input.op);
+      mlir::cast<mlir::lmhlo::SelectAndScatterOp>(mlir_input.op);
 
   std::string name = mlir::GetNameFromLoc(select_and_scatter_op.getLoc());
 
@@ -2138,7 +2137,7 @@ Status IrEmitterUnnested::EmitSelectAndScatterFromMlir(
                                       index_type);
 
     DimensionVector window_size;
-    ::mlir::DenseIntElementsAttr window_dimensions =
+    mlir::DenseIntElementsAttr window_dimensions =
         select_and_scatter_op.window_dimensions().getValue();
     for (const auto& dim : window_dimensions) {
       window_size.push_back(dim.getSExtValue());
@@ -2352,7 +2351,7 @@ Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
 Status IrEmitterUnnested::EmitScatterFromMlir(MlirEmitterInput mlir_input) {
   std::vector<std::unique_ptr<Thunk>> thunks;
 
-  auto scatter_op = ::mlir::cast<::mlir::lmhlo::ScatterOp>(mlir_input.op);
+  auto scatter_op = mlir::cast<mlir::lmhlo::ScatterOp>(mlir_input.op);
 
   TF_ASSIGN_OR_RETURN(auto operand_buffer,
                       GetAllocationSliceForMlir(scatter_op.operand()));
@@ -4510,8 +4509,8 @@ void IrEmitterUnnested::EmitPrintfWithThreadId(
   }
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
   ksl.If(constraint, [&] {
-    ::xla::gpu::EmitPrintf(absl::StrCat("[TID=%d,BID=%d] ", fmt, "\n"),
-                           updated_arguments, &b_);
+    xla::gpu::EmitPrintf(absl::StrCat("[TID=%d,BID=%d] ", fmt, "\n"),
+                         updated_arguments, &b_);
   });
 }
 
