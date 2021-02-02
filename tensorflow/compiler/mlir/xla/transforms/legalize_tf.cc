@@ -70,7 +70,6 @@ namespace mhlo {
 namespace {
 
 constexpr char kShardingAttr[] = "mhlo.sharding";
-constexpr char kLayoutAttr[] = "layout";
 
 class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -4608,9 +4607,6 @@ class ConvertInfeedDequeueTupleOp
     auto data_and_token =
         rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
                                   /*infeed_config=*/rewriter.getStringAttr(""));
-
-    data_and_token->setAttr(kLayoutAttr,
-                            GetLayout(data_and_token_type, rewriter));
 
     if (op._XlaSharding().hasValue()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
