@@ -42,8 +42,25 @@ filegroup(
         "gpu_op_atan.cc",
         "gpu_op_atanh.cc",
         "gpu_op_ceil.cc",
+        "gpu_op_complex.cc",
+        "gpu_op_complex_abs.cc",
+        "gpu_op_conj.cc",
         "gpu_op_cos.cc",
         "gpu_op_cosh.cc",
+        "gpu_op_erf.cc",
+        "gpu_op_erfc.cc",
+        "gpu_op_floor.cc",
+        "gpu_op_imag.cc",
+        "gpu_op_invert.cc",
+        "gpu_op_is_finite.cc",
+        "gpu_op_is_inf.cc",
+        "gpu_op_is_nan.cc",
+        "gpu_op_log.cc",
+        "gpu_op_log1p.cc",
+        "gpu_op_logical_not.cc",
+        "gpu_op_neg.cc",
+        "gpu_op_real.cc",
+        "gpu_op_rsqrt.cc",
         "gpu_op_sqrt.cc",
         "gpu_op_square.cc",
         "gpu_op_tan.cc",
@@ -57,28 +74,13 @@ filegroup(
     srcs = [
         "gpu_op_acos.cc",
         "gpu_op_acosh.cc",
+        "gpu_op_angle.cc",
         "gpu_op_asin.cc",
         "gpu_op_asinh.cc",
-        "gpu_op_complex.cc",
-        "gpu_op_complex_abs.cc",
-        "gpu_op_conj.cc",
-        "gpu_op_erf.cc",
-        "gpu_op_erfc.cc",
+        "gpu_op_digamma.cc",
         "gpu_op_exp.cc",
         "gpu_op_expm1.cc",
-        "gpu_op_floor.cc",
-        "gpu_op_imag.cc",
-        "gpu_op_invert.cc",
-        "gpu_op_is_finite.cc",
-        "gpu_op_is_inf.cc",
-        "gpu_op_is_nan.cc",
         "gpu_op_lgamma.cc",
-        "gpu_op_log.cc",
-        "gpu_op_log1p.cc",
-        "gpu_op_logical_not.cc",
-        "gpu_op_neg.cc",
-        "gpu_op_real.cc",
-        "gpu_op_rsqrt.cc",
         "gpu_op_sign.cc",
         "gpu_op_sin.cc",
         "gpu_op_sinh.cc",
@@ -97,9 +99,9 @@ filegroup(
 )
 
 cc_library(
-    name = "gpu_ops_base",
-    srcs = ["gpu_ops_base.cc"],
-    hdrs = ["gpu_ops_base.h"],
+    name = "base_op",
+    srcs = ["base_op.cc"],
+    hdrs = ["base_op.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface",
@@ -111,6 +113,13 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
     ],
+)
+
+cc_library(
+    name = "base_gpu_op",
+    hdrs = ["base_gpu_op.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [":base_op"],
 )
 
 tf_kernel_library(
@@ -129,6 +138,7 @@ tf_kernel_library(
         ":square_kernels",
         ":acos_kernels",
         ":acosh_kernels",
+        ":angle_kernels",
         ":asin_kernels",
         ":asinh_kernels",
         ":atan_kernels",
@@ -139,6 +149,7 @@ tf_kernel_library(
         ":conj_kernels",
         ":cos_kernels",
         ":cosh_kernels",
+        ":digamma_kernels",
         ":erf_kernels",
         ":erfc_kernels",
         ":exp_kernels",
@@ -162,7 +173,7 @@ tf_kernel_library(
         ":sqrt_kernels",
         ":tan_kernels",
         ":tanh_kernels",
-        ":gpu_ops_base",
+        ":base_gpu_op",
         "//third_party/eigen3",
     ],
 )
@@ -200,13 +211,13 @@ tf_kernel_library(
     deps = [
         ":add_v2_kernels",
         ":atan2_kernels",
+        ":base_gpu_op",
         ":bitwise_and_kernels",
         ":bitwise_or_kernels",
         ":bitwise_xor_kernels",
         ":div_kernels",
         ":equal_kernels",
         ":floor_div_kernels",
-        ":gpu_ops_base",
         ":greater_equal_kernels",
         ":greater_kernels",
         ":left_shift_kernels",
@@ -334,6 +345,7 @@ cc_library(
 #     ],
 # )
 
+# TODO(b/25387198): Add an int32 kernel.
 gen_kernel_library(
     name = "abs",
     tile_size = "256",
@@ -341,7 +353,6 @@ gen_kernel_library(
         "f16",
         "f32",
         "f64",
-        "i32",
         "i64",
     ],
     unroll_factors = "4",
@@ -354,7 +365,6 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -364,7 +374,20 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "angle",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "2",
 )
 
 gen_kernel_library(
@@ -374,7 +397,6 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -384,7 +406,6 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -411,8 +432,8 @@ gen_kernel_library(
     name = "conj",
     tile_size = "256",
     types = [
-        "f32",
-        "f64",
+        "c64",
+        "c128",
     ],
     unroll_factors = "2",
 )
@@ -451,10 +472,14 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "imag",
-    tile_size = "256",
-    types = [
+    output_types = [
         "f32",
         "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
     ],
 )
 
@@ -478,10 +503,14 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "real",
-    tile_size = "256",
-    types = [
+    output_types = [
         "f32",
         "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
     ],
 )
 
@@ -506,7 +535,6 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
 )
 
 [
@@ -519,7 +547,8 @@ gen_kernel_library(
             "f64",
             "i64",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "square",
@@ -531,20 +560,29 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "complex",
+    output_types = [
+        "c64",
+        "c128",
+    ],
     tile_size = "1024",
     types = [
         "f32",
         "f64",
     ],
-    unroll_factors = "2",
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "2",
 )
 
 gen_kernel_library(
     name = "complex_abs",
-    tile_size = "256",
-    types = [
+    output_types = [
         "f32",
         "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
     ],
 )
 
@@ -558,7 +596,8 @@ gen_kernel_library(
         "i16",
         "i64",
     ],
-    unroll_factors = "4",
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -572,7 +611,8 @@ gen_kernel_library(
         "i16",
         "i64",
     ],
-    unroll_factors = "4",
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
 )
 
 # Bitwise operations.
@@ -591,7 +631,8 @@ gen_kernel_library(
             # "ui32",
             # "ui64",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "bitwise_and",
@@ -620,7 +661,8 @@ gen_kernel_library(
         types = [
             "i1",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "logical_and",
@@ -631,6 +673,7 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
+        output_types = ["i1"] * 8,
         tile_size = "1024",
         types = [
             "f16",
@@ -642,7 +685,8 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "equal",
@@ -653,6 +697,7 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
+        output_types = ["i1"] * 7,
         tile_size = "1024",
         types = [
             "f16",
@@ -663,7 +708,8 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "less",
@@ -685,7 +731,8 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        unroll_factors = "4",
+        # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+        # unroll_factors = "4",
     )
     for name in [
         "maximum",
@@ -724,7 +771,8 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
 )
 
 # Kernels that support all floating-point types.
@@ -741,18 +789,36 @@ gen_kernel_library(
     )
     for name in [
         "ceil",
+        "digamma",
         "exp",
         "expm1",
         "floor",
-        "is_finite",
-        "is_inf",
-        "is_nan",
         "lgamma",
         "log",
         "log1p",
         "rsqrt",
         "sqrt",
         "tanh",
+    ]
+]
+
+# Kernels that support all floating-point types but have i1 output.
+[
+    gen_kernel_library(
+        name = name,
+        output_types = ["i1"] * 3,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+        unroll_factors = "4",
+    )
+    for name in [
+        "is_finite",
+        "is_inf",
+        "is_nan",
     ]
 ]
 
@@ -806,5 +872,6 @@ gen_kernel_library(
         "f64",
         "i64",
     ],
-    unroll_factors = "4",
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
 )

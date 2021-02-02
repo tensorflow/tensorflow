@@ -1248,6 +1248,122 @@ TEST(ModelBuilderTest, GetOpsToReplace_AllowQuantOps) {
   TfLiteIntArrayFree(ops_to_replace_without_quant);
 }
 
+class InterpreterDynamicDimensions : public DelegatedInterpreter {
+ public:
+  InterpreterDynamicDimensions() : DelegatedInterpreter(3) {
+    void* builtin_data = malloc(sizeof(int));
+    EXPECT_EQ(interpreter_.AddTensors(5), kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetInputs({0, 2}), kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetOutputs({3, 4}), kTfLiteOk);
+
+    // Add a Dequantize Node with uint8 input.
+    const TfLiteRegistration reg_dequant0 = {/*init=*/nullptr,
+                                             /*free=*/nullptr,
+                                             /*prepare=*/nullptr,
+                                             /*invoke=*/nullptr,
+                                             /*profiling_string=*/nullptr,
+                                             kTfLiteBuiltinDequantize};
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{0}, /*outputs=*/{1}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0, /*builtin_data=*/nullptr,
+                  /*registration=*/&reg_dequant0),
+              kTfLiteOk);
+
+    const TfLiteRegistration reg_add = {
+        [](TfLiteContext* context, const char* buffer, size_t length) {
+          return reinterpret_cast<void*>(new int(1));
+        },
+        [](TfLiteContext* context, void* buffer) {
+          delete reinterpret_cast<int*>(buffer);
+        },
+        nullptr,
+        nullptr,
+        nullptr,
+        kTfLiteBuiltinSub};
+
+    // Add an Add node that contains a dynamic output.
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{1, 2}, /*outputs=*/{3}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0,
+                  /*builtin_data=*/builtin_data,
+                  /*registration=*/&reg_add),
+              kTfLiteOk);
+
+    // Add an Add node that contains a dynamic input.
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{0, 2}, /*outputs=*/{4}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0,
+                  /*builtin_data=*/builtin_data,
+                  /*registration=*/&reg_add),
+              kTfLiteOk);
+
+    const std::vector<int> dims = {1};
+    const std::vector<int> dims_signature = {-1};
+    TfLiteQuantizationParams quantization;
+
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  0, TfLiteType::kTfLiteUInt8, "t0", dims, quantization, false,
+                  &dims_signature),
+              kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  1, TfLiteType::kTfLiteFloat32, "t1", dims, quantization,
+                  false, &dims),
+              kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  2, TfLiteType::kTfLiteFloat32, "t2", dims, quantization,
+                  false, &dims),
+              kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  3, TfLiteType::kTfLiteFloat32, "t3", dims, quantization,
+                  false, &dims_signature),
+              kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  4, TfLiteType::kTfLiteFloat32, "t4", dims, quantization,
+                  false, &dims),
+              kTfLiteOk);
+
+    exec_plan()->data[0] = 0;
+    exec_plan()->data[1] = 1;
+    exec_plan()->data[2] = 2;
+  }
+};
+
+InterpreterDynamicDimensions* interpreter_dynamic_dimensions =
+    new InterpreterDynamicDimensions();
+
+TEST(ModelBuilderTest, GetOpsToReplacePrunesDynamicDimensions) {
+  TfLiteContext* context = interpreter_dynamic_dimensions->context();
+
+  context->GetExecutionPlan = [](struct TfLiteContext* context,
+                                 TfLiteIntArray** execution_plan) {
+    *execution_plan = interpreter_dynamic_dimensions->exec_plan();
+    return kTfLiteOk;
+  };
+  context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
+                                       TfLiteNode** node,
+                                       TfLiteRegistration** registration) {
+    *node = interpreter_dynamic_dimensions->node(node_index);
+    *registration = interpreter_dynamic_dimensions->registration(node_index);
+    return kTfLiteOk;
+  };
+  context->PreviewDelegatePartitioning =
+      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+         TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+        // No selected nodes.
+        EXPECT_EQ(nodes_to_replace->size, 0);
+        *partition_params_array = nullptr;
+        *num_partitions = 0;
+        return kTfLiteOk;
+      };
+
+  TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
+
+  // Reject all the ops since they are based on dynamic dimensions.
+  EXPECT_EQ(ops_to_replace->size, 0);
+
+  TfLiteIntArrayFree(ops_to_replace);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace tflite

@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -82,8 +83,12 @@ bool IsOnLocalHost(llvm::StringRef device) {
 // This structure contains the metadata of the per-host function. All operations
 // in this function should be on the same host.
 struct FunctionMetadata {
-  // The function name.
-  llvm::StringRef func_name;
+  // The original function name before partition.
+  llvm::StringRef original_name;
+  // The insertion point of partition functions.
+  Block::iterator insertion_point;
+  // The partitioned function name.
+  llvm::StringRef partition_name;
   // The input values of the function.
   llvm::SmallVector<Value, 4> inputs;
   // The result values of the function.
@@ -106,6 +111,8 @@ llvm::Optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
   WalkResult result = func_op.getBody().walk([&](Operation *op) {
     std::string op_host = GetHost(op);
     FunctionMetadata &func_metadata = metadatas[op_host];
+    func_metadata.original_name = func_op.getName();
+    func_metadata.insertion_point = ++Block::iterator(func_op);
     func_metadata.ops.push_back(op);
 
     for (Value value : op->getOperands()) {
@@ -188,7 +195,8 @@ void CreateFunctions(ModuleOp module_op,
 
     // Replaces ':' and '/' with '_' in the host name and uses the resulting
     // string as the function name.
-    std::string func_name = host.str();
+    std::string func_name =
+        absl::StrCat(iter.second.original_name.str(), ":", host.str());
     std::replace(func_name.begin(), func_name.end(), ':', '_');
     std::replace(func_name.begin(), func_name.end(), '/', '_');
 
@@ -232,10 +240,10 @@ void CreateFunctions(ModuleOp module_op,
       results_after_mapping.push_back(mapping.lookupOrDefault(result));
     }
     builder.create<ReturnOp>(loc, results_after_mapping);
-    symbol_table.insert(func_op);
+    symbol_table.insert(func_op, metadata.insertion_point++);
     // Record the actual name. The symbol table might rename the FuncOp if there
     // is name collision.
-    metadata.func_name = func_op.getName();
+    metadata.partition_name = func_op.getName();
   }
 }
 
@@ -266,8 +274,9 @@ void CreateRemoteRunCalls(MLIRContext *context,
     }
 
     tf_device::RemoteRunOp remote_run_op =
-        builder.create<tf_device::RemoteRunOp>(
-            loc, result_types, host, metadata.func_name, inputs_after_mapping);
+        builder.create<tf_device::RemoteRunOp>(loc, result_types, host,
+                                               metadata.partition_name,
+                                               inputs_after_mapping);
     // Clones the tf_device.remote_run operation to replace its callee args with
     // the results of the other tf_device.remote_run operations using the
     // `mapping` as appropriate.

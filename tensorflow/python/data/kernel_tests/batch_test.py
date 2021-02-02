@@ -43,9 +43,11 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              count=[0, 28], batch_size=[14, 15], drop_remainder=[True,
-                                                                  False])))
-  def testBasic(self, count, batch_size, drop_remainder):
+              count=[0, 28],
+              batch_size=[14, 15],
+              drop_remainder=[True, False],
+              num_parallel_calls=[None, 1, 2, 4])))
+  def testBasic(self, count, batch_size, drop_remainder, num_parallel_calls):
     """Tests the batch dataset logic for various input configurations.
 
     Args:
@@ -53,6 +55,8 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       batch_size: the batch size
       drop_remainder: whether a smaller batch size should be produced if batch
         size does not divide number of inputs evenly
+      num_parallel_calls: the number batches to process asynchronously in
+        parallel
     """
 
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
@@ -65,7 +69,8 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
     dataset = dataset_ops.Dataset.from_tensor_slices(components).map(
-        _map_fn).repeat(count).batch(batch_size, drop_remainder)
+        _map_fn).repeat(count).batch(batch_size, drop_remainder,
+                                     num_parallel_calls)
     get_next = self.getNext(dataset)
 
     if drop_remainder:

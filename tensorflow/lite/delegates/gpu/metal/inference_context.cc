@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
@@ -33,10 +34,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 #include "tensorflow/lite/delegates/gpu/metal/selectors/operation_selector.h"
-#include "tensorflow/lite/delegates/gpu/metal/selectors/subgraph.h"
 
 namespace tflite {
 namespace gpu {
@@ -240,11 +239,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
       MetalNode metal_node;
-      if (gpu_op.task_desc) {
-        metal_node.task.Init(std::move(gpu_op.task_desc));
-      } else {
-        metal_node.task.Init(std::move(gpu_op.operation));
-      }
+      metal_node.task.Init(std::move(gpu_op.operation));
       metal_node.inputs.resize(gpu_op.input_ids.size());
       for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
         int id = gpu_op.input_ids[j];
@@ -383,7 +378,7 @@ absl::Status InferenceContext::UpdateParams(const GpuInfo& gpu_info) {
     for (const auto& out_id : node.outputs) {
       dst_shapes.push_back(tensor_reserver_.Get(out_id).shape);
     }
-    RETURN_IF_ERROR(node.task.UpdateParams(gpu_info, src_shapes, dst_shapes));
+    RETURN_IF_ERROR(node.task.UpdateParams());
   }
   return absl::OkStatus();
 }

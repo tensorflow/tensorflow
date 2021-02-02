@@ -216,14 +216,8 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
     // If the list is empty, directly create the final result instead of
     // creating the tf.Pack op. tf.Pack op requires at least one operand.
     if (tensors.empty()) {
-      absl::InlinedVector<tensorflow::int64, 4> tf_shape;
-      tf_shape.reserve(result_shape.size());
-      for (int64_t dim : result_shape) {
-        tf_shape.push_back(dim);
-      }
-
       tensorflow::Tensor tensor(list->element_dtype,
-                                tensorflow::TensorShape(tf_shape));
+                                tensorflow::TensorShape(result_shape));
       auto attr_or = tensorflow::ConvertTensor(tensor, &rewriter);
       if (!attr_or.ok()) return failure();
       rewriter.replaceOpWithNewOp<TF::ConstOp>(op, attr_or.ValueOrDie());

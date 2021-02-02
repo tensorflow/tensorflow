@@ -76,7 +76,6 @@ cc_library(
         "@llvm-project//mlir:SCFToGPUPass",
         "@llvm-project//mlir:SCFToStandard",
         "@llvm-project//mlir:SCFTransforms",
-        "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",

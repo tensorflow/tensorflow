@@ -19,19 +19,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-NcclAllToAllConfig GetNcclAllToAllConfig(const HloInstruction* hlo,
-                                         int64 replica_count) {
-  return NcclAllToAllConfig();
-}
-
 NcclAllToAllThunk::NcclAllToAllThunk(
-    ThunkInfo thunk_info, NcclAllToAllConfig config,
+    ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op, int64 replica_count,
     std::vector<NcclAllToAllThunk::Buffer> buffers)
-    : NcclCollectiveThunk(Thunk::kNcclAllToAll, thunk_info),
-      config_(std::move(config)),
-      buffers_(std::move(buffers)) {}
+    : NcclCollectiveThunk(Thunk::kNcclAllToAll, thunk_info), config_{} {}
 
-/* static */ bool NcclAllToAllThunk::CanImplement(const HloInstruction* hlo) {
+/* static */ bool NcclAllToAllThunk::CanImplement(mlir::lmhlo::AllToAllOp op) {
   return false;
 }
 

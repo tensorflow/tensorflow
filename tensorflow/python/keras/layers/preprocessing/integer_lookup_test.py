@@ -347,6 +347,21 @@ class IntegerLookupOutputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_int_output_explicit_vocab_with_special_tokens(self):
+    vocab_data = [0, -1, 42, 1138, 725, 1729]
+    input_array = np.array([[42, 1138, 725, 1729], [1729, 725, 42, 203]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()(
+        vocabulary=vocab_data,
+        max_values=None,
+    )
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
   def test_inverse_output(self):
     vocab_data = [0, -1, 42, 1138, 725, 1729]
     input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 1]])

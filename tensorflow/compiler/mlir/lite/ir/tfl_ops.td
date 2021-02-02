@@ -195,6 +195,10 @@ def TFL_StatefulTensor : TypeAlias<AnyTensor, "stateful tensor">;
 // Rank/Shape helpers.
 //===----------------------------------------------------------------------===//
 
+// Returns true of operand is none type.
+class TFL_OperandIsNoneType<int i> :
+  CPred<"$_op.getOperand(" # i # ").getType().isa<NoneType>()">;
+
 class TFL_OperandIsUnrankedPred<int n> :
   CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">;
 
@@ -256,6 +260,44 @@ class TFL_Operand0DOr1ElementTensor<int x> :
     Or<[TFL_OperandHasKnownRank<x, 0>,
         And<[TFL_OperandHasKnownRank<x, 1>, TFL_OperandDimEquals<x, 0, 1>]>]>>;
 
+// Return true if i-th dim of x-th operand is the same as j-th dim of y-th
+// operand or any of those operands does not have static shape.
+class TFL_OperandsHaveSameDims<int x, int y, int i, int j> :
+    Or<[TFL_OperandIsUnrankedPred<x>,
+        TFL_OperandIsUnrankedPred<y>,
+        CPred<"!$_op.getOperand(" # x #
+          ").getType().cast<ShapedType>().hasStaticShape()">,
+        CPred<"!$_op.getOperand(" # y #
+          ").getType().cast<ShapedType>().hasStaticShape()">,
+        CPred<"$_op.getOperand(" # x #
+          ").getType().cast<ShapedType>().getShape()[" # i # "] == "
+          "$_op.getOperand(" # y #
+          ").getType().cast<ShapedType>().getShape()[" # j # "]">]>;
+
+class TFL_OperandsHaveSameDimsTrait<int x, int y, int i, int j> :
+  PredOpTrait<"dim " # i # " of operand " # x # " equals to dim " # j #
+    " of operand " # y,
+    TFL_OperandsHaveSameDims<x, y, i, j>>;
+
+// Return true if number of elements of x-th operand is the same as j-th dim of
+// y-th operand or any of those operands does not have static shape.
+class TFL_NumElementsEqualsDim<int x, int y, int j> :
+  Or<[TFL_OperandIsUnrankedPred<x>,
+      TFL_OperandIsUnrankedPred<y>,
+      CPred<"!$_op.getOperand(" # x #
+        ").getType().cast<ShapedType>().hasStaticShape()">,
+      CPred<"!$_op.getOperand(" # y #
+        ").getType().cast<ShapedType>().hasStaticShape()">,
+      CPred<"$_op.getOperand(" # x #
+        ").getType().cast<ShapedType>().getNumElements() == "
+        "$_op.getOperand(" # y #
+        ").getType().cast<ShapedType>().getShape()[" # j # "]">]>;
+
+class TFL_NumElementsEqualsDimTrait<int x, int y, int j> :
+  PredOpTrait<"operand " # x # " has num of elements equals to dim " # j #
+    " of operand " # y,
+    TFL_NumElementsEqualsDim<x, y, j>>;
+
 // tf.uint8 and tf.quint8 are mapped to the same tflite types, so they are equal
 // when used as element types.
 class TFL_TFTypesWithSameBits<int i, int j, int num> :
@@ -275,7 +317,7 @@ class TFL_TFOperandTypesWithSameBits<int i, int j, int num> :
 class TFL_OperandIsNoneOrHasRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
     Or<[
-      CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
+      TFL_OperandIsNoneType<n>,
       TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() == " # m>]>>;
@@ -283,7 +325,7 @@ class TFL_OperandIsNoneOrHasRank<int n, int m> :
 class TFL_OperandIsNoneOrHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
     Or<[
-      CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
+      TFL_OperandIsNoneType<n>,
       TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
@@ -4554,6 +4596,90 @@ the dimension is padded with zeros.
   let results = (outs
     TFL_Complex64Tensor:$output
   );
+}
+
+def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {
+  let summary = "Assigns a new value to a variable.";
+
+  let description = [{
+Any ReadVariableOp with a control dependency on this op is guaranteed to return
+this value or a subsequent newer value of the variable.
+  }];
+
+  let arguments = (ins
+    // TODO(b/149099381): Remove integer IDs after adding the new variable
+    // handle type.
+    TFL_TensorOf<[I32]>:$resource_id,
+    // TODO(b/149099381): Support other types too.
+    TFL_TensorOf<[F32]>:$value
+  );
+
+  let results = (outs);
+}
+
+def TFL_ReadVariableOp : TFL_Op<"read_variable", []> {
+  let summary = "Reads variable value.";
+
+  let description = [{
+Read variable data identified by 'resource_id'.
+  }];
+
+  let arguments = (ins
+    // TODO(b/149099381): Remove integer IDs after adding the new variable
+    // handle type.
+    TFL_TensorOf<[I32]>:$resource_id
+  );
+
+  // TODO(b/149099381): Support other types too.
+  let results = (outs TFL_TensorOf<[F32]>:$result);
+}
+
+def TFL_Conv3DOp : TFL_Op<"conv_3d", [
+    NoSideEffect,
+    AccumulatorUniformScale<2, 0, 1>,
+    TFL_OperandHasRank<0, 5>,
+    TFL_OperandHasRank<1, 5>,
+    // Channel dimension in input and filter should match.
+    TFL_OperandsHaveSameDimsTrait<0, 1, 4, 3>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    PredOpTrait<"bias and output must have same element type",
+      Or<[
+        TFL_OperandIsNoneType<2>,
+        TFL_TCresVTEtIsSameAsOp<0, 2>]>>,
+    PredOpTrait<"bias must has num of elements equals to 4th dim of filter",
+      Or<[
+        TFL_OperandIsNoneType<2>,
+        TFL_NumElementsEqualsDim<2, 1, 4>]>>]> {
+  let summary = "Convolution 3D operator";
+
+  let description = [{
+    Performs convolution operation on 3D inputs.
+    Inputs:
+      `inputs[0]`: required: the input activation tensor
+      `inputs[1]`: required: the filter weight tensor
+      `inputs[2]`: optional: the bias tensor
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32]>:$input,
+    TFL_TensorOf<[F32]>:$filter,
+    TFL_TensorOfOrNone<[F32]>:$bias,
+    I32Attr:$dilation_d_factor,
+    I32Attr:$dilation_h_factor,
+    I32Attr:$dilation_w_factor,
+    TFL_AFAttr:$fused_activation_function,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_d,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w
+  );
+
+  let results = (outs TFL_TensorOf<[F32]>:$output);
+
+  let hasOptions = 1;
+
+  let customOption = "Conv3DOptions";
 }
 
 #endif // TFL_OPS

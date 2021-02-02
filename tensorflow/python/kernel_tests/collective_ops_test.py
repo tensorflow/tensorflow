@@ -294,8 +294,32 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(results[3], 7., rtol=1e-5, atol=1e-5)
 
   def testCollectiveGroupSizeOne(self, collective_ops, device, communication):
-    if communication == 'NCCL':
-      self.skipTest('b/170672646: it crashes with NCCL and group size one')
+    dev0 = '/device:%s:0' % device
+
+    group_size = 1
+    group_key = 100
+    in_value = [1., 2., 3., 4.]
+    in_tensor = constant_op.constant(in_value)
+
+    with ops.device(dev0):
+      reduced_tensor = collective_ops.all_reduce(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key=100,
+          communication_hint=communication)
+    self.assertAllEqual(in_value, reduced_tensor.numpy())
+
+    with ops.device(dev0):
+      gathered_tensor = collective_ops.all_gather(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key=200,
+          communication_hint=communication)
+    self.assertAllEqual(in_value, gathered_tensor.numpy())
+
+  def testCollectiveInvalidKey(self, collective_ops, device, communication):
     dev0 = '/device:%s:0' % device
 
     group_size = 1
@@ -313,14 +337,16 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           communication_hint=communication)
     self.assertAllEqual(in_value, reduced_tensor.numpy())
 
-    with ops.device(dev0):
-      gathered_tensor = collective_ops.all_gather(
-          in_tensor,
-          group_size,
-          group_key,
-          instance_key,
-          communication_hint=communication)
-    self.assertAllEqual(in_value, gathered_tensor.numpy())
+    with self.assertRaisesRegex(
+        errors.InternalError, 'instance 100 expected type 0 and data_type 1 but'
+        ' got type 2 and data_type 1'):
+      with ops.device(dev0):
+        collective_ops.all_gather(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
   def testMultipleGroups(self, collective_ops, device, communication):
     if device == 'GPU' and context.num_gpus() < 4:

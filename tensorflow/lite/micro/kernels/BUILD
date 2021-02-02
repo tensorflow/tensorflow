@@ -134,6 +134,7 @@ cc_library(
         "round.cc",
         "shape.cc",
         "softmax_common.cc",
+        "space_to_batch_nd.cc",
         "split.cc",
         "split_v.cc",
         "strided_slice.cc",
@@ -835,6 +836,21 @@ cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "space_to_batch_nd_test",
+    srcs = [
+        "space_to_batch_nd_test.cc",
+    ],
+    deps = [
+        ":conv_test_common",
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

@@ -72,14 +72,18 @@ class MlirOptimizationPassRegistry {
     }
   };
 
-  using Passes = std::multiset<PassRegistration, PriorityComparator>;
+  using Passes = std::set<PassRegistration, PriorityComparator>;
 
   // Returns the global registry of MLIR optimization passes.
   static MlirOptimizationPassRegistry& Global();
 
   // Register optimization `pass` with the given `priority`.
   void Add(int priority, std::unique_ptr<MlirOptimizationPass> pass) {
-    passes_.insert({priority, std::move(pass)});
+    auto inserted = passes_.insert({priority, std::move(pass)});
+    CHECK(inserted.second)
+        << "Pass priority must be unique. "
+        << "Previously registered pass with the same priority: "
+        << inserted.first->pass->name().str();
   }
 
   // Free the memory allocated for all passes.
@@ -162,13 +166,17 @@ class MlirV1CompatOptimizationPassRegistry {
     }
   };
 
-  using Passes = std::multiset<PassRegistration, PriorityComparator>;
+  using Passes = std::set<PassRegistration, PriorityComparator>;
 
   // Returns the global registry of MLIR optimization passes.
   static MlirV1CompatOptimizationPassRegistry& Global();
 
   void Add(int priority, std::unique_ptr<MlirV1CompatOptimizationPass> pass) {
-    passes_.insert({priority, std::move(pass)});
+    auto inserted = passes_.insert({priority, std::move(pass)});
+    CHECK(inserted.second)
+        << "Pass priority must be unique. "
+        << "Previously registered pass with the same priority: "
+        << inserted.first->pass->name().str();
   }
 
   const Passes& passes() const { return passes_; }

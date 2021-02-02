@@ -851,12 +851,19 @@ func @integer_pow(%lhs: tensor<2x2xi32>,
   // CHECK: ^{{[a-z0-9_]*}}
   // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]*]]: i32
   // CHECK-SAME: %[[ARG1:[a-zA-Z0-9_]*]]: i32
-  // CHECK: %[[UPPER:.*]] = index_cast %[[ARG1]]
-  // CHECK: %[[FOR_RESULT:.*]] = scf.for {{.*}} to %[[UPPER]]
-  // CHECK-SAME: step %c1{{[a-zA-Z0-9_]*}}
-  // CHECK-SAME: iter_args(%[[ITER:.*]] = %c1{{.*}}) -> (i32) {
-  //   CHECK: %[[ACCUM:[a-zA-Z0-9_]*]] = muli %[[ARG0]], %[[ITER]]
-  //   CHECK: scf.yield %[[ACCUM]]
+  // CHECK: %[[FOR_RESULT:[a-zA-Z0-9_]*]]:3 = scf.for {{.*}} to %c6 step %c1
+  // CHECK-SAME: iter_args(
+  // CHECK-SAME:   %[[ITER0:.*]] = %c1
+  // CHECK-SAME:   %[[ITER1:.*]] = %[[ARG0]]
+  // CHECK-SAME:   %[[ITER2:.*]] = %[[ARG1]]
+  // CHECK-SAME: ) -> (i32, i32, i32) {
+  //   CHECK: %[[AND:[a-zA-Z0-9_]*]] = and %[[ITER2]], %c1
+  //   CHECK: %[[COND:[a-zA-Z0-9_]*]] = cmpi eq, %[[AND]], %c1
+  //   CHECK: %[[MUL:[a-zA-Z0-9_]*]] = muli %[[ITER0]], %[[ITER1]]
+  //   CHECK: %[[ACCUM:[a-zA-Z0-9_]*]] = select %[[COND]], %[[MUL]], %[[ITER0]]
+  //   CHECK: %[[BASE:[a-zA-Z0-9_]*]] = muli %[[ITER1]], %[[ITER1]]
+  //   CHECK: %[[EXP:[a-zA-Z0-9_]*]] = shift_right_unsigned %[[ITER2]], %c1
+  //   CHECK: scf.yield %[[ACCUM]], %[[BASE]], %[[EXP]]
   // CHECK: %[[RHS_PARITY:.*]] = remi_signed %[[ARG1]], %c2
   // CHECK: %[[RHS_EVEN:.*]] = cmpi eq, %[[RHS_PARITY]], %c0
   // CHECK: %[[RHS_NEG:.*]] = cmpi slt, %[[ARG1]], %c0
@@ -865,7 +872,7 @@ func @integer_pow(%lhs: tensor<2x2xi32>,
   // CHECK: %[[VAL5:.*]] = select %[[LHS_ONE]], %c1_i32, %c0
   // CHECK: %[[VAL6:.*]] = select %[[RHS_EVEN]], %c1{{.*}}, %c-1
   // CHECK: %[[VAL7:.*]] = select %[[LHS_NEG_ONE]], %[[VAL6]], %[[VAL5]]
-  // CHECK: %[[RESULT:.*]] = select %[[RHS_NEG]], %[[VAL7]], %[[FOR_RESULT]]
+  // CHECK: %[[RESULT:.*]] = select %[[RHS_NEG]], %[[VAL7]], %[[FOR_RESULT]]#0
   // CHECK: linalg.yield %[[RESULT]]
   %0 = "mhlo.power"(%lhs, %rhs) : (tensor<2x2xi32>,
                                    tensor<2x2xi32>) -> tensor<2x2xi32>

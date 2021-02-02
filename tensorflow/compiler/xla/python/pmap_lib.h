@@ -70,12 +70,12 @@ struct Chunked {
 };
 
 // `Unstacked` means that the dimension is split into chunks of size 1, and
-// doesn't appear inside the map. `size` is alwyays the dimension size.
+// doesn't appear inside the map. `size` is always the dimension size.
 // For example, a Tensor t of shape [N] will be sharded into N tensors of shape
 // [], when using `Unstacked(N)`.
 struct Unstacked {
  public:
-  explicit Unstacked(int size_) : size(size_) {}
+  explicit Unstacked(int sz) : size(sz) {}
   const int size;
 
   bool operator==(const Unstacked& other) const { return size == other.size; }
@@ -121,7 +121,6 @@ pybind11::tuple CppMeshMappingToPy(std::vector<MeshDimAssignment> mesh_mapping);
 
 // Describes how each axis is sharded (if it is), and how it'smapped to the
 // devices mesh.
-// See `AvalDimSharding` and `MeshDimAssignment`.
 class ShardingSpec {
  public:
   ShardingSpec(std::vector<AvalDimSharding> sharding,

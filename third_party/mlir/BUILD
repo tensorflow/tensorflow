@@ -2081,6 +2081,7 @@ cc_library(
     hdrs = ["include/mlir/Conversion/GPUCommon/GPUCommonPass.h"],
     includes = ["include"],
     deps = [
+        ":AsyncToLLVM",
         ":ConversionPassIncGen",
         ":GPUDialect",
         ":IR",
@@ -3923,25 +3924,17 @@ cc_binary(
     ],
 )
 
-cc_library(
-    name = "tools/libcuda-runtime-wrappers",
+cc_binary(
+    name = "tools/libcuda-runtime-wrappers.so",
     srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
-    compatible_with = ["//buildenv/target:prod"],
+    linkshared = True,
     deps = [
         ":mlir_c_runner_utils",
         "//third_party/gpus/cuda:cuda_headers",
-        "//third_party/gpus/cuda:cuda_runtime",
         "//third_party/gpus/cuda:libcuda",
+        # Note: for headers only, the archive itself should not be linked.
+        # See https://reviews.llvm.org/D95613 for details.
         "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_binary(
-    name = "tools/libcuda-runtime-wrappers.so",
-    linkshared = True,
-    deps = [
-        ":mlir_runner_utils",
-        ":tools/libcuda-runtime-wrappers",
     ],
 )
 
@@ -3975,9 +3968,11 @@ cc_binary(
 cc_binary(
     name = "mlir-cuda-runner",
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
-    data = [":tools/libcuda-runtime-wrappers.so"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
+        ":Async",
+        ":AsyncToLLVM",
+        ":AsyncTransforms",
         ":ExecutionEngineUtils",
         ":GPUDialect",
         ":GPUToGPURuntimeTransforms",
@@ -4003,10 +3998,6 @@ cc_binary(
 cc_binary(
     name = "mlir-vulkan-runner",
     srcs = ["tools/mlir-vulkan-runner/mlir-vulkan-runner.cpp"],
-    data = [
-        ":tools/libvulkan-runtime-wrappers.so",
-        "@llvm-project//mlir/test/mlir-cpu-runner:libmlir_runner_utils.so",
-    ],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
         ":ExecutionEngineUtils",

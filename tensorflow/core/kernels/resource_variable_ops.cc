@@ -396,7 +396,17 @@ class AssignVariableOp : public OpKernel {
                                   return Status::OK();
                                 }));
     mutex_lock ml(*variable->mu());
-    OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
+    // (variable->tensor()->dtype() == DT_INVALID && !variable->is_initialized)
+    // check below is to allow an XLA specific situation wherein update can
+    // happen first by the AssignVariableOp,
+    // in which case the variable is still uninitialized.
+    // When using TF-XLA, this scenario is possible when the execution uses the
+    // 'fallback' path (which essentially invokes Tensorflow ops via
+    // partitioned_call).
+    OP_REQUIRES(context,
+                (variable->tensor()->dtype() == DT_INVALID &&
+                 !variable->is_initialized) ||
+                    variable->tensor()->dtype() == dtype_,
                 errors::InvalidArgument(
                     "Trying to assign variable with wrong dtype. Expected ",
                     DataTypeString(variable->tensor()->dtype()), " got ",

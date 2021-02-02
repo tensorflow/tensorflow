@@ -555,6 +555,15 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
   let hasCanonicalizer = 1;
 }
 
+def HLOClient_DigammaOp : HLOClient_UnaryElementwiseOp<"digamma",
+    [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
+  let summary = "Digamma function";
+
+  let description = [{
+    Returns `Digamma(operand)` element-wise.
+  }];
+}
+
 def HLOClient_ErfOp : HLOClient_UnaryElementwiseOp<"erf",
    [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
   let summary = "Erfc operator";

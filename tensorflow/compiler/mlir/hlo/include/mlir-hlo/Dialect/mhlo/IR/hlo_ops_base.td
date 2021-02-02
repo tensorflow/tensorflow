@@ -637,6 +637,23 @@ class BASE_HLO_ReplicaIdOp {
   }];
 }
 
+class BASE_HLO_PartitionIdOp {
+  string summary = "PartitionId operator";
+
+  string description = [{
+    Returns the unique ID (int32 scalar) of the partition.
+  }];
+}
+
+class BASE_HLO_AllGatherOp {
+  string summary = "AllGather operator";
+
+  string description = [{
+    Performs concatenation across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allgather
+  }];
+}
 
 class BASE_HLO_AllReduceOp {
   string summary = "AllReduce operator";

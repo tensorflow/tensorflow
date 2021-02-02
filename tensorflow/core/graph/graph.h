@@ -537,6 +537,8 @@ class Graph {
   // REQUIRES: node->IsOp()
   void RemoveNode(Node* node);
 
+  void Copy(const Graph& src);
+
   // Adds an edge that connects the xth output of `source` to the yth input of
   // `dest` and returns it. Does not update dest's NodeDef.
   const Edge* AddEdge(Node* source, int x, Node* dest, int y);

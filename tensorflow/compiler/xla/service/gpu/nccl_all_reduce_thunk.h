@@ -35,18 +35,14 @@ struct NcclAllReduceConfig {
 // Thunk that performs a NCCL-based All-Reduce among CUDA GPU-based replicas.
 class NcclAllReduceThunk : public NcclCollectiveThunk {
  public:
-  struct Buffer {
-    int64 element_count;
-    BufferAllocation::Slice source_buffer;
-    BufferAllocation::Slice destination_buffer;
-  };
-
   NcclAllReduceThunk(ThunkInfo thunk_info, mlir::lmhlo::AllReduceOp op,
                      int64 replica_count, std::vector<Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl all-reduce
   // call.
   static bool CanImplement(mlir::lmhlo::AllReduceOp op);
+
+  static const char* GetName() { return "AllReduce"; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
