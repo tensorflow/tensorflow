@@ -12,7 +12,7 @@ $(MAKEFILE_DIR)/downloads/person_model_int8/person_detect_model_data.cc \
 $(MAKEFILE_DIR)/downloads/person_model_int8/person_image_data.cc
 
 PERSON_DETECTION_BENCHMARK_HDRS := \
-tensorflow/lite/micro/examples/person_detection/person_detect_model_data.h \
+tensorflow/lite/micro/examples/person_detection/person_detect_model_data.h 
 
 # Builds a standalone binary.
 $(eval $(call microlite_test,keyword_benchmark,\
