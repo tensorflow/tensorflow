@@ -1528,13 +1528,20 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
 
 void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
                                          OwningRewritePatternList *patterns) {
-  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-                   LowerDynamicStitchOp<DynamicStitchOp>,
-                   LowerDynamicStitchOp<ParallelDynamicStitchOp>,
-                   LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
-                   LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
-                   LowerResizeNearestNeighbor, LowerSparseMatMulOp,
-                   Lower_UnaryOpsComposition>(context);
+  // clang-format off
+  patterns->insert<
+      ConvertFakeQuantWithMinMaxVarsOp,
+      LowerAddNOp,
+      LowerBatchToSpaceND,
+      LowerDynamicStitchOp<DynamicStitchOp>,
+      LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+      LowerInvertPermutationOp,
+      LowerPackOp,
+      LowerResizeNearestNeighbor,
+      LowerSpaceToBatchNDOp,
+      LowerSparseMatMulOp,
+      Lower_UnaryOpsComposition>(context);
+  // clang-format on
 
   // Populate the relevant generated patterns.
   // clang-format off
