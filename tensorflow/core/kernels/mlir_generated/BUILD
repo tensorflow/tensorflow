@@ -99,9 +99,9 @@ filegroup(
 )
 
 cc_library(
-    name = "gpu_ops_base",
-    srcs = ["gpu_ops_base.cc"],
-    hdrs = ["gpu_ops_base.h"],
+    name = "base_op",
+    srcs = ["base_op.cc"],
+    hdrs = ["base_op.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface",
@@ -113,6 +113,13 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
     ],
+)
+
+cc_library(
+    name = "base_gpu_op",
+    hdrs = ["base_gpu_op.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [":base_op"],
 )
 
 tf_kernel_library(
@@ -166,7 +173,7 @@ tf_kernel_library(
         ":sqrt_kernels",
         ":tan_kernels",
         ":tanh_kernels",
-        ":gpu_ops_base",
+        ":base_gpu_op",
         "//third_party/eigen3",
     ],
 )
@@ -204,13 +211,13 @@ tf_kernel_library(
     deps = [
         ":add_v2_kernels",
         ":atan2_kernels",
+        ":base_gpu_op",
         ":bitwise_and_kernels",
         ":bitwise_or_kernels",
         ":bitwise_xor_kernels",
         ":div_kernels",
         ":equal_kernels",
         ":floor_div_kernels",
-        ":gpu_ops_base",
         ":greater_equal_kernels",
         ":greater_kernels",
         ":left_shift_kernels",

@@ -14,15 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_BINARY_KERNEL(Maximum, f16, DT_HALF, Eigen::half);
-GENERATE_AND_REGISTER_BINARY_KERNEL(Maximum, f32, DT_FLOAT, float);
-GENERATE_AND_REGISTER_BINARY_KERNEL(Maximum, f64, DT_DOUBLE, double);
-GENERATE_AND_REGISTER_BINARY_KERNEL(Maximum, i16, DT_INT16, int16);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(Maximum, f16, DT_HALF, Eigen::half);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(Maximum, f32, DT_FLOAT, float);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(Maximum, f64, DT_DOUBLE, double);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(Maximum, i16, DT_INT16, int16);
 // TODO(b/25387198): We cannot use a regular GPU kernel for int32.
-GENERATE_AND_REGISTER_BINARY_KERNEL(Maximum, i64, DT_INT64, int64);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(Maximum, i64, DT_INT64, int64);
 
 }  // namespace tensorflow
