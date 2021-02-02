@@ -35,8 +35,16 @@ const char* TF_StringGetDataPointer(TF_TString* tstr) {
   return TF_TString_GetDataPointer(tstr);
 }
 
+TF_TString_Type TF_StringGetType(const TF_TString *str) {
+  return TF_TString_GetType(str);
+}
+
 size_t TF_StringGetSize(const TF_TString* tstr) {
   return TF_TString_GetSize(tstr);
+}
+
+size_t TF_StringGetCapacity(const TF_TString *str) {
+  return TF_TString_GetCapacity(str);
 }
 
 void TF_StringDealloc(TF_TString* tstr) {

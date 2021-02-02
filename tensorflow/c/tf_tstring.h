@@ -44,7 +44,11 @@ TF_CAPI_EXPORT extern void TF_StringAssignView(TF_TString *dst, const char *src,
 
 TF_CAPI_EXPORT extern const char* TF_StringGetDataPointer(TF_TString* tstr);
 
+TF_CAPI_EXPORT extern TF_TString_Type TF_StringGetType(const TF_TString *str);
+
 TF_CAPI_EXPORT extern size_t TF_StringGetSize(const TF_TString* tstr);
+
+TF_CAPI_EXPORT extern size_t TF_StringGetCapacity(const TF_TString *str);
 
 TF_CAPI_EXPORT extern void TF_StringDealloc(TF_TString* tstr);
 
