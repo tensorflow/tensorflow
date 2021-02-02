@@ -394,6 +394,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -514,6 +515,7 @@ py_library(
     srcs = ["summary_io.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:summary",
         "//tensorflow/python:util",
     ],
 )
@@ -1216,6 +1218,9 @@ cuda_py_tests(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:cross_device_ops",
+        "//tensorflow/python/distribute:distribute_utils",
+        "//tensorflow/python/distribute:mirrored_strategy",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

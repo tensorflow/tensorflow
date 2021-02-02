@@ -70,6 +70,7 @@ namespace mhlo {
 namespace {
 
 constexpr char kShardingAttr[] = "mhlo.sharding";
+constexpr char kLayoutAttr[] = "layout";
 
 class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -4561,6 +4562,31 @@ class ConvertInfeedDequeueTupleOp
  public:
   using OpRewritePattern::OpRewritePattern;
 
+  Attribute GetLayout(const Type &type, PatternRewriter &rewriter) const {
+    auto i64_type = rewriter.getIntegerType(64);
+    if (type.isa<TupleType>()) {
+      TupleType tuple_type = type.dyn_cast<TupleType>();
+      std::vector<mlir::Attribute> v;
+      for (const mlir::Type &t : tuple_type.getTypes()) {
+        v.push_back(GetLayout(t, rewriter));
+      }
+      ArrayRef<Attribute> shape(v);
+      return rewriter.getArrayAttr(shape);
+    } else if (type.isa<RankedTensorType>()) {
+      RankedTensorType t = type.dyn_cast<RankedTensorType>();
+      std::vector<mlir::Attribute> attrs;
+      std::vector<Attribute> elements;
+      // Tuples are always serialized with an ascending layout. See
+      // LiteralLinearizer::LinearizeToBuffers.
+      for (int64_t i = 0; i < t.getRank(); i++) {
+        elements.push_back(rewriter.getIntegerAttr(i64_type, i));
+      }
+      return rewriter.getArrayAttr(elements);
+    } else {
+      return rewriter.getUnitAttr();  // e.g. tokens
+    }
+  }
+
   LogicalResult matchAndRewrite(TF::InfeedDequeueTupleOp op,
                                 PatternRewriter &rewriter) const override {
     std::vector<Type> result_types(op.outputs().size());
@@ -4582,6 +4608,10 @@ class ConvertInfeedDequeueTupleOp
     auto data_and_token =
         rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
                                   /*infeed_config=*/rewriter.getStringAttr(""));
+
+    data_and_token->setAttr(kLayoutAttr,
+                            GetLayout(data_and_token_type, rewriter));
+
     if (op._XlaSharding().hasValue()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
       // proto, so convert to a text form here.

@@ -22,10 +22,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/image/resize_bilinear_op.h"
 
-#ifdef __SSE4_1__
-#include <xmmintrin.h>
-#endif
-
 #include <memory>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -86,21 +82,21 @@ struct CachedInterpolation {
   float lerp;
 };
 
-template <typename Scaler>
-inline void compute_interpolation_weights(const Scaler scaler,
-                                          const int64 out_size,
-                                          const int64 in_size,
+template <bool half_pixel_centers>
+inline void compute_interpolation_weights(const Eigen::Index out_size,
+                                          const Eigen::Index in_size,
                                           const float scale,
                                           CachedInterpolation* interpolation) {
-  interpolation[out_size].lower = 0;
-  interpolation[out_size].upper = 0;
-  for (int64 i = out_size - 1; i >= 0; --i) {
+  typedef typename std::conditional<half_pixel_centers, HalfPixelScaler,
+                                    LegacyScaler>::type Scaler;
+  Scaler scaler;
+  for (Eigen::Index i = 0; i < out_size; ++i) {
     const float in = scaler(i, scale);
     const float in_f = std::floor(in);
     interpolation[i].lower =
-        std::max(static_cast<int64>(in_f), static_cast<int64>(0));
+        std::max(static_cast<Eigen::Index>(in_f), static_cast<Eigen::Index>(0));
     interpolation[i].upper =
-        std::min(static_cast<int64>(std::ceil(in)), in_size - 1);
+        std::min(static_cast<Eigen::Index>(std::ceil(in)), in_size - 1);
     interpolation[i].lerp = in - in_f;
   }
 }
@@ -115,175 +111,6 @@ inline float compute_lerp(const float top_left, const float top_right,
   const float top = top_left + (top_right - top_left) * x_lerp;
   const float bottom = bottom_left + (bottom_right - bottom_left) * x_lerp;
   return top + (bottom - top) * y_lerp;
-}
-
-#ifdef __SSE4_1__
-/* Vector version of the above */
-inline __m128 compute_lerp_v(const __m128 top_left, const __m128 top_right,
-                             const __m128 bottom_left,
-                             const __m128 bottom_right, const __m128 x_lerp,
-                             const __m128 y_lerp) {
-  const __m128 top =
-      _mm_add_ps(top_left, _mm_mul_ps(_mm_sub_ps(top_right, top_left), x_lerp));
-  const __m128 bottom = _mm_add_ps(
-      bottom_left, _mm_mul_ps(_mm_sub_ps(bottom_right, bottom_left), x_lerp));
-  return _mm_add_ps(top, _mm_mul_ps(_mm_sub_ps(bottom, top), y_lerp));
-}
-#endif
-
-template <typename T>
-void ResizeLine3Channels(const T* const ys_input_lower_ptr,
-                         const T* const ys_input_upper_ptr,
-                         const CachedInterpolation* const xs,
-                         const float ys_lerp, const int64 out_width,
-                         float* out_y) {
-  for (int64 x = 0; x < out_width; ++x) {
-    const int64 xs_lower = xs[x].lower;
-    const int64 xs_upper = xs[x].upper;
-    const float xs_lerp = xs[x].lerp;
-
-    // Read channel 0.
-    const float top_left0(ys_input_lower_ptr[xs_lower + 0]);
-    const float top_right0(ys_input_lower_ptr[xs_upper + 0]);
-    const float bottom_left0(ys_input_upper_ptr[xs_lower + 0]);
-    const float bottom_right0(ys_input_upper_ptr[xs_upper + 0]);
-
-    // Read channel 1.
-    const float top_left1(ys_input_lower_ptr[xs_lower + 1]);
-    const float top_right1(ys_input_lower_ptr[xs_upper + 1]);
-    const float bottom_left1(ys_input_upper_ptr[xs_lower + 1]);
-    const float bottom_right1(ys_input_upper_ptr[xs_upper + 1]);
-
-    // Read channel 2.
-    const float top_left2(ys_input_lower_ptr[xs_lower + 2]);
-    const float top_right2(ys_input_lower_ptr[xs_upper + 2]);
-    const float bottom_left2(ys_input_upper_ptr[xs_lower + 2]);
-    const float bottom_right2(ys_input_upper_ptr[xs_upper + 2]);
-
-    // Compute output.
-    out_y[x * 3 + 0] = compute_lerp(top_left0, top_right0, bottom_left0,
-                                    bottom_right0, xs_lerp, ys_lerp);
-    out_y[x * 3 + 1] = compute_lerp(top_left1, top_right1, bottom_left1,
-                                    bottom_right1, xs_lerp, ys_lerp);
-    out_y[x * 3 + 2] = compute_lerp(top_left2, top_right2, bottom_left2,
-                                    bottom_right2, xs_lerp, ys_lerp);
-  }
-}
-
-#ifdef __SSE4_1__
-
-// Load 3 floats from the given buffer, which must be of size at least 4.
-template <typename T>
-inline __m128 load_3xfloat_v(T* values) {
-  return _mm_set_ps(0.0f, static_cast<float>(values[2]),
-                    static_cast<float>(values[1]),
-                    static_cast<float>(values[0]));
-}
-
-// Specialize cases that can be done more efficiently.
-template <>
-inline __m128 load_3xfloat_v(float* values) {
-  return _mm_loadu_ps(values);
-}
-
-template <typename T>
-void ResizeLine3ChannelsVector(const T* const ys_input_lower_ptr,
-                               const T* const ys_input_upper_ptr,
-                               const CachedInterpolation* const xs,
-                               const float ys_lerp, const int64 out_width,
-                               float* out_y) {
-  const __m128 ys_lerp_v = _mm_set1_ps(ys_lerp);
-  // All pixels but the last one can overflow, vectorize the inside of the
-  // row.
-  int64 x = 0;
-  for (x = 0; x < out_width - 1; ++x) {
-    const int64 xs_lower = xs[x].lower;
-    const int64 xs_upper = xs[x].upper;
-    const __m128 xs_lerp_v = _mm_set1_ps(xs[x].lerp);
-
-    const __m128 top_left_v = load_3xfloat_v(ys_input_lower_ptr + xs_lower);
-    const __m128 top_right_v = load_3xfloat_v(ys_input_lower_ptr + xs_upper);
-    const __m128 bottom_left_v = load_3xfloat_v(ys_input_upper_ptr + xs_lower);
-    const __m128 bottom_right_v = load_3xfloat_v(ys_input_upper_ptr + xs_upper);
-
-    _mm_storeu_ps(out_y + x * 3,
-                  compute_lerp_v(top_left_v, top_right_v, bottom_left_v,
-                                 bottom_right_v, xs_lerp_v, ys_lerp_v));
-  }
-  // The last pixel of each row must be done in a non-vectorized way
-  // because we cannot overflow.
-  ResizeLine3Channels(ys_input_lower_ptr, ys_input_upper_ptr,
-                      xs + out_width - 1, ys_lerp, 1,
-                      out_y + (out_width - 1) * 3);
-}
-#endif
-
-template <typename T>
-void resize_image(
-    typename TTypes<T, 4>::ConstTensor images, const int batch_size,
-    const int64 in_height, const int64 in_width, const int64 out_height,
-    const int64 out_width, const int channels,
-    const std::vector<CachedInterpolation>& xs,
-    const std::vector<CachedInterpolation>& ys,
-    typename TTypes<float, 4>::Tensor output) TF_ATTRIBUTE_NOINLINE;
-template <typename T>
-void resize_image(typename TTypes<T, 4>::ConstTensor images,
-                  const int batch_size, const int64 in_height,
-                  const int64 in_width, const int64 out_height,
-                  const int64 out_width, const int channels,
-                  const std::vector<CachedInterpolation>& xs_vec,
-                  const std::vector<CachedInterpolation>& ys,
-                  typename TTypes<float, 4>::Tensor output) {
-  const int64 in_row_size = in_width * channels;
-  const int64 in_batch_num_values = in_height * in_row_size;
-  const int64 out_row_size = out_width * channels;
-
-  const T* input_b_ptr = images.data();
-  const CachedInterpolation* xs = xs_vec.data();
-
-  if (channels == 3) {
-    float* output_y_ptr = output.data();
-    for (int b = 0; b < batch_size; ++b) {
-      for (int64 y = 0; y < out_height; ++y) {
-        const T* ys_input_lower_ptr = input_b_ptr + ys[y].lower * in_row_size;
-        const T* ys_input_upper_ptr = input_b_ptr + ys[y].upper * in_row_size;
-#ifdef __SSE4_1__
-        ResizeLine3ChannelsVector(ys_input_lower_ptr, ys_input_upper_ptr, xs,
-                                  ys[y].lerp, out_width, output_y_ptr);
-#else
-        ResizeLine3Channels(ys_input_lower_ptr, ys_input_upper_ptr, xs,
-                            ys[y].lerp, out_width, output_y_ptr);
-#endif
-        output_y_ptr += out_row_size;
-      }
-      input_b_ptr += in_batch_num_values;
-    }
-  } else {
-    float* output_y_ptr = output.data();
-    for (int b = 0; b < batch_size; ++b) {
-      for (int64 y = 0; y < out_height; ++y) {
-        const T* ys_input_lower_ptr = input_b_ptr + ys[y].lower * in_row_size;
-        const T* ys_input_upper_ptr = input_b_ptr + ys[y].upper * in_row_size;
-        const float ys_lerp = ys[y].lerp;
-        for (int64 x = 0; x < out_width; ++x) {
-          auto xs_lower = xs[x].lower;
-          auto xs_upper = xs[x].upper;
-          auto xs_lerp = xs[x].lerp;
-          for (int c = 0; c < channels; ++c) {
-            const float top_left(ys_input_lower_ptr[xs_lower + c]);
-            const float top_right(ys_input_lower_ptr[xs_upper + c]);
-            const float bottom_left(ys_input_upper_ptr[xs_lower + c]);
-            const float bottom_right(ys_input_upper_ptr[xs_upper + c]);
-            output_y_ptr[x * channels + c] =
-                compute_lerp(top_left, top_right, bottom_left, bottom_right,
-                             xs_lerp, ys_lerp);
-          }
-        }
-        output_y_ptr += out_row_size;
-      }
-      input_b_ptr += in_batch_num_values;
-    }
-  }
 }
 
 // Casts from float16 to T.
@@ -308,6 +135,46 @@ struct CastFloatTo<GPUDevice, T> {
 
 }  // namespace
 
+namespace generator {
+template <typename T, bool half_pixel_centers>
+class ResizeBilinearGenerator {
+ public:
+  EIGEN_ALWAYS_INLINE ResizeBilinearGenerator(
+      typename TTypes<T, 4>::ConstTensor input,
+      const Eigen::Index output_height, const Eigen::Index output_width,
+      const float height_scale, const float width_scale)
+      : input_(input), ys_(output_height), xs_(output_width) {
+    const Eigen::Index input_height = input.dimension(1);
+    const Eigen::Index input_width = input.dimension(2);
+    compute_interpolation_weights<half_pixel_centers>(
+        output_height, input_height, height_scale, ys_.data());
+    compute_interpolation_weights<half_pixel_centers>(output_width, input_width,
+                                                      width_scale, xs_.data());
+  }
+
+  EIGEN_ALWAYS_INLINE float operator()(
+      const Eigen::array<Eigen::Index, 4>& coords) const {
+    const Eigen::Index b = coords[0];
+    const Eigen::Index y = coords[1];
+    const Eigen::Index x = coords[2];
+    const Eigen::Index c = coords[3];
+
+    const float top_left = input_(b, ys_[y].lower, xs_[x].lower, c);
+    const float top_right = input_(b, ys_[y].lower, xs_[x].upper, c);
+    const float bottom_left = input_(b, ys_[y].upper, xs_[x].lower, c);
+    const float bottom_right = input_(b, ys_[y].upper, xs_[x].upper, c);
+    const float ys_lerp = ys_[y].lerp;
+    const float xs_lerp = xs_[x].lerp;
+    return compute_lerp(top_left, top_right, bottom_left, bottom_right, xs_lerp,
+                        ys_lerp);
+  }
+
+ private:
+  typename TTypes<T, 4>::ConstTensor input_;
+  std::vector<CachedInterpolation> ys_, xs_;
+};
+}  // namespace generator
+
 // Partial specialization of ResizeBilinear functor for a CPUDevice.
 namespace functor {
 template <typename T>
@@ -316,44 +183,27 @@ struct ResizeBilinear<CPUDevice, T> {
                   const float height_scale, const float width_scale,
                   bool half_pixel_centers,
                   typename TTypes<float, 4>::Tensor output) {
-    const int batch_size = images.dimension(0);
-    const int64 in_height = images.dimension(1);
-    const int64 in_width = images.dimension(2);
-    const int channels = images.dimension(3);
+    const Eigen::Index input_height = images.dimension(1);
+    const Eigen::Index input_width = images.dimension(2);
 
-    const int64 out_height = output.dimension(1);
-    const int64 out_width = output.dimension(2);
+    const Eigen::Index output_height = output.dimension(1);
+    const Eigen::Index output_width = output.dimension(2);
 
     // Handle no-op resizes efficiently.
-    if (out_height == in_height && out_width == in_width) {
+    if (output_height == input_height && output_width == input_width) {
       output = images.template cast<float>();
       return;
     }
 
-    std::vector<CachedInterpolation> ys(out_height + 1);
-    std::vector<CachedInterpolation> xs(out_width + 1);
-
-    // Compute the cached interpolation weights on the x and y dimensions.
     if (half_pixel_centers) {
-      compute_interpolation_weights(HalfPixelScaler(), out_height, in_height,
-                                    height_scale, ys.data());
-      compute_interpolation_weights(HalfPixelScaler(), out_width, in_width,
-                                    width_scale, xs.data());
-
+      generator::ResizeBilinearGenerator<T, true> generator(
+          images, output_height, output_width, height_scale, width_scale);
+      output.device(d) = output.generate(std::move(generator));
     } else {
-      compute_interpolation_weights(LegacyScaler(), out_height, in_height,
-                                    height_scale, ys.data());
-      compute_interpolation_weights(LegacyScaler(), out_width, in_width,
-                                    width_scale, xs.data());
+      generator::ResizeBilinearGenerator<T, false> generator(
+          images, output_height, output_width, height_scale, width_scale);
+      output.device(d) = output.generate(std::move(generator));
     }
-    // Scale x interpolation weights to avoid a multiplication during iteration.
-    for (int i = 0; i < xs.size(); ++i) {
-      xs[i].lower *= channels;
-      xs[i].upper *= channels;
-    }
-
-    resize_image<T>(images, batch_size, in_height, in_width, out_height,
-                    out_width, channels, xs, ys, output);
   }
 };
 }  // namespace functor

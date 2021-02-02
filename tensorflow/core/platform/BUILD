@@ -634,6 +634,11 @@ cc_library(
 )
 
 cc_library(
+    name = "stack_frame",
+    hdrs = ["stack_frame.h"],
+)
+
+cc_library(
     name = "status",
     srcs = ["status.cc"],
     hdrs = ["status.h"],
@@ -641,6 +646,7 @@ cc_library(
         ":logging",
         ":macros",
         ":mutex",
+        ":stack_frame",
         ":stacktrace",
         ":str_util",
         ":strcat",
@@ -1385,6 +1391,7 @@ filegroup(
         "ram_file_system.h",
         "random.h",
         "resource.h",
+        "stack_frame.h",
         "stacktrace.h",
         "stacktrace_handler.h",
         "status.h",
@@ -1633,6 +1640,7 @@ filegroup(
         "snappy.h",
         "stacktrace.h",
         "status.cc",
+        "stack_frame.h",
         "status.h",
         "str_util.cc",
         "str_util.h",

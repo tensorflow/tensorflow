@@ -414,10 +414,25 @@ TEST_F(XlaBuilderTest, AllToAll) {
   auto root = module->entry_computation()->root_instruction();
 
   // AllToAll is decomposed into slices -> all-to-all -> gte -> concat.
-  EXPECT_EQ(root->opcode(), HloOpcode::kConcatenate);
-  EXPECT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kAllToAll);
+  EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
+  EXPECT_EQ(root->operand(0)->operand(0)->operand(0)->opcode(),
+            HloOpcode::kAllToAll);
   EXPECT_TRUE(
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {8, 8})));
+}
+
+TEST_F(XlaBuilderTest, AllToAllSpecial) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16, 8}), "x");
+  AllToAll(x, /*split_dimension=*/0, /*concat_dimension=*/0,
+           /*split_count=*/2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  // AllToAll is converted into a single all-to-all HloInstruction.
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 16, 8})));
 }
 
 TEST_F(XlaBuilderTest, CollectivePermute) {

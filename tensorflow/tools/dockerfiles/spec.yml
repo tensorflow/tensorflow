@@ -94,6 +94,8 @@ slice_sets:
     ubuntu:
         - add_to_name: ""
           dockerfile_exclusive_name: "cpu"
+          args:
+              - TF_PACKAGE=tensorflow-cpu
           partials:
               - ubuntu/version
               - ubuntu/cpu
@@ -103,7 +105,7 @@ slice_sets:
         - add_to_name: "-gpu"
           dockerfile_exclusive_name: "gpu"
           args:
-              - TF_PACKAGE=tensorflow-gpu
+              - TF_PACKAGE=tensorflow
           partials:
               - ubuntu/version
               - ubuntu/nvidia
@@ -595,7 +597,7 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - ARCH=ppc64le
               - CUDA=10.0
-              - TF_PACKAGE=tensorflow-gpu
+              - TF_PACKAGE=tensorflow
           partials:
               - ubuntu/version
               - ubuntu/nvidia
@@ -649,7 +651,7 @@ slice_sets:
               - tensorflow
               - shell
           args:
-              - TF_PACKAGE=tf-nightly
+              - TF_PACKAGE=tf-nightly-cpu
           tests:
               - import.sh
         - add_to_name: "nightly-gpu"
@@ -663,4 +665,4 @@ slice_sets:
           tests:
               - import-gpu.sh
           args:
-              - TF_PACKAGE=tf-nightly-gpu
+              - TF_PACKAGE=tf-nightly

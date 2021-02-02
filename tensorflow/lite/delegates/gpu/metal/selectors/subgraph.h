@@ -22,14 +22,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
 struct GPUOperationWithRefs {
-  std::unique_ptr<ComputeTaskDescriptor> task_desc = nullptr;
   std::unique_ptr<GPUOperation> operation = nullptr;
 
   // input and output ids can be positive or negative.

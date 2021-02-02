@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
@@ -57,12 +58,12 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
   explicit PjRtStreamExecutorDevice(
       int id, std::unique_ptr<LocalDeviceState> local_device_state,
-      std::string device_kind, int host_id = 0)
+      std::string device_kind, int task_id = 0)
       : id_(id),
         device_ordinal_(
             local_device_state ? local_device_state->device_ordinal() : -1),
         local_device_state_(std::move(local_device_state)),
-        host_id_(host_id),
+        task_id_(task_id),
         device_kind_(std::move(device_kind)) {}
   ~PjRtStreamExecutorDevice() override {}
 
@@ -72,13 +73,13 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
     client_ = client;
   }
 
-  int host_id() const override { return host_id_; }
+  int task_id() const override { return task_id_; }
 
   // Return `platform_id` from client.
   PjRtPlatformId platform_id() const;
 
   // Return `platform_name` from client.
-  const std::string& platform_name() const;
+  absl::string_view platform_name() const;
 
   PjRtClient* client() const override { return client_; }
 
@@ -100,19 +101,19 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   // is not local to this host.
   StatusOr<LocalDeviceState*> GetLocalDeviceState() const;
 
-  const std::string& device_kind() const override { return device_kind_; }
+  absl::string_view device_kind() const override { return device_kind_; }
 
   std::string DebugString() const override;
 
   Status TransferToInfeed(const LiteralSlice& literal) const override;
 
-  StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const override;
+  Status TransferFromOutfeed(MutableBorrowingLiteral literal) const override;
 
  private:
   const int id_;
   const int device_ordinal_;  // -1 means not local.
   const std::unique_ptr<LocalDeviceState> local_device_state_;
-  const int host_id_;
+  const int task_id_;
   const std::string device_kind_;
   PjRtClient* client_ = nullptr;
 };
@@ -123,21 +124,21 @@ class PjRtStreamExecutorClient : public PjRtClient {
   explicit PjRtStreamExecutorClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-      int host_id, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+      int task_id, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   ~PjRtStreamExecutorClient() override = default;
 
-  int host_id() const override { return host_id_; }
+  int task_id() const override { return task_id_; }
 
   int device_count() const override { return devices_.size(); }
   int addressable_device_count() const override {
-    return local_devices_.size();
+    return addressable_devices_.size();
   }
   absl::Span<PjRtDevice* const> devices() const override { return devices_; }
-  absl::Span<PjRtDevice* const> local_devices() const override {
-    return local_devices_;
+  absl::Span<PjRtDevice* const> addressable_devices() const override {
+    return addressable_devices_;
   }
 
   StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
@@ -153,7 +154,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
       int local_hardware_id) const override;
 
   PjRtPlatformId platform_id() const override { return platform_id_; }
-  const std::string& platform_name() const override { return platform_name_; }
+  absl::string_view platform_name() const override { return platform_name_; }
 
   // Most platforms expect device-to-device transfers to be enqueued on the
   // source d2d stream, but some platforms use the destination d2d stream. This
@@ -186,7 +187,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
       HostBufferSemantics host_buffer_semantics,
-      std::shared_ptr<void> buffer_reference, PjRtDevice* device) override;
+      std::function<void()> on_done_with_host_buffer,
+      PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override;
@@ -194,6 +196,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
   void MakeCrossHostReceiveBuffers(
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) override;
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      std::function<void()> on_delete_callback) override;
 
   StatusOr<ChannelHandle> CreateChannelHandle() override {
     return client()->CreateChannelHandle();
@@ -207,7 +213,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-                local_devices_.at(device_ordinal))
+                addressable_devices_.at(device_ordinal))
                 ->local_device_state();
   }
   LocalClient* client() const { return client_; }
@@ -253,8 +259,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // Maps Device::id() to the corresponding Device. Includes all devices.
   std::map<int, PjRtDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
-  std::vector<PjRtDevice*> local_devices_;
-  int host_id_;
+  std::vector<PjRtDevice*> addressable_devices_;
+  int task_id_;
 
   se::DeviceMemoryAllocator* allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
@@ -449,7 +455,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
   };
 
-  PjRtStreamExecutorBuffer(Shape on_host_shape, Shape on_device_shape,
+  PjRtStreamExecutorBuffer(Shape on_device_shape,
                            std::shared_ptr<TrackedDeviceBuffer> device_buffer,
                            PjRtClient* client, PjRtDevice* device);
   ~PjRtStreamExecutorBuffer() override;
@@ -459,41 +465,22 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   PjRtStreamExecutorBuffer& operator=(const PjRtStreamExecutorBuffer&) = delete;
   PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
 
-  const Shape& on_host_shape() const override { return on_host_shape_; }
   const Shape& on_device_shape() const override { return on_device_shape_; }
   PjRtStreamExecutorDevice* device() const override { return device_; }
   PjRtPlatformId platform_id() const { return client_->platform_id(); }
-  const std::string& platform_name() const { return client_->platform_name(); }
+  absl::string_view platform_name() const { return client_->platform_name(); }
   PjRtStreamExecutorClient* client() const override { return client_; }
   bool IsEmptyTuple() const {
-    return on_host_shape_.IsTuple() && on_host_shape_.tuple_shapes_size() == 0;
+    return on_device_shape_.IsTuple() &&
+           on_device_shape_.tuple_shapes_size() == 0;
   }
 
   int64 OnDeviceSizeInBytes() const override;
 
-  // Implement PjRtBuffer::ExternalReferenceHold a wrapped
-  // ScopedHold::kExternalReference.
-  class ScopedHoldAsExternalReference
-      : public PjRtBuffer::ExternalReferenceHold {
-   public:
-    explicit ScopedHoldAsExternalReference(ScopedHold hold)
-        : external_reference_(std::move(hold)) {
-      CHECK(hold.type() == ScopedHold::kExternalReference);
-    }
-
-    ~ScopedHoldAsExternalReference() override = default;
-
-    void* OpaqueDeviceMemoryDataPointer() const override {
-      return external_reference_->device_memory().front().opaque();
-    }
-
-   private:
-    ScopedHold external_reference_;
-  };
-  StatusOr<std::unique_ptr<ExternalReferenceHold>> AcquireExternalReference()
+  StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
-  StatusOr<absl::optional<std::shared_ptr<void>>> ReleaseDeviceMemoryOwnership(
+  StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
       bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteral;
@@ -597,7 +584,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
                      std::shared_ptr<TrackedDeviceBuffer> src_device_buffer);
 
   PjRtStreamExecutorClient* const client_;
-  const Shape on_host_shape_;
   const Shape on_device_shape_;
   PjRtStreamExecutorDevice* const device_;
 
@@ -625,7 +611,7 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
   PjRtStreamExecutorClient* client() const override { return client_; }
 
-  const std::string& name() const override;
+  absl::string_view name() const override;
 
   int num_replicas() const override {
     return executables_[0]->build_options().num_replicas();

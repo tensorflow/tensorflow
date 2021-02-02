@@ -20,9 +20,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_UNARY_KERNEL2(Real, f32, DT_FLOAT, float, std::complex<float>);
-REGISTER_COMPLEX_KERNEL(Real, f32, float, std::complex<float>);
-GENERATE_UNARY_KERNEL2(Real, f64, DT_DOUBLE, double, std::complex<double>);
-REGISTER_COMPLEX_KERNEL(Real, f64, double, std::complex<double>);
+GENERATE_UNARY_KERNEL2(Real, c64, f32, DT_FLOAT, float, std::complex<float>);
+REGISTER_COMPLEX_KERNEL(Real, c64, f32, float, std::complex<float>);
+GENERATE_UNARY_KERNEL2(Real, c128, f64, DT_DOUBLE, double,
+                       std::complex<double>);
+REGISTER_COMPLEX_KERNEL(Real, c128, f64, double, std::complex<double>);
 
 }  // namespace tensorflow

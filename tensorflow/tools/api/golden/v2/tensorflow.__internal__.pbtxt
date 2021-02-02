@@ -56,6 +56,10 @@ tf_module {
     name: "tracking"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "types"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "create_c_op"
     argspec: "args=[\'graph\', \'node_def\', \'inputs\', \'control_inputs\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\'], "
@@ -75,5 +79,9 @@ tf_module {
   member_method {
     name: "is_tfrt_enabled"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "lift_to_graph"
+    argspec: "args=[\'tensors\', \'graph\', \'sources\', \'disallowed_placeholders\', \'add_sources\', \'handle_captures\', \'base_graph\', \'op_map\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'None\', \'None\'], "
   }
 }

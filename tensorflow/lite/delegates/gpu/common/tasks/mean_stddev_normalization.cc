@@ -26,11 +26,11 @@ namespace {
 
 std::string GetVectorReduceCode() {
   return R"(float reduce_vector(float4 v) {
-  return dot(v, (float4)(1.0f));
+  return dot(v, INIT_FLOAT4(1.0f));
 })";
 }
 
-std::string GetReduceCode() {
+std::string GetReduceCode(const GpuInfo& gpu_info, int reduction_size) {
   // If it is supported, use the built-in work_group_reduce_add function.
   // Otherwise, implement a reduction using __local memory.
 
@@ -42,41 +42,46 @@ std::string GetReduceCode() {
   // Threads doing work: id < 2 = floor(5/2)
   // Offset to the added items: 3 = ceil(5/2)
   // Number of items still to be summed after: 3 = ceil(5/2)
-  return R"(
+  std::string result;
+  if (gpu_info.IsApiOpenCl()) {
+    result += R"(
 #if (__OPENCL_C_VERSION__ >= 200) && (__OPENCL_C_VERSION__ < 300) && \
   !defined(__opencl_c_work_group_collective_functions)
   #define __opencl_c_work_group_collective_functions 1
 #endif
-
+)";
+  }
+  result += R"(
 #ifdef __opencl_c_work_group_collective_functions
-#define local_reduce(item, tmp) work_group_reduce_add(item)
+#define local_reduce(item, tmp, local_id) work_group_reduce_add(item)
 #else  // !defined(__opencl_c_work_group_collective_functions)
-float local_reduce(float item, __local float* tmp) {
-  const int local_id = get_local_id(0);
+float local_reduce(float item, __local float* tmp, int local_id) {
   tmp[local_id] = item;
-  barrier(CLK_LOCAL_MEM_FENCE);
+  LOCAL_MEM_BARRIER;
   // The number of items still need to be summed
-  int reduction_size = get_local_size(0);
-  while (reduction_size > 1) {
+)";
+  result += "  int reduction_size = " + std::to_string(reduction_size) + ";\n";
+  result += R"(  while (reduction_size > 1) {
     const int active_thread_limit = reduction_size / 2;
     const int offset = (reduction_size + 1) / 2;
     if (local_id < active_thread_limit) {
       item += tmp[local_id + offset];
       tmp[local_id] = item;
     }
-    barrier(CLK_LOCAL_MEM_FENCE);
+    LOCAL_MEM_BARRIER;
     reduction_size = offset;
   }
   return tmp[0];
 }
 #endif  // defined(__opencl_c_work_group_collective_functions)
 )";
+  return result;
 }
 
 std::string GetFilterCode() {
   return R"(
 float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
-  return select(x, (float4)(0.0f), slice * 4 + (int4)(0, 1, 2, 3) >= num_channels);
+  return select(x, INIT_FLOAT4(0.0f), slice * 4 + INIT_INT4v4(0, 1, 2, 3) >= num_channels);
 }
 )";
 }
@@ -126,13 +131,16 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   if (gpu_info.IsPowerVR()) {
     desired_work_group_size = 64;
   }
+  if (gpu_info.IsApple()) {
+    desired_work_group_size = 64;
+  }
   while (desired_work_group_size >= tensor_slices * 2) {
     desired_work_group_size /= 2;
   }
   work_group_size_.x = desired_work_group_size;
   work_group_size_.y = 1;  // Required
   work_group_size_.z = 1;  // Required
-  code_ = GetNormalizationCode();
+  code_ = GetNormalizationCode(gpu_info);
   if (gpu_info.IsCL30OrHigher()) {
     compiler_options_.push_back(CompilerOptions::kCl30);
   } else if (gpu_info.IsCL20OrHigher()) {
@@ -140,51 +148,56 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   }
 }
 
-std::string MeanStdDevNormalization::GetNormalizationCode() {
+std::string MeanStdDevNormalization::GetNormalizationCode(
+    const GpuInfo& gpu_info) {
   AddSrcTensor("src_tensor", definition_.src_tensors[0]);
   AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
 
   std::string c;
   c += GetVectorReduceCode();
-  c += GetReduceCode();
+  c += GetReduceCode(gpu_info, work_group_size_.x);
   c += GetFilterCode();
-  c += "__attribute__((reqd_work_group_size(" +
-       std::to_string(work_group_size_.x) + ", 1, 1)))\n";
-  c += R"(__kernel void main_function($0) {
+  if (gpu_info.IsApiOpenCl()) {
+    c += "__attribute__((reqd_work_group_size(" +
+         std::to_string(work_group_size_.x) + ", 1, 1)))\n";
+  }
+  if (gpu_info.IsApiMetal()) {
+    c += "#define native_rsqrt(value) rsqrt(value)\n";
+  }
+  c += R"(MAIN_FUNCTION($0) {
 #ifndef __opencl_c_work_group_collective_functions
   __local float tmp[)" +
        std::to_string(work_group_size_.x) + R"(];
 #endif
-  const int B = get_global_id(1);
+  int B = GLOBAL_ID_1;
   // Calculate the total sum of the input tensor.
   // First, get a local sum of input[local_id_x + N*local_size_x] for all N.
-  float4 private_sum4 = (float4)(0.0f);
-  for (int S = get_local_id(0); S < args.src_tensor.Slices(); S += get_local_size(0)) {
-    const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
+  float4 private_sum4 = INIT_FLOAT4(0.0f);
+  for (int S = LOCAL_ID_0; S < args.src_tensor.Slices(); S += GROUP_SIZE_0) {
+    float4 t = args.src_tensor.Read<float>(0, 0, S, B);
     private_sum4 += filter_outside_tensor(t, args.src_tensor.Channels(), S);
   }
   // Reduce the vector to a single float and do a workgroup reduce.
-  const float private_sum = reduce_vector(private_sum4);
-  const float sum = local_reduce(private_sum, tmp);
+  float private_sum = reduce_vector(private_sum4);
+  float sum = local_reduce(private_sum, tmp, LOCAL_ID_0);
   // Calculate the mean
-  const float mean = sum / args.src_tensor.Channels();
+  float mean = sum / args.src_tensor.Channels();
   // Calculate the squared sum of the difference from the mean.
-  float4 private_sum_diff_sq4 = (float4)(0.0f);
-  for (int S = get_local_id(0); S < args.src_tensor.Slices(); S += get_local_size(0)) {
-    const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
-    const float4 diff = filter_outside_tensor(t - mean, args.src_tensor.Channels(), S);
-    // sum_diff_sq += diff²
-    private_sum_diff_sq4 = mad(diff, diff, private_sum_diff_sq4);
+  float4 private_sum_diff_sq4 = INIT_FLOAT4(0.0f);
+  for (int S = LOCAL_ID_0; S < args.src_tensor.Slices(); S += GROUP_SIZE_0) {
+    float4 t = args.src_tensor.Read<float>(0, 0, S, B);
+    float4 diff = filter_outside_tensor(t - mean, args.src_tensor.Channels(), S);
+    private_sum_diff_sq4 += diff * diff;
   }
   // Reduce
-  const float private_sum_diff_sq = reduce_vector(private_sum_diff_sq4);
-  const float sum_diff_sq = local_reduce(private_sum_diff_sq, tmp);
+  float private_sum_diff_sq = reduce_vector(private_sum_diff_sq4);
+  float sum_diff_sq = local_reduce(private_sum_diff_sq, tmp, LOCAL_ID_0);
   // Calculate 1/stddev (with the 'regulazing constant' as in tensor_utils.cc)
-  const float variance = sum_diff_sq / args.src_tensor.Channels();
-  const float stddev_inv = native_rsqrt(variance + 1.0e-8f);
+  float variance = sum_diff_sq / args.src_tensor.Channels();
+  float stddev_inv = native_rsqrt(variance + 1.0e-8f);
   // Calculate (t-mean)/stddev for each element
-  for (int S = get_local_id(0); S < args.src_tensor.Slices(); S += get_local_size(0)) {
-    const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
+  for (int S = LOCAL_ID_0; S < args.src_tensor.Slices(); S += GROUP_SIZE_0) {
+    float4 t = args.src_tensor.Read<float>(0, 0, S, B);
     FLT4 result = TO_FLT4((t - mean) * stddev_inv);
     args.dst_tensor.Write(result, 0, 0, S, B);
   }

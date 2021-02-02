@@ -679,6 +679,44 @@ GENERATE_DEFAULT_TESTS_2(LogicalOr, /*test_name=*/Bool, /*T=*/bool,
                          test::DefaultInput<bool>(), baseline_logical_or,
                          test::GpuOpsTestConfig().ExpectStrictlyEqual().NoT())
 
+/// Test `tf.Maximum`.
+
+template <typename T>
+T baseline_maximum(T lhs, T rhs) {
+  if (std::isnan(lhs) || std::isnan(rhs)) {
+    return lhs + rhs;
+  }
+  return std::max(lhs, rhs);
+}
+
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_maximum)
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Float, float, float,
+                       baseline_maximum)
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Double, double, double,
+                       baseline_maximum)
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Int64, int64, int64,
+                       baseline_maximum)
+
+/// Test `tf.Minmum`.
+
+template <typename T>
+T baseline_minimum(T lhs, T rhs) {
+  if (std::isnan(lhs) || std::isnan(rhs)) {
+    return lhs + rhs;
+  }
+  return std::min(lhs, rhs);
+}
+
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_minimum)
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Float, float, float,
+                       baseline_minimum)
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Double, double, double,
+                       baseline_minimum)
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Int64, int64, int64,
+                       baseline_minimum)
+
 /// Test `tf.Mul`.
 
 template <typename T>
@@ -804,6 +842,22 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     RightShift,
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputLessThanBitwidth<int64>(), baseline_right_shift)
+
+/// Test `tf.SquaredDifference`.
+
+template <typename T>
+T baseline_squared_difference(T lhs, T rhs) {
+  return (lhs - rhs) * (lhs - rhs);
+}
+
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Half, Eigen::half,
+                       Eigen::half, baseline_squared_difference)
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Float, float, float,
+                       baseline_squared_difference)
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Double, double, double,
+                       baseline_squared_difference)
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Int64, int64, int64,
+                       baseline_squared_difference)
 
 /// Test `tf.Sub`.
 

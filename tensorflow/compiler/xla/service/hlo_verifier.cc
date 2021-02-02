@@ -229,7 +229,8 @@ static Status CheckReplicaGroups(HloInstruction* hlo) {
   }
 
   int64 replica_count = hlo->GetModule()->config().replica_count();
-  if (!replicas_seen.empty() && replicas_seen.size() != replica_count) {
+  if (replica_count != 1 && !replicas_seen.empty() &&
+      replicas_seen.size() != replica_count) {
     return InternalError(
         "Replica count in HloModuleConfig is %d, but ReplicaGroup config "
         "contains %d replicas: %s",

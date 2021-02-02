@@ -131,7 +131,11 @@ Reduce::Reduce(const std::map<Axis, int>& axis_to_reduce, OperationType op_type,
       GetMaximumPossibleWGSize(ordered_sizes, max_total_wg_size);
   int current_wg_size_total =
       current_wg_size.x * current_wg_size.y * current_wg_size.z;
-  if (current_wg_size_total < max_total_wg_size / 4) {
+  int threshold = max_total_wg_size / 4;
+  if (gpu_info.IsApple()) {
+    threshold = 16;
+  }
+  if (current_wg_size_total < threshold) {
     use_wg_reduction_ = false;
   } else {
     use_wg_reduction_ = true;

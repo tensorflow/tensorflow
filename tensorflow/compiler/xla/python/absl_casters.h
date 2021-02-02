@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_ABSL_CASTERS_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_ABSL_CASTERS_H_
 
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
@@ -74,6 +75,19 @@ struct type_caster<absl::variant<Ts...>>
     : variant_caster<absl::variant<Ts...>> {};
 
 #endif
+
+// Convert between absl::string_view and python.
+//
+// pybind11 supports std::string_view, and absl::string_view is meant to be a
+// drop-in replacement for std::string_view, so we can just use the built in
+// implementation. This is only needed until absl::string_view becomes an alias
+// for std::string_view.
+#ifndef ABSL_USES_STD_STRING_VIEW
+template <>
+struct type_caster<absl::string_view> : string_caster<absl::string_view, true> {
+};
+#endif
+
 }  // namespace detail
 }  // namespace pybind11
 

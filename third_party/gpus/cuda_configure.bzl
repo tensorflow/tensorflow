@@ -1087,21 +1087,15 @@ def _create_local_cuda_repository(repository_ctx):
 
     # copy files mentioned in third_party/nccl/build_defs.bzl.tpl
     file_ext = ".exe" if is_windows(repository_ctx) else ""
+    bin_files = (
+        ["crt/link.stub"] +
+        [f + file_ext for f in ["bin2c", "fatbinary", "nvlink", "nvprune"]]
+    )
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cuda-bin",
-        srcs = [
-            cuda_config.cuda_toolkit_path + "/bin/" + "crt/link.stub",
-            cuda_config.cuda_toolkit_path + "/bin/" + "nvlink" + file_ext,
-            cuda_config.cuda_toolkit_path + "/bin/" + "fatbinary" + file_ext,
-            cuda_config.cuda_toolkit_path + "/bin/" + "bin2c" + file_ext,
-        ],
-        outs = [
-            "cuda/bin/" + "crt/link.stub",
-            "cuda/bin/" + "nvlink" + file_ext,
-            "cuda/bin/" + "fatbinary" + file_ext,
-            "cuda/bin/" + "bin2c" + file_ext,
-        ],
+        srcs = [cuda_config.cuda_toolkit_path + "/bin/" + f for f in bin_files],
+        outs = ["cuda/bin/" + f for f in bin_files],
     ))
 
     # Select the headers based on the cuDNN version (strip '64_' for Windows).

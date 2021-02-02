@@ -17,7 +17,7 @@ tf_py_test(
     srcs = ["forwardprop_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow:tensorflow_py",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -27,7 +27,7 @@ tf_py_test(
     srcs = ["function_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -36,7 +36,7 @@ tf_py_test(
     srcs = ["gradients_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -45,7 +45,7 @@ cuda_py_test(
     srcs = ["saved_model_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow:tensorflow_py",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -55,7 +55,7 @@ tf_py_test(
     srcs = ["legacy_rnn_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -63,7 +63,7 @@ tf_py_test(
     name = "module_test",
     srcs = ["module_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -72,7 +72,7 @@ tf_py_test(
     srcs = ["vectorized_map_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -81,7 +81,7 @@ cuda_py_test(
     srcs = ["gradient_checkpoint_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -93,7 +93,7 @@ tpu_py_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow:tensorflow_py",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -110,7 +110,7 @@ tf_py_test(
         "notsan",  # TODO(b/156029134)
     ],
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow:tensorflow_py",
         "@absl_py//absl/testing:parameterized",
     ],
 )

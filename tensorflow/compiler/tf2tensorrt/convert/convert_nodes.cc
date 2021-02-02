@@ -4348,8 +4348,11 @@ BinaryOperationMap() {
         {"Mul", nvinfer1::ElementWiseOperation::kPROD},
         {"Sub", nvinfer1::ElementWiseOperation::kSUB},
         {"Div", nvinfer1::ElementWiseOperation::kDIV},
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
-        // This op applies Floor after Div.
+#if IS_TRT_VERSION_GE(6, 0, 1, 0)
+        // Use TensorRT native FloorDiv.
+        {"FloorDiv", nvinfer1::ElementWiseOperation::kFLOOR_DIV},
+#elif IS_TRT_VERSION_GE(5, 1, 0, 0)
+        // Emulate FloorDiv by doing Div then Floor.
         {"FloorDiv", nvinfer1::ElementWiseOperation::kDIV},
 #endif
         {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
@@ -4414,7 +4417,7 @@ Status ConvertBinary(OpConverterParams* params) {
   SetLayerName(layer, node_def);
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
 
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+#if IS_TRT_VERSION_GE(5, 1, 0, 0) and !IS_TRT_VERSION_GE(6, 0, 1, 0)
   if (node_def.op() == "FloorDiv") {
     layer = params->converter->network()->addUnary(
         *trt_tensor, nvinfer1::UnaryOperation::kFLOOR);
@@ -6002,8 +6005,9 @@ Status ConvertResize(OpConverterParams* params) {
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
 
   // Get input tensor. Transpose it from NHWC to NCHW.
-  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-  TFTRT_RETURN_ERROR_IF_NULLPTR(tensor, params->node_def.name());
+  nvinfer1::ITensor* inputs_tensor = inputs.at(0).tensor();
+
+  TFTRT_RETURN_ERROR_IF_NULLPTR(inputs_tensor, params->node_def.name());
 
   // Get output size. It must constain two values i.e. [H_out, W_out]
   TRT_ShapedWeights weights = inputs.at(1).weights();
@@ -6036,27 +6040,35 @@ Status ConvertResize(OpConverterParams* params) {
                                  node_def.name());
   }
 
+  // Validate inputs_tensor.
+  // TODO: Allow dynamic shape for input-1 when shape input tensors are handled.
+  const auto inputs_dims = inputs_tensor->getDimensions();
+  if (!params->use_implicit_batch && !HasStaticShape(inputs_dims)) {
+    return errors::Unimplemented(
+        "TensorRT IResizeLayer requires input with static shape");
+  }
+
   // return after validation if only validation is requested.
   if (params->validation_only) return Status::OK();
 
   // Transpose tensor from NHWC to NCHW format.
   TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-      tensor, {0, 3, 1, 2}, &tensor, node_def, "to_NCHW"));
+      inputs_tensor, {0, 3, 1, 2}, &inputs_tensor, node_def, "to_NCHW"));
 
   // Calculate output dimensions.
   // Given input dimensions [N, C, H, W] and output size [H_out, W_out],
   // output dimensions equals [N, C, H_out, W_out]
   nvinfer1::Dims output_dimensions;
-  output_dimensions.nbDims = tensor->getDimensions().nbDims;
+  output_dimensions.nbDims = inputs_tensor->getDimensions().nbDims;
   for (int i = 0; i < output_dimensions.nbDims; ++i) {
-    output_dimensions.d[i] = tensor->getDimensions().d[i];
+    output_dimensions.d[i] = inputs_tensor->getDimensions().d[i];
   }
   output_dimensions.d[output_dimensions.nbDims - 2] = weights_ptr[0];
   output_dimensions.d[output_dimensions.nbDims - 1] = weights_ptr[1];
 
   // Add resize layer.
   nvinfer1::IResizeLayer* layer =
-      params->converter->network()->addResize(*tensor);
+      params->converter->network()->addResize(*inputs_tensor);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   SetLayerName(layer, node_def);
 

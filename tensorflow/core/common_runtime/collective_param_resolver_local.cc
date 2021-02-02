@@ -558,7 +558,9 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(
 
 CollectiveParamResolverLocal::InstanceRec*
 CollectiveParamResolverLocal::GetOrCreateInstanceRec(const GroupRec* gr,
-                                                     CollectiveParams* cp) {
+                                                     CollectiveParams* cp,
+                                                     bool* created) {
+  *created = false;
   InstanceRec* irec = nullptr;
   {
     mutex_lock l(instance_mu_);
@@ -572,6 +574,7 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(const GroupRec* gr,
     if (irec == nullptr) {
       // Create new InstanceRec.
       irec = new InstanceRec;
+      *created = true;
       {
         mutex_lock il(irec->mu);
         irec->known.resize(cp->group.group_size, false);
@@ -654,7 +657,21 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
     cp->group = gr->group;
   }
 
-  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+  bool created_irec;
+  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp, &created_irec);
+  if (!created_irec) {
+    // Check that the preexisting IRec is consistent with the params passed into
+    // this invocation.
+    if (ir->shared.instance.type != cp->instance.type ||
+        ir->shared.instance.data_type != cp->instance.data_type) {
+      done(errors::Internal("Collective instance ", cp->instance.instance_key,
+                            " expected type ", ir->shared.instance.type,
+                            " and data_type ", ir->shared.instance.data_type,
+                            " but got type ", cp->instance.type,
+                            " and data_type ", cp->instance.data_type));
+      return;
+    }
+  }
   CompleteInstanceFromInitializedIRec(device, gr, cp, ir, is_source, done);
 }
 

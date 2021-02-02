@@ -1,3 +1,4 @@
+# copybara:uncomment(oss-unused) load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
@@ -645,11 +646,18 @@ edgetpu_ops = [
     "transpose_conv",
 ]
 
-[gen_zipped_test_file(
-    name = "zip_%s_edgetpu" % op_name,
-    file = "%s_edgetpu.zip" % op_name,
-    flags = " --make_edgetpu_tests",
-    toco = "//tensorflow/lite/toco:toco",  # Unused
-) for op_name in edgetpu_ops]
-
-edgetpu_targets = [":zip_%s_edgetpu" % op_name for op_name in edgetpu_ops]
+# copybara:uncomment_begin(google-only)
+# [gen_zipped_test_file(
+#     name = "zip_%s_edgetpu" % op_name,
+#     file = "%s_edgetpu.zip" % op_name,
+#     flags = " --make_edgetpu_tests",
+#     toco = "//tensorflow/lite/toco:toco",  # Unused
+# ) for op_name in edgetpu_ops]
+#
+# edgetpu_targets = [":zip_%s_edgetpu" % op_name for op_name in edgetpu_ops]
+#
+# build_test(
+#     name = "gen_edgetpu_tests",
+#     targets = edgetpu_targets,
+# )
+# copybara:uncomment_end

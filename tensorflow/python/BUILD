@@ -58,6 +58,7 @@ visibility = [
     "//third_party/py/tf_slim:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
     "//third_party/py/keras:__subpackages__",
+    "//third_party/py/tensorflow_gnn:__subpackages__",
 ]
 
 package(
@@ -965,6 +966,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":_proto_comparators",
         ":dtypes",
         ":framework_ops",
         ":platform",
@@ -5205,7 +5207,6 @@ pywrap_tensorflow_macro(
         ":bfloat16_lib",
         ":cost_analyzer_lib",
         ":model_analyzer_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/python/util:cpp_python_util",
@@ -6583,6 +6584,21 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_proto_comparators",
+    srcs = ["framework/proto_comparators.cc"],
+    module_name = "_proto_comparators",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
+)
+
 py_library(
     name = "proto_ops",
     srcs = ["ops/proto_ops.py"],
@@ -7000,3 +7016,19 @@ py_library(
     srcs_version = "PY3",
     deps = ["//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "protos_all_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":protos_all"],
+# )
+#
+# py_proto_library(
+#     name = "cpp_shape_inference_proto_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":cpp_shape_inference_proto"],
+# )
+# copybara:uncomment_end

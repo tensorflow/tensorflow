@@ -187,5 +187,41 @@ build_test(
 )
 
 #------------------------------------------------------------------------------
+# Testing infrastructure
+
+cc_library(
+    name = "c_shims_test_util",
+    testonly = True,
+    srcs = ["c/shims_test_util.cc"],
+    hdrs = ["c/shims_test_util.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+)
+
+cc_library(
+    name = "cc_shims_test_util",
+    testonly = True,
+    hdrs = ["cc/shims_test_util.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        ":c_shims_test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+build_test(
+    name = "shims_test_util_build_test",
+    targets = [
+        ":c_shims_test_util",
+        ":cc_shims_test_util",
+    ],
+)
+
+#------------------------------------------------------------------------------
 
 tflite_portable_test_suite()

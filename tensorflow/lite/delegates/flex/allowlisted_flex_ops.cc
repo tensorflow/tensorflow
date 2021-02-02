@@ -23,6 +23,7 @@ namespace tflite {
 namespace flex {
 
 const std::set<std::string>& GetFlexAllowlist() {
+  // LINT.IfChange
   static const std::set<std::string>* allowlisted_flex_ops =
       new std::set<std::string>({
           // go/keep-sorted start
@@ -36,6 +37,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "AdjustHue",
           "AdjustSaturation",
           "All",
+          "Angle",
           "Any",
           "ApplyAdaMax",
           "ApplyAdadelta",
@@ -704,6 +706,8 @@ const std::set<std::string>& GetFlexAllowlist() {
           "_VarHandlesOp",
           // go/keep-sorted end
       });
+  // LINT.ThenChange(//tensorflow/lite/g3doc/guide/op_select_allowlist.md)
+
   return *allowlisted_flex_ops;
   // Prevent lint error about this function being too long. This function
   // is a set of ops, and making it shorter won't help readbility.
@@ -712,6 +716,7 @@ const std::set<std::string>& GetFlexAllowlist() {
 
 // Allow the tf.text ops if they are registered in the global op registry.
 bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
+  // LINT.IfChange
   static const std::set<std::string>* tftext_flex_ops =
       new std::set<std::string>({
           "CaseFoldUTF8",
@@ -732,12 +737,15 @@ bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
           "WhitespaceTokenizeWithOffsets",
           "WordpieceTokenizeWithOffsets",
       });
+  // LINT.ThenChange(//tensorflow/lite/g3doc/guide/op_select_allowlist.md)
+
   if (tftext_flex_ops->count(op_name) == 0) return false;
   return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
 }
 
 // Allow the sentencepiece ops if they are registered in the global op registry.
 bool IsAllowedSentencePieceOpForFlex(const std::string& op_name) {
+  // LINT.IfChange
   static const std::set<std::string>* sentencepiece_flex_ops =
       new std::set<std::string>({
           "SentencepieceGetPieceSize",
@@ -747,6 +755,8 @@ bool IsAllowedSentencePieceOpForFlex(const std::string& op_name) {
           "SentencepieceEncodeSparse",
           "SentencepieceDecode",
       });
+  // LINT.ThenChange(//tensorflow/lite/g3doc/guide/op_select_allowlist.md)
+
   if (sentencepiece_flex_ops->count(op_name) == 0) return false;
   return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
 }

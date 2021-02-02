@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -199,67 +199,9 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       // respective slice locations. This would require a different GetNext()
       // overload that supports zero-copy, and might make sense in an
       // optimization pass.
-      const size_t num_tuple_components = batch_elements[0].size();
-      out_tensors->reserve(num_tuple_components);
-      const int64 num_batch_elements = batch_elements.size();
-      for (size_t component_index = 0; component_index < num_tuple_components;
-           ++component_index) {
-        const Tensor& first_element = batch_elements[0][component_index];
-        TensorShape batch_component_shape({num_batch_elements});
-        // NOTE(mrry): Copy the shape of the first element here, because
-        // `first_element.shape()` will become undefined after the 0th batch
-        // element is moved into the output batch.
-        TensorShape first_element_shape(first_element.shape());
-        batch_component_shape.AppendShape(first_element_shape);
-        out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
-                                  batch_component_shape);
-        if (!out_tensors->back().IsInitialized()) {
-          return errors::ResourceExhausted(
-              "Failed to allocate memory for the batch of component ",
-              component_index);
-        }
-        Tensor& batch_component = out_tensors->back();
-        // Build the output tuple component by copying one slice
-        // from each input element in the batch.
-        auto copy_element_fn = [component_index, &batch_elements,
-                                &batch_component](int index) {
-          TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
-              std::move(batch_elements[index][component_index]),
-              &batch_component, index));
-          return Status::OK();
-        };
-        BlockingCounter counter(num_batch_elements);
-        Status status;
-        mutex status_mu;
-        for (size_t i = 0; i < num_batch_elements; ++i) {
-          if (batch_elements[i][component_index].shape() !=
-              first_element_shape) {
-            return errors::InvalidArgument(
-                "Cannot batch tensors with different shapes in "
-                "component ",
-                component_index, ". First element had shape ",
-                first_element_shape.DebugString(), " and element ", i,
-                " had shape ",
-                batch_elements[i][component_index].shape().DebugString(), ".");
-          }
-          if (TF_PREDICT_FALSE(dataset()->parallel_copy_)) {
-            (*ctx->runner())(
-                [i, &status, &status_mu, &counter, &copy_element_fn]() {
-                  Status s = copy_element_fn(i);
-                  {
-                    mutex_lock l(status_mu);
-                    status.Update(s);
-                  }
-                  counter.DecrementCount();
-                });
-          } else {
-            status.Update(copy_element_fn(i));
-            counter.DecrementCount();
-          }
-        }
-        counter.Wait();
-        TF_RETURN_IF_ERROR(status);
-      }
+      TF_RETURN_IF_ERROR(CopyBatch(/*parallel_copy=*/dataset()->parallel_copy_,
+                                   ctx, out_tensors, &batch_elements));
+
       *end_of_sequence = false;
       return Status::OK();
     }

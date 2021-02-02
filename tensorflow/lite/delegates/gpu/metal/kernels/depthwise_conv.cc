@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -87,65 +87,65 @@ kernel void ComputeFunction($0
   FLT4 s2 = src_loc[args.src_tensor.GetWHOffset(x0, y2)] * FLT(!(x0_out || y2_out));
   FLT4 s3 = src_loc[args.src_tensor.GetWHOffset(x0, y3)] * FLT(!(x0_out || y3_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[0]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[1]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[2]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[0]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[1]);
-  l0 += TO_ACCUM4_TYPE(s3 * filters_loc[2]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[0]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[1]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[2]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[0]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[1]);
+  l0 += TO_ACCUM_TYPE(s3 * filters_loc[2]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x1, y0)] * FLT(!(x1_out || y0_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x1, y1)] * FLT(!(x1_out || y1_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x1, y2)] * FLT(!(x1_out || y2_out));
   s3 = src_loc[args.src_tensor.GetWHOffset(x1, y3)] * FLT(!(x1_out || y3_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[3]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[4]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[5]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[3]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[4]);
-  l0 += TO_ACCUM4_TYPE(s3 * filters_loc[5]);
-  t0 += TO_ACCUM4_TYPE(s0 * filters_loc[0]);
-  t0 += TO_ACCUM4_TYPE(s1 * filters_loc[1]);
-  t0 += TO_ACCUM4_TYPE(s2 * filters_loc[2]);
-  b0 += TO_ACCUM4_TYPE(s1 * filters_loc[0]);
-  b0 += TO_ACCUM4_TYPE(s2 * filters_loc[1]);
-  b0 += TO_ACCUM4_TYPE(s3 * filters_loc[2]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[3]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[4]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[5]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[3]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[4]);
+  l0 += TO_ACCUM_TYPE(s3 * filters_loc[5]);
+  t0 += TO_ACCUM_TYPE(s0 * filters_loc[0]);
+  t0 += TO_ACCUM_TYPE(s1 * filters_loc[1]);
+  t0 += TO_ACCUM_TYPE(s2 * filters_loc[2]);
+  b0 += TO_ACCUM_TYPE(s1 * filters_loc[0]);
+  b0 += TO_ACCUM_TYPE(s2 * filters_loc[1]);
+  b0 += TO_ACCUM_TYPE(s3 * filters_loc[2]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x2, y0)] * FLT(!(x2_out || y0_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x2, y1)] * FLT(!(x2_out || y1_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x2, y2)] * FLT(!(x2_out || y2_out));
   s3 = src_loc[args.src_tensor.GetWHOffset(x2, y3)] * FLT(!(x2_out || y3_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[6]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[7]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[8]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[6]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[7]);
-  l0 += TO_ACCUM4_TYPE(s3 * filters_loc[8]);
-  t0 += TO_ACCUM4_TYPE(s0 * filters_loc[3]);
-  t0 += TO_ACCUM4_TYPE(s1 * filters_loc[4]);
-  t0 += TO_ACCUM4_TYPE(s2 * filters_loc[5]);
-  b0 += TO_ACCUM4_TYPE(s1 * filters_loc[3]);
-  b0 += TO_ACCUM4_TYPE(s2 * filters_loc[4]);
-  b0 += TO_ACCUM4_TYPE(s3 * filters_loc[5]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[6]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[7]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[8]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[6]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[7]);
+  l0 += TO_ACCUM_TYPE(s3 * filters_loc[8]);
+  t0 += TO_ACCUM_TYPE(s0 * filters_loc[3]);
+  t0 += TO_ACCUM_TYPE(s1 * filters_loc[4]);
+  t0 += TO_ACCUM_TYPE(s2 * filters_loc[5]);
+  b0 += TO_ACCUM_TYPE(s1 * filters_loc[3]);
+  b0 += TO_ACCUM_TYPE(s2 * filters_loc[4]);
+  b0 += TO_ACCUM_TYPE(s3 * filters_loc[5]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x3, y0)] * FLT(!(x3_out || y0_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x3, y1)] * FLT(!(x3_out || y1_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x3, y2)] * FLT(!(x3_out || y2_out));
   s3 = src_loc[args.src_tensor.GetWHOffset(x3, y3)] * FLT(!(x3_out || y3_out));
 
-  t0 += TO_ACCUM4_TYPE(s0 * filters_loc[6]);
-  t0 += TO_ACCUM4_TYPE(s1 * filters_loc[7]);
-  t0 += TO_ACCUM4_TYPE(s2 * filters_loc[8]);
-  b0 += TO_ACCUM4_TYPE(s1 * filters_loc[6]);
-  b0 += TO_ACCUM4_TYPE(s2 * filters_loc[7]);
-  b0 += TO_ACCUM4_TYPE(s3 * filters_loc[8]);
+  t0 += TO_ACCUM_TYPE(s0 * filters_loc[6]);
+  t0 += TO_ACCUM_TYPE(s1 * filters_loc[7]);
+  t0 += TO_ACCUM_TYPE(s2 * filters_loc[8]);
+  b0 += TO_ACCUM_TYPE(s1 * filters_loc[6]);
+  b0 += TO_ACCUM_TYPE(s2 * filters_loc[7]);
+  b0 += TO_ACCUM_TYPE(s3 * filters_loc[8]);
 
-  r0 += TO_ACCUM4_TYPE(filters_loc[9]);
-  l0 += TO_ACCUM4_TYPE(filters_loc[9]);
-  t0 += TO_ACCUM4_TYPE(filters_loc[9]);
-  b0 += TO_ACCUM4_TYPE(filters_loc[9]);
+  r0 += TO_ACCUM_TYPE(filters_loc[9]);
+  l0 += TO_ACCUM_TYPE(filters_loc[9]);
+  t0 += TO_ACCUM_TYPE(filters_loc[9]);
+  b0 += TO_ACCUM_TYPE(filters_loc[9]);
 
   bool x0_in = gid_x < args.dst_tensor.Width();
   bool x1_in = gid_x + 1 < args.dst_tensor.Width();
@@ -263,47 +263,47 @@ kernel void ComputeFunction($0
   FLT4 s1 = src_loc[args.src_tensor.GetWHOffset(x1, y0)] * FLT(!(x1_out || y0_out));
   FLT4 s2 = src_loc[args.src_tensor.GetWHOffset(x2, y0)] * FLT(!(x2_out || y0_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[0]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[1]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[2]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[0]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[1]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[2]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x0, y1)] * FLT(!(x0_out || y1_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x1, y1)] * FLT(!(x1_out || y1_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x2, y1)] * FLT(!(x2_out || y1_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[3]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[4]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[5]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[3]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[4]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[5]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x0, y2)] * FLT(!(x0_out || y2_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x1, y2)] * FLT(!(x1_out || y2_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x2, y2)] * FLT(!(x2_out || y2_out));
 
-  r0 += TO_ACCUM4_TYPE(s0 * filters_loc[6]);
-  r0 += TO_ACCUM4_TYPE(s1 * filters_loc[7]);
-  r0 += TO_ACCUM4_TYPE(s2 * filters_loc[8]);
-  l0 += TO_ACCUM4_TYPE(s0 * filters_loc[0]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[1]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[2]);
+  r0 += TO_ACCUM_TYPE(s0 * filters_loc[6]);
+  r0 += TO_ACCUM_TYPE(s1 * filters_loc[7]);
+  r0 += TO_ACCUM_TYPE(s2 * filters_loc[8]);
+  l0 += TO_ACCUM_TYPE(s0 * filters_loc[0]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[1]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[2]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x0, y3)] * FLT(!(x0_out || y3_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x1, y3)] * FLT(!(x1_out || y3_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x2, y3)] * FLT(!(x2_out || y3_out));
 
-  l0 += TO_ACCUM4_TYPE(s0 * filters_loc[3]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[4]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[5]);
+  l0 += TO_ACCUM_TYPE(s0 * filters_loc[3]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[4]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[5]);
 
   s0 = src_loc[args.src_tensor.GetWHOffset(x0, y4)] * FLT(!(x0_out || y4_out));
   s1 = src_loc[args.src_tensor.GetWHOffset(x1, y4)] * FLT(!(x1_out || y4_out));
   s2 = src_loc[args.src_tensor.GetWHOffset(x2, y4)] * FLT(!(x2_out || y4_out));
 
-  l0 += TO_ACCUM4_TYPE(s0 * filters_loc[6]);
-  l0 += TO_ACCUM4_TYPE(s1 * filters_loc[7]);
-  l0 += TO_ACCUM4_TYPE(s2 * filters_loc[8]);
+  l0 += TO_ACCUM_TYPE(s0 * filters_loc[6]);
+  l0 += TO_ACCUM_TYPE(s1 * filters_loc[7]);
+  l0 += TO_ACCUM_TYPE(s2 * filters_loc[8]);
 
-  r0 += TO_ACCUM4_TYPE(filters_loc[9]);
-  l0 += TO_ACCUM4_TYPE(filters_loc[9]);
+  r0 += TO_ACCUM_TYPE(filters_loc[9]);
+  l0 += TO_ACCUM_TYPE(filters_loc[9]);
 
   bool y0_in = gid_y < args.dst_tensor.Height();
   bool y1_in = gid_y + 1 < args.dst_tensor.Height();
@@ -363,7 +363,11 @@ std::vector<float> ReorderWeightsDepthWiseConv3x3Stride2(
 
 }  // namespace
 
-ComputeTaskDescriptor DepthWiseConvolution(
+int3 DepthWiseConvolution::GetGridSize() const {
+  return int3(dst_[0]->Width(), dst_[0]->Height(), dst_[0]->Slices());
+}
+
+DepthWiseConvolution CreateDepthWiseConvolution(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
   int channels_multiplier = attr.weights.shape.o;
@@ -422,27 +426,27 @@ kernel void ComputeFunction($0
 )";
   }
   shader_source += R"(
-      sum0 += TO_ACCUM4_TYPE(src_modified * temp[ky * args.kernel_size_x + kx]);
+      sum0 += TO_ACCUM_TYPE(src_modified * temp[ky * args.kernel_size_x + kx]);
     }
   }
   FLT4 res = FLT4(sum0) + args.biases.Read(dst_z);
   args.dst_tensor.Write(res, dst_x, dst_y, dst_z);
 }
 )";
-  ComputeTaskDescriptor desc(definition);
-  desc.shader_source = shader_source;
+  DepthWiseConvolution desc(definition);
+  desc.code_ = shader_source;
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.args.AddInt("padding_x", -attr.padding.prepended.w);
-  desc.args.AddInt("padding_y", -attr.padding.prepended.h);
-  desc.args.AddInt("dilation_x", attr.dilations.w);
-  desc.args.AddInt("dilation_y", attr.dilations.h);
-  desc.args.AddInt("stride_x", attr.strides.w);
-  desc.args.AddInt("stride_y", attr.strides.h);
-  desc.args.AddInt("kernel_size_x", attr.weights.shape.w);
-  desc.args.AddInt("kernel_size_y", attr.weights.shape.h);
-  desc.args.AddInt("channel_multiplier", attr.weights.shape.o);
+  desc.args_.AddInt("padding_x", -attr.padding.prepended.w);
+  desc.args_.AddInt("padding_y", -attr.padding.prepended.h);
+  desc.args_.AddInt("dilation_x", attr.dilations.w);
+  desc.args_.AddInt("dilation_y", attr.dilations.h);
+  desc.args_.AddInt("stride_x", attr.strides.w);
+  desc.args_.AddInt("stride_y", attr.strides.h);
+  desc.args_.AddInt("kernel_size_x", attr.weights.shape.w);
+  desc.args_.AddInt("kernel_size_y", attr.weights.shape.h);
+  desc.args_.AddInt("channel_multiplier", attr.weights.shape.o);
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   const int output_channels_count = attr.weights.shape.i * attr.weights.shape.o;
@@ -453,7 +457,7 @@ kernel void ComputeFunction($0
   weights_desc.data =
       GetByteBufferConverted(ConvertToPIOHW4(attr.weights), data_type);
   weights_desc.size = weights_desc.data.size();
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
   BufferDescriptor bias_desc;
@@ -462,31 +466,43 @@ kernel void ComputeFunction($0
   bias_desc.data =
       GetByteBufferConvertedResized(attr.bias.data, data_type, dst_ch_aligned);
   bias_desc.size = bias_desc.data.size();
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
-  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
-                            const std::vector<BHWC>& dst_shapes) {
-    uint3 groups_size{8, 4, 1};
-    uint3 groups_count{DivideRoundUp(dst_shapes[0].w, groups_size.x),
-                       DivideRoundUp(dst_shapes[0].h, groups_size.y),
-                       DivideRoundUp(dst_shapes[0].c, 4)};
-    return std::make_pair(groups_size, groups_count);
-  };
+  desc.work_group_size_ = int3(8, 4, 1);
 
   return desc;
 }
 
-ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
+void DepthWiseConv3x3Stride1x1::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const GpuInfo& gpu_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  const int grid_x = DivideRoundUp(dst_[0]->Width(), 2);
+  const int grid_z = dst_[0]->Slices();
+  int3 group_size{8, 4, 1};
+  if (grid_x <= 4) {
+    group_size.x = 4;
+    group_size.z = grid_z % 2 == 0 ? 2 : 1;
+  }
+  work_groups->push_back(group_size);
+}
+int3 DepthWiseConv3x3Stride1x1::GetGridSize() const {
+  const int grid_x = DivideRoundUp(dst_[0]->Width(), 2);
+  const int grid_y = DivideRoundUp(dst_[0]->Height(), 2);
+  const int grid_z = dst_[0]->Slices();
+  return int3(grid_x, grid_y, grid_z);
+}
+
+DepthWiseConv3x3Stride1x1 CreateDepthWiseConv3x3Stride1x1(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
-  ComputeTaskDescriptor desc(definition);
-  desc.shader_source = GetKernelDepthWiseConv3x3Stride1x1();
+  DepthWiseConv3x3Stride1x1 desc(definition);
+  desc.code_ = GetKernelDepthWiseConv3x3Stride1x1();
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.args.AddInt("padding_x", -attr.padding.prepended.w);
-  desc.args.AddInt("padding_y", -attr.padding.prepended.h);
+  desc.args_.AddInt("padding_x", -attr.padding.prepended.w);
+  desc.args_.AddInt("padding_y", -attr.padding.prepended.h);
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride1x1(attr);
@@ -496,24 +512,8 @@ ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
   weights_desc.element_size = 4;
   weights_desc.data = GetByteBufferConverted(weights_reordered, data_type);
   weights_desc.size = weights_desc.data.size();
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
-
-  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
-                            const std::vector<BHWC>& dst_shapes) {
-    const int grid_x = DivideRoundUp(dst_shapes[0].w, 2);
-    const int grid_y = DivideRoundUp(dst_shapes[0].h, 2);
-    const int grid_z = DivideRoundUp(dst_shapes[0].c, 4);
-    uint3 group_size{8, 4, 1};
-    if (grid_x <= 4) {
-      group_size.x = 4;
-      group_size.z = grid_z % 2 == 0 ? 2 : 1;
-    }
-    const int groups_x = DivideRoundUp(grid_x, group_size.x);
-    const int groups_y = DivideRoundUp(grid_y, group_size.y);
-    const int groups_z = DivideRoundUp(grid_z, group_size.z);
-    return std::make_pair(group_size, uint3(groups_x, groups_y, groups_z));
-  };
 
   return desc;
 }
@@ -525,18 +525,25 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
          attr.strides.w == 1 && attr.dilations.h == 1 && attr.dilations.w == 1;
 }
 
-ComputeTaskDescriptor DepthWiseConv3x3Stride2(
+int3 DepthWiseConv3x3Stride2::GetGridSize() const {
+  const int grid_x = dst_[0]->Width();
+  const int grid_y = DivideRoundUp(dst_[0]->Height(), 2);
+  const int grid_z = dst_[0]->Slices();
+  return int3(grid_x, grid_y, grid_z);
+}
+
+DepthWiseConv3x3Stride2 CreateDepthWiseConv3x3Stride2(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
-  ComputeTaskDescriptor desc(definition);
-  desc.shader_source = GetKernelDepthWiseConv3x3Stride2();
+  DepthWiseConv3x3Stride2 desc(definition);
+  desc.code_ = GetKernelDepthWiseConv3x3Stride2();
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.args.AddInt("padding_x", -attr.padding.prepended.w);
-  desc.args.AddInt("padding_y", -attr.padding.prepended.h);
-  desc.args.AddInt("stride_x", attr.strides.w);
-  desc.args.AddInt("dilation_x", attr.dilations.w);
+  desc.args_.AddInt("padding_x", -attr.padding.prepended.w);
+  desc.args_.AddInt("padding_y", -attr.padding.prepended.h);
+  desc.args_.AddInt("stride_x", attr.strides.w);
+  desc.args_.AddInt("dilation_x", attr.dilations.w);
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride2(attr);
@@ -546,21 +553,10 @@ ComputeTaskDescriptor DepthWiseConv3x3Stride2(
   weights_desc.element_size = 4;
   weights_desc.data = GetByteBufferConverted(weights_reordered, data_type);
   weights_desc.size = weights_desc.data.size();
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
-  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
-                            const std::vector<BHWC>& dst_shapes) {
-    const int grid_x = dst_shapes[0].w;
-    const int grid_y = DivideRoundUp(dst_shapes[0].h, 2);
-    const int grid_z = DivideRoundUp(dst_shapes[0].c, 4);
-    const uint3 group_size{8, 4, 1};
-    const int groups_x = DivideRoundUp(grid_x, group_size.x);
-    const int groups_y = DivideRoundUp(grid_y, group_size.y);
-    const int groups_z = DivideRoundUp(grid_z, group_size.z);
-    return std::make_pair(group_size, uint3(groups_x, groups_y, groups_z));
-  };
-
+  desc.work_group_size_ = int3(8, 4, 1);
   return desc;
 }
 

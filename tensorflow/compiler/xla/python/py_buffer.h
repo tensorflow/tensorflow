@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdexcept>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
 #include "pybind11/numpy.h"
@@ -59,7 +60,7 @@ class PyBuffer : public DeviceArrayBase {
   PjRtBuffer* buffer() const { return buffer_.get(); }
 
   ClientAndPtr<PjRtDevice> device() const;
-  const std::string& platform_name() const {
+  absl::string_view platform_name() const {
     return buffer_->client()->platform_name();
   }
   bool is_deleted() const { return buffer_->IsDeleted(); }
@@ -78,7 +79,7 @@ class PyBuffer : public DeviceArrayBase {
   Status BlockHostUntilReady();
   Status CopyToHostAsync();
 
-  const Shape& shape() { return buffer_->on_host_shape(); }
+  const Shape& shape() { return buffer_->on_device_shape(); }
 
   StatusOr<std::uintptr_t> UnsafeBufferPointer() const;
 
@@ -92,10 +93,10 @@ class PyBuffer : public DeviceArrayBase {
   Traceback* traceback() { return traceback_.get(); }
 
   // Returns the size (i.e. number of elements) of the (host) numpy array.
-  int64 size() { return ShapeUtil::ElementsIn(buffer()->on_host_shape()); }
+  int64 size() { return ShapeUtil::ElementsIn(buffer()->on_device_shape()); }
 
   // Returns the number of dimensions of the (host) numpy array.
-  int ndim() const { return buffer()->on_host_shape().dimensions_size(); }
+  int ndim() const { return buffer()->on_device_shape().dimensions_size(); }
 
   pybind11::tuple python_shape() const;
   pybind11::dtype python_dtype() const;

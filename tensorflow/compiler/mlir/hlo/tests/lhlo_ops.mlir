@@ -2,6 +2,69 @@
 
 // -----
 
+func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf32>) {
+  // expected-error@+1 {{requires operand #1 (type: 'memref<3xf32>') and result #1 (type: 'memref<2xf32>') to have same type}}
+  "lmhlo.all_reduce"(%input0, %input1, %input0, %input0) ({
+    ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+      %add = mhlo.add %arg0, %arg1 : tensor<f32>
+      "mhlo.return"(%add) : (tensor<f32>) -> ()
+    })
+  {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+   replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 4]]> : tensor<2x4xi64>,
+   use_global_device_ids = false} : (memref<2xf32>, memref<3xf32>, memref<2xf32>, memref<2xf32>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf16>) {
+  // expected-error@+1 {{requires the same element type for all operands}}
+  "lmhlo.all_reduce"(%input0, %input1, %input0, %input1) ({
+    ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+      %add = mhlo.add %arg0, %arg1 : tensor<f32>
+      "mhlo.return"(%add) : (tensor<f32>) -> ()
+    })
+  {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+   replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>,
+   use_global_device_ids = false} : (memref<2xf32>, memref<3xf16>, memref<2xf32>, memref<3xf16>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_allgather(%input0: memref<2xf32>, %output: memref<8xf32>) {
+  // expected-error@+1 {{replica id #1 seen more than once}}
+  "lmhlo.all_gather"(%input0, %output)
+    {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+     replica_groups = dense<[[0, 1, 1, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>,
+     use_global_device_ids = false, all_gather_dimension = 0 : i64} : (memref<2xf32>, memref<8xf32>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
+  // expected-error@+1 {{replica id #4 not seen in replica groups}}
+  "lmhlo.all_to_all"(%input0, %output)
+    {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+     replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>,
+     use_global_device_ids = false, all_gather_dimension = 0 : i64} : (memref<2xf32>, memref<8xf32>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
+  // expected-error@+1 {{replica groups should be a rank 2 tensor of 64 bit integers}}
+  "lmhlo.all_to_all"(%input0, %output)
+    {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+     replica_groups = dense<0> : tensor<1xi64>,
+     use_global_device_ids = false, all_gather_dimension = 0 : i64} : (memref<2xf32>, memref<8xf32>) -> ()
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @ceil
 func @ceil(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
   "lmhlo.ceil"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()

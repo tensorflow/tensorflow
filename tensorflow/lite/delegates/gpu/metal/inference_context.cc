@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 #include "tensorflow/lite/delegates/gpu/metal/selectors/operation_selector.h"
 #include "tensorflow/lite/delegates/gpu/metal/selectors/subgraph.h"
@@ -240,11 +239,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
       MetalNode metal_node;
-      if (gpu_op.task_desc) {
-        metal_node.task.Init(std::move(gpu_op.task_desc));
-      } else {
-        metal_node.task.Init(std::move(gpu_op.operation));
-      }
+      metal_node.task.Init(std::move(gpu_op.operation));
       metal_node.inputs.resize(gpu_op.input_ids.size());
       for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
         int id = gpu_op.input_ids[j];
@@ -383,7 +378,7 @@ absl::Status InferenceContext::UpdateParams(const GpuInfo& gpu_info) {
     for (const auto& out_id : node.outputs) {
       dst_shapes.push_back(tensor_reserver_.Get(out_id).shape);
     }
-    RETURN_IF_ERROR(node.task.UpdateParams(gpu_info, src_shapes, dst_shapes));
+    RETURN_IF_ERROR(node.task.UpdateParams());
   }
   return absl::OkStatus();
 }
@@ -489,9 +484,7 @@ absl::Status InferenceContext::Tune(TuningType tuning_type,
 }
 
 void InferenceContext::EncodeWithEncoder(
-    id<MTLComputeCommandEncoder> command_encoder,
-    const std::map<ValueId, id<MTLBuffer>>& in_out_buffers) {
-  UpdatePreallocatedTensors(in_out_buffers);
+    id<MTLComputeCommandEncoder> command_encoder) {
   for (int i = 0; i < nodes_.size(); ++i) {
     auto& task = nodes_[i].task;
     task.Encode(command_encoder);
@@ -499,9 +492,7 @@ void InferenceContext::EncodeWithEncoder(
 }
 
 void InferenceContext::EncodeWithCommandBuffer(
-    id<MTLCommandBuffer> command_buffer,
-    const std::map<ValueId, id<MTLBuffer>>& in_out_buffers) {
-  UpdatePreallocatedTensors(in_out_buffers);
+    id<MTLCommandBuffer> command_buffer) {
   for (int i = 0; i < nodes_.size(); ++i) {
     id<MTLComputeCommandEncoder> encoder =
         [command_buffer computeCommandEncoder];
@@ -511,10 +502,8 @@ void InferenceContext::EncodeWithCommandBuffer(
   }
 }
 
-void InferenceContext::EncodeWithCommandQueue(
-    id<MTLCommandQueue> command_queue,
-    const std::map<ValueId, id<MTLBuffer>>& in_out_buffers, int flush_period) {
-  UpdatePreallocatedTensors(in_out_buffers);
+void InferenceContext::EncodeWithCommandQueue(id<MTLCommandQueue> command_queue,
+                                              int flush_period) {
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   for (int i = 0; i < nodes_.size(); ++i) {
     id<MTLComputeCommandEncoder> encoder =
