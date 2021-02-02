@@ -23,6 +23,9 @@ namespace tflite {
 // Resets a variable tensor to the default value.
 TfLiteStatus ResetVariableTensor(TfLiteTensor* tensor);
 
+// Returns true when the given tensor has unknown dimensions.
+bool HasUnspecifiedDimension(const TfLiteTensor* tensor);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_CORE_API_TENSOR_UTILS_H_
