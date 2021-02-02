@@ -223,6 +223,11 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.axis->type, kTfLiteInt32);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
 
+  if (op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point, 0);
+  }
+
   TfLiteTensor* resolved_axis;
   TF_LITE_ENSURE_OK(
       context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
@@ -541,7 +546,8 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
     if (input->dims->data[i] == 0) return kTfLiteOk;
   }
 
-  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 ||
+      input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, input->params.scale,
                       op_context->output->params.scale);
     TF_LITE_ENSURE_EQ(context, input->params.zero_point,
@@ -640,6 +646,9 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt8:
       return EvalType<int8_t>(context, node, &op_context, reduce_type);
+      break;
+    case kTfLiteInt16:
+      return EvalType<int16_t>(context, node, &op_context, reduce_type);
       break;
     case kTfLiteBool:
       return EvalType<bool>(context, node, &op_context, reduce_type);

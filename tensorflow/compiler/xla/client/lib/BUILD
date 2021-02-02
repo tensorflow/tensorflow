@@ -59,7 +59,6 @@ cc_library(
     srcs = ["comparators.cc"],
     hdrs = [
         "comparators.h",
-        "//tensorflow/compiler/xla:literal_util",
     ],
     deps = [
         ":constants",
@@ -610,7 +609,6 @@ xla_test(
     name = "logdet_test",
     srcs = ["logdet_test.cc"],
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [

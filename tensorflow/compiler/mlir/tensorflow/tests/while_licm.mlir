@@ -21,7 +21,7 @@ func @while_1(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
       %2 = "tf.Add"(%bodyArg1, %bodyArg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
       "tf.Yield"(%1, %2) : (tensor<*xi32>, tensor<*xf32>) -> ()
     }
-  ) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>) loc("WhileOp")
+  ) {is_stateless = false} : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>) loc("WhileOp")
   return %0#1 : tensor<1xf32>
 }
 

@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-tf-mlir-to-str-attr %s | FileCheck %s
+// RUN: tf-mlir-translate -mlir-tf-mlir-to-str-attr -mlir-print-local-scope %s | FileCheck %s
 
 module attributes {tf.versions = {producer = 888 : i32}} {
   func @main(%arg0: tensor<?xi32>) -> tensor<?xi32> {

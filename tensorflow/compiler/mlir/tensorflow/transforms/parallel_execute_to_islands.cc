@@ -165,7 +165,7 @@ void CreateIslandsFromParallelExecute(
       unused_execute_controls.push_back(execute.control());
 
   if (!unused_execute_controls.empty()) {
-    auto graph_op = island_op.getParentOfType<tf_executor::GraphOp>();
+    auto graph_op = island_op->getParentOfType<tf_executor::GraphOp>();
     tf_executor::FetchOp fetch = graph_op.GetFetch();
     auto fetches = llvm::to_vector<8>(fetch.getOperands());
     fetches.append(unused_execute_controls.begin(),

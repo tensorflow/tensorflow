@@ -27,8 +27,13 @@ REGISTER_KERNEL_BUILDER(
     Name("ApproximateEqual").Device(DEVICE_CPU).TypeConstraint<double>("T"),
     ApproximateEqualOp<CPUDevice, double>);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "Equal", functor::equal_to, float, Eigen::half, double,
           uint8);
+#else
+REGISTER(BinaryOp, GPU, "Equal", functor::equal_to, uint8);
+#endif
 REGISTER_KERNEL_BUILDER(
     Name("ApproximateEqual").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     ApproximateEqualOp<GPUDevice, float>);
@@ -47,6 +52,5 @@ REGISTER_KERNEL_BUILDER(Name("Equal")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::equal_to<int32>>);
 #endif
-
 
 }  // namespace tensorflow

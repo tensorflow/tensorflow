@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 
+#include <array>
 #include <map>
 #include <string>
 #include <vector>
@@ -60,8 +61,8 @@ absl::Status CLCommandQueue::Dispatch(const CLKernel& kernel,
                                       const int3& work_groups_count,
                                       const int3& work_group_size,
                                       CLEvent* event) {
-  std::vector<size_t> local(3);
-  std::vector<size_t> global(3);
+  std::array<size_t, 3> local;
+  std::array<size_t, 3> global;
   for (int i = 0; i < 3; ++i) {
     local[i] = work_group_size[i];
     global[i] = work_groups_count[i] * work_group_size[i];
@@ -216,18 +217,19 @@ ProfilingInfo ProfilingCommandQueue::GetProfilingInfo() const {
 }
 
 absl::Status ProfilingCommandQueue::GetBestWorkGroupIndex(
-    const CLKernel& kernel, const DeviceInfo& device_info,
+    const CLKernel& kernel, const GpuInfo& gpu_info,
     const std::vector<int3>& work_groups_count,
     const std::vector<int3>& work_group_sizes, int* index) {
   // Some Adreno 3xx can have wrong numbers for some events
-  const bool possible_bug_with_events = device_info.IsAdreno3xx();
+  const bool possible_bug_with_events =
+      gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx();
   events_.resize(work_group_sizes.size());
   for (int i = 0; i < work_group_sizes.size(); ++i) {
     RETURN_IF_ERROR(CLCommandQueue::Dispatch(kernel, work_groups_count[i],
                                              work_group_sizes[i], &events_[i]));
 
     // reducing the speed of memory leak on Mali for some kernels
-    if (device_info.IsMali() && i % 8 == 7) {
+    if (gpu_info.IsMali() && i % 8 == 7) {
       events_[i - 7].Wait();
     }
     if (possible_bug_with_events) {
@@ -239,7 +241,7 @@ absl::Status ProfilingCommandQueue::GetBestWorkGroupIndex(
   RETURN_IF_ERROR(WaitForCompletion());
 
   // To release memory of some kernel pool on Mali.
-  if (device_info.IsMali()) {
+  if (gpu_info.IsMali()) {
     RETURN_IF_ERROR(kernel.ReInit());
   }
 
@@ -345,7 +347,7 @@ std::string ProfilingInfo::GetDetailedReport() const {
     result += "  " + dispatch.label + " - " +
               std::to_string(absl::ToDoubleMilliseconds(dispatch.duration)) +
               " ms\n";
-    auto name = dispatch.label.substr(0, dispatch.label.find(" "));
+    auto name = dispatch.label.substr(0, dispatch.label.find(' '));
     if (statistics.find(name) != statistics.end()) {
       statistics[name].count++;
       statistics[name].total_time +=

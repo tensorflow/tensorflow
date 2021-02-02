@@ -41,11 +41,15 @@ const char* kConstInputAddModel = "add_with_const_input.bin";
 
 const char* kFloatConcatMax5Max10Max10 = "concat.bin";
 
+const char* kModelWithBroadcastToOp = "broadcast_to.bin";
+
 const char* kModelWithCustomOp = "custom_op.bin";
 
 const char* kModelWithArgMaxOp = "argmax.bin";
 
 const char* kModelWithFCOp = "fc.bin";
+
+const char* kModelWithGatherNDOp = "gather_nd.bin";
 
 const char* kModelMixed = "mixed.bin";
 const char* kModelMixed16x8 = "mixed16x8.bin";
@@ -73,6 +77,7 @@ const char* kSvdfCalibrated = "svdf_calibrated.bin";
 const char* kSvdfQuantized = "svdf_quantized.bin";
 
 const char* kModelWithUnpack = "unpack.bin";
+const char* kQatModelWithFc = "fc_qat.bin";
 
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];

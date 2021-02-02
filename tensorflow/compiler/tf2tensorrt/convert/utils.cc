@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
+Status TrtPrecisionModeToName(const TrtPrecisionMode mode, string* name) {
   switch (mode) {
     case TrtPrecisionMode::FP32:
       *name = "FP32";
@@ -36,6 +36,7 @@ Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
       *name = "INT8";
       break;
     default:
+      *name = "UNKNOWN";
       return errors::OutOfRange("Unknown precision mode");
   }
   return Status::OK();
@@ -87,6 +88,21 @@ string DebugString(const nvinfer1::Dims& dims) {
   return out;
 }
 
+string DebugString(const DataType tf_type) {
+  switch (tf_type) {
+    case DT_FLOAT:
+      return "DT_FLOAT";
+    case DT_HALF:
+      return "DT_HALF";
+    case DT_INT32:
+      return "DT_INT32";
+    case DT_INT8:
+      return "DT_INT8";
+    default:
+      return "Unknow TF DataType";
+  }
+}
+
 string DebugString(const nvinfer1::DataType trt_dtype) {
   switch (trt_dtype) {
     case nvinfer1::DataType::kFLOAT:
@@ -100,6 +116,12 @@ string DebugString(const nvinfer1::DataType trt_dtype) {
     default:
       return "Invalid TRT data type";
   }
+}
+
+string DebugString(const TrtPrecisionMode mode) {
+  string mode_str;
+  TF_CHECK_OK(TrtPrecisionModeToName(mode, &mode_str));
+  return StrCat("TrtPrecisionMode::", mode_str);
 }
 
 string DebugString(const nvinfer1::Permutation& permutation, int len) {
@@ -198,7 +220,8 @@ Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
       *trt_type = nvinfer1::DataType::kINT32;
       break;
     default:
-      return errors::Internal("Unsupported tensorflow type");
+      return errors::InvalidArgument("Unsupported tensorflow data type ",
+                                     DataTypeString(tf_type));
   }
   return Status::OK();
 }
@@ -215,7 +238,7 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
       *tf_type = DT_INT32;
       break;
     default:
-      return errors::Internal("Invalid TRT type");
+      return errors::InvalidArgument("Invalid TRT data type");
   }
   return Status::OK();
 }

@@ -30,9 +30,9 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import tpu_strategy as tpu_strategy_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
+from tensorflow.python.eager.context import set_soft_device_placement
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import initializers
@@ -168,7 +168,7 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
   def setUp(self):
     super(AutoOutsideCompilationWithKerasTest, self).setUp()
     v2_compat.enable_v2_behavior()
-    context.context().soft_device_placement = True
+    set_soft_device_placement(True)
     self.summary_dir = self.get_temp_dir()
 
   def validate_recorded_sumary_file(self, event_files, summary_dict,

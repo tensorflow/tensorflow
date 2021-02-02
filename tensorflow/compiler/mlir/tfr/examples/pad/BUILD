@@ -30,7 +30,7 @@ tf_py_test(
     srcs = ["pad_ops_test.py"],
     data = [":pad_ops_mlir"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",  # TODO(b/170752141)

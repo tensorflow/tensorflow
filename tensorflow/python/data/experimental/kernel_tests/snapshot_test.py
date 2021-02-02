@@ -30,6 +30,7 @@ from tensorflow.python.data.experimental.ops import snapshot
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
+from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import gen_array_ops
@@ -350,6 +351,37 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self.assertDatasetProducesSet(dataset1, list(range(1000)))
     dataset2 = make_dataset()
     self.assertDatasetProducesSet(dataset2, list(range(1000)))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadUsingFlatMap(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset, list(range(1000)))
+    flat_map = dataset_ops.Dataset.from_tensors(dataset).flat_map(lambda x: x)
+    self.assertDatasetProduces(flat_map, list(range(1000)))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadOptimizableUsingFlatMap(self):
+    if context.context().use_tfrt:
+      self.skipTest("b/177260096: Flaky test.")
+    dataset = dataset_ops.Dataset.range(100)
+    # Will be optimized into ShuffleAndRepeat.
+    dataset = dataset.shuffle(10)
+    dataset = dataset.repeat(2)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProducesSet(dataset, 2 * list(range(100)))
+    flat_map = dataset_ops.Dataset.from_tensors(dataset).flat_map(lambda x: x)
+    self.assertDatasetProducesSet(flat_map, 2 * list(range(100)))
     self.assertSnapshotDirectoryContains(
         self._snapshot_dir,
         num_fingerprints=1,

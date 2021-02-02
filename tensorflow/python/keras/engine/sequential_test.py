@@ -30,7 +30,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -456,6 +458,56 @@ class TestSequential(keras_parameterized.TestCase):
     model.add(keras.layers.Dense(3, name='specific_name'))
     with self.assertRaisesRegex(ValueError, 'should have unique names'):
       model.add(keras.layers.Dense(3, name='specific_name'))
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_tf_module_call(self):
+
+    class MyModule(module.Module):
+
+      def __init__(self):
+        self.v = variables.Variable(2.)
+
+      def __call__(self, x):
+        return self.v * x
+
+    model = keras.Sequential()
+    model.add(MyModule())
+    model.compile('sgd', 'mse')
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+    model.fit(x, y, batch_size=2)
+    self.assertLen(model.trainable_variables, 1)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_tf_module_training(self):
+
+    class MyModule(module.Module):
+
+      def __init__(self):
+        self.v = variables.Variable(2.)
+
+      def call(self, x, training=None):
+        # training should be set by Sequential.
+        assert training is not None
+        return self.v * x
+
+    model = keras.Sequential()
+    model.add(MyModule())
+    model.compile('sgd', 'mse')
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+    model.fit(x, y, batch_size=2)
+    self.assertLen(model.trainable_variables, 1)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_tf_module_error(self):
+
+    class MyModule(module.Module):
+
+      def __init__(self):
+        self.v = variables.Variable(2.)
+
+    model = keras.Sequential()
+    with self.assertRaisesRegex(ValueError, 'is not defined'):
+      model.add(MyModule())
 
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):

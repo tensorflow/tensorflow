@@ -68,7 +68,7 @@ PYBIND11_MODULE(_dtypes, m) {
           return static_cast<tensorflow::DataType>(id);
         }
         throw py::type_error(
-            py::str("%d does not correspond to a valid tensorflow::DataType")
+            py::str("{} does not correspond to a valid tensorflow::DataType")
                 .format(id));
       }))
       // For compatibility with pure-Python DType.

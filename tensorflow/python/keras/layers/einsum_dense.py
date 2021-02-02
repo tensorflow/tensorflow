@@ -36,7 +36,7 @@ class EinsumDense(Layer):
 
   This layer can perform einsum calculations of arbitrary dimensionality.
 
-  Arguments:
+  Args:
     equation: An equation describing the einsum to perform. This equation must
       be a valid einsum string of the form `ab,bc->ac`, `...ab,bc->...ac`, or
       `ab...,bc->ac...` where 'ab', 'bc', and 'ac' can be any valid einsum axis

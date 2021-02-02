@@ -104,13 +104,15 @@ def trace(service_addr,
 
   ```python
     # Send gRPC request to a TPU pod to collect a trace of your model on
-    # multipleTPUs. A profiler service has been started in all the TPU workers
-    # at theport 8466.
+    # multiple TPUs. A profiler service has been started in all the TPU workers
+    # at the port 8466.
     # E.g. your TPU IP addresses are 10.0.0.2, 10.0.0.3, 10.0.0.4, and you want
     # to profile for 2 seconds.
-    tf.profiler.experimental.client.trace('grpc://10.0.0.2:8466',
-                                          'gs://your_tb_dir',
-                                          2000, '10.0.0.2,10.0.0.3,10.0.0.4')
+    tf.profiler.experimental.client.trace(
+        'grpc://10.0.0.2:8466',
+        'gs://your_tb_dir',
+        2000,
+        '10.0.0.2:8466,10.0.0.3:8466,10.0.0.4:8466')
   ```
 
   Launch TensorBoard and point it to the same logdir you provided to this API.

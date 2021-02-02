@@ -609,7 +609,7 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
 
     double starttransfer_time = -1;
     const auto starttransfer_time_status = that->libcurl_->curl_easy_getinfo(
-        that->curl_, CURLINFO_PRETRANSFER_TIME, &starttransfer_time);
+        that->curl_, CURLINFO_STARTTRANSFER_TIME, &starttransfer_time);
 
     LOG(ERROR) << "The transmission  of request " << this_object
                << " (URI: " << that->uri_ << ") has been stuck at "

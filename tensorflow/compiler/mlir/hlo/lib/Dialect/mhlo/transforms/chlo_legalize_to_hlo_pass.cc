@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
@@ -38,13 +39,14 @@ struct ChloLegalizeToHloPass
     OwningRewritePatternList conversionPatterns;
     conversionTarget.addIllegalDialect<chlo::HloClientDialect>();
 
-    // Consider the mhlo dialect legal for tests.
-    conversionTarget.addLegalDialect<mhlo::MhloDialect>();
+    // Consider the mhlo dialect legal for tests. Also add helper dialects
+    // that are needed by the patterns.
+    conversionTarget.addLegalDialect<
+        MhloDialect, mlir::StandardOpsDialect, mlir::tensor::TensorDialect,
+        mlir::shape::ShapeDialect, mlir::scf::SCFDialect>();
 
-    // The conversion uses helpers from the standard dialect.
-    conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
-    conversionTarget.addLegalDialect<mlir::shape::ShapeDialect>();
-    conversionTarget.addLegalDialect<mlir::scf::SCFDialect>();
+    // TODO(herhut): This is temporary while Zeta cannot be lowered to hlo.
+    conversionTarget.addLegalOp<chlo::ZetaOp>();
 
     chlo::PopulateLegalizeChloToHloPatterns(&getContext(), &conversionPatterns);
 

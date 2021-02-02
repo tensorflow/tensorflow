@@ -29,6 +29,18 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
   return
 }
 
+// CHECK-LABEL: func @assert
+func @assert(%ctx: !tf_framework.op_kernel_context) {
+  tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome"
+  return
+}
+
+// CHECK-LABEL: func @null_memref
+func @null_memref() {
+  tf_framework.null_memref : memref<*xf32>
+  return
+}
+
 // CHECK-LABEL: func @null_context
 func @null_context() {
   tf_framework.null_context : !tf_framework.op_kernel_context

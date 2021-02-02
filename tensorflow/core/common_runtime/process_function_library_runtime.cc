@@ -608,6 +608,8 @@ Status ValidateMultiDeviceOptions(
   return Status::OK();
 }
 
+}  // anonymous namespace
+
 Status GetGraphAndArgRets(
     const string& function_name, AttrSlice attrs, const FunctionDef* fdef,
     const FunctionLibraryDefinition* lib_def, std::unique_ptr<Graph>* graph,
@@ -643,8 +645,6 @@ Status GetGraphAndArgRets(
   }
   return Status::OK();
 }
-
-}  // anonymous namespace
 
 Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     const string& function_name, AttrSlice attrs,
@@ -995,8 +995,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 }
 
 Status ProcessFunctionLibraryRuntime::GetOutputDevices(
-    FunctionLibraryRuntime::Handle handle, std::vector<Device*>* output_devices,
-    const bool eager_lazy_copy) const {
+    FunctionLibraryRuntime::Handle handle,
+    std::vector<Device*>* output_devices) const {
   MultiDeviceFunctionData* data = IsMultiDevice(handle);
   if (data == nullptr) {
     return errors::InvalidArgument(
@@ -1015,16 +1015,6 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
     Device* target_device = nullptr;
     Device* host = nullptr;
     if (target_flr == nullptr) {
-      if (!eager_lazy_copy) {
-        return errors::Unimplemented(
-            "Currently, outputting tensors on remote devices is not supported."
-            "The ",
-            comp_data.ret_indices[0],
-            "-th return value of the function outputs to target_device: ",
-            target,
-            " Please copy the tensor to local device explicitly using "
-            "tf.identity and return the new Tensor instead.");
-      }
       if (!data->has_remote_outputs) {
         data->has_remote_outputs = true;
       }
@@ -1426,6 +1416,10 @@ void ProcessFunctionLibraryRuntime::Run(
                                       InternalArgs* comp_args) -> Status {
       // "Index"s of _Arg nodes are unique when all arguments are local Tensors.
       for (const auto& it : comp_data.arg_indices) {
+        if (it.index >= args.size()) {
+          return errors::InvalidArgument(
+              "index ", it.index, " is out of range [0, ", args.size(), ")");
+        }
         if (it.sub_index >= 0) {
           const Tensor& t = args[it.index];
           if (t.dtype() != DT_RESOURCE) {

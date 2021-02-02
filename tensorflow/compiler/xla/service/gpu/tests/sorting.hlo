@@ -334,12 +334,6 @@ compare {
 // CHECK-NEXT:    [[TMP12:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
 // CHECK-NEXT:    br i1 [[TMP12]], label [[SORT_IN_BOUNDS_TRUE:%.*]], label [[SORT_IN_BOUNDS_AFTER:%.*]]
 // CHECK:       sort.in_bounds-after:
-// CHECK-NEXT:    [[TMP13:%.*]] = bitcast [2 x [3 x i32]]* [[TMP1]] to i8*
-// CHECK-NEXT:    [[TMP14:%.*]] = getelementptr inbounds [2 x i8*], [2 x i8*]* [[TMP5]], i64 0, i64 0
-// CHECK-NEXT:    store i8* [[TMP13]], i8** [[TMP14]], align 8
-// CHECK-NEXT:    [[TMP15:%.*]] = bitcast [2 x [3 x float]]* [[TMP3]] to i8*
-// CHECK-NEXT:    [[TMP16:%.*]] = getelementptr inbounds [2 x i8*], [2 x i8*]* [[TMP5]], i64 0, i64 1
-// CHECK-NEXT:    store i8* [[TMP15]], i8** [[TMP16]], align 8
 // CHECK-NEXT:    ret void
 // CHECK:       sort.in_bounds-true:
 // CHECK-NEXT:    [[TMP17:%.*]] = mul i64 [[TMP10]], 2

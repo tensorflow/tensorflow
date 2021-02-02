@@ -917,7 +917,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       x = constant_op.constant([[1, 0.], [0., 0.]])
       if defunc:
         reduce_func = def_function.function(
-            math_ops.reduce_logsumexp, experimental_compile=xla_compile)
+            math_ops.reduce_logsumexp, jit_compile=xla_compile)
         func = lambda: reduce_func(x)
       else:
         func = lambda: math_ops.reduce_logsumexp(x)

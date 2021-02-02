@@ -68,7 +68,8 @@ Status RunAndCompare(
     const RunHloModuleOptions& options,
     std::function<Status(const HloModule&,
                          const ::stream_executor::Platform::Id&, HloModule*)>
-        reference_module_modifier_hook = {});
+        reference_module_modifier_hook = {},
+    std::function<void(HloModuleConfig*)> config_modifier_hook = {});
 
 }  // namespace xla
 

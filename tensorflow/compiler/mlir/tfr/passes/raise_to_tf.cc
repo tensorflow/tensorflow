@@ -34,13 +34,13 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -114,6 +114,9 @@ class RewriteTFRCallOp : public OpRewritePattern<CallOp> {
       const SmallVectorImpl<Type>& output_types,
       const SmallVectorImpl<Value>& inputs, const NamedAttrList& attr_list,
       const llvm::StringMap<Attribute>& derived_attrs) const;
+
+  // Converts the attribute to the specific type.
+  Attribute ProcessAttributeValue(Attribute attr, StringAttr attr_type) const;
 
   // Adds a tf.Cast op if the tfr.tensor attribute indicated a fixed element
   // type.
@@ -292,10 +295,27 @@ LogicalResult RewriteTFRCallOp::CollectInputsAndAttributes(
     }
     auto attr_name = signature.getArgAttrOfType<StringAttr>(
         operand.index(), kAttrArgumentNameAttr);
-    arg_attrs->push_back(
-        rewriter.getNamedAttr(attr_name.getValue(), arg_value));
+    auto attr_type = signature.getArgAttrOfType<StringAttr>(
+        operand.index(), kAttrArgumentTypeAttr);
+    auto value = ProcessAttributeValue(arg_value, attr_type);
+    arg_attrs->push_back(rewriter.getNamedAttr(attr_name.getValue(), value));
   }
   return success();
+}
+
+Attribute RewriteTFRCallOp::ProcessAttributeValue(Attribute attr,
+                                                  StringAttr attr_type) const {
+  if (!attr_type) return attr;
+
+  if (attr_type.getValue() == "tensor") {
+    if (auto f = attr.dyn_cast<FloatAttr>()) {
+      RankedTensorType type = RankedTensorType::get({}, f.getType());
+      return DenseFPElementsAttr::get(type, attr);
+    }
+    // TODO(fengliuai): handles ArrayAttr. Note that it can be nested ArrayAttr.
+  }
+
+  return attr;
 }
 
 // For each output, uses the attribute name associated to the tfr types to find
@@ -355,7 +375,6 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
       }
     }
   }
-
   // Create the tfr.cast ops on the results and replace the uses of the
   // original call op.
   TFRTensorType unconstrainted_type = rewriter.getType<TFRTensorType>();
@@ -378,6 +397,10 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
       new_results.push_back(list_op.out());
     }
   }
+
+  // Copy all the allowed attributes to the new op.
+  if (failed(CopyNonSymbolRefAttrs(call_op, new_op))) return failure();
+
   rewriter.replaceOp(call_op, new_results);
   return success();
 }
@@ -447,13 +470,12 @@ void RaiseToTFOpsPass::runOnFunction() {
   MLIRContext* ctx = &getContext();
   SymbolTable table(external_tfr_module.hasValue()
                         ? *external_tfr_module
-                        : func.getParentOfType<ModuleOp>());
+                        : func->getParentOfType<ModuleOp>());
 
   OwningRewritePatternList patterns;
   patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs);
-  for (auto* op : ctx->getRegisteredOperations()) {
-    op->getCanonicalizationPatterns(patterns, ctx);
-  }
+
+  populateCanonicalizationPatterns(func, patterns);
 
   applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

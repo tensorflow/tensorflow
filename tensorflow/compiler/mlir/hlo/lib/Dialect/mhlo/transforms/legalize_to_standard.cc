@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -145,7 +145,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
     auto int_shape_type = RankedTensorType::get(
         output_type.getShape(),
-        IntegerType::get(bitwidth, rewriter.getContext()));
+        IntegerType::get(rewriter.getContext(), bitwidth));
     auto loc = op.getLoc();
     auto integer_const = rewriter.create<mlir::ConstantOp>(
         loc, DenseIntElementsAttr::get(int_shape_type, values));

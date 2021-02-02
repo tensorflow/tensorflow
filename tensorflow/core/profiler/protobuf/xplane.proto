@@ -118,7 +118,7 @@ message XStat {
 
 // Metadata for an XEvent, corresponds to an event type and is shared by
 // all XEvents with the same metadata_id.
-// Next ID: 6
+// Next ID: 7
 message XEventMetadata {
   // XPlane.event_metadata map key.
   int64 id = 1;
@@ -135,6 +135,9 @@ message XEventMetadata {
   // XStats that are constant for all XEvents with the same metadata_id.
   // Each of these XStats should have a different metadata_id.
   repeated XStat stats = 5;
+
+  // XPlane.event_metadata map key for children events.
+  repeated int64 child_id = 6;
 }
 
 // Metadata for an XStat, corresponds to a stat type and is shared by all

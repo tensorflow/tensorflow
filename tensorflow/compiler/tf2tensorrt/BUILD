@@ -53,8 +53,8 @@ cc_library(
 alias(
     name = "tensorrt_lib",
     actual = select({
-        "//tensorflow:oss": ":tensorrt_stub",
-        "//conditions:default": "@local_config_tensorrt//:tensorrt",
+        "@local_config_tensorrt//:use_static_tensorrt": "@local_config_tensorrt//:tensorrt",
+        "//conditions:default": ":tensorrt_stub",
     }),
     visibility = ["//visibility:private"],
 )
@@ -117,7 +117,6 @@ cc_library(
         "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_lib_no_ops",
         "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/stream_executor/lib",
     ] + if_tensorrt([
         ":tensorrt_lib",
         "@local_config_cuda//cuda:cuda_headers",
@@ -240,10 +239,13 @@ tf_cuda_library(
     deps = [
         ":trt_logging",
         ":utils",
+        ":trt_allocator",
+        ":common_utils",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor/lib",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -269,7 +271,7 @@ tf_gen_op_wrapper_py(
 
 tf_custom_op_py_library(
     name = "trt_ops_loader",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":_pywrap_py_utils",
         ":trt_ops",
@@ -294,6 +296,7 @@ tf_cuda_library(
     ],
     deps = [
         ":trt_allocator",
+        ":trt_engine_utils",
         ":trt_logging",
         ":utils",
         "//tensorflow/core:framework_headers_lib",
@@ -417,6 +420,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
@@ -595,6 +599,10 @@ cc_library(
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
     copts = tf_copts(),
+    local_defines = select({
+        "@local_config_tensorrt//:use_static_tensorrt": ["TF_USE_TENSORRT_STATIC=1"],
+        "//conditions:default": [],
+    }),
     deps = if_tensorrt([
         ":common_utils",
         ":tensorrt_lib",
@@ -616,3 +624,12 @@ pybind_extension(
         "@pybind11",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "trt_engine_instance_proto_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":trt_engine_instance_proto"],
+# )
+# copybara:uncomment_end

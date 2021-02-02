@@ -115,7 +115,11 @@ class TPUVariableMixin(object):
     # If we're in a tpu.rewrite(), return the replicated handle.
     tpu_context = enclosing_tpu_context()
     if tpu_context is None or context.executing_eagerly():
-      return self._get_on_device_or_primary().handle
+      var = self._get_on_device_or_primary()
+      if isinstance(var, packed.PackedVarAndDevice):
+        return var.on_device_handle()
+      else:
+        return var.handle
     else:
       is_packed = self._packed_var is not None
       val = self._values

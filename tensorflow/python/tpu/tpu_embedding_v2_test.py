@@ -99,10 +99,6 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
     self.cpu_mid_level = self.build_mid_level(
         self.second_mid_level_contents, self.cpu_mid_level_optimizer)
 
-  def tearDown(self):
-    tpu_strategy_util.shutdown_tpu_system(self.resolver)
-    super(TPUEmbeddingCheckpointTest, self).tearDown()
-
   def test_checkpoint_save_retrieves(self):
     # Ensure that the variables from the first model are loaded.
     self.first_mid_level._load_variables()
@@ -400,11 +396,6 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     self.feature_friends_values = [3, 0, 1, 2, 3, 0, 1, 2]
     self.feature_friends_row_lengths = [1, 3, 1, 3]
     self.resolver = None
-
-  def tearDown(self):
-    if self.resolver:
-      tpu_strategy_util.shutdown_tpu_system(self.resolver)
-    super(TPUEmbeddingTest, self).tearDown()
 
   def test_tables_with_same_name(self):
     with self.assertRaisesRegex(
@@ -739,6 +730,49 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     sparse0 = self._get_replica_numpy(sparse_activations, strategy, 0)
     ragged0 = self._get_replica_numpy(ragged_activations, strategy, 0)
     self.assertAllClose(sparse0, ragged0)
+
+  def test_enqueue_per_device(self):
+    strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+
+    sparse = self._create_sparse_dataset(strategy)
+    sparse_iter = iter(strategy.experimental_distribute_dataset(
+        sparse,
+        options=distribute_lib.InputOptions(
+            experimental_prefetch_to_device=False)))
+
+    @def_function.function
+    def test_fn():
+      def get_activations(dense_value):
+        return mid_level_api.dequeue(), dense_value
+
+      sparse_features = next(sparse_iter)
+      mid_level_api.enqueue(sparse_features, training=False)
+      activations, dense_value1 = strategy.run(get_activations, args=(0.0,))
+
+      def enqueue_fn(ctx):
+        core_id = ctx.replica_id_in_sync_group
+        device = strategy.extended.worker_devices[core_id]
+        sparse_features_local = nest.map_structure(
+            lambda x: strategy.experimental_local_results(x)[core_id],
+            sparse_features)
+        mid_level_api.enqueue(sparse_features_local, training=False,
+                              device=device)
+        return 0.0
+
+      data = strategy.experimental_distribute_values_from_function(
+          enqueue_fn)
+      per_device_activations, dense_value2 = strategy.run(get_activations,
+                                                          args=(data,))
+      return activations, per_device_activations, dense_value1, dense_value2
+
+    activations, per_device_activations, _, _ = test_fn()
+
+    # Extact per core numpy arrays and check that both sparse and ragged have
+    # the same results.
+    activations0 = self._get_replica_numpy(activations, strategy, 0)
+    per_device_activations0 = self._get_replica_numpy(
+        per_device_activations, strategy, 0)
+    self.assertAllClose(activations0, per_device_activations0)
 
   def test_enqueue_cpu_tensor(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')

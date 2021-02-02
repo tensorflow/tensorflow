@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sets
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _has_valid_dims(weights_shape, values_shape):
@@ -133,6 +134,7 @@ def assert_broadcastable(weights, values):
     return control_flow_ops.Assert(is_valid_shape, data, name=scope)
 
 
+@tf_export("__internal__.ops.broadcast_weights", v1=[])
 def broadcast_weights(weights, values):
   """Broadcast `weights` to the same shape as `values`.
 
@@ -164,6 +166,13 @@ def broadcast_weights(weights, values):
         weights_shape.is_compatible_with(values_shape)):
       return weights
 
+    # Skip the assert_broadcastable on TPU/GPU because asserts are not
+    # supported so it only causes unnecessary ops. Also skip it because it uses
+    # a DenseToDenseSetOperation op that is incompatible with the TPU/GPU when
+    # the shape(s) are dynamic.
+    if control_flow_ops.get_enclosing_xla_context() is not None:
+      return math_ops.multiply(
+          weights, array_ops.ones_like(values), name=scope)
     with ops.control_dependencies((assert_broadcastable(weights, values),)):
       return math_ops.multiply(
           weights, array_ops.ones_like(values), name=scope)

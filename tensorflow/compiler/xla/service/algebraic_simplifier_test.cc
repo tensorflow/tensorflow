@@ -3054,6 +3054,54 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshapeMerged) {
       ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
 }
 
+TEST_F(AlgebraicSimplifierTest, IotaAndReshapeToMixedRadix) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {21}), 0));
+  Shape result_shape = ShapeUtil::MakeShape(F32, {7, 3});
+  builder.AddInstruction(HloInstruction::CreateReshape(result_shape, iota));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Add(
+                  m::Iota(),
+                  m::Multiply(m::Iota(), m::Broadcast(m::ConstantScalar())))));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
+}
+TEST_F(AlgebraicSimplifierTest, IotaAndReshapeToMixedRadixExtraDims) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {42, 24, 15}), 1));
+  Shape result_shape = ShapeUtil::MakeShape(F32, {3, 14, 4, 3, 2, 5, 3});
+  builder.AddInstruction(HloInstruction::CreateReshape(result_shape, iota));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Add(
+          m::Add(m::Iota(),
+                 m::Multiply(m::Iota(), m::Broadcast(m::ConstantScalar()))),
+          m::Multiply(m::Iota(), m::Broadcast(m::ConstantScalar())))));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
+}
 TEST_F(AlgebraicSimplifierTest, IotaEffectiveScalar) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
@@ -3267,6 +3315,54 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
               GmockMatch(m::Slice(m::Pad(m::Parameter(0), m::Op().Is(zero)))));
   EXPECT_FALSE(
       has_negative_padding(computation->root_instruction()->operand(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CanDisableNegativePadding) {
+  // Verify that a pad instruction with negative padding is replaced with a
+  // pad with non-negative padding followed by a slice.
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {10, 10}), "param"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  PaddingConfig padding;
+  int64 low_padding[2] = {-1, -2};
+  int64 high_padding[2] = {2, -3};
+  for (int i = 0; i < 2; ++i) {
+    auto dimension = padding.add_dimensions();
+    dimension->set_edge_padding_low(low_padding[i]);
+    dimension->set_edge_padding_high(high_padding[i]);
+    dimension->set_interior_padding(0);
+  }
+  HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {11, 5}), param, zero, padding));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  // Verify that we can disable the negative padding optimization.
+  AlgebraicSimplifierOptions opts = default_options_;
+  opts.set_enable_negative_padding_replacement(false);
+
+  AlgebraicSimplifier simplifier(opts);
+
+  auto has_negative_padding = [](const HloInstruction* pad) {
+    for (auto& padding_dimension : pad->padding_config().dimensions()) {
+      if (padding_dimension.edge_padding_low() < 0 ||
+          padding_dimension.edge_padding_high() < 0) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Pad(m::Parameter(0), m::Op().Is(zero))));
+  EXPECT_TRUE(has_negative_padding(pad));
+
+  // Nothing has changed since the negative padding replacement is disabled.
+  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
 
 TEST_F(AlgebraicSimplifierTest, TrivialInteriorPadding) {
@@ -3785,9 +3881,11 @@ TEST_P(ConvInputPaddingTest, DoTest) {
       ParseWindow(absl::StrCat("size=3x3 ", testcase.orig_conv_window))
           .ValueOrDie();
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(lhs_pad->shape(), filter->shape(),
-                                         /*feature_group_count=*/1,
-                                         /*batch_group_count=*/1, window, dnums)
+      ShapeInference::InferConvolveShape(
+          lhs_pad->shape(), filter->shape(),
+          /*feature_group_count=*/1,
+          /*batch_group_count=*/1, window, dnums,
+          /*preferred_element_type=*/absl::nullopt)
           .ValueOrDie(),
       lhs_pad, filter, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, DefaultPrecisionConfig(2)));
@@ -3902,9 +4000,11 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
   precision_config.add_operand_precision(PrecisionConfig::HIGHEST);
 
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(input->shape(), rhs_pad->shape(),
-                                         /*feature_group_count=*/1,
-                                         /*batch_group_count=*/1, window, dnums)
+      ShapeInference::InferConvolveShape(
+          input->shape(), rhs_pad->shape(),
+          /*feature_group_count=*/1,
+          /*batch_group_count=*/1, window, dnums,
+          /*preferred_element_type=*/absl::nullopt)
           .ValueOrDie(),
       input, rhs_pad, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, precision_config));
@@ -4050,7 +4150,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         b.AddInstruction(HloInstruction::CreateParameter(1, f_shape, "filter"));
     Shape out_shape = ShapeInference::InferConvolveShape(
                           in_shape, f_shape, /*feature_group_count=*/1,
-                          /*batch_group_count=*/1, window, dnums)
+                          /*batch_group_count=*/1, window, dnums,
+                          /*preferred_element_type=*/absl::nullopt)
                           .ValueOrDie();
     if (options.output_minor_to_major_layout) {
       out_shape = ShapeUtil::MakeShapeWithLayout(F32, out_shape.dimensions(),

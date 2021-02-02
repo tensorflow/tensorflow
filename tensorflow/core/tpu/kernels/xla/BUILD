@@ -16,7 +16,6 @@ cc_library(
         "inplace_ops.cc",
         "outfeed_ops.cc",
         "segment_reduction_ops.cc",
-        "where_op.cc",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -32,6 +31,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:side_effect_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",

@@ -27,6 +27,7 @@ import warnings
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
@@ -46,6 +47,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
+from tensorflow.tools.docs import doc_controls
 
 
 # pylint: disable=g-classes-have-attributes
@@ -89,11 +91,11 @@ class Functional(training_lib.Model):
   model = keras.Model(inputs, outputs)
   ```
 
-  Arguments:
+  Args:
     inputs: List of input tensors (must be created via `tf.keras.Input()`).
-    outputs: List of outputs tensors.
+    outputs: List of output tensors.
     name: String, optional. Name of the model.
-    trainable: Boolean, whether the model's variables should be trainable.
+    trainable: Boolean, optional. If the model's variables should be trainable.
   """
 
   # See tf.Module for the usage of this property.
@@ -106,7 +108,7 @@ class Functional(training_lib.Model):
   ))
 
   @trackable.no_automatic_dependency_tracking
-  def __init__(self, inputs=None, outputs=None, name=None, trainable=True,
+  def __init__(self, inputs, outputs, name=None, trainable=True,
                **kwargs):
     # This is used by the Model class, since we have some logic to swap the
     # class in the __new__ method, which will lead to __init__ get invoked
@@ -403,6 +405,7 @@ class Functional(training_lib.Model):
     return nest.map_structure(lambda t: getattr(t, '_keras_mask', None),
                               output_tensors)
 
+  @doc_controls.do_not_doc_inheritable
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
 
@@ -410,7 +413,7 @@ class Functional(training_lib.Model):
     all ops in the graph to the new inputs
     (e.g. build a new computational graph from the provided inputs).
 
-    Arguments:
+    Args:
         inputs: A tensor or list of tensors.
         training: Boolean or boolean scalar tensor, indicating whether to run
           the `Network` in training mode or inference mode.
@@ -519,7 +522,7 @@ class Functional(training_lib.Model):
     # Note:
         - Can be run on non-Keras tensors.
 
-    Arguments:
+    Args:
         inputs: Tensor or nested structure of Tensors.
         training: Boolean learning phase.
         mask: (Optional) Tensor or nested structure of Tensors.
@@ -641,8 +644,11 @@ class Functional(training_lib.Model):
       # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
     elif tf_utils.is_extension_type(tensor):
-      # Dtype casting.
-      tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
+      # Dtype casting (If the extension type has a non-variant dtype and
+      # supports being cast)
+      ref_input_dtype = getattr(ref_input, 'dtype', None)
+      if ref_input_dtype is not None and ref_input_dtype != dtypes.variant:
+        tensor = math_ops.cast(tensor, dtype=ref_input_dtype)
 
     return tensor
 
@@ -653,7 +659,7 @@ class Functional(training_lib.Model):
   def from_config(cls, config, custom_objects=None):
     """Instantiates a Model from its config (output of `get_config()`).
 
-    Arguments:
+    Args:
         config: Model config dictionary.
         custom_objects: Optional dictionary mapping names
             (strings) to custom classes or functions to be
@@ -665,12 +671,13 @@ class Functional(training_lib.Model):
     Raises:
         ValueError: In case of improperly formatted config dict.
     """
-    input_tensors, output_tensors, created_layers = reconstruct_from_config(
-        config, custom_objects)
-    model = cls(inputs=input_tensors, outputs=output_tensors,
-                name=config.get('name'))
-    connect_ancillary_layers(model, created_layers)
-    return model
+    with generic_utils.SharedObjectLoadingScope():
+      input_tensors, output_tensors, created_layers = reconstruct_from_config(
+          config, custom_objects)
+      model = cls(inputs=input_tensors, outputs=output_tensors,
+                  name=config.get('name'))
+      connect_ancillary_layers(model, created_layers)
+      return model
 
   def _validate_graph_inputs_and_outputs(self):
     """Validates the inputs and outputs of a Graph Network."""
@@ -736,7 +743,7 @@ class Functional(training_lib.Model):
     They will not be added to the Network's outputs.
 
 
-    Arguments:
+    Args:
       layers: Arbitrary nested structure of Layers. Layers must be reachable
         from one or more of the `keras.Input` Tensors that correspond to this
         Network's inputs.
@@ -884,7 +891,7 @@ def _make_node_key(layer_name, node_index):
 def _map_graph_network(inputs, outputs):
   """Validates a network's topology and gather its layers and nodes.
 
-  Arguments:
+  Args:
     inputs: List of input tensors.
     outputs: List of outputs tensors.
 
@@ -1087,10 +1094,13 @@ def _should_skip_first_node(layer):
   # Networks that are constructed with an Input layer/shape start with a
   # pre-existing node linking their input to output. This node is excluded from
   # the network config.
-  return (isinstance(layer, Functional) and
-          # Filter out Sequential models without an input shape.
-          isinstance(layer._self_tracked_trackables[0],
-                     input_layer_module.InputLayer))
+  if layer._self_tracked_trackables:
+    return (isinstance(layer, Functional) and
+            # Filter out Sequential models without an input shape.
+            isinstance(layer._self_tracked_trackables[0],
+                       input_layer_module.InputLayer))
+  else:
+    return isinstance(layer, Functional)
 
 
 def connect_ancillary_layers(model, created_layers):
@@ -1185,7 +1195,7 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
   def process_node(layer, node_data):
     """Deserialize a node.
 
-    Arguments:
+    Args:
         layer: layer instance.
         node_data: Nested structure of `ListWrapper`.
 
@@ -1241,7 +1251,7 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
   def process_layer(layer_data):
     """Deserializes a layer, then call it on appropriate inputs.
 
-    Arguments:
+    Args:
         layer_data: layer config dict.
 
     Raises:
@@ -1337,21 +1347,23 @@ def get_network_config(network, serialize_layer_fn=None):
         node_conversion_map[node_key] = kept_nodes
         kept_nodes += 1
   layer_configs = []
-  for layer in network.layers:  # From the earliest layers on.
-    filtered_inbound_nodes = []
-    for original_node_index, node in enumerate(layer._inbound_nodes):
-      node_key = _make_node_key(layer.name, original_node_index)
-      if node_key in network._network_nodes and not node.is_input:
-        # The node is relevant to the model:
-        # add to filtered_inbound_nodes.
-        node_data = node.serialize(_make_node_key, node_conversion_map)
-        filtered_inbound_nodes.append(node_data)
 
-    layer_config = serialize_layer_fn(layer)
-    layer_config['name'] = layer.name
-    layer_config['inbound_nodes'] = filtered_inbound_nodes
-    layer_configs.append(layer_config)
-  config['layers'] = layer_configs
+  with generic_utils.SharedObjectSavingScope():
+    for layer in network.layers:  # From the earliest layers on.
+      filtered_inbound_nodes = []
+      for original_node_index, node in enumerate(layer._inbound_nodes):
+        node_key = _make_node_key(layer.name, original_node_index)
+        if node_key in network._network_nodes and not node.is_input:
+          # The node is relevant to the model:
+          # add to filtered_inbound_nodes.
+          node_data = node.serialize(_make_node_key, node_conversion_map)
+          filtered_inbound_nodes.append(node_data)
+
+      layer_config = serialize_layer_fn(layer)
+      layer_config['name'] = layer.name
+      layer_config['inbound_nodes'] = filtered_inbound_nodes
+      layer_configs.append(layer_config)
+    config['layers'] = layer_configs
 
   # Gather info about inputs and outputs.
   model_inputs = []
@@ -1395,3 +1407,48 @@ def shape_with_no_batch_size(x):
   if shape:
     shape[0] = None
   return shape
+
+
+class ModuleWrapper(base_layer.Layer):
+  """Wrapper for `tf.Module`s to support the Functional and Sequential API."""
+
+  def __init__(self, module, method_name=None, **kwargs):
+    """Initializes the wrapper Layer for this module.
+
+    Args:
+      module: The `tf.Module` instance to be wrapped.
+      method_name: (Optional) str. The name of the method to use as the forward
+        pass of the module. If not set, defaults to '__call__' if defined, or
+        'call'.
+      **kwargs: Additional keywrod arguments. See `tf.keras.layers.Layer`.
+
+    Raises:
+      ValueError: If `method` is not defined on `module`.
+    """
+    super(ModuleWrapper, self).__init__(**kwargs)
+    if method_name is None:
+      if hasattr(module, '__call__'):
+        method_name = '__call__'
+      elif hasattr(module, 'call'):
+        method_name = 'call'
+    if method_name is None or not hasattr(module, method_name):
+      raise ValueError('{} is not defined on object {}'.format(
+          method_name, module))
+
+    self._module = module
+    self._method_name = method_name
+
+    # Check if module.__call__ has a `training` arg or accepts `**kwargs`.
+    method = getattr(module, method_name)
+    method_arg_spec = tf_inspect.getfullargspec(method)
+    self._expects_training_arg = ('training' in method_arg_spec.args or
+                                  method_arg_spec.varkw is not None)
+    self._expects_mask_arg = ('mask' in method_arg_spec.args or
+                              method_arg_spec.varkw is not None)
+
+  def call(self, *args, **kwargs):
+    if 'training' in kwargs and not self._expects_training_arg:
+      kwargs.pop('training')
+    if 'mask' in kwargs and not self._expects_mask_arg:
+      kwargs.pop('mask')
+    return getattr(self._module, self._method_name)(*args, **kwargs)

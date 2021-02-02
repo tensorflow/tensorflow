@@ -163,7 +163,9 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook) {
-  auto target_process_control = llvm::orc::SelfTargetProcessControl::Create();
+  auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
+  auto target_process_control =
+      llvm::orc::SelfTargetProcessControl::Create(std::move(SSP));
   if (!target_process_control) {
     return target_process_control.takeError();
   }

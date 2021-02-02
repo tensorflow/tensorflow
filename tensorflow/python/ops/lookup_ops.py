@@ -458,7 +458,7 @@ class DatasetInitializer(TableInitializerBase):
   """
 
   def __init__(self, dataset):
-    """Creates a table initializser from a `tf.data.Dataset`.
+    """Creates a table initializer from a `tf.data.Dataset`.
 
     Args:
       dataset: A `tf.data.Dataset` object that produces tuples of scalars. The
@@ -633,8 +633,7 @@ class TextFileInitializer(TableInitializerBase):
   >>> init = tf.lookup.TextFileInitializer(
   ...   filename=f.name,
   ...   key_dtype=tf.string, key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
-  ...   value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER,
-  ...   delimiter=" ")
+  ...   value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER)
   >>> table = tf.lookup.StaticHashTable(init, -1)
   >>> table.lookup(tf.constant('palmer 30')).numpy()
   2

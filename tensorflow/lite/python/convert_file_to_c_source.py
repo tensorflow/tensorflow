@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,94 +12,61 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Python command line interface for converting TF Lite files into C source."""
+"""Converts a TFLite model to a TFLite Micro model (C++ Source)."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
-import sys
+from absl import app
+from absl import flags
 
 from tensorflow.lite.python import util
-from tensorflow.python.platform import app
+
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string("input_tflite_file", None,
+                    "Full path name to the input TFLite model file.")
+flags.DEFINE_string(
+    "output_source_file", None,
+    "Full path name to the output TFLite Micro model (C++ Source) file).")
+flags.DEFINE_string("output_header_file", None,
+                    "Full filepath of the output C header file.")
+flags.DEFINE_string("array_variable_name", None,
+                    "Name to use for the C data array variable.")
+flags.DEFINE_integer("line_width", 80, "Width to use for formatting.")
+flags.DEFINE_string("include_guard", None,
+                    "Name to use for the C header include guard.")
+flags.DEFINE_string("include_path", None,
+                    "Optional path to include in generated source file.")
+flags.DEFINE_boolean(
+    "use_tensorflow_license", False,
+    "Whether to prefix the generated files with the TF Apache2 license.")
+
+flags.mark_flag_as_required("input_tflite_file")
+flags.mark_flag_as_required("output_source_file")
+flags.mark_flag_as_required("output_header_file")
+flags.mark_flag_as_required("array_variable_name")
 
 
-def run_main(_):
-  """Main in convert_file_to_c_source.py."""
-
-  parser = argparse.ArgumentParser(
-      description=("Command line tool to run TensorFlow Lite Converter."))
-
-  parser.add_argument(
-      "--input_tflite_file",
-      type=str,
-      help="Full filepath of the input TensorFlow Lite file.",
-      required=True)
-
-  parser.add_argument(
-      "--output_source_file",
-      type=str,
-      help="Full filepath of the output C source file.",
-      required=True)
-
-  parser.add_argument(
-      "--output_header_file",
-      type=str,
-      help="Full filepath of the output C header file.",
-      required=True)
-
-  parser.add_argument(
-      "--array_variable_name",
-      type=str,
-      help="Name to use for the C data array variable.",
-      required=True)
-
-  parser.add_argument(
-      "--line_width", type=int, help="Width to use for formatting.", default=80)
-
-  parser.add_argument(
-      "--include_guard",
-      type=str,
-      help="Name to use for the C header include guard.",
-      default=None)
-
-  parser.add_argument(
-      "--include_path",
-      type=str,
-      help="Optional path to include in generated source file.",
-      default=None)
-
-  parser.add_argument(
-      "--use_tensorflow_license",
-      dest="use_tensorflow_license",
-      help="Whether to prefix the generated files with the TF Apache2 license.",
-      action="store_true")
-  parser.set_defaults(use_tensorflow_license=False)
-
-  flags, _ = parser.parse_known_args(args=sys.argv[1:])
-
-  with open(flags.input_tflite_file, "rb") as input_handle:
+def main(_):
+  with open(FLAGS.input_tflite_file, "rb") as input_handle:
     input_data = input_handle.read()
 
   source, header = util.convert_bytes_to_c_source(
       data=input_data,
-      array_name=flags.array_variable_name,
-      max_line_width=flags.line_width,
-      include_guard=flags.include_guard,
-      include_path=flags.include_path,
-      use_tensorflow_license=flags.use_tensorflow_license)
+      array_name=FLAGS.array_variable_name,
+      max_line_width=FLAGS.line_width,
+      include_guard=FLAGS.include_guard,
+      include_path=FLAGS.include_path,
+      use_tensorflow_license=FLAGS.use_tensorflow_license)
 
-  with open(flags.output_source_file, "w") as source_handle:
+  with open(FLAGS.output_source_file, "w") as source_handle:
     source_handle.write(source)
 
-  with open(flags.output_header_file, "w") as header_handle:
+  with open(FLAGS.output_header_file, "w") as header_handle:
     header_handle.write(header)
 
 
-def main():
-  app.run(main=run_main, argv=sys.argv[:1])
-
-
 if __name__ == "__main__":
-  main()
+  app.run(main)

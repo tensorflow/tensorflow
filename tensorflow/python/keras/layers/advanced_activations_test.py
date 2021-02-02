@@ -34,37 +34,44 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
     for alpha in [0., .5, -1.]:
       testing_utils.layer_test(keras.layers.LeakyReLU,
                                kwargs={'alpha': alpha},
-                               input_shape=(2, 3, 4))
+                               input_shape=(2, 3, 4),
+                               supports_masking=True)
 
   def test_prelu(self):
     testing_utils.layer_test(keras.layers.PReLU, kwargs={},
-                             input_shape=(2, 3, 4))
+                             input_shape=(2, 3, 4),
+                             supports_masking=True)
 
   def test_prelu_share(self):
     testing_utils.layer_test(keras.layers.PReLU,
                              kwargs={'shared_axes': 1},
-                             input_shape=(2, 3, 4))
+                             input_shape=(2, 3, 4),
+                             supports_masking=True)
 
   def test_elu(self):
     for alpha in [0., .5, -1.]:
       testing_utils.layer_test(keras.layers.ELU,
                                kwargs={'alpha': alpha},
-                               input_shape=(2, 3, 4))
+                               input_shape=(2, 3, 4),
+                               supports_masking=True)
 
   def test_thresholded_relu(self):
     testing_utils.layer_test(keras.layers.ThresholdedReLU,
                              kwargs={'theta': 0.5},
-                             input_shape=(2, 3, 4))
+                             input_shape=(2, 3, 4),
+                             supports_masking=True)
 
   def test_softmax(self):
     testing_utils.layer_test(keras.layers.Softmax,
                              kwargs={'axis': 1},
-                             input_shape=(2, 3, 4))
+                             input_shape=(2, 3, 4),
+                             supports_masking=True)
 
   def test_relu(self):
     testing_utils.layer_test(keras.layers.ReLU,
                              kwargs={'max_value': 10},
-                             input_shape=(2, 3, 4))
+                             input_shape=(2, 3, 4),
+                             supports_masking=True)
     x = keras.backend.ones((3, 4))
     if not context.executing_eagerly():
       # Test that we use `leaky_relu` when appropriate in graph mode.
@@ -80,7 +87,8 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
         ValueError, 'max_value of Relu layer cannot be negative value: -10'):
       testing_utils.layer_test(keras.layers.ReLU,
                                kwargs={'max_value': -10},
-                               input_shape=(2, 3, 4))
+                               input_shape=(2, 3, 4),
+                               supports_masking=True)
     with self.assertRaisesRegex(
         ValueError,
         'negative_slope of Relu layer cannot be negative value: -2'):

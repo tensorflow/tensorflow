@@ -206,8 +206,9 @@ static Status CompileToLocalExecutable(
                                           may_alias_resource_update;
 
   xla::StatusOr<std::vector<XlaCompiler::Argument>> args =
-      XlaComputationLaunchContext::BuildXlaCompilerArguments(constants, inputs,
-                                                             variable_infos);
+      XlaComputationLaunchContext::BuildXlaCompilerArguments(
+          constants, inputs, variable_infos,
+          static_cast<Device*>(ctx->device()));
   TF_RETURN_IF_ERROR(args.status());
   return cache->Compile(options, function, *args, compile_options,
                         lazy ? XlaCompilationCache::CompileMode::kLazy
@@ -245,8 +246,6 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
-
-  VLOG(1) << "Executing XLA Computation...";
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
   se::DeviceMemoryAllocator* allocator = GetAllocator(

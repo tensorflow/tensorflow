@@ -213,8 +213,7 @@ __global__ void MaxPoolBackward(const int nthreads,
   }
 }
 
-// The parameters to the kernels in the gradient gradient function is as
-// follows:
+// The parameters to the kernels in the gradient function is as follows:
 //     nthreads: the number of threads, which is equal to the output size. The
 //         gradient of the MaxPooling gradient w.r.t. the output data has a
 //         dimensions of N*C*Hout*Wout
@@ -310,8 +309,7 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
   }
 }
 
-// The parameters to the kernels in the gradient gradient function is as
-// follows:
+// The parameters to the kernels in the gradient function is as follows:
 //     nthreads: the number of threads, which is equal to the output size. The
 //         gradient of the MaxPooling gradient w.r.t. the output data has a
 //         dimensions of N*C*Hout*Wout

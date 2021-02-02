@@ -83,6 +83,7 @@ cc_library(
     }) + [
         "-UUSE_MKL",
         "-UUSE_CBLAS",
+        "-DDNNL_ENABLE_MAX_CPU_ISA",
     ] + tf_openmp_copts(),
     includes = [
         "include",

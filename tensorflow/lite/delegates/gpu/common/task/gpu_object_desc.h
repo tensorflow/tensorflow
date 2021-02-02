@@ -23,12 +23,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 struct GPUImage2DDescriptor {
   DataType data_type;
@@ -118,7 +118,8 @@ class GPUObjectDescriptor {
   }
 
   virtual absl::Status PerformSelector(
-      const std::string& selector, const std::vector<std::string>& args,
+      const GpuInfo& gpu_info, const std::string& selector,
+      const std::vector<std::string>& args,
       const std::vector<std::string>& template_args,
       std::string* result) const {
     *result = "";
@@ -142,7 +143,6 @@ class GPUObjectDescriptor {
 
 using GPUObjectDescriptorPtr = std::unique_ptr<GPUObjectDescriptor>;
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 

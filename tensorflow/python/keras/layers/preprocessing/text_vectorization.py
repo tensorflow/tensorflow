@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Keras text vectorization preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -117,7 +118,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
        ["another", "string", "to", "split"]]`. This makes the callable site
        natively compatible with `tf.strings.split()`.
 
-  Attributes:
+  Args:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       contains 1 OOV token, so the effective number of tokens is `(max_tokens -
@@ -162,6 +163,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       times, an error will be thrown.
 
   Example:
+
   This example instantiates a TextVectorization layer that lowercases text,
   splits on whitespace, strips punctuation, and outputs integer vocab indices.
 
@@ -202,6 +204,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
          [1, 3, 0, 0]])
 
   Example:
+
   This example instantiates a TextVectorization layer by passing a list
   of vocabulary terms to the layer's __init__ method.
 
@@ -334,7 +337,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(TextVectorization, self).__init__(
         combiner=None,
         **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("TextVectorization")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "TextVectorization").set(True)
 
     mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(
@@ -396,7 +400,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     Overrides the default adapt method to apply relevant preprocessing to the
     inputs before passing to the combiner.
 
-    Arguments:
+    Args:
       data: The data to train on. It can be passed either as a tf.data Dataset,
         as a NumPy array, a string tensor, or as a list of texts.
       reset_state: Optional argument specifying whether to clear the state of
@@ -451,7 +455,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     # at init time it's now stored in variable state - we don't need to
     # pull it off disk again.
     config = {
-        "max_tokens": self._max_tokens,
+        "max_tokens": self._index_lookup_layer.max_tokens,
         "standardize": self._standardize,
         "split": self._split,
         "ngrams": self._ngrams_arg,
@@ -481,7 +485,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     vocabulary data is already present in the layer, this method will replace
     it.
 
-    Arguments:
+    Args:
       vocab: An array of string tokens, or a path to a file containing one
         token per line.
       df_data: An array of document frequency data. Only necessary if the layer

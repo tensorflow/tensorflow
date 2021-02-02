@@ -98,9 +98,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  // TODO(ahentz): use could use GetOptionalInputTensor() here, but we need to
-  // decide whether we are OK with optional tensors being completely absent, as
-  // opposed to having -1 as their index.
   bool hasBias = NumInputs(node) == 3;
 
   TF_LITE_ENSURE(context, hasBias || NumInputs(node) == 2);

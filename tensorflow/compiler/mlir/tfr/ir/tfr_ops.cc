@@ -30,15 +30,15 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -121,6 +121,13 @@ TFRDialect::TFRDialect(MLIRContext *context)
   addInterfaces<TFRInlinerInterface>();
 }
 
+Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
+                                           Type type, Location loc) {
+  if (ConstantOp::isBuildableWith(value, type))
+    return builder.create<ConstantOp>(loc, type, value);
+  return nullptr;
+}
+
 bool TFRType::classof(Type type) {
   return llvm::isa<TFRDialect>(type.getDialect());
 }
@@ -171,7 +178,7 @@ static LogicalResult Verify(TFRFuncOp func) {
   // and returns. Also, collect the names of all the attribute arguments as the
   // defined list. Later on, the used attribute names will be verified to be in
   // the defined list.
-  llvm::SmallVector<StringAttr, 4> used_attrs;
+  llvm::SmallVector<StringAttr, 4> input_used_attrs, output_used_attrs;
 
   // While scanning the arguments, record the start/end indices of each argument
   // type, so the order can be verified as well.
@@ -179,7 +186,6 @@ static LogicalResult Verify(TFRFuncOp func) {
   // at the end?
   int first_tensor = -1, last_tensor = -1, first_tensor_list = -1,
       last_tensor_list = -1, first_attr = -1;
-
   for (auto arg : llvm::enumerate(func.getType().getInputs())) {
     Type arg_type = arg.value();
 
@@ -189,7 +195,7 @@ static LogicalResult Verify(TFRFuncOp func) {
       }
       last_tensor = arg.index();
       auto used = tensor.getAttrKeys();
-      used_attrs.append(used.begin(), used.end());
+      input_used_attrs.append(used.begin(), used.end());
       continue;
     }
 
@@ -199,7 +205,7 @@ static LogicalResult Verify(TFRFuncOp func) {
       }
       last_tensor_list = arg.index();
       auto used = tensor_list.getAttrKeys();
-      used_attrs.append(used.begin(), used.end());
+      input_used_attrs.append(used.begin(), used.end());
       continue;
     }
 
@@ -222,46 +228,62 @@ static LogicalResult Verify(TFRFuncOp func) {
     return failure();
   }
 
+  // Collect all the undefined attributes used in the inputs.
+  llvm::SmallVector<StringAttr, 4> undefined_attrs;
+  for (auto attr : input_used_attrs) {
+    if (!func->getAttr(attr.getValue())) {
+      undefined_attrs.push_back(attr);
+    }
+  }
+
   // Verify the argument order: tensors, tensor list, attributes; and also
   // verify there is at most one tensor list argument.
-  if (first_tensor_list != -1 && first_tensor_list < last_tensor) {
+  if (first_attr != -1 &&
+      (first_attr < last_tensor_list || first_attr < last_tensor)) {
     func.emitError(
-        "tfr.tensor argument should be before tfr.tensor_list argument.");
+        "tfr.tensor/tfr.tensor_list argument should be before non tensor "
+        "arguments.");
     return failure();
   }
-  if (first_attr != -1 && first_attr < last_tensor_list) {
-    func.emitError(
-        "tfr.tensor_list argument should be before non tensor arguments.");
-    return failure();
-  }
-  if (first_tensor_list != last_tensor_list) {
-    func.emitError("More than one tfr.tensor_list argument isn't allowed.");
-    return failure();
+  // The order between tensor arguments and tensor list arguments and the number
+  // of tensor list arguments are verified only when they couldn't be determined
+  // by the attributes.
+  if (!undefined_attrs.empty()) {
+    if (first_tensor_list != -1 && first_tensor_list < last_tensor) {
+      func.emitError(
+          "tfr.tensor argument should be before tfr.tensor_list argument.");
+      return failure();
+    }
+    if (first_tensor_list != last_tensor_list) {
+      func.emitError("More than one tfr.tensor_list argument isn't allowed.");
+      return failure();
+    }
   }
 
   // Verify the result order: tensor, tensor list, and also verify at most one
   // tensor list result.
-  bool seen_tensor_list = false;
+  int undefined_input_attrs_number = undefined_attrs.size();
+  bool seen_tensor_list = false, has_tensor_list_order_error = false,
+       has_multiple_tensor_lists_error = false;
   for (auto result_type : func.getType().getResults()) {
     if (auto tensor = result_type.dyn_cast<TFRTensorType>()) {
       if (seen_tensor_list) {
-        func.emitError(
-            "tfr.tensor result should be before tfr.tensor_list result.");
-        return failure();
+        has_tensor_list_order_error = true;
+      } else {
+        auto used = tensor.getAttrKeys();
+        output_used_attrs.append(used.begin(), used.end());
       }
-      auto used = tensor.getAttrKeys();
-      used_attrs.append(used.begin(), used.end());
       continue;
     }
 
     if (auto tensor_list = result_type.dyn_cast<TFRTensorListType>()) {
       if (seen_tensor_list) {
-        func.emitError("More than one tfr.tensor_list result isn't allowed.");
-        return failure();
+        has_multiple_tensor_lists_error = true;
+      } else {
+        seen_tensor_list = true;
+        auto used = tensor_list.getAttrKeys();
+        output_used_attrs.append(used.begin(), used.end());
       }
-      seen_tensor_list = true;
-      auto used = tensor_list.getAttrKeys();
-      used_attrs.append(used.begin(), used.end());
       continue;
     }
 
@@ -271,13 +293,28 @@ static LogicalResult Verify(TFRFuncOp func) {
     return failure();
   }
 
-  // Verify that all the used attributes are in the attribute arguments.
-  llvm::SmallVector<StringAttr, 4> undefined_attrs;
-  for (auto attr : used_attrs) {
-    if (!func.getAttr(attr.getValue())) {
+  // Collect all the undefined attributes used in the outputs.
+  for (auto attr : output_used_attrs) {
+    if (!func->getAttr(attr.getValue())) {
       undefined_attrs.push_back(attr);
     }
   }
+
+  // Verify there are no tensor/tensor list order error and multiple tensor
+  // list arguments error.
+  if (undefined_input_attrs_number != undefined_attrs.size()) {
+    if (has_tensor_list_order_error) {
+      func.emitError(
+          "tfr.tensor result should be before tfr.tensor_list result.");
+      return failure();
+    } else if (has_multiple_tensor_lists_error) {
+      func.emitError("More than one tfr.tensor_list result isn't allowed.");
+      return failure();
+    }
+  }
+
+  // TODO(fengliuai): We might want to refine this constraint because the
+  // tensor element type can be derived.
   if (!undefined_attrs.empty()) {
     llvm::SmallVector<std::string, 4> attr_names(undefined_attrs.size());
     std::transform(undefined_attrs.begin(), undefined_attrs.end(),
@@ -437,6 +474,23 @@ struct RemoveRedundantGetElement : public OpRewritePattern<GetElementOp> {
   }
 };
 
+struct RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
+  using OpRewritePattern<GetLengthOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(GetLengthOp gl_op,
+                                PatternRewriter &rewriter) const override {
+    auto preceding_build_list = llvm::dyn_cast_or_null<BuildListOp>(
+        gl_op.tensor_list().getDefiningOp());
+    if (!preceding_build_list) {
+      return failure();
+    }
+    int64_t num_tensors = preceding_build_list.getNumOperands();
+    rewriter.replaceOpWithNewOp<ConstantOp>(gl_op,
+                                            rewriter.getIndexAttr(num_tensors));
+    return success();
+  }
+};
+
 struct BuildConstantListAsAttr : public OpRewritePattern<BuildListOp> {
   using OpRewritePattern<BuildListOp>::OpRewritePattern;
 
@@ -475,6 +529,11 @@ void GetShapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void GetElementOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<RemoveRedundantGetElement>(context);
+}
+
+void GetLengthOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<RemoveRedundantGetLength>(context);
 }
 
 void BuildListOp::getCanonicalizationPatterns(OwningRewritePatternList &results,

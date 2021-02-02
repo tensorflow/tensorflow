@@ -25,6 +25,7 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -75,7 +76,7 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     # graphs. Propagate that behavior here.
     add_control_dependencies = ops.get_default_graph()._add_control_dependencies
     pred = ops.convert_to_tensor(pred)
-    if (tensor_util.is_tensor(pred) and
+    if (tensor_util.is_tf_type(pred) and
         (pred.shape.dims is None or pred.shape.dims)):
       pred = array_ops.squeeze_v2(pred)
 
@@ -343,9 +344,8 @@ def get_func_graphs(op):
             _get_func_graph_for_branch(
                 op.get_attr("else_branch"), "_false_graph"))
   elif op.type in ["Case", "StatelessCase"]:
-    # TODO(b/141114088): investigate whether to cache graphs in forward pass
-    return [_get_func_graph_for_branch(branch_fn)
-            for branch_fn in op.get_attr("branches")]
+    return [_get_func_graph_for_branch(branch_fn, "_branch_graph_{}".format(i))
+            for i, branch_fn in enumerate(op.get_attr("branches"))]
   else:
     raise ValueError("Unsupported op type: {}".format(op.type))
 
@@ -830,14 +830,22 @@ def _copy_handle_data(external_tensors, *branch_graph_outputs):
       internal_handle_data.append(handle_data)
     else:  # There is handle data, so we need to combine it.
       combined_shape = tensor_shape.TensorShape(None)
+      combined_dtype = None
       for handle_data in internal_handle_data:
         handle_shape = tensor_shape.TensorShape(
             handle_data.shape_and_type[0].shape)
         combined_shape = combined_shape.most_specific_compatible_shape(
             handle_shape)
+        if combined_dtype is None:
+          combined_dtype = handle_data.shape_and_type[0].dtype
+        elif handle_data.shape_and_type[0].dtype != combined_dtype:
+          # Variants from different branches have different dtypes. The
+          # combined variant has no static dtype.
+          combined_dtype = types_pb2.DT_INVALID
       combined_handle_data = internal_handle_data[0]
       combined_handle_data.shape_and_type[0].shape.CopyFrom(
           combined_shape.as_proto())
+      combined_handle_data.shape_and_type[0].dtype = combined_dtype
       handle_data_util.set_handle_data(external, combined_handle_data)
 
 
@@ -1170,6 +1178,13 @@ def _build_case(branch_index,
         _set_read_only_resource_inputs_attr(case_op, branch_graphs)
         # Prevent fetching since the variant outputs can't be fetched directly.
         case_op.graph.prevent_fetching(case_op)
+
+        # Store the branch graphs so they can be reused during the gradient
+        # pass.
+        for i, bg in enumerate(branch_graphs):
+          bg.outer_graph = ops.get_default_graph()
+          setattr(case_op, "_branch_graph_{}".format(i), bg)
+
       return tensors
     tensors = util.run_as_function_for_tape_gradients(_make_op, case_inputs)
 

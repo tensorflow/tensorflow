@@ -93,7 +93,7 @@ class GuaranteeAllFuncsOneUse
           }
           auto new_func = func.clone();
           symbol_table.insert(new_func);
-          new_func.setVisibility(SymbolTable::Visibility::Private);
+          new_func.setPrivate();
           if (failed(symbol_table.replaceAllSymbolUses(func, new_func.getName(),
                                                        use.getUser()))) {
             return func.emitError() << "could not replace symbol use";

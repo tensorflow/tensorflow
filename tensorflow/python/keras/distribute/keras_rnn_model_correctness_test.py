@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.python import keras
 from tensorflow.python import tf2
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import tpu_strategy
@@ -116,6 +117,11 @@ class DistributionStrategyLstmModelCorrectnessTest(
   @testing_utils.enable_v2_dtype_behavior
   def test_lstm_model_correctness_mixed_precision(self, distribution, use_numpy,
                                                   use_validation_data):
+    if isinstance(distribution,
+                  (central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
+      self.skipTest('CentralStorageStrategy is not supported by '
+                    'mixed precision.')
     if isinstance(distribution,
                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
       policy_name = 'mixed_bfloat16'

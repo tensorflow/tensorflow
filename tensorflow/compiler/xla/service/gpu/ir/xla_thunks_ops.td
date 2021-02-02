@@ -34,7 +34,7 @@ def AllocationSlice : StructAttr<"AllocationSlice", XLAThunks_Dialect, [
     StructFieldAttr<"offset", I64Attr>,
     StructFieldAttr<"size", I64Attr>,
   ]> {
-  let description = "Defines a slice of an allocation for XLA thunk ops";
+  let summary = "Defines a slice of an allocation for XLA thunk ops";
 }
 
 def MemzeroThunkOp : ThunkOp<"execute_memzero_thunk"> {

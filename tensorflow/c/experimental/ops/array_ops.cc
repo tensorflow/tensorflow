@@ -81,5 +81,17 @@ Status ExpandDims(AbstractContext* ctx,
   return op->Execute(outputs, &num_retvals);
 }
 
+Status OnesLike(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op->Reset("OnesLike", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op.get(), name));
+  TF_RETURN_IF_ERROR(op->AddInput(inputs[0]));
+
+  int num_retvals = 1;
+  return op->Execute(outputs, &num_retvals);
+}
+
 }  // namespace ops
 }  // namespace tensorflow

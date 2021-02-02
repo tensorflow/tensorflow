@@ -27,7 +27,7 @@ import warnings
 import six
 
 from tensorflow.python.autograph.lang import directives
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -45,7 +45,6 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as callbacks_module
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import compile_utils
@@ -55,6 +54,7 @@ from tensorflow.python.keras.mixed_precision import loss_scale_optimizer as lso
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import save
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
@@ -70,10 +70,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.ragged import ragged_concat_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
+from tensorflow.python.saved_model import constants as sm_constants
+from tensorflow.python.saved_model import loader_impl as sm_loader
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
@@ -117,6 +117,10 @@ def inject_functional_model_class(cls):
   from tensorflow.python.keras.engine import training_v1  # pylint: disable=g-import-not-at-top
   if cls == Model or cls == training_v1.Model:
     return functional.Functional
+  # In case there is any multiple inheritance, we stop injecting the
+  # class if keras model is not in its class hierarchy.
+  if cls == object:
+    return object
 
   cls.__bases__ = tuple(inject_functional_model_class(base)
                         for base in cls.__bases__)
@@ -137,7 +141,7 @@ def is_functional_model_init_params(args, kwargs):
 class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
-  Arguments:
+  Args:
       inputs: The input(s) of the model: a `keras.Input` object or list of
           `keras.Input` objects.
       outputs: The output(s) of the model. See Functional API example below.
@@ -232,8 +236,33 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
     if (is_functional_model_init_params(args, kwargs) and
         not isinstance(self, functional.Functional)):
+      # Filter the kwargs for multiple inheritance.
+      supported_kwargs = ['inputs', 'outputs', 'name', 'trainable', 'skip_init']
+      model_kwargs = {k: kwargs[k] for k in kwargs if k in supported_kwargs}
+      other_kwargs = {k: kwargs[k] for k in kwargs if k not in supported_kwargs}
       inject_functional_model_class(self.__class__)
-      functional.Functional.__init__(self, *args, **kwargs)
+      functional.Functional.__init__(self, *args, **model_kwargs)
+
+      # In case there is any multiple inheritance here, we need to call the
+      # __init__ for any class that appears after the Functional class.
+      clz_to_init = []
+      found_functional_class = False
+      for clz in self.__class__.__bases__:
+        if issubclass(clz, functional.Functional):
+          found_functional_class = True
+          continue
+        if found_functional_class:
+          clz_to_init.append(clz)
+
+      if clz_to_init:
+        for clz in clz_to_init:
+          clz.__init__(self, *args, **other_kwargs)
+      elif other_kwargs:
+        # In case there are unused kwargs, we should raise an error to user, in
+        # case they have a typo in the param name.
+        raise TypeError(
+            'The following keyword arguments aren\'t supported: {}'.format(
+                other_kwargs))
       return
 
     base_layer.keras_api_gauge.get_cell('Model subclass').set(True)
@@ -424,6 +453,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                            'the correct dtype).')
     super(Model, self).build(input_shape)
 
+  @doc_controls.doc_in_current_and_subclasses
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
 
@@ -431,7 +461,12 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     all ops in the graph to the new inputs
     (e.g. build a new computational graph from the provided inputs).
 
-    Arguments:
+    Note: This method should not be called directly. It is only meant to be
+    overridden when subclassing `tf.keras.Model`.
+    To call a model on an input, always use the `__call__` method,
+    i.e. `model(inputs)`, which relies on the underlying `call` method.
+
+    Args:
         inputs: A tensor or list of tensors.
         training: Boolean or boolean scalar tensor, indicating whether to run
           the `Network` in training mode or inference mode.
@@ -456,7 +491,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               **kwargs):
     """Configures the model for training.
 
-    Arguments:
+    Args:
         optimizer: String (name of optimizer) or optimizer instance. See
           `tf.keras.optimizers`.
         loss: String (name of objective function), objective function or
@@ -734,7 +769,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     `tf.distribute.Strategy` settings), should be left to
     `Model.make_train_function`, which can also be overridden.
 
-    Arguments:
+    Args:
       data: A nested structure of `Tensor`s.
 
     Returns:
@@ -840,7 +875,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           use_multiprocessing=False):
     """Trains the model for a fixed number of epochs (iterations on a dataset).
 
-    Arguments:
+    Args:
         x: Input data. It could be:
           - A Numpy array (or array-like), or a list of arrays
             (in case the model has multiple inputs).
@@ -1168,7 +1203,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     `tf.distribute.Strategy` settings), should be left to
     `Model.make_test_function`, which can also be overridden.
 
-    Arguments:
+    Args:
       data: A nested structure of `Tensor`s.
 
     Returns:
@@ -1262,7 +1297,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     Computation is done in batches (see the `batch_size` arg.)
 
-    Arguments:
+    Args:
         x: Input data. It could be:
           - A Numpy array (or array-like), or a list of arrays
             (in case the model has multiple inputs).
@@ -1421,7 +1456,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     `tf.distribute.Strategy` settings), should be left to
     `Model.make_predict_function`, which can also be overridden.
 
-    Arguments:
+    Args:
       data: A nested structure of `Tensor`s.
 
     Returns:
@@ -1517,7 +1552,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     inference. Also, note the fact that test loss is not affected by
     regularization layers like noise and dropout.
 
-    Arguments:
+    Args:
         x: Input samples. It could be:
           - A Numpy array (or array-like), or a list of arrays
             (in case the model has multiple inputs).
@@ -1585,7 +1620,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           self.distribute_strategy)) and isinstance(x, dataset_types):
         try:
           options = dataset_ops.Options()
-          data_option = AutoShardPolicy.DATA
+          data_option = distribute_options.AutoShardPolicy.DATA
           options.experimental_distribute.auto_shard_policy = data_option
           x = x.with_options(options)
         except ValueError:
@@ -1676,7 +1711,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                      return_dict=False):
     """Runs a single gradient update on a single batch of data.
 
-    Arguments:
+    Args:
         x: Input data. It could be:
           - A Numpy array (or array-like), or a list of arrays
               (in case the model has multiple inputs).
@@ -1744,7 +1779,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                     return_dict=False):
     """Test the model on a single batch of samples.
 
-    Arguments:
+    Args:
         x: Input data. It could be: - A Numpy array (or array-like), or a list
           of arrays (in case the model has multiple inputs). - A TensorFlow
           tensor, or a list of tensors (in case the model has multiple inputs).
@@ -1798,7 +1833,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def predict_on_batch(self, x):
     """Returns predictions for a single batch of samples.
 
-    Arguments:
+    Args:
         x: Input data. It could be: - A Numpy array (or array-like), or a list
           of arrays (in case the model has multiple inputs). - A TensorFlow
           tensor, or a list of tensors (in case the model has multiple inputs).
@@ -1975,7 +2010,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     [Serialization and Saving guide](https://keras.io/guides/serialization_and_saving/)
     for details.
 
-    Arguments:
+    Args:
         filepath: String, PathLike, path to SavedModel or H5 file to save the
             model.
         overwrite: Whether to silently overwrite any existing file at the
@@ -2061,7 +2096,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     checkpoints](https://www.tensorflow.org/guide/checkpoint) for details
     on the TensorFlow format.
 
-    Arguments:
+    Args:
         filepath: String or PathLike, path to the file to save the weights to.
             When saving in TensorFlow format, this is the prefix used for
             checkpoint files (multiple files are generated). Note that the '.h5'
@@ -2081,7 +2116,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """
     self._assert_weights_created()
     filepath = path_to_string(filepath)
-    filepath_is_h5 = _is_hdf5_filepath(filepath)
+    filepath_is_h5 = saving_utils.is_hdf5_filepath(filepath)
     if save_format is None:
       if filepath_is_h5:
         save_format = 'h5'
@@ -2124,16 +2159,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         session = None
       else:
         session = backend.get_session()
-      optimizer = getattr(self, 'optimizer', None)
-      if (optimizer
-          and not isinstance(optimizer, trackable.Trackable)):
-        logging.warning(
-            ('This model was compiled with a Keras optimizer (%s) but is being '
-             'saved in TensorFlow format with `save_weights`. The model\'s '
-             'weights will be saved, but unlike with TensorFlow optimizers in '
-             'the TensorFlow format the optimizer\'s state will not be '
-             'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
-            % (optimizer,))
       self._trackable_saver.save(filepath, session=session, options=options)
       # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
       checkpoint_management.update_checkpoint_state_internal(
@@ -2166,10 +2191,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     TensorFlow format loads based on the object-local names of attributes to
     which layers are assigned in the `Model`'s constructor.
 
-    Arguments:
+    Args:
         filepath: String, path to the weights file to load. For weight files in
             TensorFlow format, this is the file prefix (the same as was passed
-            to `save_weights`).
+            to `save_weights`). This can also be a path to a SavedModel
+            saved from `model.save`.
         by_name: Boolean, whether to load weights by name or by topological
             order. Only topological loading is supported for weight files in
             TensorFlow format.
@@ -2194,9 +2220,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         ValueError: If `skip_mismatch` is set to `True` when `by_name` is
           `False`.
     """
-    if dist_utils.is_tpu_strategy(self._distribution_strategy):
+    if backend.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
-          (not _is_hdf5_filepath(filepath))):
+          (not saving_utils.is_hdf5_filepath(filepath))):
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
     if skip_mismatch and not by_name:
@@ -2204,16 +2230,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           'When calling model.load_weights, skip_mismatch can only be set to '
           'True when by_name is True.')
 
-    filepath = path_to_string(filepath)
-    if _is_hdf5_filepath(filepath):
-      save_format = 'h5'
-    else:
-      try:
-        py_checkpoint_reader.NewCheckpointReader(filepath)
-        save_format = 'tf'
-      except errors_impl.DataLossError:
-        # The checkpoint is not readable in TensorFlow format. Try HDF5.
-        save_format = 'h5'
+    filepath, save_format = _detect_save_format(filepath)
     if save_format == 'tf':
       status = self._trackable_saver.restore(filepath, options)
       if by_name:
@@ -2280,7 +2297,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     To load a network from a JSON save file, use
     `keras.models.model_from_json(json_string, custom_objects={})`.
 
-    Arguments:
+    Args:
         **kwargs: Additional keyword arguments
             to be passed to `json.dumps()`.
 
@@ -2301,7 +2318,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     the names of custom losses / layers / etc to the corresponding
     functions / classes.
 
-    Arguments:
+    Args:
         **kwargs: Additional keyword arguments
             to be passed to `yaml.dump()`.
 
@@ -2370,7 +2387,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def summary(self, line_length=None, positions=None, print_fn=None):
     """Prints a string summary of the network.
 
-    Arguments:
+    Args:
         line_length: Total length of printed lines
             (e.g. set this to adapt the display to different
             terminal window sizes).
@@ -2406,7 +2423,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     If `name` and `index` are both provided, `index` will take precedence.
     Indices are based on order of horizontal graph traversal (bottom-up).
 
-    Arguments:
+    Args:
         name: String, name of layer.
         index: Integer, index of layer.
 
@@ -2549,7 +2566,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     # Model metrics must be created in the same distribution strategy scope
     # as the model.
-    strategy = self._get_distribution_strategy()
+    strategy = self.distribute_strategy
     for metric in nest.flatten(metrics):
       for v in getattr(metric, 'variables', []):
         if not strategy.extended.variable_created_in_scope(v):
@@ -2580,10 +2597,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
 
-    Refer to tensorflow/python/keras/distribute/multi_worker_training_state.py
+    Refer to tensorflow/python/keras/distribute/worker_training_state.py
     for more information.
 
-    Arguments:
+    Args:
       initial_epoch: The original initial_epoch user passes in in `fit()`.
 
     Returns:
@@ -2680,9 +2697,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def _in_multi_worker_mode(self):
     return self.distribute_strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
 
-  def _get_distribution_strategy(self):
-    return self.distribute_strategy
-
   @property
   def _compile_was_called(self):
     return self._is_compiled
@@ -2691,7 +2705,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 def reduce_per_replica(values, strategy, reduction='first'):
   """Reduce PerReplica objects.
 
-  Arguments:
+  Args:
     values: Structure of `PerReplica` objects or `Tensor`s. `Tensor`s are
       returned as-is.
     strategy: `tf.distribute.Strategy` object.
@@ -2724,13 +2738,11 @@ def concat(tensors, axis=0):
   """Concats `tensor`s along `axis`."""
   if isinstance(tensors[0], sparse_tensor.SparseTensor):
     return sparse_ops.sparse_concat_v2(axis=axis, sp_inputs=tensors)
-  if isinstance(tensors[0], ragged_tensor.RaggedTensor):
-    return ragged_concat_ops.concat(tensors, axis=axis)
   return array_ops.concat(tensors, axis=axis)
 
 
 def _is_tpu_multi_host(strategy):
-  return (dist_utils.is_tpu_strategy(strategy) and
+  return (backend.is_tpu_strategy(strategy) and
           strategy.extended.num_hosts > 1)
 
 
@@ -2759,24 +2771,19 @@ def _collective_all_reduce_multi_worker(strategy):
 # for all strategies
 def _multi_worker_concat(v, strategy):
   """Order PerReplica objects for CollectiveAllReduceStrategy and concat."""
-  replicas = strategy.gather(v, axis=0)  # pylint: disable=protected-access
-  # TODO(b/170435030): We now need to make sure these run after the iterator
-  # GetNext, so that we don't trigger aborting collective ops in the case of
-  # EOF. Remove after the issue is fixed.
-  with ops.control_dependencies([replicas]):
-    # v might not have the same shape on different replicas
-    if isinstance(v, ds_values.PerReplica):
-      shapes = array_ops.concat([
-          array_ops.expand_dims_v2(array_ops.shape(single_value)[0], axis=0)
-          for single_value in v.values
-      ],
-                                axis=0)
-      all_shapes = strategy.gather(shapes, axis=0)
-    else:
-      # v is a tensor. This may happen when, say, we have 2x1 multi-worker.
-      all_shapes = strategy.gather(
-          array_ops.expand_dims_v2(array_ops.shape(v)[0], axis=0),
-          axis=0)
+  replicas = strategy.gather(v, axis=0)
+  # v might not have the same shape on different replicas
+  if isinstance(v, ds_values.PerReplica):
+    shapes = array_ops.concat([
+        array_ops.expand_dims_v2(array_ops.shape(single_value)[0], axis=0)
+        for single_value in v.values
+    ],
+                              axis=0)
+    all_shapes = strategy.gather(shapes, axis=0)
+  else:
+    # v is a tensor. This may happen when, say, we have 2x1 multi-worker.
+    all_shapes = strategy.gather(
+        array_ops.expand_dims_v2(array_ops.shape(v)[0], axis=0), axis=0)
 
   replicas = array_ops.split(
       replicas,
@@ -2823,6 +2830,39 @@ def _disallow_inside_tf_function(method_name):
     raise RuntimeError(error_msg)
 
 
-def _is_hdf5_filepath(filepath):
-  return (filepath.endswith('.h5') or filepath.endswith('.keras') or
-          filepath.endswith('.hdf5'))
+def _detect_save_format(filepath):
+  """Returns path to weights file and save format."""
+
+  filepath = path_to_string(filepath)
+  if saving_utils.is_hdf5_filepath(filepath):
+    return filepath, 'h5'
+
+  # Filepath could be a TensorFlow checkpoint file prefix or SavedModel
+  # directory. It's possible for filepath to be both a prefix and directory.
+  # Prioritize checkpoint over SavedModel.
+  if _is_readable_tf_checkpoint(filepath):
+    save_format = 'tf'
+  elif sm_loader.contains_saved_model(filepath):
+    ckpt_path = os.path.join(filepath, sm_constants.VARIABLES_DIRECTORY,
+                             sm_constants.VARIABLES_FILENAME)
+    if _is_readable_tf_checkpoint(ckpt_path):
+      filepath = ckpt_path
+      save_format = 'tf'
+    else:
+      raise ValueError('Unable to load weights. filepath {} appears to be a '
+                       'SavedModel directory, but checkpoint either doesn\'t '
+                       'exist, or is incorrectly formatted.'.format(filepath))
+  else:
+    # Not a TensorFlow checkpoint. This filepath is likely an H5 file that
+    # doesn't have the hdf5/keras extensions.
+    save_format = 'h5'
+  return filepath, save_format
+
+
+def _is_readable_tf_checkpoint(filepath):
+  try:
+    py_checkpoint_reader.NewCheckpointReader(filepath)
+    return True
+  except errors_impl.DataLossError:
+    # The checkpoint is not readable in TensorFlow format.
+    return False

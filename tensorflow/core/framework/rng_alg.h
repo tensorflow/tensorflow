@@ -18,15 +18,30 @@ limitations under the License.
 
 namespace tensorflow {
 
-enum Algorithm { RNG_ALG_PHILOX = 1, RNG_ALG_THREEFRY = 2 };
+enum Algorithm {
+  // The Philox algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  RNG_ALG_PHILOX = 1,
+  // The ThreeFry algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  RNG_ALG_THREEFRY = 2,
+  // An algorithm suitable for TPU. Only available on XLA devices.
+  RNG_ALG_XLA_DEFAULT = 3
+};
 
 static constexpr int RNG_KEY_SIZE = 1;
 static constexpr int RNG_MAX_COUNTER_SIZE = 2;
 inline int GetCounterSize(Algorithm alg) {
   if (alg == RNG_ALG_PHILOX) {
     return 2;
+  } else if (alg == RNG_ALG_THREEFRY) {
+    return 1;
+  } else if (alg == RNG_ALG_XLA_DEFAULT) {
+    return 1;
   }
-  return 1;
+  return 2;
 }
 
 }  // end namespace tensorflow

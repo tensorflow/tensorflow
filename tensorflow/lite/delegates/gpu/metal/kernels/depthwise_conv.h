@@ -20,17 +20,40 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
-    int id, ValueId input_id, ValueId output_id,
-    const DepthwiseConvolution2DAttributes& attr,
-    const RuntimeOptions& options);
+class DepthWiseConvolution : public GPUOperation {
+ public:
+  DepthWiseConvolution() = default;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
+  }
+  int3 GetGridSize() const override;
+
+  // Move only
+  DepthWiseConvolution(DepthWiseConvolution&& kernel) = default;
+  DepthWiseConvolution& operator=(DepthWiseConvolution&& kernel) = default;
+  DepthWiseConvolution(const DepthWiseConvolution&) = delete;
+  DepthWiseConvolution& operator=(const DepthWiseConvolution&) = delete;
+
+ private:
+  explicit DepthWiseConvolution(const OperationDef& definition)
+      : GPUOperation(definition) {}
+  friend DepthWiseConvolution CreateDepthWiseConvolution(
+      const OperationDef& definition,
+      const DepthwiseConvolution2DAttributes& attr);
+};
+
+DepthWiseConvolution CreateDepthWiseConvolution(
+    const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr);
 
 // Depth Wise Convolution for kernel 3x3
 // require:
@@ -38,10 +61,34 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
 //   kernel_size = 3x3;
 //   dilation = 1x1;
 //   stride = 1x1;
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
-    int id, ValueId input_id, ValueId output_id,
-    const DepthwiseConvolution2DAttributes& attr,
-    const RuntimeOptions& options);
+class DepthWiseConv3x3Stride1x1 : public GPUOperation {
+ public:
+  DepthWiseConv3x3Stride1x1() = default;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
+  int3 GetGridSize() const override;
+
+  // Move only
+  DepthWiseConv3x3Stride1x1(DepthWiseConv3x3Stride1x1&& kernel) = default;
+  DepthWiseConv3x3Stride1x1& operator=(DepthWiseConv3x3Stride1x1&& kernel) =
+      default;
+  DepthWiseConv3x3Stride1x1(const DepthWiseConv3x3Stride1x1&) = delete;
+  DepthWiseConv3x3Stride1x1& operator=(const DepthWiseConv3x3Stride1x1&) =
+      delete;
+
+ private:
+  explicit DepthWiseConv3x3Stride1x1(const OperationDef& definition)
+      : GPUOperation(definition) {}
+  friend DepthWiseConv3x3Stride1x1 CreateDepthWiseConv3x3Stride1x1(
+      const OperationDef& definition,
+      const DepthwiseConvolution2DAttributes& attr);
+};
+
+DepthWiseConv3x3Stride1x1 CreateDepthWiseConv3x3Stride1x1(
+    const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr);
 
 // TODO(impjdi): Move it inside module.
 bool CheckDepthWiseConv3x3Stride1x1Support(
@@ -53,10 +100,35 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
 //   kernel_size = 3x3;
 //   dilation.y = 1;
 //   stride.y = 2;
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
-    int id, ValueId input_id, ValueId output_id,
-    const DepthwiseConvolution2DAttributes& attr,
-    const RuntimeOptions& options);
+class DepthWiseConv3x3Stride2 : public GPUOperation {
+ public:
+  DepthWiseConv3x3Stride2() = default;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
+  }
+  int3 GetGridSize() const override;
+
+  // Move only
+  DepthWiseConv3x3Stride2(DepthWiseConv3x3Stride2&& kernel) = default;
+  DepthWiseConv3x3Stride2& operator=(DepthWiseConv3x3Stride2&& kernel) =
+      default;
+  DepthWiseConv3x3Stride2(const DepthWiseConv3x3Stride2&) = delete;
+  DepthWiseConv3x3Stride2& operator=(const DepthWiseConv3x3Stride2&) = delete;
+
+ private:
+  explicit DepthWiseConv3x3Stride2(const OperationDef& definition)
+      : GPUOperation(definition) {}
+  friend DepthWiseConv3x3Stride2 CreateDepthWiseConv3x3Stride2(
+      const OperationDef& definition,
+      const DepthwiseConvolution2DAttributes& attr);
+};
+
+DepthWiseConv3x3Stride2 CreateDepthWiseConv3x3Stride2(
+    const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr);
 
 // TODO(impjdi): Move it inside module.
 bool CheckDepthWiseConv3x3Stride2Support(

@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-shape-inference -inline="disable-simplify" %s | FileCheck %s --dump-input=always
+// RUN: tf-opt -tf-shape-inference -inline='default-pipeline=''' %s | FileCheck %s --dump-input=always
 // RUN: tf-opt -tf-standard-pipeline=enable-inliner %s | FileCheck %s --dump-input=always
 
 // Tests function with argument has no resource subtype but caller operand has a
@@ -17,8 +17,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     return %1 : tensor<f32>
   }
 
-  // CHECK-NOT: func @callee
-  func @callee(%arg0: tensor<!tf.resource>) -> tensor<*xf32> attributes {sym_visibility = "private", tf.signature.is_stateful} {
+  // CHECK-NOT: func private @callee
+  func private @callee(%arg0: tensor<!tf.resource>) -> tensor<*xf32> attributes {tf.signature.is_stateful} {
     %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<!tf.resource>) -> tensor<*xf32>
     return %0 : tensor<*xf32>
   }

@@ -240,7 +240,6 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:numbers",
-        "//third_party/eigen3",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -265,6 +264,7 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/time",
     ],
 )
@@ -361,6 +361,7 @@ tf_cc_test(
         ":util",
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
     ],
@@ -939,6 +940,7 @@ cc_library(
     name = "refcounting_hash_map",
     hdrs = ["refcounting_hash_map.h"],
     deps = [
+        ":statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
@@ -954,6 +956,7 @@ tf_cc_test(
         ":test",
         ":types",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -962,7 +965,22 @@ cc_library(
     hdrs = ["union_find.h"],
 )
 
+cc_library(
+    name = "side_effect_util",
+    srcs = ["side_effect_util.cc"],
+    hdrs = ["side_effect_util.h"],
+)
+
 # -----------------------------------------------------------------------------
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xla_data_proto_py_pb2",
+#     api_version = 2,
+#     visibility = [":friends"],
+#     deps = [":xla_data_proto"],
+# )
+# copybara:uncomment_end
 
 # This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
 cc_header_only_library(

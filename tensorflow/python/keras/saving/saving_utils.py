@@ -122,8 +122,7 @@ def trace_model_call(model, input_signature=None):
   if input_signature is None:
     raise_model_input_error(model)
 
-  # TODO(mdan): Should the model's call be autographed by default?
-  @def_function.function(input_signature=input_signature, autograph=False)
+  @def_function.function(input_signature=input_signature)
   def _wrapped_model(*args):
     """A concrete tf.function that wraps the model's call function."""
     # When given a single input, Keras models will call the model on the tensor
@@ -322,3 +321,8 @@ def try_build_compiled_arguments(model):
           'Compiled the loaded model, but the compiled metrics have yet to '
           'be built. `model.compile_metrics` will be empty until you train '
           'or evaluate the model.')
+
+
+def is_hdf5_filepath(filepath):
+  return (filepath.endswith('.h5') or filepath.endswith('.keras') or
+          filepath.endswith('.hdf5'))

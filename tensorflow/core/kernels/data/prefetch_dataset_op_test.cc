@@ -60,7 +60,8 @@ class PrefetchDatasetParams : public DatasetParams {
     attr_vector->emplace_back(PrefetchDatasetOp::kSlackPeriod, slack_period_);
     attr_vector->emplace_back(PrefetchDatasetOp::kLegacyAutotune,
                               legacy_autotune_);
-    attr_vector->emplace_back("buffer_size_min", buffer_size_min_);
+    attr_vector->emplace_back(PrefetchDatasetOp::kBufferSizeMin,
+                              buffer_size_min_);
     return Status::OK();
   }
 

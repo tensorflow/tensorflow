@@ -39,7 +39,7 @@ class GaussianNoise(Layer):
 
   As it is a regularization layer, it is only active at training time.
 
-  Arguments:
+  Args:
     stddev: Float, standard deviation of the noise distribution.
 
   Call arguments:
@@ -88,7 +88,7 @@ class GaussianDropout(Layer):
 
   As it is a regularization layer, it is only active at training time.
 
-  Arguments:
+  Args:
     rate: Float, drop probability (as with `Dropout`).
       The multiplicative noise will have
       standard deviation `sqrt(rate / (1 - rate))`.
@@ -146,7 +146,7 @@ class AlphaDropout(Layer):
   Alpha Dropout fits well to Scaled Exponential Linear Units
   by randomly setting activations to the negative saturation value.
 
-  Arguments:
+  Args:
     rate: float, drop probability (as with `Dropout`).
       The multiplicative noise will have
       standard deviation `sqrt(rate / (1 - rate))`.

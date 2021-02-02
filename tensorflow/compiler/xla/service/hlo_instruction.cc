@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <ostream>
 #include <set>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -495,11 +497,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kReplicaId: {
-      instruction = CreateReplicaId();
+      instruction = CreateReplicaId(shape);
       break;
     }
     case HloOpcode::kPartitionId: {
-      instruction = CreatePartitionId();
+      instruction = CreatePartitionId(shape);
       break;
     }
     case HloOpcode::kConvolution: {
@@ -560,6 +562,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           instruction = CreateCustomCall(shape, all_operands(), computations(0),
                                          proto.custom_call_target(),
                                          proto.backend_config());
+        } else if (proto.called_computation_ids_size() > 1) {
+          instruction = CreateCustomCall(
+              shape, all_operands(), all_computations(),
+              proto.custom_call_target(), proto.backend_config());
+
         } else {
           instruction = CreateCustomCall(shape, all_operands(),
                                          proto.custom_call_target(),
@@ -1074,15 +1081,20 @@ HloInstruction::CreateCollectivePermuteStart(
       channel_id);
 }
 
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId() {
-  return absl::WrapUnique(
-      new HloInstruction(HloOpcode::kReplicaId, ShapeUtil::MakeShape(U32, {})));
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId(
+    const Shape& shape) {
+  CHECK(Shape::Equal().IgnoreLayout()(shape, ShapeUtil::MakeShape(U32, {})))
+      << "HloInstruction replica-id must have a shape of u32[], but "
+      << shape.ToString() << " is specified";
+  return absl::WrapUnique(new HloInstruction(HloOpcode::kReplicaId, shape));
 }
 
-/* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreatePartitionId() {
-  return absl::WrapUnique(new HloInstruction(HloOpcode::kPartitionId,
-                                             ShapeUtil::MakeShape(U32, {})));
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreatePartitionId(
+    const Shape& shape) {
+  CHECK(Shape::Equal().IgnoreLayout()(shape, ShapeUtil::MakeShape(U32, {})))
+      << "HloInstruction partition-id must have a shape of u32[], but "
+      << shape.ToString() << " is specified";
+  return absl::WrapUnique(new HloInstruction(HloOpcode::kPartitionId, shape));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
@@ -1566,6 +1578,15 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloComputation* const> called_computations,
+    absl::string_view custom_call_target, string opaque) {
+  return absl::make_unique<HloCustomCallInstruction>(
+      shape, operands, called_computations, custom_call_target,
+      std::move(opaque));
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target,
     absl::Span<const Shape> operand_shapes_with_layout, string opaque) {
   return absl::make_unique<HloCustomCallInstruction>(
@@ -1633,6 +1654,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kFft:
     case HloOpcode::kCompare:
+    case HloOpcode::kCopyStart:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
@@ -1688,7 +1710,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kClz:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
-    case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
@@ -1784,13 +1805,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kReplicaId:
       CHECK_EQ(new_operands.size(), 0);
-      clone = CreateReplicaId();
-      *clone->mutable_shape() = shape;
+      clone = CreateReplicaId(shape);
       break;
     case HloOpcode::kPartitionId:
       CHECK_EQ(new_operands.size(), 0);
-      clone = CreatePartitionId();
-      *clone->mutable_shape() = shape;
+      clone = CreatePartitionId(shape);
       break;
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
@@ -2006,15 +2025,11 @@ bool HloInstruction::IdenticalInternal(
     return false;
   }
 
-  // Two AllReduces are Identical if they have the same channel_id.
-  // Their operands don't have to be Identical.
-  if (!IsCrossModuleAllReduce()) {
-    // Use an explicit loop rather than ContainerEquals, because copying
-    // around std::functions may be too expensive in some cases.
-    for (size_t i = 0; i < operands().size(); ++i) {
-      if (!eq_operands(operand(i), other.operand(i))) {
-        return false;
-      }
+  // Use an explicit loop rather than ContainerEquals, because copying around
+  // std::functions may be too expensive in some cases.
+  for (size_t i = 0; i < operands().size(); ++i) {
+    if (!eq_operands(operand(i), other.operand(i))) {
+      return false;
     }
   }
 
@@ -2524,7 +2539,7 @@ string PrintName(const string& name, bool print_ids) {
   if (print_ids) {
     return name;
   } else {
-    auto dot_position = name.find_first_of(".");
+    auto dot_position = name.find_first_of('.');
     return name.substr(0, dot_position);
   }
 }
@@ -2584,9 +2599,8 @@ string HloInstruction::ToString(const HloPrintOptions& options) const {
   return ToStringWithCanonicalNameMap(options, &new_map);
 }
 
-bool HloInstruction::IsElementwiseImpl(
-    const absl::optional<int64>& operand_idx) const {
-  switch (opcode_) {
+bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
+  switch (opcode) {
     // Unary elementwise operations.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
@@ -2615,7 +2629,6 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
-      CHECK_EQ(1, operand_count());
       return true;
 
     // Binary elementwise operations, the same as in IsElementwiseBinary().
@@ -2636,7 +2649,6 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
-      CHECK_EQ(2, operand_count());
       return true;
 
     // Ternary elementwise operations.
@@ -2644,12 +2656,17 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kClamp:
       return true;
 
-    case HloOpcode::kDynamicUpdateSlice:
-      return operand_idx.has_value() && operand_idx.value() == 0;
-
     default:
       return false;
   }
+}
+
+bool HloInstruction::IsElementwiseImpl(
+    const absl::optional<int64>& operand_idx) const {
+  if (opcode_ == HloOpcode::kDynamicUpdateSlice) {
+    return operand_idx.has_value() && operand_idx.value() == 0;
+  }
+  return IsOpElementwise(opcode_);
 }
 
 bool HloInstruction::IsCrossModuleAllReduce() const {
@@ -2802,6 +2819,17 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kSort) {
       extra.push_back(
           StrCat("to_apply=", PrintNameInternal(to_apply()->name(), options)));
+    } else if (opcode() == HloOpcode::kCustomCall) {
+      if (!called_computations().empty()) {
+        extra.push_back(StrCat(
+            "called_computations={",
+            StrJoin(called_computations(), ", ",
+                    [&](string* out, const HloComputation* computation) {
+                      StrAppend(
+                          out, PrintNameInternal(computation->name(), options));
+                    }),
+            "}"));
+      }
     } else if (!called_computations().empty()) {
       extra.push_back(StrCat(
           "calls=",
@@ -2865,7 +2893,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   }
 
   if (has_sharding()) {
-    extra.push_back(StrCat("sharding=", sharding().ToString()));
+    extra.push_back(
+        StrCat("sharding=", sharding().ToString(options.print_metadata())));
   }
   if (!frontend_attributes_.map().empty()) {
     extra.push_back(StrCat("frontend_attributes=",
@@ -3651,24 +3680,6 @@ string PaddingConfigToString(const PaddingConfig& padding) {
             out, dim.edge_padding_low(), "_", dim.edge_padding_high(),
             has_interior_padding ? StrCat("_", dim.interior_padding()) : "");
       });
-}
-
-string OpMetadataToString(const OpMetadata& metadata) {
-  std::vector<string> result;
-  if (!metadata.op_type().empty()) {
-    result.push_back(StrCat("op_type=\"", CEscape(metadata.op_type()), "\""));
-  }
-  if (!metadata.op_name().empty()) {
-    result.push_back(StrCat("op_name=\"", CEscape(metadata.op_name()), "\""));
-  }
-  if (!metadata.source_file().empty()) {
-    result.push_back(
-        StrCat("source_file=\"", CEscape(metadata.source_file()), "\""));
-  }
-  if (metadata.source_line() != 0) {
-    result.push_back(StrCat("source_line=", metadata.source_line()));
-  }
-  return StrJoin(result, " ");
 }
 
 string RandomDistributionToString(const RandomDistribution& distribution) {

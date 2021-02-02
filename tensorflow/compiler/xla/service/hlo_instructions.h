@@ -1415,6 +1415,12 @@ class HloCustomCallInstruction : public HloInstruction {
                            HloComputation* to_apply,
                            absl::string_view custom_call_target, string opaque);
 
+  // Constructor for a custom call with multiple computations.
+  HloCustomCallInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<HloComputation* const> called_computations,
+      absl::string_view custom_call_target, string opaque);
+
   const Window& window() const override {
     CHECK(window_ != nullptr);
     return *window_;

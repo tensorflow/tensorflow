@@ -28,6 +28,10 @@ limitations under the License.
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
+// Copied from tensorflow/lite/version.h to avoid a dependency chain into
+// tensorflow/core.
+#define TFLITE_SCHEMA_VERSION (3)
+
 namespace tflite {
 
 namespace internal {
@@ -177,11 +181,6 @@ class MicroInterpreter {
   // error reporting during initialization.
   void Init(tflite::Profiler* profiler);
 
-  void CorrectTensorEndianness(TfLiteEvalTensor* tensorCorr);
-
-  template <class T>
-  void CorrectTensorDataEndianness(T* data, int32_t size);
-
   NodeAndRegistration* node_and_registrations_ = nullptr;
 
   const Model* model_;
@@ -202,8 +201,8 @@ class MicroInterpreter {
 
   // TODO(b/162311891): Clean these pointers up when this class supports buffers
   // from TfLiteEvalTensor.
-  TfLiteTensor* input_tensor_;
-  TfLiteTensor* output_tensor_;
+  TfLiteTensor** input_tensors_;
+  TfLiteTensor** output_tensors_;
 };
 
 }  // namespace tflite

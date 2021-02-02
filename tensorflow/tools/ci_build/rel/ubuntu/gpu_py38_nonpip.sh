@@ -18,7 +18,7 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_pip_deps pip3.8
+install_ubuntu_16_python_pip_deps python3.8
 # Update bazel
 update_bazel_linux
 
@@ -31,7 +31,7 @@ export TF_CUDA_VERSION=11
 export TF_CUDNN_VERSION=8
 export TF_NEED_TENSORRT=1
 export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
-export CC_OPT_FLAGS='-mavx'
+export CC_OPT_FLAGS='-mavx -march=native'
 export PYTHON_BIN_PATH=$(which python3.8)
 export TF2_BEHAVIOR=1
 export PROJECT_NAME="tensorflow_gpu"

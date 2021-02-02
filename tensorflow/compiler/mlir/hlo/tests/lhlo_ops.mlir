@@ -2,6 +2,69 @@
 
 // -----
 
+func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf32>) {
+  // expected-error@+1 {{requires operand #1 (type: 'memref<3xf32>') and result #1 (type: 'memref<2xf32>') to have same type}}
+  "lmhlo.all_reduce"(%input0, %input1, %input0, %input0) ({
+    ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+      %add = mhlo.add %arg0, %arg1 : tensor<f32>
+      "mhlo.return"(%add) : (tensor<f32>) -> ()
+    })
+  {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+   replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 4]]> : tensor<2x4xi64>,
+   use_global_device_ids = false} : (memref<2xf32>, memref<3xf32>, memref<2xf32>, memref<2xf32>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf16>) {
+  // expected-error@+1 {{requires the same element type for all operands}}
+  "lmhlo.all_reduce"(%input0, %input1, %input0, %input1) ({
+    ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+      %add = mhlo.add %arg0, %arg1 : tensor<f32>
+      "mhlo.return"(%add) : (tensor<f32>) -> ()
+    })
+  {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+   replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>,
+   use_global_device_ids = false} : (memref<2xf32>, memref<3xf16>, memref<2xf32>, memref<3xf16>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_allgather(%input0: memref<2xf32>, %output: memref<8xf32>) {
+  // expected-error@+1 {{replica id #1 seen more than once}}
+  "lmhlo.all_gather"(%input0, %output)
+    {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+     replica_groups = dense<[[0, 1, 1, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>,
+     use_global_device_ids = false, all_gather_dimension = 0 : i64} : (memref<2xf32>, memref<8xf32>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
+  // expected-error@+1 {{replica id #4 not seen in replica groups}}
+  "lmhlo.all_to_all"(%input0, %output)
+    {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+     replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>,
+     use_global_device_ids = false, all_gather_dimension = 0 : i64} : (memref<2xf32>, memref<8xf32>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
+  // expected-error@+1 {{replica groups should be a rank 2 tensor of 64 bit integers}}
+  "lmhlo.all_to_all"(%input0, %output)
+    {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+     replica_groups = dense<0> : tensor<1xi64>,
+     use_global_device_ids = false, all_gather_dimension = 0 : i64} : (memref<2xf32>, memref<8xf32>) -> ()
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @ceil
 func @ceil(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
   "lmhlo.ceil"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -424,120 +487,6 @@ func @case_memref(%index: memref<i32>, %operand_1: memref<f32>, %operand_2: memr
     }
   ) {operand_segment_sizes = dense<[1, 3, 1]> : vector<3xi32>}
   : (memref<i32>, memref<f32>, memref<f32>, memref<f32>, memref<f32>) -> ()
-  return
-}
-
-// -----
-
-func @static_memref_cast(%in: memref<10x1xf32>) {
-  %out = lmhlo.static_memref_cast %in
-           : memref<10x1xf32> -> memref<10xf32, offset: 0, strides: [1]>
-  return
-}
-// CHECK-LABEL: func @static_memref_cast
-
-// -----
-
-func @static_memref_cast_dynamic_operand(%in: memref<10x?xf32>) {
-  // expected-error @+1 {{operand must have static shape}}
-  %out = lmhlo.static_memref_cast %in
-           : memref<10x?xf32> -> memref<10x1xf32, offset: 0, strides: [10, 1]>
-  return
-}
-
-// -----
-
-func @static_memref_cast_dynamic_result(%in: memref<10x1xf32>) {
-  // expected-error @+1 {{result must have static shape}}
-  %out = lmhlo.static_memref_cast %in
-           : memref<10x1xf32> -> memref<10x?xf32, offset: 0, strides: [?, ?]>
-  return
-}
-
-// -----
-
-func @dynamic_memref_cast(%in: memref<?xf32>) {
-  %size = constant 10 : index
-  %step = constant 1 : index
-  %out = lmhlo.dynamic_memref_cast %in(%size)[%step]
-           : memref<?xf32> -> memref<?xf32, offset: 0, strides: [?]>
-  return
-}
-// CHECK-LABEL: func @dynamic_memref_cast
-
-// -----
-
-func @dynamic_memref_cast_incompatible_result_type(%in: memref<?xf32>) {
-  // expected-error @+3 {{`sizes` args count must be equal to the rank of the output memref}}
-  %size = constant 10 : index
-  %step = constant 1 : index
-  %out = lmhlo.dynamic_memref_cast %in(%size)[%step]
-           : memref<?xf32> -> memref<?x?xf32, offset: 0, strides: [?, ?]>
-  return
-}
-// -----
-
-// CHECK-LABEL: func @reshape_memref_cast(
-func @reshape_memref_cast(%unranked: memref<*xf32>, %shape1: memref<1xi32>,
-         %shape2: memref<2xi32>, %shape3: memref<?xi32>) {
-  // CHECK-SAME: [[UNRANKED:%.*]]: memref<*xf32>, [[SHAPE_1:%.*]]: memref<1xi32>,
-  // CHECK-SAME: [[SHAPE_2:%.*]]: memref<2xi32>, [[SHAPE_3:%.*]]: memref<?xi32>
-
-  // CHECK-NEXT: [[DYN_VEC:%.*]] = lmhlo.reshape_memref_cast [[UNRANKED]]
-  // CHECK-SAME:     : (memref<*xf32>, memref<1xi32>) -> memref<?xf32>
-  %dyn_vec = lmhlo.reshape_memref_cast %unranked(%shape1)
-               : (memref<*xf32>, memref<1xi32>) -> memref<?xf32>
-
-  // CHECK-NEXT: [[DYN_MAT:%.*]] = lmhlo.reshape_memref_cast [[DYN_VEC]]
-  // CHECK-SAME:     : (memref<?xf32>, memref<2xi32>) -> memref<?x?xf32>
-  %dyn_mat = lmhlo.reshape_memref_cast %dyn_vec(%shape2)
-               : (memref<?xf32>, memref<2xi32>) -> memref<?x?xf32>
-
-  // CHECK-NEXT: {{%.*}} = lmhlo.reshape_memref_cast [[DYN_MAT]]
-  // CHECK-SAME:     : (memref<?x?xf32>, memref<?xi32>) -> memref<*xf32>
-  %new_unranked = lmhlo.reshape_memref_cast %dyn_mat(%shape3)
-               : (memref<?x?xf32>, memref<?xi32>) -> memref<*xf32>
-  return
-}
-
-// -----
-
-func @reshape_memref_cast_element_type_mismatch(
-       %buf: memref<*xf32>, %shape: memref<1xi32>) {
-  // expected-error @+1 {{element types of source and destination memref types should be the same}}
-  lmhlo.reshape_memref_cast %buf(%shape)
-    : (memref<*xf32>, memref<1xi32>) -> memref<?xi32>
-}
-
-// -----
-
-func @reshape_memref_cast_dst_ranked_shape_unranked(
-       %buf: memref<*xf32>, %shape: memref<?xi32>) {
-  // expected-error @+1 {{cannot use shape operand with dynamic length to cast statically-ranked memref type}}
-  lmhlo.reshape_memref_cast %buf(%shape)
-    : (memref<*xf32>, memref<?xi32>) -> memref<?xf32>
-  return
-}
-
-// -----
-
-func @reshape_memref_cast_dst_shape_rank_mismatch(
-       %buf: memref<*xf32>, %shape: memref<1xi32>) {
-  // expected-error @+1 {{length of shape operand differs from the result's memref rank}}
-  lmhlo.reshape_memref_cast %buf(%shape)
-    : (memref<*xf32>, memref<1xi32>) -> memref<?x?xf32>
-  return
-}
-
-// -----
-
-func @reshape_memref_cast_affine_map_is_not_identity(
-        %buf: memref<4x4xf32, offset: 0, strides: [3, 2]>,
-        %shape: memref<1xi32>) {
-  // expected-error @+1 {{operand memref type should have identity affine map}}
-  lmhlo.reshape_memref_cast %buf(%shape)
-    : (memref<4x4xf32, offset: 0, strides: [3, 2]>, memref<1xi32>)
-    -> memref<8xf32>
   return
 }
 

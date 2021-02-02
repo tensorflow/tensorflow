@@ -202,6 +202,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -282,8 +283,8 @@ cc_library(
         "//tensorflow/core/platform:init_main.h",
         "//tensorflow/core/platform:mem.h",
         "//tensorflow/core/platform:numa.h",
-        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
         "//tensorflow/core/platform:snappy.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
     ],
     copts = tf_copts(),
     defines = ["TF_USE_SNAPPY"] + select({
@@ -291,6 +292,7 @@ cc_library(
         "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
         "//conditions:default": [],
     }),
+    features = ["-layering_check"],
     tags = [
         "manual",
         "no_oss",
@@ -384,17 +386,6 @@ cc_library(
         "//tensorflow/core/platform:stacktrace",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "strong_hash",
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    textual_hdrs = ["strong_hash.h"],
-    deps = ["@highwayhash//:sip_hash"],
 )
 
 cc_library(
@@ -555,8 +546,8 @@ filegroup(
         "resource.cc",
         "stacktrace.h",
         "tracing_impl.h",
-        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
-        "//tensorflow/core/platform:profile_utils/i_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )
@@ -581,6 +572,7 @@ package_group(
     name = "core_and_platform_packages",
     packages = [
         "//tensorflow/core",
+        "//tensorflow/core/lib/gif",
         "//tensorflow/core/lib/jpeg",
         "//tensorflow/core/platform",
     ],

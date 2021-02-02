@@ -10,6 +10,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -66,7 +67,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:reference",
         "//tensorflow/lite/schema:schema_fbs",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -110,6 +111,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro/kernels:ethosu",
         "//tensorflow/lite/micro/kernels:fully_connected",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
@@ -158,12 +160,12 @@ cc_library(
 cc_library(
     name = "micro_time",
     srcs = [
-        "posix/micro_time.cc",
+        "micro_time.cc",
     ],
     hdrs = [
         "micro_time.h",
     ],
-    copts = micro_copts(),
+    copts = micro_copts() + ["-DTF_LITE_USE_CTIME"],
     deps = ["//tensorflow/lite/c:common"],
 )
 
@@ -386,5 +388,4 @@ bzl_library(
     name = "build_def_bzl",
     srcs = ["build_def.bzl"],
     visibility = [":micro"],
-    deps = ["//tensorflow:tensorflow_bzl"],
 )

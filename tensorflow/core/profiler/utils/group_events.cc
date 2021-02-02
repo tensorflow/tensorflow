@@ -403,11 +403,15 @@ std::string EventNode::GetGroupName() const {
   return name;
 }
 
+XStat* EventNode::FindOrAddStatByType(int64 stat_type) {
+  const XStatMetadata* stat_metadata = plane_->GetStatMetadataByType(stat_type);
+  DCHECK(stat_metadata != nullptr);
+  return FindOrAddMutableStat(*stat_metadata, raw_event_);
+}
+
 void EventNode::SetGroupId(int64 group_id) {
   group_id_ = group_id;
-  FindOrAddMutableStat(*plane_->GetStatMetadataId(StatType::kGroupId),
-                       raw_event_)
-      ->set_int64_value(group_id);
+  FindOrAddStatByType(StatType::kGroupId)->set_int64_value(group_id);
 }
 
 void EventNode::PropagateGroupId(int64 group_id,
@@ -436,8 +440,7 @@ void EventNode::PropagateGroupId(int64 group_id,
 }
 
 void EventNode::AddStepName(absl::string_view step_name) {
-  FindOrAddMutableStat(*plane_->GetStatMetadataId(StatType::kStepName),
-                       raw_event_)
+  FindOrAddStatByType(StatType::kStepName)
       ->set_str_value(step_name.data(), step_name.size());
 }
 
@@ -452,16 +455,13 @@ void EventNode::AddSelectedGroupIds(
                    group_metadata.parents.end());
   group_ids.insert(group_ids.end(), group_metadata.children.begin(),
                    group_metadata.children.end());
-  FindOrAddMutableStat(*plane_->GetStatMetadataId(StatType::kSelectedGroupIds),
-                       raw_event_)
+  FindOrAddStatByType(StatType::kSelectedGroupIds)
       ->set_str_value(
           absl::StrCat("?selected_group_ids=", absl::StrJoin(group_ids, ",")));
 }
 
 void EventNode::SetIsEager(bool is_eager) {
-  FindOrAddMutableStat(*plane_->GetStatMetadataId(StatType::kIsEager),
-                       raw_event_)
-      ->set_int64_value(is_eager ? 1 : 0);
+  FindOrAddStatByType(StatType::kIsEager)->set_int64_value(is_eager ? 1 : 0);
 }
 
 bool EventNode::IsEager() {

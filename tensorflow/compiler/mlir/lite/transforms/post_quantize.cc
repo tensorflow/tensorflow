@@ -130,12 +130,41 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
                                 PatternRewriter& rewriter) const override {
     auto input_op = op.input().getDefiningOp();
     if (auto q = llvm::dyn_cast_or_null<QuantizeOp>(input_op)) {
-      if (!q.getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
+      if (!q->getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
+
+      // Don't remove leading and tailing QDQ for PQT workflow, so the io
+      // modifying lib can work correctly.
+      if (!q.input().getDefiningOp()) return failure();
+      if (op->hasOneUse() && op->user_begin()->isKnownTerminator())
+        return failure();
 
       op.replaceAllUsesWith(q.input());
       return success();
     }
     return failure();
+  }
+};
+
+// Removes operations with side effect (i.e. LSTM, SVDF) that have dangling
+// output.
+template <typename OpTy>
+struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
+ public:
+  explicit PruneUnusedOpsWithSideEffect(MLIRContext* context)
+      : OpRewritePattern<OpTy>(context) {}
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getOperation()->isKnownTerminator()) {
+      return failure();
+    }
+    for (auto result : op.getOperation()->getOpResults()) {
+      if (!result.use_empty()) {
+        return failure();
+      }
+    }
+    rewriter.eraseOp(op);
+    return success();
   }
 };
 
@@ -147,6 +176,11 @@ void PostQuantizePass::runOnFunction() {
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
+  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::LSTMOp>>(ctx);
+  patterns
+      .insert<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
+          ctx);
+  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
   applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {

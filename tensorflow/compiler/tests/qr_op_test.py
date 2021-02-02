@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -69,8 +70,8 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
-    precision = self.AdjustedNorm(xx.eval() - self.evaluate(identity))
-    self.assertTrue(np.all(precision < 6.0))
+    tol = 100 * np.finfo(x.dtype).eps
+    self.assertAllClose(xx, identity, atol=tol)
 
   def _random_matrix(self, dtype, shape):
     np.random.seed(1)
@@ -127,6 +128,11 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def testLarge2000x2000(self):
     x_np = self._random_matrix(np.float32, (2000, 2000))
+    self._test(x_np, full_matrices=True)
+
+  @unittest.skip("Test times out on CI")
+  def testLarge17500x128(self):
+    x_np = self._random_matrix(np.float32, (17500, 128))
     self._test(x_np, full_matrices=True)
 
   @parameterized.parameters((23, 25), (513, 23))

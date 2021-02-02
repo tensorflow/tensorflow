@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 
 namespace {
@@ -155,19 +155,19 @@ Type TensorFlowRefType::RemoveRef() {
   if (isa<FloatRefType>()) return mlir::FloatType::getF32(ctx);
   if (isa<DoubleRefType>()) return mlir::FloatType::getF64(ctx);
   if (isa<Bfloat16RefType>()) return mlir::FloatType::getBF16(ctx);
-  if (isa<BoolRefType>()) return mlir::IntegerType::get(1, ctx);
-  if (isa<Int8RefType>()) return mlir::IntegerType::get(8, ctx);
-  if (isa<Int16RefType>()) return mlir::IntegerType::get(16, ctx);
-  if (isa<Int32RefType>()) return mlir::IntegerType::get(32, ctx);
-  if (isa<Int64RefType>()) return mlir::IntegerType::get(64, ctx);
+  if (isa<BoolRefType>()) return mlir::IntegerType::get(ctx, 1);
+  if (isa<Int8RefType>()) return mlir::IntegerType::get(ctx, 8);
+  if (isa<Int16RefType>()) return mlir::IntegerType::get(ctx, 16);
+  if (isa<Int32RefType>()) return mlir::IntegerType::get(ctx, 32);
+  if (isa<Int64RefType>()) return mlir::IntegerType::get(ctx, 64);
   if (isa<Uint8RefType>())
-    return mlir::IntegerType::get(8, IntegerType::Unsigned, ctx);
+    return mlir::IntegerType::get(ctx, 8, IntegerType::Unsigned);
   if (isa<Uint16RefType>())
-    return mlir::IntegerType::get(16, IntegerType::Unsigned, ctx);
+    return mlir::IntegerType::get(ctx, 16, IntegerType::Unsigned);
   if (isa<Uint32RefType>())
-    return mlir::IntegerType::get(32, IntegerType::Unsigned, ctx);
+    return mlir::IntegerType::get(ctx, 32, IntegerType::Unsigned);
   if (isa<Uint64RefType>())
-    return mlir::IntegerType::get(64, IntegerType::Unsigned, ctx);
+    return mlir::IntegerType::get(ctx, 64, IntegerType::Unsigned);
   if (isa<Complex64RefType>())
     return mlir::ComplexType::get(mlir::FloatType::getF32(ctx));
   if (isa<Complex128RefType>())

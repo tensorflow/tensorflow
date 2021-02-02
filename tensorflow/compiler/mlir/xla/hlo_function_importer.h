@@ -22,10 +22,9 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
@@ -62,6 +61,14 @@ class HloFunctionImporter {
       const xla::HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::OpBuilder* builder);
+
+  static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape);
+
+  // Converts replica groups to attribute
+  //
+  // TODO(timshen): move this to attribute_importer.h.
+  static mlir::NamedAttribute ConvertReplicaGroups(
+      const std::vector<ReplicaGroup>& replica_groups, mlir::Builder builder);
 
  private:
   HloFunctionImporter(mlir::ModuleOp module,
@@ -134,10 +141,6 @@ class HloFunctionImporter {
   // Converts Array ref to padding attribute. Input is a flattened list of
   // padding low and padding high for each of the spatial dimensions.
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
-
-  // Converts replica groups to attribute
-  mlir::NamedAttribute ConvertReplicaGroups(
-      const std::vector<ReplicaGroup>& replica_groups);
 
   // Converts channel id to attribute
   mlir::NamedAttribute ConvertChannelHandle(

@@ -482,11 +482,6 @@ TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
       static_cast<void*>(sampler->sampler->GetCell(label1, label2)));
 }
 
-void TFE_ContextOptionsSetLazyRemoteInputsCopy(TFE_ContextOptions* options,
-                                               bool lazy_copy) {
-  options->lazy_remote_inputs_copy = lazy_copy;
-}
-
 void TFE_ContextOptionsSetTfrt(TFE_ContextOptions* options, bool use_tfrt) {
   options->use_tfrt = use_tfrt;
 }
@@ -618,8 +613,23 @@ TFE_TensorHandle* TFE_CreatePackedTensorHandle(TFE_Context* ctx,
   std::vector<tensorflow::TensorHandle*> tensor_handles;
   tensor_handles.reserve(*num_handles);
   for (int i = 0; i < *num_handles; ++i) {
+    tensorflow::ImmediateExecutionTensorHandle* unwrapped_handle =
+        tensorflow::unwrap(handles[i]);
+    if (tensorflow::CustomDeviceTensorHandle::classof(unwrapped_handle)) {
+      // One of the inputs we're trying to pack is on a custom device. We'll let
+      // the first custom device we see handle all of the packing.
+      auto* custom_device_handle =
+          tensorflow::down_cast<tensorflow::CustomDeviceTensorHandle*>(
+              unwrapped_handle);
+      tensorflow::ImmediateExecutionTensorHandle* result;
+      status->status = custom_device_handle->device()->Pack(
+          absl::Span<tensorflow::ImmediateExecutionTensorHandle*>(
+              tensorflow::unwrap(handles), *num_handles),
+          &result);
+      return tensorflow::wrap(result);
+    }
     tensor_handles.push_back(
-        tensorflow::TensorHandleFromInterface(tensorflow::unwrap(handles[i])));
+        tensorflow::TensorHandleFromInterface(unwrapped_handle));
   }
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
@@ -653,4 +663,24 @@ int TFE_TensorHandleDeviceID(TFE_TensorHandle* h, TF_Status* status) {
     return -1;
   }
   return tensorflow::unwrap(h)->DeviceId(&status->status);
+}
+
+void TFE_GetExecutedOpNames(TFE_Context* ctx, TF_Buffer* buf,
+                            TF_Status* status) {
+  const std::vector<std::string>& op_names =
+      tensorflow::unwrap(ctx)->GetLoggedOpsTestonly();
+
+  std::ostringstream op_names_oss;
+  for (const auto& op : op_names) {
+    op_names_oss << op << ", ";
+  }
+  const std::string& op_names_str = op_names_oss.str();
+  void* data = tensorflow::port::Malloc(op_names_str.length());
+  op_names_str.copy(static_cast<char*>(data), op_names_str.length(), 0);
+  buf->data = data;
+  buf->length = op_names_str.length();
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+  status->status = tensorflow::Status::OK();
 }

@@ -157,6 +157,9 @@ typedef enum {
   kTfLiteBuiltinPlaceholderForGreaterOpCodes = 127,
   kTfLiteBuiltinCumsum = 128,
   kTfLiteBuiltinCallOnce = 129,
+  kTfLiteBuiltinBroadcastTo = 130,
+  kTfLiteBuiltinRfft2d = 131,
+  kTfLiteBuiltinConv3d = 132,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

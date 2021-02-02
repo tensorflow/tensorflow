@@ -33,7 +33,6 @@ from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
@@ -67,6 +66,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -75,6 +75,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
@@ -497,9 +498,17 @@ class _EagerDefinedFunction(object):
       function_callback(self)
 
   def add_to_graph(self, g=None):
+    """Add the function to the current context or a graph, if supplied.
+
+    Args:
+      g: the graph to add the function to. If not supplied, the function will
+        be added to the current context.
+    """
     # pylint: disable=protected-access
     if not g and context.executing_eagerly():
-      context.context().add_function_def(self.definition)
+      ctx = context.context()
+      if not ctx.has_function(self.name):
+        ctx.add_function_def(self.definition)
     else:
       if not g._is_function(self.name):
         g._add_function(self)
@@ -601,6 +610,32 @@ class _EagerDefinedFunction(object):
       return outputs
 
 
+def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
+  """Creates forward and backward functions from the function graphs."""
+  forward_function_name = _forward_name(forward_graph.name)
+  common_attributes = dict(attrs)
+  # NB: forward and backward function need to drop "_implements".
+  # attribute, because their signature contains all the intermediate tensors
+  # that they compute. Thus they don't have a stable signature which can
+  # be directly optimized downstream.
+  # See for more details:
+  # https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md#appendix-future-support-for-optimizing-gradient-functions
+  common_attributes.pop(IMPLEMENTS_ATTRIBUTE_NAME, None)
+  backward_function_attr = _parse_func_attrs(
+      {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
+  backward_function_attr.update(common_attributes)
+  backward_function = ConcreteFunction(
+      backwards_graph, attrs=backward_function_attr)
+  forward_function_attr = _parse_func_attrs({
+      BACKWARD_FUNCTION_ATTRIBUTE_NAME:
+      backward_function.name})
+  forward_function_attr.update(common_attributes)
+  forward_function = _EagerDefinedFunction(
+      forward_function_name, forward_graph, forward_graph.inputs,
+      forward_graph.outputs, forward_function_attr)
+  return forward_function, backward_function
+
+
 class _DelayedRewriteGradientFunctions(object):
   """Caches forward/backward functions with a delayed forward rewrite."""
 
@@ -682,39 +717,15 @@ class _DelayedRewriteGradientFunctions(object):
           c for c in backwards_graph_captures if
           not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph]
 
-      forward_function_name = _forward_name(self._func_graph.name)
-
-      # NB: forward and backward function have their  "_implements"
-      # attribute set to None if it was present. This is because we don't
-      # support replacing those functions. If we do want for those functions
-      # to have implements function we need to provide a mechanism that
-      # would allow to identify all functions that call this one
-      # and trace and update their signatures as well. At the moment
-      # we disable this, until the tooling for doing this becomes available.
-      # See:
-      # https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md#appendix-future-support-for-optimizing-gradient-functions
-      common_attributes = dict(self._attrs)
-      common_attributes.pop(IMPLEMENTS_ATTRIBUTE_NAME, None)
-
       existing_outputs = object_identity.ObjectIdentitySet(
           self._func_graph.outputs)
       for capture in captures_from_forward:
         if capture not in existing_outputs:
           existing_outputs.add(capture)
           self._func_graph.outputs.append(capture)
-      backward_function_attr = _parse_func_attrs(
-          {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
-      backward_function_attr.update(common_attributes)
 
-      backward_function = ConcreteFunction(
-          backwards_graph, attrs=backward_function_attr)
-      forward_function_attr = _parse_func_attrs({
-          BACKWARD_FUNCTION_ATTRIBUTE_NAME:
-          backward_function.name})
-      forward_function_attr.update(common_attributes)
-      forward_function = _EagerDefinedFunction(
-          forward_function_name, self._func_graph, self._func_graph.inputs,
-          self._func_graph.outputs, forward_function_attr)
+      forward_function, backward_function = _create_forward_backward_with_graph(
+          self._attrs, self._func_graph, backwards_graph)
       return forward_function, backward_function
 
   def _rewrite_forward_and_call_backward(self, op, *doutputs):
@@ -927,11 +938,6 @@ class _TapeGradientFunctions(object):
           existing_outputs.add(capture)
           self._func_graph.outputs.append(capture)
 
-    forward_function_name = _forward_name(self._func_graph.name)
-    backward_function_attr = _parse_func_attrs(
-        {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
-    backward_function_attr.update(self._attrs)
-
     # The ordering of `backwards_graph.inputs` is important: inputs of
     # `backward_function` correspond to outputs (including
     # side outputs) of `self._tape_forward_function`.
@@ -942,18 +948,9 @@ class _TapeGradientFunctions(object):
         for grad in nest.flatten(gradients_wrt_inputs, expand_composites=True)
         if grad is not None)
     backwards_graph.structured_outputs = gradients_wrt_inputs
-    backward_function = ConcreteFunction(
-        backwards_graph, attrs=backward_function_attr)
 
-    forward_function_attr = _parse_func_attrs({
-        BACKWARD_FUNCTION_ATTRIBUTE_NAME:
-            backward_function.name})
-    forward_function_attr.update(self._attrs)
-
-    forward_function = _EagerDefinedFunction(
-        forward_function_name, self._func_graph, self._func_graph.inputs,
-        self._func_graph.outputs,
-        forward_function_attr)
+    forward_function, backward_function = _create_forward_backward_with_graph(
+        self._attrs, self._func_graph, backwards_graph)
 
     if not input_tangents:
       # There is no need to special-case forwardprop, so we can return the
@@ -970,14 +967,9 @@ class _TapeGradientFunctions(object):
     # are in the same order the backward function expects them to be in:
     # [inference outputs] + [jvps] + [side outputs] + [captures].
     forward_wrapper = self._shuffle_forward_outputs(forward_wrapper)
-
-    wrapped_forward_function = _EagerDefinedFunction(
-        _forward_name(self._func_graph.name), forward_wrapper.graph,
-        forward_wrapper.graph.inputs, forward_wrapper.graph.outputs,
-        forward_function_attr)
-    wrapped_backward_function = ConcreteFunction(
-        wrapped_backwards_graph, attrs=backward_function_attr)
-
+    (wrapped_forward_function,
+     wrapped_backward_function) = _create_forward_backward_with_graph(
+         self._attrs, forward_wrapper.graph, wrapped_backwards_graph)
     if (len(inference_args) + len(input_tangents)
         != len(forward_wrapper.graph.inputs)):
       raise AssertionError(
@@ -2349,7 +2341,7 @@ class FunctionSpec(object):
                                   input_signature,
                                   is_pure=False,
                                   experimental_follow_type_hints=False,
-                                  experimental_compile=None):
+                                  jit_compile=None):
     """Create a FunctionSpec instance given a python function and signature.
 
     Args:
@@ -2358,7 +2350,7 @@ class FunctionSpec(object):
       is_pure: if True all input arguments (including variables and constants)
       will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`
-      experimental_compile: see `tf.function`
+      jit_compile: see `tf.function`
 
     Returns:
       instance of FunctionSpec
@@ -2428,7 +2420,25 @@ class FunctionSpec(object):
             kwonlyargs=[],
             kwonlydefaults={},
             annotations=fullargspec.annotations)
-    is_method = tf_inspect.ismethod(python_function)
+
+      # inspect.ismethod() and inspect.isfunction() both return False on a
+      # functools.partial-wrapped function. We set it to False to
+      # maintain consistency with prior versions.
+      is_method = False
+
+    else:
+      # Instead of using tf_inspect.ismethod() which only checks the
+      # final unwrapped target, we check if any decorated target along the chain
+      # is a method.
+      is_method = tf_inspect.isanytargetmethod(python_function)
+
+      # In the following scenario, 'python_function' is a callable object.
+      # python_function(...) is equal to python_function.__call__(self, ...)
+      if not is_method and not tf_inspect.isfunction(
+          python_function) and hasattr(
+              python_function, "__class__") and hasattr(
+                  python_function.__class__, "__call__"):
+        is_method = True
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
@@ -2440,7 +2450,7 @@ class FunctionSpec(object):
         is_method,
         input_signature,
         is_pure=is_pure,
-        experimental_compile=experimental_compile,
+        jit_compile=jit_compile,
         experimental_follow_type_hints=experimental_follow_type_hints,
         name=name)
 
@@ -2451,7 +2461,7 @@ class FunctionSpec(object):
                is_pure=False,
                experimental_follow_type_hints=False,
                name=None,
-               experimental_compile=None):
+               jit_compile=None):
     """Constructs a FunctionSpec describing a python function.
 
     Args:
@@ -2462,12 +2472,12 @@ class FunctionSpec(object):
         will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`.
       name: Name of the function
-      experimental_compile: see `tf.function`.
+      jit_compile: see `tf.function`.
     """
     self._fullargspec = fullargspec
     self._is_method = is_method
     self._is_pure = is_pure
-    self._experimental_compile = experimental_compile
+    self._jit_compile = jit_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
     # TODO(edloper): Include name when serializing for SavedModel?
@@ -2493,6 +2503,8 @@ class FunctionSpec(object):
         offset + index: default
         for index, default in enumerate(default_values or [])
     }
+    self._arg_indices_no_default_values = set(range(len(args))) - set(
+        self._arg_indices_to_default_values)
     if input_signature is None:
       self._input_signature = None
     else:
@@ -2538,8 +2550,8 @@ class FunctionSpec(object):
     return self._is_pure
 
   @property
-  def experimental_compile(self):
-    return self._experimental_compile
+  def jit_compile(self):
+    return self._jit_compile
 
   @property
   def arg_names(self):
@@ -2574,9 +2586,14 @@ class FunctionSpec(object):
           args[-1] += "={}".format(self._fullargspec.kwonlydefaults[arg_name])
     return "{}({})".format(self._name, ", ".join(args))
 
+  def _to_tensor_or_tensor_spec(self, x):
+    return (x if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec))
+            else ops.convert_to_tensor(x))
+
   def _convert_variables_to_tensors(self, args, kwargs):
-    args = [ops.convert_to_tensor(x) for x in args]
-    kwargs = {kw: ops.convert_to_tensor(x) for kw, x in kwargs.items()}
+    args = [self._to_tensor_or_tensor_spec(x) for x in args]
+    kwargs = {kw: self._to_tensor_or_tensor_spec(x)
+              for kw, x in kwargs.items()}
     return tuple(args), kwargs
 
   def _convert_annotated_args_to_tensors(self, args, kwargs):
@@ -2589,32 +2606,23 @@ class FunctionSpec(object):
       # See
       # https://docs.python.org/3/library/inspect.html#inspect.getfullargspec
       if i < len(self._fullargspec.args):
-        arg_annotation = self._fullargspec.annotations.get(
-            self._fullargspec.args[i])
-        # TODO(rahulkamat): Change to TensorLike (here ans below).
-        if arg_annotation == ops.Tensor:
-          args[i] = ops.convert_to_tensor(arg)
+        annotation_key = self._fullargspec.args[i]
       else:
-        varargs_annotation = self._fullargspec.annotations.get(
-            self._fullargspec.varargs)
-        if varargs_annotation == ops.Tensor:
-          args[i] = ops.convert_to_tensor(arg)
+        annotation_key = self._fullargspec.varargs
+      arg_annotation = self._fullargspec.annotations.get(annotation_key, None)
+
+      # TODO(rahulkamat): Change to TensorLike (here ans below)
+      if arg_annotation == ops.Tensor:
+        args[i] = self._to_tensor_or_tensor_spec(arg)
 
     for kw, v in kwargs.items():
-      if kw in self._fullargspec.kwonlyargs:
-        kwonlyarg_annotation = self._fullargspec.annotations.get(kw)
-        if kwonlyarg_annotation == ops.Tensor:
-          kwargs[kw] = ops.convert_to_tensor(v)
-      elif self._fullargspec.varkw is not None:
-        varkw_annotation = self._fullargspec.annotations.get(
-            self._fullargspec.varkw)
-        if kw in self._fullargspec.args:
-          arg_annotation = self._fullargspec.annotations.get(kw)
-          if arg_annotation == ops.Tensor:
-            kwargs[kw] = ops.convert_to_tensor(v)
-        elif varkw_annotation == ops.Tensor:
-          kwargs[kw] = ops.convert_to_tensor(v)
-
+      if kw in self._fullargspec.kwonlyargs or kw in self._fullargspec.args:
+        annotation_key = kw
+      else:
+        annotation_key = self._fullargspec.varkw
+      kwarg_annotation = self._fullargspec.annotations.get(annotation_key, None)
+      if kwarg_annotation == ops.Tensor:
+        kwargs[kw] = self._to_tensor_or_tensor_spec(v)
     return tuple(args), kwargs
 
   def canonicalize_function_inputs(self, *args, **kwargs):
@@ -2653,12 +2661,14 @@ class FunctionSpec(object):
       args, kwargs = self._convert_variables_to_tensors(args, kwargs)
     if self._experimental_follow_type_hints:
       args, kwargs = self._convert_annotated_args_to_tensors(args, kwargs)
+    # Pre-calculate to reduce overhead
+    arglen = len(args)
     if self._input_signature is not None:
-      if len(args) > len(self._input_signature):
+      if arglen > len(self._input_signature):
         raise TypeError("{} takes {} positional arguments (as specified by the "
                         "input_signature) but {} were given".format(
                             self.signature_summary(),
-                            len(self._input_signature), len(args)))
+                            len(self._input_signature), arglen))
       for arg in six.iterkeys(kwargs):
         index = self._args_to_indices.get(arg, None)
         if index is None:
@@ -2673,13 +2683,12 @@ class FunctionSpec(object):
       inputs = args
       if self._arg_indices_to_default_values:
         try:
-          inputs += tuple(
-              self._arg_indices_to_default_values[i]
-              for i in range(len(args), len(self._arg_names)))
+          inputs += tuple(self._arg_indices_to_default_values[i]
+                          for i in range(arglen, len(self._arg_names)))
         except KeyError:
           missing_args = [
               self._arg_names[i]
-              for i in range(len(args), len(self._arg_names))
+              for i in range(arglen, len(self._arg_names))
               if i not in self._arg_indices_to_default_values
           ]
           raise TypeError("{} missing required arguments: {}".format(
@@ -2693,22 +2702,36 @@ class FunctionSpec(object):
       # aren't in `args`.
       arg_indices_to_values = {
           index: default for index, default in six.iteritems(
-              self._arg_indices_to_default_values) if index >= len(args)
+              self._arg_indices_to_default_values) if index >= arglen
       }
       consumed_args = []
+      missing_arg_indices = self._arg_indices_no_default_values - set(
+          range(arglen))
       for arg, value in six.iteritems(kwargs):
         index = self._args_to_indices.get(arg, None)
         if index is not None:
-          if index < len(args):
+          if index < arglen:
             raise TypeError("{} got two values for argument '{}'".format(
                 self.signature_summary(), arg))
           arg_indices_to_values[index] = value
+          # These arguments in 'kwargs' might also belong to
+          # positional arguments
+          missing_arg_indices.discard(index)
           consumed_args.append(arg)
       for arg in consumed_args:
         # After this loop, `kwargs` will only contain keyword_only arguments,
         # and all positional_or_keyword arguments have been moved to `inputs`.
         kwargs.pop(arg)
       inputs = args + _deterministic_dict_values(arg_indices_to_values)
+      # Exclude positional args with values
+      if missing_arg_indices:
+        missing_args = [self._arg_names[i] for i in sorted(missing_arg_indices)]
+        if len(missing_args) == 1:
+          raise TypeError("{} missing 1 required argument: {}".format(
+              self.signature_summary(), missing_args[0]))
+        else:
+          raise TypeError("{} missing required arguments: {}".format(
+              self.signature_summary(), ", ".join(missing_args)))
 
       if kwargs and self._input_signature is not None:
         raise TypeError(
@@ -2904,7 +2927,7 @@ class Function(object):
                autograph_options=None,
                experimental_relax_shapes=False,
                capture_by_value=None,
-               experimental_compile=None,
+               jit_compile=None,
                experimental_follow_type_hints=False):
     """Initializes a `Function`.
 
@@ -2927,8 +2950,8 @@ class Function(object):
       capture_by_value: Experimental. Whether to capture resource variables by
         value or reference. If None, will inherit from a parent context or
         default to False.
-      experimental_compile: Force-compile the function with XLA, cf.
-        def_function.Function doc on experimental_compile.
+      jit_compile: Force-compile the function with XLA, cf.
+        def_function.Function doc on jit_compile.
       experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
@@ -2959,7 +2982,7 @@ class Function(object):
     # `Function`, used to make sure defun-decorated methods create different
     # functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
-    self._experimental_compile = experimental_compile
+    self._jit_compile = jit_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
   def __call__(self, *args, **kwargs):
@@ -3073,8 +3096,10 @@ class Function(object):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
 
     Args:
-      *args: inputs to specialize on.
-      **kwargs: inputs to specialize on.
+      *args: inputs to specialize on. Can be concrete values (e.g. 1)
+         or `tf.Tensor` or `tf.TensorSpec`.
+      **kwargs: keyword inputs to specialize on. Concrete values (e.g. 1)
+         or `tf.Tensor` or `tf.TensorSpec`.
     """
     graph_function = self._get_concrete_function_garbage_collected(
         *args, **kwargs)
@@ -3769,12 +3794,13 @@ def defun(func=None,
       experimental_relax_shapes=experimental_relax_shapes)
 
 
+@tf_export("__internal__.function.defun_with_attributes", v1=[])
 def defun_with_attributes(func=None,
                           input_signature=None,
                           attributes=None,
                           autograph=True,
                           experimental_autograph_options=None,
-                          experimental_compile=None,
+                          jit_compile=None,
                           experimental_relax_shapes=False,
                           experimental_follow_type_hints=False):
   """Compiles a Python function into a callable TensorFlow graph.
@@ -3796,7 +3822,7 @@ def defun_with_attributes(func=None,
     autograph: same as defun()'s autograph.
     experimental_autograph_options: same as defun()'s
       experimental_autograph_options.
-    experimental_compile: same as defun()'s experimental_compile.
+    jit_compile: same as defun()'s jit_compile.
     experimental_relax_shapes: same as defun()'s experimental_relax_shapes
     experimental_follow_type_hints: see `tf.function`.
 
@@ -3825,7 +3851,7 @@ def defun_with_attributes(func=None,
             attributes=attributes,
             autograph=autograph,
             autograph_options=experimental_autograph_options,
-            experimental_compile=experimental_compile,
+            jit_compile=jit_compile,
             experimental_relax_shapes=experimental_relax_shapes,
             experimental_follow_type_hints=experimental_follow_type_hints))
 
@@ -3925,12 +3951,12 @@ def class_method_to_instance_method(original_function, instance):
       autograph=original_function._autograph,
       input_signature=original_function.input_signature,
       experimental_relax_shapes=original_function._experimental_relax_shapes,
-      experimental_compile=original_function._experimental_compile)
+      jit_compile=original_function._jit_compile)
   # pylint: enable=protected-access
 
-  # And we wrap the function with tf_decorator so inspection works correctly
-  wrapped_instance_func = tf_decorator.make_decorator(
-      original_function.python_function, instance_func)
+  # We wrap the the bound method with tf_decorator so inspection works correctly
+  wrapped_instance_func = tf_decorator.make_decorator(bound_method,
+                                                      instance_func)
   return wrapped_instance_func
 
 

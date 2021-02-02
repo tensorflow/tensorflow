@@ -116,8 +116,16 @@ TF_LITE_MICRO_TEST(TestAlignSizeUp) {
 TF_LITE_MICRO_TEST(TestTypeSizeOf) {
   size_t size;
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteFloat16, &size));
+  TF_LITE_MICRO_EXPECT_EQ(sizeof(int16_t), size);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           tflite::TfLiteTypeSizeOf(kTfLiteFloat32, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(float), size);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteFloat64, &size));
+  TF_LITE_MICRO_EXPECT_EQ(sizeof(double), size);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           tflite::TfLiteTypeSizeOf(kTfLiteInt16, &size));
@@ -138,6 +146,10 @@ TF_LITE_MICRO_TEST(TestTypeSizeOf) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           tflite::TfLiteTypeSizeOf(kTfLiteInt64, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(int64_t), size);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteUInt64, &size));
+  TF_LITE_MICRO_EXPECT_EQ(sizeof(uint64_t), size);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           tflite::TfLiteTypeSizeOf(kTfLiteBool, &size));

@@ -365,6 +365,15 @@ class TestModelRevive(ReviveTestBase):
     self.assertAllClose(model.test_on_batch(x, y_true),
                         revived.test_on_batch(x, y_true))
 
+  def test_revived_model_has_save_spec(self):
+    model = SubclassedModelWithConfig(2, 3)
+    model.predict(np.random.random((5, 10)).astype(np.float32))
+    model.save(self.path, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllEqual(
+        model._get_save_spec(dynamic_batch=False),
+        revived._get_save_spec(dynamic_batch=False))
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

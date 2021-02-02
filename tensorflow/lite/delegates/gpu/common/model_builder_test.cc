@@ -141,12 +141,28 @@ class DelegatedInterpreter {
   }
 
   // Get the TfLiteContext to be mocked for swapping out functions that have to
-  // be called inside delegate (i.e. in delegat kernel mode).
+  // be called inside delegate (i.e. in delegate kernel mode).
   TfLiteContext* context() { return interpreter_.primary_subgraph().context(); }
 
-  std::vector<std::pair<TfLiteNode, TfLiteRegistration>>&
-  nodes_and_registration() {
-    return interpreter_.primary_subgraph().nodes_and_registration();
+  // node(int) and registration(int) are used to implement
+  // GetNodeAndRegistration.  We can't implement those using
+  //   TfLiteContext *context = interpreter_.primary_subgraph().context();
+  //   context->GetNodeAndRegistration(context, &node, &registration);
+  // here, because calling GetNodeAndRegistration from within it's own
+  // implementation would lead to an infinite loop.
+  // Instead, we just call node_and_registration and use a const_cast.
+  // These const_casts are a bit ugly, but I think less ugly than exposing
+  // the private GetNodeAndRegistration method in Subgraph as public,
+  // or making this class a friend of Subgraph.
+  TfLiteNode* node(int index) {
+    const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration =
+        interpreter_.primary_subgraph().node_and_registration(index);
+    return const_cast<TfLiteNode*>(&node_and_registration->first);
+  }
+  TfLiteRegistration* registration(int index) {
+    const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration =
+        interpreter_.primary_subgraph().node_and_registration(index);
+    return const_cast<TfLiteRegistration*>(&node_and_registration->second);
   }
 
   TfLiteIntArray* exec_plan() const { return exec_plan_; }
@@ -171,7 +187,9 @@ class DelegatedInterpreter {
 
 class InterpreterFp16 : public DelegatedInterpreter {
  public:
-  explicit InterpreterFp16(TfLiteBuiltinOperator op) : DelegatedInterpreter(3) {
+  explicit InterpreterFp16(TfLiteBuiltinOperator op,
+                           bool const_dequantize_inputs = true)
+      : DelegatedInterpreter(3) {
     void* builtin_data = malloc(sizeof(int));
     EXPECT_EQ(interpreter_.AddTensors(5), kTfLiteOk);
     EXPECT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
@@ -227,6 +245,15 @@ class InterpreterFp16 : public DelegatedInterpreter {
         interpreter_.SetTensorParametersReadWrite(
             2, TfLiteType::kTfLiteFloat16, "t2", dims, quantization, false),
         kTfLiteOk);
+    if (const_dequantize_inputs) {
+      // This simulates the dequantize inputs being constants in the graph.
+      // If this is not true, FP16GraphPartitionHelper should not consider the
+      // corresponding DEQUANTIZE ops.
+      auto* tensor0 = interpreter_.tensor(0);
+      auto* tensor2 = interpreter_.tensor(2);
+      tensor0->allocation_type = kTfLiteMmapRo;
+      tensor2->allocation_type = kTfLiteMmapRo;
+    }
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             1, TfLiteType::kTfLiteFloat32, "t1", dims, quantization, false),
@@ -280,10 +307,8 @@ TEST(ModelBuilderTest, GetOpsToReplaceAcceptsFp16DequantizeNodes) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg =
-        interpreter_fp16_add_op->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_fp16_add_op->node(node_index);
+    *registration = interpreter_fp16_add_op->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -323,6 +348,64 @@ TEST(ModelBuilderTest, GetOpsToReplaceAcceptsFp16DequantizeNodes) {
   TfLiteIntArrayFree(ops_to_replace);
 }
 
+InterpreterFp16* interpreter_fp16_non_constant =
+    new InterpreterFp16(kTfLiteBuiltinAdd, /*const_dequantize_inputs=*/false);
+
+// Same as GetOpsToReplaceAcceptsFp16DequantizeNodes, but the DEQUANTIZE inputs
+// are not constant. As a result, we don't allow the delegate to accept them.
+TEST(ModelBuilderTest, GetOpsToReplaceRejectsNonConstantFp16DequantizeNodes) {
+  TfLiteContext* context = interpreter_fp16_non_constant->context();
+
+  // These functions are meant to be called inside delegates. Swap out
+  // for similar functions to permit direct calling of GetOpsToReplace.
+  context->GetExecutionPlan = [](struct TfLiteContext* context,
+                                 TfLiteIntArray** execution_plan) {
+    *execution_plan = interpreter_fp16_non_constant->exec_plan();
+    return kTfLiteOk;
+  };
+  context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
+                                       TfLiteNode** node,
+                                       TfLiteRegistration** registration) {
+    *node = interpreter_fp16_non_constant->node(node_index);
+    *registration = interpreter_fp16_non_constant->registration(node_index);
+    return kTfLiteOk;
+  };
+  context->PreviewDelegatePartitioning =
+      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+         TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+        // The partitioner should accept only the Add op initially.
+        EXPECT_EQ(nodes_to_replace->size, 1);
+        // Single partition output.
+        auto params = interpreter_fp16_non_constant->add_delegate_params();
+        params->nodes_to_replace = TfLiteIntArrayCreate(1);
+        params->nodes_to_replace->data[0] = 2;
+        params->input_tensors = TfLiteIntArrayCreate(2);
+        params->input_tensors->data[0] = 1;
+        params->input_tensors->data[1] = 3;
+        params->output_tensors = TfLiteIntArrayCreate(1);
+        params->output_tensors->data[0] = 4;
+
+        *partition_params_array =
+            interpreter_fp16_non_constant->delegate_params();
+        *num_partitions = interpreter_fp16_non_constant->num_delegate_params();
+        return kTfLiteOk;
+      };
+
+  TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
+
+  // Only ADD is delegated, with FP32 (dequantized) inputs.
+  EXPECT_EQ(ops_to_replace->size, 1);
+  TfLiteNode* node = nullptr;
+  TfLiteRegistration* registration = nullptr;
+  context->GetNodeAndRegistration(context, ops_to_replace->data[0], &node,
+                                  &registration);
+  EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
+            TfLiteType::kTfLiteFloat32);
+  EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
+            TfLiteType::kTfLiteFloat32);
+  TfLiteIntArrayFree(ops_to_replace);
+}
+
 InterpreterFp16* interpreter_fp16_gt_op =
     new InterpreterFp16(kTfLiteBuiltinGreater);
 
@@ -346,10 +429,8 @@ TEST(ModelBuilderTest, GetOpsToReplaceRejectsFp16DequantizeNodes) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg =
-        interpreter_fp16_gt_op->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_fp16_gt_op->node(node_index);
+    *registration = interpreter_fp16_gt_op->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -462,9 +543,8 @@ TEST(ModelBuilderTest, GetOpsToReplaceDoesNotPruneUint8) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg = interpreter_fp32->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_fp32->node(node_index);
+    *registration = interpreter_fp32->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -630,10 +710,8 @@ TEST(ModelBuilderTest, GetOpsToReplaceMultiplePartitions) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg =
-        interpreter2_fp32->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter2_fp32->node(node_index);
+    *registration = interpreter2_fp32->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -791,6 +869,13 @@ class InterpreterMultiNode : public DelegatedInterpreter {
         interpreter_.SetTensorParametersReadWrite(
             2, TfLiteType::kTfLiteFloat16, "t2", dims, quantization, false),
         kTfLiteOk);
+    // Simulate DEQUANTIZE inputs being constants.
+    auto* tensor0 = interpreter_.tensor(0);
+    auto* tensor1 = interpreter_.tensor(1);
+    auto* tensor2 = interpreter_.tensor(2);
+    tensor0->allocation_type = kTfLiteMmapRo;
+    tensor1->allocation_type = kTfLiteMmapRo;
+    tensor2->allocation_type = kTfLiteMmapRo;
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             3, TfLiteType::kTfLiteFloat32, "t3", dims, quantization, false),
@@ -845,9 +930,8 @@ TEST(ModelBuilderTest, GetOpsToReplaceSelectsCorrectFp16Nodes_SinglePartition) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg = interpreter_mn->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_mn->node(node_index);
+    *registration = interpreter_mn->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -917,9 +1001,8 @@ TEST(ModelBuilderTest,
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg = interpreter_mn2->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_mn2->node(node_index);
+    *registration = interpreter_mn2->registration(node_index);
     return kTfLiteOk;
   };
 
@@ -1121,10 +1204,8 @@ TEST(ModelBuilderTest, GetOpsToReplace_AllowQuantOps) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg =
-        interpreter_quant->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_quant->node(node_index);
+    *registration = interpreter_quant->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -1165,6 +1246,122 @@ TEST(ModelBuilderTest, GetOpsToReplace_AllowQuantOps) {
 
   TfLiteIntArrayFree(ops_to_replace);
   TfLiteIntArrayFree(ops_to_replace_without_quant);
+}
+
+class InterpreterDynamicDimensions : public DelegatedInterpreter {
+ public:
+  InterpreterDynamicDimensions() : DelegatedInterpreter(3) {
+    void* builtin_data = malloc(sizeof(int));
+    EXPECT_EQ(interpreter_.AddTensors(5), kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetInputs({0, 2}), kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetOutputs({3, 4}), kTfLiteOk);
+
+    // Add a Dequantize Node with uint8 input.
+    const TfLiteRegistration reg_dequant0 = {/*init=*/nullptr,
+                                             /*free=*/nullptr,
+                                             /*prepare=*/nullptr,
+                                             /*invoke=*/nullptr,
+                                             /*profiling_string=*/nullptr,
+                                             kTfLiteBuiltinDequantize};
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{0}, /*outputs=*/{1}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0, /*builtin_data=*/nullptr,
+                  /*registration=*/&reg_dequant0),
+              kTfLiteOk);
+
+    const TfLiteRegistration reg_add = {
+        [](TfLiteContext* context, const char* buffer, size_t length) {
+          return reinterpret_cast<void*>(new int(1));
+        },
+        [](TfLiteContext* context, void* buffer) {
+          delete reinterpret_cast<int*>(buffer);
+        },
+        nullptr,
+        nullptr,
+        nullptr,
+        kTfLiteBuiltinSub};
+
+    // Add an Add node that contains a dynamic output.
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{1, 2}, /*outputs=*/{3}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0,
+                  /*builtin_data=*/builtin_data,
+                  /*registration=*/&reg_add),
+              kTfLiteOk);
+
+    // Add an Add node that contains a dynamic input.
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{0, 2}, /*outputs=*/{4}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0,
+                  /*builtin_data=*/builtin_data,
+                  /*registration=*/&reg_add),
+              kTfLiteOk);
+
+    const std::vector<int> dims = {1};
+    const std::vector<int> dims_signature = {-1};
+    TfLiteQuantizationParams quantization;
+
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  0, TfLiteType::kTfLiteUInt8, "t0", dims, quantization, false,
+                  &dims_signature),
+              kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  1, TfLiteType::kTfLiteFloat32, "t1", dims, quantization,
+                  false, &dims),
+              kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  2, TfLiteType::kTfLiteFloat32, "t2", dims, quantization,
+                  false, &dims),
+              kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  3, TfLiteType::kTfLiteFloat32, "t3", dims, quantization,
+                  false, &dims_signature),
+              kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  4, TfLiteType::kTfLiteFloat32, "t4", dims, quantization,
+                  false, &dims),
+              kTfLiteOk);
+
+    exec_plan()->data[0] = 0;
+    exec_plan()->data[1] = 1;
+    exec_plan()->data[2] = 2;
+  }
+};
+
+InterpreterDynamicDimensions* interpreter_dynamic_dimensions =
+    new InterpreterDynamicDimensions();
+
+TEST(ModelBuilderTest, GetOpsToReplacePrunesDynamicDimensions) {
+  TfLiteContext* context = interpreter_dynamic_dimensions->context();
+
+  context->GetExecutionPlan = [](struct TfLiteContext* context,
+                                 TfLiteIntArray** execution_plan) {
+    *execution_plan = interpreter_dynamic_dimensions->exec_plan();
+    return kTfLiteOk;
+  };
+  context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
+                                       TfLiteNode** node,
+                                       TfLiteRegistration** registration) {
+    *node = interpreter_dynamic_dimensions->node(node_index);
+    *registration = interpreter_dynamic_dimensions->registration(node_index);
+    return kTfLiteOk;
+  };
+  context->PreviewDelegatePartitioning =
+      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+         TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+        // No selected nodes.
+        EXPECT_EQ(nodes_to_replace->size, 0);
+        *partition_params_array = nullptr;
+        *num_partitions = 0;
+        return kTfLiteOk;
+      };
+
+  TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
+
+  // Reject all the ops since they are based on dynamic dimensions.
+  EXPECT_EQ(ops_to_replace->size, 0);
+
+  TfLiteIntArrayFree(ops_to_replace);
 }
 
 }  // namespace

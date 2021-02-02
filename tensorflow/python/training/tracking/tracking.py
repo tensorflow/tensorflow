@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import warnings
 
 from absl import logging
 
@@ -107,7 +108,9 @@ class AutoTrackable(base.Trackable):
       logging_verbosity = logging.get_verbosity()
       try:
         logging.set_verbosity(logging.FATAL)
-        attribute_value = getattr(self, attribute_name, None)
+        with warnings.catch_warnings():
+          warnings.simplefilter("ignore")
+          attribute_value = getattr(self, attribute_name, None)
       except Exception:  # pylint: disable=broad-except
         # We really don't want to throw an exception just because some object's
         # attribute accessor is broken.

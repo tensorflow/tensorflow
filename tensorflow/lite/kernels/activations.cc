@@ -280,10 +280,16 @@ TfLiteStatus ReluPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
-  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8 ||
+      input->type == kTfLiteInt16) {
     double real_multiplier = input->params.scale / output->params.scale;
     QuantizeMultiplier(real_multiplier, &data->output_multiplier,
                        &data->output_shift);
+  }
+
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   }
 
   return context->ResizeTensor(context, output,
@@ -441,13 +447,21 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
         (data->input_left_shift == 0 || data->input_left_shift == 1);
 
     if (!param_scale_pot) {
-      // In case of general scale parameter, we need to do a rescaling.
-      // Magic constant 4096:
-      // We need to scale down to (-2^3, 2^3) / 3 is kInputIntegerBits/ interval
-      // from 16-bit (-2^15, 2^15),
-      // so we need to multiply by
-      // 2^(15 - kInputIntegerBits) = 2^12 = 4096.
-      data->input_multiplier = static_cast<int32_t>(input->params.scale * 4096);
+      // Calculate multiplier to change input scale to 1/(3*4096)
+      // as required by the table lookup.
+      // The number 3.0 in the multiplier comes from here,
+      // because the interval is [-10.7, 10.7] instead of [-8, 8].
+      // So, in this scaling +/-2^17 represents +/-10.7.
+
+      double multiplier = input->params.scale * 4096.0 * 3.0;
+      data->input_left_shift = 0;
+
+      while (multiplier <= 32767.0 / 2.0 && data->input_left_shift <= 30) {
+        data->input_left_shift++;
+        multiplier = multiplier * 2.0;
+      }
+
+      data->input_multiplier = static_cast<int32_t>(multiplier);
     }
 
     int output_scale_log2_rounded;
@@ -538,13 +552,19 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
     param_scale_pot &= (data->input_left_shift == 0);
 
     if (!param_scale_pot) {
-      // In case of general scale parameter, we need to do a rescaling.
-      // Magic constant 4096:
-      // We need to scale down to (-2^3, 2^3) / 3 is kInputIntegerBits/ interval
-      // from 16-bit (-2^15, 2^15),
-      // so we need to multiply by
-      // 2^(15 - kInputIntegerBits) = 2^12 = 4096.
-      data->input_multiplier = static_cast<int32_t>(input->params.scale * 4096);
+      // Calculate multiplier to change input scale to 1/(3*4096)
+      // as required by the table lookup.
+      // In this scaling +/-2^17 represents +/-10.7
+      double multiplier = input->params.scale * 4096.0 * 3.0;
+
+      data->input_left_shift = 0;
+
+      while (multiplier <= 32767.0 / 2.0 && data->input_left_shift <= 30) {
+        data->input_left_shift++;
+        multiplier = multiplier * 2.0;
+      }
+
+      data->input_multiplier = static_cast<int32_t>(multiplier);
     }
 
     int output_scale_log2_rounded;
@@ -740,10 +760,15 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
       QuantizedReluX<int8_t>(0.0f, std::numeric_limits<float>::infinity(),
                              input, output, data);
     } break;
+    case kTfLiteInt16: {
+      QuantizedReluX<int16_t>(0.0f, std::numeric_limits<float>::infinity(),
+                              input, output, data);
+    } break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context, "Only float32 & int8/uint8 is supported currently, got %s.",
-          TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8, int8 and int16 are supported "
+                         "currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -857,11 +882,15 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       QuantizedReluX<int8_t>(0.0f, 6.0f, input, output, data);
       return kTfLiteOk;
     } break;
+    case kTfLiteInt16: {
+      QuantizedReluX<int16_t>(0.0f, 6.0f, input, output, data);
+      return kTfLiteOk;
+    } break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Only float32, uint8 and int8 are supported currently, got %s.",
-          TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8, int8 and int16 are supported "
+                         "currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
@@ -968,9 +997,9 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
         const int size =
             MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
 
-        reference_integer_ops::Logistic(data->input_multiplier, size,
-                                        GetTensorData<int16_t>(input),
-                                        GetTensorData<int16_t>(output));
+        reference_integer_ops::Logistic(
+            data->input_multiplier, data->input_left_shift, size,
+            GetTensorData<int16_t>(input), GetTensorData<int16_t>(output));
       } else {
         optimized_ops::Logistic(
             params, GetTensorShape(input), GetTensorData<int16_t>(input),

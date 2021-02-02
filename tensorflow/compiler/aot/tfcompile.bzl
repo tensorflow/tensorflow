@@ -127,7 +127,7 @@ def tf_library(
                    "$(location " + tfcompile_tool + ")" +
                    " --config=$(location " + config + ")" +
                    " --dump_fetch_nodes > $@"),
-            exec_tools = [tfcompile_tool],
+            tools = [tfcompile_tool],
             # Run tfcompile on the build host, rather than forge, since it's
             # typically way faster on the local machine.
             local = 1,
@@ -162,7 +162,7 @@ def tf_library(
                 "//tensorflow/python/tools:freeze_graph)" +
                 freeze_args
             ),
-            exec_tools = ["//tensorflow/python/tools:freeze_graph"],
+            tools = ["//tensorflow/python/tools:freeze_graph"],
             tags = tags,
         )
         tfcompile_graph = freeze_file
@@ -242,7 +242,7 @@ def tf_library(
             " --out_function_object=$(@D)/" + function_object_file +
             " " + flags + " " + profiling_flag + " " + mlir_flag + " " + traceme_flag
         ),
-        exec_tools = [tfcompile_tool],
+        tools = [tfcompile_tool],
         visibility = visibility,
         testonly = testonly,
         # Run tfcompile on the build host since it's typically faster on the
@@ -281,7 +281,7 @@ def tf_library(
             " --out_session_module=$(@D)/" + session_module_pb +
             " " + flags
         ),
-        exec_tools = [tfcompile_tool],
+        tools = [tfcompile_tool],
         visibility = visibility,
         testonly = testonly,
         local = 1,
@@ -432,7 +432,8 @@ def target_llvm_triple():
         "//tensorflow:ios": "arm64-none-ios",
         "//tensorflow:ios_x86_64": "x86_64-apple-ios",
         "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
-        "//tensorflow:macos": "x86_64-none-darwin",
+        "//tensorflow:macos_x86_64": "x86_64-none-darwin",
+        "//tensorflow:macos_arm64": "aarch64-none-darwin",
         "//tensorflow:windows": "x86_64-none-windows",
         "//tensorflow:linux_s390x": "systemz-none-linux-gnu",
         "//conditions:default": "x86_64-pc-linux",

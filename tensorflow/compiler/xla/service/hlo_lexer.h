@@ -61,6 +61,7 @@ enum class TokKind {
   kw_false,
   kw_maximal,
   kw_replicated,
+  kw_manual,
   kw_last_tile_dim_replicate,
   kw_nan,
   kw_inf,

@@ -21,3 +21,17 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = ["//tensorflow/core:protos_all"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "saved_metadata_proto_py_pb2",
+#     api_version = 2,
+#     deps = [":saved_metadata_proto"],
+# )
+#
+# py_proto_library(
+#     name = "projector_config_proto_py_pb2",
+#     api_version = 2,
+#     deps = [":projector_config_proto"],
+# )
+# copybara:uncomment_end

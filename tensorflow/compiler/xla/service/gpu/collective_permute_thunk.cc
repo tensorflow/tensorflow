@@ -227,7 +227,7 @@ CollectivePermuteConfig GetCollectivePermuteConfig(
 }
 
 CollectivePermuteThunk::CollectivePermuteThunk(
-    ThunkInfo thunk_info, CollectivePermuteConfig&& config,
+    ThunkInfo thunk_info, CollectivePermuteConfig config,
     const BufferAllocation::Slice& src, const BufferAllocation::Slice& dest)
     : Thunk(kCollectivePermute, thunk_info),
       config_(std::move(config)),
@@ -249,9 +249,8 @@ Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
-  TF_ASSIGN_OR_RETURN(
-      int64 replica_id,
-      params.device_assn->ReplicaIdForDeviceOrdinal(global_device_id.value()));
+  TF_ASSIGN_OR_RETURN(int64 replica_id,
+                      params.device_assn->ReplicaIdForDevice(global_device_id));
 
   // Figure out which replicas our data is copied to.
   std::vector<int64> dest_replicas;

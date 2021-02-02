@@ -37,7 +37,7 @@ namespace tensorflow {
 
 // We don't support integers for convolutions, so we list the supported types
 // here.
-absl::Span<const DataType> GetXlaConvTypes();
+std::vector<DataType> GetXlaConvTypes();
 
 // ConvOpAttrs contains all of the metadata necessary to specify a TF or XLA
 // convolution.

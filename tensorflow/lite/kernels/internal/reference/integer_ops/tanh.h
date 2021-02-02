@@ -65,19 +65,25 @@ inline void Tanh(int32_t input_multiplier, int32_t input_left_shift,
   // We use the LUT for sigmoid and take into account, that
   // tanh(x) = 2*sigmoid(2*x) - 1
 
-  int32_t input_data_mul = (input_multiplier > 0) ? input_multiplier : 1;
+  // We scale by 3/4 to expand range [-8,8]->[-10.7,10.7].
+  // In case of general parameter scale, multiplier 3 is taken into account
+  // in TanhPrepare function and it is included in
+  // input_multiplier already.
+
+  if (input_multiplier == 0) {  // power of two case
+    input_multiplier = 3 << input_left_shift;
+    input_left_shift = 0;
+  }
+
+  int32_t round = (input_left_shift > 0) ? 1 << (input_left_shift - 1) : 0;
 
   int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; ++i, ptr_input_data++, ptr_output_data++) {
-    int32_t input_data = (*ptr_input_data) * input_data_mul;
+    int32_t input_data =
+        ((*ptr_input_data) * input_multiplier + round) >> input_left_shift;
 
-    if (input_left_shift == 1) {
-      input_data <<= 1;
-    }
-
-    // Scale by 3/4 to expand range [-8,8]->[-10.7,10.7].
-    uint32_t abs_input_data = 3 * abs(input_data);
+    uint32_t abs_input_data = abs(input_data);
     uint32_t uh = abs_input_data >> 8;
     int32_t result;
 

@@ -1,7 +1,8 @@
 # Description:
 #   Contains Keras integration tests that verify with other TF high level APIs.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
@@ -17,7 +18,7 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -27,7 +28,6 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
     ],
 )
 
@@ -37,7 +37,6 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
     ],
 )
 
@@ -47,7 +46,7 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -57,7 +56,6 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
     ],
 )
 
@@ -66,7 +64,6 @@ tf_py_test(
     srcs = ["module_test.py"],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
     ],
 )
 
@@ -76,7 +73,6 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
     ],
 )
 
@@ -84,10 +80,8 @@ cuda_py_test(
     name = "gradient_checkpoint_test",
     srcs = ["gradient_checkpoint_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
     ],
 )
 
@@ -100,7 +94,7 @@ tpu_py_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -110,11 +104,13 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 3,
     tags = [
+        "no_tfrt",  # TODO(b/171765113)
         "noasan",  # TODO(b/156029134)
         "nomsan",  # TODO(b/156029134)
         "notsan",  # TODO(b/156029134)
     ],
     deps = [
         "//tensorflow:tensorflow_py",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

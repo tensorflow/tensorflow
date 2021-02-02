@@ -76,7 +76,7 @@ may change.
 ## Selectively build TensorFlow Lite with Bazel
 
 This section assumes that you have downloaded TensorFlow source codes and
-[set up the local development environment](https://www.tensorflow.org/lite/guide/android#build_tensorflow_lite_locally)
+[set up the local development environment](https://www.tensorflow.org/lite/guide/build_android#set_up_build_environment_without_docker)
 to Bazel.
 
 ### Build AAR files for Android project
@@ -118,7 +118,15 @@ files. Note that these dependencies must exist in the TensorFlow repo.
 
 This section assumes that you have installed
 [Docker](https://docs.docker.com/get-docker/) on your local machine and
-[built the TensorFlow Lite docker file](https://www.tensorflow.org/lite/guide/android#set_up_build_environment_using_docker).
+downloaded the TensorFlow Lite Dockerfile
+[here](https://www.tensorflow.org/lite/guide/build_android#set_up_build_environment_using_docker).
+
+After downloading the above Dockerfile, you can build the docker image by
+running:
+
+```shell
+docker build . -t tflite-builder -f tflite-android.Dockerfile
+```
 
 ### Build AAR files for Android project
 
@@ -137,20 +145,26 @@ paths as follows.
 sh build_aar_with_docker.sh \
   --input_models=/a/b/model_one.tflite,/c/d/model_two.tflite \
   --target_archs=x86,x86_64,arm64-v8a,armeabi-v7a \
-  --checkpoint=master
+  --checkpoint=master \
+  [--cache_dir=<path to cache directory>]
 ```
 
 The `checkpoint` flag is a commit, a branch or a tag of the TensorFlow repo that
-you want to checkout before building the libraries. The above command will
-generate the AAR file `tensorflow-lite.aar` for TensorFlow Lite built-in and
-custom ops and optionally the AAR file `tensorflow-lite-select-tf-ops.aar` for
-Select TensorFlow ops in your current directory.
+you want to checkout before building the libraries; by default it is the latest
+release branch. The above command will generate the AAR file
+`tensorflow-lite.aar` for TensorFlow Lite built-in and custom ops and optionally
+the AAR file `tensorflow-lite-select-tf-ops.aar` for Select TensorFlow ops in
+your current directory.
+
+The --cache_dir specify the cache directory. If not provided, the script will
+create a directory named `bazel-build-cache` under current working directory for
+caching.
 
 ## Add AAR files to project
 
 Add AAR files by directly
-[importing the AAR into your project](https://www.tensorflow.org/lite/guide/android#add_aar_directly_to_project),
+[importing the AAR into your project](https://www.tensorflow.org/lite/guide/build_android#add_aar_directly_to_project),
 or by
-[publishing the custom AAR to your local Maven repository](https://www.tensorflow.org/lite/guide/android#install_aar_to_local_maven_repository).
+[publishing the custom AAR to your local Maven repository](https://www.tensorflow.org/lite/guide/build_android#install_aar_to_local_maven_repository).
 Note that you have to add the AAR files for `tensorflow-lite-select-tf-ops.aar`
 as well if you generate it.

@@ -46,8 +46,8 @@ class BufRendezvous {
 
   ~BufRendezvous();
 
-  // Inform all all waiting parties that this BufRendezvous is defunct
-  // because of an error Status interrupting the Step.
+  // Inform all waiting parties that this BufRendezvous is defunct because of
+  // an error Status interrupting the Step.
   void StartAbort(const Status& s);
 
   struct Hook;

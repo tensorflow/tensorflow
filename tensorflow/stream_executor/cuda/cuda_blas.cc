@@ -3338,7 +3338,9 @@ class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
  private:
   // In some cases cublasLt does not support large batch sizes, so we need to
   // split up such cases into multiple calls.
-  static constexpr const int kMaxBatchCount = 65535;
+  // TODO(reedwm): Making this static or constexpr causes a link error with gcc
+  // in debug mode for unknown reasons. Investigate why.
+  const int kMaxBatchCount = 65535;
   blas::BlasLtMatmulPlanParams params_;
   blas::DataType scale_type_;
   UniqueOpDesc op_desc_;

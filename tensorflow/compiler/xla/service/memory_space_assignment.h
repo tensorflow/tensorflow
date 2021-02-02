@@ -400,6 +400,8 @@ class MemorySpaceAssignment {
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare;
   using IsAllowedInAlternateMemoryFunction =
       std::function<bool(const HloValue&)>;
+  using IsUseAllowedInAlternateMemoryFunction =
+      std::function<bool(const HloUse&)>;
 
   // MemorySpaceAssignment uses a notion of a slow and large default memory
   // space and a fast and small alternate memory space.
@@ -433,6 +435,11 @@ class MemorySpaceAssignment {
     // This function can be used to prevent certain HloValues (e.g., based on
     // the opcode) to be placed on the alternate memory.
     IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_fn;
+
+    // This function can be used to prevent certain HloUses (e.g., based on
+    // the opcode) to be placed on the alternate memory.
+    IsUseAllowedInAlternateMemoryFunction is_use_allowed_in_alternate_mem_fn =
+        [](const HloUse&) { return true; };
 
     // Specifies the upper bound for number of outstanding prefetches and
     // evictions, -1 for unlimited.

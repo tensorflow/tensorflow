@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -646,6 +647,7 @@ HloAllGatherInstruction::CloneWithNewOperandsImpl(
 HloInstructionProto HloAllGatherInstruction::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
   proto.add_dimensions(all_gather_dimension_);
+  proto.set_use_global_device_ids(use_global_device_ids_);
   return proto;
 }
 
@@ -2114,10 +2116,14 @@ HloInstructionProto HloOutfeedInstruction::ToProto() const {
 
 std::vector<string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  if (outfeed_config_.empty()) {
-    return {};
+  std::vector<string> extra;
+  extra.push_back(StrCat("outfeed_shape=",
+                         ShapeUtil::HumanStringWithLayout(outfeed_shape_)));
+  if (!outfeed_config_.empty()) {
+    extra.push_back(
+        StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
   }
-  return {StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\"")};
+  return extra;
 }
 
 bool HloOutfeedInstruction::IdenticalSlowPath(
@@ -2283,9 +2289,13 @@ std::unique_ptr<HloInstruction>
 HloReduceWindowInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 2);
+  CHECK_EQ(new_operands.size() % 2, 0);
+  int64 num_operands = new_operands.size() / 2;
   return absl::make_unique<HloReduceWindowInstruction>(
-      shape, new_operands[0], new_operands[1], window(), to_apply());
+      shape, absl::MakeSpan(new_operands).subspan(0, num_operands),
+      absl::MakeSpan(new_operands)
+          .subspan(num_operands, new_operands.size() / 2),
+      window(), to_apply());
 }
 
 HloSelectAndScatterInstruction::HloSelectAndScatterInstruction(
@@ -2369,6 +2379,26 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     AppendOperand(operand);
   }
   AppendComputation(to_apply);
+}
+
+HloCustomCallInstruction::HloCustomCallInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloComputation* const> called_computations,
+    absl::string_view custom_call_target, string opaque)
+    : HloInstruction(HloOpcode::kCustomCall, shape),
+      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      feature_group_count_(1),
+      batch_group_count_(1),
+      layout_constrained_(false),
+      padding_type_(PaddingType::PADDING_INVALID),
+      custom_call_has_side_effect_(false) {
+  set_raw_backend_config_string(std::move(opaque));
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  for (auto comp : called_computations) {
+    AppendComputation(comp);
+  }
 }
 
 HloCustomCallInstruction::HloCustomCallInstruction(
@@ -2531,6 +2561,17 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
                                      casted_other.precision_config())) {
     return false;
   }
+
+  if (called_computations().size() != other.called_computations().size()) {
+    return false;
+  }
+  for (int64 i = 0; i < called_computations().size(); ++i) {
+    if (!eq_computations(called_computations()[i],
+                         other.called_computations()[i])) {
+      return false;
+    }
+  }
+
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.
   return custom_call_target_ == casted_other.custom_call_target_;

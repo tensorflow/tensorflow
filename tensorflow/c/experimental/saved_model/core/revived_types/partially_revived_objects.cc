@@ -343,7 +343,8 @@ Status InitializeCreateResourceFunctions(ImmediateExecutionContext* ctx,
     std::unique_ptr<TFConcreteFunction> out;
     TF_RETURN_IF_ERROR(CreateConcreteFunction(ctx, *create_resource_fn,
                                               obj_graph, objects, &out));
-    revived->concrete_functions[create_resource_fn->node_id] = std::move(out);
+    revived->concrete_functions.Insert(std::move(out),
+                                       create_resource_fn->node_id);
   }
   return Status();
 }
@@ -352,8 +353,6 @@ Status InitializeAllFunctions(ImmediateExecutionContext* ctx,
                               const SavedObjectGraph& obj_graph,
                               const PartiallyRevivedObjects& objects,
                               RevivedObjects* revived) {
-  gtl::FlatMap<int, std::unique_ptr<TFConcreteFunction>>* destination_func_map =
-      &revived->concrete_functions;
   gtl::FlatMap<int, std::unique_ptr<TFSignatureDefFunction>>*
       destination_sig_map = &revived->signature_def_functions;
 
@@ -361,7 +360,7 @@ Status InitializeAllFunctions(ImmediateExecutionContext* ctx,
     int node_id = id_and_func.first;
     const TFConcreteFunctionRevivalState& func = id_and_func.second;
 
-    if (destination_func_map->find(node_id) != destination_func_map->end()) {
+    if (revived->concrete_functions.Find(node_id)) {
       // The function has already been initialized in the destination_map,
       // so we can skip this node. This can occur because we initialize
       // CreateResource functions before calling this function.
@@ -371,7 +370,7 @@ Status InitializeAllFunctions(ImmediateExecutionContext* ctx,
     std::unique_ptr<TFConcreteFunction> out;
     TF_RETURN_IF_ERROR(
         CreateConcreteFunction(ctx, func, obj_graph, objects, &out));
-    (*destination_func_map)[node_id] = std::move(out);
+    revived->concrete_functions.Insert(std::move(out), node_id);
   }
 
   for (const auto& id_and_func : objects.signature_def_functions) {
@@ -398,20 +397,16 @@ Status CreateAllResourceHandles(ImmediateExecutionContext* ctx,
   for (auto& id_and_resource : objects->restored_resources) {
     RestoredResourceRevivalState& resource = id_and_resource.second;
     int create_resource_fn_node = resource.create_resource->node_id;
-    const gtl::FlatMap<int, std::unique_ptr<TFConcreteFunction>>&
-        revived_functions = revived->concrete_functions;
 
-    const auto& revived_functions_iter =
-        revived_functions.find(create_resource_fn_node);
-    if (revived_functions_iter == revived_functions.end()) {
+    const TFConcreteFunction* create_resource_fn =
+        revived->concrete_functions.Find(create_resource_fn_node);
+    if (create_resource_fn == nullptr) {
       return errors::FailedPrecondition(
           "ConcreteFunction at node ", create_resource_fn_node,
           " should have been initialized prior to being called.");
     }
-    const TFConcreteFunction& create_resource_fn =
-        *revived_functions_iter->second;
     ImmediateOpPtr function_op;
-    TF_RETURN_IF_ERROR(create_resource_fn.MakeCallOp({}, &function_op));
+    TF_RETURN_IF_ERROR(create_resource_fn->MakeCallOp({}, &function_op));
     TF_RETURN_IF_ERROR(function_op->SetDeviceName(resource.device.c_str()));
 
     AbstractTensorHandle* resource_handle = nullptr;
@@ -431,21 +426,6 @@ Status CreateAllResourceHandles(ImmediateExecutionContext* ctx,
   return Status();
 }
 
-// Finds a ConcreteFunction with node id `node` in `objects`, and sets *out to
-// point to it. If node doesn't exist in `objects`, out is untouched, and an
-// error status is returned.
-Status FindConcreteFunction(int node, RevivedObjects* objects,
-                            TFConcreteFunction** out) {
-  auto func_iter = objects->concrete_functions.find(node);
-  if (func_iter == objects->concrete_functions.end()) {
-    return errors::FailedPrecondition(
-        "Failed to find ConcreteFunction with node id ", node,
-        " in revived objects");
-  }
-  *out = func_iter->second.get();
-  return Status();
-}
-
 Status BuildResources(ImmediateExecutionContext* ctx,
                       const SavedObjectGraph& obj_graph,
                       PartiallyRevivedObjects* objects,
@@ -460,22 +440,35 @@ Status BuildResources(ImmediateExecutionContext* ctx,
     // Check all the functions associated with the resource have already been
     // initialized in `revived`
     if (resource_revival_state.create_resource != nullptr) {
-      TF_RETURN_IF_ERROR(
-          FindConcreteFunction(resource_revival_state.create_resource->node_id,
-                               revived, &create_resource));
+      create_resource = revived->concrete_functions.Find(
+          resource_revival_state.create_resource->node_id);
+      if (create_resource == nullptr) {
+        return errors::FailedPrecondition(
+            "'create_resource' function with node id ",
+            resource_revival_state.create_resource->node_id, " not found");
+      }
     }
 
     TFConcreteFunction* initialize = nullptr;
     if (resource_revival_state.initialize != nullptr) {
-      TF_RETURN_IF_ERROR(FindConcreteFunction(
-          resource_revival_state.initialize->node_id, revived, &initialize));
+      initialize = revived->concrete_functions.Find(
+          resource_revival_state.initialize->node_id);
+      if (initialize == nullptr) {
+        return errors::FailedPrecondition(
+            "'initialize' function with node id ",
+            resource_revival_state.initialize->node_id, " not found");
+      }
     }
 
     TFConcreteFunction* destroy_resource = nullptr;
     if (resource_revival_state.destroy_resource != nullptr) {
-      TF_RETURN_IF_ERROR(
-          FindConcreteFunction(resource_revival_state.destroy_resource->node_id,
-                               revived, &destroy_resource));
+      destroy_resource = revived->concrete_functions.Find(
+          resource_revival_state.destroy_resource->node_id);
+      if (destroy_resource == nullptr) {
+        return errors::FailedPrecondition(
+            "'destroy_resource' function with node id ",
+            resource_revival_state.destroy_resource->node_id, " not found");
+      }
     }
 
     if (resource_revival_state.resource_handle == nullptr) {

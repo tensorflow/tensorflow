@@ -89,7 +89,8 @@ class TextVectorization(text_vectorization.TextVectorization,
     super(TextVectorization,
           self).__init__(max_tokens, standardize, split, ngrams, output_mode,
                          output_sequence_length, pad_to_max_tokens, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V1").set("TextVectorization")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "TextVectorization_V1").set(True)
 
   def _get_vectorization_class(self):
     return category_encoding_v1.CategoryEncoding

@@ -1,11 +1,8 @@
-// RUN: tf-opt -xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT %s | FileCheck %s
-
-// INVALID_DEVICE: xla-opt -xla-legalize-tf-with-tf2xla=device-type=INVALID_DEVICE %s | FileCheck %s
+// RUN: tf-opt -xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT %s -verify-diagnostics | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
 // CHECK-LABEL: abs
-// expected-error@+1 {{unsupported device}}
 func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: %[[RESULT:.*]] = "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   %0 = "tf.Abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
@@ -17,7 +14,6 @@ func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: unknown_op
 func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: tf.CustomTestOp
-  // expected-remark@+1 {{constant 20}}
   %0 = "tf.CustomTestOp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
@@ -156,7 +152,7 @@ func @non_const_inputs(%arg0: tensor<2x2xf64>, %arg1: tensor<f64>, %arg2: tensor
 // CHECK-LABEL: dynamic_result_type
 func @dynamic_result_type(%arg0: tensor<2xf32>) -> tensor<*xf32> {
   // CHECK: %[[RESULT:.*]] = "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  // CHECK: tensor_cast %0 : tensor<2xf32> to tensor<*xf32>
+  // CHECK: tensor.cast %0 : tensor<2xf32> to tensor<*xf32>
   %0 = "tf.Abs"(%arg0) : (tensor<2xf32>) -> tensor<*xf32>
 
   // return %[[RESULT]]
@@ -297,6 +293,70 @@ func @multinomial(%arg0: tensor<2x4xf32>, %seed: tensor<i32>, %seed2: tensor<i32
   %samples = "tf.Const"() { value = dense<10> : tensor<i32> } : () -> tensor<i32>
   %1 = "tf.Multinomial"(%arg0, %samples) {seed = 0, seed2 = 0}: (tensor<2x4xf32>, tensor<i32>) -> tensor<2x10xi32>
   return %1 : tensor<2x10xi32>
+}
+
+// CHECK-LABEL: @set_dynamic_dimension_size
+func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<4xf32> {
+  %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: mhlo.set_dimension_size
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @erfinv
+func @erfinv(%input: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NOT: tf.Erfinv
+  %0 = "tf.Erfinv"(%input) : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @ndtri
+func @ndtri(%input: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NOT: tf.Ndtri
+  %0 = "tf.Ndtri"(%input) : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @fake_param
+func @fake_param() -> tensor<4xf32> {
+  // CHECK-NOT: tf.FakeParam
+  %0 = "tf.FakeParam"() {shape = #tf.shape<4>} : () -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @parameterized_truncated_normal
+func @parameterized_truncated_normal(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<10000000xf32> {
+  %0 = "tf.Const"() {value = dense<10000000> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NOT: tf.ParameterizedTruncatedNormal
+  %1 = "tf.ParameterizedTruncatedNormal"(%0, %arg0, %arg1, %arg2, %arg3) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<1xi32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<10000000xf32>
+  return %1 : tensor<10000000xf32>
+}
+
+// CHECK-LABEL: @xla_svd
+func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>) {
+  // CHECK-NOT: XlaSvd
+  %s, %u, %v = "tf.XlaSvd"(%arg0) {max_iter = 1, epsilon = 1.0E-09 : f32, precision_config = ""} : (tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>)
+  return %s, %u, %v : tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>
+}
+
+func @abs_impl(%arg0: f32) -> f32 {
+ return %arg0 : f32
+}
+
+// This test verifies that legalization for ops with symbol reference attribute
+// is not attempted even if they are in allow-list. XLA op kernels for these
+// ops compile the function to HLO on-demand which won't work in our case as it
+// may contain unsupported ops in the fallback nor we provide XlaCompiler to
+// the kernel. Using a allowed op Abs to protect against future addition of a
+// new op with a symbol ref.
+
+// CHECK-LABEL: @abs_with_symbol_ref
+func @abs_with_symbol_ref(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: tf.Abs
+  // expected-remark@+1 {{ops with symbol references are not supported}}
+  %0 = "tf.Abs"(%arg0) {_body = @abs_impl} : (tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
 }
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is

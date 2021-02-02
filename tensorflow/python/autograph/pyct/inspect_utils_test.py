@@ -105,6 +105,11 @@ class InspectUtilsTest(test.TestCase):
     self.assertTrue(inspect_utils.islambda(lambda x: x))
     self.assertFalse(inspect_utils.islambda(test_fn))
 
+  def test_islambda_renamed_lambda(self):
+    l = lambda x: 1
+    l.__name__ = 'f'
+    self.assertTrue(inspect_utils.islambda(l))
+
   def test_isnamedtuple(self):
     nt = collections.namedtuple('TestNamedTuple', ['a', 'b'])
 

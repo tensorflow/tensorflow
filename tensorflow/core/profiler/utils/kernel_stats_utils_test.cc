@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 
 namespace tensorflow {
@@ -64,6 +65,67 @@ TEST(KernelStatsUtilsTest, TestGroupKernelReportsByOpName) {
   EXPECT_EQ(op2_stats.is_op_tensor_core_eligible, false);
   EXPECT_EQ(op2_stats.total_duration_ns, 100);
   EXPECT_EQ(op2_stats.tensor_core_duration_ns, 0);
+}
+
+TEST(KernelStatsUtilsTest, KernelDetailsXStatParser) {
+  KernelDetails kernel_info;
+  kernel_info.registers_per_thread = 10;
+  kernel_info.static_shared_memory_usage = 128;
+  kernel_info.dynamic_shared_memory_usage = 256;
+  kernel_info.block_x = 32;
+  kernel_info.block_y = 8;
+  kernel_info.block_z = 4;
+  kernel_info.grid_x = 3;
+  kernel_info.grid_y = 2;
+  kernel_info.grid_z = 1;
+  const double occupancy_pct = 50.0;
+  std::string xstat_kernel_details = ToXStat(kernel_info, occupancy_pct);
+  KernelReport kernel;
+  ParseKernelLaunchParams(xstat_kernel_details, &kernel);
+  // Verifies that the parser can parse kKernelDetails XStat.
+  EXPECT_EQ(kernel.registers_per_thread(), 10);
+  EXPECT_EQ(kernel.static_shmem_bytes(), 128);
+  EXPECT_EQ(kernel.dynamic_shmem_bytes(), 256);
+  EXPECT_EQ(kernel.block_dim()[0], 32);
+  EXPECT_EQ(kernel.block_dim()[1], 8);
+  EXPECT_EQ(kernel.block_dim()[2], 4);
+  EXPECT_EQ(kernel.grid_dim()[0], 3);
+  EXPECT_EQ(kernel.grid_dim()[1], 2);
+  EXPECT_EQ(kernel.grid_dim()[2], 1);
+}
+
+TEST(KernelStatsUtilsTest, KernelDetailsTokenizer) {
+  KernelReport kernel;
+
+  // Test odd token count (3): { "odd", "grid", "3,2,1" }
+  absl::string_view kernel_details_0 = "odd grid:3,2,1";
+  ParseKernelLaunchParams(kernel_details_0, &kernel);
+  EXPECT_EQ(kernel.grid_dim()[0], 3);
+  EXPECT_EQ(kernel.grid_dim()[1], 2);
+  EXPECT_EQ(kernel.grid_dim()[2], 1);
+
+  // Test odd token count (3): { "block", "6,5,4", "odd" }
+  absl::string_view kernel_details_1 = "block:6,5,4 odd ";
+  ParseKernelLaunchParams(kernel_details_1, &kernel);
+  EXPECT_EQ(kernel.block_dim()[0], 6);
+  EXPECT_EQ(kernel.block_dim()[1], 5);
+  EXPECT_EQ(kernel.block_dim()[2], 4);
+
+  // Test odd token count (3): { "block", "1,2,3", "odd", "grid", "4,5,6" }
+  absl::string_view kernel_details_2 = "block:1,2,3 odd grid:4,5,6";
+  ParseKernelLaunchParams(kernel_details_2, &kernel);
+  EXPECT_EQ(kernel.block_dim()[0], 1);
+  EXPECT_EQ(kernel.block_dim()[1], 2);
+  EXPECT_EQ(kernel.block_dim()[2], 3);
+  EXPECT_EQ(kernel.grid_dim()[0], 4);
+  EXPECT_EQ(kernel.grid_dim()[1], 5);
+  EXPECT_EQ(kernel.grid_dim()[2], 6);
+
+  // Test even token count (4): { "static_shared", "7", "dynamic_shared", "8" }
+  absl::string_view kernel_details_3 = "static_shared:7 dynamic_shared:8";
+  ParseKernelLaunchParams(kernel_details_3, &kernel);
+  EXPECT_EQ(kernel.static_shmem_bytes(), 7);
+  EXPECT_EQ(kernel.dynamic_shmem_bytes(), 8);
 }
 
 }  // namespace

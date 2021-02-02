@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras preprocessing layers."""
+"""Normalization preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -59,7 +60,7 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
     as the layer's weights. `adapt` should be called before `fit`, `evaluate`,
     or `predict`.
 
-  Attributes:
+  Args:
       axis: Integer or tuple of integers, the axis or axes that should be
         "kept". These axes are not be summed over when calculating the
         normalization statistics. By default the last axis, the `features` axis
@@ -102,11 +103,7 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
          [ 0.        ]], dtype=float32)>
   """
 
-  def __init__(self, axis=-1, dtype=None, mean=None, variance=None, **kwargs):
-    # This ensures that if the value of K.floatx() changes after file-loading
-    # time, the dtype value will change to reflect it.
-    dtype = dtype or K.floatx()
-
+  def __init__(self, axis=-1, mean=None, variance=None, **kwargs):
     # Standardize `axis` to a tuple.
     if axis is None:
       axis = ()
@@ -116,8 +113,8 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
       axis = tuple(axis)
 
     super(Normalization, self).__init__(
-        combiner=_NormalizingCombiner(axis), dtype=dtype, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Normalization')
+        combiner=_NormalizingCombiner(axis), **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Normalization').set(True)
 
     if 0 in axis:
       raise ValueError('The argument \'axis\' may not be 0.')
@@ -333,8 +330,8 @@ class _NormalizingCombiner(base_preprocessing_layer.Combiner):
     """Convert an accumulator into a dict of output values."""
     return {
         _COUNT_NAME: accumulator[self.COUNT_IDX],
-        _MEAN_NAME: accumulator[1],
-        _VARIANCE_NAME: accumulator[2]
+        _MEAN_NAME: accumulator[self.MEAN_IDX],
+        _VARIANCE_NAME: accumulator[self.VAR_IDX]
     }
 
   def restore(self, output):
@@ -357,8 +354,8 @@ class _NormalizingCombiner(base_preprocessing_layer.Combiner):
     """Serialize an accumulator for a remote call."""
     output_dict = {
         _COUNT_NAME: accumulator[self.COUNT_IDX].tolist(),
-        _MEAN_NAME: accumulator[1].tolist(),
-        _VARIANCE_NAME: accumulator[2].tolist()
+        _MEAN_NAME: accumulator[self.MEAN_IDX].tolist(),
+        _VARIANCE_NAME: accumulator[self.VAR_IDX].tolist()
     }
     return compat.as_bytes(json.dumps(output_dict))
 

@@ -953,14 +953,16 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
           a_shape.ToString(), x_shape.ToString());
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igamma", a));
+    PrimitiveType a_x_type = a_shape.element_type();
     bool needs_upcast =
         a_shape.element_type() == F16 || a_shape.element_type() == BF16;
 
     if (needs_upcast) {
       a = ConvertElementType(a, F32);
       x = ConvertElementType(x, F32);
+      a_x_type = F32;
     }
-    XlaOp result = doit(a, x, a_shape.element_type());
+    XlaOp result = doit(a, x, a_x_type);
     if (needs_upcast) {
       result = ConvertElementType(result, a_shape.element_type());
     }
@@ -1088,14 +1090,16 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
           a_shape.ToString(), x_shape.ToString());
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igammac", a));
+    PrimitiveType a_x_type = a_shape.element_type();
     bool needs_upcast =
         a_shape.element_type() == F16 || a_shape.element_type() == BF16;
 
     if (needs_upcast) {
       a = ConvertElementType(a, F32);
       x = ConvertElementType(x, F32);
+      a_x_type = F32;
     }
-    XlaOp result = doit(a, x, a_shape.element_type());
+    XlaOp result = doit(a, x, a_x_type);
     if (needs_upcast) {
       result = ConvertElementType(result, a_shape.element_type());
     }

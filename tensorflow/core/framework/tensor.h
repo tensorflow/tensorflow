@@ -697,7 +697,19 @@ class Tensor {
     set_dtype(dt);
   }
 
-  void CopyFromInternal(const Tensor& other, const TensorShape& shape);
+  inline void CopyFromInternal(const Tensor& other, const TensorShape& shape) {
+    DCHECK_EQ(shape.num_elements(), other.NumElements());
+    // Data type will be overwritten if this == &other, since dtype is part of
+    // shape.
+    DataType other_dtype = other.dtype();
+    shape_ = shape;
+    set_dtype(other_dtype);
+    if (buf_ != other.buf_) {
+      if (buf_) buf_->Unref();
+      buf_ = other.buf_;
+      if (buf_) buf_->Ref();
+    }
+  }
 
   template <typename T>
   T* base() const;

@@ -51,7 +51,7 @@ using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
 
 enum class TrtPrecisionMode { FP32, FP16, INT8 };
 
-Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name);
+Status TrtPrecisionModeToName(const TrtPrecisionMode mode, string* name);
 
 Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode);
 
@@ -76,6 +76,8 @@ struct VectorTensorShapeHasher {
 string DebugString(const nvinfer1::DimensionType type);
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::DataType trt_dtype);
+string DebugString(const TrtPrecisionMode mode);
+string DebugString(const DataType tf_type);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
 string DebugString(const std::vector<nvinfer1::Dims>& dimvec);

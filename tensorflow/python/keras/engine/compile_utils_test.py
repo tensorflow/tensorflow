@@ -29,6 +29,8 @@ from tensorflow.python.keras import metrics as metrics_mod
 from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_functional_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -355,6 +357,35 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     self.assertEqual(loss_container._losses[0].name, 'custom_loss_fn')
     self.assertEqual(loss_container._losses[1].name, 'custom_loss_class')
+
+  def test_ragged_tensor_output(self):
+    """ Ensure that ragged tensors can be passed as targets and predictions."""
+
+    def custom_loss_fn(y_true, y_pred):
+      losses = ragged_functional_ops.map_flat_values(losses_mod.mse, y_true,
+                                                     y_pred)
+      return math_ops.reduce_mean(losses)
+
+    class CustomLossClass(object):
+
+      def __call__(self, y_true, y_pred):
+        losses = ragged_functional_ops.map_flat_values(losses_mod.mse, y_true,
+                                                       y_pred)
+        return math_ops.reduce_mean(losses)
+
+    loss_container = compile_utils.LossesContainer(
+        [custom_loss_fn, CustomLossClass()])
+
+    v_t = constant_op.constant([[3., 4.], [1., 2.], [3., 5.]])
+    v_p = constant_op.constant([[3.1, 4.], [1., 2.], [3., 5.]])
+
+    y_t = array_ops.expand_dims(
+        ragged_tensor.RaggedTensor.from_row_splits(v_t, [0, 2, 3]), 0)
+    y_p = array_ops.expand_dims(
+        ragged_tensor.RaggedTensor.from_row_splits(v_p, [0, 2, 3]), 0)
+    loss_container(y_t, y_p)
+
+    self.assertEqual(loss_container._losses[0].name, 'custom_loss_fn')
 
 
 class MetricsContainerTest(keras_parameterized.TestCase):

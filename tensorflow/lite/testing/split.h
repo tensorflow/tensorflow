@@ -52,6 +52,7 @@ template <>
 inline std::vector<int> Split(const string& s, const string& delimiter) {
   std::vector<int> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
     fields.push_back(strtol(s.data() + p.first, nullptr, 10));
   }
   return fields;
@@ -61,7 +62,18 @@ template <>
 inline std::vector<int64_t> Split(const string& s, const string& delimiter) {
   std::vector<int64_t> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
     fields.push_back(strtoll(s.data() + p.first, nullptr, 10));
+  }
+  return fields;
+}
+
+template <>
+inline std::vector<uint64_t> Split(const string& s, const string& delimiter) {
+  std::vector<uint64_t> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
+    fields.push_back(strtoull(s.data() + p.first, nullptr, 10));
   }
   return fields;
 }
@@ -79,6 +91,7 @@ template <>
 inline std::vector<uint8_t> Split(const string& s, const string& delimiter) {
   std::vector<uint8_t> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
     fields.push_back(strtol(s.data() + p.first, nullptr, 10));
   }
   return fields;
@@ -88,6 +101,7 @@ template <>
 inline std::vector<int8_t> Split(const string& s, const string& delimiter) {
   std::vector<int8_t> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
     fields.push_back(strtol(s.data() + p.first, nullptr, 10));
   }
   return fields;
@@ -97,6 +111,7 @@ template <>
 inline std::vector<int16_t> Split(const string& s, const string& delimiter) {
   std::vector<int16_t> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
     fields.push_back(strtol(s.data() + p.first, nullptr, 10));
   }
   return fields;
@@ -106,8 +121,9 @@ template <>
 inline std::vector<bool> Split(const string& s, const string& delimiter) {
   std::vector<bool> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
-    fields.push_back(
-        static_cast<bool>(strtol(s.data() + p.first, nullptr, 10)));
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
+    bool val = static_cast<bool>(strtol(s.data() + p.first, nullptr, 10));
+    fields.push_back(val);
   }
   return fields;
 }

@@ -6,7 +6,7 @@ package(
 py_library(
     name = "linalg",
     srcs = glob(["*.py"]),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":linalg_impl",
         "//tensorflow/python:check_ops",
@@ -26,7 +26,7 @@ py_library(
 py_library(
     name = "linalg_impl",
     srcs = ["linalg_impl.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":linear_operator_util",
         "//tensorflow/python:array_ops",
@@ -40,7 +40,7 @@ py_library(
 py_library(
     name = "linear_operator_util",
     srcs = ["linear_operator_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",

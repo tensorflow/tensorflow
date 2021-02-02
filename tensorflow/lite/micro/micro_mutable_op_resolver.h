@@ -24,16 +24,20 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/kernels/ethosu.h"
 #include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
+TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 
 template <unsigned int tOpCount>
 class MicroMutableOpResolver : public MicroOpResolver {
  public:
+  TF_LITE_REMOVE_VIRTUAL_DELETE
+
   explicit MicroMutableOpResolver(ErrorReporter* error_reporter = nullptr)
       : error_reporter_(error_reporter) {}
 
@@ -134,6 +138,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParsePool);
   }
 
+  TfLiteStatus AddCast() {
+    return AddBuiltin(BuiltinOperator_CAST, Register_CAST(), ParseCast);
+  }
+
   TfLiteStatus AddCeil() {
     return AddBuiltin(BuiltinOperator_CEIL, tflite::ops::micro::Register_CEIL(),
                       ParseCeil);
@@ -170,9 +178,26 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseDequantize);
   }
 
+  TfLiteStatus AddDetectionPostprocess() {
+    return AddCustom("TFLite_Detection_PostProcess",
+                     tflite::Register_DETECTION_POSTPROCESS());
+  }
+
   TfLiteStatus AddEqual() {
     return AddBuiltin(BuiltinOperator_EQUAL,
                       tflite::ops::micro::Register_EQUAL(), ParseEqual);
+  }
+
+  TfLiteStatus AddEthosU() {
+    TfLiteRegistration* registration = tflite::Register_ETHOSU();
+    if (registration) {
+      return AddCustom(tflite::GetString_ETHOSU(), registration);
+    }
+    return kTfLiteOk;
+  }
+
+  TfLiteStatus AddExp() {
+    return AddBuiltin(BuiltinOperator_EXP, Register_EXP(), ParseExp);
   }
 
   TfLiteStatus AddFloor() {
@@ -363,6 +388,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseSoftmax);
   }
 
+  TfLiteStatus AddSpaceToBatchNd() {
+    return AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND,
+                      Register_SPACE_TO_BATCH_ND(), ParseSpaceToBatchNd);
+  }
+
   TfLiteStatus AddSplit() {
     return AddBuiltin(BuiltinOperator_SPLIT,
                       tflite::ops::micro::Register_SPLIT(), ParseSplit);
@@ -411,8 +441,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
   unsigned int GetRegistrationLength() { return registrations_len_; }
 
  private:
-  TF_LITE_REMOVE_VIRTUAL_DELETE
-
   TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
                           const TfLiteRegistration& registration,
                           MicroOpResolver::BuiltinParseFunction parser) {

@@ -43,6 +43,8 @@ from tensorflow.python.platform import test
 class CollectiveOpsV1(object):
   all_reduce = _collective_ops.all_reduce
   all_gather = _collective_ops.all_gather
+  broadcast_send = _collective_ops.broadcast_send
+  broadcast_recv = _collective_ops.broadcast_recv
 
 
 class CollectiveOpsV2(object):
@@ -62,6 +64,25 @@ class CollectiveOpsV2(object):
     instance_key = array_ops.identity(instance_key)
     return _collective_ops.all_gather_v2(t, group_size, group_key, instance_key,
                                          *args, **kwargs)
+
+  @staticmethod
+  def broadcast_send(t, shape, dtype, group_size, group_key, instance_key,
+                     *args, **kwargs):
+    group_size = array_ops.identity(group_size)
+    group_key = array_ops.identity(group_key)
+    instance_key = array_ops.identity(instance_key)
+    return _collective_ops.broadcast_send_v2(t, group_size, group_key,
+                                             instance_key, *args, **kwargs)
+
+  @staticmethod
+  def broadcast_recv(shape, dtype, group_size, group_key, instance_key, *args,
+                     **kwargs):
+    group_size = array_ops.identity(group_size)
+    group_key = array_ops.identity(group_key)
+    instance_key = array_ops.identity(instance_key)
+    shape = array_ops.identity(shape)
+    return _collective_ops.broadcast_recv_v2(
+        shape, dtype, group_size, group_key, instance_key, *args, **kwargs)
 
 
 device_combination = (
@@ -191,6 +212,42 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     for result in run_all_gather_2devices():
       self.assertAllClose(result, [1., 1.], rtol=1e-5, atol=1e-5)
 
+  def testBroadcast(self, collective_ops, device, communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+
+    @def_function.function
+    def run_broadcast_2devices():
+      shape = [3]
+      in_value = constant_op.constant([1., 2., 3.], shape=shape)
+      group_size = 2
+      group_key = 2
+      instance_key = 2
+      collectives = []
+      with ops.device(dev0):
+        collectives.append(
+            collective_ops.broadcast_send(
+                in_value,
+                shape,
+                in_value.dtype,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
+      with ops.device(dev1):
+        collectives.append(
+            collective_ops.broadcast_recv(
+                shape,
+                in_value.dtype,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
+      return collectives
+
+    for result in run_broadcast_2devices():
+      self.assertAllClose(result, [1., 2., 3.], rtol=1e-5, atol=1e-5)
+
   def testInstanceKeyScopedUnderGroupKey(self, collective_ops, device,
                                          communication):
     if device == 'GPU' and context.num_gpus() < 4:
@@ -237,8 +294,32 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(results[3], 7., rtol=1e-5, atol=1e-5)
 
   def testCollectiveGroupSizeOne(self, collective_ops, device, communication):
-    if communication == 'NCCL':
-      self.skipTest('b/170672646: it crashes with NCCL and group size one')
+    dev0 = '/device:%s:0' % device
+
+    group_size = 1
+    group_key = 100
+    in_value = [1., 2., 3., 4.]
+    in_tensor = constant_op.constant(in_value)
+
+    with ops.device(dev0):
+      reduced_tensor = collective_ops.all_reduce(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key=100,
+          communication_hint=communication)
+    self.assertAllEqual(in_value, reduced_tensor.numpy())
+
+    with ops.device(dev0):
+      gathered_tensor = collective_ops.all_gather(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key=200,
+          communication_hint=communication)
+    self.assertAllEqual(in_value, gathered_tensor.numpy())
+
+  def testCollectiveInvalidKey(self, collective_ops, device, communication):
     dev0 = '/device:%s:0' % device
 
     group_size = 1
@@ -256,14 +337,16 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           communication_hint=communication)
     self.assertAllEqual(in_value, reduced_tensor.numpy())
 
-    with ops.device(dev0):
-      gathered_tensor = collective_ops.all_gather(
-          in_tensor,
-          group_size,
-          group_key,
-          instance_key,
-          communication_hint=communication)
-    self.assertAllEqual(in_value, gathered_tensor.numpy())
+    with self.assertRaisesRegex(
+        errors.InternalError, 'instance 100 expected type 0 and data_type 1 but'
+        ' got type 2 and data_type 1'):
+      with ops.device(dev0):
+        collective_ops.all_gather(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
   def testMultipleGroups(self, collective_ops, device, communication):
     if device == 'GPU' and context.num_gpus() < 4:

@@ -39,7 +39,7 @@ namespace data {
 // PrefetchAutotuner is NOT thread safe.
 class PrefetchAutotuner {
  public:
-  explicit PrefetchAutotuner(int64 initial_buffer_size);
+  explicit PrefetchAutotuner(int64 initial_buffer_size, int64 buffer_size_min);
 
   int64 buffer_limit() const { return buffer_limit_; }
 

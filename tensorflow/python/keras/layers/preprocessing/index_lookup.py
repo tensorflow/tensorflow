@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras text vectorization preprocessing layer."""
+"""Keras index lookup preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,11 +27,18 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import table_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
+
+INT = "int"
+BINARY = "binary"
+COUNT = "count"
 
 # The string tokens in the extracted vocabulary
 _VOCAB_NAME = "vocab"
@@ -50,14 +58,14 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   logic but is not intended to be exported as part of the Keras API.
 
   If desired, the user can call this layer's `adapt()` method on a data set,
-  which will analyze the data set, determine the frequency of individual string
-  values, and create a vocabulary from them. This vocabulary can have
+  which will analyze the data set, determine the frequency of individual
+  hashable values, and create a vocabulary from them. This vocabulary can have
   unlimited size or be capped, depending on the configuration options for this
   layer; if there are more unique values in the input than the maximum
   vocabulary size, the most frequent terms will be used to create the
   vocabulary.
 
-  Attributes:
+  Args:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       includes the OOV and mask tokens, so the effective number of tokens is
@@ -78,6 +86,19 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       same token multiple times, an error will be thrown.
     invert: If true, this layer will map indices to vocabulary items instead
       of mapping vocabulary items to indices.
+    output_mode: Specification for the output of the layer. Only applicable
+      when `invert` is False.
+      Defaults to "int". Values can
+      be "int", "binary", or "count", configuring the layer as follows:
+        "int": Return the raw integer indices of the input values.
+        "binary": Outputs a single int array per batch, of either vocab_size or
+          max_tokens size, containing 1s in all elements where the token mapped
+          to that index exists at least once in the batch item.
+        "count": Like "binary", but the int array contains a count of the number
+          of times the token at that index appeared in the batch item.
+    sparse: Boolean. Only applicable to "binary" and "count" output modes.
+      If true, returns a `SparseTensor` instead of a dense `Tensor`.
+      Defaults to `False`.
   """
 
   def __init__(self,
@@ -87,25 +108,38 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                oov_token,
                vocabulary=None,
                invert=False,
+               output_mode=INT,
+               sparse=False,
                **kwargs):
 
     # If max_tokens is set, the value must be greater than 1 - otherwise we
     # are creating a 0-element vocab, which doesn't make sense.
     if max_tokens is not None and max_tokens <= 1:
-      raise ValueError("If set, `max_tokens` must be greater than 1.")
+      raise ValueError("If set, max_tokens must be greater than 1. "
+                       "You passed %s" % (max_tokens,))
 
     if num_oov_indices < 0:
-      raise ValueError("`num_oov_indices` must be greater than 0. You passed "
-                       "%s" % num_oov_indices)
+      raise ValueError(
+          "num_oov_indices must be greater than or equal to 0. You passed %s" %
+          (num_oov_indices,))
 
     if invert and num_oov_indices != 1:
       raise ValueError("`num_oov_tokens` must be 1 when `invert` is True.")
+
+    # 'output_mode' must be one of (INT, BINARY, COUNT)
+    layer_utils.validate_string_arg(
+        output_mode,
+        allowable_strings=(INT, BINARY, COUNT),
+        layer_name=self.__class__.__name__,
+        arg_name="output_mode")
 
     self.invert = invert
     self.max_tokens = max_tokens
     self.num_oov_indices = num_oov_indices
     self.oov_token = oov_token
     self.mask_token = mask_token
+    self.output_mode = output_mode
+    self.sparse = sparse
 
     # If there is only one OOV bucket, we can determine the OOV value (either 0
     # or 1 depending on whether 0 is reserved) and set that as the default
@@ -127,22 +161,20 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(IndexLookup, self).__init__(
         combiner=_IndexLookupCombiner(vocab_size, self.mask_token), **kwargs)
 
-    self._output_dtype = dtypes.int64
-
     # We need to save the key dtype so that we know if we're expecting int64
     # keys. If we are, we will cast int32 inputs to int64 as well.
     if invert:
-      self._key_dtype = self._output_dtype
-      value_dtype = self.dtype
+      self._key_dtype = dtypes.int64
+      self._value_dtype = self.dtype
       oov_value = self.oov_token
     else:
       self._key_dtype = self.dtype
-      value_dtype = self._output_dtype
+      self._value_dtype = dtypes.int64
       oov_value = self._oov_value
 
     self._table = lookup_ops.MutableHashTable(
         key_dtype=self._key_dtype,
-        value_dtype=value_dtype,
+        value_dtype=self._value_dtype,
         default_value=oov_value,
         name=(self._name + "_index_table"))
     tracked_table = self._add_trackable(self._table, trainable=False)
@@ -168,11 +200,14 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self.set_vocabulary(vocabulary)
 
   def compute_output_shape(self, input_shape):
+    if self.output_mode != INT:
+      return tensor_shape.TensorShape([input_shape[0], self.max_tokens])
+
     return input_shape
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = self.dtype if self.invert else self._output_dtype
+    output_dtype = self._value_dtype if self.output_mode == INT else K.floatx()
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):
@@ -181,7 +216,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     Overrides the default adapt method to apply relevant preprocessing to the
     inputs before passing to the combiner.
 
-    Arguments:
+    Args:
       data: The data to train on. It can be passed either as a tf.data Dataset,
         or as a numpy array.
       reset_state: Optional argument specifying whether to clear the state of
@@ -191,6 +226,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if not reset_state:
       raise ValueError("IndexLookup does not support streaming adapts.")
     super(IndexLookup, self).adapt(data, reset_state)
+    self.max_tokens = int(self._table_handler.vocab_size())
 
   def get_vocabulary(self):
     if self._table_handler.vocab_size() == 0:
@@ -206,7 +242,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       return [x for _, x in sorted(zip(values, keys))]
 
   def vocab_size(self):
-    return self._table_handler.vocab_size()
+    return int(self._table_handler.vocab_size())
 
   def get_config(self):
     config = {
@@ -247,27 +283,34 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       has_oov = False
 
     if all([should_have_mask, has_mask, should_have_oov]) and not has_oov:
-      raise ValueError("The passed vocabulary has the correct mask token `%s` "
+      raise ValueError("Invalid vocabulary format. The layer was created with "
+                       "`mask_token=%s` and `oov_token=%s`. These tokens should"
+                       " be included in the provided vocabulary. "
+                       "The passed vocabulary has the correct mask token `%s` "
                        "at index 0, but does not have the OOV token `%s` in "
                        "indices [%s:%s]. Instead, we found `%s`. Was this "
                        "vocabulary generated by a layer with incompatible "
                        "settings?" %
-                       (self.mask_token, self.oov_token, oov_start, oov_end,
+                       (self.mask_token, self.oov_token,
+                        self.mask_token, self.oov_token, oov_start, oov_end,
                         vocab[oov_start:oov_end]))
 
     if all([should_have_oov, has_oov, should_have_mask]) and not has_mask:
       raise ValueError(
+          "Invalid vocabulary format. The layer was created with "
+          "`mask_token=%s` and `oov_token=%s`. These tokens should "
+          "be included in the provided vocabulary. "
           "The passed vocabulary has the correct OOV token `%s` at "
           "indices [%s:%s], but does not have the mask token `%s` in "
           "index 0. Instead, we found `%s`. Was this vocabulary "
           "generated by a layer with incompatible settings?" %
-          (self.oov_token, oov_start, oov_end, self.mask_token, vocab[0]))
-
-    insert_special_tokens = not has_oov and not has_mask
+          (self.mask_token, self.oov_token, self.oov_token,
+           oov_start, oov_end, self.mask_token, vocab[0]))
 
     special_tokens = [] if self.mask_token is None else [self.mask_token]
     special_tokens.extend([self.oov_token] * self.num_oov_indices)
 
+    insert_special_tokens = special_tokens and not has_oov and not has_mask
     num_special_tokens = len(special_tokens)
     tokens = vocab if insert_special_tokens else vocab[num_special_tokens:]
     if self.mask_token in tokens:
@@ -283,25 +326,25 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                        "OOV token for this layer." %
                        (self.oov_token, tokens.index(self.oov_token)))
 
-    if insert_special_tokens:
-      total_vocab_size = len(vocab) + num_special_tokens
-    else:
-      total_vocab_size = len(vocab)
+    total_vocab_size = len(tokens) + num_special_tokens
     if self.max_tokens is not None and total_vocab_size > self.max_tokens:
       raise ValueError(
           "Attempted to set a vocabulary larger than the maximum vocab size. "
           "Passed vocab size is %s, max vocab size is %s." %
           (total_vocab_size, self.max_tokens))
 
-    start_index = num_special_tokens
-    values = np.arange(start_index, len(vocab) + start_index, dtype=np.int64)
-
     self._table_handler.clear()
-    self._table_handler.insert(vocab, values)
-
-    if insert_special_tokens and num_special_tokens > 0:
+    if insert_special_tokens:
+      start_index = num_special_tokens
+      values = np.arange(start_index, len(tokens) + start_index, dtype=np.int64)
+      self._table_handler.insert(tokens, values)
       special_token_values = np.arange(num_special_tokens, dtype=np.int64)
       self._table_handler.insert(special_tokens, special_token_values)
+    else:
+      values = np.arange(len(vocab), dtype=np.int64)
+      self._table_handler.insert(vocab, values)
+
+    return total_vocab_size
 
   def _set_inverse_vocabulary(self, vocab):
     """Sets vocabulary data for this layer when inverse is True."""
@@ -341,26 +384,28 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if insert_special_tokens and num_special_tokens > 0:
       special_token_values = np.arange(num_special_tokens, dtype=np.int64)
       self._table_handler.insert(special_token_values, special_tokens)
+    return total_vocab_size
 
   def set_vocabulary(self, vocab):
-    """Sets vocabulary data for this layer with inverse=False.
+    """Sets vocabulary data for this layer.
 
     This method sets the vocabulary for this layer directly, instead of
     analyzing a dataset through 'adapt'. It should be used whenever the vocab
     information is already known. If vocabulary data is already present in the
     layer, this method will either replace it
 
-    Arguments:
-      vocab: An array of string tokens.
+    Args:
+      vocab: An array of hashable tokens.
 
     Raises:
       ValueError: If there are too many inputs, the inputs do not match, or
         input data is missing.
     """
     if self.invert:
-      self._set_inverse_vocabulary(vocab)
+      vocab_size = self._set_inverse_vocabulary(vocab)
     else:
-      self._set_forward_vocabulary(vocab)
+      vocab_size = self._set_forward_vocabulary(vocab)
+    self.max_tokens = vocab_size
 
   def _set_state_variables(self, updates):
     if not self.built:
@@ -368,9 +413,23 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     self.set_vocabulary(updates[_VOCAB_NAME])
 
   def call(self, inputs):
+    if not self.max_tokens:
+      raise ValueError("You must set the layer's vocabulary before calling it. "
+                       "Either pass a `vocabulary` argument to the layer, or "
+                       "call `layer.adapt(dataset)` with some sample data.")
     if self._key_dtype == dtypes.int64 and inputs.dtype == dtypes.int32:
       inputs = math_ops.cast(inputs, dtypes.int64)
-    return self._table_handler.lookup(inputs)
+    lookup_result = self._table_handler.lookup(inputs)
+    if self.output_mode == INT:
+      return lookup_result
+
+    binary_output = (self.output_mode == BINARY)
+    if self.sparse:
+      return category_encoding.sparse_bincount(
+          lookup_result, self.max_tokens, binary_output)
+    else:
+      return category_encoding.dense_bincount(
+          lookup_result, self.max_tokens, binary_output)
 
   def _use_v1_apis(self):
     return False
@@ -391,7 +450,7 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
     vocab_size: (Optional) If set, only the top `vocab_size` tokens (based on
       frequency across the dataset) are retained in the vocabulary. If None, or
       set to a value greater than the total number of distinct tokens in the
-      dataset, all tokens are retained.s
+      dataset, all tokens are retained.
   """
 
   def __init__(self, vocab_size=None, mask_value=None):

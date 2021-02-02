@@ -24,8 +24,15 @@ namespace grappler {
 
 constexpr char kAutotune[] = "autotune";
 
-// This optimization adds `prefetch(AUTOTUNE)` after all asynchronous tf.data
-// transformations (e.g. parallel map, parallel interleave, and map + batch).
+// This optimization does the following:
+//
+// 1. Adds `prefetch(AUTOTUNE)` after all asynchronous tf.data transformations
+// (e.g. parallel map, parallel interleave, and map + batch) if they are not
+// followed by a `prefetch` yet.
+//
+// 2. If there exists any `prefetch(buffer_size=N)` for `N>=0`,  it will replace
+// the transformation with autotunable version of `prefetch` which uses N as
+// the minimum size of the buffer.
 class AutotuneBufferSizes : public TFDataOptimizerBase {
  public:
   AutotuneBufferSizes() = default;

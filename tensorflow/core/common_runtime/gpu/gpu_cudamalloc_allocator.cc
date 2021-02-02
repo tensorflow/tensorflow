@@ -18,10 +18,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
+#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
-
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
@@ -30,8 +29,9 @@ namespace tensorflow {
 GPUcudaMallocAllocator::GPUcudaMallocAllocator(Allocator* allocator,
                                                PlatformGpuId platform_gpu_id)
     : base_allocator_(allocator) {
-  stream_exec_ =
-      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
+  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
+                                                           platform_gpu_id)
+                     .ValueOrDie();
 }
 
 GPUcudaMallocAllocator::~GPUcudaMallocAllocator() { delete base_allocator_; }
