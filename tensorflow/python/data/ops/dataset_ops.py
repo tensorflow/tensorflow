@@ -1505,7 +1505,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
     return ShardDataset(self, num_shards, index)
 
-  def batch(self, batch_size, drop_remainder=False):
+  def batch(self, batch_size, drop_remainder=False, num_parallel_calls=None):
     """Combines consecutive elements of this dataset into batches.
 
     >>> dataset = tf.data.Dataset.range(8)
@@ -1532,11 +1532,21 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
         batch.
+      num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
+        representing the number of batches to compute asynchronously in
+        parallel.
+        If not specified, batches will be computed sequentially. If the value
+        `tf.data.AUTOTUNE` is used, then the number of parallel
+        calls is set dynamically based on available resources.
 
     Returns:
       Dataset: A `Dataset`.
     """
-    return BatchDataset(self, batch_size, drop_remainder)
+    if num_parallel_calls is None:
+      return BatchDataset(self, batch_size, drop_remainder)
+    else:
+      return ParallelBatchDataset(self, batch_size, drop_remainder,
+                                  num_parallel_calls)
 
   def padded_batch(self,
                    batch_size,
@@ -2613,9 +2623,10 @@ class DatasetV1(DatasetV2):
     return DatasetV1Adapter(super(DatasetV1, self).shard(num_shards, index))
 
   @functools.wraps(DatasetV2.batch)
-  def batch(self, batch_size, drop_remainder=False):
-    return DatasetV1Adapter(super(DatasetV1, self).batch(
-        batch_size, drop_remainder))
+  def batch(self, batch_size, drop_remainder=False, num_parallel_calls=None):
+    return DatasetV1Adapter(
+        super(DatasetV1, self).batch(batch_size, drop_remainder,
+                                     num_parallel_calls))
 
   @functools.wraps(DatasetV2.padded_batch)
   def padded_batch(self,
@@ -3930,6 +3941,47 @@ class BatchDataset(UnaryDataset):
         drop_remainder=self._drop_remainder,
         **self._flat_structure)
     super(BatchDataset, self).__init__(input_dataset, variant_tensor)
+
+  @property
+  def element_spec(self):
+    return self._structure
+
+
+class ParallelBatchDataset(UnaryDataset):
+  """A `Dataset` that batches contiguous elements from its input in parallel."""
+
+  def __init__(self, input_dataset, batch_size, drop_remainder,
+               num_parallel_calls):
+    """See `Dataset.batch()` for details."""
+    self._input_dataset = input_dataset
+    self._batch_size = ops.convert_to_tensor(
+        batch_size, dtype=dtypes.int64, name="batch_size")
+    self._drop_remainder = ops.convert_to_tensor(
+        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
+    self._num_parallel_calls = ops.convert_to_tensor(
+        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
+
+    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
+    # pylint: disable=protected-access
+    if constant_drop_remainder:
+      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
+      # or `False` (explicitly retaining the remainder).
+      # pylint: disable=g-long-lambda
+      constant_batch_size = tensor_util.constant_value(self._batch_size)
+      self._structure = nest.map_structure(
+          lambda component_spec: component_spec._batch(constant_batch_size),
+          input_dataset.element_spec)
+    else:
+      self._structure = nest.map_structure(
+          lambda component_spec: component_spec._batch(None),
+          input_dataset.element_spec)
+    variant_tensor = gen_dataset_ops.parallel_batch_dataset(
+        input_dataset._variant_tensor,
+        batch_size=self._batch_size,
+        num_parallel_calls=self._num_parallel_calls,
+        drop_remainder=self._drop_remainder,
+        **self._flat_structure)
+    super(ParallelBatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
   def element_spec(self):

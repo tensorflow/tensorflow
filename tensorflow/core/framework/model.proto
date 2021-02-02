@@ -88,6 +88,10 @@ message ModelProto {
     // Ratio of input to output elements. This is only used by KNOWN_RATIO and
     // ASYNC_KNOWN_RATIO nodes.
     double ratio = 16;
+
+    // Ratio identifies how many parallelism calls are introduced by one
+    // buffered element. This is only used by ASYNC_KNOWN_RATIO nodes.
+    double memory_ratio = 17;
   }
 
   // Output node of this model.

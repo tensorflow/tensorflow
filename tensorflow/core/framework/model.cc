@@ -516,9 +516,9 @@ class KnownRatio : public Node {
 
 class AsyncKnownRatio : public Node {
  public:
-  AsyncKnownRatio(Node::Args args, double ratio,
+  AsyncKnownRatio(Node::Args args, double ratio, double memory_ratio,
                   std::vector<std::shared_ptr<Parameter>> parameters)
-      : Node(args), ratio_(ratio) {
+      : Node(args), ratio_(ratio), memory_ratio_(memory_ratio) {
     for (auto& parameter : parameters) {
       parameters_[parameter->name] = std::move(parameter);
     }
@@ -534,7 +534,7 @@ class AsyncKnownRatio : public Node {
       parameters.push_back(pair.second);
     }
     return std::make_shared<AsyncKnownRatio>(
-        Args{id_, name_, std::move(output)}, ratio_, parameters);
+        Args{id_, name_, std::move(output)}, ratio_, memory_ratio_, parameters);
   }
 
   // The input time is the sum of inherited input time and parallelism adjusted
@@ -711,13 +711,14 @@ class AsyncKnownRatio : public Node {
     }
 
     if (parameter) {
-      if (ratio_ == 0) {
+      if (memory_ratio_ == 0) {
         result += (*parameter)->value * AverageBufferedElementSize();
       } else {
         // The estimation is currently not accurate for MapAndBatchDataset for
         // the maximum buffer size does not match `num_parallel_calls`
         // parameter.
-        result += (*parameter)->value * AverageBufferedElementSize() / ratio_;
+        result +=
+            (*parameter)->value * AverageBufferedElementSize() / memory_ratio_;
       }
     }
     return result;
@@ -727,11 +728,22 @@ class AsyncKnownRatio : public Node {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
     node_proto->set_ratio(ratio_);
+    node_proto->set_memory_ratio(memory_ratio_);
     return Status::OK();
   }
 
  private:
+  // Identifies how many input elements need to be created to construct an
+  // element for the dataset.
+  //
+  // Currently the value is 1 for PrefetchDataset and ParallelMapDataset,
+  // batch_size for MapAndBatchDataset and ParallelBatchDataset.
   const double ratio_;
+  // For parallelism nodes, identifies how many parallelism calls are introduced
+  // by one buffered element. The value is defined to correctly estimate RAM
+  // budget bound with given num_parallel_calls (or buffer_size) combined with
+  // the estimated average size of buffered elements.
+  const double memory_ratio_;
 };
 
 class UnknownRatio : public Node {
@@ -923,10 +935,17 @@ std::shared_ptr<Node> MakeKnownRatioNode(Node::Args args, double ratio) {
 }
 
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
+    Node::Args args, double ratio, double memory_ratio,
+    std::vector<std::shared_ptr<Parameter>> parameters) {
+  return std::make_shared<AsyncKnownRatio>(std::move(args), ratio, memory_ratio,
+                                           std::move(parameters));
+}
+
+std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio,
     std::vector<std::shared_ptr<Parameter>> parameters) {
-  return std::make_shared<AsyncKnownRatio>(std::move(args), ratio,
-                                           std::move(parameters));
+  return MakeAsyncKnownRatioNode(std::move(args), /*ratio=*/ratio,
+                                 /*memory_ratio=*/ratio, std::move(parameters));
 }
 
 std::shared_ptr<Node> MakeSourceNode(Node::Args args) {
@@ -1546,7 +1565,7 @@ Status Node::FromProto(ModelProto::Node node_proto,
       break;
     case NodeClass::ASYNC_KNOWN_RATIO:
       restored_node = std::make_shared<AsyncKnownRatio>(
-          args, node_proto.ratio(),
+          args, node_proto.ratio(), node_proto.memory_ratio(),
           /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
       break;
     case NodeClass::UNKNOWN_RATIO:

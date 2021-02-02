@@ -606,6 +606,10 @@ std::shared_ptr<Node> MakeKnownRatioNode(Node::Args args, double ratio);
 
 // AsyncKnownRatio nodes are the asynchronous version of KnownRate nodes.
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
+    Node::Args args, double ratio, double memory_ratio,
+    std::vector<std::shared_ptr<Parameter>> parameters);
+
+std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio,
     std::vector<std::shared_ptr<Parameter>> parameters);
 
