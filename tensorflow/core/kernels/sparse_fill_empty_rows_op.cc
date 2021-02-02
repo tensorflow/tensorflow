@@ -439,13 +439,13 @@ namespace functor {
       typename TTypes<T>::Scalar d_default_value);                  \
   extern template struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex>;
 #define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64)
-TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT64);
+TF_CALL_NUMBER_TYPES(DECLARE_GPU_SPEC_INT64);
 #undef DECLARE_GPU_SPEC_INT64
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 #define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T, int64)
-TF_CALL_POD_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
