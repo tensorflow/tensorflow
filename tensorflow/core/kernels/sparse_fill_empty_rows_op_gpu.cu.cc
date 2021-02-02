@@ -225,7 +225,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
              ->ThenMemZero(&elements_per_row_gpu_memory,
                            dense_rows * sizeof(Tindex))
              .ok()) {
-      errors::Internal("Failed to zero elements_per_row");
+      return errors::Internal("Failed to zero elements_per_row");
     }
     Tensor rows_are_not_ordered_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT32, TensorShape({1}),
@@ -235,7 +235,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
         rows_are_not_ordered_gpu.data(), sizeof(int));
     if (!stream->ThenMemZero(&rows_are_not_ordered_gpu_memory, sizeof(int))
              .ok()) {
-      errors::Internal("Failed to zero rows_are_not_ordered");
+      return errors::Internal("Failed to zero rows_are_not_ordered");
     }
 
     TF_RETURN_IF_ERROR(wrap_kernel_call(
@@ -350,7 +350,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
                               sizeof(*num_empty_rows_host.data())),
                           sizeof(*num_empty_rows_host.data()))
              .ok()) {
-      errors::Internal("Failed to copy num_empty_rows to host");
+      return errors::Internal("Failed to copy num_empty_rows to host");
     }
 
     ScratchSpace<int> rows_are_not_ordered_host(context, 1, /* on_host */ true);
@@ -359,7 +359,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
                           rows_are_not_ordered_gpu_memory,
                           sizeof(*rows_are_not_ordered_host.data()))
              .ok()) {
-      errors::Internal("Failed to copy rows_are_not_ordered to host");
+      return errors::Internal("Failed to copy rows_are_not_ordered to host");
     }
 
     // We must wait for num_empty_rows and rows_are_not_ordered to be copied to
