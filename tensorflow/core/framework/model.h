@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/metrics.h"
-#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -378,14 +377,6 @@ class Node {
       absl::flat_hash_map<string, double>* processing_times)
       TF_LOCKS_EXCLUDED(mu_);
 
-  // Recursively produces a proto for this node and its subtree.
-  virtual Status ToProto(ModelProto::Node* node_proto) const;
-
-  // Recursively restores a node and its subtree from the proto.
-  static Status FromProto(ModelProto::Node node_proto,
-                          std::shared_ptr<Node> output,
-                          std::shared_ptr<Node>* node);
-
  protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
   class Metrics {
@@ -542,11 +533,6 @@ class Node {
   // that the optimization algorithm respects the memory budget.
   virtual double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  // Restores node from the proto. Note that this is not done recursively, i.e.
-  // input nodes are not restored.
-  static Status FromProtoHelper(ModelProto::Node node_proto,
-                                std::shared_ptr<Node> node);
-
   // Stores the time passed to the last call to `Node::record_start()` on the
   // current thread.
   //
@@ -645,12 +631,6 @@ class Model {
   // Indicates whether to collect resource usage.
   bool collect_resource_usage() const { return collect_resource_usage_; }
 
-  // Returns a pointer to the model's output node.
-  const std::shared_ptr<Node> output() {
-    mutex_lock l(mu_);
-    return output_;
-  }
-
   // Adds a node with the given name and given parent.
   void AddNode(Node::Factory factory, const string& name,
                std::shared_ptr<Node> parent, std::shared_ptr<Node>* out_node)
@@ -665,13 +645,6 @@ class Model {
 
   // Removes the given node.
   void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
-
-  // Produces a proto for this model.
-  Status ToProto(ModelProto* model_proto);
-
-  // Restores a model from the proto.
-  static Status FromProto(ModelProto model_proto,
-                          std::unique_ptr<Model>* model);
 
  private:
   // Collects tunable parameters in the tree rooted in the given node, returning

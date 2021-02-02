@@ -232,12 +232,6 @@ class InterleaveMany : public Node {
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
   }
-
-  Status ToProto(ModelProto::Node* node_proto) const {
-    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
-    node_proto->set_node_class(NodeClass::INTERLEAVE_MANY);
-    return Status::OK();
-  }
 };
 
 // The first input of AsyncInterleaveMany corresponds to the input dataset whose
@@ -408,12 +402,6 @@ class AsyncInterleaveMany : public Node {
     }
     return result;
   }
-
-  Status ToProto(ModelProto::Node* node_proto) const {
-    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
-    node_proto->set_node_class(NodeClass::ASYNC_INTERLEAVE_MANY);
-    return Status::OK();
-  }
 };
 
 class KnownRatio : public Node {
@@ -501,13 +489,6 @@ class KnownRatio : public Node {
         ratio_ * TotalProcessingTimeForInputs(*total_processing_times);
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
-  }
-
-  Status ToProto(ModelProto::Node* node_proto) const {
-    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
-    node_proto->set_node_class(NodeClass::KNOWN_RATIO);
-    node_proto->set_ratio(ratio_);
-    return Status::OK();
   }
 
  private:
@@ -724,14 +705,6 @@ class AsyncKnownRatio : public Node {
     return result;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
-    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
-    node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
-    node_proto->set_ratio(ratio_);
-    node_proto->set_memory_ratio(memory_ratio_);
-    return Status::OK();
-  }
-
  private:
   // Identifies how many input elements need to be created to construct an
   // element for the dataset.
@@ -845,12 +818,6 @@ class UnknownRatio : public Node {
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
   }
-
-  Status ToProto(ModelProto::Node* node_proto) const {
-    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
-    node_proto->set_node_class(NodeClass::UNKNOWN_RATIO);
-    return Status::OK();
-  }
 };
 
 class Unknown : public Node {
@@ -901,12 +868,6 @@ class Unknown : public Node {
     }
     (*total_processing_times)[long_name()] =
         TotalProcessingTimeForInputs(*total_processing_times);
-  }
-
-  Status ToProto(ModelProto::Node* node_proto) const {
-    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
-    node_proto->set_node_class(NodeClass::UNKNOWN);
-    return Status::OK();
   }
 };
 
@@ -1479,115 +1440,6 @@ double Node::MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
   return 0;
 }
 
-Status Node::ToProto(ModelProto::Node* node_proto) const {
-  tf_shared_lock l(mu_);
-  node_proto->set_id(id_);
-  node_proto->set_name(name_);
-  node_proto->set_autotune(autotune_);
-  node_proto->set_buffered_bytes(buffered_bytes_);
-  node_proto->set_buffered_elements(buffered_elements_);
-  node_proto->set_bytes_consumed(bytes_consumed_);
-  node_proto->set_bytes_produced(bytes_produced_);
-  node_proto->set_num_elements(num_elements_);
-  node_proto->set_processing_time(processing_time_);
-  node_proto->set_record_metrics(record_metrics_);
-
-  // Produce protos for all parameters.
-  for (auto const& parameter : parameters_) {
-    ModelProto::Node::Parameter* parameter_proto = node_proto->add_parameters();
-    parameter_proto->set_name(parameter.first);
-    parameter_proto->set_value(parameter.second->value);
-    parameter_proto->set_min(parameter.second->min);
-    parameter_proto->set_max(parameter.second->max);
-    parameter_proto->set_state_value(parameter.second->state->value);
-    parameter_proto->set_tunable(parameter.second->state->tunable);
-  }
-
-  // Produce protos for all inputs.
-  for (auto const& input : inputs_) {
-    ModelProto::Node* input_proto = node_proto->add_inputs();
-    TF_RETURN_IF_ERROR(input->ToProto(input_proto));
-  }
-  return Status::OK();
-}
-
-Status Node::FromProtoHelper(ModelProto::Node node_proto,
-                             std::shared_ptr<Node> node) {
-  tf_shared_lock l(node->mu_);
-  node->autotune_.store(node_proto.autotune());
-  node->buffered_bytes_.store(node_proto.buffered_bytes());
-  node->buffered_elements_.store(node_proto.buffered_elements());
-  node->bytes_consumed_.store(node_proto.bytes_consumed());
-  node->bytes_produced_.store(node_proto.bytes_produced());
-  node->num_elements_.store(node_proto.num_elements());
-  node->processing_time_.store(node_proto.processing_time());
-  node->record_metrics_.store(node_proto.record_metrics());
-
-  // Restore parameters.
-  int64 num_parameters = node_proto.parameters_size();
-  for (int i = 0; i < num_parameters; i++) {
-    const ModelProto::Node::Parameter& parameter_proto =
-        node_proto.parameters(i);
-    std::shared_ptr<SharedState> state;
-    if (parameter_proto.tunable()) {
-      state =
-          std::make_shared<SharedState>(kAutotune, std::make_shared<mutex>(),
-                                        std::make_shared<condition_variable>());
-      state->value = parameter_proto.state_value();
-    } else {
-      state = std::make_shared<SharedState>(
-          parameter_proto.state_value(), std::make_shared<mutex>(),
-          std::make_shared<condition_variable>());
-    }
-    node->parameters_[parameter_proto.name()] =
-        MakeParameter(parameter_proto.name(), state, parameter_proto.min(),
-                      parameter_proto.max());
-  }
-  return Status::OK();
-}
-
-Status Node::FromProto(ModelProto::Node node_proto,
-                       std::shared_ptr<Node> output,
-                       std::shared_ptr<Node>* node) {
-  // Note that parameters are restored in `FromProtoHelper`.
-  Args args = {node_proto.id(), node_proto.name(), std::move(output)};
-  std::shared_ptr<Node> restored_node;
-  switch (node_proto.node_class()) {
-    case NodeClass::INTERLEAVE_MANY:
-      restored_node = std::make_shared<InterleaveMany>(args);
-      break;
-    case NodeClass::ASYNC_INTERLEAVE_MANY:
-      restored_node = std::make_shared<AsyncInterleaveMany>(
-          args, /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
-      break;
-    case NodeClass::KNOWN_RATIO:
-      restored_node = std::make_shared<KnownRatio>(args, node_proto.ratio());
-      break;
-    case NodeClass::ASYNC_KNOWN_RATIO:
-      restored_node = std::make_shared<AsyncKnownRatio>(
-          args, node_proto.ratio(), node_proto.memory_ratio(),
-          /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
-      break;
-    case NodeClass::UNKNOWN_RATIO:
-      restored_node = std::make_shared<UnknownRatio>(args);
-      break;
-    default:
-      restored_node = std::make_shared<Unknown>(args);
-  }
-  TF_RETURN_IF_ERROR(FromProtoHelper(node_proto, restored_node));
-
-  // Restore all input nodes as well.
-  int64 num_inputs = node_proto.inputs_size();
-  for (int64 i = 0; i < num_inputs; i++) {
-    const ModelProto::Node& input_proto = node_proto.inputs(i);
-    std::shared_ptr<Node> input;
-    TF_RETURN_IF_ERROR(FromProto(input_proto, restored_node, &input));
-    restored_node->add_input(input);
-  }
-  (*node) = std::move(restored_node);
-  return Status::OK();
-}
-
 void Model::AddNode(Node::Factory factory, const string& name,
                     std::shared_ptr<Node> parent,
                     std::shared_ptr<Node>* out_node) {
@@ -1847,29 +1699,6 @@ double Model::TotalMaximumBufferedBytes(std::shared_ptr<Node> node) {
 
 double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
   return node->TotalProcessingTime(/*processing_times=*/nullptr);
-}
-
-Status Model::ToProto(ModelProto* model_proto) {
-  ModelProto::Node* output_proto = model_proto->mutable_output();
-  tf_shared_lock lock(mu_);
-  TF_RETURN_IF_ERROR(output_->ToProto(output_proto));
-  model_proto->set_id_counter(id_counter_);
-  model_proto->set_collect_resource_usage(collect_resource_usage_);
-  return Status::OK();
-}
-
-Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {
-  std::unique_ptr<Model> restored_model = std::make_unique<Model>();
-  std::shared_ptr<Node> output;
-  TF_RETURN_IF_ERROR(
-      Node::FromProto(model_proto.output(), /*output=*/nullptr, &output));
-  mutex_lock lock(restored_model->mu_);
-  restored_model->output_ = output;
-  restored_model->id_counter_ = model_proto.id_counter();
-  restored_model->collect_resource_usage_.store(
-      model_proto.collect_resource_usage());
-  *model = std::move(restored_model);
-  return Status::OK();
 }
 
 }  // namespace model

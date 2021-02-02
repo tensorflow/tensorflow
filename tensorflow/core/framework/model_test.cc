@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -883,106 +882,6 @@ TEST(SnapshotTest, Model) {
       cloned_current = cloned_current->inputs().front();
     }
   }
-}
-
-TEST(SerializeModelTest, Model) {
-  model::Model model;
-  std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
-  model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
-                nullptr, &root);
-  std::shared_ptr<Node> current = root;
-
-  int64 num_nodes = 20;
-  for (int64 i = 1; i < num_nodes; i++) {
-    std::shared_ptr<Node> input;
-    switch (i % 6) {
-      case 0:
-        input = model::MakeInterleaveManyNode(
-            {i, "interleave_many" + std::to_string(i), current});
-        break;
-      case 1:
-        input = model::MakeAsyncInterleaveManyNode(
-            {i, "async_interleave_many", current},
-            {model::MakeParameter(
-                "parallelism",
-                std::make_shared<SharedState>(
-                    /*value=*/model::kAutotune, nullptr, nullptr),
-                /*min=*/1,
-                /*max=*/7)});
-        break;
-      case 2:
-        input = model::MakeKnownRatioNode(
-            {i, "known_many" + std::to_string(i), current}, 3);
-        break;
-      case 3:
-        input = model::MakeAsyncKnownRatioNode(
-            {i, "async_known_many", current}, 4,
-            {model::MakeParameter(
-                "parallelism",
-                std::make_shared<SharedState>(
-                    /*value=*/model::kAutotune, nullptr, nullptr),
-                /*min=*/1,
-                /*max=*/5)});
-        break;
-      case 4:
-        input = model::MakeUnknownRatioNode(
-            {i, "unknown_many" + std::to_string(i), current});
-        break;
-      default:
-        input =
-            model::MakeUnknownNode({i, "unknown" + std::to_string(i), current});
-    }
-    input->record_element();
-    input->add_processing_time(i * 50);
-    input->record_buffer_event(i * 33, i * 5);
-    input->set_autotune(true);
-    model.AddNode([&input](model::Node::Args args) { return input; },
-                  input->name(), current, &input);
-    current = input;
-  }
-
-  // Make ToProto->FromProto roundtrip.
-  ModelProto model_proto;
-  Status status = model.ToProto(&model_proto);
-  TF_ASSERT_OK(status);
-  std::unique_ptr<model::Model> restored_model;
-  status = model::Model::FromProto(model_proto, &restored_model);
-  TF_ASSERT_OK(status);
-
-  // Check that original and restored models hold the same data.
-  EXPECT_EQ(model.collect_resource_usage(),
-            restored_model->collect_resource_usage());
-  std::shared_ptr<Node> restored_root = restored_model->output();
-  std::shared_ptr<Node> restored_current = restored_root;
-  current = root;
-  EXPECT_EQ(current->output(), nullptr);
-  EXPECT_EQ(restored_current->output(), nullptr);
-  while (!current->inputs().empty() && !restored_current->inputs().empty()) {
-    EXPECT_EQ(current->id(), restored_current->id());
-    EXPECT_EQ(current->name(), restored_current->name());
-    EXPECT_EQ(current->autotune(), restored_current->autotune());
-    absl::flat_hash_map<string, double> input_times_actual;
-    absl::flat_hash_map<string, double> input_times_expected;
-    input_times_actual.clear();
-    input_times_expected.clear();
-    EXPECT_EQ(current->OutputTime(&input_times_actual, nullptr),
-              restored_current->OutputTime(&input_times_expected, nullptr));
-    EXPECT_EQ(current->TotalBufferedBytes(),
-              restored_current->TotalBufferedBytes());
-    EXPECT_EQ(current->TotalMaximumBufferedBytes(),
-              restored_current->TotalMaximumBufferedBytes());
-    EXPECT_NE(current.get(), restored_current.get());
-
-    current = current->inputs().front();
-    restored_current = restored_current->inputs().front();
-
-    EXPECT_EQ(current->output()->long_name(), current->output()->long_name());
-    EXPECT_EQ(current->output()->autotune(),
-              restored_current->output()->autotune());
-    EXPECT_NE(current->output(), restored_current->output());
-  }
-  EXPECT_TRUE(current->inputs().empty());
-  EXPECT_TRUE(restored_current->inputs().empty());
 }
 
 class ComputeWaitTimeTest
