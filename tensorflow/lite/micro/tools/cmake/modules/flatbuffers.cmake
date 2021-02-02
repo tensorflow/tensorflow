@@ -13,30 +13,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if(TARGET ruy OR ruy_POPULATED)
+if(TARGET flatbuffers OR flatbuffers_POPULATED)
   return()
 endif()
 
-include(OverridableFetchContent)
+include(FetchContent)
 
 OverridableFetchContent_Declare(
-  ruy
-  GIT_REPOSITORY https://github.com/google/ruy
-  GIT_TAG master # TODO
+  flatbuffers
+  GIT_REPOSITORY https://github.com/google/flatbuffers
+  GIT_TAG v1.12.0 # TODO: What version does TFLite need?
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/ruy"
+  SOURCE_DIR "${CMAKE_BINARY_DIR}/flatbuffers"
 )
-OverridableFetchContent_GetProperties(ruy)
-if(NOT ruy_POPULATED)
-  OverridableFetchContent_Populate(ruy)
+OverridableFetchContent_GetProperties(flatbuffers)
+if(NOT flatbuffers_POPULATED)
+  OverridableFetchContent_Populate(flatbuffers)
 endif()
 
-set(RUY_SOURCE_DIR "${ruy_SOURCE_DIR}" CACHE PATH "RUY source directory")
-set(RUY_INCLUDE_DIRS "${CMAKE_BINARY_DIR}/ruy")
-
+# Required for Windows, since it has macros called min & max which
+# clashes with std::min
+add_definitions(-DNOMINMAX=1)
 add_subdirectory(
-  "${CMAKE_CURRENT_LIST_DIR}/ruy"
-  "${ruy_BINARY_DIR}"
+  "${flatbuffers_SOURCE_DIR}"
+  "${flatbuffers_BINARY_DIR}"
   EXCLUDE_FROM_ALL
 )
+remove_definitions(-DNOMINMAX)

@@ -13,30 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if(TARGET ruy OR ruy_POPULATED)
-  return()
+# tensorflow-lite uses find_package for this package, so override the system
+# installation and build from source instead.
+include(gemmlowp)
+if(gemmlowp_POPULATED)
+  set(GEMMLOWP_FOUND TRUE)
+  get_target_property(GEMMLOWP_INCLUDE_DIRS gemmlowp INTERFACE_DIRECTORIES)
+  set(GEMMLOWP_LIBRARIES
+    gemmlowp
+    gemmlowp_fixedpoint
+    gemmlowp_profiler
+    gemmlowp_eight_bit_int_gemm
+  )
 endif()
 
-include(OverridableFetchContent)
-
-OverridableFetchContent_Declare(
-  ruy
-  GIT_REPOSITORY https://github.com/google/ruy
-  GIT_TAG master # TODO
-  GIT_SHALLOW TRUE
-  GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/ruy"
-)
-OverridableFetchContent_GetProperties(ruy)
-if(NOT ruy_POPULATED)
-  OverridableFetchContent_Populate(ruy)
-endif()
-
-set(RUY_SOURCE_DIR "${ruy_SOURCE_DIR}" CACHE PATH "RUY source directory")
-set(RUY_INCLUDE_DIRS "${CMAKE_BINARY_DIR}/ruy")
-
-add_subdirectory(
-  "${CMAKE_CURRENT_LIST_DIR}/ruy"
-  "${ruy_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
-)

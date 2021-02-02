@@ -13,30 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if(TARGET ruy OR ruy_POPULATED)
-  return()
+# tensorflow-lite uses find_package for this package, so override the system
+# installation and build from source instead.
+include(fft2d)
+if(fft2d_POPULATED)
+  set(FFT2D_FOUND TRUE CACHE BOOL "Found FF2D")
+  get_target_property(FFT2D_INCLUDE_DIRS fft2d INCLUDE_DIRECTORIES)
+  set(FFT2D_INCLUDE_DIRS ${FFT2D_INCLUDE_DIRS} CACHE STRING
+    "FFT2D include dirs"
+  )
+  set(FFT2D_LIBRARIES
+    fft2d_alloc
+    fft2d_fft4f2d
+    fft2d_fftsg
+    fft2d_fftsg2d
+    fft2d_fftsg3d
+    fft2d_shrtdct
+    CACHE
+    STRING
+    "FFT2D libraries"
+  )
 endif()
 
-include(OverridableFetchContent)
-
-OverridableFetchContent_Declare(
-  ruy
-  GIT_REPOSITORY https://github.com/google/ruy
-  GIT_TAG master # TODO
-  GIT_SHALLOW TRUE
-  GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/ruy"
-)
-OverridableFetchContent_GetProperties(ruy)
-if(NOT ruy_POPULATED)
-  OverridableFetchContent_Populate(ruy)
-endif()
-
-set(RUY_SOURCE_DIR "${ruy_SOURCE_DIR}" CACHE PATH "RUY source directory")
-set(RUY_INCLUDE_DIRS "${CMAKE_BINARY_DIR}/ruy")
-
-add_subdirectory(
-  "${CMAKE_CURRENT_LIST_DIR}/ruy"
-  "${ruy_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
-)
