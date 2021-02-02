@@ -275,7 +275,6 @@ class PjRtBuffer {
  public:
   virtual ~PjRtBuffer() = default;
 
-  virtual const Shape& on_host_shape() const = 0;
   virtual const Shape& on_device_shape() const = 0;
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;
@@ -319,7 +318,8 @@ class PjRtBuffer {
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
   StatusOr<std::shared_ptr<Literal>> ToLiteral() {
-    auto literal = std::make_shared<Literal>(on_host_shape());
+    auto literal = std::make_shared<Literal>(
+        ShapeUtil::DeviceShapeToHostShape(on_device_shape()));
     TF_RETURN_IF_ERROR(ToLiteral(literal.get()));
     return literal;
   }

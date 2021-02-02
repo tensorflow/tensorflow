@@ -48,10 +48,10 @@ BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1) {
   if (allow_growth) {
-    // 1MiB smallest initial allocation, unless total memory available
+    // 2MiB smallest initial allocation, unless total memory available
     // is less.
     curr_region_allocation_bytes_ =
-        RoundedBytes(std::min(total_memory, size_t{1048576}));
+        RoundedBytes(std::min(total_memory, size_t{2 << 20}));
   } else {
     curr_region_allocation_bytes_ = RoundedBytes(total_memory);
   }

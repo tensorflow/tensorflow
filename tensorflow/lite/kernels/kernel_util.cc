@@ -383,6 +383,13 @@ bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
+
+// TODO(b/172067338): Having this function be part of TF_LITE_STATIC_MEMORY
+// build results in a 6KB size increase, even though the function is unsused for
+// that build. What appears to be happening is that while the linker drops the
+// unsused function, the string library that gets pulled in is not dropped,
+// resulting in the increased binary size.
 std::string GetShapeDebugString(const TfLiteIntArray* shape) {
   std::string str;
   for (int d = 0; d < shape->size; ++d) {
@@ -395,9 +402,6 @@ std::string GetShapeDebugString(const TfLiteIntArray* shape) {
   return str;
 }
 
-// TODO(petewarden): Having macros around this is ugly, look at other strategies
-// before replicating this approach elsewhere.
-#ifndef TF_LITE_STATIC_MEMORY
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,

@@ -422,8 +422,11 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     case kTfLiteComplex64:
     case kTfLiteComplex128:
     case kTfLiteUInt64:
-      // kTfLiteString, kTfLiteUInt64, kTfLiteComplex64 and kTfLiteComplex128 are not supported in
-      // TensorFlow Lite Objc API.
+    case kTfLiteResource:
+    case kTfLiteVariant:
+      // kTfLiteString, kTfLiteUInt64, kTfLiteComplex64, kTfLiteComplex128,
+      // kTfLiteResource and kTfLiteVariant are not supported in TensorFlow Lite
+      // Objc API.
       return TFLTensorDataTypeNoType;
   }
 }

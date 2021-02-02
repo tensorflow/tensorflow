@@ -85,6 +85,12 @@ class NcclCollectiveThunk : public Thunk {
  public:
   using Thunk::Thunk;
 
+  struct Buffer {
+    int64 element_count;
+    BufferAllocation::Slice source_buffer;
+    BufferAllocation::Slice destination_buffer;
+  };
+
   // Returns whether NCCL operations appear possible to perform; e.g. if we
   // haven't done a build with the CUDA compiler enabled, we can't compile the
   // NCCL header, and thus this will be false.
@@ -93,19 +99,12 @@ class NcclCollectiveThunk : public Thunk {
   // error.
   static bool NcclIsEnabled();
 
-  Status ExecuteOnStream(const ExecuteParams& params) override
-      ABSL_LOCKS_EXCLUDED(mu_);
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
   virtual Status RunNcclCollective(const ExecuteParams& params,
                                    ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
-
- private:
-  // Creating NCCL cliques is expensive, so we cache them.
-  absl::Mutex mu_;
-  absl::flat_hash_set<std::shared_ptr<NcclClique>> cliques_
-      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

@@ -199,10 +199,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* op_data = static_cast<OpData*>(node->user_data);
 
   if (input->type == kTfLiteInt8 && output->type == kTfLiteInt16) {
-    return Softmax(*op_data, tflite::micro::GetTensorShape(input),
-                   tflite::micro::GetTensorData<int8_t>(input),
-                   tflite::micro::GetTensorShape(output),
-                   tflite::micro::GetTensorData<int16_t>(output));
+    return SoftmaxHifimini(*op_data, tflite::micro::GetTensorShape(input),
+                           tflite::micro::GetTensorData<int8_t>(input),
+                           tflite::micro::GetTensorShape(output),
+                           tflite::micro::GetTensorData<int16_t>(output));
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
                        TfLiteTypeGetName(input->type), input->type);

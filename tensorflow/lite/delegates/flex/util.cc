@@ -84,6 +84,10 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_STRING;
     case kTfLiteBool:
       return TF_BOOL;
+    case kTfLiteResource:
+      return TF_RESOURCE;
+    case kTfLiteVariant:
+      return TF_VARIANT;
   }
 }
 
@@ -115,6 +119,10 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
       return kTfLiteString;
     case TF_BOOL:
       return kTfLiteBool;
+    case TF_RESOURCE:
+      return kTfLiteResource;
+    case TF_VARIANT:
+      return kTfLiteVariant;
     default:
       return kTfLiteNoType;
   }

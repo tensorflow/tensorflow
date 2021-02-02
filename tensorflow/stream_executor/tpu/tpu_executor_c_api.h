@@ -251,9 +251,12 @@ int TpuTopology_ChipBounds_X(SE_TpuTopology* tpu_topology);
 int TpuTopology_ChipBounds_Y(SE_TpuTopology* tpu_topology);
 int TpuTopology_ChipBounds_Z(SE_TpuTopology* tpu_topology);
 bool TpuTopology_HasChip(SE_TpuTopology* tpu_topology, int x, int y, int z);
-SE_TpuTopology_Core* TpuTopology_Core(SE_TpuTopology* tpu_topology, int x,
-                                      int y, int z,
-                                      TpuCoreTypeEnum tpu_core_type, int index);
+SE_TpuTopology_Core* TpuTopology_CoreForId(SE_TpuTopology* tpu_topology,
+                                           TpuCoreTypeEnum tpu_core_type,
+                                           int id);
+SE_TpuTopology_Core* TpuTopology_Core(SE_TpuTopology* tpu_topology,
+                                      TpuCoreTypeEnum tpu_core_type, int x,
+                                      int y, int z, int index);
 int TpuTopology_NumCores(SE_TpuTopology* tpu_topology,
                          TpuCoreTypeEnum tpu_core_type);
 // 'cores' should be a preallocated array of size TpuTopology_NumCores.
@@ -457,6 +460,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Y);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Z);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_HasChip);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_CoreForId);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Core);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_NumCores);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Cores);

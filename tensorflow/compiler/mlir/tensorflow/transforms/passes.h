@@ -233,7 +233,8 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandInliningPass();
 
 // Creates a pass to prune tf_executor.graph from dead nodes.
-std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass(
+    llvm::ArrayRef<std::string> ops_to_preserve = {});
 }  // namespace tf_executor
 
 namespace TFDevice {

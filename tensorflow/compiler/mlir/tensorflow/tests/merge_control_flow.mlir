@@ -319,8 +319,8 @@ func @same_predicate_results_moved(%arg0: tensor<!tf.resource<tensor<f32>>>) {
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<i32>)
     %6 = "tf.E"(%5) : (tensor<i32>) -> (tensor<f32>)
     "tf.F"(%1, %6) : (tensor<f32>, tensor<f32>) -> ()
-    tf_device.return
-  }) {cluster_attr = "cluster_attr"} : () -> ()
+    tf_device.return %1 : tensor<f32>
+  }) {cluster_attr = "cluster_attr"} : () -> (tensor<f32>)
   return
 }
 

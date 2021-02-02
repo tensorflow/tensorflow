@@ -120,7 +120,12 @@ function install_ubuntu_16_pip_deps {
   # To have reproducible builds, these dependencies should be pinned always.
   # Prefer pinning to the same version as in setup.py
   # First, upgrade pypi wheels
-  "${PIP_CMD}" install --user --upgrade setuptools pip wheel
+  "${PIP_CMD}" install --user --upgrade 'setuptools<53' pip wheel
+  # NOTE: As numpy has releases that break semver guarantees and several other
+  # deps depend on numpy without an upper bound, we must install numpy before
+  # everything else.
+  # TODO(mihaimaruseac): Convert to requirements.txt
+  "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
   # Now, install the deps, as listed in setup.py
   "${PIP_CMD}" install --user 'absl-py ~= 0.10'
   "${PIP_CMD}" install --user 'astunparse ~= 1.6.3'
@@ -128,7 +133,6 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user 'google_pasta ~= 0.2'
   "${PIP_CMD}" install --user 'h5py ~= 3.1.0'
   "${PIP_CMD}" install --user 'keras_preprocessing ~= 1.1.2'
-  "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
   "${PIP_CMD}" install --user 'opt_einsum ~= 3.3.0'
   "${PIP_CMD}" install --user 'protobuf >= 3.9.2'
   "${PIP_CMD}" install --user 'six ~= 1.15.0'

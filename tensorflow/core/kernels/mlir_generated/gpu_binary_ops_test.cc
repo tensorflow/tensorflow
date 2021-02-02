@@ -843,6 +843,22 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputLessThanBitwidth<int64>(), baseline_right_shift)
 
+/// Test `tf.SquaredDifference`.
+
+template <typename T>
+T baseline_squared_difference(T lhs, T rhs) {
+  return (lhs - rhs) * (lhs - rhs);
+}
+
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Half, Eigen::half,
+                       Eigen::half, baseline_squared_difference)
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Float, float, float,
+                       baseline_squared_difference)
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Double, double, double,
+                       baseline_squared_difference)
+GENERATE_DEFAULT_TESTS(SquaredDifference, /*test_name=*/Int64, int64, int64,
+                       baseline_squared_difference)
+
 /// Test `tf.Sub`.
 
 template <typename T>

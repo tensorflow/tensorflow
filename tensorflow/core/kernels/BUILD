@@ -6387,7 +6387,6 @@ filegroup(
             "spectrogram_convert_test_data.cc",
             "decode_proto_op.cc",
             "encode_proto_op.cc",
-            "rpc_op.cc",
             "sobol_op.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
@@ -7300,22 +7299,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/util/proto:descriptors",
         "//tensorflow/core/util/proto:proto_utils",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_kernel_library(
-    name = "rpc_op",
-    srcs = [
-        "rpc_op.cc",
-    ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/util/rpc:call_container",
-        "//tensorflow/core/util/rpc:rpc_factory",
-        "//tensorflow/core/util/rpc:rpc_factory_registry",
         "//third_party/eigen3",
     ],
 )

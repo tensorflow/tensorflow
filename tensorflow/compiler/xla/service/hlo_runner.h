@@ -97,7 +97,7 @@ class HloRunner : public HloRunnerInterface {
   // Creates an executable object given an HLO module. If run_hlo_passes is
   // true, the HLO passes will be run as part of compilation.
   StatusOr<std::unique_ptr<Executable>> CreateExecutable(
-      std::unique_ptr<HloModule> module, bool run_hlo_passes);
+      std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as

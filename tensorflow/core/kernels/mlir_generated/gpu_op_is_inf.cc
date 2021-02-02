@@ -20,11 +20,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_UNARY_KERNEL2(IsInf, f16, DT_BOOL, bool, Eigen::half);
-REGISTER_KERNEL(IsInf, f16, Eigen::half);
-GENERATE_UNARY_KERNEL2(IsInf, f32, DT_BOOL, bool, float);
-REGISTER_KERNEL(IsInf, f32, float);
-GENERATE_UNARY_KERNEL2(IsInf, f64, DT_BOOL, bool, double);
-REGISTER_KERNEL(IsInf, f64, double);
+GENERATE_UNARY_KERNEL2(IsInf, f16, i1, DT_BOOL, bool, Eigen::half);
+REGISTER_KERNEL(IsInf, f16, i1, Eigen::half);
+GENERATE_UNARY_KERNEL2(IsInf, f32, i1, DT_BOOL, bool, float);
+REGISTER_KERNEL(IsInf, f32, i1, float);
+GENERATE_UNARY_KERNEL2(IsInf, f64, i1, DT_BOOL, bool, double);
+REGISTER_KERNEL(IsInf, f64, i1, double);
 
 }  // namespace tensorflow

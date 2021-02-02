@@ -125,12 +125,10 @@ class CpuCompiler : public LLVMCompiler {
   CpuCompiler();
   ~CpuCompiler() override {}
 
-  // Bring in
-  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-  //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<se::StreamExecutor*>>
-  //        stream_execs)
-  using LLVMCompiler::Compile;
+  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+      std::unique_ptr<HloModuleGroup> module_group,
+      std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+      const CompileOptions& options) override;
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,

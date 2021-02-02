@@ -49,16 +49,12 @@ static mlir::DenseIntElementsAttr GetI64ElementsAttr(
     absl::Span<const int64> values, mlir::Builder* builder) {
   auto ty = mlir::RankedTensorType::get({static_cast<int64_t>(values.size())},
                                         builder->getIntegerType(64));
-  llvm::SmallVector<int64_t, 4> mlir_values;
-  mlir_values.reserve(values.size());
-  for (const auto& value : values) {
-    mlir_values.push_back(value);
-  }
-  return mlir::DenseIntElementsAttr::get(ty, mlir_values);
+  return mlir::DenseIntElementsAttr::get(
+      ty, llvm::makeArrayRef(values.data(), values.size()));
 }
 
 static mlir::DenseIntElementsAttr ConvertPadding(
-    absl::Span<const std::pair<tensorflow::int64, tensorflow::int64>> padding,
+    absl::Span<const std::pair<int64_t, int64_t>> padding,
     mlir::Builder* builder) {
   llvm::SmallVector<int64_t, 8> elements;
   elements.reserve(padding.size() * 2);
@@ -80,7 +76,7 @@ StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
     return InvalidArgument("unsupported type: %s", ToString(ty).c_str());
   }
 
-  int64 handle = reinterpret_cast<int64>(val.getAsOpaquePointer());
+  int64_t handle = reinterpret_cast<int64_t>(val.getAsOpaquePointer());
   handle_to_shape_[handle] = std::move(shape);
   return XlaOp(handle, this);
 }

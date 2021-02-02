@@ -70,9 +70,9 @@ class DatasetBenchmarkBase(test.Benchmark):
     # to execute upstream computation. If it is optimized in the future,
     # we will have to change this code.
     dataset = dataset.skip(num_elements - 1)
+    deltas = []
 
     if context.executing_eagerly():
-      deltas = []
       for _ in range(iters):
         if warmup:
           iterator = iter(dataset)
@@ -89,7 +89,6 @@ class DatasetBenchmarkBase(test.Benchmark):
     next_element = iterator.get_next()
     next_element = nest.flatten(next_element)[0]
 
-    deltas = []
     for _ in range(iters):
       with session.Session() as sess:
         if warmup:
@@ -112,9 +111,34 @@ class DatasetBenchmarkBase(test.Benchmark):
                                extras=None,
                                warmup=True,
                                apply_default_optimizations=False):
-    # Measure the per-element wall time.
-    wall_time = self.run_benchmark(dataset, num_elements, iters, warmup,
-                                   apply_default_optimizations)
+    """Benchmarks the dataset and reports the stats.
+
+    Runs the dataset `iters` times. In each iteration, the benchmark measures
+    the time it takes to go through `num_elements` elements of the dataset.
+    This is followed by logging/printing the benchmark stats.
+
+    Args:
+      dataset: Dataset to benchmark.
+      num_elements: Number of dataset elements to iterate through each benchmark
+        iteration.
+      name: Name of the benchmark.
+      iters: Number of times to repeat the timing.
+      extras: A dict which maps string keys to additional benchmark info.
+      warmup: If true, warms up the session caches by running an untimed run.
+      apply_default_optimizations: Determines whether default optimizations
+        should be applied.
+
+    Returns:
+      A float, representing the per-element wall time of the dataset in seconds.
+      This is the median time (with respect to `iters`) it takes for the dataset
+      to go through `num_elements` elements, divided by `num_elements.`
+    """
+    wall_time = self.run_benchmark(
+        dataset=dataset,
+        num_elements=num_elements,
+        iters=iters,
+        warmup=warmup,
+        apply_default_optimizations=apply_default_optimizations)
     if context.executing_eagerly():
       name = "{}.eager".format(name)
     else:
@@ -124,3 +148,4 @@ class DatasetBenchmarkBase(test.Benchmark):
     extras["num_elements"] = num_elements
     self.report_benchmark(
         wall_time=wall_time, iters=iters, name=name, extras=extras)
+    return wall_time

@@ -3858,9 +3858,11 @@ ENTRY entry {
       op::Copy(op::DynamicSlice(op::Parameter(1), op::Constant(),
                                 op::Constant(), op::Reshape(), op::Constant())),
       op::Shape("f32[320,39296,16,128]"));
-  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(op::Tuple(
-                              lhs, rhs, op::Broadcast(), op::Constant()))),
-                          op::Shape("f32[320,7,39296]")));
+  EXPECT_THAT(
+      root,
+      AllOf(op::GetTupleElement(op::While(op::Tuple(
+                lhs, rhs, op::Broadcast(), op::Broadcast(), op::Constant()))),
+            op::Shape("f32[320,7,39296]")));
 
   auto while_loop = root->operand(0);
   // Check loop condition.
@@ -3883,7 +3885,8 @@ ENTRY entry {
                                 partial_output, partial_output);
   EXPECT_THAT(while_loop->while_body()->root_instruction(),
               op::Tuple(op::GetTupleElement(op::Parameter(0)),
-                        op::GetTupleElement(op::Parameter(0)), window, next_i));
+                        op::GetTupleElement(op::Parameter(0)), window,
+                        op::GetTupleElement(op::Parameter(0)), next_i));
 
   // Check the conditional that contains the collective permute.
   auto cp_conditional =
@@ -3949,9 +3952,11 @@ ENTRY entry {
   auto rhs = AllOf(op::Copy(op::DynamicSlice(op::Parameter(1), op::Reshape(),
                                              op::Constant(), op::Constant())),
                    op::Shape("f32[4096,67,128]"));
-  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(op::Tuple(
-                              lhs, rhs, op::Broadcast(), op::Constant()))),
-                          op::Shape("f32[8,1024,17,128]")));
+  EXPECT_THAT(
+      root,
+      AllOf(op::GetTupleElement(op::While(op::Tuple(
+                lhs, rhs, op::Broadcast(), op::Broadcast(), op::Constant()))),
+            op::Shape("f32[8,1024,17,128]")));
 
   auto while_loop = root->operand(0);
   // Check loop condition.
@@ -3974,7 +3979,8 @@ ENTRY entry {
                                 partial_output, partial_output);
   EXPECT_THAT(while_loop->while_body()->root_instruction(),
               op::Tuple(op::GetTupleElement(op::Parameter(0)),
-                        op::GetTupleElement(op::Parameter(0)), window, next_i));
+                        op::GetTupleElement(op::Parameter(0)), window,
+                        op::GetTupleElement(op::Parameter(0)), next_i));
 
   // Check the conditional that contains the collective permute.
   auto cp_conditional =
@@ -4013,12 +4019,12 @@ ENTRY entry {
                                       op::Constant(), op::Reshape(),
                                       op::Constant(), op::Constant())),
             op::Shape("f32[32,19648,64,128]"));
-  EXPECT_THAT(
-      root,
-      AllOf(op::Slice(AllOf(op::GetTupleElement(op::While(op::Tuple(
-                                lhs, rhs, op::Broadcast(), op::Constant()))),
-                            op::Shape("f32[32,12,39296]"))),
-            op::Shape("f32[32,12,39295]")));
+  EXPECT_THAT(root,
+              AllOf(op::Slice(AllOf(op::GetTupleElement(op::While(op::Tuple(
+                                        lhs, rhs, op::Broadcast(),
+                                        op::Broadcast(), op::Constant()))),
+                                    op::Shape("f32[32,12,39296]"))),
+                    op::Shape("f32[32,12,39295]")));
   auto while_loop = root->operand(0)->operand(0);
   // Check loop condition.
   EXPECT_THAT(
@@ -4038,7 +4044,7 @@ ENTRY entry {
                 op::DynamicUpdateSlice(op::GetTupleElement(op::Parameter(0)),
                                        partial_output, op::Constant(),
                                        op::Constant(), op::Reshape()),
-                next_i));
+                op::GetTupleElement(op::Parameter(0)), next_i));
 
   // Check the conditional that contains the collective permute.
   auto cp_conditional =
@@ -4079,10 +4085,10 @@ ENTRY entry {
             op::Shape("f32[32,39296,32,128]"));
   auto masked_rhs =
       op::Select(op::Compare(), rhs, op::Broadcast(op::Constant()));
-  EXPECT_THAT(root,
-              AllOf(op::GetTupleElement(op::While(op::Tuple(
-                        lhs, masked_rhs, op::Broadcast(), op::Constant()))),
-                    op::Shape("f32[32,12,39296]")));
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(
+                              op::Tuple(lhs, masked_rhs, op::Broadcast(),
+                                        op::Broadcast(), op::Constant()))),
+                          op::Shape("f32[32,12,39296]")));
   auto while_loop = root->operand(0);
   // Check loop condition.
   EXPECT_THAT(
@@ -4103,7 +4109,7 @@ ENTRY entry {
       while_loop->while_body()->root_instruction(),
       op::Tuple(op::GetTupleElement(op::Parameter(0)), window,
                 op::Add(op::GetTupleElement(op::Parameter(0)), partial_output),
-                next_i));
+                op::GetTupleElement(op::Parameter(0)), next_i));
 
   // Check the conditional that contains the collective permute.
   auto cp_conditional =
@@ -5721,34 +5727,6 @@ ENTRY entry {
   auto partially_replicated =
       AllOf(op::Shape("f32[4,8]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
-                                      op::Constant())));
-  auto tiled =
-      AllOf(op::Shape("f32[4,4]"),
-            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
-                                      op::Subtract())));
-  auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, tiled);
-}
-
-TEST_F(SpmdPartitioningTest,
-       PartialReplicateToPartialReplicateReshard_DynamicSlice2) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  %param0 = f32[8,8] parameter(0)
-  %copy = f32[8,8] copy(%param0),
-    sharding={devices=[1,1,8]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
-  ROOT %copy0 = f32[8,8] copy(%copy),
-    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
-  VLOG(1) << module->ToString();
-  auto partially_replicated =
-      AllOf(op::Shape("f32[8,8]"),
-            op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
                                       op::Constant())));
   auto tiled =
       AllOf(op::Shape("f32[4,4]"),

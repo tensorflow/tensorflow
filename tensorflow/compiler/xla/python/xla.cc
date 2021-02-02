@@ -301,13 +301,13 @@ PYBIND11_MODULE(xla_extension, m) {
           "shape",
           [](const PyBuffer& pybuffer) -> pybind11::tuple {
             return IntSpanToTuple(
-                pybuffer.buffer()->on_host_shape().dimensions());
+                pybuffer.buffer()->on_device_shape().dimensions());
           })
       .def_property_readonly(
           "dtype",
           [](const PyBuffer& buffer) {
             PrimitiveType primitive =
-                buffer.buffer()->on_host_shape().element_type();
+                buffer.buffer()->on_device_shape().element_type();
             return PrimitiveTypeToDtype(primitive).ValueOrDie();
           })
       .def_property_readonly("size", &PyBuffer::size)
@@ -330,8 +330,7 @@ PYBIND11_MODULE(xla_extension, m) {
              return buffer_obj;
            })
       .def("block_host_until_ready", &PyBuffer::BlockHostUntilReady)
-      .def("copy_to_host_async", &PyBuffer::CopyToHostAsync,
-           py::call_guard<py::gil_scoped_release>())
+      .def("copy_to_host_async", &PyBuffer::CopyToHostAsync)
       .def("to_py",
            [](py::handle buffer_obj) {
              PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
@@ -373,6 +372,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("execute", &PyExecutable::Execute, py::arg("arguments"))
       .def("execute_on_local_devices", &PyExecutable::ExecuteOnLocalDevices,
            py::arg("arguments"))
+      .def("execute_sharded_on_local_devices",
+           &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)
       .def_property_readonly("traceback", &PyExecutable::traceback);
 

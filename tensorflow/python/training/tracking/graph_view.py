@@ -118,10 +118,10 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
                 "bothers you.")
           if slot_variable in node_ids:
             raise NotImplementedError(
-                "A slot variable was re-used as a dependency of a "
-                f"Trackable object: {slot_variable}. This is not currently "
-                "allowed. File a feature request if this limitation bothers "
-                "you.")
+                ("A slot variable was re-used as a dependency of a "
+                 "Trackable object: %s. This is not currently "
+                 "allowed. File a feature request if this limitation bothers "
+                 "you.") % slot_variable)
           checkpoint_name = naming_scheme(
               variable_path=object_names[original_variable],
               slot_name=slot_name)

@@ -292,6 +292,7 @@ tensorflow/lite/micro/kernels/resize_nearest_neighbor_test.cc \
 tensorflow/lite/micro/kernels/round_test.cc \
 tensorflow/lite/micro/kernels/shape_test.cc \
 tensorflow/lite/micro/kernels/softmax_test.cc \
+tensorflow/lite/micro/kernels/space_to_batch_nd_test.cc \
 tensorflow/lite/micro/kernels/split_test.cc \
 tensorflow/lite/micro/kernels/split_v_test.cc \
 tensorflow/lite/micro/kernels/strided_slice_test.cc \
@@ -347,6 +348,7 @@ tensorflow/lite/micro/kernels/round.cc \
 tensorflow/lite/micro/kernels/shape.cc \
 tensorflow/lite/micro/kernels/softmax.cc \
 tensorflow/lite/micro/kernels/softmax_common.cc \
+tensorflow/lite/micro/kernels/space_to_batch_nd.cc \
 tensorflow/lite/micro/kernels/split.cc \
 tensorflow/lite/micro/kernels/split_v.cc \
 tensorflow/lite/micro/kernels/strided_slice.cc \
@@ -435,6 +437,7 @@ tensorflow/lite/kernels/internal/reference/requantize.h \
 tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
+tensorflow/lite/kernels/internal/reference/space_to_batch_nd.h \
 tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \

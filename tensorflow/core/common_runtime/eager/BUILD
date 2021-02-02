@@ -23,6 +23,16 @@ package(
 # TODO(b/152902651): Remove this file once all circular dependencies are resolved.
 tf_cuda_library(
     name = "core",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":core_no_xla",
+        "//tensorflow/compiler/jit:xla_kernel_creator",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "core_no_xla",
     srcs = [
         "core.cc",
     ],
@@ -422,10 +432,7 @@ tf_cuda_library(
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
-        "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
-        "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
-            "//tensorflow/compiler/jit:xla_kernel_creator",
-        ],
+        "//conditions:default": KERNEL_AND_DEVICE_DEPS,
     }),
 )
 

@@ -157,6 +157,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:VectorOps",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
+        "//tensorflow/compiler/xla/service:all_to_all_decomposer",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:topk_rewriter",

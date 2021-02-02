@@ -1482,7 +1482,7 @@ static Status ParseDeviceAssignmentAttr(
             ") are not valid for the current TPU topology");
       }
       tpu::TpuCoreLocationExternal core_location =
-          tpu_topology.Core(x, y, z, kTensorCore, core);
+          tpu_topology.Core(kTensorCore, x, y, z, core);
 
       if (replica_assignment(x, y, z, core) != -1) {
         return errors::InvalidArgument("Duplicate coordinates (", x, ",", y,

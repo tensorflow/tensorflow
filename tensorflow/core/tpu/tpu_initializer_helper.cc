@@ -22,17 +22,17 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-std::vector<const char*> GetLibTpuInitArguments() {
+std::pair<std::vector<std::string>, std::vector<const char*>>
+GetLibTpuInitArguments() {
+  // We make copies of the arguments returned by getenv because the memory
+  // returned may be altered or invalidated by further calls to getenv.
+  std::vector<std::string> argv;
   std::vector<const char*> argv_ptr;
-  std::vector<absl::string_view> argv;
 
-  // Retrieve arguments from environment if applicable
+  // Retrieve arguments from environment if applicable.
   char* env = getenv("LIBTPU_INIT_ARGS");
   if (env != nullptr) {
     // TODO(frankchn): Handles quotes properly if necessary.
-    // env pointer is already pointing to an allocated memory block.
-    // absl::StrSplit returns a string_view that returns a vector of pointers
-    // into that memory block. This means that we don't need to manage memory.
     argv = absl::StrSplit(env, ' ');
   }
 
@@ -42,7 +42,7 @@ std::vector<const char*> GetLibTpuInitArguments() {
   }
   argv_ptr.push_back(nullptr);
 
-  return argv_ptr;
+  return {argv, argv_ptr};
 }
 
 }  // namespace tpu
