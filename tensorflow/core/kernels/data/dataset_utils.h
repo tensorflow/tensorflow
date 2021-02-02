@@ -302,6 +302,40 @@ std::vector<tstring> SelectOptimizations(
 // Removes device placements from the ops of all functions in `library`.
 void StripDevicePlacement(FunctionDefLibrary* library);
 
+// Copies partial of the batch output.
+Status CopyPartialBatch(int64 num_elements, const Tensor& value,
+                        Tensor* output);
+
+// Reads a batch when restoring the iterator.
+Status ReadBatch(int64 batch_size, const string& iterator_prefix,
+                 const string& batch_prefix, IteratorContext* ctx,
+                 IteratorStateReader* reader, std::vector<Tensor>* batch);
+
+// Writes a batch when saving the iterator.
+Status WriteBatch(int64 batch_size, int64 num_elements,
+                  const string& iterator_prefix, const string& batch_prefix,
+                  IteratorStateWriter* writer, std::vector<Tensor>* batch);
+
+// Reads a status when restoring the iterator.
+Status ReadStatus(const string& iterator_prefix, const string& prefix,
+                  IteratorStateReader* reader, Status* status);
+
+// Writes a status when saving the iterator.
+Status WriteStatus(const string& iterator_prefix, const string& prefix,
+                   const Status& status, IteratorStateWriter* writer);
+
+// Processes a batch to output. In the case a partial batch is encountered, copy
+// only partial of the batch.
+Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
+                    const Status& status, IteratorContext* ctx,
+                    std::vector<Tensor>* output, bool* end_of_sequence,
+                    std::vector<Tensor>* batch);
+
+// Copies the input elements to a batch.
+Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
+                 std::vector<Tensor>* out_tensors,
+                 std::vector<std::vector<Tensor>>* batch_elements);
+
 }  // namespace data
 }  // namespace tensorflow
 

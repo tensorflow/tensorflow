@@ -42,6 +42,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling",
+        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization",
         "//tensorflow/lite/delegates/gpu/common/tasks:padding",
         "//tensorflow/lite/delegates/gpu/common/tasks:pooling",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
@@ -56,7 +57,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
     ],
 )
@@ -69,6 +69,5 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
     ],
 )

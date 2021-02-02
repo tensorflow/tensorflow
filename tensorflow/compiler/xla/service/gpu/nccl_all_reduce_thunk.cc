@@ -97,8 +97,8 @@ static absl::optional<ReductionKind> MatchReductionComputation(
   }
 }
 
-NcclAllReduceConfig GetNcclAllReduceConfig(mlir::lmhlo::AllReduceOp op,
-                                           int64 replica_count) {
+static NcclAllReduceConfig GetNcclAllReduceConfig(mlir::lmhlo::AllReduceOp op,
+                                                  int64 replica_count) {
   auto reduction_kind = MatchReductionComputation(op);
   CHECK(reduction_kind.has_value());
 
@@ -116,8 +116,7 @@ NcclAllReduceConfig GetNcclAllReduceConfig(mlir::lmhlo::AllReduceOp op,
         return LayoutUtil::IsDenseArray(shape) &&
                ToNcclDataType(shape.element_type()).ok();
       });
-  if (!operands_are_supported) return false;
-  return MatchReductionComputation(op).has_value();
+  return operands_are_supported && MatchReductionComputation(op).has_value();
 }
 
 NcclAllReduceThunk::NcclAllReduceThunk(

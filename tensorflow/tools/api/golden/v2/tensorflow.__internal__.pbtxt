@@ -56,6 +56,10 @@ tf_module {
     name: "tracking"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "types"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "create_c_op"
     argspec: "args=[\'graph\', \'node_def\', \'inputs\', \'control_inputs\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\'], "

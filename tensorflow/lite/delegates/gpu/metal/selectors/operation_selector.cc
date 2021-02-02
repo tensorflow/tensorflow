@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/padding.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/pooling.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
@@ -417,6 +417,13 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
           attr.dims, inputs[0]->tensor.shape, op_type, op_def, gpu_info);
       return absl::OkStatus();
     }
+    case OperationType::MEAN_STDDEV_NORMALIZATION: {
+      MeanStdDevNormalization operation = CreateMeanStdDevNormalization(
+          op_def, gpu_info, (inputs[0]->tensor.shape.c + 3) / 4);
+      gpu_operation->operation =
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation));
+      return absl::OkStatus();
+    }
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node.operation.attributes);
       SelectPadding(attr, op_def, &gpu_operation->operation);
@@ -549,8 +556,6 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::BATCH_TO_SPACE:
     case OperationType::BATCHED_MATMUL:
     case OperationType::CONSTANT:
-    // TODO(b/162763635): implement MeanStddevNormalization for Metal.
-    case OperationType::MEAN_STDDEV_NORMALIZATION:
     case OperationType::SPACE_TO_BATCH:
       return absl::UnimplementedError("Unsupported op: " + node.operation.type);
     default:

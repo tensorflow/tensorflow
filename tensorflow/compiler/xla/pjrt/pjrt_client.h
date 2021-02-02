@@ -282,19 +282,23 @@ class PjRtBuffer {
   // Returns the size of the on-device representation of this buffer in bytes.
   virtual int64 OnDeviceSizeInBytes() const = 0;
 
-  // ExternalReferenceHold is a potentially long-lived hold while the buffer is
-  // being shared by an external framework, e.g., NumPy. A client acquires an
-  // external hold by calling PjRtBuffer::AcquireExternalReference() and
-  // releases it by deleting the ExternalReferenceHold. The external framework
+  // ExternalReference is a potentially long-lived reference held while a buffer
+  // is being shared by an external framework, e.g., NumPy. A client acquires an
+  // external reference by calling PjRtBuffer::AcquireExternalReference() and
+  // releases it by deleting the ExternalReference. The external framework
   // should not modify the underlying buffer unless it is confident via its own
   // synchronization that modifications do not race with reads from the
   // PjRtBuffer.
-  struct ExternalReferenceHold {
-    virtual ~ExternalReferenceHold() = default;
+  class ExternalReference {
+   public:
+    virtual ~ExternalReference() = 0;
     // Return opaque device memory pointer to root buffer.
-    virtual void* OpaqueDeviceMemoryDataPointer() const = 0;
+    void* OpaqueDeviceMemoryDataPointer() const { return data_ptr_; }
+
+   protected:
+    void* data_ptr_;
   };
-  virtual StatusOr<std::unique_ptr<ExternalReferenceHold>>
+  virtual StatusOr<std::unique_ptr<ExternalReference>>
   AcquireExternalReference() = 0;
 
   // Copies the buffer's value into `literal`. Calls `on_ready` when the value
@@ -337,9 +341,9 @@ class PjRtBuffer {
 
   // Similar to Delete, drops the buffer's reference to its associated device
   // memory, leaving the buffer in an invalid state, but transfers the device
-  // memory ownership out via absl::optional<std::shared_ptr<void>> rather than
+  // memory ownership out via an ExternalReference rather than
   // freeing the device memory, so that another framework can take ownership of
-  // it. A return value of absl::nullopt indicates that PjRtBuffer has been
+  // it. A return value of nullptr indicates that PjRtBuffer has been
   // deleted. The buffer returned from Release may be safely dropped at any time
   // even if it still has pending async operations. The client should call
   // BlockHostUntilReady before calling ReleaseDeviceMemoryOwnership with
@@ -351,7 +355,7 @@ class PjRtBuffer {
   // If the buffer was shared via an external reference it is the client's
   // responsibility that accesses via that reference do not interfere with
   // accesses via the buffer returned from ReleaseDeviceMemoryOwnership.
-  virtual StatusOr<absl::optional<std::shared_ptr<void>>>
+  virtual StatusOr<std::unique_ptr<ExternalReference>>
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) = 0;
 
   // True if and only if Delete or Release has previously been called.
