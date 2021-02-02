@@ -16,15 +16,15 @@ limitations under the License.
 #include <complex>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
 
-GENERATE_BINARY_KERNEL2(Complex, f32, c64, DT_COMPLEX64, std::complex<float>,
-                        float);
-REGISTER_COMPLEX_KERNEL(Complex, f32, c64, std::complex<float>, float);
-GENERATE_BINARY_KERNEL2(Complex, f64, c128, DT_COMPLEX128, std::complex<double>,
-                        double);
-REGISTER_COMPLEX_KERNEL(Complex, f64, c128, std::complex<double>, double);
+GENERATE_BINARY_GPU_KERNEL2(Complex, f32, c64, DT_COMPLEX64,
+                            std::complex<float>, float);
+REGISTER_COMPLEX_GPU_KERNEL(Complex, f32, c64, std::complex<float>, float);
+GENERATE_BINARY_GPU_KERNEL2(Complex, f64, c128, DT_COMPLEX128,
+                            std::complex<double>, double);
+REGISTER_COMPLEX_GPU_KERNEL(Complex, f64, c128, std::complex<double>, double);
 
 }  // namespace tensorflow

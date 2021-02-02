@@ -106,7 +106,8 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
                 llvm::ArrayRef<std::string> architectures,
                 llvm::ArrayRef<uint32_t> tile_sizes,
                 llvm::ArrayRef<uint32_t> unroll_factors,
-                bool embed_memref_prints, bool print_ptx, bool enable_ftz) {
+                bool embed_memref_prints, bool print_ptx, bool enable_ftz,
+                bool cpu_codegen) {
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
@@ -117,7 +118,8 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
       mlir::OwningModuleRef module,
       GenerateKernelForTfCode(context, tf_code, architectures, tile_sizes,
                               unroll_factors, embed_memref_prints,
-                              /*generate_fatbin=*/true, print_ptx, enable_ftz));
+                              /*generate_fatbin=*/true, print_ptx, enable_ftz,
+                              cpu_codegen));
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
 
@@ -138,18 +140,21 @@ int main(int argc, char** argv) {
   llvm::cl::opt<std::string> output_file(
       "output", llvm::cl::desc("output file"), llvm::cl::value_desc("filename"),
       llvm::cl::init("foo.bin"));
+  llvm::cl::opt<bool> cpu_codegen("cpu_codegen",
+                                  llvm::cl::desc("enable CPU code generation"),
+                                  llvm::cl::init(false));
   llvm::cl::opt<bool> embed_memref_prints(
       "embed_memref_prints",
-      llvm::cl::desc("embeds memref prints at the end of their lifetime"),
+      llvm::cl::desc("embed memref prints at the end of their lifetime"),
       llvm::cl::init(false));
   llvm::cl::opt<bool> print_ptx(
       "print-ptx",
-      llvm::cl::desc("Print generated PTX code per target architecture."),
+      llvm::cl::desc("print generated PTX code per target architecture."),
       llvm::cl::init(false));
   llvm::cl::opt<bool> enable_ftz(
       "enable_ftz",
       llvm::cl::desc(
-          "Enable the denormal flush to zero mode when generating code."),
+          "enable the denormal flush to zero mode when generating code."),
       llvm::cl::init(false));
   llvm::cl::list<std::string> architectures(
       "arch", llvm::cl::desc("target architectures (e.g. sm_70 or compute_75)"),
@@ -166,11 +171,11 @@ int main(int argc, char** argv) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   mlir::registerPassManagerCLOptions();
-  llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
+  llvm::cl::ParseCommandLineOptions(argc, argv, "TF op kernel generator\n");
 
   auto status = tensorflow::kernel_gen::Run(
       input_file, output_file, architectures, tile_sizes, unroll_factors,
-      embed_memref_prints, print_ptx, enable_ftz);
+      embed_memref_prints, print_ptx, enable_ftz, cpu_codegen);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,11 +20,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_UNARY_GPU_KERNEL2(IsInf, f16, i1, DT_BOOL, bool, Eigen::half);
-REGISTER_GPU_KERNEL(IsInf, f16, i1, Eigen::half);
-GENERATE_UNARY_GPU_KERNEL2(IsInf, f32, i1, DT_BOOL, bool, float);
-REGISTER_GPU_KERNEL(IsInf, f32, i1, float);
-GENERATE_UNARY_GPU_KERNEL2(IsInf, f64, i1, DT_BOOL, bool, double);
-REGISTER_GPU_KERNEL(IsInf, f64, i1, double);
+GENERATE_UNARY_GPU_KERNEL2(Angle, c64, f32, DT_FLOAT, float,
+                           std::complex<float>);
+REGISTER_COMPLEX_GPU_KERNEL(Angle, c64, f32, float, std::complex<float>);
+GENERATE_UNARY_GPU_KERNEL2(Angle, c128, f64, DT_DOUBLE, double,
+                           std::complex<double>);
+REGISTER_COMPLEX_GPU_KERNEL(Angle, c128, f64, double, std::complex<double>);
 
 }  // namespace tensorflow

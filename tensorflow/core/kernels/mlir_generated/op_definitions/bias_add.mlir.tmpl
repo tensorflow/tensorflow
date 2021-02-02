@@ -1,4 +1,4 @@
-func @BiasAdd_elem_type_output_type(%arg0: tensor<*x*xelem_type>, %arg1: tensor<*xelem_type>)
+func @BiasAdd_platform_elem_type_output_type(%arg0: tensor<*x*xelem_type>, %arg1: tensor<*xelem_type>)
     -> tensor<*x*xoutput_type> attributes {tf_entry, llvm.emit_c_interface} {
   %0 = "tf.BiasAdd"(%arg0, %arg1)
       : (tensor<*x*xelem_type>, tensor<*xelem_type>) -> tensor<*x*xoutput_type>

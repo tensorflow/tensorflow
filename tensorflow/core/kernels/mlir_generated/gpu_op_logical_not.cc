@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
 
-GENERATE_UNARY_KERNEL(LogicalNot, i1, DT_BOOL, bool);
+GENERATE_UNARY_GPU_KERNEL(LogicalNot, i1, DT_BOOL, bool);
 // LogicalNot does not have a "T" attribute because it only works with type
 // bool. So we need to register it without TypeConstraint<bool>("T").
-REGISTER_KERNEL_NO_TYPE_CONSTRAINT(LogicalNot, i1, i1);
+REGISTER_GPU_KERNEL_NO_TYPE_CONSTRAINT(LogicalNot, i1, i1);
 
 }  // namespace tensorflow

@@ -52,6 +52,9 @@ filegroup(
         "gpu_op_floor.cc",
         "gpu_op_imag.cc",
         "gpu_op_invert.cc",
+        "gpu_op_is_finite.cc",
+        "gpu_op_is_inf.cc",
+        "gpu_op_is_nan.cc",
         "gpu_op_log.cc",
         "gpu_op_log1p.cc",
         "gpu_op_logical_not.cc",
@@ -71,13 +74,12 @@ filegroup(
     srcs = [
         "gpu_op_acos.cc",
         "gpu_op_acosh.cc",
+        "gpu_op_angle.cc",
         "gpu_op_asin.cc",
         "gpu_op_asinh.cc",
+        "gpu_op_digamma.cc",
         "gpu_op_exp.cc",
         "gpu_op_expm1.cc",
-        "gpu_op_is_finite.cc",
-        "gpu_op_is_inf.cc",
-        "gpu_op_is_nan.cc",
         "gpu_op_lgamma.cc",
         "gpu_op_sign.cc",
         "gpu_op_sin.cc",
@@ -97,9 +99,9 @@ filegroup(
 )
 
 cc_library(
-    name = "gpu_ops_base",
-    srcs = ["gpu_ops_base.cc"],
-    hdrs = ["gpu_ops_base.h"],
+    name = "base_op",
+    srcs = ["base_op.cc"],
+    hdrs = ["base_op.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface",
@@ -111,6 +113,13 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
     ],
+)
+
+cc_library(
+    name = "base_gpu_op",
+    hdrs = ["base_gpu_op.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [":base_op"],
 )
 
 tf_kernel_library(
@@ -129,6 +138,7 @@ tf_kernel_library(
         ":square_kernels",
         ":acos_kernels",
         ":acosh_kernels",
+        ":angle_kernels",
         ":asin_kernels",
         ":asinh_kernels",
         ":atan_kernels",
@@ -139,6 +149,7 @@ tf_kernel_library(
         ":conj_kernels",
         ":cos_kernels",
         ":cosh_kernels",
+        ":digamma_kernels",
         ":erf_kernels",
         ":erfc_kernels",
         ":exp_kernels",
@@ -162,7 +173,7 @@ tf_kernel_library(
         ":sqrt_kernels",
         ":tan_kernels",
         ":tanh_kernels",
-        ":gpu_ops_base",
+        ":base_gpu_op",
         "//third_party/eigen3",
     ],
 )
@@ -200,13 +211,13 @@ tf_kernel_library(
     deps = [
         ":add_v2_kernels",
         ":atan2_kernels",
+        ":base_gpu_op",
         ":bitwise_and_kernels",
         ":bitwise_or_kernels",
         ":bitwise_xor_kernels",
         ":div_kernels",
         ":equal_kernels",
         ":floor_div_kernels",
-        ":gpu_ops_base",
         ":greater_equal_kernels",
         ":greater_kernels",
         ":left_shift_kernels",
@@ -354,7 +365,6 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -364,7 +374,20 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "angle",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "2",
 )
 
 gen_kernel_library(
@@ -374,7 +397,6 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -384,7 +406,6 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -514,7 +535,6 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
 )
 
 [
@@ -769,6 +789,7 @@ gen_kernel_library(
     )
     for name in [
         "ceil",
+        "digamma",
         "exp",
         "expm1",
         "floor",
