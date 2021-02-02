@@ -502,7 +502,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
         constant_op.constant(shape, dtypes.int64))
 
   def testFillNumber(self):
-    with test_util.force_cpu():
+    with test_util.use_gpu():
       for sp_input in (self._SparseTensorValue_5x6(), self._SparseTensor_5x6()):
         sp_output, empty_row_indicator = (
             sparse_ops.sparse_fill_empty_rows(sp_input, -1))
@@ -520,7 +520,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testFillFloat(self):
-    with self.session(use_gpu=False):
+    with self.session(use_gpu=True):
       values = constant_op.constant(
           [0.0, 10.0, 13.0, 14.0, 32.0, 33.0], dtype=dtypes.float64)
       default_value = constant_op.constant(-1.0, dtype=dtypes.float64)
@@ -572,7 +572,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
                           np.array([0, 0, 1, 0, 1]).astype(np.bool))
 
   def testNoEmptyRows(self):
-    with test_util.force_cpu():
+    with test_util.use_gpu():
       sp_input = self._SparseTensor_2x6()
       sp_output, empty_row_indicator = (
           sparse_ops.sparse_fill_empty_rows(sp_input, -1))
@@ -586,7 +586,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
 
   def testNoEmptyRowsAndUnordered(self):
-    with test_util.force_cpu():
+    with test_util.use_gpu():
       sp_input = sparse_tensor.SparseTensor(
           indices=np.array([[1, 2], [1, 3], [0, 1], [0, 3]]),
           values=np.array([1, 3, 2, 4]),
