@@ -1783,6 +1783,9 @@ distribute_py_test(
         "no_rocm",
         "notsan",  # TODO(b/160006974)
     ],
+    tpu_tags = [
+        "no_oss",  # TODO(b/179045543)
+    ],
     xla_enable_strict_auto_jit = True,
     deps = [
         ":collective_all_reduce_strategy",
