@@ -20,12 +20,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, f16, DT_BOOL, bool, Eigen::half);
-GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, f32, DT_BOOL, bool, float);
-GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, f64, DT_BOOL, bool, double);
-GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, i8, DT_BOOL, bool, int8);
-GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, i16, DT_BOOL, bool, int16);
+GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, f16, i1, DT_BOOL, bool,
+                                     Eigen::half);
+GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, f32, i1, DT_BOOL, bool, float);
+GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, f64, i1, DT_BOOL, bool, double);
+GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, i8, i1, DT_BOOL, bool, int8);
+GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, i16, i1, DT_BOOL, bool, int16);
 // TODO(b/25387198): We cannot use a regular GPU kernel for int32.
-GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, i64, DT_BOOL, bool, int64);
+GENERATE_AND_REGISTER_BINARY_KERNEL2(Greater, i64, i1, DT_BOOL, bool, int64);
 
 }  // namespace tensorflow

@@ -1526,5 +1526,50 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
   populateWithGenerated(context, *patterns);
 }
 
+void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
+                                         OwningRewritePatternList *patterns) {
+  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
+                   LowerDynamicStitchOp<DynamicStitchOp>,
+                   LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+                   LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
+                   LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
+                   LowerResizeNearestNeighbor, LowerSparseMatMulOp,
+                   Lower_UnaryOpsComposition>(context);
+
+  // Populate the relevant generated patterns.
+  // clang-format off
+  patterns->insert<
+      LowerBiasAddGradOp,
+      LowerDivNoNanOp,
+      LowerEmptyOp,
+      LowerExpm1Op,
+      LowerFakeQuantWithMinMaxArgs,
+      LowerFillOp,
+      LowerIsInfOp,
+      LowerIsNanOp,
+      LowerL2LossOp,
+      LowerMulNoNanOp,
+      LowerOnesLikeOp,
+      LowerPadOp,
+      LowerReciprocal,
+      LowerRintOp,
+      LowerRoundOpOnFloatTensor,
+      LowerRoundOpOnIntTensor,
+      LowerRsqrtGradOp,
+      LowerScatterNdOp,
+      LowerSizeOp,
+      LowerSoftmaxCrossEntropyWithLogitsOp,
+      LowerSparseSoftmaxCrossEntropyWithLogitsOp,
+      LowerSquareOp,
+      LowerSquaredDifferenceOpOnRealTensors,
+      LowerSquaredDifferenceOpOneComplexTensors,
+      LowerTanhGradOp,
+      LowerXdivyOp,
+      LowerXlog1pyOp,
+      LowerXlogyOp,
+      LowerZerosLikeOp>(context);
+  // clang-format on
+}
+
 }  // namespace TF
 }  // namespace mlir

@@ -145,21 +145,20 @@ def select_replica(replica_id, structured):
 
 def select_replica_mirrored(replica_id, structured):
   """Specialize a nest of regular & mirrored values for one replica."""
+  assert_mirrored(structured)
+  return select_replica(replica_id, structured)
 
-  def _get_mirrored(x):
-    if isinstance(x, values_lib.DistributedValues):
-      if not is_mirrored(x):
-        raise TypeError(
-            "Expected value to be mirrored across replicas: %s in %s." %
-            (x, structured))
-      packed_var = getattr(x, "_packed_variable", None)
-      if packed_var is not None:
-        return packed_var
-      return x.values[replica_id]
-    else:
-      return x
 
-  return nest.map_structure(_get_mirrored, structured)
+def assert_mirrored(structured):
+  """Raises if the structured is not composed of mirrored or regular values."""
+
+  def _assert_mirrored(x):
+    if isinstance(x, values_lib.DistributedValues) and not is_mirrored(x):
+      raise TypeError(
+          "Expected value to be mirrored across replicas: %s in %s." %
+          (x, structured))
+
+  nest.map_structure(_assert_mirrored, structured)
 
 
 def update_regroup(extended, updates, group):

@@ -160,6 +160,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/engine",
         "//third_party/py/numpy",
     ],

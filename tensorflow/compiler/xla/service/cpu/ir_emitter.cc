@@ -1547,7 +1547,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     auto shard_type = accumulator_shard->getType()->getPointerElementType();
     if (auto vector_type = llvm::dyn_cast<llvm::VectorType>(shard_type)) {
       initial_value =
-          VectorSplat(vector_type->getNumElements(), init_value_ssa);
+          VectorSplat(vector_type->getElementCount(), init_value_ssa);
     } else {
       initial_value = init_value_ssa;
     }

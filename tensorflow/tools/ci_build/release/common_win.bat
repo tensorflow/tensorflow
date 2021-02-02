@@ -26,7 +26,12 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 @REM To have reproducible builds, these dependencies should be pinned always.
 @REM Prefer pinning to the same version as in setup.py
 @REM First, upgrade pypi wheels
-%PY_EXE% -m pip install --upgrade setuptools pip wheel
+%PY_EXE% -m pip install --upgrade "setuptools<53" pip wheel
+@REM NOTE: As numpy has releases that break semver guarantees and several other
+@REM deps depend on numpy without an upper bound, we must install numpy before
+@REM everything else.
+@REM TODO(mihaimaruseac): Convert to requirements.txt
+%PY_EXE% -m pip install "numpy ~= 1.19.2"
 @REM Now, install the deps, as listed in setup.py
 %PY_EXE% -m pip install "absl-py ~= 0.10"
 %PY_EXE% -m pip install "astunparse ~= 1.6.3"
@@ -34,7 +39,6 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PY_EXE% -m pip install "google_pasta ~= 0.2"
 %PY_EXE% -m pip install "h5py ~= 3.1.0"
 %PY_EXE% -m pip install "keras_preprocessing ~= 1.1.2"
-%PY_EXE% -m pip install "numpy ~= 1.19.2"
 %PY_EXE% -m pip install "opt_einsum ~= 3.3.0"
 %PY_EXE% -m pip install "protobuf >= 3.9.2"
 %PY_EXE% -m pip install "six ~= 1.15.0"

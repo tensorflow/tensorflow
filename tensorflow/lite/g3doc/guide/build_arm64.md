@@ -12,6 +12,9 @@ for TensorFlow Lite. Alternative install options include:
 or
 [build the full TensorFlow package](https://www.tensorflow.org/install/source).
 
+**Note:** Cross-compile ARM with CMake is available. Please check
+[this](https://www.tensorflow.org/lite/guide/build_cmake_arm).
+
 ## Cross-compile for ARM64 with Make
 
 To ensure the proper build environment, we recommend using one of our TensorFlow

@@ -42,8 +42,25 @@ filegroup(
         "gpu_op_atan.cc",
         "gpu_op_atanh.cc",
         "gpu_op_ceil.cc",
+        "gpu_op_complex.cc",
+        "gpu_op_complex_abs.cc",
+        "gpu_op_conj.cc",
         "gpu_op_cos.cc",
         "gpu_op_cosh.cc",
+        "gpu_op_erf.cc",
+        "gpu_op_erfc.cc",
+        "gpu_op_floor.cc",
+        "gpu_op_imag.cc",
+        "gpu_op_invert.cc",
+        "gpu_op_is_finite.cc",
+        "gpu_op_is_inf.cc",
+        "gpu_op_is_nan.cc",
+        "gpu_op_log.cc",
+        "gpu_op_log1p.cc",
+        "gpu_op_logical_not.cc",
+        "gpu_op_neg.cc",
+        "gpu_op_real.cc",
+        "gpu_op_rsqrt.cc",
         "gpu_op_sqrt.cc",
         "gpu_op_square.cc",
         "gpu_op_tan.cc",
@@ -57,28 +74,13 @@ filegroup(
     srcs = [
         "gpu_op_acos.cc",
         "gpu_op_acosh.cc",
+        "gpu_op_angle.cc",
         "gpu_op_asin.cc",
         "gpu_op_asinh.cc",
-        "gpu_op_complex.cc",
-        "gpu_op_complex_abs.cc",
-        "gpu_op_conj.cc",
-        "gpu_op_erf.cc",
-        "gpu_op_erfc.cc",
+        "gpu_op_digamma.cc",
         "gpu_op_exp.cc",
         "gpu_op_expm1.cc",
-        "gpu_op_floor.cc",
-        "gpu_op_imag.cc",
-        "gpu_op_invert.cc",
-        "gpu_op_is_finite.cc",
-        "gpu_op_is_inf.cc",
-        "gpu_op_is_nan.cc",
         "gpu_op_lgamma.cc",
-        "gpu_op_log.cc",
-        "gpu_op_log1p.cc",
-        "gpu_op_logical_not.cc",
-        "gpu_op_neg.cc",
-        "gpu_op_real.cc",
-        "gpu_op_rsqrt.cc",
         "gpu_op_sign.cc",
         "gpu_op_sin.cc",
         "gpu_op_sinh.cc",
@@ -129,6 +131,7 @@ tf_kernel_library(
         ":square_kernels",
         ":acos_kernels",
         ":acosh_kernels",
+        ":angle_kernels",
         ":asin_kernels",
         ":asinh_kernels",
         ":atan_kernels",
@@ -139,6 +142,7 @@ tf_kernel_library(
         ":conj_kernels",
         ":cos_kernels",
         ":cosh_kernels",
+        ":digamma_kernels",
         ":erf_kernels",
         ":erfc_kernels",
         ":exp_kernels",
@@ -368,6 +372,20 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "angle",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "2",
+)
+
+gen_kernel_library(
     name = "asin",
     tile_size = "256",
     types = [
@@ -411,8 +429,8 @@ gen_kernel_library(
     name = "conj",
     tile_size = "256",
     types = [
-        "f32",
-        "f64",
+        "c64",
+        "c128",
     ],
     unroll_factors = "2",
 )
@@ -451,10 +469,14 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "imag",
-    tile_size = "256",
-    types = [
+    output_types = [
         "f32",
         "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
     ],
 )
 
@@ -478,10 +500,14 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "real",
-    tile_size = "256",
-    types = [
+    output_types = [
         "f32",
         "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
     ],
 )
 
@@ -532,6 +558,10 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "complex",
+    output_types = [
+        "c64",
+        "c128",
+    ],
     tile_size = "1024",
     types = [
         "f32",
@@ -543,10 +573,14 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "complex_abs",
-    tile_size = "256",
-    types = [
+    output_types = [
         "f32",
         "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
     ],
 )
 
@@ -637,6 +671,7 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
+        output_types = ["i1"] * 8,
         tile_size = "1024",
         types = [
             "f16",
@@ -660,6 +695,7 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
+        output_types = ["i1"] * 7,
         tile_size = "1024",
         types = [
             "f16",
@@ -751,18 +787,36 @@ gen_kernel_library(
     )
     for name in [
         "ceil",
+        "digamma",
         "exp",
         "expm1",
         "floor",
-        "is_finite",
-        "is_inf",
-        "is_nan",
         "lgamma",
         "log",
         "log1p",
         "rsqrt",
         "sqrt",
         "tanh",
+    ]
+]
+
+# Kernels that support all floating-point types but have i1 output.
+[
+    gen_kernel_library(
+        name = name,
+        output_types = ["i1"] * 3,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+        unroll_factors = "4",
+    )
+    for name in [
+        "is_finite",
+        "is_inf",
+        "is_nan",
     ]
 ]
 

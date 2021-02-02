@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/padding.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/pooling.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
@@ -279,8 +279,9 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   auto& conv = gpu_subgraph->operations[1];
   conv.input_ids = {-1};
   conv.output_ids = {-2};
-  auto gpu_op = ConvolutionWino4x4To6x6(conv_def, shape_1, attr, gpu_info);
-  conv.task_desc = absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+  auto gpu_op =
+      CreateConvolutionWino4x4To6x6(conv_def, shape_1, attr, gpu_info);
+  conv.operation = absl::make_unique<ConvolutionGeneric>(std::move(gpu_op));
   OperationDef winograd_down_def;
   winograd_down_def.precision = op_def.precision;
   winograd_down_def.src_tensors.push_back(op_def.src_tensors[0]);
@@ -363,9 +364,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
               .ok()) {
         return absl::OkStatus();
       } else {
-        auto gpu_op = ConvolutionGeneric(op_def, output_shape, attr, gpu_info);
-        gpu_operation->task_desc =
-            absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
+        auto gpu_op =
+            CreateConvolutionGeneric(op_def, output_shape, attr, gpu_info);
+        gpu_operation->operation =
+            absl::make_unique<ConvolutionGeneric>(std::move(gpu_op));
       }
       break;
     }
@@ -413,6 +415,13 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
       gpu_operation->operation = SelectReduce(
           attr.dims, inputs[0]->tensor.shape, op_type, op_def, gpu_info);
+      return absl::OkStatus();
+    }
+    case OperationType::MEAN_STDDEV_NORMALIZATION: {
+      MeanStdDevNormalization operation = CreateMeanStdDevNormalization(
+          op_def, gpu_info, (inputs[0]->tensor.shape.c + 3) / 4);
+      gpu_operation->operation =
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation));
       return absl::OkStatus();
     }
     case OperationType::PAD: {
@@ -547,8 +556,6 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::BATCH_TO_SPACE:
     case OperationType::BATCHED_MATMUL:
     case OperationType::CONSTANT:
-    // TODO(b/162763635): implement MeanStddevNormalization for Metal.
-    case OperationType::MEAN_STDDEV_NORMALIZATION:
     case OperationType::SPACE_TO_BATCH:
       return absl::UnimplementedError("Unsupported op: " + node.operation.type);
     default:

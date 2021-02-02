@@ -595,6 +595,7 @@ foreach Mapping = [
                    [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_ConjOp, HLOClient_ConjOp],
                    [TF_CosOp, HLO_CosOp],
+                   [TF_DigammaOp, HLOClient_DigammaOp],
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_ErfOp, HLOClient_ErfOp],
                    [TF_ErfcOp, HLOClient_ErfcOp],
@@ -619,6 +620,8 @@ foreach Mapping = [
  def : Pat<(Mapping[0] HLO_Tensor:$input),
            (Mapping[1] $input)>;
 }
+
+def : Pat<(TF_AngleOp $x), (HLO_Atan2Op (HLO_ImagOp $x), (HLO_RealOp $x))>;
 
 // TODO(bixia): Lower Cast with a Complex type source operand or with
 // Truncate=True for floating point value conversions.
