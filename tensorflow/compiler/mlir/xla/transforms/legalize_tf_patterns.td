@@ -603,6 +603,7 @@ foreach Mapping = [
                    [TF_ImagOp, HLO_ImagOp],
                    [TF_InvertOp, HLO_NotOp],
                    [TF_IsFiniteOp, HLO_IsFiniteOp],
+                   [TF_IsInfOp, HLOClient_IsInfOp],
                    [TF_LgammaOp, HLOClient_LgammaOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_Log1pOp, HLO_Log1pOp],
