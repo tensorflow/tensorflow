@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -83,8 +84,10 @@ TEST(CostModelTest, GlobalId) {
   CostModelManager cost_model_manager;
   collector.BuildCostModel(&cost_model_manager, device_map);
   CostGraphDef cost_graph_def;
-  cost_model_manager.AddToCostGraphDef(graph1.get(), &cost_graph_def);
-  cost_model_manager.AddToCostGraphDef(graph2.get(), &cost_graph_def);
+  TF_ASSERT_OK(
+      cost_model_manager.AddToCostGraphDef(graph1.get(), &cost_graph_def));
+  TF_ASSERT_OK(
+      cost_model_manager.AddToCostGraphDef(graph2.get(), &cost_graph_def));
   ASSERT_EQ(cost_graph_def.node_size(), 12);
   absl::flat_hash_map<int32, const CostGraphDef::Node> ids;
   for (auto node : cost_graph_def.node()) {
