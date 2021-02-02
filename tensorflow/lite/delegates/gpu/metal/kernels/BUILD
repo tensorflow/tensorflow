@@ -268,6 +268,29 @@ ios_unit_test(
 )
 
 objc_library(
+    name = "mean_stddev_normalization_test_lib",
+    testonly = 1,
+    srcs = ["mean_stddev_normalization_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "mean_stddev_normalization_test",
+    testonly = 1,
+    minimum_os_version = "11.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":mean_stddev_normalization_test_lib"],
+)
+
+objc_library(
     name = "padding_test_lib",
     testonly = 1,
     srcs = ["padding_test.mm"],
@@ -687,6 +710,7 @@ objc_library(
         "fully_connected_test.mm",
         "lstm_test.mm",
         "max_unpooling_test.mm",
+        "mean_stddev_normalization_test.mm",
         "padding_test.mm",
         "pooling_test.mm",
         "prelu_test.mm",
@@ -721,6 +745,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:padding_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:pooling_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
