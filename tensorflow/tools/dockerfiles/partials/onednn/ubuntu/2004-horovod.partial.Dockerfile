@@ -3,6 +3,7 @@ ARG HOROVOD_WITHOUT_PYTORCH=1
 ARG HOROVOD_WITHOUT_MXNET=1
 ARG HOROVOD_WITH_TENSORFLOW=1
 ARG HOROVOD_VERSION=
+ARG PYTHON=python3
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     build-essential \
