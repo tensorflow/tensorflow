@@ -984,95 +984,73 @@ class SparseSegmentSumGpuOp : public AsyncOpKernel {
                                 "same length."),
         done);
 
-    ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
+    ScratchSpace<Tindex> output_rows_host(context, /*size=*/1,
+                                          /*on_host=*/true);
     auto stream = context->op_device_context()->stream();
 
     if (has_num_segments) {
       const Tensor& num_segments = context->input(3);
-      se::DeviceMemoryBase num_segments_device(
-          const_cast<Tensor&>(num_segments).template flat<Index>().data()
-      );
-      OP_REQUIRES_ASYNC(
-          context,
-          stream
-              ->ThenMemcpy(output_rows_host.mutable_data(), num_segments_device, sizeof(Index)).ok(),
-          errors::Internal(
-              "SparseSegmentSumGpuOp: failed to copy num_segments to host."),
-          done);
+      output_rows_host.tensor().CopyFrom(num_segments, num_segments.shape());
     } else {
       se::DeviceMemoryBase last_segment_id_on_device(
-          const_cast<Tensor&>(segment_ids).template flat<Index>().data() +
-          (num_indices - 1));
+          reinterpret_cast<Tindex*>(segment_ids.data()) + num_indices - 1);
       OP_REQUIRES_ASYNC(
           context,
           stream
-              ->ThenMemcpy(output_rows_host.mutable_data(), last_segment_id_on_device,
-                           sizeof(Index))
+              ->ThenMemcpy(output_rows_host.mutable_data(),
+                           last_segment_id_on_device, sizeof(Tindex))
               .ok(),
           errors::Internal(
               "SparseSegmentSumGpuOp: failed to copy output_rows to host."),
           done);
     }
 
-    const Index input_dims = input_data.dims();
+    const Tindex input_dims = input_data.dims();
     OP_REQUIRES_ASYNC(
         context, input_dims >= 1,
         errors::InvalidArgument("indices and segment_ids should have "
                                 "same length."),
         done);
 
-#define ACCUMULATE_MUL(SHAPE, RANGE, ACCUM) \
-  for (Index _i = 1; _i < RANGE; _i++) {    \
-    ACCUM *= SHAPE.dim_size(_i);            \
-  }                                         \
-  while (0)
-    Index accum = 1;
+    Tindex element_size = 1;
     const TensorShape input_shape = input_data.shape();
-    Index element_size_muta = 1;
     if (input_dims > 1) {
-      ACCUMULATE_MUL(input_shape, input_dims, accum);
-      element_size_muta = accum;
+      for (Tindex i = 1; i < input_dims; i++) {
+        element_size *= input_shape.dim_size(i);
+      }
     }
-    const Index element_size = element_size_muta;
 
-    functor::SparseSegmentSumFunctor<T, Index> functor_;
+    OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
+    Tindex output_rows = *output_rows_host.data();
+    // Since segment_ids starts from 0, the output_rows is increased by 1,
+    // if there is no specified num_segments value.
+    if (!has_num_segments) {
+      output_rows++;
+    }
 
-    auto create_and_check_output = [context, num_indices, element_size,
-                                    output_rows_host, &input_data, &indices,
-                                    &segment_ids, &functor_, done]() {
+    OP_REQUIRES_ASYNC(context, output_rows > 0,
+                      errors::InvalidArgument("Segment ids must be >= 0"),
+                      done);
+    TensorShape output_shape = input_data.shape();
+    output_shape.set_dim(0, output_rows);
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK_ASYNC(
+        context, context->allocate_output(0, output_shape, &output), done);
+
+    functor::SparseSegmentSumFunctor<T, Tindex> executant(
+        output_rows, num_indices * element_size,
+        &indices, &segment_ids, &input_data, output);
+
+    auto create_and_check_output = [context, &executant, done]() {
       auto stream = context->op_device_context()->stream();
       ScopedActivateExecutorContext scoped_activation{stream->parent()};
-
-      Index output_rows = *output_rows_host.data();
-      if (! has_num_segments) {
-        output_rows++;
-      }
-      OP_REQUIRES_ASYNC(context, output_rows > 0,
-                        errors::InvalidArgument("segment ids must be >= 0"),
-                        done);
-      TensorShape output_shape = input_data.shape();
-      output_shape.set_dim(0, output_rows);
-
-      Tensor* output = nullptr;
-      OP_REQUIRES_OK_ASYNC(
-          context, context->allocate_output(0, output_shape, &output), done);
-
-      auto output_flat = output->flat_outer_dims<T>();
-      auto data_ptr = input_data.template flat<T>().data();
-      const auto indices_flat = indices.flat<Index>();
-      const auto segment_flat = segment_ids.flat<Index>();
-
-      functor_(context, context->eigen_device<GPUDevice>(), output_rows,
-               segment_ids.shape(), indices_flat, segment_flat,
-               num_indices * element_size, data_ptr, output_flat);
+      executant(context, context->eigen_device<GPUDevice>());
       done();
     };
     context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
         stream, create_and_check_output);
   }
-
- private:
-  typedef int32 Index;
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -971,7 +971,7 @@ class SparseSegmentReductionGpuOpTest(SparseSegmentReductionHelper):
     for dtype in dtypes:
       for index_dtype in index_dtypes:
         for segment_ids_dtype in segment_ids_dtypes:
-          with self.cached_session(use_gpu=test_util.is_gpu_available()):
+          with self.cached_session(use_gpu=True):
             tf_indices, np_indices, tf_x, np_x = self._sparse_input(
                 shape, num_indices, dtype=dtype)
             for np_op1, np_op2, tf_op in ops_list:
@@ -991,7 +991,7 @@ class SparseSegmentReductionGpuOpTest(SparseSegmentReductionHelper):
     ops_list = [(np.add, None, math_ops.sparse_segment_sum)]
     segment_indices = [0, 2, 2, 2]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=test_util.is_gpu_available()):
+    with self.session(use_gpu=True):
       for np_op1, np_op2, tf_op in ops_list:
         np_ans = self._sparseSegmentReduce(np_x, tf_indices, segment_indices,
                                            np_op1, np_op2)
@@ -1005,7 +1005,7 @@ class SparseSegmentReductionGpuOpTest(SparseSegmentReductionHelper):
     segment_indices = [0, 2, 2, 2]
     tf_indices = [8, 3, 0, 9]
     num_segments = 5
-    with self.session(use_gpu=test_util.is_gpu_available()):
+    with self.session(use_gpu=True):
       for np_op1, np_op2, tf_op in ops_list:
         np_ans = self._sparseSegmentReduce(
             np_x,
@@ -1028,7 +1028,7 @@ class SparseSegmentReductionGpuOpTest(SparseSegmentReductionHelper):
     segment_indices = []
     tf_indices = []
     num_segments = 5
-    with self.session(use_gpu=test_util.is_gpu_available()):
+    with self.session(use_gpu=True):
       for tf_op in ops_list:
         s = tf_op(
             data=tf_x,
@@ -1043,7 +1043,7 @@ class SparseSegmentReductionGpuOpTest(SparseSegmentReductionHelper):
     ops_list = [(np.add, None, math_ops.sparse_segment_sum)]
     segment_indices = [1, 2, 2, 2]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=test_util.is_gpu_available()):
+    with self.session(use_gpu=True):
       for np_op1, np_op2, tf_op in ops_list:
         np_ans = self._sparseSegmentReduce(np_x, tf_indices, segment_indices,
                                            np_op1, np_op2)
@@ -1057,7 +1057,7 @@ class SparseSegmentReductionGpuOpTest(SparseSegmentReductionHelper):
     ops_list = [math_ops.sparse_segment_sum]
     segment_indices = [0, 1, 2, 2]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=test_util.is_gpu_available()):
+    with self.session(use_gpu=True):
       for tf_op in ops_list:
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         self.evaluate(s)
@@ -1069,7 +1069,7 @@ class SparseSegmentReductionGpuOpTest(SparseSegmentReductionHelper):
     segment_indices = [0, 1, 2, 2]
     num_indices = len(segment_indices)
     for tf_op in [math_ops.sparse_segment_sum]:
-      with self.cached_session(use_gpu=test_util.is_gpu_available()):
+      with self.cached_session(use_gpu=True):
         tf_indices, _, tf_x, np_x = self._sparse_input(
             shape, num_indices, dtype=dtypes_lib.float64)
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
@@ -1089,7 +1089,7 @@ class SparseSegmentReductionGpuOpTest(SparseSegmentReductionHelper):
     segment_indices = [0, 1, 2, 2]
     num_indices = len(segment_indices)
     for tf_op in [math_ops.sparse_segment_sum_with_num_segments]:
-      with self.cached_session(use_gpu=test_util.is_gpu_available()):
+      with self.cached_session(use_gpu=True):
         tf_indices, _, tf_x, np_x = self._sparse_input(
             shape, num_indices, dtype=dtypes_lib.float64)
         s = tf_op(

@@ -140,12 +140,20 @@ struct NonAtomicMinOpGpu {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T, typename Index>
 struct SparseSegmentSumFunctor {
-  void operator()(OpKernelContext* ctx, const GPUDevice& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
-                  typename TTypes<Index>::ConstFlat indices,
-                  typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output);
+  SparseSegmentSumFunctor(const Index output_rows, const Index data_size,
+                          const Tensor* indices, const Tensor* segment_ids,
+                          const Tensor* input, Tensor* output)
+        : output_rows_(output_rows), data_size_(data_size), indices_(indices),
+          segment_ids_(segment_ids), input_(input), output_(output) {}
+
+  void operator()(OpKernelContext* ctx, const GPUDevice& d);
+
+  const Index output_rows_;
+  const Index data_size_;
+  const Tensor* indices_;
+  const Tensor* segment_ids_;
+  const Tensor* input_;
+  Tensor* output_;
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
