@@ -366,25 +366,45 @@ Status DynamicDimensionInferenceVisitor::HandlePad(HloInstruction* hlo) {
         }
         const PaddingConfig_PaddingConfigDimension& padding_config =
             hlo->padding_config().dimensions(dimension);
-        if (padding_config.interior_padding() == 0) {
-          HloInstruction* dynamic_size_adjusted = dynamic_size;
-          HloInstruction* adjustment = hlo->parent()->AddInstruction(
+
+        HloInstruction* dynamic_size_adjusted = dynamic_size;
+        if (padding_config.interior_padding() != 0) {
+          // Adjust for interior padding :
+          // Size' = max((Size - 1), 0) * interior_padding + Size
+          HloInstruction* one = hlo->parent()->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+          HloInstruction* zero = hlo->parent()->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+          HloInstruction* interior_padding = hlo->parent()->AddInstruction(
               HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
-                  padding_config.edge_padding_low() +
-                  padding_config.edge_padding_high())));
+                  padding_config.interior_padding())));
+          dynamic_size_adjusted =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  dynamic_size_adjusted->shape(), HloOpcode::kSubtract,
+                  dynamic_size_adjusted, one));
+          dynamic_size_adjusted =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  dynamic_size_adjusted->shape(), HloOpcode::kMaximum,
+                  dynamic_size_adjusted, zero));
+          dynamic_size_adjusted =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  dynamic_size_adjusted->shape(), HloOpcode::kMultiply,
+                  dynamic_size_adjusted, interior_padding));
           dynamic_size_adjusted =
               hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
                   dynamic_size_adjusted->shape(), HloOpcode::kAdd,
-                  dynamic_size_adjusted, adjustment));
-          parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size_adjusted);
-          return Status::OK();
-        } else {
-          return Unimplemented(
-              "Dynamic dimension propagation on interio padding dimension is "
-              "not "
-              "supported: %s",
-              hlo->ToString());
+                  dynamic_size_adjusted, dynamic_size));
         }
+        HloInstruction* adjustment = hlo->parent()->AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+                padding_config.edge_padding_low() +
+                padding_config.edge_padding_high())));
+        dynamic_size_adjusted =
+            hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                dynamic_size_adjusted->shape(), HloOpcode::kAdd,
+                dynamic_size_adjusted, adjustment));
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size_adjusted);
+        return Status::OK();
       });
 }
 

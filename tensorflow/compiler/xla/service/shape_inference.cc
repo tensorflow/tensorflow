@@ -564,11 +564,6 @@ StatusOr<PrimitiveType> MaybeUpcast(
   std::vector<bool> is_dynamic(operand_shape.rank());
   for (int64 i = 0; i < operand_shape.dimensions_size(); ++i) {
     const auto& p = padding_config.dimensions(i);
-    if (operand_shape.is_dynamic_dimension(i) && p.edge_padding_high() != 0 &&
-        p.edge_padding_low() != 0 && p.interior_padding() != 0) {
-      return InvalidArgument(
-          "Dynamic dimension on padding dimension is not supported.");
-    }
     dimensions[i] = operand_shape.dimensions(i) + p.edge_padding_low() +
                     p.edge_padding_high() +
                     std::max<int64>(operand_shape.dimensions(i) - 1, 0LL) *
