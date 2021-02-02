@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_TSTRING_H_
 #define TENSORFLOW_C_TF_TSTRING_H_
 
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/ctstring.h"
 
 #ifdef SWIG
@@ -35,13 +36,15 @@ limitations under the License.
 extern "C" {
 #endif
 
-TF_CAPI_EXPORT extern TF_TString* TF_StringInit();
+TF_CAPI_EXPORT extern TF_TString* TF_StringInit(TF_Tensor* t);
 
 TF_CAPI_EXPORT extern void TF_StringCopy(TF_TString *dst, const char *src, size_t size);
 
+TF_CAPI_EXPORT extern void TF_StringAssignView(TF_TString *dst, const char *src, size_t size);
+
 TF_CAPI_EXPORT extern const char* TF_StringGetDataPointer(TF_TString* tstr);
 
-TF_CAPI_EXPORT extern size_t TF_StringGetSize(TF_TString* tstr);
+TF_CAPI_EXPORT extern size_t TF_StringGetSize(const TF_TString* tstr);
 
 TF_CAPI_EXPORT extern void TF_StringDealloc(TF_TString* tstr);
 

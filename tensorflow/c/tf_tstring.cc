@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tstring.h"
 #include "tensorflow/core/platform/ctstring_internal.h"
 
-TF_TString* TF_StringInit() { 
-  TF_TString* tstr;
+TF_TString* TF_StringInit(TF_Tensor* t) { 
+  TF_TString *tstr = static_cast<TF_TString*>(TF_TensorData(t));
   TF_TString_Init(tstr);
   return tstr;
 }
@@ -26,11 +27,15 @@ void TF_StringCopy(TF_TString *dst, const char *src, size_t size) {
   TF_TString_Copy(dst, src, size);
 }
 
+void TF_StringAssignView(TF_TString *dst, const char *src, size_t size) {
+  TF_TString_AssignView(dst, src, size);
+}
+
 const char* TF_StringGetDataPointer(TF_TString* tstr) {
   return TF_TString_GetDataPointer(tstr);
 }
 
-size_t TF_StringGetSize(TF_TString* tstr) {
+size_t TF_StringGetSize(const TF_TString* tstr) {
   return TF_TString_GetSize(tstr);
 }
 

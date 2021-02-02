@@ -321,7 +321,13 @@ cc_library(
         "tf_tstring.cc",
         "//tensorflow/core/platform:ctstring",
     ],
-    hdrs = ["tf_tstring.h"],
+    hdrs = [
+        "tf_tstring.h",
+        "tf_tensor.h",
+        "c_api_macros.h",
+        "tf_datatype.h",
+        "tf_status.h",
+    ],
     visibility = ["//visibility:public"],
 )
 
