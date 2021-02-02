@@ -14,9 +14,9 @@ cc_library(
     name = "default_selector",
     hdrs = ["default_selector.h"],
     deps = [
-        ":subgraph",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         _selectors_package + ":default_selector",
     ],
 )
@@ -27,7 +27,6 @@ cc_library(
     hdrs = ["operation_selector.h"],
     deps = [
         ":default_selector",
-        ":subgraph",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -36,6 +35,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common/tasks:add",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_xy",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_z",
@@ -58,16 +58,5 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
-    ],
-)
-
-cc_library(
-    name = "subgraph",
-    srcs = ["subgraph.cc"],
-    hdrs = ["subgraph.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
     ],
 )

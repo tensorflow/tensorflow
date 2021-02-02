@@ -10,7 +10,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/metal/selectors:subgraph",
+        "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "@com_google_absl//absl/strings",
     ],
 )
