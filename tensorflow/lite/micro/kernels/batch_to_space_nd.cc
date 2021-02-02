@@ -32,8 +32,6 @@ constexpr int kOutputTensor = 0;
 constexpr int kInputDims = 4;
 constexpr int kOutputDims = 4;
 
-}  // namespace.
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -94,6 +92,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
+
+}  // namespace.
 
 TfLiteRegistration Register_BATCH_TO_SPACE_ND() {
   return {/*init=*/nullptr,

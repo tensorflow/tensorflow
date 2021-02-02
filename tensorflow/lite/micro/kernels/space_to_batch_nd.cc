@@ -33,8 +33,6 @@ constexpr int kOutputTensor = 0;
 constexpr int kInputDims = 4;
 constexpr int kOutputDims = 4;
 
-}  // namespace.
-
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(SpaceToBatchParams));
@@ -108,6 +106,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
+
+}  // namespace.
 
 TfLiteRegistration Register_SPACE_TO_BATCH_ND() {
   return {/*init=*/Init,
