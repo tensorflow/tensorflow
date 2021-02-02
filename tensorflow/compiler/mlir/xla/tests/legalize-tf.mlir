@@ -5149,3 +5149,12 @@ func @replica_id() -> tensor<i32> {
   return %0 : tensor<i32>
 }
 
+// CHECK: func @angle_c64
+// CHECK-SAME: ([[ARG0:%.*]]: tensor<complex<f32>>)
+func @angle_c64(%arg0: tensor<complex<f32>>) -> tensor<f32> {
+// CHECK: [[IMAG:%.*]] = "mhlo.imag"([[ARG0]])
+// CHECK: [[REAL:%.*]] = "mhlo.real"([[ARG0]])
+// CHECK: [[ATAN2:%.*]] = mhlo.atan2 [[IMAG]], [[REAL]]
+  %0 = "tf.Angle"(%arg0): (tensor<complex<f32>>) -> tensor<f32>
+  return %0 : tensor<f32>
+}

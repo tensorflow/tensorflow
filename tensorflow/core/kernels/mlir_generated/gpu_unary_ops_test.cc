@@ -194,7 +194,7 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 
 /// Test `tf.Acos`.
 
-// Test only values in the function domain. The othweise returned nan value
+// Test only values in the function domain. The otherwise returned nan value
 // fails comparison for equality.
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
@@ -214,9 +214,29 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acosh, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterEqualOne<double>(),
     std::acosh, test::GpuOpsTestConfig())
 
+/// Test `tf.Angle`.
+
+template <typename T>
+typename T::value_type baseline_angle(T x) {
+  return std::arg(x);
+}
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Angle, DT_COMPLEX64, DT_FLOAT,
+    test::ComplexInputFromValues<std::complex<float>>(
+        test::DefaultInputNonZero<float>(), test::DefaultInputNonZero<float>()),
+    baseline_angle, test::GpuOpsTestConfig().AddTout().NoBufferReuse())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Angle, DT_COMPLEX128, DT_DOUBLE,
+    test::ComplexInputFromValues<std::complex<double>>(
+        test::DefaultInputNonZero<double>(),
+        test::DefaultInputNonZero<double>()),
+    baseline_angle, test::GpuOpsTestConfig().AddTout().NoBufferReuse())
+
 /// Test `tf.Asin`.
 
-// Test only values in the function domain. The othweise returned nan value
+// Test only values in the function domain. The otherwise returned nan value
 // fails comparison for equality.
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Asin, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),

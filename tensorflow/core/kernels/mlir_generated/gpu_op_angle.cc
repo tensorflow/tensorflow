@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include <complex>
 
-#include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
 
 namespace tensorflow {
-namespace functor {
-#if GOOGLE_CUDA
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
-DEFINE_UNARY2(get_angle, complex64, complex128);
-#endif
-#endif
-}  // namespace functor
-}  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+GENERATE_UNARY_KERNEL2(Angle, c64, f32, DT_FLOAT, float, std::complex<float>);
+REGISTER_COMPLEX_KERNEL(Angle, c64, f32, float, std::complex<float>);
+GENERATE_UNARY_KERNEL2(Angle, c128, f64, DT_DOUBLE, double,
+                       std::complex<double>);
+REGISTER_COMPLEX_KERNEL(Angle, c128, f64, double, std::complex<double>);
+
+}  // namespace tensorflow

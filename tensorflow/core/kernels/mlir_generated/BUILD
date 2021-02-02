@@ -71,6 +71,7 @@ filegroup(
     srcs = [
         "gpu_op_acos.cc",
         "gpu_op_acosh.cc",
+        "gpu_op_angle.cc",
         "gpu_op_asin.cc",
         "gpu_op_asinh.cc",
         "gpu_op_exp.cc",
@@ -129,6 +130,7 @@ tf_kernel_library(
         ":square_kernels",
         ":acos_kernels",
         ":acosh_kernels",
+        ":angle_kernels",
         ":asin_kernels",
         ":asinh_kernels",
         ":atan_kernels",
@@ -365,6 +367,20 @@ gen_kernel_library(
         "f64",
     ],
     unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "angle",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "2",
 )
 
 gen_kernel_library(
