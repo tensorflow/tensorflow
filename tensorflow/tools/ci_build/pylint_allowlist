@@ -1,5 +1,6 @@
 ^tensorflow/compiler/tests/binary_ops_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/compiler/tests/image_ops_test.py.*\[E1121.*too-many-function-args
+^tensorflow/compiler/tests/unary_ops_test.py.*\[E1130.*invalid-unary-operand-type
 ^tensorflow/contrib/eager/python/evaluator\.py.*\[E0202.*method-hidden
 ^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden
 ^tensorflow/contrib/layers/python/layers/feature_column\.py.*\[E0110.*abstract-class-instantiated
@@ -51,6 +52,7 @@
 ^tensorflow/python/keras/engine/base_layer_v1.py.*\[E1102.*not-callable
 ^tensorflow/python/keras/engine/base_preprocessing_layer.py.*\[E0202.*method-hidden
 ^tensorflow/python/keras/engine/base_preprocessing_layer_test.py.*\[E0202.*method-hidden
+^tensorflow/python/keras/engine/sequential.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/keras/layers/convolutional_transpose_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/python/keras/layers/preprocessing/.*\[E1102.*not-callable
 ^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition
@@ -112,6 +114,8 @@
 ^tensorflow/python/ops/numpy_ops/__init__.py.*\[W0622.*redefined-builtin
 ^tensorflow/python/ops/numpy_ops/np_array_ops_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/ops/parallel_for/control_flow_ops_test.py.*\[C0330.*bad-continuation
+^tensorflow/python/ops/parallel_for/control_flow_ops_test.py.*\[E1120.*no-value-for-parameter
+^tensorflow/python/ops/parallel_for/control_flow_ops_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/ops/ragged/ragged_getitem_test.py.*\[E1111.*assignment-from-no-return
 ^tensorflow/python/ops/ragged/ragged_operators_test.py.*\[E1130.*invalid-unary-operand-type
 ^tensorflow/python/ops/resource_variable_ops.py.*\[E1120.*no-value-for-parameter

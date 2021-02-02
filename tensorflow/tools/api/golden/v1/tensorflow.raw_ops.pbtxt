@@ -2797,6 +2797,10 @@ tf_module {
     argspec: "args=[\'component_types\', \'shapes\', \'capacity\', \'container\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
+    name: "ParallelBatchDataset"
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "ParallelConcat"
     argspec: "args=[\'values\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

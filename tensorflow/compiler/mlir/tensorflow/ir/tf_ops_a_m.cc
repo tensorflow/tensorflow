@@ -1074,6 +1074,9 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
   if (axis_attr.getNumElements() != 1) return failure();
   int64_t axis =
       axis_attr.getSplatValue<IntegerAttr>().getValue().getSExtValue();
+  // TODO(ezhulenev): Compute axis from rank. e.g. It might be common to concat
+  // on the channels dim for NCHW layout as axis=-2.
+  if (axis < 0) return failure();
 
   // All concat operands must be defined by ops.
   Operation *first_arg_op = op.values().front().getDefiningOp();
@@ -1121,6 +1124,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
 Optional<HoistCwiseBinaryOutOfConcat::HoistParams>
 HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
                                             int64_t axis) const {
+  assert(axis >= 0);
   // Collects lhs or rhs arguments of concat op operands.
   auto args = [&](int operand_idx) -> SmallVector<Value, 8> {
     auto range = llvm::map_range(op.values(), [&](Value arg) {
@@ -1165,6 +1169,10 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
     std::array<int64_t, 1> rhs_dims{static_cast<int64_t>(op.values().size())};
     auto rhs_type = RankedTensorType::get(rhs_dims, ranked.getElementType());
     return HoistParams{args(0), args(1), axis, 0, op.getType(), rhs_type};
+  } else if (is_all_tensors(1, axis) && is_all_scalars(0)) {
+    std::array<int64_t, 1> lhs_dims{static_cast<int64_t>(op.values().size())};
+    auto lhs_type = RankedTensorType::get(lhs_dims, ranked.getElementType());
+    return HoistParams{args(0), args(1), 0, axis, lhs_type, op.getType()};
   }
 
   return None;

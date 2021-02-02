@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 
 namespace tflite {
 namespace gpu {

@@ -383,6 +383,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseSoftmax);
   }
 
+  TfLiteStatus AddSpaceToBatchNd() {
+    return AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND,
+                      Register_SPACE_TO_BATCH_ND(), ParseSpaceToBatchNd);
+  }
+
   TfLiteStatus AddSplit() {
     return AddBuiltin(BuiltinOperator_SPLIT,
                       tflite::ops::micro::Register_SPLIT(), ParseSplit);

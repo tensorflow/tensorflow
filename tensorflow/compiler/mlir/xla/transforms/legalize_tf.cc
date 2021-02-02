@@ -70,7 +70,6 @@ namespace mhlo {
 namespace {
 
 constexpr char kShardingAttr[] = "mhlo.sharding";
-constexpr char kLayoutAttr[] = "layout";
 
 class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -4609,9 +4608,6 @@ class ConvertInfeedDequeueTupleOp
         rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
                                   /*infeed_config=*/rewriter.getStringAttr(""));
 
-    data_and_token->setAttr(kLayoutAttr,
-                            GetLayout(data_and_token_type, rewriter));
-
     if (op._XlaSharding().hasValue()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
       // proto, so convert to a text form here.
@@ -6144,7 +6140,7 @@ LogicalResult legalizeTF(
   PopulateLegalizeTfPatterns(context, &patterns);
 
   // Add TF->TF lowering patterns.
-  TF::PopulateLoweringTFPatterns(context, &patterns);
+  TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
 
   // Add TF->HLO legalization patterns via TF2XLA fallback.
   if (tf2xla_fallback_device_type.hasValue()) {

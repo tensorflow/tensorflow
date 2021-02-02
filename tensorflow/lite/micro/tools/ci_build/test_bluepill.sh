@@ -34,9 +34,9 @@ readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} 
 
 # check that the release build is ok.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build BUILD_TYPE=release
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} OPTIMIZATION_LEVEL=-O3 BUILD_TYPE=release build
 
 # Next, build w/o release so that we can run the tests and get additional
 # debugging info on failures.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} OPTIMIZATION_LEVEL=-Os test

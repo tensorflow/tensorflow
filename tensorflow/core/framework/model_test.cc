@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/model.h"
+
 #include <memory>
 
 #include "tensorflow/core/lib/gtl/cleanup.h"

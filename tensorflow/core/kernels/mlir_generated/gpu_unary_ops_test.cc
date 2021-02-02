@@ -194,7 +194,7 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 
 /// Test `tf.Acos`.
 
-// Test only values in the function domain. The othweise returned nan value
+// Test only values in the function domain. The otherwise returned nan value
 // fails comparison for equality.
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
@@ -214,9 +214,29 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acosh, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterEqualOne<double>(),
     std::acosh, test::GpuOpsTestConfig())
 
+/// Test `tf.Angle`.
+
+template <typename T>
+typename T::value_type baseline_angle(T x) {
+  return std::arg(x);
+}
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Angle, DT_COMPLEX64, DT_FLOAT,
+    test::ComplexInputFromValues<std::complex<float>>(
+        test::DefaultInputNonZero<float>(), test::DefaultInputNonZero<float>()),
+    baseline_angle, test::GpuOpsTestConfig().AddTout().NoBufferReuse())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Angle, DT_COMPLEX128, DT_DOUBLE,
+    test::ComplexInputFromValues<std::complex<double>>(
+        test::DefaultInputNonZero<double>(),
+        test::DefaultInputNonZero<double>()),
+    baseline_angle, test::GpuOpsTestConfig().AddTout().NoBufferReuse())
+
 /// Test `tf.Asin`.
 
-// Test only values in the function domain. The othweise returned nan value
+// Test only values in the function domain. The otherwise returned nan value
 // fails comparison for equality.
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Asin, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
@@ -307,6 +327,40 @@ GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
 
 GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
                       test::GpuOpsTestConfig())
+
+/// Test `tf.Digamma`.
+
+/// Reference implementation.
+double baseline_digamma(double x) {
+  constexpr int kN = 100000;
+  constexpr double kGammaE = 0.5772156649015328606065120900824024;
+  double z = x - 1;
+  double sum = -kGammaE;
+  for (int i = 1; i <= kN; i++) {
+    sum += z / (i * (i + z));
+  }
+  return sum;
+}
+
+// Exclude non-positive integer values as `digamma` is undefined for these and
+// the test framework does not suppot NaN comparisons.
+constexpr std::initializer_list<double> kDigammaValues = {
+    -18.1, -9.2, -0.7, -0.5, -0.3, -0.2, -0.1, -1e-6,
+    1e-6,  0.1,  0.2,  0.3,  0.5,  0.7,  0.9,  18.0};
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Digamma, DT_FLOAT, DT_DOUBLE, DT_FLOAT, DT_DOUBLE,
+    test::InputAsVector<float>(kDigammaValues), baseline_digamma,
+    test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Digamma, DT_DOUBLE, DT_DOUBLE, test::InputAsVector<double>(kDigammaValues),
+    baseline_digamma, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Digamma, DT_HALF, DT_DOUBLE, DT_HALF, DT_DOUBLE,
+    test::InputAsVector<Eigen::half>(kDigammaValues), baseline_digamma,
+    test::GpuOpsTestConfig())
 
 /// Test `tf.Erf` and `tf.Erfc`.
 

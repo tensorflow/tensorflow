@@ -40,16 +40,11 @@ const char* const kDlTensorCapsuleName = "dltensor";
 struct DLPackTensor {
   ~DLPackTensor();
 
-  // At most one of owned_buffer and buffer_reference/external_reference_hold is
-  // populated.
-
-  // `owned_buffer` is populated if we have exclusive (read-write) access.
-  std::shared_ptr<void> owned_buffer;
-
-  // `buffer_reference` and `external_reference_hold` are populated if we have
-  // shared (read-only) access.
+  // `buffer_reference` is populated if we have shared (read-only) access.
   py::object buffer_reference;
-  std::unique_ptr<PjRtBuffer::ExternalReferenceHold> external_reference_hold;
+
+  // `external_reference` is always populated.
+  std::unique_ptr<PjRtBuffer::ExternalReference> external_reference;
 
   std::vector<int64> shape;
   std::vector<int64> strides;
@@ -266,7 +261,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   if (take_ownership) {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
-    StatusOr<absl::optional<std::shared_ptr<void>>> buffer_or =
+    StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>> buffer_or =
         buffer->buffer()->ReleaseDeviceMemoryOwnership(
             /*wait_for_operations_to_complete=*/true);
     if (!buffer_or.ok()) {
@@ -274,23 +269,20 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
           "Buffer synchronization failed converting to DLPack tensor: %s",
           buffer_or.status().ToString());
     }
-    absl::optional<std::shared_ptr<void>> owned_buffer_opt =
-        buffer_or.ConsumeValueOrDie();
-    if (!owned_buffer_opt.has_value()) {
+    pack->external_reference = buffer_or.ConsumeValueOrDie();
+    if (!pack->external_reference) {
       return InvalidArgument(
           "Cannot convert deleted/invalid buffer to DLPack tensor.");
     }
-    pack->owned_buffer = owned_buffer_opt.value();
-    dt.data = pack->owned_buffer.get();
   } else {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
     TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
     pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
-    TF_ASSIGN_OR_RETURN(pack->external_reference_hold,
+    TF_ASSIGN_OR_RETURN(pack->external_reference,
                         buffer->buffer()->AcquireExternalReference());
-    dt.data = pack->external_reference_hold->OpaqueDeviceMemoryDataPointer();
   }
+  dt.data = pack->external_reference->OpaqueDeviceMemoryDataPointer();
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
   TF_ASSIGN_OR_RETURN(dt.ctx, DLContextForDevice(*buffer->buffer()->device()));

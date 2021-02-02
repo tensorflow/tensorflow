@@ -618,8 +618,8 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
-  def test_output_shape(self):
-    input_data = keras.Input(shape=(4,), dtype=dtypes.string)
+  def test_int_output_shape(self):
+    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.string)
     layer = get_layer_class()(
         max_tokens=2,
         num_oov_indices=1,
@@ -627,7 +627,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
         oov_token="[OOV]",
         dtype=dtypes.string)
     int_data = layer(input_data)
-    self.assertAllEqual(int_data.shape[1:], input_data.shape[1:])
+    self.assertAllEqual(int_data.shape.as_list(), [16, 4])
 
   def test_int_output_no_reserved_zero(self):
     vocab_data = ["earth", "wind", "and", "fire"]
@@ -666,6 +666,70 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
+
+  def test_binary_output(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[0, 0, 1, 1, 1, 1], [0, 1, 1, 0, 1, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.BINARY,
+        dtype=dtypes.string)
+    layer.set_vocabulary(vocab_data)
+    binary_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=binary_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_binary_output_shape(self):
+    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=2,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.BINARY,
+        dtype=dtypes.string)
+    binary_data = layer(input_data)
+    self.assertAllEqual(binary_data.shape.as_list(), [16, 2])
+
+  def test_count_output(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "wind"],
+                            ["fire", "fire", "fire", "michigan"]])
+    expected_output = [[0, 0, 1, 2, 1, 0], [0, 1, 0, 0, 0, 3]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.COUNT,
+        dtype=dtypes.string)
+    layer.set_vocabulary(vocab_data)
+    count_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=count_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_count_output_shape(self):
+    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=2,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.COUNT,
+        dtype=dtypes.string)
+    count_data = layer(input_data)
+    self.assertAllEqual(count_data.shape.as_list(), [16, 2])
 
 
 @keras_parameterized.run_all_keras_modes

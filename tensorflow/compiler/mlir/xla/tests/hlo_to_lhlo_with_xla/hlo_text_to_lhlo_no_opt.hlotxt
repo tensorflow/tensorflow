@@ -215,8 +215,8 @@ add {
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
-  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
-  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
+  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
 }
 
 // -----
@@ -236,12 +236,12 @@ add {
 // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
 // CHECK:  }) {
 // CHECK-NOT:  channel_id
-// CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
+// CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 4]]> : tensor<2x4xi64>
 // CHECK-SAME: (memref<8xf32>, memref<5xf32>, memref<8xf32>, memref<5xf32>) -> ()
 %test_all_reduce_tuple {
   input = f32[8] parameter(0)
   %tuple = (f32[8], f32[5]) custom-call(),custom_call_target="make-tuple"
-  ROOT result = (f32[8], f32[5]) all-reduce(%tuple), replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
+  ROOT result = (f32[8], f32[5]) all-reduce(%tuple), replica_groups={{0,1,2,3}, {5,6,7,4}}, to_apply=add
 }
 
 // -----
@@ -596,6 +596,35 @@ HloModule TestModule
 // CHECK:   "lmhlo.rng_get_and_update_state"(%{{.*}}) {delta = 131072 : i64} : (memref<2xui64>) -> ()
 ENTRY main {
   ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=131072
+}
+
+// -----
+
+HloModule TestAllGather
+
+// CHECK: func @main
+// CHECK: "lmhlo.all_gather"
+// CHECK_SAME: all_gather_dimension = 1 : i64
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+// CHECK-SAME: use_global_device_ids = false
+ENTRY main {
+  param0 = f32[10,20] parameter(0)
+  ROOT ag = f32[10,80] all-gather(param0), replica_groups={{0,1,2,3}},
+    dimensions={1}
+}
+
+// -----
+
+// CHECK: func @entry
+// CHECK: "lmhlo.all_to_all"
+// CHECK-SAME: constrain_layout = false
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+HloModule TestAllToAll
+ENTRY entry {
+  p0 = f32[128,4]{0,1} parameter(0)
+  p1 = f32[128,4]{1,0} parameter(1)
+  ROOT a2a = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(p0, p1),
+    replica_groups={{0,1}}
 }
 
 

@@ -570,16 +570,53 @@ bool PjRtStreamExecutorBuffer::IsOnCpu() const {
   return client()->platform_id() == kCpuId;
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer::ExternalReferenceHold>>
+namespace {
+
+// Implements PjRtBuffer::ExternalReference as a wrapped
+// ScopedHold::kExternalReference.
+class ScopedHoldAsExternalReference : public PjRtBuffer::ExternalReference {
+ public:
+  explicit ScopedHoldAsExternalReference(
+      PjRtStreamExecutorBuffer::ScopedHold hold)
+      : external_reference_(std::move(hold)) {
+    CHECK(external_reference_.type() ==
+          PjRtStreamExecutorBuffer::ScopedHold::kExternalReference);
+    data_ptr_ = external_reference_->device_memory().front().opaque();
+  }
+
+  ~ScopedHoldAsExternalReference() override = default;
+
+ private:
+  PjRtStreamExecutorBuffer::ScopedHold external_reference_;
+};
+
+}  // namespace
+
+StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
 PjRtStreamExecutorBuffer::AcquireExternalReference() {
   ScopedHold hold = GetBufferWithExternalReference();
   Status hold_status = hold.status();
   if (!hold_status.ok()) return hold_status;
-  return std::unique_ptr<ExternalReferenceHold>(
+  return std::unique_ptr<ExternalReference>(
       std::make_unique<ScopedHoldAsExternalReference>(std::move(hold)));
 }
 
-StatusOr<absl::optional<std::shared_ptr<void>>>
+class TrackedDeviceBufferExternalReference
+    : public PjRtBuffer::ExternalReference {
+ public:
+  explicit TrackedDeviceBufferExternalReference(
+      std::shared_ptr<TrackedDeviceBuffer> tracked_device_buffer)
+      : tracked_device_buffer_(std::move(tracked_device_buffer)) {
+    data_ptr_ = tracked_device_buffer_->device_memory()[0].opaque();
+  }
+
+  ~TrackedDeviceBufferExternalReference() override = default;
+
+ private:
+  std::shared_ptr<TrackedDeviceBuffer> tracked_device_buffer_;
+};
+
+StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
 PjRtStreamExecutorBuffer::ReleaseDeviceMemoryOwnership(
     bool wait_for_operations_to_complete) {
   if (on_device_shape_.IsTuple()) {
@@ -590,14 +627,12 @@ PjRtStreamExecutorBuffer::ReleaseDeviceMemoryOwnership(
       std::shared_ptr<TrackedDeviceBuffer> tracked_device_buffer,
       Release(wait_for_operations_to_complete));
 
-  if (!tracked_device_buffer) {
-    // Buffer has been deleted.
-    return {absl::nullopt};
+  std::unique_ptr<PjRtBuffer::ExternalReference> ref;
+  if (tracked_device_buffer) {
+    ref = std::make_unique<TrackedDeviceBufferExternalReference>(
+        std::move(tracked_device_buffer));
   }
-  void* opaque_ptr = tracked_device_buffer->device_memory()[0].opaque();
-  return absl::make_optional<std::shared_ptr<void>>(
-      opaque_ptr,
-      [tracked_device_buffer = std::move(tracked_device_buffer)](void*) {});
+  return ref;
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>>

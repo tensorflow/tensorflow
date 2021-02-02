@@ -534,5 +534,6 @@ def dense_bincount(inputs, out_depth, binary_output, count_weights=None):
       dtype=K.floatx(),
       axis=-1,
       binary_output=binary_output)
-  result.set_shape(tensor_shape.TensorShape((None, out_depth)))
+  batch_size = inputs.shape.as_list()[0]
+  result.set_shape(tensor_shape.TensorShape((batch_size, out_depth)))
   return result
