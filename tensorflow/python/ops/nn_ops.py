@@ -72,7 +72,7 @@ def _get_sequence(value, n, channel_index, name):
   if value is None:
     return [1] * (n + 2)
 
-  # `value` should not 0
+  # `value` should not be 0
   if value == 0:
     raise FloatingPointError("{} should not be 0".format(name))
 
