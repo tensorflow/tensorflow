@@ -328,6 +328,40 @@ GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
 GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
                       test::GpuOpsTestConfig())
 
+/// Test `tf.Digamma`.
+
+/// Reference implementation.
+double baseline_digamma(double x) {
+  constexpr int kN = 100000;
+  constexpr double kGammaE = 0.5772156649015328606065120900824024;
+  double z = x - 1;
+  double sum = -kGammaE;
+  for (int i = 1; i <= kN; i++) {
+    sum += z / (i * (i + z));
+  }
+  return sum;
+}
+
+// Exclude non-positive integer values as `digamma` is undefined for these and
+// the test framework does not suppot NaN comparisons.
+constexpr std::initializer_list<double> kDigammaValues = {
+    -18.1, -9.2, -0.7, -0.5, -0.3, -0.2, -0.1, -1e-6,
+    1e-6,  0.1,  0.2,  0.3,  0.5,  0.7,  0.9,  18.0};
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Digamma, DT_FLOAT, DT_DOUBLE, DT_FLOAT, DT_DOUBLE,
+    test::InputAsVector<float>(kDigammaValues), baseline_digamma,
+    test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Digamma, DT_DOUBLE, DT_DOUBLE, test::InputAsVector<double>(kDigammaValues),
+    baseline_digamma, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Digamma, DT_HALF, DT_DOUBLE, DT_HALF, DT_DOUBLE,
+    test::InputAsVector<Eigen::half>(kDigammaValues), baseline_digamma,
+    test::GpuOpsTestConfig())
+
 /// Test `tf.Erf` and `tf.Erfc`.
 
 // Use specific values to cover the different intervals in the f64 erf and f64

@@ -77,6 +77,7 @@ filegroup(
         "gpu_op_angle.cc",
         "gpu_op_asin.cc",
         "gpu_op_asinh.cc",
+        "gpu_op_digamma.cc",
         "gpu_op_exp.cc",
         "gpu_op_expm1.cc",
         "gpu_op_lgamma.cc",
@@ -141,6 +142,7 @@ tf_kernel_library(
         ":conj_kernels",
         ":cos_kernels",
         ":cosh_kernels",
+        ":digamma_kernels",
         ":erf_kernels",
         ":erfc_kernels",
         ":exp_kernels",
@@ -785,6 +787,7 @@ gen_kernel_library(
     )
     for name in [
         "ceil",
+        "digamma",
         "exp",
         "expm1",
         "floor",
