@@ -129,6 +129,7 @@ cc_library(
 
 cc_library(
     name = "pjrt_client",
+    srcs = ["pjrt_client.cc"],
     hdrs = ["pjrt_client.h"],
     visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [

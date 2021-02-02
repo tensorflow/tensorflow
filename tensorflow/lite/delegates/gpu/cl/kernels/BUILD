@@ -358,7 +358,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization",
+        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

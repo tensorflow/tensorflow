@@ -461,6 +461,19 @@ cc_library(
 )
 
 cc_library(
+    name = "mean_stddev_normalization_test_util",
+    testonly = 1,
+    srcs = ["mean_stddev_normalization_test_util.cc"],
+    hdrs = ["mean_stddev_normalization_test_util.h"],
+    deps = [
+        ":mean_stddev_normalization",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "padding",
     srcs = ["padding.cc"],
     hdrs = ["padding.h"],

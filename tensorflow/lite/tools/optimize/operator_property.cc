@@ -907,6 +907,12 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.restrict_same_input_output_scale = true;
       property.version = 3;
       break;
+    case BuiltinOperator_SELECT:
+      property.inputs = {{1, {}}, {2, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
+      break;
     case BuiltinOperator_SHAPE:
       property.inputs = {{0, {}}};
       // Shape has no quantizable output.

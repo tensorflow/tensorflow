@@ -594,12 +594,26 @@ func @shape_of_dynamic_reshape(%arg0: tensor<*xf32>, %shape: tensor<2xindex>) ->
   return %1 : tensor<2xindex>
 }
 
+// CHECK-LABEL: func @dynamic_reshape_rank_1_to_rank_1
+// CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
+func @dynamic_reshape_rank_1_to_rank_1(%arg0: tensor<?xcomplex<f32>>,
+    %shape: tensor<?xindex>) -> tensor<?xf32> {
+  // CHECK: [[RES:%[a-zA-Z0-9]+]] = "mhlo.real"([[ARG0]]) : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  // CHECK: return [[RES]]
+  %0 = "mhlo.real"(%arg0): (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  %1 = shape.shape_of %arg0 : tensor<?xcomplex<f32>> -> tensor<1xindex>
+  %2 = shape.num_elements %1 : tensor<1xindex> -> index
+  %3 = tensor.from_elements %2 : tensor<1xindex>
+  %4 = "mhlo.dynamic_reshape"(%0, %3)
+    : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  return %4 : tensor<?xf32>
+}
+
 // CHECK-LABEL: func @dynamic_reshape_of_dynamic_reshape
 // CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
 // CHECK-SAME: [[ARG1:%[a-zA-Z0-9]+]]
 func @dynamic_reshape_of_dynamic_reshape(%arg0: tensor<?xf16>, %shape: tensor<?xindex>) -> tensor<?xf16> {
-  // CHECK: [[RES:%[a-zA-Z0-9]+]] = "mhlo.dynamic_reshape"([[ARG0]], %{{[a-zA-Z0-9]+}}) : (tensor<?xf16>, tensor<1xindex>) -> tensor<?xf16>
-  // CHECK: return [[RES]]
+  // CHECK: return [[ARG0]]
   %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf16>, tensor<?xindex>) -> tensor<*xf16>
   %1 = shape.shape_of %0 : tensor<*xf16> -> tensor<?xindex>
   %2 = shape.num_elements %1 : tensor<?xindex> -> index

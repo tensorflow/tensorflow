@@ -170,9 +170,11 @@ void MoveResultsAfter(Operation* result_op, Operation* after_op) {
   while (!queue.empty()) {
     auto* op = queue.front();
     queue.pop();
-    for (Operation* user : op->getUsers()) queue.push(user);
-    if (op->isBeforeInBlock(after_op)) op->moveAfter(after_op);
-    after_op = op;
+    if (op->isBeforeInBlock(after_op)) {
+      op->moveAfter(after_op);
+      after_op = op;
+      for (Operation* user : op->getUsers()) queue.push(user);
+    }
   }
 }
 
