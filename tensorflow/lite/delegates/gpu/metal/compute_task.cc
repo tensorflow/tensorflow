@@ -63,62 +63,21 @@ int3 GetWorkGroupsCount(int grid_dimension, const int3& grid_size,
 }
 }  // namespace
 
-void ComputeTask::Init(std::unique_ptr<ComputeTaskDescriptor>&& task_desc) {
-  task_desc_ = std::move(task_desc);
-}
-
 void ComputeTask::Init(std::unique_ptr<GPUOperation>&& operation) {
   operation_ = std::move(operation);
 }
 
 const OperationDef& ComputeTask::GetDefinition() const {
-  if (task_desc_) {
-    return task_desc_->definition;
-  } else {
-    return operation_->definition_;
-  }
+  return operation_->definition_;
 }
 
-bool ComputeTask::IsLinkable() const {
-  if (task_desc_) {
-    return task_desc_->is_linkable;
-  } else {
-    return operation_->IsLinkable();
-  }
-}
+bool ComputeTask::IsLinkable() const { return operation_->IsLinkable(); }
 
 absl::Status ComputeTask::AddTask(ComputeTask* task) {
-  if (task_desc_ && task->operation_) {
-    return task_desc_->AddOperation(task->operation_.get());
-  }
-  if (operation_ && task->operation_) {
-    return operation_->AddOperation(task->operation_.get());
-  }
-  return absl::UnimplementedError(
-      "Not implemented this combination of task fusion");
+  return operation_->AddOperation(task->operation_.get());
 }
 
 absl::Status ComputeTask::Compile(MetalDevice* device) {
-  if (task_desc_) {
-    return CompileTask(device);
-  } else {
-    return CompileOperation(device);
-  }
-}
-
-absl::Status ComputeTask::CompileTask(MetalDevice* device) {
-  task_desc_->AssembleCode();
-  const std::map<std::string, std::string> linkables = {
-      {task_desc_->dst_tensors_names[0], task_desc_->elementwise_code}};
-  RETURN_IF_ERROR(metal_args_.Init(linkables, device, &task_desc_->args,
-                                   &task_desc_->shader_source));
-  task_desc_->args.ReleaseCPURepresentation();
-
-  return CompileProgram(device, task_desc_->definition.precision,
-                        task_desc_->shader_source);
-}
-
-absl::Status ComputeTask::CompileOperation(MetalDevice* device) {
   operation_->AssembleCode(device->GetInfo());
   const std::map<std::string, std::string> linkables = {
       {operation_->dst_tensors_names_[0], operation_->elementwise_code_}};
@@ -225,43 +184,7 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
   return absl::OkStatus();
 }
 
-absl::Status ComputeTask::UpdateParams(const GpuInfo& gpu_info,
-                                       const std::vector<BHWC>& src_shapes,
-                                       const std::vector<BHWC>& dst_shapes) {
-  if (task_desc_) {
-    return UpdateTaskParams(gpu_info, src_shapes, dst_shapes);
-  } else {
-    return UpdateOperationParams();
-  }
-}
-
-absl::Status ComputeTask::UpdateTaskParams(
-    const GpuInfo& gpu_info, const std::vector<BHWC>& src_shapes,
-    const std::vector<BHWC>& dst_shapes) {
-  RETURN_IF_ERROR(
-      task_desc_->update_function(src_shapes, dst_shapes, &metal_args_));
-
-  // Dispatch parameters re-calculation
-  auto workGroups = task_desc_->resize_function(src_shapes, dst_shapes);
-  groups_size_ = workGroups.first;
-  if (groups_size_.x > gpu_info.GetMaxWorkGroupSizeForX() ||
-      groups_size_.y > gpu_info.GetMaxWorkGroupSizeForY() ||
-      groups_size_.z > gpu_info.GetMaxWorkGroupSizeForZ()) {
-    std::string error("Threads per working group: ");
-    error += std::to_string(groups_size_.x) + ", " +
-             std::to_string(groups_size_.y) + ", " +
-             std::to_string(groups_size_.z);
-    error += "is larger than the MTLDevice can support: ";
-    error += std::to_string(gpu_info.GetMaxWorkGroupSizeForX()) + ", " +
-             std::to_string(gpu_info.GetMaxWorkGroupSizeForY()) + ", " +
-             std::to_string(gpu_info.GetMaxWorkGroupSizeForZ());
-    return absl::InvalidArgumentError(error);
-  }
-  groups_count_ = workGroups.second;
-  return absl::OkStatus();
-}
-
-absl::Status ComputeTask::UpdateOperationParams() {
+absl::Status ComputeTask::UpdateParams() {
   for (int i = 0; i < operation_->src_tensors_names_.size(); ++i) {
     const auto* metal_spatial_tensor =
         dynamic_cast<const MetalSpatialTensor*>(operation_->src_[i]);
@@ -289,31 +212,6 @@ absl::Status ComputeTask::UpdateOperationParams() {
 }
 
 void ComputeTask::Encode(id<MTLComputeCommandEncoder> encoder) {
-  if (task_desc_) {
-    return EncodeTask(encoder);
-  } else {
-    return EncodeOperation(encoder);
-  }
-}
-
-void ComputeTask::EncodeTask(id<MTLComputeCommandEncoder> encoder) {
-  // The dispatch call is intended to be skipped.
-  if (groups_count_.x * groups_count_.y * groups_count_.z == 0) {
-    return;
-  }
-
-  [encoder setComputePipelineState:program_];
-
-  metal_args_.Encode(encoder, 0);
-
-  MTLSize groupsCount =
-      MTLSizeMake(groups_count_.x, groups_count_.y, groups_count_.z);
-  MTLSize groupsSize =
-      MTLSizeMake(groups_size_.x, groups_size_.y, groups_size_.z);
-  [encoder dispatchThreadgroups:groupsCount threadsPerThreadgroup:groupsSize];
-}
-
-void ComputeTask::EncodeOperation(id<MTLComputeCommandEncoder> encoder) {
   [encoder setComputePipelineState:program_];
   metal_args_.Encode(encoder, 0);
   MTLSize groupsCount, groupsSize;
@@ -327,32 +225,18 @@ void ComputeTask::EncodeOperation(id<MTLComputeCommandEncoder> encoder) {
 }
 
 void ComputeTask::SetSrcTensor(MetalSpatialTensor* tensor, int index) {
-  if (task_desc_) {
-    auto status =
-        metal_args_.SetObjectRef(task_desc_->src_tensors_names[index], *tensor);
-  } else {
-    operation_->SetSrc(tensor, index);
-    auto status = metal_args_.SetObjectRef(
-        operation_->src_tensors_names_[index], *tensor);
-  }
+  operation_->SetSrc(tensor, index);
+  auto status =
+      metal_args_.SetObjectRef(operation_->src_tensors_names_[index], *tensor);
 }
 
 void ComputeTask::SetDstTensor(MetalSpatialTensor* tensor, int index) {
-  if (task_desc_) {
-    auto status =
-        metal_args_.SetObjectRef(task_desc_->dst_tensors_names[index], *tensor);
-  } else {
-    operation_->SetDst(tensor, index);
-    auto status = metal_args_.SetObjectRef(
-        operation_->dst_tensors_names_[index], *tensor);
-  }
+  operation_->SetDst(tensor, index);
+  auto status =
+      metal_args_.SetObjectRef(operation_->dst_tensors_names_[index], *tensor);
 }
 
 absl::Status ComputeTask::Tune(TuningType tuning_type, MetalDevice* device) {
-  if (!operation_) {
-    // Tune supported only in GPUOperation
-    return absl::OkStatus();
-  }
   std::vector<int3> possible_work_groups;
   KernelInfo kernel_info;
   kernel_info.max_work_group_size = [program_ maxTotalThreadsPerThreadgroup];

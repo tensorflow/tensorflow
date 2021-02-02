@@ -349,7 +349,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
     ],
 )
 
