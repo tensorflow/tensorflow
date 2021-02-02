@@ -101,7 +101,7 @@ REQUIRED_PACKAGES = [
     # They are updated during the release process
     # When updating these, please also update the nightly versions below
     'tensorboard ~= 2.4',
-    'tensorflow_estimator ~= 2.3.0',
+    'tensorflow_estimator ~= 2.4.0',
 ]
 
 
