@@ -319,10 +319,10 @@ cc_library(
     name = "tf_tstring",
     srcs = [
         "tf_tstring.cc",
-        "//tensorflow/core/platform:ctstring"
+        "//tensorflow/core/platform:ctstring",
     ],
     hdrs = ["tf_tstring.h"],
-    visibility = ["//visibility:public"]
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
