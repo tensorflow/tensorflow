@@ -144,6 +144,7 @@ cc_library(
         "tanh.cc",
         "transpose_conv.cc",
         "unpack.cc",
+        "zeros_like.cc",
     ] + select({
         "//conditions:default": [
             "conv.cc",

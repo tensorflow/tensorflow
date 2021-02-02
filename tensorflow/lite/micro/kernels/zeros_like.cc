@@ -13,18 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <stdint.h>
-#include <string.h>
-
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace zeros_like {
+namespace {
 
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
@@ -39,26 +34,32 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = input->type;
 
-  return context->ResizeTensor(context, output,
-                               TfLiteIntArrayCopy(input->dims));
+  return kTfLiteOk;
+}
+
+template <typename T>
+void resetZeros(T* out, int num_elements) {
+  for (int i = 0; i < num_elements; ++i) {
+    out[i] = static_cast<T>(0);
+  }
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
-  const int num_elements = NumElements(input);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+  int flat_size = MatchingFlatSize(tflite::micro::GetTensorShape(input),
+                                   tflite::micro::GetTensorShape(output));
   switch (input->type) {
     case kTfLiteInt64:
-      memset(GetTensorData<int64_t>(output), 0, num_elements * sizeof(int64_t));
+      resetZeros(tflite::micro::GetTensorData<int64_t>(output), flat_size);
       break;
     case kTfLiteInt32:
-      memset(GetTensorData<int32_t>(output), 0, num_elements * sizeof(int32_t));
+      resetZeros(tflite::micro::GetTensorData<int32_t>(output), flat_size);
       break;
     case kTfLiteFloat32:
-      memset(GetTensorData<float>(output), 0, num_elements * sizeof(float));
+      resetZeros(tflite::micro::GetTensorData<float>(output), flat_size);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -69,15 +70,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
+}  // namespace
 
-}  // namespace zeros_like
-
-TfLiteRegistration* Register_ZEROS_LIKE() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 zeros_like::Prepare, zeros_like::Eval};
-  return &r;
+TfLiteRegistration Register_ZEROS_LIKE() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

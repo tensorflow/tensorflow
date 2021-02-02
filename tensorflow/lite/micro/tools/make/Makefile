@@ -301,6 +301,7 @@ tensorflow/lite/micro/kernels/svdf_test.cc \
 tensorflow/lite/micro/kernels/tanh_test.cc \
 tensorflow/lite/micro/kernels/transpose_conv_test.cc \
 tensorflow/lite/micro/kernels/unpack_test.cc \
+tensorflow/lite/micro/kernels/zeros_like_test.cc \
 tensorflow/lite/micro/memory_planner/greedy_memory_planner_test.cc \
 tensorflow/lite/micro/memory_planner/linear_memory_planner_test.cc
 
@@ -357,7 +358,8 @@ tensorflow/lite/micro/kernels/svdf.cc \
 tensorflow/lite/micro/kernels/svdf_common.cc \
 tensorflow/lite/micro/kernels/tanh.cc \
 tensorflow/lite/micro/kernels/transpose_conv.cc \
-tensorflow/lite/micro/kernels/unpack.cc
+tensorflow/lite/micro/kernels/unpack.cc \
+tensorflow/lite/micro/kernels/zeros_like.cc
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
