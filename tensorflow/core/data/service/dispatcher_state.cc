@@ -45,6 +45,12 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kReleaseJobClient:
       ReleaseJobClient(update.release_job_client());
       break;
+    case Update::kCreatePendingTask:
+      CreatePendingTask(update.create_pending_task());
+      break;
+    case Update::kClientHeartbeat:
+      ClientHeartbeat(update.client_heartbeat());
+      break;
     case Update::kCreateTask:
       CreateTask(update.create_task());
       break;
@@ -139,6 +145,42 @@ void DispatcherState::ReleaseJobClient(
   DCHECK_GE(job->num_clients, 0);
   job->last_client_released_micros = release_job_client.time_micros();
   jobs_for_client_ids_.erase(job_client_id);
+}
+
+void DispatcherState::CreatePendingTask(
+    const CreatePendingTaskUpdate& create_pending_task) {
+  int64 task_id = create_pending_task.task_id();
+  auto& task = tasks_[task_id];
+  DCHECK_EQ(task, nullptr);
+  auto& job = jobs_[create_pending_task.job_id()];
+  DCHECK_NE(job, nullptr);
+  task =
+      std::make_shared<Task>(task_id, job, create_pending_task.worker_address(),
+                             create_pending_task.transfer_address());
+  job->pending_tasks.emplace(task, create_pending_task.starting_round());
+  tasks_by_worker_[create_pending_task.worker_address()][task->task_id] = task;
+  next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
+}
+
+void DispatcherState::ClientHeartbeat(
+    const ClientHeartbeatUpdate& client_heartbeat) {
+  int64 job_client_id = client_heartbeat.job_client_id();
+  auto& job = jobs_for_client_ids_[job_client_id];
+  DCHECK(!job->pending_tasks.empty());
+  auto& task = job->pending_tasks.front();
+  if (client_heartbeat.has_task_rejected()) {
+    task.failures++;
+    task.ready_consumers.clear();
+    task.target_round = client_heartbeat.task_rejected().new_target_round();
+  }
+  if (client_heartbeat.task_accepted()) {
+    task.ready_consumers.insert(job_client_id);
+    if (task.ready_consumers.size() == job->num_consumers.value()) {
+      task.task->starting_round = task.target_round;
+      tasks_by_job_[job->job_id].push_back(task.task);
+      job->pending_tasks.pop();
+    }
+  }
 }
 
 void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
