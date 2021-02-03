@@ -1163,13 +1163,14 @@ class StrategyBase(object):
     `all_reduce`. Please see the module-level docstring of tf.distribute for the
     concept of replica context.
 
-    All arguments in `args` or `kwargs` should either be Python values of a
-    nested structure of tensors, e.g. a list of tensors, in which case `args`
-    and `kwargs` will be passed to the `fn` invoked on each replica. Or `args`
-    or `kwargs` can be `tf.distribute.DistributedValues` containing tensors or
-    composite tensors, i.e. `tf.compat.v1.TensorInfo.CompositeTensor`, in which
-    case each `fn` call will get the component of a
-    `tf.distribute.DistributedValues` corresponding to its replica.
+    All arguments in `args` or `kwargs` can be a nested structure of tensors,
+    e.g. a list of tensors, in which case `args` and `kwargs` will be passed to
+    the `fn` invoked on each replica. Or `args` or `kwargs` can be
+    `tf.distribute.DistributedValues` containing tensors or composite tensors,
+    i.e. `tf.compat.v1.TensorInfo.CompositeTensor`, in which case each `fn` call
+    will get the component of a `tf.distribute.DistributedValues` corresponding
+    to its replica. Note that arbitrary Python values that are not of the types
+    above are not supported.
 
     IMPORTANT: Depending on the implementation of `tf.distribute.Strategy` and
     whether eager execution is enabled, `fn` may be called one or more times. If
@@ -1235,10 +1236,10 @@ class StrategyBase(object):
 
     Args:
       fn: The function to run on each replica.
-      args: Optional positional arguments to `fn`. Its element can be a Python
-        value, a tensor or a `tf.distribute.DistributedValues`.
-      kwargs: Optional keyword arguments to `fn`. Its element can be a Python
-        value, a tensor or a `tf.distribute.DistributedValues`.
+      args: Optional positional arguments to `fn`. Its element can be a tensor,
+        a nested structure of tensors or a `tf.distribute.DistributedValues`.
+      kwargs: Optional keyword arguments to `fn`. Its element can be a tensor,
+        a nested structure of tensors or a `tf.distribute.DistributedValues`.
       options: An optional instance of `tf.distribute.RunOptions` specifying
         the options to run `fn`.
 
