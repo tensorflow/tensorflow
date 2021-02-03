@@ -446,12 +446,11 @@ class IrEmitterUnnested : public IrEmitter,
   // different. On the other hand, the input ranges of slices can be
   // overlapping. Further generalization/specialization when the needs are seen
   // in the future.
-  Status EmitInputFusibleNonStridedSlices(MlirEmitterInput mlir_input);
+  Status EmitInputFusibleNonStridedSlices(HloInstruction* unnested_hlo);
 
-  Status EmitElementForInputFusibleSlices(
-      mlir::lmhlo::FusionOp fusion,
-      absl::Span<const llvm_ir::IrArray> ir_arrays,
-      const llvm_ir::IrArray::Index& index);
+  void EmitElementForInputFusibleSlices(
+      HloInstruction* unnested_hlo,
+      const llvm_ir::IrArray::Index& slice_input_index);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. Scatter indices are taken from `scatter_indices_gen`, updates
