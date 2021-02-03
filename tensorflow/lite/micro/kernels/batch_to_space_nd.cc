@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/kernels/internal/reference/space_to_batch_nd.h"
+#include "tensorflow/lite/kernels/internal/reference/batch_to_space_nd.h"
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
@@ -33,11 +32,6 @@ constexpr int kOutputTensor = 0;
 constexpr int kInputDims = 4;
 constexpr int kOutputDims = 4;
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  return context->AllocatePersistentBuffer(context, sizeof(SpaceToBatchParams));
-}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -45,10 +39,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TF_LITE_ENSURE(context, input != nullptr && output != nullptr);
-
-  SpaceToBatchParams* params =
-      static_cast<SpaceToBatchParams*>(node->user_data);
-  params->output_offset = output->params.zero_point;
 
   // Only 4D input and output tensors are supported for this op on TFLM.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), kInputDims);
@@ -63,10 +53,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TFLITE_DCHECK(node->user_data != nullptr);
-  const SpaceToBatchParams& params =
-      *(static_cast<const SpaceToBatchParams*>(node->user_data));
-
   const TfLiteEvalTensor* input =
       tflite::micro::GetEvalInput(context, node, kInputTensor);
   const TfLiteEvalTensor* block_shape =
@@ -78,8 +64,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
-      reference_ops::SpaceToBatchND(
-          params, tflite::micro::GetTensorShape(input),
+      reference_ops::BatchToSpaceND(
+          tflite::micro::GetTensorShape(input),
           tflite::micro::GetTensorData<float>(input),
           tflite::micro::GetTensorShape(block_shape),
           tflite::micro::GetTensorData<int32_t>(block_shape),
@@ -89,8 +75,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           tflite::micro::GetTensorData<float>(output));
       break;
     case kTfLiteInt8:
-      reference_ops::SpaceToBatchND(
-          params, tflite::micro::GetTensorShape(input),
+      reference_ops::BatchToSpaceND(
+          tflite::micro::GetTensorShape(input),
           tflite::micro::GetTensorData<int8_t>(input),
           tflite::micro::GetTensorShape(block_shape),
           tflite::micro::GetTensorData<int32_t>(block_shape),
@@ -109,8 +95,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace.
 
-TfLiteRegistration Register_SPACE_TO_BATCH_ND() {
-  return {/*init=*/Init,
+TfLiteRegistration Register_BATCH_TO_SPACE_ND() {
+  return {/*init=*/nullptr,
           /*free=*/nullptr,
           /*prepare=*/Prepare,
           /*invoke=*/Eval,

@@ -107,6 +107,7 @@ cc_library(
         "hard_swish.cc",
         "add.cc",
         "arg_min_max.cc",
+        "batch_to_space_nd.cc",
         "cast.cc",
         "ceil.cc",
         "circular_buffer.cc",
@@ -866,6 +867,20 @@ tflite_micro_cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "batch_to_space_nd_test",
+    srcs = [
+        "batch_to_space_nd_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

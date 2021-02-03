@@ -31,6 +31,7 @@ namespace tflite {
 // (https://abseil.io/tips/130). Any new ops (or cleanup of existing ops should
 // have their Register function declarations in the tflite namespace.
 
+TfLiteRegistration Register_BATCH_TO_SPACE_ND();
 TfLiteRegistration Register_CAST();
 TfLiteRegistration Register_CONV_2D();
 TfLiteRegistration Register_DEPTHWISE_CONV_2D();
