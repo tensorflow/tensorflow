@@ -1361,6 +1361,15 @@ def mean_absolute_percentage_error(y_true, y_pred):
   return 100. * K.mean(diff, axis=-1)
 
 
+@dispatch.dispatch_for_types(
+    mean_absolute_percentage_error, ragged_tensor.RaggedTensor)
+def _ragged_tensor_mape(y_true, y_pred):
+  """ Support RaggedTensors.
+  """
+  return _ragged_tensor_apply_loss(
+      mean_absolute_percentage_error, y_true, y_pred)
+
+
 @keras_export('keras.metrics.mean_squared_logarithmic_error',
               'keras.metrics.msle', 'keras.metrics.MSLE',
               'keras.losses.mean_squared_logarithmic_error',
