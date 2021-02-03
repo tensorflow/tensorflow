@@ -928,7 +928,7 @@ TEST_F(ConverterTest, TransposeTensor) {
   TF_EXPECT_OK(converter_->TransposeTensor(
       input_tensor, {0, 3, 1, 2}, &output_tensor, dummy_node_def, "sub3"));
   ExpectTrtDimsEqualsArray({5, 2, 3}, output_tensor->getDimensions());
-  ExpectTrtLayerNames({"dummy_op-sub3"}, converter_->network());
+  ExpectTrtLayerNames({"dummy_op-sub3:SHUFFLE"}, converter_->network());
 }
 
 void TestPrepareTensorForShape(
