@@ -3896,6 +3896,7 @@ cc_library(
 cc_library(
     name = "mlir_async_runtime",
     srcs = ["lib/ExecutionEngine/AsyncRuntime.cpp"],
+    copts = ["-Dmlir_async_runtime_EXPORTS"],
     deps = [
         ":mlir_async_runtime_api",
         "@llvm-project//llvm:Support",

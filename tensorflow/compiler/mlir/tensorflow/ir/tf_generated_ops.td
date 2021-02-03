@@ -13,18 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is the operation definition file for TensorFlow.
+// This is the auto-generated operation definition file for TensorFlow.
+//
+// PLEASE DO NOT MANUALLY EDIT THIS FILE!
+//
+// If you absolutely need to modify the generated fields of an op, move the op
+// definition to `tf_ops.td` and perform the modification there.
 //
 // This file contains TensorFlow ops whose definitions are programmatically
 // generated from the api-def-files in the following folder:
 // tensorflow/core/api_def/base_api
 // The generated fields for an op include name, summary, description, traits,
 // arguments, results, derived attributes. Therefore, modifications to these
-// fields will **not** be respected upon subsequent refreshes. However,
-// additional fields after those fields will be retained.
-//
-// If you absolutely need to modify the generated fields of an op, move the
-// definition to `tf_ops.td` and perform the modification there.
+// fields will NOT be respected upon subsequent refreshes. However, additional
+// fields after those fields will be retained.
 //
 // Ops in this file are sorted alphabetically.
 
@@ -3871,8 +3873,6 @@ dimensions of `input`.
 }
 
 def TF_FakeParamOp : TF_Op<"FakeParam", [NoSideEffect, TF_NoConstantFold]> {
-  // Disable constant folding of this op as the op doesn't provide any valid
-  // output.
   let summary = [{
   This op is used as a placeholder in If branch functions. It doesn't provide a
   valid output when run, so must either be removed (e.g. replaced with a
@@ -13933,7 +13933,7 @@ This op scrambles a shape-[2] seed into a key and a counter, both needed by coun
   TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_StatelessRandomGetKeyCounterAlgOp : TF_Op<"StatelessRandomGetKeyCounterAlg", []> {
+def TF_StatelessRandomGetKeyCounterAlgOp : TF_Op<"StatelessRandomGetKeyCounterAlg", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 Picks the best algorithm based on device, and scrambles seed into key and counter.
   }];

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/mlir_generated/gpu_ops_test_util.h"
+#include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
 
 namespace tensorflow {
 namespace test {

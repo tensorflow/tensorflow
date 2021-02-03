@@ -1419,6 +1419,10 @@ Status LayoutAssignment::PropagateOperandConstraint(
           if (subshape.rank() != operand->shape().rank()) {
             return Status::OK();
           }
+          if (!constraints->points_to_analysis()
+                   .InstructionDefinesBufferAtIndex(user, shape_index)) {
+            return Status::OK();
+          }
           // TODO(b/67641796): Are there cases except fusion that use this code
           // path?
           TF_ASSIGN_OR_RETURN(
@@ -1448,6 +1452,10 @@ Status LayoutAssignment::PropagateOperandConstraint(
           return Status::OK();
         }
         if (subshape.rank() <= 1) {
+          return Status::OK();
+        }
+        if (!constraints->points_to_analysis().InstructionDefinesBufferAtIndex(
+                user, shape_index)) {
           return Status::OK();
         }
         TF_ASSIGN_OR_RETURN(

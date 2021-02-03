@@ -1662,11 +1662,11 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
       pair.second->value--;
     }
     if (!best_parameter) {
-      VLOG(2) << "Failed to find a tunable parameter that would decrease the "
-                 "output time. This means that the autotuning optimization got "
-                 "stuck in a local maximum. The optimization attempt will be "
-                 "aborted.";
-      return;
+      VLOG(2) << "Failed to find a tunable parameter that would further "
+                 "decrease the output time. This means that the autotuning "
+                 "optimization got stuck in a local maximum. The optimization "
+                 "attempt will terminate early.";
+      break;
     }
     best_parameter->value++;
   }

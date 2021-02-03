@@ -865,7 +865,7 @@ struct ConvertTFBroadcastTo : public RewritePattern {
       return failure();
 
     if (!(element_type.isa<BFloat16Type, Float32Type>() ||
-          element_type.isInteger(32)))
+          element_type.isInteger(32) || element_type.isInteger(16)))
       return failure();
 
     auto status_or_const_op =

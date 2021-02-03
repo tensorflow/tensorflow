@@ -138,6 +138,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParsePool);
   }
 
+  TfLiteStatus AddBatchToSpaceND() {
+    return AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND,
+                      Register_BATCH_TO_SPACE_ND(), ParseBatchToSpaceNd);
+  }
+
   TfLiteStatus AddCast() {
     return AddBuiltin(BuiltinOperator_CAST, Register_CAST(), ParseCast);
   }
