@@ -526,7 +526,6 @@ def swish(features):
 
   Args:
     features: A `Tensor` representing preactivation values.
-    name: A name for the operation (optional).
 
   Returns:
     The activation value.
