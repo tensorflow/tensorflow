@@ -100,7 +100,8 @@ foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
                          [TF_MulOp, HLOClient_BroadcastMulOp],
                          [TF_PowOp, HLOClient_BroadcastPowOp],
                          [TF_RealDivOp, HLOClient_BroadcastDivOp],
-                         [TF_SubOp, HLOClient_BroadcastSubOp]] in
+                         [TF_SubOp, HLOClient_BroadcastSubOp],
+                         [TF_ZetaOp, HLOClient_BroadcastZetaOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 def LowerRightShiftSigned :
@@ -616,7 +617,7 @@ foreach Mapping = [
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
-                   [TF_TanOp, HLOClient_TanOp],
+                   [TF_TanOp, HLOClient_TanOp]
                   ] in {
  def : Pat<(Mapping[0] HLO_Tensor:$input),
            (Mapping[1] $input)>;

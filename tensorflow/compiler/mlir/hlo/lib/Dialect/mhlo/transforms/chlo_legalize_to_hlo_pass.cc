@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -29,7 +30,13 @@ namespace mhlo {
 namespace {
 
 struct ChloLegalizeToHloPass
-    : public PassWrapper<ChloLegalizeToHloPass, FunctionPass> {
+    : public ChloLegalizeToHloPassBase<ChloLegalizeToHloPass> {
+  explicit ChloLegalizeToHloPass(bool broadcast_only)
+      : ChloLegalizeToHloPassBase<
+            ChloLegalizeToHloPass>::ChloLegalizeToHloPassBase() {
+    this->broadcast_only_ = broadcast_only;
+  }
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, shape::ShapeDialect, scf::SCFDialect>();
   }
@@ -45,12 +52,16 @@ struct ChloLegalizeToHloPass
         MhloDialect, mlir::StandardOpsDialect, mlir::tensor::TensorDialect,
         mlir::shape::ShapeDialect, mlir::scf::SCFDialect>();
 
-    // TODO(herhut): This is temporary while Zeta cannot be lowered to hlo.
-    conversionTarget.addLegalOp<chlo::ZetaOp>();
+    if (broadcast_only_) {
+      chlo::PopulateChloBroadcastingPatterns(&getContext(),
+                                             &conversionPatterns);
+      conversionTarget.addLegalOp<chlo::ZetaOp>();
+    } else {
+      chlo::PopulateLegalizeChloToHloPatterns(&getContext(),
+                                              &conversionPatterns);
+    }
 
-    chlo::PopulateLegalizeChloToHloPatterns(&getContext(), &conversionPatterns);
-
-    if (failed(applyPartialConversion(getFunction(), conversionTarget,
+    if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {
       return signalPassFailure();
     }
@@ -59,10 +70,9 @@ struct ChloLegalizeToHloPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createChloLegalizeToHloPass() {
-  return std::make_unique<ChloLegalizeToHloPass>();
+std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(bool broadcast_only) {
+  return std::make_unique<ChloLegalizeToHloPass>(broadcast_only);
 }
 
 }  // namespace mhlo
 }  // namespace mlir
-
