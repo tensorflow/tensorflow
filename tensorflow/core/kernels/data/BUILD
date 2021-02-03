@@ -706,7 +706,7 @@ tf_kernel_library(
 
 tf_cc_test(
     name = "parallel_batch_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["parallel_batch_dataset_op_test.cc"],
     deps = [
         ":dataset_test_base",
