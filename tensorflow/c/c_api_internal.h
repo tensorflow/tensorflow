@@ -190,6 +190,9 @@ namespace tensorflow {
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out);
 
+Status BufferToMessage(const TF_Buffer* in,
+                       tensorflow::protobuf::MessageLite& out);
+
 // Set the shapes and types of the output's handle.
 //
 // The lengths of the arrays pointed to by `shapes`, `ranks`, and `types` must

@@ -238,6 +238,14 @@ Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
   return Status::OK();
 }
 
+Status BufferToMessage(const TF_Buffer* in,
+                       tensorflow::protobuf::MessageLite& out) {
+  if (in == nullptr || !out.ParseFromArray(in->data, in->length)) {
+    return errors::InvalidArgument("Unparseable ", out.GetTypeName(), " proto");
+  }
+  return Status::OK();
+}
+
 void RecordMutation(TF_Graph* graph, const TF_Operation& op,
                     const char* mutation_type) {
   // If any session has already run this node_id, mark this session as
