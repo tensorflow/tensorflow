@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iostream>
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
@@ -52,7 +51,6 @@ void TestZerosLikeFloat(const int* input_dims_data, const float* input_data,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  micro_test::reporter->Report("output_dims_count: %d", output_dims_count);
   for (int i = 0; i < output_dims_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
   }
@@ -130,29 +128,25 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestZerosLikeFloat) {
   float output_data[6];
-  const int input_dims[] = {1, 2, 3};
+  const int input_dims[] = {2, 2, 3};
   const float input_values[] = {-2.0, -1.0, 0.0, 1.0, 2.0, 3.0};
-
-  // HOW DID THIS PASS ?!
-  const float golden[] = {0.0, 0.0, 0.0, 125.0, 0.0, 0.0};
+  const float golden[] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
   tflite::testing::TestZerosLikeFloat(input_dims, input_values, golden,
                                       output_data);
 }
 
 TF_LITE_MICRO_TEST(TestZerosLikeInt32) {
   int32_t output_data[4];
-  const int input_dims[] = {2, 2, 1};
+  const int input_dims[] = {4, 1, 2, 2, 1};
   const int32_t input_values[] = {-2, -1, 0, 3};
-
-  // HOW DID THIS PASS ?!
-  const int32_t golden[] = {0, 0, 65, 0};
+  const int32_t golden[] = {0, 0, 0, 0};
   tflite::testing::TestZerosLikeInt32(input_dims, input_values, golden,
                                       output_data);
 }
 
 TF_LITE_MICRO_TEST(TestZerosLikeInt64) {
   int64_t output_data[4];
-  const int input_dims[] = {2, 2, 1};
+  const int input_dims[] = {4, 1, 2, 2, 1};
   const int64_t input_values[] = {-2, -1, 0, 3};
   const int64_t golden[] = {0, 0, 0, 0};
   tflite::testing::TestZerosLikeInt64(input_dims, input_values, golden,
