@@ -474,6 +474,11 @@ class GpuDriver {
   static port::Status GetGpuGCNArchName(GpuDeviceHandle device,
                                         std::string* gcnArchName);
 
+#if TENSORFLOW_USE_ROCM
+  // tests the current device for MFMA insn support (ROCm only)
+  static port::Status GetMFMASupport(bool& support);
+#endif
+
   // Returns the number of multiprocessors on the device (note that the device
   // may be multi-GPU-per-board).
   static port::StatusOr<int> GetMultiprocessorCount(GpuDeviceHandle device);
