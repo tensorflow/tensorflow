@@ -261,6 +261,7 @@ tensorflow/lite/micro/kernels/activations_test.cc \
 tensorflow/lite/micro/kernels/add_test.cc \
 tensorflow/lite/micro/kernels/add_n_test.cc \
 tensorflow/lite/micro/kernels/arg_min_max_test.cc \
+tensorflow/lite/micro/kernels/batch_matmul_test.cc \
 tensorflow/lite/micro/kernels/batch_to_space_nd_test.cc \
 tensorflow/lite/micro/kernels/cast_test.cc \
 tensorflow/lite/micro/kernels/ceil_test.cc \
@@ -327,6 +328,7 @@ tensorflow/lite/micro/kernels/activations.cc \
 tensorflow/lite/micro/kernels/add.cc \
 tensorflow/lite/micro/kernels/add_n.cc \
 tensorflow/lite/micro/kernels/arg_min_max.cc \
+tensorflow/lite/micro/kernels/batch_matmul.cc \
 tensorflow/lite/micro/kernels/batch_to_space_nd.cc \
 tensorflow/lite/micro/kernels/cast.cc \
 tensorflow/lite/micro/kernels/ceil.cc \
@@ -435,6 +437,7 @@ tensorflow/lite/kernels/internal/quantization_util.h \
 tensorflow/lite/kernels/internal/reference/add.h \
 tensorflow/lite/kernels/internal/reference/add_n.h \
 tensorflow/lite/kernels/internal/reference/arg_min_max.h \
+tensorflow/lite/kernels/internal/reference/batch_matmul.h \
 tensorflow/lite/kernels/internal/reference/batch_to_space_nd.h \
 tensorflow/lite/kernels/internal/reference/binary_function.h \
 tensorflow/lite/kernels/internal/reference/ceil.h \
@@ -495,6 +498,7 @@ tensorflow/lite/kernels/internal/min.h \
 tensorflow/lite/kernels/internal/portable_tensor.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
+tensorflow/lite/kernels/internal/tensor_utils_common.h \
 tensorflow/lite/kernels/internal/types.h \
 tensorflow/lite/kernels/kernel_util.h \
 tensorflow/lite/kernels/op_macros.h \

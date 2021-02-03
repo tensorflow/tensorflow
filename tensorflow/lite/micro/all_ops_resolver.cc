@@ -27,6 +27,7 @@ AllOpsResolver::AllOpsResolver() {
   AddArgMax();
   AddArgMin();
   AddAveragePool2D();
+  AddBatchMatMul();
   AddBatchToSpaceNd();
   AddCeil();
   AddConcatenation();

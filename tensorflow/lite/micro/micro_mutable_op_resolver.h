@@ -144,6 +144,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParsePool);
   }
 
+  TfLiteStatus AddBatchMatMul() {
+    return AddBuiltin(BuiltinOperator_BATCH_MATMUL,
+                      tflite::Register_BATCH_MATMUL(), ParseBatchMatMul);
+  }
+
   TfLiteStatus AddBatchToSpaceNd() {
     return AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND,
                       Register_BATCH_TO_SPACE_ND(), ParseBatchToSpaceNd);

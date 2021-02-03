@@ -32,6 +32,7 @@ namespace tflite {
 // have their Register function declarations in the tflite namespace.
 
 TfLiteRegistration Register_ADD_N();
+TfLiteRegistration Register_BATCH_MATMUL();
 TfLiteRegistration Register_BATCH_TO_SPACE_ND();
 TfLiteRegistration Register_CAST();
 TfLiteRegistration Register_CONV_2D();

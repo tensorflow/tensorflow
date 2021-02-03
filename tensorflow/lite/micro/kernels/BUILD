@@ -265,6 +265,7 @@ cc_library(
         "add.cc",
         "add_n.cc",
         "arg_min_max.cc",
+        "batch_matmul.cc",
         "batch_to_space_nd.cc",
         "cast.cc",
         "ceil.cc",
@@ -450,6 +451,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "batch_matmul_test",
+    srcs = [
+        "batch_matmul_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",

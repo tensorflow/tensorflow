@@ -59,7 +59,8 @@ TfLiteStatus CreateWritableTensorDimsWithCopy(TfLiteContext* context,
   TF_LITE_ENSURE(context, tensor != nullptr);
   TF_LITE_ENSURE(context, eval_tensor != nullptr);
   int ranks = tensor->dims->size;
-  size_t alloc_size = TfLiteIntArrayGetSizeInBytes(ranks);
+  // always allocate max ranks to allow for reshaping
+  size_t alloc_size = TfLiteIntArrayGetSizeInBytes(RuntimeShape::kMaxSmallSize);
   TfLiteIntArray* new_dims = static_cast<TfLiteIntArray*>(
       context->AllocatePersistentBuffer(context, alloc_size));
   TfLiteIntArray* old_dims = tensor->dims;
