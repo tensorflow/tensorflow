@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/kernels/activation_utils.h"
