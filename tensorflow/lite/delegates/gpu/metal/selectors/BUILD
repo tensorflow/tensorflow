@@ -39,6 +39,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:add",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_xy",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_z",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling",

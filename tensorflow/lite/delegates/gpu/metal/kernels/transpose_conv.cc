@@ -237,7 +237,8 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
       src_local_size_x, src_local_size_y, workgroup_x, workgroup_y);
 }
 
-std::string GetDeconvolution4x4(const int2& block_size,
+std::string GetDeconvolution4x4(const OperationDef& definition,
+                                const int2& block_size,
                                 const GpuInfo& gpu_info) {
   bool use_local_mem = false;
   if (gpu_info.IsApple() && gpu_info.apple_info.IsBionic()) {
@@ -305,9 +306,15 @@ kernel void ComputeFunction($0
       const std::string sx = std::to_string(x);
       const std::string sy = std::to_string(y);
       c += "  FLT m_" + sx + sy + " = in_x" + sx + " && in_y" + sy + ";\n";
-      c += "  device FLT4* src_ptr_" + sx + sy +
-           " = args.src_tensor.GetHandle() + args.src_tensor.GetWHOffset(xc" +
-           sx + ", yc" + sy + ");\n";
+      if (definition.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
+        c += "  device FLT4* src_ptr_" + sx + sy +
+             " = args.src_tensor.GetHandle() + args.src_tensor.GetWHOffset(xc" +
+             sx + ", yc" + sy + ");\n";
+      } else if (definition.src_tensors[0].storage_type ==
+                 TensorStorageType::IMAGE_BUFFER) {
+        c += "  int src_ptr_" + sx + sy + " = args.src_tensor.GetWHOffset(xc" +
+             sx + ", yc" + sy + ");\n";
+      }
     }
   }
   c += "  for (int s = 0; s < args.src_tensor.Slices(); ++s) {\n";
@@ -323,8 +330,15 @@ kernel void ComputeFunction($0
   for (int y = 0; y < block_size.y + 1; ++y) {
     for (int x = 0; x < block_size.x + 1; ++x) {
       const std::string id = std::to_string(x) + std::to_string(y);
-      c += "    FLT4 src_" + id + " = *src_ptr_" + id + " * m_" + id +
-           "; src_ptr_" + id + " += args.src_tensor.SliceStride();\n";
+      if (definition.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
+        c += "    FLT4 src_" + id + " = *src_ptr_" + id + " * m_" + id +
+             "; src_ptr_" + id + " += args.src_tensor.SliceStride();\n";
+      } else if (definition.src_tensors[0].storage_type ==
+                 TensorStorageType::IMAGE_BUFFER) {
+        c += "    FLT4 src_" + id + " = args.src_tensor.Read(src_ptr_" + id +
+             ") * m_" + id + "; src_ptr_" + id +
+             " += args.src_tensor.SliceStride();\n";
+      }
     }
   }
   c += "    f_offset += 64;\n";
@@ -546,7 +560,7 @@ ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
   }
 
   const int2 block_size(recommended_2x ? 2 : 1, 1);
-  desc.code_ = GetDeconvolution4x4(block_size, gpu_info);
+  desc.code_ = GetDeconvolution4x4(definition, block_size, gpu_info);
   desc.block_size_ = block_size;
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);

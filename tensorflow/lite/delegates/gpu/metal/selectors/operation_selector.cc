@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
@@ -61,13 +62,19 @@ namespace metal {
 namespace {
 
 std::unique_ptr<GPUOperation> SelectDepthWiseConv(
-    const OperationDef& op_def, const DepthwiseConvolution2DAttributes& attr) {
-  if (CheckDepthWiseConv3x3Stride1x1Support(attr)) {
+    const OperationDef& op_def, const DepthwiseConvolution2DAttributes& attr,
+    const GpuInfo& gpu_info) {
+  if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
+      CheckDepthWiseConv3x3Stride1x1Support(attr)) {
     auto gpu_op = CreateDepthWiseConv3x3Stride1x1(op_def, attr);
     return absl::make_unique<DepthWiseConv3x3Stride1x1>(std::move(gpu_op));
-  } else if (CheckDepthWiseConv3x3Stride2Support(attr)) {
+  } else if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
+             CheckDepthWiseConv3x3Stride2Support(attr)) {
     auto gpu_op = CreateDepthWiseConv3x3Stride2(op_def, attr);
     return absl::make_unique<DepthWiseConv3x3Stride2>(std::move(gpu_op));
+  } else if (IsDepthwiseConv3x3Supported(attr)) {
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(gpu_info, op_def, attr));
   } else {
     auto gpu_op = CreateDepthWiseConvolution(op_def, attr);
     return absl::make_unique<DepthWiseConvolution>(std::move(gpu_op));
@@ -384,9 +391,11 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             "DepthWise Convolution does not support more than 1 runtime "
             "tensor");
       }
-      *gpu_op = SelectDepthWiseConv(
-          op_def, absl::any_cast<DepthwiseConvolution2DAttributes>(
-                      node.operation.attributes));
+      *gpu_op =
+          SelectDepthWiseConv(op_def,
+                              absl::any_cast<DepthwiseConvolution2DAttributes>(
+                                  node.operation.attributes),
+                              gpu_info);
       break;
     case OperationType::FULLY_CONNECTED: {
       FullyConnected conv_op = CreateFullyConnected(
