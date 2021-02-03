@@ -439,8 +439,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddZerosLike() {
-    return AddBuiltin(BuiltinOperator_ZEROS_LIKE,
-                      Register_ZEROS_LIKE(), ParseZerosLike);
+    return AddBuiltin(BuiltinOperator_ZEROS_LIKE, Register_ZEROS_LIKE(),
+                      ParseZerosLike);
   }
 
   unsigned int GetRegistrationLength() { return registrations_len_; }

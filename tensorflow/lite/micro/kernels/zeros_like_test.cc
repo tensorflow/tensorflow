@@ -25,8 +25,7 @@ namespace testing {
 namespace {
 
 void TestZerosLikeFloat(const int* input_dims_data, const float* input_data,
-                        const float* expected_output_data,
-                        float* output_data) {
+                        const float* expected_output_data, float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(input_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
