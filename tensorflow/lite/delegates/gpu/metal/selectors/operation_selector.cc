@@ -20,7 +20,9 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/default_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -54,7 +56,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
-#include "tensorflow/lite/delegates/gpu/metal/selectors/default_selector.h"
 
 namespace tflite {
 namespace gpu {
@@ -556,9 +557,11 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::CONSTANT:
     case OperationType::SPACE_TO_BATCH:
       return absl::UnimplementedError("Unsupported op: " + node.operation.type);
-    default:
-      return SelectDefault(gpu_info, op_def, inputs, outputs, node,
+    default: {
+      ModelHints hints;
+      return SelectDefault(gpu_info, op_def, hints, inputs, outputs, node,
                            gpu_subgraph);
+    }
   }
   return absl::OkStatus();
 }
