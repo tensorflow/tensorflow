@@ -38,7 +38,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 template <typename T>
-void resetZeros(T* out, int num_elements) {
+void resetZeros(T* out, const int num_elements) {
   for (int i = 0; i < num_elements; ++i) {
     out[i] = static_cast<T>(0);
   }
