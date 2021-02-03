@@ -300,6 +300,15 @@ py_library(
 )
 
 py_library(
+    name = "tpu_util",
+    srcs = ["tpu_util.py"],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/tpu:tpu_py",
+    ],
+)
+
+py_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
     srcs_version = "PY3",
@@ -579,6 +588,7 @@ py_library(
         ":input_lib",
         ":numpy_dataset",
         ":reduce_util",
+        ":tpu_util",
         ":tpu_values",
         ":values",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
@@ -809,6 +819,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":packed_distributed_variable",
+        ":tpu_util",
         ":values",
         ":values_util",
         "//tensorflow/python:framework_ops",
@@ -816,7 +827,6 @@ py_library(
         "//tensorflow/python:resource_variable_ops_gen",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/tpu:tpu_py",
     ],
 )
 
