@@ -130,13 +130,38 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
                       /*HasNUW=*/true, /*HasNSW=*/true);
   }
 
-  array_indices.emplace_back(linear_index_base, shape_, b_);
+  // When row_index is true, it mean the inner most dimensions match the block sizes.
+  // So we can generates a simpler indexing for that dimensions.
+  // This help LLVM generates vectorized codes in that cases.
+  bool enable_row_index = launch_dimensions_.last_dim_aligned_for_vectorization();
+  llvm::Value* row_index = nullptr;
+  if (!enable_row_index) {
+    array_indices.emplace_back(linear_index_base, shape_, b_);
+  } else {
+    // Simpler index for row computation.
+    // This will allow LLVM to vectorize.
+    row_index = b_->CreateMul(
+        thread_id, llvm::ConstantInt::get(index_type, unroll_factor_),
+        "row_index", /*HasNUW=*/true, /*HasNSW=*/true);
+    std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
+    multidim.back() = row_index;
+    array_indices.emplace_back(linear_index_base, multidim, shape_, b_);
+  }
+
   for (int i = 1; i < unroll_factor_; ++i) {
     llvm::Value* linear_index =
         b_->CreateAdd(linear_index_base, llvm::ConstantInt::get(index_type, i),
-                      "linear_index",
+                      absl::StrCat("linear_index", i),
                       /*HasNUW=*/true, /*HasNSW=*/true);
-    array_indices.emplace_back(linear_index, shape_, b_);
+    if (!enable_row_index) {
+      array_indices.emplace_back(linear_index, shape_, b_);
+    } else {
+      std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
+      multidim.back() = b_->CreateAdd(
+          row_index, llvm::ConstantInt::get(index_type, i),
+          absl::StrCat("row_index_plus", i), /*HasNUW=*/true, /*HasNSW=*/true);
+      array_indices.emplace_back(linear_index, multidim, shape_, b_);
+    }
   }
 
   auto if_in_bounds = llvm_ir::EmitIfThenElse(
