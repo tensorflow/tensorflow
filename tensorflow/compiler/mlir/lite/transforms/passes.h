@@ -103,6 +103,10 @@ CreateInsertCallOnceOpFromSessionInitializerPass();
 // Creates a pass which is responsible for legalizing TensorFlow variables to
 // TensorFlow Lite variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
+
+// Creates a pass which removes any unused bounded input arguments to functions
+// which corresponds to GlobalTensor.
+std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveArgsAndGlobalTensors();
 }  // namespace TFL
 
 }  // namespace mlir
