@@ -12,6 +12,7 @@ TENSORFLOW_API_INIT_FILES = [
     "__internal__/distribute/multi_process_runner/__init__.py",
     "__internal__/eager_context/__init__.py",
     "__internal__/function/__init__.py",
+    "__internal__/monitoring/__init__.py",
     "__internal__/nest/__init__.py",
     "__internal__/ops/__init__.py",
     "__internal__/test/__init__.py",
