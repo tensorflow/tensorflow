@@ -38,6 +38,107 @@ namespace xla {
 
 namespace py = pybind11;
 
+namespace {
+
+class Dataclass {
+ public:
+  // test if this object is a dataclass
+  virtual bool Check(const py::handle &obj) const = 0;
+
+  // return the fields of this dataclass
+  virtual py::tuple Fields(const py::handle &obj) const = 0;
+
+  virtual ~Dataclass() = default;
+
+  static Dataclass const* Singleton();
+
+ private:
+  static Dataclass const* Create();
+};
+
+class DataclassImpl : public Dataclass {
+ public:
+  DataclassImpl() : dataclasses_(py::module::import("dataclasses")),
+                    is_dataclass_(dataclasses_.attr("is_dataclass")),
+                    fields_(dataclasses_.attr("fields")),
+                    name_(py::str("name")) {
+  }
+
+ private:
+  bool Check(const py::handle &obj) const override;
+  py::tuple Fields(const py::handle &obj) const override;
+
+  const py::module dataclasses_;
+
+  // A reference to dataclasses.is_dataclass
+  const py::function is_dataclass_;
+
+  // A reference to dataclasses.fields
+  const py::function fields_;
+
+  // A handle to a "name" string
+  const py::str name_;
+};
+
+// A shim to use if running on Python <3.7 without the dataclasses backport
+class DataclassIsMissing : public Dataclass {
+ private:
+  bool Check(const py::handle &obj) const override {
+    return false;
+  }
+
+  py::tuple Fields(const py::handle &obj) const override {
+    throw std::logic_error("Fields must not be called if Check returns false");
+  }
+};
+
+/*static*/ Dataclass const* Dataclass::Create() {
+  // test if dataclasses are available via exception handling
+  // rather than testing PY_VERSION_HEX, this allows use of the
+  // dataclasses backport to Python 3.6
+  try {
+    return new DataclassImpl;
+  } catch (const py::error_already_set& e) {
+    if (e.matches(PyExc_ModuleNotFoundError)) {
+      return new DataclassIsMissing;
+    } else {
+      throw;
+    }
+  }
+}
+
+/*static*/ Dataclass const* Dataclass::Singleton() {
+  static auto singleton = Dataclass::Create();
+
+  return singleton;
+}
+
+bool DataclassImpl::Check(const py::handle &obj) const {
+  return is_dataclass_(obj).ptr() == Py_True;
+}
+
+py::tuple DataclassImpl::Fields(const py::handle &obj) const {
+  // use dataclass.fields instead of dataclass.astuple to
+  // avoid a redundant deep copy
+  const py::tuple fields = fields_(obj);
+  auto values = py::tuple(fields.size());
+  size_t i = 0;
+  for (auto field : fields) {
+    const auto name = py::getattr(field, name_);
+    values[i] = py::getattr(obj, name);
+    ++i;
+  }
+  return values;
+}
+
+inline bool IsNamedTuple(const py::handle &obj) {
+  // We can only identify namedtuples heuristically, here by the presence of
+  // a _fields attribute.
+  return py::isinstance<py::tuple>(obj) && py::hasattr(obj, "_fields");
+}
+
+} // anonymous namespace
+
 /*static*/ CustomNodeRegistry* CustomNodeRegistry::Singleton() {
   static auto* registry = new CustomNodeRegistry;
   return registry;
@@ -98,10 +199,10 @@ bool PyTreeDef::operator==(const PyTreeDef& other) const {
     return Kind::kCustom;
   } else if (py::isinstance<py::none>(obj)) {
     return Kind::kNone;
-  } else if (py::isinstance<py::tuple>(obj) && py::hasattr(obj, "_fields")) {
-    // We can only identify namedtuples heuristically, here by the presence of
-    // a _fields attribute.
+  } else if (IsNamedTuple(obj)) {
     return Kind::kNamedTuple;
+  } else if (Dataclass::Singleton()->Check(obj)) {
+    return Kind::kDataClass;
   } else {
     return Kind::kLeaf;
   }
@@ -163,6 +264,13 @@ void PyTreeDef::FlattenInto(py::handle handle, std::vector<py::object>& leaves,
       for (py::handle entry : tuple) {
         recurse(entry);
       }
+    } else if (node.kind == Kind::kDataClass) {
+      auto fields = Dataclass::Singleton()->Fields(handle);
+      node.node_data = py::reinterpret_borrow<py::object>(handle.get_type());
+      node.arity = fields.size();
+      for (auto field : fields) {
+        recurse(field);
+      }
     } else {
       assert(node.kind == Kind::kLeaf);
       leaves.push_back(py::reinterpret_borrow<py::object>(handle));
@@ -183,7 +291,7 @@ PyTreeDef::Flatten(py::handle x, absl::optional<py::function> leaf_predicate) {
 
 /*static*/ bool PyTreeDef::AllLeaves(const py::iterable& x) {
   const CustomNodeRegistry::Registration* custom;
-  for (const py::handle& h : x) {
+  for (const py::handle h : x) {
     if (GetKind(h, &custom) != Kind::kLeaf) return false;
   }
   return true;
@@ -212,6 +320,7 @@ py::object PyTreeDef::Unflatten(py::iterable leaves) const {
       case Kind::kNone:
       case Kind::kTuple:
       case Kind::kNamedTuple:
+      case Kind::kDataClass:
       case Kind::kList:
       case Kind::kDict:
       case Kind::kCustom: {
@@ -250,12 +359,13 @@ py::object PyTreeDef::Unflatten(py::iterable leaves) const {
       return py::none();
 
     case Kind::kTuple:
-    case Kind::kNamedTuple: {
+    case Kind::kNamedTuple:
+    case Kind::kDataClass: {
       py::tuple tuple(node.arity);
       for (int i = 0; i < node.arity; ++i) {
         tuple[i] = std::move(children[i]);
       }
-      if (node.kind == Kind::kNamedTuple) {
+      if (node.kind == Kind::kNamedTuple || node.kind == Kind::kDataClass) {
         return node.node_data(*tuple);
       } else {
         return std::move(tuple);
@@ -277,7 +387,6 @@ py::object PyTreeDef::Unflatten(py::iterable leaves) const {
         dict[keys[i]] = std::move(children[i]);
       }
       return std::move(dict);
-      break;
     }
     case Kind::kCustom: {
       py::tuple tuple(node.arity);
@@ -375,8 +484,7 @@ py::list PyTreeDef::FlattenUpTo(py::handle xs) const {
       }
 
       case Kind::kNamedTuple: {
-        if (!py::isinstance<py::tuple>(object) ||
-            !py::hasattr(object, "_fields")) {
+        if (!IsNamedTuple(object)) {
           throw std::invalid_argument(absl::StrFormat(
               "Expected named tuple, got %s.", py::repr(object)));
         }
@@ -389,6 +497,28 @@ py::list PyTreeDef::FlattenUpTo(py::handle xs) const {
         if (tuple.get_type().not_equal(node.node_data)) {
           throw std::invalid_argument(absl::StrFormat(
               "Named tuple type mismatch: expected type: %s, tuple: %s.",
+              py::repr(node.node_data), py::repr(object)));
+        }
+        for (py::handle entry : tuple) {
+          agenda.push_back(py::reinterpret_borrow<py::object>(entry));
+        }
+        break;
+      }
+
+      case Kind::kDataClass: {
+        if (!Dataclass::Singleton()->Check(object)) {
+          throw std::invalid_argument(absl::StrFormat(
+              "Expected dataclass, got %s.", py::repr(object)));
+        }
+        py::tuple tuple = Dataclass::Singleton()->Fields(object);
+        if (tuple.size() != node.arity) {
+          throw std::invalid_argument(absl::StrFormat(
+              "Dataclass arity mismatch: %d != %d; object: %s.", tuple.size(),
+              node.arity, py::repr(object)));
+        }
+        if (object.get_type().not_equal(node.node_data)) {
+          throw std::invalid_argument(absl::StrFormat(
+              "Dataclass type mismatch: expected type: %s, object: %s.",
               py::repr(node.node_data), py::repr(object)));
         }
         for (py::handle entry : tuple) {
@@ -456,6 +586,7 @@ py::object PyTreeDef::Walk(const py::function& f_node, py::handle f_leaf,
       case Kind::kNone:
       case Kind::kTuple:
       case Kind::kNamedTuple:
+      case Kind::kDataClass:
       case Kind::kList:
       case Kind::kDict:
       case Kind::kCustom: {
@@ -593,6 +724,9 @@ std::string PyTreeDef::ToString() const {
         break;
       case Kind::kTuple:
         kind = "tuple";
+        break;
+      case Kind::kDataClass:
+        kind = "dataclass";
         break;
       case Kind::kList:
         kind = "list";

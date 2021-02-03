@@ -148,6 +148,7 @@ class PyTreeDef {
     kNone,        // None.
     kTuple,       // A tuple
     kNamedTuple,  // A collections.namedtuple
+    kDataClass,   // A @dataclass
     kList,        // A list
     kDict,        // A dict
     kCustom,      // A custom type.
@@ -159,9 +160,10 @@ class PyTreeDef {
     // Arity for non-kLeaf types.
     int arity = 0;
 
-    // Kind-specific auxiliary data. For a kNamedTuple, contains the tuple type
-    // object. For a kDict, contains a sorted list of keys. For a kCustom type,
-    // contains the auxiliary data returned by the `to_iterable` function.
+    // Kind-specific auxiliary data. For kNamedTuple or kDataClass, contains the
+    // relevant type object. For a kDict, contains a sorted list of keys.
+    // For a kCustom type, contains the auxiliary data returned by the
+    // `to_iterable` function.
     pybind11::object node_data;
 
     const CustomNodeRegistry::Registration* custom = nullptr;
