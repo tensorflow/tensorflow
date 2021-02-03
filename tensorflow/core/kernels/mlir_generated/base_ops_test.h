@@ -13,10 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_GPU_OPS_TEST_UTIL_H_
-#define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_GPU_OPS_TEST_UTIL_H_
-
-#include <iostream>
+#ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
+#define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
@@ -56,29 +54,29 @@ TensorShape DefaultInputShape();
 
 /// Helper functions to configure tests.
 
-struct GpuOpsTestConfig {
+struct OpsTestConfig {
   bool add_t = true;
   bool add_tout = false;
   // Only used for gpu_unary_ops_test.
   bool expect_buffer_reuse = true;
   bool expect_strictly_equal = false;
-  GpuOpsTestConfig ExpectStrictlyEqual() {
-    GpuOpsTestConfig config = *this;
+  OpsTestConfig ExpectStrictlyEqual() {
+    OpsTestConfig config = *this;
     config.expect_strictly_equal = true;
     return config;
   }
-  GpuOpsTestConfig NoBufferReuse() {
-    GpuOpsTestConfig config = *this;
+  OpsTestConfig NoBufferReuse() {
+    OpsTestConfig config = *this;
     config.expect_buffer_reuse = false;
     return config;
   }
-  GpuOpsTestConfig AddTout() {
-    GpuOpsTestConfig config = *this;
+  OpsTestConfig AddTout() {
+    OpsTestConfig config = *this;
     config.add_tout = true;
     return config;
   }
-  GpuOpsTestConfig NoT() {
-    GpuOpsTestConfig config = *this;
+  OpsTestConfig NoT() {
+    OpsTestConfig config = *this;
     config.add_t = false;
     return config;
   }
@@ -231,4 +229,4 @@ absl::InlinedVector<T, 10> DefaultInput() {
 }  // namespace test
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_GPU_OPS_TEST_UTIL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
