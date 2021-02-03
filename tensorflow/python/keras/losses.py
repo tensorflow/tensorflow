@@ -1398,6 +1398,15 @@ def mean_squared_logarithmic_error(y_true, y_pred):
   return K.mean(math_ops.squared_difference(first_log, second_log), axis=-1)
 
 
+@dispatch.dispatch_for_types(
+    mean_squared_logarithmic_error, ragged_tensor.RaggedTensor)
+def _ragged_tensor_msle(y_true, y_pred):
+  """ Implements support for handling RaggedTensors.
+  """
+  return _ragged_tensor_apply_loss(
+      mean_squared_logarithmic_error, y_true, y_pred)
+
+
 def _maybe_convert_labels(y_true):
   """Converts binary labels into -1/1."""
   are_zeros = math_ops.equal(y_true, 0)
