@@ -434,6 +434,7 @@ cc_library(
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_while.cc",
+        "transforms/legalize_variables.cc",
         "transforms/lower_static_tensor_list.cc",
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",

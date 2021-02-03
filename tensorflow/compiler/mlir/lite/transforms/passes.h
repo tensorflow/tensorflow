@@ -99,6 +99,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass();
 // given.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInsertCallOnceOpFromSessionInitializerPass();
+
+// Creates a pass which is responsible for legalizing TensorFlow variables to
+// TensorFlow Lite variables.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
 }  // namespace TFL
 
 }  // namespace mlir
