@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "autograph"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "decorator"
     mtype: "<type \'module\'>"
   }
