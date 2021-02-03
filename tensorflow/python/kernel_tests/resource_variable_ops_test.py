@@ -134,13 +134,19 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   def testEagerDeepCopy(self):
     with context.eager_mode():
       init_value = np.ones((4, 4, 4))
-      variable = resource_variable_ops.ResourceVariable(init_value,
-                                                        name="init")
+      variable = resource_variable_ops.ResourceVariable(
+          init_value,
+          name="init",
+          synchronization=variables.VariableSynchronization.ON_READ,
+          aggregation=variables.VariableAggregation.SUM)
 
       copied_variable = copy.deepcopy(variable)
       self.assertEqual(variable.name, copied_variable.name)
       self.assertEqual(variable.shape, copied_variable.shape)
       self.assertEqual(variable.device, copied_variable.device)
+      self.assertEqual(variable.synchronization,
+                       copied_variable.synchronization)
+      self.assertEqual(variable.aggregation, copied_variable.aggregation)
 
       # The copied variable should have the same value as the original.
       self.assertAllEqual(variable.numpy(), copied_variable.numpy())

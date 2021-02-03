@@ -319,7 +319,7 @@ class SplitProvider {
   // Saves the state of this split provider.
   virtual Status Save(std::function<std::string(std::string)> full_name,
                       IteratorStateWriter* writer) = 0;
-  // Saves the state of this split provider.
+  // Restores the state of this split provider.
   virtual Status Restore(std::function<std::string(std::string)> full_name,
                          IteratorStateReader* reader) = 0;
 };

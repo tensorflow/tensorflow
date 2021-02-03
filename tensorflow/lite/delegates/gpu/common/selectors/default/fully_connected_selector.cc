@@ -85,8 +85,8 @@ std::unique_ptr<GPUOperation> SelectFullyConnected(
     const OperationDef& op_def, int batch_size) {
   if (gpu_info.IsAdreno()) {
     return SelectFullyConnectedAdreno(attr, gpu_info, op_def, batch_size);
-  } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() ||
-             gpu_info.IsNvidia() || gpu_info.IsIntel()) {
+  } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() || gpu_info.IsNvidia() ||
+             gpu_info.IsIntel() || gpu_info.IsApple()) {
     return SelectFullyConnectedPowerVR(attr, gpu_info, op_def, batch_size);
   } else if (gpu_info.IsMali()) {
     return SelectFullyConnectedMali(attr, gpu_info, op_def, batch_size);

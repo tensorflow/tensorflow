@@ -7,7 +7,9 @@
 namespace {
 
 tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
-  auto* ops_api_fn = tensorflow::tpu::OpsApiFn();
+  // Constant cast so that we can initialize the functions. The functions are
+  // mutable here because this is the only place where they are initialized.
+  auto* ops_api_fn = const_cast<TfTpu_OpsApiFn*>(tensorflow::tpu::OpsApiFn());
 
   TFTPU_SET_FN(ops_api_fn, ConfigureDistributedTpuOp_DoWork);
   TFTPU_SET_FN(ops_api_fn, WaitForDistributedTpuOp_DoWork);
@@ -70,9 +72,9 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CreateCompilationCacheKey);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_DestroyCompilationCacheKey);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CreateGuaranteedConstFingerprint);
-  
+
   TFTPU_SET_FN(ops_api_fn, TpuProfiler_Create);
-  TFTPU_SET_FN(ops_api_fn, TpuProfiler_Free);
+  TFTPU_SET_FN(ops_api_fn, TpuProfiler_Destroy);
   TFTPU_SET_FN(ops_api_fn, TpuProfiler_Start);
   TFTPU_SET_FN(ops_api_fn, TpuProfiler_Stop);
   TFTPU_SET_FN(ops_api_fn, TpuProfiler_CollectData);

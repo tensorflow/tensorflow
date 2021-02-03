@@ -196,21 +196,13 @@ Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
 }
 
 Status DataServiceDispatcherClient::ClientHeartbeat(
-    int64 job_client_id, std::vector<TaskInfo>& tasks, bool& job_finished) {
+    ClientHeartbeatRequest& req, ClientHeartbeatResponse& resp) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  ClientHeartbeatRequest req;
-  req.set_job_client_id(job_client_id);
-  ClientHeartbeatResponse resp;
   grpc::ClientContext ctx;
   grpc::Status s = stub_->ClientHeartbeat(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get tasks", s);
   }
-  tasks.clear();
-  for (auto& task : resp.task_info()) {
-    tasks.push_back(task);
-  }
-  job_finished = resp.job_finished();
   return Status::OK();
 }
 

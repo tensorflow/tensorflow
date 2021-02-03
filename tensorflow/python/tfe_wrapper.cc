@@ -1354,16 +1354,12 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         py::return_value_policy::reference);
 
   // TFE_CancellationManager Logic
-  m.def(
-      "TFE_NewCancellationManager",
-      []() { return new tensorflow::CancellationManager(); },
-      py::return_value_policy::reference);
+  m.def("TFE_NewCancellationManager",
+        []() { return new tensorflow::CancellationManager(); });
   m.def("TFE_CancellationManagerIsCancelled",
         &tensorflow::CancellationManager::IsCancelled);
   m.def("TFE_CancellationManagerStartCancel",
         &tensorflow::CancellationManager::StartCancel);
-  m.def("TFE_DeleteCancellationManager",
-        [](tensorflow::CancellationManager* cm) { delete cm; });
 
   m.def("TFE_ClearScalarCache", &tensorflow::TFE_ClearScalarCache);
 

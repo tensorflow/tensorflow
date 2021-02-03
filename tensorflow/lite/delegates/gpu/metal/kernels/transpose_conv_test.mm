@@ -242,7 +242,7 @@ absl::Status TransposeConv4x4Test(TestExecutionEnvironment* env) {
   attr.padding.appended = HW(1, 1);
   attr.stride = HW(2, 2);
 
-  for (auto storage : {TensorStorageType::BUFFER}) {
+  for (auto storage : {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
     for (auto precision : env->GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;

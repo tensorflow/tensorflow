@@ -254,6 +254,42 @@ tf_kernel_library(
     ),
 )
 
+cc_library(
+    name = "base_ops_test",
+    testonly = 1,
+    srcs = ["base_ops_test.cc"],
+    hdrs = ["base_ops_test.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "base_unary_ops_test",
+    testonly = 1,
+    hdrs = ["base_unary_ops_test.h"],
+    deps = [
+        ":base_ops_test",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "gpu_unary_ops_test",
     size = "small",
@@ -262,30 +298,19 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
     ],
     deps = [
-        ":gpu_ops_test_util",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
+        ":base_ops_test",
+        ":base_unary_ops_test",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
-        "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:ops_testutil",
-        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
-tf_cuda_cc_test(
-    name = "gpu_binary_ops_test",
-    size = "medium",
-    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_binary_ops_test.cc"]),
-    tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # b/173033461
-    ],
+cc_library(
+    name = "base_binary_ops_test",
+    testonly = 1,
+    hdrs = ["base_binary_ops_test.h"],
     deps = [
-        ":gpu_ops_test_util",
+        ":base_ops_test",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:tensorflow",
@@ -304,22 +329,18 @@ tf_cuda_cc_test(
     ],
 )
 
-cc_library(
-    name = "gpu_ops_test_util",
-    testonly = 1,
-    srcs = [
-        "gpu_ops_test_util.cc",
-        "gpu_ops_test_util.h",
-    ],
-    hdrs = [
-        "gpu_ops_test_util.h",
+tf_cuda_cc_test(
+    name = "gpu_binary_ops_test",
+    size = "medium",
+    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_binary_ops_test.cc"]),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # b/173033461
     ],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:tensorflow",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
+        ":base_binary_ops_test",
+        ":base_ops_test",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
     ],
 )
 

@@ -336,8 +336,8 @@ absl::Status InferenceContext::AllocateTensors(MetalDevice* device) {
   const bool f32_storage = precision_ == CalculationsPrecision::F32;
   for (auto& tensor_id : preallocated_ids) {
     const auto& t = tensor_reserver_.Get(tensor_id);
-    preallocated_tensors_[tensor_id] =
-        CreateSharedBufferTensor(nil, t.shape, t.descriptor);
+    RETURN_IF_ERROR(CreateSharedBufferTensor(
+        nil, t.shape, t.descriptor, &preallocated_tensors_[tensor_id]));
   }
 
   RETURN_IF_ERROR(AllocateMemoryForBuffers(device));
@@ -453,10 +453,6 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
   shared_buffer_tensors_.resize(buffer_usage_records.size());
-  TensorDescriptor descriptor;
-  descriptor.storage_type = TensorStorageType::BUFFER;
-  descriptor.data_type = f32_storage ? DataType::FLOAT32 : DataType::FLOAT16;
-  descriptor.layout = Layout::HWC;
   for (auto& node : nodes_) {
     std::vector<ValueId> all_ids = node.inputs;
     all_ids.insert(all_ids.end(), node.outputs.begin(), node.outputs.end());
@@ -465,10 +461,11 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
         continue;
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[tensor_id];
       if (created_tensors[tensor_index]) continue;
-      const auto& shape = tensor_reserver_.Get(tensor_id).shape;
+      const auto& tensor_dummy = tensor_reserver_.Get(tensor_id);
       const int buffer_index = buffer_assignment.object_ids[tensor_index];
-      shared_buffer_tensors_[tensor_index] = CreateSharedBufferTensor(
-          shared_buffers_[buffer_index], shape, descriptor);
+      RETURN_IF_ERROR(CreateSharedBufferTensor(
+          shared_buffers_[buffer_index], tensor_dummy.shape,
+          tensor_dummy.descriptor, &shared_buffer_tensors_[tensor_index]));
       created_tensors[tensor_index] = true;
     }
   }
@@ -522,7 +519,7 @@ void InferenceContext::EncodeWithCommandQueue(id<MTLCommandQueue> command_queue,
 void InferenceContext::UpdatePreallocatedTensors(
     const std::map<ValueId, id<MTLBuffer>>& preallocated) {
   for (const auto& it : preallocated) {
-    preallocated_tensors_[it.first].SetBufferHandle(it.second);
+    auto status = preallocated_tensors_[it.first].SetBufferHandle(it.second);
   }
   for (auto& task_index : task_ids_with_preallocated_tensors_) {
     auto& task = nodes_[task_index].task;

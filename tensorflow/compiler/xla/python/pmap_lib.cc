@@ -401,10 +401,11 @@ void BuildPmapSubmodule(pybind11::module& m) {
 
   py::class_<ShardingSpec> sharding_spec(pmap_lib, "ShardingSpec");
   sharding_spec
-      .def(py::init<py::tuple, py::tuple>(), py::arg("sharding"),
-           py::arg("mesh_mapping"))
-      .def_property_readonly("sharding", &ShardingSpec::GetPySharding)
-      .def_property_readonly("mesh_mapping", &ShardingSpec::GetPyMeshMapping);
+      .def(py::init<std::vector<AvalDimSharding>,
+                    std::vector<MeshDimAssignment>>(),
+           py::arg("sharding"), py::arg("mesh_mapping"))
+      .def_property_readonly("sharding", &ShardingSpec::GetSharding)
+      .def_property_readonly("mesh_mapping", &ShardingSpec::GetMeshMapping);
 
   py::class_<ShardedDeviceArray> sda(pmap_lib, "ShardedDeviceArray");
   sda.def(py::init<pybind11::handle, ShardingSpec, pybind11::list>())

@@ -20,7 +20,10 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/default_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -28,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
@@ -50,10 +54,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
-#include "tensorflow/lite/delegates/gpu/metal/selectors/default_selector.h"
 
 namespace tflite {
 namespace gpu {
@@ -61,13 +63,19 @@ namespace metal {
 namespace {
 
 std::unique_ptr<GPUOperation> SelectDepthWiseConv(
-    const OperationDef& op_def, const DepthwiseConvolution2DAttributes& attr) {
-  if (CheckDepthWiseConv3x3Stride1x1Support(attr)) {
+    const OperationDef& op_def, const DepthwiseConvolution2DAttributes& attr,
+    const GpuInfo& gpu_info) {
+  if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
+      CheckDepthWiseConv3x3Stride1x1Support(attr)) {
     auto gpu_op = CreateDepthWiseConv3x3Stride1x1(op_def, attr);
     return absl::make_unique<DepthWiseConv3x3Stride1x1>(std::move(gpu_op));
-  } else if (CheckDepthWiseConv3x3Stride2Support(attr)) {
+  } else if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
+             CheckDepthWiseConv3x3Stride2Support(attr)) {
     auto gpu_op = CreateDepthWiseConv3x3Stride2(op_def, attr);
     return absl::make_unique<DepthWiseConv3x3Stride2>(std::move(gpu_op));
+  } else if (IsDepthwiseConv3x3Supported(attr)) {
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(gpu_info, op_def, attr));
   } else {
     auto gpu_op = CreateDepthWiseConvolution(op_def, attr);
     return absl::make_unique<DepthWiseConvolution>(std::move(gpu_op));
@@ -384,16 +392,18 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             "DepthWise Convolution does not support more than 1 runtime "
             "tensor");
       }
-      *gpu_op = SelectDepthWiseConv(
-          op_def, absl::any_cast<DepthwiseConvolution2DAttributes>(
-                      node.operation.attributes));
+      *gpu_op =
+          SelectDepthWiseConv(op_def,
+                              absl::any_cast<DepthwiseConvolution2DAttributes>(
+                                  node.operation.attributes),
+                              gpu_info);
       break;
     case OperationType::FULLY_CONNECTED: {
-      FullyConnected conv_op = CreateFullyConnected(
-          gpu_info, op_def,
-          absl::any_cast<FullyConnectedAttributes>(node.operation.attributes));
-      *gpu_op = absl::make_unique<FullyConnected>(std::move(conv_op));
-      break;
+      auto attr =
+          absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
+      *gpu_op = SelectFullyConnected(attr, gpu_info, op_def,
+                                     inputs[0]->tensor.shape.b);
+      return absl::OkStatus();
     }
     case OperationType::LSTM: {
       *gpu_op = SelectLSTM(op_def, gpu_info);
@@ -547,9 +557,11 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::CONSTANT:
     case OperationType::SPACE_TO_BATCH:
       return absl::UnimplementedError("Unsupported op: " + node.operation.type);
-    default:
-      return SelectDefault(gpu_info, op_def, inputs, outputs, node,
+    default: {
+      ModelHints hints;
+      return SelectDefault(gpu_info, op_def, hints, inputs, outputs, node,
                            gpu_subgraph);
+    }
   }
   return absl::OkStatus();
 }

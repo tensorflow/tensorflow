@@ -387,7 +387,7 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
             /*isSigned=*/true);
       }
       if (quant_specs.legacy_float_scale) {
-        quant_type = quant::DownCastScale(quant_type, min, max);
+        quant_type = quant::DownCastScale(quant_type, min, max, op.getLoc());
       }
     }
     rewriter.setInsertionPointAfter(stats_op);
@@ -469,7 +469,7 @@ struct ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
             /*isSigned=*/this->quant_specs.IsSignedInferenceType());
         if (this->quant_specs.legacy_float_scale) {
           qtype = quant::DownCastScale(qtype, calibrated_type.getMin(),
-                                       calibrated_type.getMax())
+                                       calibrated_type.getMax(), op.getLoc())
                       .template cast<UniformQuantizedType>();
         }
       } else if (tensor_property.number_of_bits == 16) {

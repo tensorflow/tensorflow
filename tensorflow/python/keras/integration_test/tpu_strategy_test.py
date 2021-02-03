@@ -19,12 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import tempfile
 
 from absl import flags
 
 import tensorflow as tf
-
-preproc_layer = tf.keras.layers.experimental.preprocessing
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
@@ -87,6 +86,16 @@ class TpuStrategyTest(tf.test.TestCase):
     label_mapper = tf.keras.Model({"label": raw_label_input}, label_id_input)
 
     return feature_mapper, label_mapper
+
+  def define_inverse_lookup_layer(self):
+    # Only needed for serving.
+    label_inverse_lookup_layer = (
+        tf.keras.layers.experimental.preprocessing.StringLookup(
+            num_oov_indices=1,
+            mask_token=None,
+            vocabulary=LABEL_VOCAB,
+            invert=True))
+    return label_inverse_lookup_layer
 
   def test_keras_metric_outside_strategy_scope_per_replica(self):
     strategy = get_tpu_strategy()
@@ -184,7 +193,45 @@ class TpuStrategyTest(tf.test.TestCase):
       self.assertGreater(accuracy.result().numpy(), 0.5)
       self.assertEqual(optimizer.iterations.numpy(), num_epochs * num_steps)
 
-      # TODO(b/178495959): Add tests that cover the serving phase.
+      # Create a saved model.
+      model.feature_mapper = feature_mapper
+      model.label_mapper = label_mapper
+      model.label_inverse_lookup_layer = self.define_inverse_lookup_layer()
+
+      def create_serving_signature(model):
+
+        @tf.function
+        def serve_fn(raw_features):
+          raw_features = tf.expand_dims(raw_features, axis=0)
+          transformed_features = model.feature_mapper(raw_features)
+          outputs = model(transformed_features)
+          outputs = tf.squeeze(outputs, axis=0)
+          outputs = tf.cast(tf.math.greater(outputs, 0.5), tf.dtypes.int64)
+          decoded_outputs = model.label_inverse_lookup_layer(outputs)
+          return tf.squeeze(decoded_outputs, axis=0)
+
+        # Serving does NOT have batch dimension
+        return serve_fn.get_concrete_function(
+            tf.TensorSpec(shape=(3), dtype=tf.dtypes.string, name="example"))
+
+      serving_fn = create_serving_signature(model)
+
+      saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+      tf.saved_model.save(
+          model, saved_model_dir, signatures={"serving_default": serving_fn})
+
+    # Test the saved_model.
+    loaded_serving_fn = tf.keras.models.load_model(
+        saved_model_dir).signatures["serving_default"]
+
+    # Check model calling with serving signature.
+    prediction1 = loaded_serving_fn(
+        tf.constant(["avenger", "ironman", "avenger"]))["output_0"]
+    self.assertIn(prediction1, ("yes", "no"))
+
+    prediction2 = loaded_serving_fn(
+        tf.constant(["ironman", "ironman", "unkonwn"]))["output_0"]
+    self.assertIn(prediction2, ("yes", "no"))
 
 
 if __name__ == "__main__":

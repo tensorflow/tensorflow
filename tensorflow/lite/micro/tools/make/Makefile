@@ -259,6 +259,7 @@ tensorflow/lite/micro/testing_helpers_test.cc \
 tensorflow/lite/micro/kernels/activations_test.cc \
 tensorflow/lite/micro/kernels/add_test.cc \
 tensorflow/lite/micro/kernels/arg_min_max_test.cc \
+tensorflow/lite/micro/kernels/batch_to_space_nd_test.cc \
 tensorflow/lite/micro/kernels/cast_test.cc \
 tensorflow/lite/micro/kernels/ceil_test.cc \
 tensorflow/lite/micro/kernels/circular_buffer_test.cc \
@@ -307,6 +308,7 @@ MICROLITE_CC_KERNEL_SRCS := \
 tensorflow/lite/micro/kernels/activations.cc \
 tensorflow/lite/micro/kernels/add.cc \
 tensorflow/lite/micro/kernels/arg_min_max.cc \
+tensorflow/lite/micro/kernels/batch_to_space_nd.cc \
 tensorflow/lite/micro/kernels/cast.cc \
 tensorflow/lite/micro/kernels/ceil.cc \
 tensorflow/lite/micro/kernels/circular_buffer.cc \
@@ -397,6 +399,7 @@ tensorflow/lite/kernels/internal/optimized/neon_check.h \
 tensorflow/lite/kernels/internal/quantization_util.h \
 tensorflow/lite/kernels/internal/reference/add.h \
 tensorflow/lite/kernels/internal/reference/arg_min_max.h \
+tensorflow/lite/kernels/internal/reference/batch_to_space_nd.h \
 tensorflow/lite/kernels/internal/reference/binary_function.h \
 tensorflow/lite/kernels/internal/reference/ceil.h \
 tensorflow/lite/kernels/internal/reference/comparisons.h \
