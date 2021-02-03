@@ -107,6 +107,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
 // Creates a pass which removes any unused bounded input arguments to functions
 // which corresponds to GlobalTensor.
 std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveArgsAndGlobalTensors();
+
+// Creates a pass which is responsible for initializing Tensorflow variables
+// as Tensorflow Lite variables.
+std::unique_ptr<OperationPass<ModuleOp>> CreateInitializeVariablesPass();
 }  // namespace TFL
 
 }  // namespace mlir
