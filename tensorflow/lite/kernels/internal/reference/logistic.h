@@ -126,6 +126,36 @@ inline void Logistic(const RuntimeShape& input_shape, const int8_t* input_data,
   }
 }
 
+inline void Logistic(const RuntimeShape& input_shape, const uint8_t* input_data,
+                     float input_scale, int input_zero_point,
+                     const RuntimeShape& output_shape, uint8_t* output_data,
+                     float output_scale, int output_zero_point) {
+  const float cutoff_upper = 1.591576576f;
+  const float cutoff_lower = -11.091299057f;
+
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  for (int i = 0; i < flat_size; i++) {
+    // Dequantize.
+    float val =
+        static_cast<float>((input_data[i] - input_zero_point) * input_scale);
+    float result;
+
+    if (val > cutoff_upper) {
+      result = 1.0f;
+    } else if (val < cutoff_lower) {
+      result = std::exp(val);
+    } else {
+      result = 1.f / (1.f + std::exp(-val));
+    }
+
+    // Requantize
+    uint8_t output =
+        static_cast<uint8_t>(result / output_scale + output_zero_point);
+    output_data[i] = output;
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 
