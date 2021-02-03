@@ -20,7 +20,6 @@ cc_library(
     deps = [
         ":conv",
         ":depthwise_conv",
-        ":fully_connected",
         ":transpose_conv",
         ":winograd",
     ],
@@ -180,30 +179,12 @@ ios_unit_test(
     deps = [":elementwise_test_lib"],
 )
 
-cc_library(
-    name = "fully_connected",
-    srcs = ["fully_connected.cc"],
-    hdrs = ["fully_connected.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "fully_connected_test_lib",
     testonly = 1,
     srcs = ["fully_connected_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":fully_connected",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
     ],

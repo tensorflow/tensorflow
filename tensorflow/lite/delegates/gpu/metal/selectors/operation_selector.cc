@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/default_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
 
@@ -399,11 +399,11 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
                               gpu_info);
       break;
     case OperationType::FULLY_CONNECTED: {
-      FullyConnected conv_op = CreateFullyConnected(
-          gpu_info, op_def,
-          absl::any_cast<FullyConnectedAttributes>(node.operation.attributes));
-      *gpu_op = absl::make_unique<FullyConnected>(std::move(conv_op));
-      break;
+      auto attr =
+          absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
+      *gpu_op = SelectFullyConnected(attr, gpu_info, op_def,
+                                     inputs[0]->tensor.shape.b);
+      return absl::OkStatus();
     }
     case OperationType::LSTM: {
       *gpu_op = SelectLSTM(op_def, gpu_info);
