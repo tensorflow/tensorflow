@@ -286,6 +286,8 @@ class CollectiveReplicaLauncher(object):
     return CollectiveReplicaLauncher._prefer_unique_instance_key
 
   def _use_ordering_token(self):
+    # We rely on auto control dep to insert control edges between NCCL calls,
+    # but for tf1 graph mode auto control dep is not used.
     if not ops.executing_eagerly_outside_functions():
       return False
     return CollectiveReplicaLauncher._prefer_ordering_token
