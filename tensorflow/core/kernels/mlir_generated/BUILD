@@ -305,13 +305,10 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
-    name = "gpu_binary_ops_test",
-    size = "medium",
-    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_binary_ops_test.cc"]),
-    tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # b/173033461
-    ],
+cc_library(
+    name = "base_binary_ops_test",
+    testonly = 1,
+    hdrs = ["base_binary_ops_test.h"],
     deps = [
         ":base_ops_test",
         "//tensorflow/core:framework",
@@ -329,6 +326,21 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "gpu_binary_ops_test",
+    size = "medium",
+    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_binary_ops_test.cc"]),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # b/173033461
+    ],
+    deps = [
+        ":base_binary_ops_test",
+        ":base_ops_test",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
     ],
 )
 
