@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
@@ -127,15 +128,21 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
   } else {
     std::unique_ptr<se::Stream> stream = std::move(usage_stream_pool_.top());
     usage_stream_pool_.pop();
-    stream->RefreshStatus().IgnoreError();  // Can return error::Unimplemented
-    QCHECK(stream->ok());
+    auto status = stream->RefreshStatus();  // Can return error::Unimplemented
+    // Stream may fail with "ABORTED: Bad connection".
+    if (status.code() != tensorflow::error::ABORTED) {
+      CHECK(stream->ok()) << status;
+    }
     return stream;
   }
 }
 
 void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
-  stream->RefreshStatus().IgnoreError();  // Can return error::Unimplemented
-  QCHECK(stream->ok());
+  auto status = stream->RefreshStatus();  // Can return error::Unimplemented
+  // Stream may fail with "ABORTED: Bad connection".
+  if (status.code() != tensorflow::error::ABORTED) {
+    CHECK(stream->ok()) << status;
+  }
   absl::MutexLock lock(&mu_);
   usage_stream_pool_.push(std::move(stream));
 }
