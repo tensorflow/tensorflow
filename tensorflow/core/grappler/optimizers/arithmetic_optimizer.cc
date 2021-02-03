@@ -1759,6 +1759,52 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     return Status::OK();
   }
 
+  // Hoist first chain of concat's input to its output, and skip reshapes in
+  // the chain.
+  Status HoistFirstChainForConcat (string concat_name, string tail_input,
+                                   string concat_input) {
+    NodeDef* concat_replace = ctx().node_map->GetNode(concat_input);
+    NodeDef* input_node = ctx().node_map->GetNode(tail_input);
+    while (concat_replace != input_node) {
+      if (!IsReshape(*concat_replace)) {
+        break;
+      }
+      TF_RETURN_IF_ERROR(
+          GetInputNode(concat_replace->input(0), &concat_replace));
+    }
+    // All ops in the chain are reshapes, it doesn't need to hoist the chain.
+    if (concat_replace == input_node) {
+      return Status::OK();
+    }
+
+    // Update the consumers of concat to consume the end of the chain
+    // instead.
+    UpdateConsumers(concat_name, concat_replace->name());
+
+    NodeDef* non_reshape = concat_replace;
+    NodeDef* iters = nullptr;
+    TF_RETURN_IF_ERROR(GetInputNode(concat_replace->input(0), &iters));
+    while (iters != input_node) {
+      if (IsReshape(*iters)) {
+        TF_RETURN_IF_ERROR(GetInputNode(iters->input(0), &iters));
+        continue;
+      }
+      // Skip reshapes.
+      if (non_reshape->input(0) != iters->name()) {
+        non_reshape->set_input(0, iters->name());
+        ctx().node_map->UpdateInput(
+            non_reshape->name(), non_reshape->input(0), iters->name());
+      }
+      non_reshape = iters;
+      TF_RETURN_IF_ERROR(GetInputNode(iters->input(0), &iters));
+    }
+
+    // Reuse nodes in the first chain to process output of concat.
+    non_reshape->set_input(0, concat_name);
+    ctx().node_map->UpdateInput(non_reshape->name(), tail_input, concat_name);
+    return Status::OK();
+  }
+
   Status HoistChainForConcat(const int prefix_length, const ChainLinkSet& tails,
                              NodeDef* concat_node) {
     const string& concat_name = concat_node->name();
@@ -1775,12 +1821,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       ctx().node_map->UpdateInput(concat_name, concat_input, tail_input);
 
       if (concat_port == first_input) {
-        // Update the consumers of concat to consume the end of the chain
-        // instead.
-        UpdateConsumers(concat_node, concat_input);
-        // Reuse nodes in the first chain to process output of concat.
-        tail->set_input(0, concat_name);
-        ctx().node_map->UpdateInput(tail->name(), tail_input, concat_name);
+        TF_RETURN_IF_ERROR(
+            HoistFirstChainForConcat(concat_name, tail_input, concat_input));
       }
     }
     return Status::OK();
@@ -1810,12 +1852,14 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
 
     // Now walk backwards creating the rest of the chain.
     while (cur_tail != split_node) {
-      NodeDef* new_copy = AddCopyNode(
-          OptimizedNodeName(root_scope_and_name, cur_tail->name()), cur_tail);
-      new_copy->clear_input();
-      cur_copy->add_input(new_copy->name());
-      ctx().node_map->AddOutput(new_copy->name(), cur_copy->name());
-      cur_copy = new_copy;
+      if (!IsReshape(*cur_tail)) {
+        NodeDef* new_copy = AddCopyNode(
+            OptimizedNodeName(root_scope_and_name, cur_tail->name()), cur_tail);
+        new_copy->clear_input();
+        cur_copy->add_input(new_copy->name());
+        ctx().node_map->AddOutput(new_copy->name(), cur_copy->name());
+        cur_copy = new_copy;
+      }
       TF_RETURN_IF_ERROR(GetInputNode(cur_tail->input(0), &cur_tail));
     }
     // Connect the original input to the head of the new chain.

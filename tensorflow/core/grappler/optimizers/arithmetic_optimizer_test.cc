@@ -3974,7 +3974,7 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcatWithReshape) {
       new_shape);
 
   Output concat =
-      ops::Concat(s.WithOpName("concat"), {exp_a, exp_b, reshape_c}, axis);
+      ops::Concat(s.WithOpName("concat"), {reshape_c, exp_b, exp_a}, axis);
   Output id = ops::Identity(s.WithOpName("id"), concat);
 
   // Test case with chains of length 2.
@@ -4032,24 +4032,24 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcatWithReshape) {
     }
     if (node.name() == "concat") {
       ASSERT_EQ(node.input_size(), 7);
-      EXPECT_EQ(node.input(0), "sin_a");
+      EXPECT_EQ(node.input(0), "reshape_c");
       EXPECT_EQ(node.input(1), "b");
-      EXPECT_EQ(node.input(2), "reshape_c");
+      EXPECT_EQ(node.input(2), "sin_a");
       EXPECT_EQ(node.input(3), "axis");
       EXPECT_EQ(node.input(4), "^ctrl1");
       EXPECT_EQ(node.input(5), "^ctrl2");
       EXPECT_EQ(node.input(6), "^ctrl4");
       found++;
     }
-    if (node.name() == "exp_a") {
+    if (node.name() == "exp_c") {
       ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "concat");
-      EXPECT_EQ(node.input(1), "^ctrl1");
+      EXPECT_EQ(node.input(1), "^ctrl2");
       found++;
     }
     if (node.name() == "id") {
       ASSERT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "exp_a");
+      EXPECT_EQ(node.input(0), "exp_c");
       found++;
     }
 
@@ -4124,12 +4124,12 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplitWithReshape) {
   //          [Reshape(y) for y in Split(Sin(x))].
   ops::Split split1(s.WithOpName("split1"), axis, x, 2);
   Output sin_a =
-      ops::Sin(s.WithOpName("sin_a").WithControlDependencies(ctrl1), split1[0]);
+      ops::Sin(s.WithOpName("sin_a").WithControlDependencies(ctrl1), split1[1]);
   Output id_a = ops::Identity(s.WithOpName("id_a"), sin_a);
 
   Output reshape_b = ops::Reshape(
       s.WithOpName("reshape_b").WithControlDependencies(ctrl4),
-      split1[1],
+      split1[0],
       new_shape);
 
   Output sin_b = ops::Sin(s.WithOpName("sin_b"), reshape_b);
@@ -4190,10 +4190,10 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplitWithReshape) {
     if (node.name() == "split1") {
       ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "axis");
-      EXPECT_EQ(node.input(1), "ArithmeticOptimizer/_sin_a_split1");
+      EXPECT_EQ(node.input(1), "ArithmeticOptimizer/_sin_b_split1");
       found++;
     }
-    if (node.name() == "ArithmeticOptimizer/_sin_a_split1") {
+    if (node.name() == "ArithmeticOptimizer/_sin_b_split1") {
       EXPECT_EQ(node.op(), "Sin");
       ASSERT_EQ(node.input_size(), 3);
       EXPECT_EQ(node.input(0), "x");
@@ -4203,12 +4203,12 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplitWithReshape) {
     }
     if (node.name() == "id_a") {
       ASSERT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "split1");
+      EXPECT_EQ(node.input(0), "split1:1");
       found++;
     }
     if (node.name() == "reshape_b") {
       ASSERT_EQ(node.input_size(), 3);
-      EXPECT_EQ(node.input(0), "split1:1");
+      EXPECT_EQ(node.input(0), "split1");
       EXPECT_EQ(node.input(1), "new_shape");
       EXPECT_EQ(node.input(2), "^ctrl4");
       found++;
