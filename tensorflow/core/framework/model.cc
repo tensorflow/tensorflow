@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/time/clock.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
@@ -1461,6 +1463,10 @@ void Model::AddNode(Node::Factory factory, const string& name,
   collect_resource_usage_ =
       collect_resource_usage_ || node->has_tunable_parameters();
   *out_node = std::move(node);
+  // Reset the optimization period when a node is added so that autotuning
+  // adapts to changes to the input pipeline faster.
+  optimization_period_ms_ = kOptimizationPeriodMinMs;
+  cond_var_.notify_all();
 }
 
 void Model::FlushMetrics() {
@@ -1539,6 +1545,55 @@ bool Model::ShouldStop(
   // If all parameters have reached their maximum values or RAM budget is
   // reached, we stop the iterations.
   return all_max || TotalMaximumBufferedBytes(snapshot) > ram_budget;
+}
+
+// TODO(jsimsa): Add support for tracking and using the model input time.
+Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
+                           int64 ram_budget,
+                           CancellationManager* cancellation_manager) {
+  std::function<void()> unused;
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      cancellation_manager,
+      [this]() {
+        mutex_lock l(mu_);
+        cond_var_.notify_all();
+      },
+      /*deregister_fn=*/&unused));
+
+  int64 last_optimization_ms = 0;
+  int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+  while (true) {
+    {
+      mutex_lock l(mu_);
+      while (!cancellation_manager->IsCancelled() &&
+             last_optimization_ms + optimization_period_ms_ > current_time_ms) {
+        auto wait_ms =
+            last_optimization_ms + optimization_period_ms_ - current_time_ms;
+        VLOG(2) << "Waiting for " << wait_ms << " ms.";
+        cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
+        current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+      }
+      if (cancellation_manager->IsCancelled()) {
+        return Status::OK();
+      }
+    }
+
+    int64 optimization_start_us = EnvTime::NowMicros();
+    Optimize(algorithm, cpu_budget, ram_budget, /*model_input_time=*/0);
+    VLOG(2) << "Optimized for "
+            << (EnvTime::NowMicros() - optimization_start_us) << " us.";
+
+    // Exponentially increase the period of running the optimization
+    // until a threshold is reached.
+    {
+      mutex_lock l(mu_);
+      optimization_period_ms_ =
+          std::min(optimization_period_ms_ << 1, kOptimizationPeriodMaxMs);
+    }
+    current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+    last_optimization_ms = current_time_ms;
+    FlushMetrics();
+  }
 }
 
 void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
