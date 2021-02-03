@@ -2,21 +2,21 @@
 
 // CHECK-LABEL: entry:
 // CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, i8* %[[VAL_1:.*]], i64 0
-// CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [3 x i8*]*
+// CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [1024 x half]*
 // CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_4:.*]], i64 0
 // CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_3]] to [1024 x half]*
 // CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_7:.*]], i64 0
 // CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_6]] to [1023 x half]*
 // CHECK:         %[[VAL_9:.*]] = getelementptr inbounds i8, i8* %[[VAL_10:.*]], i64 0
-// CHECK:         %[[VAL_11:.*]] = bitcast i8* %[[VAL_9]] to [0 x half]*
+// CHECK:         %[[VAL_11:.*]] = bitcast i8* %[[VAL_9]] to [1023 x half]*
 // CHECK:         %[[VAL_12:.*]] = getelementptr inbounds i8, i8* %[[VAL_13:.*]], i64 0
 // CHECK:         %[[VAL_14:.*]] = bitcast i8* %[[VAL_12]] to [1024 x half]*
 // CHECK:         %[[VAL_15:.*]] = getelementptr inbounds i8, i8* %[[VAL_16:.*]], i64 0
-// CHECK:         %[[VAL_17:.*]] = bitcast i8* %[[VAL_15]] to [1024 x half]*
+// CHECK:         %[[VAL_17:.*]] = bitcast i8* %[[VAL_15]] to [1023 x half]*
 // CHECK:         %[[VAL_18:.*]] = getelementptr inbounds i8, i8* %[[VAL_19:.*]], i64 0
-// CHECK:         %[[VAL_20:.*]] = bitcast i8* %[[VAL_18]] to [1023 x half]*
+// CHECK:         %[[VAL_20:.*]] = bitcast i8* %[[VAL_18]] to [0 x half]*
 // CHECK:         %[[VAL_21:.*]] = getelementptr inbounds i8, i8* %[[VAL_22:.*]], i64 0
-// CHECK:         %[[VAL_23:.*]] = bitcast i8* %[[VAL_21]] to [1023 x half]*
+// CHECK:         %[[VAL_23:.*]] = bitcast i8* %[[VAL_21]] to [3 x i8*]*
 // CHECK:         %[[VAL_24:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_25:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_26:.*]] = mul nuw nsw i32 %[[VAL_24]], 1024
@@ -34,18 +34,18 @@
 // CHECK:       concat_index_from_operand_id0:                    ; preds = %[[VAL_31]]
 // CHECK:         %[[VAL_38:.*]] = phi i32 [ 0, %[[VAL_31]] ]
 // CHECK:         %[[VAL_39:.*]] = sub nsw i32 %[[VAL_29]], %[[VAL_38]]
-// CHECK:         %[[VAL_40:.*]] = getelementptr inbounds [1024 x half], [1024 x half]* %[[VAL_14]], i32 0, i32 %[[VAL_39]]
+// CHECK:         %[[VAL_40:.*]] = getelementptr inbounds [1024 x half], [1024 x half]* %[[VAL_2]], i32 0, i32 %[[VAL_39]]
 // CHECK:         %[[VAL_41:.*]] = load half, half* %[[VAL_40]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_42:.*]] = getelementptr inbounds [1024 x half], [1024 x half]* %[[VAL_17]], i32 0, i32 %[[VAL_39]]
+// CHECK:         %[[VAL_42:.*]] = getelementptr inbounds [1024 x half], [1024 x half]* %[[VAL_5]], i32 0, i32 %[[VAL_39]]
 // CHECK:         %[[VAL_43:.*]] = load half, half* %[[VAL_42]], align 2, !invariant.load !4
 // CHECK:         %[[VAL_44:.*]] = fmul half %[[VAL_41]], %[[VAL_43]]
 // CHECK:         br label %[[VAL_45:.*]]
 // CHECK:       concat_index_from_operand_id1:                    ; preds = %[[VAL_37]]
 // CHECK:         %[[VAL_46:.*]] = phi i32 [ 1024, %[[VAL_37]] ]
 // CHECK:         %[[VAL_47:.*]] = sub nsw i32 %[[VAL_29]], %[[VAL_46]]
-// CHECK:         %[[VAL_48:.*]] = getelementptr inbounds [1023 x half], [1023 x half]* %[[VAL_20]], i32 0, i32 %[[VAL_47]]
+// CHECK:         %[[VAL_48:.*]] = getelementptr inbounds [1023 x half], [1023 x half]* %[[VAL_8]], i32 0, i32 %[[VAL_47]]
 // CHECK:         %[[VAL_49:.*]] = load half, half* %[[VAL_48]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_50:.*]] = getelementptr inbounds [1023 x half], [1023 x half]* %[[VAL_23]], i32 0, i32 %[[VAL_47]]
+// CHECK:         %[[VAL_50:.*]] = getelementptr inbounds [1023 x half], [1023 x half]* %[[VAL_11]], i32 0, i32 %[[VAL_47]]
 // CHECK:         %[[VAL_51:.*]] = load half, half* %[[VAL_50]], align 2, !invariant.load !4
 // CHECK:         %[[VAL_52:.*]] = fadd half %[[VAL_49]], %[[VAL_51]]
 // CHECK:         br label %[[VAL_45]]
@@ -54,7 +54,7 @@
 // CHECK:         br i1 %[[VAL_53]], label %[[VAL_54:.*]], label %[[VAL_55:.*]]
 // CHECK:       concat_index_not_from_operand1:                   ; preds = %[[VAL_37]]
 // CHECK:         unreachable
-// CHECK:       concat.1.merge:                                   ; preds = %[[VAL_54]], %[[VAL_36]]
+// CHECK:       concatenate.7.merge:                              ; preds = %[[VAL_54]], %[[VAL_36]]
 // CHECK:         %[[VAL_56:.*]] = phi half [ %[[VAL_44]], %[[VAL_36]] ], [ %[[VAL_52]], %[[VAL_54]] ]
 // CHECK:         %[[VAL_57:.*]] = icmp sge i32 %[[VAL_29]], 0
 // CHECK:         %[[VAL_58:.*]] = icmp slt i32 %[[VAL_29]], 1024
@@ -74,17 +74,17 @@
 // CHECK:         br label %[[VAL_32]]
 // CHECK:       slice0-true:                                      ; preds = %[[VAL_45]]
 // CHECK:         %[[VAL_71:.*]] = sub i32 %[[VAL_29]], 0
-// CHECK:         %[[VAL_72:.*]] = getelementptr inbounds [1024 x half], [1024 x half]* %[[VAL_5]], i32 0, i32 %[[VAL_71]]
+// CHECK:         %[[VAL_72:.*]] = getelementptr inbounds [1024 x half], [1024 x half]* %[[VAL_14]], i32 0, i32 %[[VAL_71]]
 // CHECK:         store half %[[VAL_56]], half* %[[VAL_72]], align 2
 // CHECK:         br label %[[VAL_61]]
 // CHECK:       slice1-true:                                      ; preds = %[[VAL_61]]
 // CHECK:         %[[VAL_73:.*]] = sub i32 %[[VAL_29]], 1024
-// CHECK:         %[[VAL_74:.*]] = getelementptr inbounds [1023 x half], [1023 x half]* %[[VAL_8]], i32 0, i32 %[[VAL_73]]
+// CHECK:         %[[VAL_74:.*]] = getelementptr inbounds [1023 x half], [1023 x half]* %[[VAL_17]], i32 0, i32 %[[VAL_73]]
 // CHECK:         store half %[[VAL_56]], half* %[[VAL_74]], align 2
 // CHECK:         br label %[[VAL_66]]
 // CHECK:       slice2-true:                                      ; preds = %[[VAL_66]]
 // CHECK:         %[[VAL_75:.*]] = sub i32 %[[VAL_29]], 2047
-// CHECK:         %[[VAL_76:.*]] = getelementptr inbounds [0 x half], [0 x half]* %[[VAL_11]], i32 0, i32 %[[VAL_75]]
+// CHECK:         %[[VAL_76:.*]] = getelementptr inbounds [0 x half], [0 x half]* %[[VAL_20]], i32 0, i32 %[[VAL_75]]
 // CHECK:         store half %[[VAL_56]], half* %[[VAL_76]], align 2
 // CHECK:         br label %[[VAL_33]]
 
