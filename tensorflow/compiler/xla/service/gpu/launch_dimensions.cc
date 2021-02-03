@@ -28,9 +28,10 @@ std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims) {
   LaunchDimensions::Dim3D block_counts = launch_dims.block_counts();
   LaunchDimensions::Dim3D thread_counts = launch_dims.thread_counts_per_block();
-  out << absl::StrFormat("[block: {%d, %d, %d}, thread: {%d, %d, %d}]",
+  out << absl::StrFormat("[block: {%d, %d, %d}, thread: {%d, %d, %d}] last_dim_aligned_for_vectorization: %d",
                          block_counts.x, block_counts.y, block_counts.z,
-                         thread_counts.x, thread_counts.y, thread_counts.z);
+                         thread_counts.x, thread_counts.y, thread_counts.z,
+                         launch_dims.last_dim_aligned_for_vectorization());
   return out;
 }
 
@@ -116,7 +117,12 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
       "block) = ceil(%d/%d) = %d",
       num_elements, threads_per_block, block_count);
 
-  return LaunchDimensions(block_count, threads_per_block);
+  bool last_dim_aligned_for_vectorization = false;
+  if (shape.rank() > 1) {
+    last_dim_aligned_for_vectorization = threads_per_block * unroll_factor == shape.dimensions().back();
+  }
+
+  return LaunchDimensions(block_count, threads_per_block, last_dim_aligned_for_vectorization);
 }
 
 }  // namespace gpu

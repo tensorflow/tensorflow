@@ -112,6 +112,33 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
   Delinearize(&multidim_, linear, shape, b);
 }
 
+IrArray::Index::Index(llvm::Value* linear,
+                      absl::Span<llvm::Value* const> multidim,
+                      const Shape& shape,
+                      llvm::IRBuilder<>* b)
+    : multidim_(shape.rank()),
+      linear_(linear),
+      layout_(shape.layout()),
+      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
+  CHECK_NE(linear, nullptr);
+  index_type_ = linear->getType();
+  CHECK_EQ(multidim.size(), shape.rank());
+  for (auto dim: multidim) {
+    if (dim) {
+      CHECK_EQ(dim->getType(), index_type_);
+    }
+  }
+  CHECK(LayoutUtil::HasLayout(shape))
+      << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
+      << " should have a layout.";
+  Delinearize(&multidim_, linear, shape, b);
+  for (int i = 0; i < multidim.size(); ++i) {
+    if (multidim[i] != nullptr) {
+      multidim_[i] = multidim[i];
+    }
+  }
+}
+
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
                       absl::Span<llvm::Value*> dynamic_dims,
                       llvm::IRBuilder<>* b)
@@ -344,7 +371,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     source_index[i] = multidim_[dimension_mapping[i]];
   }
   if (linear_ == nullptr || !LayoutUtil::HasLayout(operand_shape) ||
-      !LayoutUtil::HasLayout(shape)) {
+      !LayoutUtil::HasLayout(shape) || rank == 1) {
     return Index(source_index, operand_shape, index_type_);
   }
   // High-level idea: we can reuse the linear index if the broadcasted
