@@ -355,8 +355,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._initialize_single_worker(devices)
       if self._prefer_collective_ops and (
           isinstance(self._cross_device_ops, cross_device_ops_lib.NcclAllReduce)
-          or isinstance(self._inferred_cross_device_ops),
-          cross_device_ops_lib.NcclAllReduce):
+          or isinstance(self._inferred_cross_device_ops,
+                        cross_device_ops_lib.NcclAllReduce)):
         self._use_collective_ops(devices)
         self._inferred_cross_device_ops = None
       logging.info("Using MirroredStrategy with devices %r", devices)
