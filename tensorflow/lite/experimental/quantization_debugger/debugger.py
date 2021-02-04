@@ -14,7 +14,9 @@
 # ==============================================================================
 """Python TF-Lite QuantizationDebugger."""
 import collections
-from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence
+import csv
+from typing import (Callable, Dict, IO, Iterable, List, Mapping, Optional,
+                    Sequence)
 
 import numpy as np
 import tensorflow as tf
@@ -107,6 +109,14 @@ class QuantizationDebugger:
     if self._debug_options.model_debug_metrics:
       self._float_interpreter = tf.lite.Interpreter(float_model_path,
                                                     float_model_content)
+
+    # TODO(b/177749613) : Fix the dependency on tf.lite._get_ops_details()
+    # Following code is needed to get op's name from the output tensor index,
+    # since NumericVerify op only provides its quantized input tensor index.
+    self._defining_op = dict()
+    for op_info in self._quant_interpreter._get_ops_details():  # pylint: disable=protected-access
+      self._defining_op.update(
+          {tensor_idx: op_info['op_name'] for tensor_idx in op_info['outputs']})
 
     self._numeric_verify_tensor_details = None
     if not self._get_numeric_verify_tensor_details():
@@ -261,3 +271,28 @@ class QuantizationDebugger:
           if detail['name'].startswith('NumericVerify')
       ]
     return self._numeric_verify_tensor_details
+
+  def _get_operand_index(self, numeric_verify_name: str) -> int:
+    """Gets the index of NumericVerify Op's quantized input tensor."""
+    tensor_idx = numeric_verify_name.rsplit(':', 1)[-1]
+    return int(tensor_idx)
+
+  def layer_statistics_dump(self, file: IO[str]) -> None:
+    """Dumps layer statistics into file, in csv format.
+
+    Args:
+      file: file, or file-like object to write.
+    """
+    fields = ['op_name', 'op_idx'] + list(
+        self._layer_debug_metrics.keys()) + ['scales', 'zero_points']
+    writer = csv.DictWriter(file, fields)
+    writer.writeheader()
+    for name, metrics in self.layer_statistics.items():
+      data = metrics.copy()
+      data['op_idx'] = self._get_operand_index(name)
+      data['op_name'] = self._defining_op[data['op_idx']]
+      details = self._quant_interpreter._get_tensor_details(data['op_idx'])  # pylint: disable=protected-access
+      data['scales'], data['zero_points'] = (
+          details['quantization_parameters']['scales'],
+          details['quantization_parameters']['zero_points'])
+      writer.writerow(data)

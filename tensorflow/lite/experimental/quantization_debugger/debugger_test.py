@@ -14,6 +14,9 @@
 # ==============================================================================
 """Tests for QuantizationDebugger."""
 
+import csv
+import io
+
 import numpy as np
 import tensorflow as tf
 
@@ -104,6 +107,27 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase):
     self.assertCountEqual(expected_metrics.keys(), actual_metrics.keys())
     for key, value in expected_metrics.items():
       self.assertAlmostEqual(value, actual_metrics[key], places=5)
+
+    buffer = io.StringIO()
+    quant_debugger.layer_statistics_dump(buffer)
+    reader = csv.DictReader(buffer.getvalue().split())
+    actual_values = next(iter(reader))
+
+    expected_values = expected_metrics.copy()
+    expected_values.update({
+        'op_name': 'CONV_2D',
+        'op_idx': 8,
+        'scales': [0.15686275],
+        'zero_points': [-128],
+    })
+    for key, value in expected_values.items():
+      if isinstance(value, str):
+        self.assertEqual(value, actual_values[key])
+      elif isinstance(value, list):
+        self.assertAlmostEqual(
+            value[0], float(actual_values[key][1:-1]), places=5)
+      else:
+        self.assertAlmostEqual(value, float(actual_values[key]), places=5)
 
   @test_util.run_v2_only
   def test_quantization_debugger_model_metrics(self):
