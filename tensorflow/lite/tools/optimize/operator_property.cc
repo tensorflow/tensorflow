@@ -66,6 +66,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
   OperatorProperty property;
   switch (op_code) {
     case BuiltinOperator_ABS:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      property.restrict_same_input_output_scale = true;
+      break;
     case BuiltinOperator_RSQRT:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
