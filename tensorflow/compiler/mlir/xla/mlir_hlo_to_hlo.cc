@@ -163,32 +163,14 @@ static xla::FftType Convert_fft_type(llvm::StringRef fft_type_str) {
   return fft_type_enum;
 }
 
-// Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
-// and source-target pairs are defined in HLO.
-static std::vector<std::pair<int64, int64>> Convert_Nx2_attribute(
-    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr) {
-  if (!optional_attr.hasValue()) return {};
-  mlir::DenseIntElementsAttr attr = *optional_attr;
-  auto it = attr.getValues<int64>().begin();
-  std::vector<std::pair<int64, int64>> out(attr.getNumElements() / 2);
-  for (auto& item : out) {
-    int64 first = *it;
-    ++it;
-    int64 second = *it;
-    ++it;
-    item = {first, second};
-  }
-  return out;
-}
-
 static std::vector<std::pair<int64, int64>> Convert_padding(
     llvm::Optional<mlir::DenseIntElementsAttr> padding) {
-  return Convert_Nx2_attribute(padding);
+  return xla::ConvertNx2Attribute(padding).ValueOrDie();
 }
 
 static std::vector<std::pair<int64, int64>> Convert_source_target_pairs(
     llvm::Optional<mlir::DenseIntElementsAttr> source_target_pairs) {
-  return Convert_Nx2_attribute(source_target_pairs);
+  return xla::ConvertNx2Attribute(source_target_pairs).ValueOrDie();
 }
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(

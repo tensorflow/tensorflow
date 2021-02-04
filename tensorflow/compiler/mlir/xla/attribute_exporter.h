@@ -20,8 +20,8 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
@@ -35,6 +35,11 @@ StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
 
 StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
     mlir::DenseIntElementsAttr input);
+
+// Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
+// and source-target pairs are defined in HLO.
+StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
+    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr);
 
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_

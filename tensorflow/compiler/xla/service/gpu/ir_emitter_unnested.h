@@ -215,6 +215,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandlePartitionId(HloInstruction* hlo) override;
 
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+  Status EmitCollectivePermuteFromMlir(MlirEmitterInput input);
 
   Status EmitOp(MlirEmitterInput mlir_input);
 

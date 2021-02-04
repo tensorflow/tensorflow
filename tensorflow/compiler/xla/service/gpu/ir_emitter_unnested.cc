@@ -2940,10 +2940,31 @@ Status IrEmitterUnnested::HandlePartitionId(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
-  CollectivePermuteConfig config = GetCollectivePermuteConfig(hlo);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitCollectivePermuteFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitCollectivePermuteFromMlir(
+    MlirEmitterInput input) {
+  auto collective_permute_op =
+      mlir::cast<mlir::lmhlo::CollectivePermuteOp>(input.op);
+  if (collective_permute_op.channel_id())
+    return Unimplemented("collective permute with channel_id not implemented");
+  using source_dest_pairs_t = std::vector<std::pair<int64, int64>>;
+  TF_ASSIGN_OR_RETURN(
+      source_dest_pairs_t source_dest_pairs,
+      ConvertNx2Attribute(collective_permute_op.source_target_pairs()));
+
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice source_slice,
+      GetAllocationSliceForMlir(collective_permute_op.operand()));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice result_slice,
+      GetAllocationSliceForMlir(collective_permute_op.output()));
+
   AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
-      GetThunkInfo(hlo), std::move(config),
-      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo)));
+      input.thunk_info, std::move(source_dest_pairs), source_slice,
+      result_slice));
   return Status::OK();
 }
 
@@ -5762,6 +5783,9 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(
 Status IrEmitterUnnested::EmitOp(MlirEmitterInput mlir_input) {
   if (mlir::isa<mlir::lmhlo::SortOp>(mlir_input.op)) {
     return EmitSortFromMlir(mlir_input);
+  }
+  if (mlir::isa<mlir::lmhlo::CollectivePermuteOp>(mlir_input.op)) {
+    return EmitCollectivePermuteFromMlir(mlir_input);
   }
   LOG(FATAL)
       << "This function is for test only, and the op is not implemented: "

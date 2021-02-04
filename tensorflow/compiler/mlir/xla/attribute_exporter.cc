@@ -97,7 +97,7 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
   // rank 0 is num_groups, rank 1 is group size.
   auto replica_group_values_it = input.getValues<uint64_t>().begin();
   std::vector<ReplicaGroup> replica_groups(type.getDimSize(0));
-  for (ReplicaGroup &group : replica_groups) {
+  for (ReplicaGroup& group : replica_groups) {
     for (int64 element_idx = 0; element_idx < type.getDimSize(1);
          ++element_idx, ++replica_group_values_it) {
       // For replica group attribute, -1 indicates padding added by
@@ -110,4 +110,26 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
   }
   return replica_groups;
 }
+
+// Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
+// and source-target pairs are defined in HLO.
+StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
+    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr) {
+  if (!optional_attr.hasValue()) return std::vector<std::pair<int64, int64>>{};
+  mlir::DenseIntElementsAttr attr = *optional_attr;
+  auto type = attr.getType().dyn_cast<mlir::RankedTensorType>();
+  if (!type || type.getRank() != 2 || type.getShape()[1] != 2)
+    return InternalError("expected Nx2 attribute to be a tensor of shape Nx2");
+  auto it = attr.getValues<int64>().begin();
+  std::vector<std::pair<int64, int64>> out(attr.getNumElements() / 2);
+  for (auto& item : out) {
+    int64 first = *it;
+    ++it;
+    int64 second = *it;
+    ++it;
+    item = {first, second};
+  }
+  return out;
+}
+
 }  // namespace xla
