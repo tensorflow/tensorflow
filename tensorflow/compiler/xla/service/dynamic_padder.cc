@@ -1282,6 +1282,97 @@ StatusOr<bool> RewriteDynamicSort(
   return true;
 }
 
+StatusOr<bool> RewriteDynamicBinaryOp(
+    HloInstruction* binary,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  HloInstruction* operand_0 = binary->mutable_operand(0);
+  HloInstruction* operand_1 = binary->mutable_operand(1);
+
+  HloComputation* comp = binary->parent();
+  TF_RET_CHECK(operand_0->shape().rank() == operand_1->shape().rank());
+  auto dims_0 = dynamic_dimension_inference->GetDynamicSizes(operand_0, {});
+  auto dims_1 = dynamic_dimension_inference->GetDynamicSizes(operand_1, {});
+  bool changed = false;
+  for (int64 i = 0; i < dims_0.size(); ++i) {
+    HloInstruction* dim_0 = dims_0[i];
+    HloInstruction* dim_1 = dims_1[i];
+
+    if (dims_0[i] != dims_1[i] && dims_0[i] != nullptr &&
+        dims_1[i] != nullptr) {
+      changed = true;
+      // It is possible that a dynamic dimension of one operand is size 1 while
+      // the other is greater than one. According to implicit broadcast
+      // semantics, we need to insert broadcast in this case to make the dynamic
+      // shape match.
+
+      // An implicit broadcast is inserted by slicing the small shape into a
+      // size 1 slice, reshape out the size 1 dimension then broadcast to the
+      // full shape:
+      //
+      // Input [2, <=5, 3]
+      //   |
+      // Slice [2, 1, 3]
+      //   |
+      // Reshape [2, 3]
+      //   |
+      // Broadcast [2, 5, 3]
+      auto rewrite_operand = [&](HloInstruction* pred,
+                                 HloInstruction* operand) -> HloInstruction* {
+        Shape static_shape = operand->shape();
+        static_shape.clear_dynamic_dimensions();
+        pred = comp->AddInstruction(HloInstruction::CreateBroadcast(
+            ShapeUtil::ChangeElementType(static_shape, PRED), pred, {}));
+        Shape slice_shape = static_shape;
+        slice_shape.set_dimensions(i, 1);
+        std::vector<int64> start_indices(slice_shape.rank(), 0);
+        std::vector<int64> strides(slice_shape.rank(), 1);
+        HloInstruction* slice = comp->AddInstruction(
+            HloInstruction::CreateSlice(slice_shape, operand, start_indices,
+                                        slice_shape.dimensions(), strides));
+        Shape reshape_shape = ShapeUtil::DeleteDimension(i, slice_shape);
+        HloInstruction* reshape = comp->AddInstruction(
+            HloInstruction::CreateReshape(reshape_shape, slice));
+        std::vector<int64> broadcast_dims;
+        broadcast_dims.reserve(static_shape.rank() - 1);
+        // Broadcast to all dims execpt for i.
+        for (int64 j = 0; j < static_shape.rank(); ++j) {
+          if (j != i) {
+            broadcast_dims.push_back(j);
+          }
+        }
+
+        HloInstruction* broadcast =
+            comp->AddInstruction(HloInstruction::CreateBroadcast(
+                                     static_shape, reshape, broadcast_dims),
+                                 "implicit_broadcast");
+
+        // Use a select instead of conditional as elementwise operations promote
+        // more fusion.
+        HloInstruction* select =
+            comp->AddInstruction(HloInstruction::CreateTernary(
+                static_shape, HloOpcode::kSelect, pred, broadcast, operand));
+        return select;
+      };
+      auto operand_0_needs_broadcast = binary->parent()->AddInstruction(
+          HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_0,
+                                        dim_1, ComparisonDirection::kLt),
+          "lhs_needs_implicit_broadcast");
+      operand_0 = rewrite_operand(operand_0_needs_broadcast, operand_0);
+
+      auto operand_1_needs_broadcast = binary->parent()->AddInstruction(
+          HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_1,
+                                        dim_0, ComparisonDirection::kLt),
+          "rhs_needs_implicit_broadcast");
+      operand_1 = rewrite_operand(operand_1_needs_broadcast, operand_1);
+    }
+  }
+  if (changed) {
+    TF_RETURN_IF_ERROR(binary->ReplaceOperandWith(0, operand_0));
+    TF_RETURN_IF_ERROR(binary->ReplaceOperandWith(1, operand_1));
+  }
+  return changed;
+}
+
 StatusOr<bool> RewriteDynamicReshape(
     HloInstruction* reshape,
     DynamicDimensionInference* dynamic_dimension_inference) {
@@ -1729,6 +1820,14 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
       if (inst->opcode() == HloOpcode::kReshape) {
         TF_ASSIGN_OR_RETURN(
             changed, RewriteDynamicReshape(inst, &dynamic_dimension_inference));
+        continue;
+      }
+
+      // Elementwise binary with dynamic shapes have implicit broadcast
+      // semantics.
+      if (inst->IsElementwiseBinary()) {
+        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicBinaryOp(
+                                         inst, &dynamic_dimension_inference));
         continue;
       }
 
