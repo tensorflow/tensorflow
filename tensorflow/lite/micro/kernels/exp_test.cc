@@ -66,11 +66,9 @@ TF_LITE_MICRO_TEST(SingleDim) {
   const int input_dims[] = {2, 1, 7};
   const float input_values[] = {0.0f,    1.0f,  -1.0f, 100.0f,
                                 -100.0f, 0.01f, -0.01f};
-
-  // (1.17549e-038 ~ 3.40282e+038), so the golden is set to float32's upper
-  // limit.
-  const float golden[] = {1.0f,         2.71828f, 0.36788f, std::numeric_limits<float>::infinity(),
-                          1.17549e-38f, 1.01005f, 0.99005f};
+  const float golden[] = {
+      1.0f,         2.71828f, 0.36788f, std::numeric_limits<float>::infinity(),
+      1.17549e-38f, 1.01005f, 0.99005f};
   tflite::testing::TestExp(input_dims, input_values, golden, output_data);
 }
 
