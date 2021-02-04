@@ -22,14 +22,14 @@ class GetScalarOfType<int value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 class GetScalarOfFloatType<string value> : NativeCodeCall<
-  "GetScalarOfFloatType(getElementTypeOrSelf($0)," # value # ")">;
+  "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 def GetScalarInfOfType : NativeCodeCall<
-  "GetScalarOfFloatType(getElementTypeOrSelf($0), "
+  "GetScalarOfType(getElementTypeOrSelf($0), "
   "std::numeric_limits<double>::infinity())">;
 
 def GetScalarNanOfType : NativeCodeCall<
-  "GetScalarOfFloatType(getElementTypeOrSelf($0), "
+  "GetScalarOfType(getElementTypeOrSelf($0), "
   "std::numeric_limits<double>::quiet_NaN())">;
 
 class GetI64ScalarElementsAttr<int value> :
@@ -318,6 +318,18 @@ def LowerSizeOp : Pat<
     ),
     /*keep_dims=*/
     ConstBoolAttrFalse
+  )>;
+
+//===----------------------------------------------------------------------===//
+// Sqrt op patterns.
+//===----------------------------------------------------------------------===//
+
+// SqrtGrad(y, dy) = dy * 0.5 / y
+def LowerSqrtGradOp : Pat<
+  (TF_SqrtGradOp $y, $dy),
+  (TF_DivOp
+    (TF_MulOp $dy, (TF_ConstOp (GetScalarOfFloatType<"0.5"> $dy))),
+    $y
   )>;
 
 //===----------------------------------------------------------------------===//

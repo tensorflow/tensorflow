@@ -232,7 +232,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SpaceToBatchOp>(),
     TypeID::get<TF::SpaceToDepthOp>(),
     TypeID::get<TF::SparseToDenseOp>(),
-    TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),
     TypeID::get<TF::StatelessMultinomialOp>(),
     TypeID::get<TF::StatelessRandomGetAlgOp>(),
