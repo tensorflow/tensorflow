@@ -23,7 +23,7 @@ uint GetTotalElementsCountForLayout(const WeightsDescription& weight_desc,
     uint i_aligned = AlignByN(shape.i, 4);
     uint o_aligned = AlignByN(shape.o, 4 * weight_desc.output_group_size);
     return i_aligned * o_aligned * shape.h * shape.w;
-  } else if (weight_desc.layout == WeightsLayout::kOICustomSSpatialI4O4) {
+  } else if (weight_desc.layout == WeightsLayout::kOICustomSpatialI4O4) {
     uint i_aligned = AlignByN(shape.i, 4);
     uint o_aligned = AlignByN(shape.o, 4);
     return i_aligned * o_aligned * weight_desc.spatial_remap.size();
@@ -51,7 +51,7 @@ void RearrangeWeights(
                                        absl::MakeSpan(f16_ptr, flt_count / 4));
     }
     return;
-  } else if (dst_weight_desc.layout == WeightsLayout::kOICustomSSpatialI4O4) {
+  } else if (dst_weight_desc.layout == WeightsLayout::kOICustomSpatialI4O4) {
     if (dst_type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToOICustomSpatialI4O4(

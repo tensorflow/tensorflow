@@ -52,7 +52,7 @@ class ConvolutionTransposed3x3 : public GPUOperation {
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
-    desc.layout = WeightsLayout::kOICustomSSpatialI4O4;
+    desc.layout = WeightsLayout::kOICustomSpatialI4O4;
     desc.spatial_remap = GetSpatialWeightsRemap();
     return desc;
   }

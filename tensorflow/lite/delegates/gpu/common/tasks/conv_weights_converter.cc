@@ -58,7 +58,7 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
           ? conv_weights_desc.output_group_size
           : 1;
 
-  if (conv_weights_desc.layout == WeightsLayout::kOICustomSSpatialI4O4) {
+  if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4) {
     std::vector<int32_t> remap(conv_weights_desc.spatial_remap.size());
     for (int i = 0; i < remap.size(); ++i) {
       remap[i] = conv_weights_desc.spatial_remap[i];
@@ -87,7 +87,7 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
        "H >= args.src_tensor.Height()) return;\n";
   std::string x_kern = "W";
   std::string y_kern = "H";
-  if (conv_weights_desc.layout == WeightsLayout::kOICustomSSpatialI4O4) {
+  if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4) {
     c += "  int spatial_linear = H * args.src_tensor.Width() + W;\n";
     c += "  int linear_remap = args.spatial_remap.Read(spatial_linear);\n";
     c += "  int w_remap = linear_remap % args.src_tensor.Width();\n";
@@ -124,7 +124,7 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
   c += "  int d_index = O / (GROUP_SIZE * 4);\n";
   c += "  int k_index = (O % (GROUP_SIZE * 4)) / 4;\n";
   std::string index;
-  if (conv_weights_desc.layout == WeightsLayout::kOICustomSSpatialI4O4) {
+  if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4) {
     index =
         "((d_index * args.src_tensor.Slices() + I) * args.src_tensor.Height() "
         "+ H) * args.src_tensor.Width() + W";
