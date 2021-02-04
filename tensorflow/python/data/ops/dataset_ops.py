@@ -4004,7 +4004,9 @@ class _NumpyIterator(object):
     def to_numpy(x):
       numpy = x._numpy()  # pylint: disable=protected-access
       if isinstance(numpy, np.ndarray):
-        return np.asarray(memoryview(numpy))
+        # `numpy` shares the same underlying buffer as the `x` Tensor.
+        # Tensors are expected to be immutable, so we disable writes.
+        numpy.setflags(write=False)
       return numpy
 
     return nest.map_structure(to_numpy, next(self._iterator))
