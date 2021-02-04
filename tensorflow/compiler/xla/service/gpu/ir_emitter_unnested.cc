@@ -1875,11 +1875,50 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
     return true;
   }();
 
+  bool row_optimized = fusion.getFusionResults().size() == 1 && // Not tested with MOF.
+      absl::c_all_of(GetHloOperands(fusion), [](const mlir::Value& op) {
+          // Only tested when the inputs are row-major. So only enable that case.
+          // Maybe it would works if only the inner dimensions is contiguous.
+          return true;//TODO: LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout());
+        });
+  for (mlir::Operation& op : fusion.region().front()) {
+    if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
+        mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp>(op) ) {
+      continue;
+    }
+    HloOpcode opcode = *MhloToHloOpcode(&op);
+    if(HloInstruction::IsOpElementwise(opcode)) {
+      continue;
+    }
+
+    if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastOp>(op)) {
+      std::vector<int64> broadcast_dimensions;
+      if (broadcast.broadcast_sizes().size() > 0) {
+        for (const llvm::APInt& int_value : broadcast.broadcast_sizes()) {
+          broadcast_dimensions.push_back(int_value.getSExtValue());
+        }
+      }
+      auto rank = TypeToShape(fusion.getFusionResults()[0].getType()).rank();
+      // The row optimized codepath currently only support scalar and
+      // row broadcasting.
+      if (broadcast_dimensions.size() != 0 &&
+          (broadcast_dimensions.size() != 1 ||
+           broadcast_dimensions.back() != (rank - 1))) {
+        row_optimized = false;
+        VLOG(3) << "Row vectorization not enabled due to this op: " << HloOpcodeString(opcode);
+        break;
+      }
+    }
+    row_optimized = false;
+    VLOG(3) << "Row vectorization not enabled due to this op: " << HloOpcodeString(opcode);
+    break;
+  }
+
   Shape element_shape = context.output_shapes[0];
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
-                          unroll_factor, few_waves));
+                          unroll_factor, few_waves, row_optimized));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
                          ir_emitter_context_->llvm_module());
   llvm::Type* index_type = GetIndexTypeForKernelFromMlir(

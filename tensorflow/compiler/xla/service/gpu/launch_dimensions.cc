@@ -57,7 +57,7 @@ static int64 ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
 // Calculates the launch dimensions used to invoke `hlo`.
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info, int unroll_factor,
-    bool few_waves) {
+    bool few_waves, bool row_optimized) {
   int64 num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
@@ -82,12 +82,22 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   // need more registers to hold intermediate values. Reduce the number of
   // blocks per thread to increase the number of registers available to ptxas.
   // Make sure we still have a multiple of 32.
-  threads_per_block =
+  int64 threads_per_block_row_optimized = shape.dimensions().back() / unroll_factor;
+  if (row_optimized &&
+      shape.dimensions().back() % unroll_factor == 0 &&
+      (threads_per_block_row_optimized >= 32 &&
+       threads_per_block_row_optimized <= gpu_device_info.threads_per_block_limit)) {
+    threads_per_block = threads_per_block_row_optimized;
+    VLOG(2) << "Update # of threads per block to ("
+              << threads_per_block << ") to be row_optimized.";
+  } else {
+    threads_per_block =
       RoundUpToNearest(threads_per_block / unroll_factor, int64{32});
-  if (num_elements < threads_per_block) {
-    threads_per_block = num_elements;
-    VLOG(2) << "Update # of threads per block to the element count ("
-            << threads_per_block << ") because the latter is smaller.";
+    if (num_elements < threads_per_block) {
+      threads_per_block = num_elements;
+      VLOG(2) << "Update # of threads per block to the element count ("
+              << threads_per_block << ") because the latter is smaller.";
+    }
   }
 
   int64 block_count = CeilOfRatio(num_elements, threads_per_block);
