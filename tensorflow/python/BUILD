@@ -6341,6 +6341,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "grappler",
+        "no_tfrt",  #TODO(b/174712583)
     ],
     deps = [
         ":array_ops",
@@ -6365,6 +6366,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "grappler",
+        "no_tfrt",  #TODO(b/174712583)
     ],
     xla_enable_strict_auto_jit = False,
     deps = [
