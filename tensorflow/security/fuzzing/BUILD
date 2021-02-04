@@ -147,3 +147,10 @@ tf_py_fuzz_target(
     tags = ["notap"],  # Run in OSS only.
     deps = [":python_fuzzing"],
 )
+
+tf_py_fuzz_target(
+    name = "dataFormatVecPermute_fuzz",
+    srcs = ["dataFormatVecPermute_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
