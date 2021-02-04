@@ -39,6 +39,8 @@ filegroup(
     name = "enabled_unary_kernel_srcs",
     srcs = [
         "gpu_op_abs.cc",
+        "gpu_op_acos.cc",
+        "gpu_op_acosh.cc",
         "gpu_op_atan.cc",
         "gpu_op_atanh.cc",
         "gpu_op_ceil.cc",
@@ -72,8 +74,6 @@ filegroup(
 filegroup(
     name = "experimental_unary_kernel_srcs",
     srcs = [
-        "gpu_op_acos.cc",
-        "gpu_op_acosh.cc",
         "gpu_op_angle.cc",
         "gpu_op_asin.cc",
         "gpu_op_asinh.cc",
