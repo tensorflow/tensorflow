@@ -223,10 +223,16 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Same as `EmitTargetElementLoop`, but in given `thunk` rather than
   // `LastThunk()`. The kernel implementation will be unrolled if
-  // `unroll_factor` is greater than one.
+  // `unroll_factor` is greater than one.  If `few_waves` is true,
+  // each threads will loop over a block of unroll_factor
+  // elements. Otherwise each threads will handle only unroll_factor
+  // elements.  If `row_optimized` is true, then the block size will
+  // equal to `hlo.shape().dimensions().back()/unroll_factor`. This
+  // help vectorize when doing broadcasting on the last dimensions.
   Status EmitTargetElementLoopInThunk(
       const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
-      KernelThunk* thunk, int unroll_factor, bool few_waves = false);
+      KernelThunk* thunk, int unroll_factor, bool few_waves = false,
+      bool row_optimized = false);
 
   Status Postprocess(HloInstruction* hlo) override;
 
