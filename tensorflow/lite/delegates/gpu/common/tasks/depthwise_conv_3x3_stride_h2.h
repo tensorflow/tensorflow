@@ -144,8 +144,7 @@ DepthWiseConv3x3StrideH2 CreateDepthWiseConv3x3StrideH2(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info);
 
-bool CheckDepthWiseConv3x3StrideH2Support(
-    const OperationDef& definition,
+bool IsDepthWiseConv3x3StrideH2Supported(
     const DepthwiseConvolution2DAttributes& attr);
 
 }  // namespace gpu

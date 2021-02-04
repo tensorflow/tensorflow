@@ -231,8 +231,7 @@ DepthWiseConv3x3StrideH2 CreateDepthWiseConv3x3StrideH2(
   return desc;
 }
 
-bool CheckDepthWiseConv3x3StrideH2Support(
-    const OperationDef& definition,
+bool IsDepthWiseConv3x3StrideH2Supported(
     const DepthwiseConvolution2DAttributes& attr) {
   return attr.weights.shape.o == 1 && attr.weights.shape.h == 3 &&
          attr.weights.shape.w == 3 && attr.strides.h == 2 &&

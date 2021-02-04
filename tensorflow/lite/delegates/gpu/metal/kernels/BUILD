@@ -19,7 +19,6 @@ cc_library(
     name = "kernels",
     deps = [
         ":conv",
-        ":depthwise_conv",
         ":transpose_conv",
         ":winograd",
     ],
@@ -112,23 +111,6 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":conv_test_lib"],
-)
-
-cc_library(
-    name = "depthwise_conv",
-    srcs = ["depthwise_conv.cc"],
-    hdrs = ["depthwise_conv.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:convert",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 objc_library(
