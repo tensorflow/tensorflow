@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_WEIGHTS_CONVERSION_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_WEIGHTS_CONVERSION_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -212,6 +215,14 @@ void RearrangeWeightsToOICustomSpatialI4O4(
     }
   }
 }
+
+uint GetTotalElementsCountForLayout(const WeightsDescription& weight_desc,
+                                    const OHWI& shape);
+
+void RearrangeWeights(
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
+    const WeightsDescription& dst_weight_desc, DataType dst_type,
+    absl::Span<uint8_t> dst);
 
 }  // namespace gpu
 }  // namespace tflite

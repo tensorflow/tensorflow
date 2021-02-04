@@ -77,9 +77,9 @@ class ConvolutionTransposed4x4 : public GPUOperation {
       const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
 
-  template <DataType T>
-  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                     WeightsUploadType weights_upload_type);
+  void UploadWeights(
+      const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
+      WeightsUploadType weights_upload_type);
 
   std::vector<int> GetSpatialWeightsRemap() const;
 
@@ -87,44 +87,6 @@ class ConvolutionTransposed4x4 : public GPUOperation {
       const GpuInfo& gpu_info, const OperationDef& op_def,
       WeightsUploadType weights_upload_type);
 };
-
-template <DataType T>
-void ConvolutionTransposed4x4::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights,
-    WeightsUploadType weights_upload_type) {
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  const int kernel_x = 4;  //  This operation support only 4x4 kernel
-  const int kernel_y = 4;
-  const int flt4_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
-
-  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
-  const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
-
-  BufferDescriptor desc;
-  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-  desc.element_size = 4;
-  desc.memory_type =
-      weights_upload_type ==
-              ConvolutionTransposed4x4::WeightsUploadType::CONSTANT_MEM
-          ? MemoryType::CONSTANT
-          : MemoryType::GLOBAL;
-  desc.size = flt4_size * flt4_count;
-  desc.data.resize(desc.size);
-
-  if (f32_weights) {
-    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
-    RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
-                                          absl::MakeSpan(ptr, flt4_count));
-  } else {
-    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
-    RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
-                                          absl::MakeSpan(ptr, flt4_count));
-  }
-
-  args_.AddObject("weights",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
-}
 
 bool IsConvolutionTransposed4x4Supported(
     const OperationDef& definition,

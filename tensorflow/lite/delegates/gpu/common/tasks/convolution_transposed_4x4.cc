@@ -385,6 +385,33 @@ std::vector<int> ConvolutionTransposed4x4::GetSpatialWeightsRemap() const {
   return std::vector<int>{10, 11, 14, 15, 8, 9, 12, 13, 2, 3, 6, 7, 0, 1, 4, 5};
 }
 
+void ConvolutionTransposed4x4::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
+    WeightsUploadType weights_upload_type) {
+  const int flt_count =
+      GetTotalElementsCountForLayout(GetWeightsDescription(), weights.shape);
+
+  DataType weights_type = definition_.precision == CalculationsPrecision::F32
+                              ? DataType::FLOAT32
+                              : DataType::FLOAT16;
+
+  BufferDescriptor desc;
+  desc.element_type = weights_type;
+  desc.element_size = 4;
+  desc.memory_type =
+      weights_upload_type ==
+              ConvolutionTransposed4x4::WeightsUploadType::CONSTANT_MEM
+          ? MemoryType::CONSTANT
+          : MemoryType::GLOBAL;
+  desc.size = flt_count * SizeOf(desc.element_type);
+  desc.data.resize(desc.size);
+
+  RearrangeWeights(weights, GetWeightsDescription(), weights_type,
+                   absl::MakeSpan(desc.data));
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+}
+
 bool IsConvolutionTransposed4x4Supported(
     const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {

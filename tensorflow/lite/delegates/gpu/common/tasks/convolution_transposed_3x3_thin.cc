@@ -198,6 +198,29 @@ std::vector<int> ConvolutionTransposed3x3Thin::GetSpatialWeightsRemap() const {
   return std::vector<int>{4, 5, 3, 7, 1, 8, 6, 2, 0};
 }
 
+void ConvolutionTransposed3x3Thin::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights) {
+  const int flt_count =
+      GetTotalElementsCountForLayout(GetWeightsDescription(), weights.shape);
+
+  DataType weights_type = definition_.precision == CalculationsPrecision::F32
+                              ? DataType::FLOAT32
+                              : DataType::FLOAT16;
+
+  BufferDescriptor desc;
+  desc.element_type = weights_type;
+  desc.element_size = 4;
+  desc.memory_type = MemoryType::CONSTANT;
+  desc.size = flt_count * SizeOf(desc.element_type);
+  desc.data.resize(desc.size);
+
+  RearrangeWeights(weights, GetWeightsDescription(), weights_type,
+                   absl::MakeSpan(desc.data));
+
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+}
+
 bool IsConvolutionTransposed3x3ThinSupported(
     const ConvolutionTransposedAttributes& attr) {
   return attr.weights.shape.o <= 8 && attr.weights.shape.w == 3 &&
