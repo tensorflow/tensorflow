@@ -266,23 +266,25 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
 template <typename T, typename Index>
 void SparseSegmentSumFunctor<T, Index>::operator()(OpKernelContext* ctx,
                                                    const GPUDevice& d) {
-  auto indices_flat = indices_->template flat<Index>();
-  auto segment_flat = segment_ids_->template flat<Index>();
-  auto data_ptr = input_->template flat<T>().data();
-  auto output_flat = output_->flat_outer_dims<T>();
+  auto stream = ctx->op_device_context()->stream();
+  auto output_flat = output->flat_outer_dims<T>();
+  auto data_ptr = input.template flat<T>().data();
+  const auto indices_flat = indices.flat<Index>();
+  const auto segment_flat = segment_ids.flat<Index>();
 
   if (output_flat.size() == 0) {
     return;
   }
+
   GpuLaunchConfig config = GetGpuLaunchConfig(output_flat.size(), d);
   TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, config.block_count,
                               config.thread_per_block, 0, d.stream(),
                               output_flat.size(), output_flat.data()));
-  if (data_size_ == 0 || segment_ids_->shape().num_elements() == 0) {
+  if (data_size == 0 || segment_ids.shape().num_elements() == 0) {
     return;
   }
 
-  const Index input_total_size = data_size_;
+  const Index input_total_size = data_size;
   const Index input_outer_dim_size = segment_flat.dimension(0);
   const Index input_inner_dim_size = input_total_size / input_outer_dim_size;
   const int OuterDimTileSize = 8;
@@ -298,7 +300,7 @@ void SparseSegmentSumFunctor<T, Index>::operator()(OpKernelContext* ctx,
   TF_CHECK_OK(GpuLaunchKernel(
       SortedSparseSegmentSumCustomKernel<T, Index, OuterDimTileSize>,
       config.block_count, config.thread_per_block, 0, d.stream(),
-      input_outer_dim_size, input_inner_dim_size, output_rows_,
+      input_outer_dim_size, input_inner_dim_size, output_rows,
       indices_flat.data(), segment_flat.data(), data_ptr, output_flat.data(),
       total_stripe_count));
 }

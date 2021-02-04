@@ -1027,7 +1027,6 @@ class SparseSegmentSumGpuOp : public AsyncOpKernel {
     if (!has_num_segments) {
       output_rows++;
     }
-
     OP_REQUIRES_ASYNC(context, output_rows > 0,
                       errors::InvalidArgument("Segment ids must be >= 0"),
                       done);
@@ -1039,17 +1038,14 @@ class SparseSegmentSumGpuOp : public AsyncOpKernel {
         context, context->allocate_output(0, output_shape, &output), done);
 
     functor::SparseSegmentSumFunctor<T, Tindex> executant(
-        output_rows, num_indices * element_size,
-        &indices, &segment_ids, &input_data, output);
+        output_rows, num_indices, num_indices * element_size, input_data,
+        indices, segment_ids, output);
 
-    auto create_and_check_output = [context, &executant, done]() {
-      auto stream = context->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
-      executant(context, context->eigen_device<GPUDevice>());
-      done();
-    };
+    ScopedActivateExecutorContext scoped_activation{stream->parent()};
+    executant(context, context->eigen_device<GPUDevice>());
+
     context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, create_and_check_output);
+        stream, done);
   }
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
