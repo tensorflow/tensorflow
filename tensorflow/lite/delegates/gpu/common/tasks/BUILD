@@ -336,6 +336,37 @@ cc_library(
 )
 
 cc_library(
+    name = "depthwise_conv_3x3_stride_h2",
+    srcs = ["depthwise_conv_3x3_stride_h2.cc"],
+    hdrs = ["depthwise_conv_3x3_stride_h2.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+    ],
+)
+
+cc_library(
+    name = "depthwise_conv_3x3_stride_h2_test_util",
+    testonly = 1,
+    srcs = ["depthwise_conv_3x3_stride_h2_test_util.cc"],
+    hdrs = ["depthwise_conv_3x3_stride_h2_test_util.h"],
+    deps = [
+        ":depthwise_conv_3x3_stride_h2",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "elementwise",
     srcs = ["elementwise.cc"],
     hdrs = ["elementwise.h"],

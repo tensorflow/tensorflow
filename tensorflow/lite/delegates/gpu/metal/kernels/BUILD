@@ -138,6 +138,7 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
     ],
@@ -719,6 +720,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",

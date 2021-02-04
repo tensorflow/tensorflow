@@ -248,6 +248,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
         "@com_google_googletest//:gtest_main",
     ],
