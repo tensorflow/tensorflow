@@ -1405,12 +1405,11 @@ class ReduceOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
 
     ReduceAttributes attr;
-    Tensor<Linear, DataType::INT32> axes;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
     const TfLiteTensor* input = reader->GetInputTensor(0);
-    for (int i = 0; i < axes.data.size(); i++) {
+    const TfLiteTensor* axes = reader->GetInputTensor(1);
+    for (int i = 0; i < NumElements(axes->dims); i++) {
       Axis axis;
-      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[i], &axis));
+      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes->data.i32[i], &axis));
       attr.dims.insert(axis);
     }
     node->operation.attributes = attr;
@@ -2255,12 +2254,11 @@ class MeanOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     MeanAttributes attr;
-    Tensor<Linear, DataType::INT32> axes;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
     const TfLiteTensor* input = reader->GetInputTensor(0);
-    for (int i = 0; i < axes.data.size(); i++) {
+    const TfLiteTensor* axes = reader->GetInputTensor(1);
+    for (int i = 0; i < NumElements(axes->dims); i++) {
       Axis axis;
-      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[i], &axis));
+      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes->data.i32[i], &axis));
       attr.dims.insert(axis);
     }
     node->operation.attributes = attr;
