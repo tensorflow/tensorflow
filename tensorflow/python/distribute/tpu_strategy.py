@@ -1439,15 +1439,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       if kwargs is None:
         kwargs = {}
 
-      # Remove None at the end of args as they are not replicatable
-      # If there are None in the middle we can't do anything about it
-      # so let those cases fail.
-      # For example when Keras model predict is used they pass the targets as
-      # None. We want to handle it here so all client libraries don't have to
-      # do this as other strategies can handle None values better.
-      while args and args[-1] is None:
-        args = args[:-1]
-
       # Used to re-structure flattened output tensors from `tpu.replicate()`
       # into a structured format.
       result = [[]]
