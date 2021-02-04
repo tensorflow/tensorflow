@@ -2178,5 +2178,26 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
         ValueError, "Found zero restored functions for caller function."):
       loaded.foo(1)
 
+  def test_restored_function_execute_eagerly(self):
+    try:
+      def_function.run_functions_eagerly(True)
+
+      class MyModel(module.Module):
+
+        @def_function.function
+        def __call__(self, inputs, training=False):
+          return math_ops.multiply(0.5, inputs)
+
+      model = MyModel()
+      model.__call__.get_concrete_function(
+          tensor_spec.TensorSpec([None], dtypes.float32))
+      loaded = cycle(model, 1)
+
+      # Calling the function should not throw an exception.
+      loaded(constant_op.constant([1.0]))
+
+    finally:
+      def_function.run_functions_eagerly(False)
+
 if __name__ == "__main__":
   test.main()
