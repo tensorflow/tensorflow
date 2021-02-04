@@ -411,6 +411,7 @@ class QuantizationMode(object):
     """Checks if the graph contains any training-time quantization ops."""
     training_quant_ops = frozenset({
         "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxVarsPerChannel",
+        "FakeQuantWithMinMaxArgs", "FakeQuantWithMinMaxArgsPerChannel",
         "QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3"
     })
 
