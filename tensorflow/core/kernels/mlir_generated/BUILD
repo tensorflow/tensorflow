@@ -204,6 +204,7 @@ tf_kernel_library(
         "gpu_op_right_shift.cc",
         "gpu_op_squared_difference.cc",
         "gpu_op_sub.cc",
+        "gpu_op_zeta.cc",
     ],
     tags = [
         "manual",
@@ -233,6 +234,7 @@ tf_kernel_library(
         ":right_shift_kernels",
         ":squared_difference_kernels",
         ":sub_kernels",
+        ":zeta_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -892,6 +894,18 @@ gen_kernel_library(
         "f32",
         "f64",
         "i64",
+    ],
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
+)
+
+gen_kernel_library(
+    # The zeta kernels needs many registers so tile at 256.
+    name = "zeta",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
     ],
     # TODO(b/178388085): Enable unrolling after vectorization is fixed.
     # unroll_factors = "4",

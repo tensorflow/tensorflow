@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,18 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
-REGISTER2(BinaryOp, CPU, "Zeta", functor::zeta, float, double);
-REGISTER2(BinaryOp, CPU, "Polygamma", functor::polygamma, float, double);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-REGISTER2(BinaryOp, GPU, "Zeta", functor::zeta, float, double);
-#endif
-REGISTER2(BinaryOp, GPU, "Polygamma", functor::polygamma, float, double);
-#endif
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(Zeta, f32, DT_FLOAT, float);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(Zeta, f64, DT_DOUBLE, double);
+
 }  // namespace tensorflow

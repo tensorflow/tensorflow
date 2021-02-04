@@ -550,5 +550,89 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputNonZero<int64>(), baseline_div);
 
+/// Test `tf.Zeta`.
+
+// This test data was generated using the scipy implementation of zeta.
+template <typename T>
+static absl::InlinedVector<T, 10> GetZetaTestDataX() {
+  return test::InputAsVector<T, double>(
+      {1.,           169.23969873, 105.93557562, 114.43259882, 179.62388639,
+       172.80836494, 127.82036549, 163.07586688, 157.31865127, 121.55091407,
+       132.49244284, 14.74785056,  61.69721805,  49.37079477,  32.73957728,
+       8.63833678,   5.77183618,   7.43098888,   9.68867483,   6.90594844,
+       1.10974422,   9.15604525,   5.39278873,   4.82471684,   3.61560063,
+       5.95540334});
+}
+
+template <typename T>
+static absl::InlinedVector<T, 10> GetZetaTestDataQ() {
+  return test::InputAsVector<T, double>(
+      {0.23672766, 0.92926068, 0.33551547, 0.53241745, 0.39939397, 0.73085145,
+       0.91634121, 0.92935301, 0.90518735, 0.93155356, 0.31607971, 3.76257433,
+       3.41533379, 3.4542971,  8.07960302, 7.49355634, 0.26524244, 0.11061626,
+       0.26367137, 0.17993167, 0.17947252, 0.27949224, 0.20880047, 0.12189132,
+       0.18806052, 0.19976058});
+}
+
+template <typename T>
+static absl::InlinedVector<T, 10> GetZetaTestExpected() {
+  return test::InputAsVector<T, double>(
+      {std::numeric_limits<double>::infinity(),
+       2.46825299e+05,
+       1.75353388e+50,
+       2.11671833e+31,
+       3.96105582e+71,
+       3.39991735e+23,
+       7.07718091e+04,
+       1.54510527e+05,
+       6.39506276e+06,
+       5.53116025e+03,
+       1.87572363e+66,
+       3.36459087e-09,
+       1.22647410e-33,
+       2.63484970e-27,
+       2.00525974e-30,
+       4.37777089e-08,
+       2.12174334e+03,
+       1.27459042e+07,
+       4.06567559e+05,
+       1.39376449e+05,
+       1.61538935e+01,
+       1.17236802e+05,
+       4.66207773e+03,
+       2.56999783e+04,
+       4.21203884e+02,
+       1.46472701e+04});
+}
+
+template <typename T>
+T baseline_zeta(T x, T q) {
+  if (x == 1.) {
+    return std::numeric_limits<T>::infinity();
+  }
+  auto x_data = GetZetaTestDataX<T>();
+  auto pos = std::find(x_data.begin(), x_data.end(), x);
+  assert(pos != x_data.end());
+  auto index = std::distance(x_data.begin(), pos);
+  auto q_data = GetZetaTestDataQ<T>();
+  assert(q_data[index] == q);
+  auto expected = GetZetaTestExpected<T>();
+  return expected[index];
+}
+
+TEST_F(BinaryOpsTest, ZetaEqShapesFloat) {
+  TestEqualShapes<float, float, float, float>(
+      "Zeta", test::DefaultInputShape(), GetZetaTestDataX<float>(),
+      GetZetaTestDataQ<float>(), baseline_zeta,
+      test::OpsTestConfig().ATol(1e-11).RTol(1e-2));
+}
+
+TEST_F(BinaryOpsTest, ZetaEqShapesDouble) {
+  TestEqualShapes<double, double, double, double>(
+      "Zeta", test::DefaultInputShape(), GetZetaTestDataX<double>(),
+      GetZetaTestDataQ<double>(), baseline_zeta,
+      test::OpsTestConfig().ATol(1e-30).RTol(1e-4));
+}
+
 }  // namespace
 }  // namespace tensorflow

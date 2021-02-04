@@ -83,7 +83,8 @@ class BinaryOpsTestBase : public OpsTestBase {
     if (config.expect_strictly_equal) {
       test::ExpectEqual(expected_tensor, *GetOutput(0));
     } else {
-      test::ExpectClose(expected_tensor, *GetOutput(0));
+      test::ExpectClose(expected_tensor, *GetOutput(0), config.atol,
+                        config.rtol);
     }
   }
 
