@@ -17,6 +17,7 @@
 import csv
 import io
 
+from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
@@ -57,7 +58,7 @@ def _convert_model(func):
   return converter.convert()
 
 
-def _quantize_model(func, calibration_gen, debug=True):
+def _quantize_model(func, calibration_gen, quantized_io=False, debug=True):
   """Quantizes model, in debug or normal mode."""
   converter = lite.TFLiteConverterV2.from_concrete_functions([func])
   converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
@@ -69,26 +70,40 @@ def _quantize_model(func, calibration_gen, debug=True):
   if debug:
     converter._experimental_calibrate_only = True
     calibrated = converter.convert()
-    return convert.mlir_quantize(calibrated, enable_numeric_verify=True)
+    return convert.mlir_quantize(
+        calibrated, enable_numeric_verify=True, fully_quantize=quantized_io)
   else:
     return converter.convert()
 
 
-class QuantizationDebuggerTest(test_util.TensorFlowTestCase):
+class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
+                               parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
     super().setUpClass()
     cls.tf_model = _get_model()
     cls.float_model = _convert_model(cls.tf_model)
-    cls.debug_model = _quantize_model(cls.tf_model, _calibration_gen)
+    cls.debug_model_float = _quantize_model(
+        cls.tf_model, _calibration_gen, quantized_io=False)
+    cls.debug_model_int8 = _quantize_model(
+        cls.tf_model, _calibration_gen, quantized_io=True)
 
+  @parameterized.named_parameters(
+      ('float_io', False),
+      ('quantized_io', True),
+  )
   @test_util.run_v2_only
-  def test_quantization_debugger_layer_metrics(self):
+  def test_quantization_debugger_layer_metrics(self, quantized_io):
+    if quantized_io:
+      debug_model = QuantizationDebuggerTest.debug_model_int8
+    else:
+      debug_model = QuantizationDebuggerTest.debug_model_float
+
     options = debugger.QuantizationDebugOptions(
         layer_debug_metrics={'l1_norm': lambda diffs: np.mean(np.abs(diffs))})
     quant_debugger = debugger.QuantizationDebugger(
-        quant_debug_model_content=QuantizationDebuggerTest.debug_model,
+        quant_debug_model_content=debug_model,
         debug_dataset=_calibration_gen,
         debug_options=options)
     quant_debugger.run()
@@ -116,7 +131,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase):
     expected_values = expected_metrics.copy()
     expected_values.update({
         'op_name': 'CONV_2D',
-        'op_idx': 8,
+        'op_idx': 7 if quantized_io else 8,
         'scales': [0.15686275],
         'zero_points': [-128],
     })
@@ -129,12 +144,20 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase):
       else:
         self.assertAlmostEqual(value, float(actual_values[key]), places=5)
 
+  @parameterized.named_parameters(
+      ('float_io', False),
+      ('quantized_io', True),
+  )
   @test_util.run_v2_only
-  def test_quantization_debugger_model_metrics(self):
+  def test_quantization_debugger_model_metrics(self, quantized_io):
+    if quantized_io:
+      debug_model = QuantizationDebuggerTest.debug_model_int8
+    else:
+      debug_model = QuantizationDebuggerTest.debug_model_float
     options = debugger.QuantizationDebugOptions(
         model_debug_metrics={'stdev': lambda x, y: np.std(x[0] - y[0])})
     quant_debugger = debugger.QuantizationDebugger(
-        quant_debug_model_content=QuantizationDebuggerTest.debug_model,
+        quant_debug_model_content=debug_model,
         float_model_content=QuantizationDebuggerTest.float_model,
         debug_dataset=_calibration_gen,
         debug_options=options)
@@ -158,7 +181,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase):
         ]
 
     quant_debugger = debugger.QuantizationDebugger(
-        quant_debug_model_content=QuantizationDebuggerTest.debug_model,
+        quant_debug_model_content=QuantizationDebuggerTest.debug_model_float,
         debug_dataset=wrong_calibration_gen)
     with self.assertRaisesRegex(
         ValueError, r'inputs provided \(2\).+inputs to the model \(1\)'):
@@ -174,6 +197,32 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase):
       debugger.QuantizationDebugger(
           quant_debug_model_content=normal_quant_model,
           debug_dataset=_calibration_gen)
+
+  @parameterized.named_parameters(
+      ('empty quantization parameter', {
+          'quantization_parameters': {}
+      }, None),
+      ('empty scales/zero points', {
+          'quantization_parameters': {
+              'scales': [],
+              'zero_points': []
+          }
+      }, None),
+      ('invalid scales/zero points', {
+          'quantization_parameters': {
+              'scales': [1.0],
+              'zero_points': []
+          }
+      }, None),
+      ('correct case', {
+          'quantization_parameters': {
+              'scales': [0.5, 1.0],
+              'zero_points': [42, 7]
+          }
+      }, (0.5, 42)),
+  )
+  def test_get_quant_params(self, tensor_detail, expected_value):
+    self.assertEqual(debugger._get_quant_params(tensor_detail), expected_value)
 
 
 if __name__ == '__main__':

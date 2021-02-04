@@ -15,8 +15,8 @@
 """Python TF-Lite QuantizationDebugger."""
 import collections
 import csv
-from typing import (Callable, Dict, IO, Iterable, List, Mapping, Optional,
-                    Sequence)
+from typing import (Any, Callable, Dict, IO, Iterable, List, Mapping, Optional,
+                    Sequence, Tuple)
 
 import numpy as np
 import tensorflow as tf
@@ -31,6 +31,17 @@ _DEFAULT_LAYER_DEBUG_METRICS = {
     'max_abs_error': lambda diffs: np.max(np.abs(diffs)),
     'mean_square_error': lambda diffs: np.average(diffs**2),
 }
+
+
+def _get_quant_params(
+    tensor_detail: Mapping[str, Any]) -> Optional[Tuple[float, int]]:
+  """Returns first scale and zero point from tensor detail, if present."""
+  quant_params = tensor_detail['quantization_parameters']
+  if not quant_params:
+    return None
+  if quant_params['scales'] and quant_params['zero_points']:
+    return (quant_params['scales'][0], quant_params['zero_points'][0])
+  return None
 
 
 @tf_export.tf_export(v1=['lite.experimental.QuantizationDebugOptions'])
@@ -214,12 +225,10 @@ class QuantizationDebugger:
         for metric_name, metric in model_statistics.items()
     }
 
-  def _set_input_tensors(
-      self,
-      interpreter: tf.lite.Interpreter,
-      tensor_data: Sequence[np.ndarray],
-      initialize: bool,
-  ) -> None:
+  def _set_input_tensors(self,
+                         interpreter: tf.lite.Interpreter,
+                         tensor_data: Sequence[np.ndarray],
+                         initialize: bool) -> None:
     """Sets input tensors into TFLite model Interpreter.
 
     Args:
@@ -232,21 +241,24 @@ class QuantizationDebugger:
       ValueError: when inputs can't be set, or size of provided inputs does not
       match size of model inputs.
     """
-    input_indices = [
-        detail['index'] for detail in interpreter.get_input_details()
-    ]
-    if len(input_indices) != len(tensor_data):
+    input_details = interpreter.get_input_details()
+    if len(input_details) != len(tensor_data):
       raise ValueError(
           'Number of inputs provided ({}) does not match number of inputs to '
-          'the model ({})'.format(len(tensor_data), len(input_indices)))
+          'the model ({})'.format(len(tensor_data), len(input_details)))
 
     if initialize:
-      for input_idx, tensor in zip(input_indices, tensor_data):
-        interpreter.resize_tensor_input(input_idx, tensor.shape)
+      for input_detail, tensor in zip(input_details, tensor_data):
+        interpreter.resize_tensor_input(input_detail['index'], tensor.shape)
       interpreter.allocate_tensors()
 
-    for input_idx, tensor in zip(input_indices, tensor_data):
-      interpreter.set_tensor(input_idx, tensor)
+    for input_detail, tensor in zip(input_details, tensor_data):
+      if tensor.dtype == np.float32 and input_detail['dtype'] == np.int8:
+        quant_params = _get_quant_params(input_detail)
+        if quant_params:
+          scale, zero_point = quant_params
+          tensor = np.round((tensor / scale) + zero_point).astype(np.int8)
+      interpreter.set_tensor(input_detail['index'], tensor)
 
   def _get_output_tensors(self,
                           interpreter: tf.lite.Interpreter) -> List[np.ndarray]:
@@ -258,10 +270,19 @@ class QuantizationDebugger:
     Returns:
       a list of numpy arrays representing output tensor results.
     """
-    return [
-        interpreter.get_tensor(tensor['index'])
-        for tensor in interpreter.get_output_details()
-    ]
+
+    outputs = []
+    for output_detail in interpreter.get_output_details():
+      tensor = interpreter.get_tensor(output_detail['index'])
+      if output_detail['dtype'] == np.int8:
+        quant_params = _get_quant_params(output_detail)
+        if quant_params:
+          scale, zero_point = quant_params
+          tensor = ((tensor.astype(np.float32) - zero_point) * scale).astype(
+              np.float32)
+      outputs.append(tensor)
+
+    return outputs
 
   def _get_numeric_verify_tensor_details(self) -> List[str]:
     """Returns all names of all tensors from NumericVerify op."""
