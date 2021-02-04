@@ -18,6 +18,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/common/selectors:default_selector",
+        "//tensorflow/lite/delegates/gpu/common/selectors:dw_convolution_selector",
         "//tensorflow/lite/delegates/gpu/common/selectors:fully_connected_selector",
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common/tasks:add",

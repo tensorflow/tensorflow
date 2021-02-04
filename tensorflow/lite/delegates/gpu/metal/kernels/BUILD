@@ -137,7 +137,6 @@ objc_library(
     srcs = ["depthwise_conv_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":depthwise_conv",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
