@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -1555,7 +1556,32 @@ Status IrEmitterUnnested::EmitCustomCallThunkFromMlir(MlirEmitterInput input) {
 }
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
-  return ThunkEmitter(this).HandleFft(fft);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(fft));
+  return EmitFftThunkFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitFftThunkFromMlir(MlirEmitterInput input) {
+  auto fft_op = mlir::cast<mlir::lmhlo::FftOp>(input.op);
+  const Shape operand_shape = TypeToShape(fft_op.operand().getType());
+  const Shape output_shape = TypeToShape(fft_op.output().getType());
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(operand_shape.layout()));
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout()));
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+                      GetAllocationSliceForMlir(fft_op.operand()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
+                      GetAllocationSliceForMlir(fft_op.output()));
+  TF_ASSIGN_OR_RETURN(xla::FftType fft_type, ConvertFftType(fft_op.fft_type()));
+  auto fft_length_values = fft_op.fft_length().getValues<int64>();
+  std::vector<int64> fft_length(fft_length_values.begin(),
+                                fft_length_values.end());
+  AddThunkToThunkSequence(
+      absl::make_unique<FftThunk>(input.thunk_info, fft_type, fft_length,
+                                  /*input_buffer=*/arg_slice,
+                                  /*output_buffer=*/dest_slice,
+                                  /*input_shape=*/operand_shape,
+                                  /*output_shape=*/output_shape));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {

@@ -27,16 +27,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::unique_ptr<Thunk> ThunkEmitter::BuildFftThunk(const HloInstruction* inst) {
-  const HloInstruction* operand = inst->operand(0);
-  return absl::make_unique<FftThunk>(
-      context_->GetThunkInfo(inst), inst->fft_type(), inst->fft_length(),
-      /*input_buffer=*/GetAllocationSlice(*operand),
-      /*output_buffer=*/GetAllocationSlice(*inst),
-      /*input_shape=*/operand->shape(),
-      /*output_shape=*/inst->shape());
-}
-
 std::unique_ptr<Thunk> ThunkEmitter::BuildTriangularSolveThunk(
     const HloInstruction* inst) {
   const HloInstruction* a = inst->operand(0);
@@ -96,14 +86,6 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildGemmThunk(
       GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
       GetAllocationSlice(*inst),  // The output buffer.
       /*implements_whole_instruction=*/true);
-}
-
-Status ThunkEmitter::HandleFft(HloInstruction* fft) {
-  TF_RET_CHECK(
-      LayoutUtil::IsMonotonicWithDim0Major(fft->operand(0)->shape().layout()));
-  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(fft->shape().layout()));
-  AddThunkToThunkSequence(BuildFftThunk(fft));
-  return Status::OK();
 }
 
 Status ThunkEmitter::HandleTriangularSolve(HloInstruction* hlo) {

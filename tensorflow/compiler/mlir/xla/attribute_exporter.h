@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_
 
-#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -41,5 +40,6 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
 StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
     llvm::Optional<mlir::DenseIntElementsAttr> optional_attr);
 
+StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_

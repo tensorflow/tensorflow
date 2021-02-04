@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
@@ -130,6 +131,25 @@ StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
     item = {first, second};
   }
   return out;
+}
+
+StatusOr<FftType> ConvertFftType(llvm::StringRef type_string) {
+  llvm::Optional<mlir::mhlo::FftType> type =
+      mlir::mhlo::symbolizeEnum<mlir::mhlo::FftType>(type_string);
+  if (!type) return InvalidArgument("Unknown FFT type %s", type_string.str());
+
+  switch (*type) {
+    case mlir::mhlo::FftType::FFT:
+      return xla::FftType::FFT;
+    case mlir::mhlo::FftType::IFFT:
+      return xla::FftType::IFFT;
+    case mlir::mhlo::FftType::RFFT:
+      return xla::FftType::RFFT;
+    case mlir::mhlo::FftType::IRFFT:
+      return xla::FftType::IRFFT;
+    default:
+      return InvalidArgument("Unknown FFT type enum #%d", *type);
+  }
 }
 
 }  // namespace xla
