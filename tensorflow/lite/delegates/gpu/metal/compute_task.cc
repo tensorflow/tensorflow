@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"

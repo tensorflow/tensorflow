@@ -115,7 +115,6 @@ objc_library(
         ":metal_device",
         ":metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/common:kernel_info",
-        "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
