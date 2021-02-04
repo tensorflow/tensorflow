@@ -99,6 +99,26 @@ def _get_end_to_end_test_cases():
       },
       {
           "testcase_name":
+              "test_special_tokens_int_mode",
+          # Mask tokens in the vocab data should be ingored, and mapped to 0 in
+          # from the input data.
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        [""], [""], [""], ["[UNK]"], ["[UNK]"], ["[UNK]"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([["earth"], [""], ["wind"], ["[UNK]"], ["and"], [""],
+                        ["fire"], ["and"], ["[UNK]"], ["michigan"]]),
+          "kwargs": {
+              "max_tokens": None,
+              "standardize": None,
+              "split": None,
+              "output_mode": text_vectorization.INT
+          },
+          "expected_output": [[2], [0], [3], [1], [4], [0], [5], [4], [1], [1]],
+      },
+      {
+          "testcase_name":
               "test_documents_int_mode",
           "vocab_data":
               np.array([["fire earth earth"], ["earth earth"], ["wind wind"],

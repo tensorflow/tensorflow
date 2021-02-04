@@ -159,7 +159,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       vocab_size = None
 
     super(IndexLookup, self).__init__(
-        combiner=_IndexLookupCombiner(vocab_size, self.mask_token), **kwargs)
+        combiner=_IndexLookupCombiner(vocab_size, self.mask_token,
+                                      self.oov_token),
+        **kwargs)
 
     # We need to save the key dtype so that we know if we're expecting int64
     # keys. If we are, we will cast int32 inputs to int64 as well.
@@ -453,9 +455,10 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
       dataset, all tokens are retained.
   """
 
-  def __init__(self, vocab_size=None, mask_value=None):
+  def __init__(self, vocab_size=None, mask_value=None, oov_value=None):
     self._vocab_size = vocab_size
     self._mask_value = mask_value
+    self._oov_value = oov_value
 
   def compute(self, values, accumulator=None):
     """Compute a step in this computation, returning a new accumulator."""
@@ -501,8 +504,24 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
         "vocab": A list of the retained items in the vocabulary.
     """
     vocab_counts = accumulator.count_dict
+
+    # Drop special tokens from our vocab.
     if self._mask_value in vocab_counts:
       del vocab_counts[self._mask_value]
+    if self._oov_value in vocab_counts:
+      del vocab_counts[self._oov_value]
+    # Data processed by the accumulator could be tensors, numpy arrays or lists.
+    # For tensor string input, values will have been converted into bytes. We
+    # need to check the bytes version of special tokens in this case.
+    if isinstance(self._mask_value, str):
+      mask_value_bytes = compat.as_bytes(self._mask_value)
+      if mask_value_bytes in vocab_counts:
+        del vocab_counts[mask_value_bytes]
+    if isinstance(self._oov_value, str):
+      oov_value_bytes = compat.as_bytes(self._oov_value)
+      if oov_value_bytes in vocab_counts:
+        del vocab_counts[oov_value_bytes]
+
     sorted_counts = sorted(
         vocab_counts.items(), key=operator.itemgetter(1, 0), reverse=True)
     vocab_data = (

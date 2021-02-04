@@ -104,6 +104,29 @@ def _get_end_to_end_test_cases():
       },
       {
           "testcase_name":
+              "test_strings_with_special_tokens",
+          # Mask and oov values in the vocab data should be dropped, and mapped
+          # to 0 and 1 respectively when calling the layer.
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        [""], [""], [""], ["[OOV]"], ["[OOV]"], ["[OOV]"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([["earth"], [""], ["wind"], ["[OOV]"], ["and"], [""],
+                        ["fire"], ["and"], ["[OOV]"], ["michigan"]]),
+          "kwargs": {
+              "max_tokens": None,
+              "num_oov_indices": 1,
+              "mask_token": "",
+              "oov_token": "[OOV]",
+              "dtype": dtypes.string,
+          },
+          "expected_output": [[2], [0], [3], [1], [4], [0], [5], [4], [1], [1]],
+          "input_dtype":
+              dtypes.string
+      },
+      {
+          "testcase_name":
               "test_ints_soft_vocab_cap",
           # Create an array where 1138 is the most frequent term, followed by
           # 1729, then 725, then 42. This ensures that the vocab accumulator
@@ -123,6 +146,30 @@ def _get_end_to_end_test_cases():
               "dtype": dtypes.int64,
           },
           "expected_output": [[2], [3], [4], [5], [5], [4], [2], [1]],
+          "input_dtype":
+              dtypes.int64
+      },
+      {
+          "testcase_name":
+              "test_ints_with_special_tokens",
+          # Mask and oov values in the vocab data should be dropped, and mapped
+          # to 0 and 1 respectively when calling the layer.
+          "vocab_data":
+              np.array([[42], [1138], [1138], [1138], [1138], [0], [0], [0],
+                        [-1], [-1], [-1], [1729], [1729], [1729], [725], [725]],
+                       dtype=np.int64),
+          "input_data":
+              np.array([[1138], [0], [1729], [-1], [725], [0], [42], [725],
+                        [-1], [4]],
+                       dtype=np.int64),
+          "kwargs": {
+              "max_tokens": None,
+              "num_oov_indices": 1,
+              "mask_token": 0,
+              "oov_token": -1,
+              "dtype": dtypes.int64,
+          },
+          "expected_output": [[2], [0], [3], [1], [4], [0], [5], [4], [1], [1]],
           "input_dtype":
               dtypes.int64
       },
