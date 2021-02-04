@@ -136,9 +136,6 @@ class GrpcServer : public ServerInterface {
   // This method may only be called after `this->Init()` returns successfully.
   int bound_port() const { return bound_port_; }
 
-  // Returns hostname.
-  const string& host_name() const { return host_name_; }
-
   const ServerDef& server_def() const { return server_def_; }
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
   GrpcWorkerEnv* grpc_worker_env() const { return grpc_worker_env_.get(); }
