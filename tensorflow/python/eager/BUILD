@@ -61,7 +61,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",

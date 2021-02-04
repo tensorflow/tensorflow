@@ -537,7 +537,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],

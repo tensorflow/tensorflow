@@ -344,7 +344,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

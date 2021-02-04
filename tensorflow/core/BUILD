@@ -1058,7 +1058,7 @@ cc_library(
 #     ],
 #     visibility = ["//visibility:public"],
 #     deps = [
-#         "//tensorflow/core/util:abstract_stack_trace",
+#         "//tensorflow/core/util:managed_stack_trace",
 #         "//tensorflow/core/util:stats_calculator_portable",
 #         "//tensorflow/core:mobile_additional_lib_deps",
 #     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
@@ -1563,7 +1563,7 @@ tf_cuda_library(
             "@com_google_protobuf//:protobuf",
         ],
         otherwise = [
-            "//tensorflow/core/util:abstract_stack_trace",
+            "//tensorflow/core/util:managed_stack_trace",
             "@com_google_protobuf//:protobuf_headers",
         ],
     ),
@@ -1652,7 +1652,7 @@ tf_cuda_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:port",
