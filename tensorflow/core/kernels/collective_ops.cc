@@ -103,7 +103,6 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
       // This is the first invocation: Finish initializing col_params_.
       // Schedule the `CompleteParamsAsync` call on a work queue that can handle
       // blocking work because it's not guaranteed that this call cannot block.
-      col_params_->Ref();
       c->collective_executor()->RunClosure([this, c, col_exec, done]() {
         VLOG(1) << "CollectiveOpKernel CompleteParams for collective "
                 << col_params_->name << " device " << c->device()->name()
@@ -112,7 +111,6 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
         col_exec->CompleteParamsAsync(
             c->device()->attributes(), col_params_, c->cancellation_manager(),
             [this, c, done](const Status& s) {
-              core::ScopedUnref unref(col_params_);
               if (s.ok()) {
                 col_params_->instance.impl_details.dependencies = dependencies_;
                 ComputeAsync(c, done);
