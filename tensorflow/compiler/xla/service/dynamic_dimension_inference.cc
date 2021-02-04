@@ -636,7 +636,7 @@ Status DynamicDimensionInferenceVisitor::HandleConcatenate(
 }
 
 Status DynamicDimensionInferenceVisitor::HandleGetDimensionSize(
-    HloInstruction* gds) {
+    HloInstruction*) {
   // Dynamic dimension doesn't propagate through GetDimensionSize:
   //
   //   Input: F32[x, y, z]
@@ -646,24 +646,6 @@ Status DynamicDimensionInferenceVisitor::HandleGetDimensionSize(
   // The returned value is a scalar, which doesn't have any dynamic dimension in
   // the shape (although the value contains the real size of the dynamic
   // dimension of the input).
-  int64 dim = gds->dimension();
-  HloInstruction* operand = gds->mutable_operand(0);
-  HloInstruction* dynamic_size = parent_->GetDynamicSize(operand, {}, dim);
-  HloComputation* computation = gds->parent();
-  if (dynamic_size != nullptr) {
-    TF_RETURN_IF_ERROR(gds->ReplaceAllUsesWith(dynamic_size));
-    // The dependency between an instruction and its dynamic dimensions is not
-    // modeled in the IR. As instr is being replaced by dynamic_size, also tell
-    // dynamic dimension inference that the instruction is being replaced.
-    parent_->ReplaceAllDynamicDimensionUsesWith(gds, dynamic_size);
-  } else {
-    TF_RET_CHECK(dim < gds->operand(0)->shape().rank());
-    int32 size = gds->operand(0)->shape().dimensions(dim);
-    HloInstruction* new_instr = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(size)));
-    TF_RETURN_IF_ERROR(gds->ReplaceAllUsesWith(new_instr));
-    parent_->ReplaceAllDynamicDimensionUsesWith(gds, new_instr);
-  }
   return Status::OK();
 }
 
@@ -812,23 +794,7 @@ Status DynamicDimensionInferenceVisitor::HandleSelect(HloInstruction* hlo) {
 
 Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
     HloInstruction* hlo) {
-  HloComputation* comp = hlo->parent();
-  return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size) {
-        HloInstruction* existing_size =
-            parent_->GetDynamicSize(hlo, index, dimension);
-        if (existing_size == nullptr || existing_size == dynamic_size) {
-          parent_->SetDynamicSize(hlo, index, dimension, dynamic_size);
-        } else {
-          HloInstruction* max =
-              comp->AddInstruction(HloInstruction::CreateBinary(
-                  ShapeUtil::MakeScalarShape(S32), HloOpcode::kMaximum,
-                  dynamic_size, existing_size));
-          parent_->SetDynamicSize(hlo, index, dimension, max);
-        }
-        return Status::OK();
-      });
+  return PassThroughDynamicDimension(hlo);
 }
 
 Status DynamicDimensionInferenceVisitor::HandleClamp(HloInstruction* hlo) {
