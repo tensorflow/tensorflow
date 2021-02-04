@@ -513,14 +513,14 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
 
 void CollectiveParamResolverLocal::InitInstanceSharedParams(
     const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir) {
-  ir->shared.instance = cp->instance;
-  ir->shared.default_rank = -1;
+  ir->shared->instance = cp->instance;
+  ir->shared->default_rank = -1;
 
   // Set is_local and task_names in *shared prior to invoking
   // GetDeviceAttributesAsync.  In a distributed context this function can be
   // called by a derived class, some of the devices may be non-local and
   // GetDeviceAttributesAsync will use those fields to launch RPCs.
-  CompleteTaskIsLocal(task_name_, &ir->shared);
+  CompleteTaskIsLocal(task_name_, ir->shared);
 }
 
 // NOTE(ayushd): The DeviceLocality objects in attributes will have LocalLinks
@@ -662,11 +662,11 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
   if (!created_irec) {
     // Check that the preexisting IRec is consistent with the params passed into
     // this invocation.
-    if (ir->shared.instance.type != cp->instance.type ||
-        ir->shared.instance.data_type != cp->instance.data_type) {
+    if (ir->shared->instance.type != cp->instance.type ||
+        ir->shared->instance.data_type != cp->instance.data_type) {
       done(errors::Internal("Collective instance ", cp->instance.instance_key,
-                            " expected type ", ir->shared.instance.type,
-                            " and data_type ", ir->shared.instance.data_type,
+                            " expected type ", ir->shared->instance.type,
+                            " and data_type ", ir->shared->instance.data_type,
                             " but got type ", cp->instance.type,
                             " and data_type ", cp->instance.data_type));
       return;
@@ -686,7 +686,7 @@ void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
     status = ir->status;
     if (status.ok()) {
       // custom operator= does a deep copy.
-      cp->instance = ir->shared.instance;
+      cp->instance = ir->shared->instance;
     }
   }
   if (!status.ok()) {

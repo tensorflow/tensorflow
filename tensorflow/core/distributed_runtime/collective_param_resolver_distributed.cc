@@ -137,13 +137,14 @@ void CollectiveParamResolverDistributed::CompleteGroupAsync(
         "running the same version of Tensorflow on all workers."));
     return;
   }
-  CollectiveParams cp;
-  cp.group.group_key = request->group_key();
-  cp.group.group_size = request->group_size();
-  cp.group.device_type = DeviceType(request->device_type());
-  cp.instance.type = CollectiveType(request->collective_type());
+  auto* cp = new CollectiveParams();
+  core::ScopedUnref unref(cp);
+  cp->group.group_key = request->group_key();
+  cp->group.group_size = request->group_size();
+  cp->group.device_type = DeviceType(request->device_type());
+  cp->instance.type = CollectiveType(request->collective_type());
   CompleteGroupDistributed(
-      request->device_attributes(), &cp, cancel_mgr,
+      request->device_attributes(), cp, cancel_mgr,
       [response, done](const Status& s, const GroupRec* gr) {
         if (s.ok()) {
           mutex_lock l(gr->mu);
@@ -196,7 +197,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   }
   StatusCallback done_and_cleanup = [cp, done](const Status& s) {
     done(s);
-    delete cp;
+    cp->Unref();
   };
   CompleteInstanceDistributed(
       request->device(), gr, cp, cancel_mgr,
