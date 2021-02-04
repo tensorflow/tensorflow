@@ -104,7 +104,7 @@ static NcclAllReduceConfig GetNcclAllReduceConfig(mlir::lmhlo::AllReduceOp op,
 
   NcclAllReduceConfig config;
   config.config = GetNcclCollectiveConfigForMlir(op, replica_count);
-  config.reduction_kind = reduction_kind.value();
+  config.reduction_kind = *reduction_kind;
   return config;
 }
 

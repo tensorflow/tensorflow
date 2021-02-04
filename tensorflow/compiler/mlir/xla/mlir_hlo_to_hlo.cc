@@ -1337,7 +1337,7 @@ LogicalResult ConvertToHloModule::Lower(
         xla::OpSharding sharding;
         sharding.set_type(xla::OpSharding::TUPLE);
         for (auto& ret_sharding : ret_shardings)
-          *sharding.add_tuple_shardings() = ret_sharding.value();
+          *sharding.add_tuple_shardings() = *ret_sharding;
 
         builder->SetSharding(sharding);
       }
@@ -1490,8 +1490,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
     xla::OpSharding sharding;
     sharding.set_type(xla::OpSharding::TUPLE);
     for (auto arg_sharding : llvm::enumerate(arg_shardings)) {
-      auto hlo_sharding =
-          xla::HloSharding::FromProto(arg_sharding.value().value());
+      auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
       if (!hlo_sharding.ok())
         return block->getParentOp()->emitError()
                << hlo_sharding.status().error_message();
@@ -1502,7 +1501,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
       if (!status.ok())
         return block->getParentOp()->emitError() << status.error_message();
 
-      *sharding.add_tuple_shardings() = arg_sharding.value().value();
+      *sharding.add_tuple_shardings() = *arg_sharding.value();
     }
 
     builder->SetSharding(sharding);
@@ -1543,7 +1542,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         !arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings);
     for (BlockArgument& arg : block->getArguments()) {
       if (set_tuple_element_sharding)
-        builder->SetSharding(arg_shardings[arg.getArgNumber()].value());
+        builder->SetSharding(*arg_shardings[arg.getArgNumber()]);
       lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
     }
     builder->ClearSharding();

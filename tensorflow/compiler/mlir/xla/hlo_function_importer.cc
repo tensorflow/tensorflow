@@ -959,7 +959,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
     absl::optional<tensorflow::int64> channel_id) {
   xla::ChannelHandle channel_handle;
-  if (channel_id.has_value()) channel_handle.set_handle(channel_id.value());
+  if (channel_id) channel_handle.set_handle(*channel_id);
   return ConvertChannelHandle(channel_handle);
 }
 
