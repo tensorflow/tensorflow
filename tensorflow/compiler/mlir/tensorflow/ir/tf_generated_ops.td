@@ -9795,13 +9795,13 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   }];
 
   let arguments = (ins
-    TF_FpOrI32OrI64Tensor:$start,
-    TF_FpOrI32OrI64Tensor:$limit,
-    TF_FpOrI32OrI64Tensor:$delta
+    TF_IntOrFpTensor:$start,
+    TF_IntOrFpTensor:$limit,
+    TF_IntOrFpTensor:$delta
   );
 
   let results = (outs
-    TF_FpOrI32OrI64Tensor:$output
+    TF_IntOrFpTensor:$output
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
