@@ -809,7 +809,6 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 
   auto maybe_lhs = GetAllocationSliceForMlir(parameter.memref(), allocations);
   auto maybe_rhs = GetAllocationSliceForMlir(output_buffers[0], allocations);
-  LOG(ERROR) << "TIM: ";
   return maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs;
 }
 
