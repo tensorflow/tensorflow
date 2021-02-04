@@ -200,6 +200,7 @@ FRAMEWORK_PROTO_SRCS = [
     "//tensorflow/core/framework:graph_transfer_info.proto",
     "//tensorflow/core/framework:kernel_def.proto",
     "//tensorflow/core/framework:log_memory.proto",
+    "//tensorflow/core/framework:model.proto",
     "//tensorflow/core/framework:node_def.proto",
     "//tensorflow/core/framework:op_def.proto",
     "//tensorflow/core/framework:reader_base.proto",
