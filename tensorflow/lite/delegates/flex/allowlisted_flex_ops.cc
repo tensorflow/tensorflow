@@ -159,6 +159,8 @@ const std::set<std::string>& GetFlexAllowlist() {
           "DenseToSparseSetOperation",
           "DepthToSpace",
           "DepthwiseConv2dNative",
+          "DepthwiseConv2dNativeBackpropFilter",
+          "DepthwiseConv2dNativeBackpropInput",
           "Dequantize",
           "DestroyResourceOp",
           "DestroyTemporaryVariable",

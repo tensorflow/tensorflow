@@ -6079,6 +6079,7 @@ filegroup(
         "decode_wav_op.cc",
         "deep_conv2d.cc",
         "deep_conv2d.h",
+        "depthwise_conv_grad_op.cc",
         "depthwise_conv_op.cc",
         "dynamic_partition_op.cc",
         "eigen_contraction_kernel.cc",
