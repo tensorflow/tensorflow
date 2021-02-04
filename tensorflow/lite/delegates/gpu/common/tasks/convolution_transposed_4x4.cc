@@ -50,8 +50,11 @@ ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     const OperationDef& definition, const GpuInfo& gpu_info)
     : GPUOperation(definition) {
   work_group_size_ = int3(8, 4, 1);
+  if (gpu_info.IsApple()) {
+    work_group_launch_order_ = int3(2, 0, 1);
+  }
 
-  code_ = GenerateConvolutionTransposedCode(definition_,
+  code_ = GenerateConvolutionTransposedCode(gpu_info, definition_,
                                             GetBestWeightsUploadType(gpu_info));
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
@@ -72,7 +75,8 @@ ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
 }
 
 std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
-    const OperationDef& op_def, WeightsUploadType weights_upload_type) {
+    const GpuInfo& gpu_info, const OperationDef& op_def,
+    WeightsUploadType weights_upload_type) {
   auto src_desc = op_def.src_tensors[0];
   src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
@@ -107,6 +111,13 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
       weights_upload_type ==
           ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_ASYNC;
 
+  const int wg_total_size =
+      work_group_size_.x * work_group_size_.y * work_group_size_.z;
+  const std::string barrier =
+      wg_total_size == 32 && gpu_info.IsWaveSizeEqualTo32()
+          ? "SIMD_LOCAL_MEM_BARRIER"
+          : "LOCAL_MEM_BARRIER";
+
   std::string c;
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
@@ -119,7 +130,7 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
       break;
     case CalculationsPrecision::F32_F16:
       c += "#define CONV(R, SRC, F) \\\n";
-      c += "  R += convert_float4(SRC.x * weights_cache[F] + SRC.y * "
+      c += "  R += TO_ACCUM_TYPE(SRC.x * weights_cache[F] + SRC.y * "
            "weights_cache[F + 1] + SRC.z * weights_cache[F + 2] + SRC.w * "
            "weights_cache[F + 3]);\n";
       break;
@@ -133,17 +144,41 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
 
   const std::string pixel_stride =
       op_def.IsBatchSupported() ? "args.dst_tensor.Batch()" : "1";
-  c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  if (gpu_info.IsApiOpenCl()) {
+    c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
+  }
+  c += "MAIN_FUNCTION($0) {\n";
+  std::string grid_coords[3];
+  int3 launch_remap;
+  launch_remap[work_group_launch_order_.x] = 0;
+  launch_remap[work_group_launch_order_.y] = 1;
+  launch_remap[work_group_launch_order_.z] = 2;
+  if (work_group_launch_order_[0] == 0) {
+    grid_coords[0] = "GLOBAL_ID_0";
+  } else {
+    grid_coords[0] = "(GROUP_ID_" + std::to_string(launch_remap[0]) +
+                     " * GROUP_SIZE_0 + LOCAL_ID_0);\n";
+  }
+  if (work_group_launch_order_[1] == 1) {
+    grid_coords[1] = "GLOBAL_ID_1";
+  } else {
+    grid_coords[1] = "(GROUP_ID_" + std::to_string(launch_remap[1]) +
+                     " * GROUP_SIZE_1 + LOCAL_ID_1);\n";
+  }
+  if (work_group_launch_order_[2] == 2) {
+    grid_coords[2] = "GLOBAL_ID_2";
+  } else {
+    grid_coords[2] = "(GROUP_ID_" + std::to_string(launch_remap[2]) +
+                     " * GROUP_SIZE_2 + LOCAL_ID_2);\n";
+  }
   if (op_def.IsBatchSupported()) {
-    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int linear_id = " + grid_coords[0] + ";\n";
     c += "  int X0 = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
   }
-  c += "  int X = get_global_id(0);\n";
-  c += "  int Y = get_global_id(1);\n";
-  c += "  int Z = get_global_id(2);\n";
+  c += "  int X = " + grid_coords[0] + ";\n";
+  c += "  int Y = " + grid_coords[1] + ";\n";
+  c += "  int Z = " + grid_coords[2] + ";\n";
   if (!need_local_mem) {
     if (op_def.IsBatchSupported()) {
       c += "  if (X0 * 2 * args.dst_tensor.Batch() > args.dst_tensor.Width() "
@@ -155,17 +190,17 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
            "return;\n";
     }
   }
-  c += "  ACCUM_FLT4 r0 = (ACCUM_FLT4)(0.0f);\n";
-  c += "  ACCUM_FLT4 r1 = (ACCUM_FLT4)(0.0f);\n";
-  c += "  ACCUM_FLT4 r2 = (ACCUM_FLT4)(0.0f);\n";
-  c += "  ACCUM_FLT4 r3 = (ACCUM_FLT4)(0.0f);\n";
+  c += "  ACCUM_FLT4 r0 = INIT_ACCUM_FLT4(0.0f);\n";
+  c += "  ACCUM_FLT4 r1 = INIT_ACCUM_FLT4(0.0f);\n";
+  c += "  ACCUM_FLT4 r2 = INIT_ACCUM_FLT4(0.0f);\n";
+  c += "  ACCUM_FLT4 r3 = INIT_ACCUM_FLT4(0.0f);\n";
   c += "  int f_offset = Z * args.filter_offset;\n";
   if (need_local_mem) {
     c += "  __local FLT4 weights_cache[64];\n";
   }
   if (weights_upload_type ==
       ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    c += "  int local_id = (int)(get_local_id(1) * 8 + get_local_id(0));\n";
+    c += "  int local_id = LOCAL_ID_1 * 8 + LOCAL_ID_0;\n";
   }
   const std::string prev_x = "X - " + pixel_stride;
   if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
@@ -232,14 +267,14 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
         return "args.src_tensor.Read(" + addr + "); " + addr + " += dz_" + id +
                ";";
       } else {
-        return "args.src_tensor.Read(" + addr + ") * (FLT)(in_x" +
+        return "args.src_tensor.Read(" + addr + ") * INIT_FLT(in_x" +
                std::to_string(x) + " && in_y" + std::to_string(y) + "); " +
                addr + " += dz;";
       }
     } else {
       std::string check = generate_check(x, y);
       if (!check.empty()) {
-        check = " * (FLT)(" + check + ")";
+        check = " * INIT_FLT(" + check + ")";
       }
       return "args.src_tensor.Read(X + " + std::to_string(x - 1) + " * " +
              pixel_stride + ", Y + " + std::to_string(y - 1) + ", s)" + check +
@@ -248,7 +283,7 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
   };
   c += "  for (int s = 0; s < args.src_tensor.Slices(); ++s) {\n";
   if (need_local_mem) {
-    c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+    c += "    " + barrier + ";\n";
   }
   if (weights_upload_type ==
       ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_ASYNC) {
@@ -273,7 +308,7 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
   c += "    FLT4 src3 = " + read_src(1, 1) + ";\n";
   c += "    f_offset += 64;\n";
   if (need_local_mem) {
-    c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+    c += "    " + barrier + ";\n";
   }
   c += "    CONV(r0, src0, 0);\n";
   c += "    CONV(r1, src0, 4);\n";
@@ -365,7 +400,9 @@ ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
   result.UploadWeights(attr.weights, GetBestWeightsUploadType(gpu_info));
 
   TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.storage_type = gpu_info.IsApple() || !gpu_info.SupportsImages()
+                          ? LinearStorageType::BUFFER
+                          : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
@@ -379,7 +416,9 @@ ConvolutionTransposed4x4 CreateConvolutionTransposed4x4DynamicWeights(
   ConvolutionTransposed4x4 result(definition, gpu_info);
 
   TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.storage_type = gpu_info.IsApple() || !gpu_info.SupportsImages()
+                          ? LinearStorageType::BUFFER
+                          : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
