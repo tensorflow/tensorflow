@@ -1051,19 +1051,18 @@ class SliceConverter : public OpConversionPattern<lmhlo::SliceOp> {
       return failure();
     }
 
-    SmallVector<Value, 3> ranges;
+    SmallVector<OpFoldResult, 3> offsets, sizes, strides;
     for (int i = 0, e = arg_type.getRank(); i < e; ++i) {
-      Value start_index = rewriter.create<ConstantIndexOp>(
-          loc, slice_op.start_indices().getValue<int64_t>(i));
-      Value limit_index = rewriter.create<ConstantIndexOp>(
-          loc, slice_op.limit_indices().getValue<int64_t>(i));
-      Value stride = rewriter.create<ConstantIndexOp>(
-          loc, slice_op.strides().getValue<int64_t>(i));
-      ranges.push_back(rewriter.create<linalg::RangeOp>(loc, start_index,
-                                                        limit_index, stride));
+      offsets.push_back(rewriter.getI64IntegerAttr(
+          slice_op.start_indices().getValue<int64_t>(i)));
+      sizes.push_back(rewriter.getI64IntegerAttr(
+          slice_op.limit_indices().getValue<int64_t>(i) -
+          slice_op.start_indices().getValue<int64_t>(i)));
+      strides.push_back(
+          rewriter.getI64IntegerAttr(slice_op.strides().getValue<int64_t>(i)));
     }
-    auto linalg_slice =
-        rewriter.create<linalg::SliceOp>(loc, slice_op.getOperand(0), ranges);
+    auto linalg_slice = rewriter.create<SubViewOp>(loc, slice_op.getOperand(0),
+                                                   offsets, sizes, strides);
     rewriter.create<linalg::CopyOp>(loc, linalg_slice, slice_op.getOperand(1));
     rewriter.eraseOp(slice_op);
     return success();

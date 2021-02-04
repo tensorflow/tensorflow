@@ -1316,6 +1316,22 @@ cc_library(
 )
 
 cc_library(
+    name = "LinalgInterfaces",
+    srcs = ["lib/Dialect/Linalg/IR/LinalgInterfaces.cpp"],
+    hdrs = ["include/mlir/Dialect/Linalg/IR/LinalgInterfaces.h"],
+    includes = ["include"],
+    deps = [
+        ":Affine",
+        ":DialectUtils",
+        ":IR",
+        ":LinalgInterfacesIncGen",
+        ":LinalgStructuredOpsIncGen",
+        ":ViewLikeInterface",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "LoopLikeInterface",
     srcs = ["lib/Interfaces/LoopLikeInterface.cpp"],
     hdrs = ["include/mlir/Interfaces/LoopLikeInterface.h"],
@@ -4441,9 +4457,9 @@ genlinalg(
 filegroup(
     name = "LinalgStructuredOpsTdFiles",
     srcs = [
+        "include/mlir/Dialect/Linalg/IR/LinalgInterfaces.td",
         "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
         "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
-        "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterface.td",
         "include/mlir/Interfaces/CopyOpInterface.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
         ":AffineOpsTdFiles",
@@ -4474,20 +4490,20 @@ gentbl(
 )
 
 gentbl(
-    name = "LinalgStructuredInterfacesIncGen",
+    name = "LinalgInterfacesIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
             "-gen-op-interface-decls",
-            "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterfaces.h.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgInterfaces.h.inc",
         ),
         (
             "-gen-op-interface-defs",
-            "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterfaces.cpp.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgInterfaces.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterface.td",
+    td_file = "include/mlir/Dialect/Linalg/IR/LinalgInterfaces.td",
     td_srcs = [":LinalgStructuredOpsTdFiles"],
 )
 
@@ -4614,9 +4630,10 @@ cc_library(
         ":CopyOpInterface",
         ":DialectUtils",
         ":IR",
+        ":LinalgInterfaces",
+        ":LinalgInterfacesIncGen",
         ":LinalgNamedStructuredOpsIncGen",
         ":LinalgOpsIncGen",
-        ":LinalgStructuredInterfacesIncGen",
         ":LinalgStructuredOpsIncGen",
         ":Parser",
         ":SideEffectInterfaces",
@@ -5030,6 +5047,8 @@ exports_files(
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/CopyOpInterface.td",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
+        "include/mlir/Interfaces/LoopLikeInterface.td",
         "include/mlir/Interfaces/SideEffectInterfaceBase.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/VectorInterfaces.td",
@@ -5043,8 +5062,6 @@ exports_files(
         "include/mlir/IR/RegionKindInterface.td",
         "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Transforms/InliningUtils.h",
-        "include/mlir/Interfaces/InferTypeOpInterface.td",
-        "include/mlir/Interfaces/LoopLikeInterface.td",
     ],
     visibility = [":friends"],
 )
