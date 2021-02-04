@@ -19,24 +19,20 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG UBUNTU_VERSION=20.04
+ARG CENTOS_VERSION=8
 
-FROM ubuntu:${UBUNTU_VERSION} as base
+FROM centos:${CENTOS_VERSION} as base
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 ARG PYTHON=python3
 
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    curl \
-    software-properties-common
+RUN yum update -y && yum install -y \
+    ${PYTHON} \
+    ${PYTHON}-pip \
+    which && \
+    yum clean all
 
-RUN add-apt-repository ppa:deadsnakes/ppa
-
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    ${PYTHON}
-
-RUN curl -fSsL https://bootstrap.pypa.io/get-pip.py | ${PYTHON}
 
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
     pip \
@@ -45,8 +41,10 @@ RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
 # Some TF tools expect a "python" binary
 RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
-    ln -sf $(which ${PYTHON}) /usr/bin/python && \
-    ln -sf $(which ${PYTHON}) /usr/bin/python3
+    ln -sf $(which ${PYTHON}) /usr/bin/python
+
+# On CentOS 7, yum needs to run with Python2.7
+RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
 
 # Options:
 #   tensorflow

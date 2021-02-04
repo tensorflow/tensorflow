@@ -19,24 +19,20 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG UBUNTU_VERSION=20.04
+ARG CENTOS_VERSION=8
 
-FROM ubuntu:${UBUNTU_VERSION} as base
+FROM centos:${CENTOS_VERSION} as base
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 ARG PYTHON=python3
 
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    curl \
-    software-properties-common
+RUN yum update -y && yum install -y \
+    ${PYTHON} \
+    ${PYTHON}-pip \
+    which && \
+    yum clean all
 
-RUN add-apt-repository ppa:deadsnakes/ppa
-
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    ${PYTHON}
-
-RUN curl -fSsL https://bootstrap.pypa.io/get-pip.py | ${PYTHON}
 
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
     pip \
@@ -45,8 +41,10 @@ RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
 # Some TF tools expect a "python" binary
 RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
-    ln -sf $(which ${PYTHON}) /usr/bin/python && \
-    ln -sf $(which ${PYTHON}) /usr/bin/python3
+    ln -sf $(which ${PYTHON}) /usr/bin/python
+
+# On CentOS 7, yum needs to run with Python2.7
+RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
 
 # Options:
 #   tensorflow
@@ -59,34 +57,31 @@ ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
 RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
-ARG DEBIAN_FRONTEND="noninteractive"
-
 # install mpich, openssh for MPI to communicate between containers
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+RUN yum update -y && yum install -y \
     mpich \
-    libmpich-dev \
-    openssh-client \
-    openssh-server && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    mpich-devel \
+    openssh \
+    openssh-server \
+    redhat-rpm-config \
+    which && \
+    yum clean all
+
+ENV PATH="/usr/lib64/mpich/bin:${PATH}"
 
 # Create a wrapper for MPICH to allow running as root by default
-RUN mv /usr/bin/mpirun /usr/bin/mpirun.real && \
+RUN mv -f $(which mpirun) /usr/bin/mpirun.real && \
     echo '#!/bin/bash' > /usr/bin/mpirun && \
     echo 'mpirun.real "$@"' >> /usr/bin/mpirun && \
     chmod a+x /usr/bin/mpirun
-
-# Disable GCC noise for gcc newer than 5.x, otherwise Horovod installation fails
-RUN sed -i 's/# if __GNUC__ > 5/# if __GNUC__ > 9/g' /usr/include/mpich/mpicxx.h
-
 
 # Set up SSH
 RUN mkdir -p /var/run/sshd
 
 # Allow OpenSSH to talk to containers without asking for confirmation
-RUN cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_config.new && \
-    echo "    StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new && \
-    mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
+RUN cat /etc/ssh/sshd_config | grep -v StrictHostKeyChecking > /etc/ssh/sshd_config.new && \
+    echo "    StrictHostKeyChecking no" >> /etc/ssh/sshd_config.new && \
+    mv -f /etc/ssh/sshd_config.new /etc/ssh/sshd_config
 
 # Install Horovod
 ARG HOROVOD_WITHOUT_PYTORCH=1
@@ -94,26 +89,36 @@ ARG HOROVOD_WITHOUT_MXNET=1
 ARG HOROVOD_WITH_TENSORFLOW=1
 ARG HOROVOD_VERSION=v0.21.1
 
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    software-properties-common
+ENV LC_ALL=en_US.UTF-8
+ENV LC_CTYPE=en_US.UTF-8
 
-RUN cd /usr/lib/python3/dist-packages && \
-    ln -sf apt_pkg.cpython-35m-x86_64-linux-gnu.so apt_pkg.so
+RUN yum update -y && \
+    yum install -y centos-release-scl && \
+    yum install -y \
+        devtoolset-8 \
+        devtoolset-8-make \
+        llvm-toolset-7-cmake \
+        ${PYTHON}-devel \
+        sclo-git25 && \
+    yum clean all
 
-RUN add-apt-repository ppa:ubuntu-toolchain-r/test
-
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    build-essential \
-    cmake \
-    g++-8 \
-    gcc-8 \
-    git \
-    ${PYTHON}-dev
-
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 500 --slave /usr/bin/g++ g++ /usr/bin/g++-5 && \
-    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8
+ENV PATH=/opt/rh/devtoolset-8/root/usr/bin:/opt/rh/sclo-git25/root/usr/bin:/opt/rh/llvm-toolset-7/root/usr/bin:${PATH}
 
 RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
+
+RUN ${PYTHON} -m pip install --no-cache-dir jupyter matplotlib
+# Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
+RUN ${PYTHON} -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
+RUN jupyter serverextension enable --py jupyter_http_over_ws
+
+RUN mkdir -p /tf/ && chmod -R a+rwx /tf/
+RUN mkdir /.local && chmod a+rwx /.local
+WORKDIR /tf
+EXPOSE 8888
+
+RUN ${PYTHON} -m ipykernel.kernelspec
+
+CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/tf --ip 0.0.0.0 --no-browser --allow-root"]

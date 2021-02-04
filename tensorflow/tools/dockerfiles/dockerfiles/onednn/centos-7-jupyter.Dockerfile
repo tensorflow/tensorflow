@@ -19,23 +19,32 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG UBUNTU_VERSION=20.04
+ARG CENTOS_VERSION=8
 
-FROM ubuntu:${UBUNTU_VERSION} as base
+FROM centos:${CENTOS_VERSION} as base
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 ARG PYTHON=python3
 
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+RUN yum update -y && yum install -y \
     ${PYTHON} \
-    ${PYTHON}-pip
+    ${PYTHON}-pip \
+    which && \
+    yum clean all
+
+
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
     pip \
     setuptools
 
 # Some TF tools expect a "python" binary
-RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
+RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
+    ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
+    ln -sf $(which ${PYTHON}) /usr/bin/python
+
+# On CentOS 7, yum needs to run with Python2.7
+RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
 
 # Options:
 #   tensorflow
@@ -47,54 +56,6 @@ RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
 ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
 RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
-
-ARG DEBIAN_FRONTEND="noninteractive"
-
-# install libnuma, openssh, wget
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    libopenmpi-dev \
-    openmpi-bin \
-    openmpi-common \
-    openssh-client \
-    openssh-server && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Create a wrapper for OpenMPI to allow running as root by default
-RUN mv /usr/bin/mpirun /usr/bin/mpirun.real && \
-    echo '#!/bin/bash' > /usr/bin/mpirun && \
-    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/bin/mpirun && \
-    chmod a+x /usr/bin/mpirun
-
-# Configure OpenMPI to run good defaults:
-RUN echo "btl_tcp_if_exclude = lo,docker0" >> /etc/openmpi/openmpi-mca-params.conf
-
-# Install OpenSSH for MPI to communicate between containers
-RUN mkdir -p /var/run/sshd
-
-# Allow OpenSSH to talk to containers without asking for confirmation
-RUN cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_config.new && \
-    echo "    StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new && \
-    mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
-
-# Install Horovod
-ARG HOROVOD_WITHOUT_PYTORCH=1
-ARG HOROVOD_WITHOUT_MXNET=1
-ARG HOROVOD_WITH_TENSORFLOW=1
-ARG HOROVOD_VERSION=v0.21.1
-
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    build-essential \
-    cmake \
-    g++-8 \
-    gcc-8 \
-    git \
-    ${PYTHON}-dev
-
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 100 --slave /usr/bin/g++ g++ /usr/bin/g++-9 && \
-    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8
-
-RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

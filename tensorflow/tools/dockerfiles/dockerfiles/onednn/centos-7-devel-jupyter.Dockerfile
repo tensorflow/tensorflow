@@ -19,32 +19,36 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG UBUNTU_VERSION=20.04
+ARG CENTOS_VERSION=8
 
-FROM ubuntu:${UBUNTU_VERSION} AS base
+FROM centos:${CENTOS_VERSION} AS base
 
-ARG DEBIAN_FRONTEND="noninteractive"
+# Enable both PowerTools and EPEL otherwise some packages like hdf5-devel fail to install
+RUN yum clean all && \
+    yum update -y && \
+    yum install -y epel-release
 
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-        build-essential \
+RUN yum update -y && \
+    yum install -y \
         curl \
+        freetype-devel \
+        gcc \
+        gcc-c++ \
         git \
-        libcurl3-dev \
-        libfreetype6-dev \
-        libhdf5-serial-dev \
-        libzmq3-dev \
+        hdf5-devel \
+        java-1.8.0-openjdk \
+        java-1.8.0-openjdk-devel \
+        java-1.8.0-openjdk-headless \
+        libcurl-devel \
+        make \
         pkg-config \
         rsync \
-        software-properties-common \
         sudo \
         unzip \
+        zeromq-devel \
         zip \
-        zlib1g-dev \
-        openjdk-8-jdk \
-        openjdk-8-jre-headless \
-        && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+        zlib-devel && \
+        yum clean all
 
 ENV CI_BUILD_PYTHON python
 
@@ -59,16 +63,12 @@ RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/t
 ENV LANG C.UTF-8
 ARG PYTHON=python3
 
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    curl \
-    software-properties-common
+RUN yum update -y && yum install -y \
+    ${PYTHON} \
+    ${PYTHON}-pip \
+    which && \
+    yum clean all
 
-RUN add-apt-repository ppa:deadsnakes/ppa
-
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    ${PYTHON}
-
-RUN curl -fSsL https://bootstrap.pypa.io/get-pip.py | ${PYTHON}
 
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
     pip \
@@ -77,11 +77,10 @@ RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
 # Some TF tools expect a "python" binary
 RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
-    ln -sf $(which ${PYTHON}) /usr/bin/python && \
-    ln -sf $(which ${PYTHON}) /usr/bin/python3
+    ln -sf $(which ${PYTHON}) /usr/bin/python
 
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    curl
+# On CentOS 7, yum needs to run with Python2.7
+RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
 
 # Install bazel
 ARG BAZEL_VERSION=3.7.2
