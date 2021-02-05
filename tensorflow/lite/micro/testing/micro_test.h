@@ -56,6 +56,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/system_setup.h"
 
 namespace micro_test {
 extern int tests_passed;
@@ -63,20 +64,7 @@ extern int tests_failed;
 extern bool is_test_complete;
 extern bool did_test_fail;
 extern tflite::ErrorReporter* reporter;
-
-#if defined(CORTEX_M_CORSTONE_300)
-extern "C" {
-void uart_init(void);
-}
-#endif
-
 }  // namespace micro_test
-
-#if defined(CORTEX_M_CORSTONE_300)
-#define TF_LITE_MICRO_INIT_UART_FOR_CORSTONE_300 micro_test::uart_init();
-#else
-#define TF_LITE_MICRO_INIT_UART_FOR_CORSTONE_300
-#endif
 
 #define TF_LITE_MICRO_TESTS_BEGIN              \
   namespace micro_test {                       \
@@ -92,7 +80,7 @@ void uart_init(void);
     micro_test::tests_failed = 0;              \
     tflite::MicroErrorReporter error_reporter; \
     micro_test::reporter = &error_reporter;    \
-    TF_LITE_MICRO_INIT_UART_FOR_CORSTONE_300
+    system_setup::Initialize();
 
 #define TF_LITE_MICRO_TESTS_END                                \
   micro_test::reporter->Report(                                \

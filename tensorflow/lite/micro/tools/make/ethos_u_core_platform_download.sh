@@ -63,6 +63,18 @@ else
 
   mkdir ${DOWNLOADED_ETHOS_U_CORE_PLATFORM_PATH}
   tar xzf ${TEMPFILE} --strip-components=1 -C ${DOWNLOADED_ETHOS_U_CORE_PLATFORM_PATH} >&2
+
+  # Run C preprocessor on linker file to get rid of ifdefs and make sure compiler is downloaded first.
+  COMPILER=${DOWNLOADS_DIR}/gcc_embedded/bin/arm-none-eabi-gcc
+  if [ ! -f ${COMPILER} ]; then
+      RETURN_VALUE=`./tensorflow/lite/micro/tools/make/arm_gcc_download.sh ${DOWNLOADS_DIR}`
+      if [ "SUCCESS" != "${RETURN_VALUE}" ]; then
+        echo "The script ./tensorflow/lite/micro/tools/make/arm_gcc_download.sh failed."
+        exit 1
+      fi
+  fi
+  LINKER_PATH=${DOWNLOADED_ETHOS_U_CORE_PLATFORM_PATH}/targets/corstone-300
+  ${COMPILER} -E -x c -P -o ${LINKER_PATH}/platform_parsed.ld ${LINKER_PATH}/platform.ld
 fi
 
 echo "SUCCESS"

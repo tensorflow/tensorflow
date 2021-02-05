@@ -93,15 +93,6 @@ ifeq ($(TOOLCHAIN), gcc)
   CXXFLAGS += $(FLAGS_GCC)
   CCFLAGS += $(FLAGS_GCC)
 
-  # Run C preprocessor on linker file to get rid of ifdefs.
-  ifeq (,$(wildcard $(ETHOS_U_CORE_PLATFORM)/platform_parsed.ld))
-    RESULT := $(shell arm-none-eabi-gcc -E -x c -P -o $(ETHOS_U_CORE_PLATFORM)/platform_parsed.ld \
-      $(ETHOS_U_CORE_PLATFORM)/platform.ld)
-    ifneq ($(RESULT),)
-      $(error Something went wrong when parsing linker file: $(RESULT))
-    endif
-  endif
-
   LDFLAGS += \
     --specs=nosys.specs \
     -T $(ETHOS_U_CORE_PLATFORM)/platform_parsed.ld \
@@ -141,9 +132,9 @@ CCFLAGS += -D$(ARM_CPU)$(CMSIS_ARM_FEATURES)
 THIRD_PARTY_CC_SRCS += \
   $(wildcard $(ETHOS_U_CORE_PLATFORM)/*.c)
 
-EXCLUDED_SRCS := \
-  $(ETHOS_U_CORE_PLATFORM)/main.c
-THIRD_PARTY_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(THIRD_PARTY_CC_SRCS))
+THIRD_PARTY_CC_SRCS += \
+  $(ETHOS_U_CORE_PLATFORM)/retarget.c \
+  $(ETHOS_U_CORE_PLATFORM)/uart.c
 
 CMSIS_DEFAULT_DOWNLOAD_PATH := $(MAKEFILE_DIR)/downloads/cmsis
 CMSIS_PATH := $(CMSIS_DEFAULT_DOWNLOAD_PATH)

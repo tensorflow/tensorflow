@@ -31,7 +31,7 @@ MICRO_LOG_FILENAME=${RESULTS_DIRECTORY}/logs.txt
 mkdir -p ${RESULTS_DIRECTORY}
 
 FVP="FVP_Corstone_SSE-300_Ethos-U55 "
-FVP+="--cpulimit 2 "
+FVP+="--cpulimit 1 "
 FVP+="-C mps3_board.visualisation.disable-visualisation=1 "
 FVP+="-C mps3_board.telnetterminal0.start_telnet=0 "
 FVP+='-C mps3_board.uart0.out_file="-" '
