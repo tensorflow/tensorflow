@@ -85,7 +85,8 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   typedef std::function<void(const Status& s, const GroupRec* gr)>
       GroupRecCallback;
   void CompleteGroupLocal(const DeviceAttributes& device, CollectiveParams* cp,
-                          const GroupRecCallback& done)
+                          const GroupRecCallback& done,
+                          CancellationManager* cancel_mgr)
       TF_LOCKS_EXCLUDED(group_mu_);
 
   // Finishes the group parameters once all members of the group are there.

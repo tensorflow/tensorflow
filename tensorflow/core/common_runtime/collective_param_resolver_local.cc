@@ -86,10 +86,34 @@ string TaskNameFromDeviceName(const string& device_name) {
 
 void CollectiveParamResolverLocal::CompleteGroupLocal(
     const DeviceAttributes& device, CollectiveParams* cp,
-    const GroupRecCallback& done) {
+    const GroupRecCallback& done, CancellationManager* cancel_mgr) {
   VLOG(1) << "CompleteGroupLocal device=" << device.name() << " cp: " << cp
           << ": " << cp->ToString();
   std::vector<StatusCallback> to_be_called;
+  // Keep a reference to `cp` to avoid racing with deletion due to cancellation.
+  cp->Ref();
+  core::ScopedUnref cp_unref(cp);
+
+  std::function<void(const Status& s, GroupRec* gr)> done_with_cleanup;
+  if (cancel_mgr != nullptr) {
+    const CancellationToken token = cancel_mgr->get_cancellation_token();
+    const bool already_cancelled = !cancel_mgr->RegisterCallback(
+        token, [done]() { done(errors::Cancelled("op cancelled"), nullptr); });
+    if (already_cancelled) {
+      done(errors::Cancelled("op cancelled"), nullptr);
+      return;
+    }
+    done_with_cleanup = [cancel_mgr, done, token](const Status& s,
+                                                  GroupRec* gr) {
+      if (cancel_mgr == nullptr || cancel_mgr->TryDeregisterCallback(token)) {
+        // The operation was never cancelled, so we'll return a normal status.
+        done(s, gr);
+      }
+    };
+  } else {
+    done_with_cleanup = done;
+  }
+
   GroupRec* gr = nullptr;
   Status status;
   {
@@ -121,7 +145,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       }
 
       if (!status.ok()) {
-        done(status, gr);
+        done_with_cleanup(status, gr);
         return;
       }
 
@@ -140,7 +164,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     status = status_;
   }
   if (!status.ok()) {
-    done(status, nullptr);
+    done_with_cleanup(status, nullptr);
     return;
   }
   {
@@ -211,7 +235,8 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
               << gr->devices.size() << " gr " << gr;
 
       if (gr->devices.size() < gr->group.group_size) {
-        gr->waiting.push_back(std::bind(done, std::placeholders::_1, gr));
+        gr->waiting.push_back(
+            std::bind(done_with_cleanup, std::placeholders::_1, gr));
         return;
       }
       CHECK_EQ(gr->devices.size(), gr->group.group_size);
@@ -227,7 +252,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     }
     status = gr->status;
   }
-  done(status, gr);
+  done_with_cleanup(status, gr);
   for (int i = 0; i < to_be_called.size(); ++i) {
     to_be_called[i](status);
   }
@@ -609,7 +634,8 @@ void CollectiveParamResolverLocal::CompleteParamsAsync(
         } else {
           done(s);
         }
-      });
+      },
+      cancel_mgr);
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceAsync(

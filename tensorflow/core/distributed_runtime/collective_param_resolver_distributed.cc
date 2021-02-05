@@ -291,7 +291,7 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
           << " is_leader=" << (group_leader_.empty());
   if (group_leader_.empty()) {
     // This is the group leader, so resolution is local.
-    return CompleteGroupLocal(device, cp, done);
+    return CompleteGroupLocal(device, cp, done, cancel_mgr);
   } else if (GetCachedGroup(cp->group.group_key) == nullptr) {
     // Need to update Group cache from the leader.
     CompleteGroupCall* call =
@@ -306,24 +306,24 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
       delete call;
       return;
     }
-    call->Start(
-        [this, device, cp, call, abortion_token, done](const Status& s) {
-          abortion_cancel_mgr_.DeregisterCallback(abortion_token);
-          if (s.ok()) {
-            Status status = UpdateGroupCache(call->resp_);
-            if (status.ok()) {
-              CompleteGroupLocal(device, cp, done);
-            } else {
-              done(status, nullptr);
-            }
-          } else {
-            done(s, nullptr);
-          }
-          delete call;
-        });
+    call->Start([this, device, cp, call, cancel_mgr, abortion_token,
+                 done](const Status& s) {
+      abortion_cancel_mgr_.DeregisterCallback(abortion_token);
+      if (s.ok()) {
+        Status status = UpdateGroupCache(call->resp_);
+        if (status.ok()) {
+          CompleteGroupLocal(device, cp, done, cancel_mgr);
+        } else {
+          done(status, nullptr);
+        }
+      } else {
+        done(s, nullptr);
+      }
+      delete call;
+    });
     return;
   } else {
-    return CompleteGroupLocal(device, cp, done);
+    return CompleteGroupLocal(device, cp, done, cancel_mgr);
   }
 }
 
