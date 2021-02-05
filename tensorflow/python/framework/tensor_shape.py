@@ -250,11 +250,6 @@ class Dimension(object):
     # Allow use in Python 3 range
     return self._value
 
-  def __hash__(self):
-    if self._value is None:
-      raise ValueError("Unable to hash Dimension with value 'None'")
-    return hash(self._value)
-
   @property
   def value(self):
     """The value of this dimension, or None if it is unknown."""
@@ -990,11 +985,6 @@ class TensorShape(object):
     if not isinstance(other, TensorShape):
       other = TensorShape(other)
     return other.concatenate(self)
-
-  def __hash__(self):
-    if not self.is_fully_defined():
-      raise ValueError("Unable to hash partially defined TensorShape.")
-    return hash(tuple(self._dims))
 
   def concatenate(self, other):
     """Returns the concatenation of the dimension in `self` and `other`.
