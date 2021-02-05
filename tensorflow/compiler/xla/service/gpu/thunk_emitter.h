@@ -69,9 +69,6 @@ class ThunkEmitter {
   // Returns a CholeskyThunk that calls cuSolver to implement `inst`.
   std::unique_ptr<Thunk> BuildCholeskyThunk(const HloInstruction* inst);
 
-  // Returns a TriangularSolveThunk that calls cuBlas to implement `inst`.
-  std::unique_ptr<Thunk> BuildTriangularSolveThunk(const HloInstruction* inst);
-
   // Returns a GemmThunk that calls gemm to implement `inst`. The caller needs
   // to make sure `inst` outlives the lifetime of the returned Thunk object.
   std::unique_ptr<Thunk> BuildGemmThunk(const HloInstruction* inst);

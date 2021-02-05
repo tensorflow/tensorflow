@@ -181,13 +181,7 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
 // Converts StringRef to xla Transpose enum.
 static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
     llvm::StringRef transpose_str) {
-  xla::TriangularSolveOptions::Transpose transpose_enum;
-  // Illegal tanspose string would be caught by the verifier, so
-  // 'Transpose_Parse' call below should never return false.
-  if (!xla::TriangularSolveOptions::Transpose_Parse(std::string(transpose_str),
-                                                    &transpose_enum))
-    return xla::TriangularSolveOptions::NO_TRANSPOSE;
-  return transpose_enum;
+  return xla::ConvertTranspose(transpose_str).ValueOrDie();
 }
 
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \

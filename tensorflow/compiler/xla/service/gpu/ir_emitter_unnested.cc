@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
@@ -90,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -1585,7 +1587,77 @@ Status IrEmitterUnnested::EmitFftThunkFromMlir(MlirEmitterInput input) {
 }
 
 Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {
-  return ThunkEmitter(this).HandleTriangularSolve(hlo);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitTriangularSolveFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitTriangularSolveFromMlir(MlirEmitterInput input) {
+  auto triangular_solve_op =
+      mlir::cast<mlir::lmhlo::TriangularSolveOp>(input.op);
+  auto has_fortran_layout = [](mlir::DenseIntElementsAttr layout_attr) {
+    int64_t n = layout_attr.getNumElements();
+    return layout_attr.getValue<int64_t>({0}) == n - 2 &&
+           layout_attr.getValue<int64_t>({1}) == n - 1;
+  };
+  TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_a()));
+  TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_b()));
+  TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_output()));
+
+  const Shape b_shape = TypeToShape(triangular_solve_op.b().getType());
+
+  const Shape output_shape =
+      TypeToShape(triangular_solve_op.output().getType());
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_slice,
+                      GetAllocationSliceForMlir(triangular_solve_op.a()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b_slice,
+                      GetAllocationSliceForMlir(triangular_solve_op.b()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      GetAllocationSliceForMlir(triangular_solve_op.output()));
+  TF_ASSIGN_OR_RETURN(TriangularSolveOptions_Transpose transpose_a,
+                      ConvertTranspose(triangular_solve_op.transpose_a()));
+
+  std::vector<std::unique_ptr<Thunk>> thunks;
+
+  // Triangular solve is in-place on 'b', so copy 'b' to the output if they
+  // aren't the same buffer.
+  if (b_slice != output_slice) {
+    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+        Thunk::ThunkInfo(),
+        /*source_address=*/b_slice,
+        /*destination_buffer=*/output_slice,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape)));
+  }
+
+  int64 m = b_shape.dimensions(b_shape.rank() - 2);
+  int64 n = b_shape.dimensions(b_shape.rank() - 1);
+  int64 batch_size = std::accumulate(b_shape.dimensions().begin(),
+                                     b_shape.dimensions().end() - 2, int64{1},
+                                     [](int64 a, int64 b) { return a * b; });
+  int64 elem_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(output_shape.element_type());
+  int64 a_batch_stride =
+      triangular_solve_op.left_side() ? m * m * elem_size : n * n * elem_size;
+  int64 b_batch_stride = m * n * elem_size;
+  TriangularSolveOptions options;
+  options.set_left_side(triangular_solve_op.left_side());
+  options.set_lower(triangular_solve_op.lower());
+  options.set_unit_diagonal(triangular_solve_op.unit_diagonal());
+  options.set_transpose_a(transpose_a);
+  thunks.push_back(absl::make_unique<TriangularSolveThunk>(
+      input.thunk_info, options,
+      /*a_input_buffer=*/a_slice,
+      /*b_input_buffer=*/output_slice, output_shape.element_type(), batch_size,
+      m, n, a_batch_stride, b_batch_stride));
+
+  // Elide the sequential thunk if there's no copy.
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+        input.thunk_info, std::move(thunks)));
+  }
+  return Status::OK();
 }
 
 // Convert the following form of fusion region:
