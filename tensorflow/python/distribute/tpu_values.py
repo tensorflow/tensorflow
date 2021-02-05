@@ -362,7 +362,7 @@ class TPUSyncOnReadVariable(TPUVariableMixin, values.SyncOnReadVariable):
     return False
 
 
-# Common method between AutoPolicy, OnWrite and Mirrored variables.
+# Common method between OnWrite and Mirrored variables.
 def assign_sub(var, value, use_locking=False, name=None, read_value=True):
   assign_sub_fn = _make_raw_assign_fn(
       gen_resource_variable_ops.assign_sub_variable_op)
@@ -395,13 +395,11 @@ def assign(var, value, use_locking=False, name=None, read_value=True):
       read_value=read_value)
 
 
-class TPUAutoPolicy(values.AutoPolicy):
-  """Policy defined for `tf.VariableSynchronization.AUTO` synchronization.
+class TPUOnWritePolicy(values.OnWritePolicy):
+  """Policy defined for `tf.VariableSynchronization.ON_WRITE` synchronization.
 
   This policy is created when `synchronization` is set to
-  `tf.VariableSynchronization.AUTO` and `aggregation` is set to
-  `tf.VariableAggregation.NONE` when creating a `tf.Variable` in `tf.distribute`
-  scope.
+  `tf.VariableSynchronization.AUTO` or `tf.VariableSynchronization.ON_WRITE`.
   """
 
   def assign_sub(self,
@@ -410,7 +408,8 @@ class TPUAutoPolicy(values.AutoPolicy):
                  use_locking=False,
                  name=None,
                  read_value=True):
-    if tpu_util.enclosing_tpu_context():
+    if (tpu_util.enclosing_tpu_context() and
+        var.aggregation == variable_scope.VariableAggregation.NONE):
       return _make_raw_assign_fn(
           gen_resource_variable_ops.assign_sub_variable_op)(
               var,
@@ -427,7 +426,8 @@ class TPUAutoPolicy(values.AutoPolicy):
                  use_locking=False,
                  name=None,
                  read_value=True):
-    if tpu_util.enclosing_tpu_context():
+    if (tpu_util.enclosing_tpu_context() and
+        var.aggregation == variable_scope.VariableAggregation.NONE):
       return _make_raw_assign_fn(
           gen_resource_variable_ops.assign_add_variable_op)(
               var,
@@ -439,74 +439,14 @@ class TPUAutoPolicy(values.AutoPolicy):
         var, value, use_locking=use_locking, name=name, read_value=read_value)
 
   def assign(self, var, value, use_locking=False, name=None, read_value=True):
-    if tpu_util.enclosing_tpu_context():
+    if (tpu_util.enclosing_tpu_context() and
+        var.aggregation == variable_scope.VariableAggregation.NONE):
       return _make_raw_assign_fn(gen_resource_variable_ops.assign_variable_op)(
           var,
           value=value,
           use_locking=use_locking,
           name=name,
           read_value=read_value)
-    return assign(
-        var, value, use_locking=use_locking, name=name, read_value=read_value)
-
-  def scatter_sub(self, *args, **kwargs):
-    raise NotImplementedError
-
-  def scatter_add(self, *args, **kwargs):
-    raise NotImplementedError
-
-  def scatter_max(self, *args, **kwargs):
-    raise NotImplementedError
-
-  def scatter_min(self, *args, **kwargs):
-    raise NotImplementedError
-
-  def scatter_mul(self, *args, **kwargs):
-    raise NotImplementedError
-
-  def scatter_div(self, *args, **kwargs):
-    raise NotImplementedError
-
-  def scatter_update(self, *args, **kwargs):
-    raise NotImplementedError
-
-  def _is_mirrored(self):
-    return True
-
-
-class TPUOnWritePolicy(values.OnWritePolicy):
-  """Policy defined for `tf.VariableSynchronization.ON_WRITE` synchronization.
-
-  This policy is created when the following `synchronization` and
-  `aggregation` parameters are specified when creating a `tf.Variable` in
-  `tf.distribute` scope:
-  * `synchronization` is equal to `tf.VariableSynchronization.AUTO` and
-  aggregation can be any of the following `tf.VariableAggregation` enum
-  values such as `SUM`, `MEAN` or `ONLY_FIRST_REPLICA`.
-  * `synchronization` is equal to `tf.VariableSynchronization.ON_WRITE` and
-  aggregation can be any of the following `tf.VariableAggregation` enum
-  values such as `NONE`, `SUM`, `MEAN` or `ONLY_FIRST_REPLICA`.
-  """
-
-  def assign_sub(self,
-                 var,
-                 value,
-                 use_locking=False,
-                 name=None,
-                 read_value=True):
-    return assign_sub(
-        var, value, use_locking=use_locking, name=name, read_value=read_value)
-
-  def assign_add(self,
-                 var,
-                 value,
-                 use_locking=False,
-                 name=None,
-                 read_value=True):
-    return assign_add(
-        var, value, use_locking=use_locking, name=name, read_value=read_value)
-
-  def assign(self, var, value, use_locking=False, name=None, read_value=True):
     return assign(
         var, value, use_locking=use_locking, name=name, read_value=read_value)
 
