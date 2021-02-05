@@ -357,7 +357,6 @@ tf_cuda_cc_test(
     tags = [
         "no_cuda_asan",  # TODO(b/171334997): re-enable
         "no_cuda_on_cpu_tap",
-        "no_gpu",  # TODO(b/179419183): broken by cl/355688576.
     ],
     deps = [
         ":image",
