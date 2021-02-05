@@ -158,8 +158,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     const std::string f3 = weights_are_buffer ? "FLT16_cdef(weights_cache[" +
                                                     std::to_string(s) + "])"
                                               : "f" + std::to_string(s * 4 + 3);
-    if (weights_layout_ == WeightsLayout::kOHWIOGroupI4O4 ||
-        weights_layout_ == WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4) {
+    if (GetWeightsDescription().IsI4O4()) {
       switch (op_def.precision) {
         case CalculationsPrecision::F32:
         case CalculationsPrecision::F16:
@@ -176,8 +175,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
           break;
       }
     } else {
-      // WeightsLayout::kOHWIOGroupO4I4 or
-      // WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4
+      // O4I4
       c += "#define CONV" + std::to_string(s) + "(R, S)    \\\n";
       c += "R.x += dot(S, " + f0 + "); \\\n";
       c += "R.y += dot(S, " + f1 + "); \\\n";

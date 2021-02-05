@@ -58,7 +58,7 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
 
   std::string c;
 
-  if (weights_layout_ == WeightsLayout::kOICustomSpatialI4O4) {
+  if (GetWeightsDescription().IsI4O4()) {
     switch (op_def.precision) {
       case CalculationsPrecision::F32:
       case CalculationsPrecision::F16:
@@ -75,7 +75,7 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
         break;
     }
   } else {
-    // WeightsLayout::kOICustomSpatialO4I4
+    // O4I4
     c += "#define CONV(R, SRC, F, i) \\\n";
     c += "  R.x += dot(SRC, F[i + 0]); \\\n";
     c += "  R.y += dot(SRC, F[i + 1]); \\\n";

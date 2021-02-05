@@ -113,7 +113,7 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
           : "LOCAL_MEM_BARRIER";
 
   std::string c;
-  if (weights_layout_ == WeightsLayout::kOICustomSpatialI4O4) {
+  if (GetWeightsDescription().IsI4O4()) {
     switch (op_def.precision) {
       case CalculationsPrecision::F32:
       case CalculationsPrecision::F16:
@@ -131,7 +131,7 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
         break;
     }
   } else {
-    // WeightsLayout::kOICustomSpatialO4I4
+    // O4I4
     c += "#define CONV(R, SRC, F) \\\n";
     c += "  R.x += dot(SRC, weights_cache[F]); \\\n";
     c += "  R.y += dot(SRC, weights_cache[F + 1]); \\\n";

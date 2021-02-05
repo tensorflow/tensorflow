@@ -53,12 +53,6 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
   args_.AddFloat("mask_z");
   args_.AddFloat("mask_w");
 
-  const int out_group_size =
-      conv_weights_desc.layout == WeightsLayout::kOHWIOGroupI4O4 ||
-              conv_weights_desc.layout == WeightsLayout::kOHWIOGroupO4I4
-          ? conv_weights_desc.output_group_size
-          : 1;
-
   if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4 ||
       conv_weights_desc.layout == WeightsLayout::kOICustomSpatialO4I4) {
     std::vector<int32_t> remap(conv_weights_desc.spatial_remap.size());
@@ -78,7 +72,8 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
 
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
-  c += "  int GROUP_SIZE = " + std::to_string(out_group_size) + ";\n";
+  c += "  int GROUP_SIZE = " +
+       std::to_string(conv_weights_desc.GetOutputGroupSize()) + ";\n";
   c += "  int O = GLOBAL_ID_0 * 4;\n";
   c += "  int I = GLOBAL_ID_1;\n";
   c += "  int Z = GLOBAL_ID_2;\n";
@@ -119,14 +114,12 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
   c += "    v2 *= mask;\n";
   c += "    v3 *= mask;\n";
   c += "  }\n";
-  if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4 ||
-      conv_weights_desc.layout == WeightsLayout::kOHWIOGroupI4O4) {
+  if (conv_weights_desc.IsI4O4()) {
     c += "  FLT4 r0 = INIT_FLT4v4(v0.x, v1.x, v2.x, v3.x);\n";
     c += "  FLT4 r1 = INIT_FLT4v4(v0.y, v1.y, v2.y, v3.y);\n";
     c += "  FLT4 r2 = INIT_FLT4v4(v0.z, v1.z, v2.z, v3.z);\n";
     c += "  FLT4 r3 = INIT_FLT4v4(v0.w, v1.w, v2.w, v3.w);\n";
-  } else if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialO4I4 ||
-             conv_weights_desc.layout == WeightsLayout::kOHWIOGroupO4I4) {
+  } else if (conv_weights_desc.IsO4I4()) {
     c += "  FLT4 r0 = v0;\n";
     c += "  FLT4 r1 = v1;\n";
     c += "  FLT4 r2 = v2;\n";
@@ -168,11 +161,7 @@ absl::Status ConverterToConvWeights::BindArguments(ArgumentsBinder* args) {
 }
 
 int3 ConverterToConvWeights::GetGridSize() const {
-  const int out_group_size =
-      weights_desc_.layout == WeightsLayout::kOHWIOGroupI4O4 ||
-              weights_desc_.layout == WeightsLayout::kOHWIOGroupO4I4
-          ? weights_desc_.output_group_size
-          : 1;
+  const int out_group_size = weights_desc_.GetOutputGroupSize();
   const int grid_x =
       DivideRoundUp(AlignByN(src_[0]->Batch(), 4 * out_group_size), 4);
   const int grid_y = src_[0]->Slices();

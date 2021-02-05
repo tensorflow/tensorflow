@@ -37,6 +37,10 @@ struct WeightsDescription {
   int output_group_size;  // OGroup size
   // applicable with layouts that have CustomSpatial
   std::vector<int> spatial_remap;
+
+  int GetOutputGroupSize() const;
+  bool IsI4O4() const;
+  bool IsO4I4() const;
 };
 
 }  // namespace gpu
