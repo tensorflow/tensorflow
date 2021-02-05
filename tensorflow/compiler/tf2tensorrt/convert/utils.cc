@@ -17,8 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -56,8 +54,6 @@ Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
 }
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-using absl::StrAppend;
-using absl::StrCat;
 
 string DebugString(const nvinfer1::DimensionType type) {
   switch (type) {
