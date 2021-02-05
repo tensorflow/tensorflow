@@ -486,6 +486,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
 
   const SessionOptions& session_options() const { return opts_; }
+  void InitPrioritizedDeviceTypeList();
 
  private:
   Rendezvous* CreateRendezvous(int64 step_id) const {
@@ -510,7 +511,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   ~EagerContext() override;
 
-  void InitPrioritizedDeviceTypeList();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   Status RegisterExistingFunctionsOnRemoteWorkers(
       const std::vector<string>& remote_workers);
