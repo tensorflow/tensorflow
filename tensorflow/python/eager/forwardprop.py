@@ -234,12 +234,13 @@ class ForwardAccumulator():
   Consider a simple linear regression:
 
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
+  >>> targets = tf.constant([[1.], [-1.]])
   >>> dense = tf.keras.layers.Dense(1)
   >>> dense.build([None, 2])
   >>> with tf.autodiff.ForwardAccumulator(
   ...    primals=dense.kernel,
   ...    tangents=tf.constant([[1.], [0.]])) as acc:
-  ...   loss = tf.reduce_sum((dense(x) - tf.constant([1., -1.])) ** 2.)
+  ...   loss = tf.reduce_sum((dense(x) - targets) ** 2.)
   >>> acc.jvp(loss)
   <tf.Tensor: shape=(), dtype=float32, numpy=...>
 
@@ -258,9 +259,10 @@ class ForwardAccumulator():
   invocations:
 
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
+  >>> targets = tf.constant([[1.], [-1.]])
   >>> dense = tf.keras.layers.Dense(1)
   >>> dense.build([None, 2])
-  >>> loss_fn = lambda: tf.reduce_sum((dense(x) - tf.constant([1., -1.])) ** 2.)
+  >>> loss_fn = lambda: tf.reduce_sum((dense(x) - targets) ** 2.)
   >>> kernel_fprop = []
   >>> with tf.autodiff.ForwardAccumulator(
   ...     dense.kernel, tf.constant([[1.], [0.]])) as acc:
