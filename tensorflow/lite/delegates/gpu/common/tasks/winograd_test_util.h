@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,27 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_WINOGRAD_TEST_UTIL_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_WINOGRAD_TEST_UTIL_H_
+
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/tasks/winograd_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
-TEST_F(OpenCLOperationTest, Winograd4x4To36TileX6) {
-  auto status = Winograd4x4To36TileX6Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+absl::Status Winograd4x4To36TileX6Test(TestExecutionEnvironment* env);
+absl::Status Winograd36To4x4Tile4x1Test(TestExecutionEnvironment* env);
 
-TEST_F(OpenCLOperationTest, Winograd36To4x4Tile4x1) {
-  auto status = Winograd36To4x4Tile4x1Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
-
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_WINOGRAD_TEST_UTIL_H_
