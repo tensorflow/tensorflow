@@ -21,6 +21,6 @@ extern "C" {
 void uart_init(void);
 }
 
-void Initialize() {uart_init();}
+void Initialize() { uart_init(); }
 
-}; // namespace system_setup
+};  // namespace system_setup

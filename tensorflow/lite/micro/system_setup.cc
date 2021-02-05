@@ -23,4 +23,4 @@ namespace system_setup {
 // example.
 void Initialize() {}
 
-} // namespace system_setup
+}  // namespace system_setup

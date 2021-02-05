@@ -26,6 +26,6 @@ namespace system_setup {
 // tensorflow/lite/micro/system_setup.cc.
 void Initialize();
 
-} // namespace system_setup
+}  // namespace system_setup
 
 #endif  // TENSORFLOW_LITE_MICRO_TESTING_SYSTEM_SETUP_H_
