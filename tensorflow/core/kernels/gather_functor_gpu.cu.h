@@ -73,29 +73,35 @@ __global__ void GatherOpKernel(const T* __restrict__ params,
 
 namespace detail {
 
-template <int vec_size, bool is_axis_zero, typename T, typename Index>
-Status LaunchGatherKernelVectorized(const GPUDevice& d, const T* params,
-                                    const Index* indices, T* out,
-                                    int64 gather_dim_size, int64 indices_size,
-                                    int64 slice_size, int64 out_size) {
-  CHECK(slice_size % vec_size == 0);  // Crash OK
-  CHECK(out_size % vec_size == 0);    // Crash OK
-  CHECK(reinterpret_cast<std::uintptr_t>(params) % vec_size == 0);  // Crash OK
-  CHECK(reinterpret_cast<std::uintptr_t>(out) % vec_size == 0);     // Crash OK
-  int64 out_size_vec = out_size / vec_size;
-  int64 slice_size_vec = slice_size / vec_size;
-  using Tvec = AlignedVector<T, vec_size>;
-  const Tvec* params_vec = reinterpret_cast<const Tvec*>(params);
-  Tvec* out_vec = reinterpret_cast<Tvec*>(out);
+template <bool is_axis_zero>
+struct LaunchGatherKernelVectorized {
+  template <int vec_size>
+  struct Impl {
+    template <typename T, typename Index>
+    Status operator()(const GPUDevice& d, const T* params, const Index* indices,
+                      T* out, int64 gather_dim_size, int64 indices_size,
+                      int64 slice_size, int64 out_size) {
+      CHECK(slice_size % vec_size == 0);  // Crash OK
+      CHECK(out_size % vec_size == 0);    // Crash OK
+      CHECK(reinterpret_cast<std::uintptr_t>(params) % vec_size ==
+            0);                                                      // Crash OK
+      CHECK(reinterpret_cast<std::uintptr_t>(out) % vec_size == 0);  // Crash OK
+      int64 out_size_vec = out_size / vec_size;
+      int64 slice_size_vec = slice_size / vec_size;
+      using Tvec = AlignedVector<T, vec_size>;
+      const Tvec* params_vec = reinterpret_cast<const Tvec*>(params);
+      Tvec* out_vec = reinterpret_cast<Tvec*>(out);
 
-  GpuLaunchConfig config = GetGpuLaunchConfig(
-      out_size_vec, d, &GatherOpKernel<Tvec, Index, is_axis_zero>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
-  return GpuLaunchKernel(
-      GatherOpKernel<Tvec, Index, is_axis_zero>, config.block_count,
-      config.thread_per_block, 0, d.stream(), params_vec, indices, out_vec,
-      gather_dim_size, indices_size, slice_size_vec, out_size_vec);
-}
+      GpuLaunchConfig config = GetGpuLaunchConfig(
+          out_size_vec, d, &GatherOpKernel<Tvec, Index, is_axis_zero>,
+          /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+      return GpuLaunchKernel(
+          GatherOpKernel<Tvec, Index, is_axis_zero>, config.block_count,
+          config.thread_per_block, 0, d.stream(), params_vec, indices, out_vec,
+          gather_dim_size, indices_size, slice_size_vec, out_size_vec);
+    }
+  };
+};
 
 }  // namespace detail
 
@@ -104,31 +110,10 @@ Status LaunchGatherKernel(const GPUDevice& d, const T* params,
                           const Index* indices, T* out, int64 gather_dim_size,
                           int64 indices_size, int64 slice_size,
                           int64 out_size) {
-  const int64 min_align =
-      std::min(std::min(alignment_of(params), alignment_of(out)),
-               alignment_of(slice_size));
-  constexpr const int optimal_vec_size = gpu_optimal_vector_size_for<T>();
-  if (optimal_vec_size >= 16 && min_align >= 16) {
-    return detail::LaunchGatherKernelVectorized<16, is_axis_zero>(
-        d, params, indices, out, gather_dim_size, indices_size, slice_size,
-        out_size);
-  } else if (optimal_vec_size >= 8 && min_align >= 8) {
-    return detail::LaunchGatherKernelVectorized<8, is_axis_zero>(
-        d, params, indices, out, gather_dim_size, indices_size, slice_size,
-        out_size);
-  } else if (optimal_vec_size >= 4 && min_align >= 4) {
-    return detail::LaunchGatherKernelVectorized<4, is_axis_zero>(
-        d, params, indices, out, gather_dim_size, indices_size, slice_size,
-        out_size);
-  } else if (optimal_vec_size >= 2 && min_align >= 2) {
-    return detail::LaunchGatherKernelVectorized<2, is_axis_zero>(
-        d, params, indices, out, gather_dim_size, indices_size, slice_size,
-        out_size);
-  } else {
-    return detail::LaunchGatherKernelVectorized<1, is_axis_zero>(
-        d, params, indices, out, gather_dim_size, indices_size, slice_size,
-        out_size);
-  }
+  return DispatchToVectorized<
+      T, detail::LaunchGatherKernelVectorized<is_axis_zero>::template Impl>(
+      MinAlignmentOf(params, out, slice_size), d, params, indices, out,
+      gather_dim_size, indices_size, slice_size, out_size);
 }
 
 namespace functor {

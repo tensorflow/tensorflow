@@ -249,12 +249,34 @@ inline int64 alignment_of(T* ptr) {
   return alignment_of(ptr_val / sizeof(T));
 }
 
-// Returns the optimal number of (aligned) elements of T to load/store in a
-// single instruction inside a kernel.
-template <typename T>
-constexpr const int gpu_optimal_vector_size_for() {
+template <typename... Args>
+int64 MinAlignmentOf(Args... args) {
+  return std::min({alignment_of(args)...});
+}
+
+// Calls Functor<vec_size>()(args...) with vec_size set to the optimal GPU
+// vector instruction size for type T that is <= max_vec_size. The max_vec_size
+// argument should be set to the minimum alignment of all relevant parameters.
+template <typename T, template <int vec_size> typename Functor,
+          typename... Args>
+auto DispatchToVectorized(int64 max_vec_size, Args&&... args) {
   constexpr const int kOptimalVecSizeBytes = 16;
-  return (kOptimalVecSizeBytes - 1) / sizeof(T) + 1;
+  // The optimal number of (aligned) elements of T to load/store in a
+  // single instruction inside a kernel.
+  constexpr const int optimal_vec_size =
+      (kOptimalVecSizeBytes - 1) / sizeof(T) + 1;
+  int64 vec_size = std::min((int64)optimal_vec_size, max_vec_size);
+  if (vec_size >= 16) {
+    return Functor<16>()(std::forward<Args>(args)...);
+  } else if (vec_size >= 8) {
+    return Functor<8>()(std::forward<Args>(args)...);
+  } else if (vec_size >= 4) {
+    return Functor<4>()(std::forward<Args>(args)...);
+  } else if (vec_size >= 2) {
+    return Functor<2>()(std::forward<Args>(args)...);
+  } else {
+    return Functor<1>()(std::forward<Args>(args)...);
+  }
 }
 
 namespace gpu_helper {
