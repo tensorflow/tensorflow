@@ -299,6 +299,53 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
   };
 };
 
+class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicSliceOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    ShapedType input_type = op.operand().getType().cast<ShapedType>();
+    if (!input_type.hasStaticShape()) return failure();
+    Type start_indices_element_type = op.start_indices()
+                                          .front()
+                                          .getType()
+                                          .cast<ShapedType>()
+                                          .getElementType();
+
+    // Clamp indices to [0, input_size - output_size]
+    llvm::SmallVector<Value, 4> start_indices_vector;
+    start_indices_vector.reserve(op.start_indices().size());
+    Value clamp_min = rewriter.create<ConstOp>(
+        op.getLoc(), rewriter.getIntegerAttr(start_indices_element_type, 0));
+    for (uint64_t i = 0, e = op.start_indices().size(); i < e; ++i) {
+      Value clamp_max = rewriter.create<ConstOp>(
+          op.getLoc(),
+          rewriter.getIntegerAttr(start_indices_element_type,
+                                  input_type.getShape()[i] -
+                                      op.slice_sizes().getValue<int64_t>({i})));
+      Value clamped_index = rewriter.create<mhlo::ClampOp>(
+          op.getLoc(), op.start_indices()[i].getType(), op.start_indices()[i],
+          clamp_min, clamp_max);
+      start_indices_vector.push_back(clamped_index);
+    }
+
+    // Pack individual start indices to start indices tensor.
+    Type start_indices_type = RankedTensorType::get(
+        {static_cast<int64_t>(start_indices_vector.size())},
+        start_indices_element_type);
+    Value start_indices_op = rewriter.create<PackOp>(
+        op.getLoc(), start_indices_type, ValueRange(start_indices_vector));
+
+    Value slice_sices_op =
+        rewriter.create<ConstOp>(op.getLoc(), op.slice_sizes());
+    rewriter.replaceOpWithNewOp<SliceOp>(op, op.getType(), op.operand(),
+                                         start_indices_op, slice_sices_op);
+    return success();
+  };
+};
+
 // Appends all elements in `range` to `values`.
 template <typename ValueT, typename Range>
 void Append(llvm::SmallVectorImpl<ValueT> &values, Range &&range) {
@@ -1097,10 +1144,10 @@ static PassRegistration<LegalizeHloToTf> pass(
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns
-      ->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertGatherOp, ConvertSliceOp,
-               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertDynamicSliceOp,
+                   ConvertGatherOp, ConvertSliceOp, ConvertReduceOpToTfMax,
+                   ConvertReduceOpToTfMin, ConvertReduceOpToTfSum,
+                   ConvertIotaOpToTfRange>(context);
   populateWithGenerated(context, *patterns);
 }
 
