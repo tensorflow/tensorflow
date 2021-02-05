@@ -796,6 +796,8 @@ class LoggingTest(PForTestCase):
     # TODO(agarwal): make this work with for_loop.
     with session.Session() as sess:
       sess.run(pfor_control_flow_ops.pfor(loop_fn, 3))
+      sess.run(pfor_control_flow_ops.pfor(
+          lambda i, pfor_config: loop_fn(i), 3))
 
 
 class TensorArrayTest(PForTestCase):
