@@ -28,9 +28,14 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
                           int32_t *K_w = nullptr, Conv2DPadding *pad = nullptr,
                           ExecutionPlan *plan = nullptr);
 
-flexbuffers::Vector get_named_uint32_custom_option_vector(
-    TfLiteContext *context, const char *buffer, const size_t length,
-    const std::string named_key);
+class CustomOptionParser {
+ private:
+  flexbuffers::Map map_;
+
+ public:
+  CustomOptionParser(const char *buffer, size_t buffer_length);
+  flexbuffers::Reference parseNamedCustomOption(const std::string &name) const;
+};
 
 }  // namespace xcore
 }  // namespace micro

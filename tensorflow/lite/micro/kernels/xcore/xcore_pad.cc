@@ -32,10 +32,8 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   TFLITE_DCHECK(buffer);
   TFLITE_DCHECK(length > 0);
 
-  auto map =
-      flexbuffers::GetRoot(reinterpret_cast<const uint8_t *>(buffer), length)
-          .AsMap();
-  op_data->pad_value = map["pad_value"].AsUInt32();
+  auto parser = CustomOptionParser(buffer, length);
+  op_data->pad_value = parser.parseNamedCustomOption("pad_value").AsUInt32();
 
   return op_data;
 }

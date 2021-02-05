@@ -5,23 +5,17 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-flexbuffers::Vector get_named_uint32_custom_option_vector(
-    TfLiteContext *context, const char *buffer, const size_t length,
-    const std::string named_key) {
-  const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
-
-  auto map = flexbuffers::GetRoot(buffer_t, length).AsMap();
-
-  auto keys = map.Keys();
-  auto values = map.Values();
-  for (int i = 0; i < map.size(); ++i) {
-    const std::string &key = keys[i].AsString().str();
-    if (key.compare(named_key) == 0) {
-      return values[i].AsVector();
-    }
-  }
-  TF_LITE_FATAL("Custom option not found");
+CustomOptionParser::CustomOptionParser(const char *buffer, size_t buffer_length)
+    : map_(flexbuffers::Map::EmptyMap()) {
+  map_ = flexbuffers::GetRoot(reinterpret_cast<const uint8_t *>(buffer),
+                              buffer_length)
+             .AsMap();
 }
+
+flexbuffers::Reference CustomOptionParser::parseNamedCustomOption(
+    const std::string &name) const {
+  return map_[name];
+};
 
 //*****************************
 // ExecutionPlan only
