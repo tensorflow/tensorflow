@@ -494,8 +494,8 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     if (HasOutsideCompilationNested(tpu_cluster.getOperation())) {
       std::string host_device;
-      tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
-                                                  &host_device);
+      (void)tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
+                                                        &host_device);
       CreateParallelExecuteForOutsideCompilation(module, tpu_cluster,
                                                  host_device);
     }

@@ -144,7 +144,7 @@ void ContractionFusionPass::runOnFunction() {
 
   OwningRewritePatternList patterns;
   patterns.insert<FuseIntoMatMulOp>();
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
