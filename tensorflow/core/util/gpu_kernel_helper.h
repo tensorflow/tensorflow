@@ -232,12 +232,18 @@ class alignas(alignof(T) * N) AlignedVector {
 
 #undef UNROLL_ON_DEVICE
 
-// Returns the maximum power-of-two alignment of a stride or pointer value.
-inline int64 alignment_of(int64 stride) { return stride & -stride; }
+// Returns the maximum power-of-two alignment (in units of elements, not bytes)
+// of a stride or pointer value.
+inline int64 alignment_of(int64 element_stride) {
+  return element_stride & -element_stride;
+}
 template <typename T>
 inline int64 alignment_of(T* ptr) {
   const intptr_t ptr_val = reinterpret_cast<std::uintptr_t>(ptr);
-  return alignment_of(ptr_val);
+  // Pointers should always be aligned to sizeof(T) bytes.
+  CHECK(ptr_val % sizeof(T) == 0);  // CRASH OK
+  // Note that we want the alignment in elements, not bytes.
+  return alignment_of(ptr_val / sizeof(T));
 }
 
 // Returns the optimal number of (aligned) elements of T to load/store in a
