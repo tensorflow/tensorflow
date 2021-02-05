@@ -214,15 +214,18 @@ class alignas(alignof(T) * N) AlignedVector {
 
   AlignedVector() = default;
 
-  // Explicitly construct with uniform value.
-  // Note: This emulates an explicit constructor of T, so that
-  // AlignedVector(args...) works whenever T(args...) does.
-  template <
-      typename... Args,
-      typename std::enable_if<std::is_constructible<value_type, Args...>::value,
-                              int>::type = 0>
-  __host__ __device__ explicit AlignedVector(Args&&... args) {
-    value_type uniform(std::forward<Args>(args)...);
+  // Uniform initialization.
+  __host__ __device__ explicit AlignedVector(value_type uniform) {
+    UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) { values_[i] = uniform; }
+  }
+  // Uniform initialization with explicit conversion.
+  // Note: This is required for T=Eigen::half because it only supports explicit
+  // conversions from other types and its template constructor is too relaxed
+  // to be able to use std::is_constructible.
+  template <typename U, typename std::enable_if<std::is_arithmetic<U>::value,
+                                                int>::type = 0>
+  __host__ __device__ explicit AlignedVector(U uniform_u) {
+    value_type uniform(uniform_u);
     UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) { values_[i] = uniform; }
   }
 
