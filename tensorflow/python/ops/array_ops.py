@@ -962,6 +962,9 @@ def _slice_helper(tensor, slice_spec, var=None):
       tf.newaxis or scalar int32/int64 tensors.
   """
   tensor = ops.convert_to_tensor(tensor)
+  # TODO(wangpeng): Consider supporting var
+  if var is None and ops._numpy_style_slicing:  # pylint: disable=protected-access
+    return tensor._numpy_style_getitem(slice_spec)  # pylint: disable=protected-access
 
   if isinstance(slice_spec, bool) or \
   (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \

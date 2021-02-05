@@ -50,12 +50,10 @@ from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import numpy_ops as tnp
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
@@ -1966,34 +1964,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles)
     self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
     self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
-
-  def test_saving_ndarray_specs(self, cycles):
-    class NdarrayModule(module.Module):
-
-      @def_function.function
-      def plain(self, x):
-        return tnp.add(x, 1)
-
-      @def_function.function(input_signature=[
-          np_arrays.NdarraySpec(tensor_spec.TensorSpec([], dtypes.float32))])
-      def with_signature(self, x):
-        return tnp.add(x, 1)
-
-    m = NdarrayModule()
-    c = tnp.asarray(3.0, tnp.float32)
-    output_plain, output_with_signature = m.plain(c), m.with_signature(c)
-
-    loaded_m = cycle(m, cycles)
-
-    load_output_plain, load_output_with_signature = (
-        loaded_m.plain(c), loaded_m.with_signature(c))
-
-    self.assertIsInstance(output_plain, tnp.ndarray)
-    self.assertIsInstance(load_output_plain, tnp.ndarray)
-    self.assertIsInstance(output_with_signature, tnp.ndarray)
-    self.assertIsInstance(load_output_with_signature, tnp.ndarray)
-    self.assertAllClose(output_plain, load_output_plain)
-    self.assertAllClose(output_with_signature, load_output_with_signature)
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
