@@ -40,8 +40,7 @@ void TestComparison(const TfLiteRegistration& registration,
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, /*builtin_data=*/nullptr,
-                             micro_test::reporter);
+                             outputs_array, /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
