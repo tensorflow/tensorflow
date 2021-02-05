@@ -1870,45 +1870,80 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   TF_ASSIGN_OR_RETURN(auto mlir_input, GetMlirEmitterInput(fusion));
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(mlir_input.op);
 
-  HloInstruction* root = fusion->fused_expression_root();
   if (fusion->IsInputFusion()) {
-    switch (root->opcode()) {
+    switch (fusion->fused_expression_root()->opcode()) {
       case HloOpcode::kScatter: {
+        TF_ASSIGN_OR_RETURN(
+            const HloComputation* fused_computation,
+            GetOrCreateSubComputationFromRegion(&fusion_op.region(),
+                                                /*is_fusion=*/true));
+        auto* root = fused_computation->root_instruction();
+
         std::vector<std::unique_ptr<Thunk>> thunks;
         // The initialization from 'operand' is using different loop bounds, so
         // emit it in a separate kernel. Treat it like a loop fusion, writing to
         // the output buffer.
         {
-          thunks.push_back(
-              BuildKernelThunk(fusion, /*implements_whole_instruction=*/false));
+          std::vector<llvm_ir::IrArray> ir_arrays;
+          TF_ASSIGN_OR_RETURN(
+              auto operand_thunk,
+              BuildKernelThunkForMlir(mlir_input.op, Thunk::ThunkInfo(),
+                                      mlir_input.extra_slice, &ir_arrays));
+          thunks.push_back(std::move(operand_thunk));
+
           GpuElementalIrEmitter operand_elemental_emitter(
               hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
               GetNestedComputer());
           FusedIrEmitter operand_fused_emitter(&operand_elemental_emitter);
-          BindFusionArguments(fusion, &operand_fused_emitter);
+          for (int i = 0; i < fused_computation->num_parameters(); i++) {
+            operand_fused_emitter.BindGenerator(
+                fused_computation->parameter_instruction(i),
+                [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
+                  return ir_arrays[i].EmitReadArrayElement(index, &b_);
+                });
+          }
           TF_ASSIGN_OR_RETURN(
               auto generator,
               operand_fused_emitter.GetGenerator(root->operand(0)));
 
-          TF_RETURN_IF_ERROR(EmitTargetElementLoopInThunk(
-              *fusion, generator,
-              static_cast<KernelThunk*>(thunks.back().get()),
-              ComputeMaxUnrollFactor(fusion)));
+          auto unroll_factor =
+              ComputeMaxUnrollFactor(fusion_op, hlo_module_config_);
+          const Shape& element_shape = root->shape();
+          LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+              element_shape, ir_emitter_context_->gpu_device_info(),
+              unroll_factor, /*few_waves=*/false);
+          UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
+                                 ir_emitter_context_->llvm_module());
+          TF_RETURN_IF_ERROR(
+              ParallelLoopEmitter(generator, ir_arrays.back(),
+                                  launch_dimensions, &b_, unroll_factor)
+                  .EmitLoop(
+                      IrName(mlir::GetNameFromLoc(fusion_op.getLoc())),
+                      GetIndexTypeForKernelFromMlir(
+                          fusion_op, launch_dimensions.launch_bound(), &b_)));
         }
 
         // Now build the actual scatter, reading and writing to the freshly
         // filled output buffer.
         {
-          thunks.push_back(
-              BuildKernelThunk(fusion,
-                               /*implements_whole_instruction=*/false));
+          std::vector<llvm_ir::IrArray> ir_arrays;
+          TF_ASSIGN_OR_RETURN(
+              auto scatter_thunk,
+              BuildKernelThunkForMlir(mlir_input.op, Thunk::ThunkInfo(),
+                                      mlir_input.extra_slice, &ir_arrays));
+          thunks.push_back(std::move(scatter_thunk));
           // Spin up a new fused emitter for the scatter kernel and emit it.
           GpuElementalIrEmitter scatter_elemental_emitter(
               hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
               GetNestedComputer());
           FusedIrEmitter scatter_fused_emitter(&scatter_elemental_emitter);
-          BindFusionArguments(fusion, &scatter_fused_emitter);
-          CHECK_EQ(root->parent()->FusionInstruction(), fusion);
+          for (int i = 0; i < fused_computation->num_parameters(); i++) {
+            scatter_fused_emitter.BindGenerator(
+                fused_computation->parameter_instruction(i),
+                [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
+                  return ir_arrays[i].EmitReadArrayElement(index, &b_);
+                });
+          }
 
           TF_ASSIGN_OR_RETURN(
               const auto dim_numbers,
@@ -1922,7 +1957,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
           desc.dim_numbers = dim_numbers;
           desc.unique_indices = root->unique_indices();
           desc.update_computation = root->called_computations()[0];
-          desc.output = GetIrArray(*fusion, *fusion);
+          desc.output = ir_arrays.back();
           TF_ASSIGN_OR_RETURN(
               desc.scatter_indices_gen,
               scatter_fused_emitter.GetGenerator(root->operand(1)));
@@ -1936,7 +1971,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
           TF_RETURN_IF_ERROR(EmitScatter(desc, thunks.back().get()));
         }
         AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
-            GetThunkInfo(fusion), std::move(thunks)));
+            mlir_input.thunk_info, std::move(thunks)));
         return Status::OK();
       }
       // In the case of root tuple, it can be either reduce or slice input
@@ -1990,7 +2025,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
                                             &b_, GetNestedComputer());
 
     // Shape of the dynamic-update-slice's "update" operand.
-    Shape update_shape = root->operand(1)->shape();
+    Shape update_shape = fusion->fused_expression_root()->operand(1)->shape();
 
     // Array to write into.  Because this is an in-place operation, this is the
     // same as operand 0's array.
@@ -2680,10 +2715,6 @@ Status IrEmitterUnnested::EmitScatter(const ScatterDescriptor& desc,
                              launch_dimensions, &b_)
       .EmitLoop(desc.name,
                 desc.get_index_type(launch_dimensions.launch_bound()));
-}
-
-Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
-  return IrEmitter::HandleSelect(select);
 }
 
 // This transformation should be migrated off. See b/171334474.
@@ -3899,86 +3930,9 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildConditionalThunk(
       GetAllocationSlice(*hlo->operand(0)), branch_operands));
 }
 
-Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
-    const HloInstruction& hlo,
-    const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk,
-    int unroll_factor, bool few_waves) {
-  VLOG(3) << bindings_.ToString();
-
-  bool multi_output = hlo.shape().IsTuple();
-
-  const Shape& element_shape =
-      multi_output ? ShapeUtil::GetSubshape(hlo.shape(), {0}) : hlo.shape();
-  VLOG(3) << "EmitTargetElementLoopInThunk "
-          << ShapeUtil::HumanStringWithLayout(hlo.shape())
-          << " for unroll_factor " << unroll_factor;
-  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor,
-      few_waves);
-  UpdateLaunchDimensions(launch_dimensions, thunk,
-                         ir_emitter_context_->llvm_module());
-  if (!multi_output) {
-    return ParallelLoopEmitter(element_generator, GetIrArray(hlo, hlo),
-                               launch_dimensions, &b_, unroll_factor)
-        .EmitLoop(
-            IrName(&hlo),
-            GetIndexTypeForKernel(&hlo, launch_dimensions.launch_bound(), &b_));
-  }
-
-  // Emit the tuple pointers in one thread.  We could do this at any point in
-  // the kernel, but we do it at the beginning in the hopes of reducing register
-  // pressure, since we touch threadIdx.x and blockIdx.x at the beginning of the
-  // kernel *anyway*.
-  std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(hlo);
-  KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
-    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_);
-  });
-
-  // For multioutput fusion, we need to emit each operand and the root.
-  TF_RETURN_IF_ERROR(
-      ParallelLoopEmitter(element_generator, output_arrays, launch_dimensions,
-                          &b_, unroll_factor)
-          .EmitLoop(IrName(&hlo),
-                    GetIndexTypeForKernel(
-                        &hlo, launch_dimensions.launch_bound(), &b_)));
-
-  b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
-  return Status::OK();
-}
-
 Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter) {
-  int unroll_factor = 1;
-  if (!MayPreventVectorization(hlo)) {
-    unroll_factor = ComputeMaxUnrollFactor(&hlo);
-  }
-
-  std::unique_ptr<KernelThunk> kernel_thunk =
-      BuildKernelThunk(&hlo, /*implements_whole_instruction=*/true);
-
-  // Check if we want to schedule grid size that has fewer SM waves.
-  // This speed up computations in some cases.
-  bool few_waves = false;
-  auto few_waves_allow_instr = [](const HloInstruction* instr) {
-    return instr->IsElementwise() || instr->opcode() == HloOpcode::kParameter ||
-           // We need to make the codegen broadcast aware before enabling
-           // more broadcast pattern.
-           (instr->opcode() == HloOpcode::kBroadcast &&
-            instr->dimensions().empty());
-  };
-  if (hlo.opcode() == HloOpcode::kFusion) {
-    few_waves =
-        absl::c_all_of(hlo.fused_instructions_computation()->instructions(),
-                       few_waves_allow_instr);
-  } else {
-    few_waves = few_waves_allow_instr(&hlo);
-  }
-
-  Status emit_status = EmitTargetElementLoopInThunk(
-      hlo, body_emitter, kernel_thunk.get(), unroll_factor, few_waves);
-  thunk_sequence_.emplace_back(std::move(kernel_thunk));
-
-  return emit_status;
+  return InternalError("This should be unreachable");
 }
 
 // Gets the output offset as calculated from thread_id.x (to be applied to the
