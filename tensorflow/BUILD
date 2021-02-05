@@ -617,6 +617,14 @@ selects.config_setting_group(
 #     name = "no_prod_deps",
 #     define_values = {"tf_no_prod_deps": "1"},
 # )
+#
+# config_setting(
+#     name = "no_prod_deps_cuda",
+#     define_values = {
+#         "tf_no_prod_deps": "1",
+#         "GOOGLE_CUDA_COMPILER": "clang",
+#     },
+# )
 # copybara:uncomment_end
 
 config_setting(
