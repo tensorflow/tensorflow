@@ -1229,6 +1229,7 @@ REGISTER_OP("_MklQuantizedConv2DPerChannel")
     .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused, channel;
