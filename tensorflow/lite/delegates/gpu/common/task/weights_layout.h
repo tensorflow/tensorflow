@@ -24,14 +24,16 @@ namespace gpu {
 enum class WeightsLayout {
   kUnknown,
   kOHWIOGroupI4O4,
+  kOHWIOGroupO4I4,
   kOICustomSpatialI4O4,
+  kOICustomSpatialO4I4,
 };
 
 struct WeightsDescription {
   WeightsLayout layout;
-  // applicable with kOHWIOGroupI4O4
+  // applicable with kOHWIOGroupI4O4/O4I4
   int output_group_size;
-  // applicable with kOICustomSpatialI4O4
+  // applicable with kOICustomSpatialI4O4/O4I4
   std::vector<int> spatial_remap;
 };
 
