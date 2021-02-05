@@ -244,7 +244,7 @@ def _get_end_to_end_test_cases():
           "expected_output": [[0, 1.098612, 0, 0, 0], [0, 0, 1.252763, 0, 0],
                               [0, 0, 0, 1.466337, 0], [0, 0, 0, 0, 1.7917595],
                               [0, 0, 0, 0, 1.7917595], [0, 0, 0, 1.4663371, 0],
-                              [0, 1.098612, 0, 0, 0], [2.3978953, 0, 0, 0, 0]],
+                              [0, 1.098612, 0, 0, 0], [1.402368, 0, 0, 0, 0]],
       },
       {
           "testcase_name":
@@ -264,7 +264,7 @@ def _get_end_to_end_test_cases():
           "expected_output": [[0., 0.847298, 0.847298, 0., 0.],
                               [0., 0., 0., 1.098612, 0.],
                               [0., 0., 0., 0., 2.197225],
-                              [1.609438, 0.847298, 0., 0., 0.]],
+                              [0.972955, 0.847298, 0., 0., 0.]],
       },
   )
 
@@ -1196,14 +1196,15 @@ class TextVectorizationOutputTest(
 
   def test_tfidf_output_hard_maximum(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    tfidf_data = [.5, .25, .2, .125]
+    # OOV idf weight (bucket 0) should 0.5, the average of passed weights.
+    idf_weights = [.4, .25, .75, .6]
     input_array = np.array([["earth", "wind", "and", "earth"],
                             ["ohio", "fire", "earth", "michigan"]])
 
     # pyformat: disable
     # pylint: disable=bad-whitespace
-    expected_output = [[ 0,  1, .25, .2,    0, 0],
-                       [.1, .5,   0,  0, .125, 0]]
+    expected_output = [[ 0, .8, .25, .75,  0, 0],
+                       [ 1, .4,   0,   0, .6, 0]]
     # pylint: enable=bad-whitespace
     # pyformat: enable
     max_tokens = 6
@@ -1216,10 +1217,7 @@ class TextVectorizationOutputTest(
         split=None,
         output_mode=text_vectorization.TFIDF,
         pad_to_max_tokens=True)
-    layer.set_vocabulary(
-        vocab_data,
-        df_data=tfidf_data,
-        oov_df_value=.05)
+    layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -1229,14 +1227,15 @@ class TextVectorizationOutputTest(
 
   def test_tfidf_output_soft_maximum(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    tfidf_data = [.5, .25, .2, .125]
+    # OOV idf weight (bucket 0) should 0.5, the average of passed weights.
+    idf_weights = [.4, .25, .75, .6]
     input_array = np.array([["earth", "wind", "and", "earth"],
                             ["ohio", "fire", "earth", "michigan"]])
 
     # pyformat: disable
     # pylint: disable=bad-whitespace
-    expected_output = [[ 0,  1, .25, .2,    0],
-                       [.1, .5,   0,  0, .125]]
+    expected_output = [[ 0, .8, .25, .75,  0],
+                       [ 1, .4,   0,   0, .6]]
     # pylint: enable=bad-whitespace
     # pyformat: enable
     max_tokens = 5
@@ -1249,7 +1248,37 @@ class TextVectorizationOutputTest(
         split=None,
         output_mode=text_vectorization.TFIDF,
         pad_to_max_tokens=False)
-    layer.set_vocabulary(vocab_data, df_data=tfidf_data, oov_df_value=.05)
+    layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
+    int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllClose(expected_output, output_dataset)
+
+  def test_tfidf_output_set_oov_weight(self):
+    vocab_data = ["[UNK]", "earth", "wind", "and", "fire"]
+    idf_weights = [.1, .4, .25, .75, .6]
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "fire", "earth", "michigan"]])
+
+    # pyformat: disable
+    # pylint: disable=bad-whitespace
+    expected_output = [[  0, .8, .25, .75,  0],
+                       [ .2, .4,   0,   0, .6]]
+    # pylint: enable=bad-whitespace
+    # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=10,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.TFIDF,
+        pad_to_max_tokens=False)
+    layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -1301,7 +1330,7 @@ class TextVectorizationModelBuildingTest(
       })
   def test_end_to_end_bagged_modeling(self, output_mode, pad_to_max_tokens):
     vocab_data = ["earth", "wind", "and", "fire"]
-    tfidf_data = [.5, .25, .2, .125]
+    idf_weights = [.5, .25, .2, .125]
     input_array = np.array([["earth", "wind", "and", "earth"],
                             ["ohio", "and", "earth", "michigan"]])
 
@@ -1313,7 +1342,7 @@ class TextVectorizationModelBuildingTest(
         output_mode=output_mode,
         pad_to_max_tokens=pad_to_max_tokens)
     if output_mode == text_vectorization.TFIDF:
-      layer.set_vocabulary(vocab_data, df_data=tfidf_data, oov_df_value=.05)
+      layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     else:
       layer.set_vocabulary(vocab_data)
 
@@ -1393,7 +1422,7 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
                                 "vocabulary larger than the maximum vocab.*"):
       layer.set_vocabulary(vocab_data)
 
-  def test_setting_vocab_without_tfidf_data_fails_in_tfidf_mode(self):
+  def test_setting_vocab_without_idf_weights_fails_in_tfidf_mode(self):
     vocab_data = ["earth", "wind", "and", "fire"]
 
     layer = get_layer_class()(
@@ -1401,45 +1430,33 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
         standardize=None,
         split=None,
         output_mode=text_vectorization.TFIDF)
-    with self.assertRaisesRegex(ValueError,
-                                "df_data must be set if output_mode is TFIDF"):
+    with self.assertRaisesRegex(
+        ValueError, "idf_weights must be set if output_mode is TFIDF"):
       layer.set_vocabulary(vocab_data)
 
-  def test_tfidf_data_length_mismatch_fails(self):
+  def test_idf_weights_length_mismatch_fails(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    df_data = [1, 2, 3]
+    idf_weights = [1, 2, 3]
     layer = get_layer_class()(
         max_tokens=5,
         standardize=None,
         split=None,
         output_mode=text_vectorization.TFIDF)
-    with self.assertRaisesRegex(ValueError,
-                                "df_data must be the same length as vocab.*"):
-      layer.set_vocabulary(vocab_data, df_data)
-
-  def test_tfidf_set_vocab_with_no_oov_fails(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-    df_data = [1, 2, 3, 4]
-    layer = get_layer_class()(
-        max_tokens=5,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.TFIDF)
-    with self.assertRaisesRegex(ValueError,
-                                "You must pass an oov_df_value.*"):
-      layer.set_vocabulary(vocab_data, df_data)
+    with self.assertRaisesRegex(
+        ValueError, "idf_weights must be the same length as vocab.*"):
+      layer.set_vocabulary(vocab_data, idf_weights)
 
   def test_set_tfidf_in_non_tfidf_fails(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    df_data = [1, 2, 3, 4]
+    idf_weights = [1, 2, 3, 4]
     layer = get_layer_class()(
         max_tokens=5,
         standardize=None,
         split=None,
         output_mode=text_vectorization.BINARY)
     with self.assertRaisesRegex(ValueError,
-                                ".*df_data should only be set if.*"):
-      layer.set_vocabulary(vocab_data, df_data)
+                                ".*idf_weights should only be set if.*"):
+      layer.set_vocabulary(vocab_data, idf_weights)
 
   def test_zero_max_tokens_fails(self):
     with self.assertRaisesRegex(ValueError, ".*max_tokens.*"):
@@ -1569,14 +1586,16 @@ class TextVectorizationSavingTest(
 
   def test_saving_with_tfidf(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    tfidf_data = [.5, .25, .2, .125]
+    # OOV idf weight (bucket 0) should 0.5, the average of passed weights.
+    idf_weights = [.4, .25, .75, .6]
     input_array = np.array([["earth", "wind", "and", "earth"],
                             ["ohio", "fire", "earth", "michigan"]])
 
     # pyformat: disable
     # pylint: disable=bad-whitespace
-    expected_output = [[ 0,  1, .25, .2,    0],
-                       [.1, .5,   0,  0, .125]]
+    expected_output = [[ 0, .8, .25, .75,  0],
+                       [ 1, .4,   0,   0, .6]]
+    vocab_data = ["earth", "wind", "and", "fire"]
     # pylint: enable=bad-whitespace
     # pyformat: enable
 
@@ -1587,7 +1606,7 @@ class TextVectorizationSavingTest(
         standardize=None,
         split=None,
         output_mode=text_vectorization.TFIDF)
-    layer.set_vocabulary(vocab_data, df_data=tfidf_data, oov_df_value=.05)
+    layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
 
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
