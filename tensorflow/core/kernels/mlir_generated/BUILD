@@ -261,19 +261,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "cpu_cwise_binary_op",
-    srcs = [
-        "cpu_op_add.cc",
-    ],
-    tags = ["manual"],
-    deps = [
-        ":base_cpu_op",
-        ":cpu_add_v2_kernels",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_kernel_library(
     name = "cwise_op",
     srcs = [],
     tags = ["no_rocm"],
@@ -284,7 +271,6 @@ tf_kernel_library(
     ]) + if_mlir_experimental_kernels_enabled(
         [
             ":cpu_cwise_unary_op",
-            ":cpu_cwise_binary_op",
             ":gpu_cwise_binary_op",
         ],
     ),
@@ -384,18 +370,6 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
     ],
-    deps = [
-        ":base_binary_ops_test",
-        ":base_ops_test",
-        "//tensorflow/core/common_runtime:device",
-        "//tensorflow/core/common_runtime:device_factory",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "cpu_binary_ops_test",
-    size = "medium",
-    srcs = if_mlir_generated_gpu_kernels_enabled(["cpu_binary_ops_test.cc"]),
     deps = [
         ":base_binary_ops_test",
         ":base_ops_test",
@@ -1011,20 +985,6 @@ cpu_kernel_library(
         "f64",
         "i8",
         "i16",
-        "i32",
-        "i64",
-    ],
-    unroll_factors = "4",
-)
-
-cpu_kernel_library(
-    name = "cpu_add_v2_lib",
-    op = "add_v2",
-    tile_size = "1024",
-    types = [
-        "f16",
-        "f32",
-        "f64",
         "i32",
         "i64",
     ],
