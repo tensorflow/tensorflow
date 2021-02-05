@@ -745,15 +745,7 @@ func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
   } : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   return
 }
-// CHECK: %[[L0:.*]] = constant 0 : index
-// CHECK: %[[L2:.*]] = constant 2 : index
-// CHECK: %[[L1:.*]] = constant 1 : index
-// CHECK: %[[LHS:.*]] = linalg.range %[[L0]] : %[[L2]] : %[[L1]]
-// CHECK: %[[R0:.*]] = constant 1 : index
-// CHECK: %[[R2:.*]] = constant 3 : index
-// CHECK: %[[R1:.*]] = constant 1 : index
-// CHECK: %[[RHS:.*]] = linalg.range %[[R0]] : %[[R2]] : %[[R1]]
-// CHECK: %[[RESULT:.*]] = linalg.slice %[[IN]][%[[LHS]], %[[RHS]]]
+// CHECK: %[[RESULT:.*]] = subview %[[IN]][0, 1] [2, 2] [1, 1] : memref<?x?xf32> to memref<2x2xf32, #{{.*}}>
 // CHECK: linalg.copy(%[[RESULT]], %[[OUT]])
 
 // -----

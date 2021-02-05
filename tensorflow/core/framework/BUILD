@@ -125,6 +125,7 @@ exports_files(
         "graph_transfer_info.proto",
         "kernel_def.proto",
         "log_memory.proto",
+        "model.proto",
         "node_def.proto",
         "op_def.proto",
         "reader_base.proto",
@@ -706,7 +707,7 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
     ],
     alwayslink = 1,
 )
@@ -802,7 +803,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/public:version",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1653,6 +1654,13 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "model_proto",
+    srcs = ["model.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
     name = "protos_all",
     cc_api_version = 2,
     make_default_target_header_only = True,
@@ -1667,6 +1675,7 @@ tf_proto_library(
         ":graph_transfer_info_proto",
         ":kernel_def_proto",
         ":log_memory_proto",
+        ":model_proto",
         ":node_def_proto",
         ":op_def_proto",
         ":reader_base_proto",

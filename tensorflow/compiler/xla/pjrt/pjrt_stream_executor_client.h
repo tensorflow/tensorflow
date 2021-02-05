@@ -105,9 +105,9 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   std::string DebugString() const override;
 
-  Status TransferToInfeed(const LiteralSlice& literal) const override;
+  Status TransferToInfeed(const LiteralSlice& literal) override;
 
-  Status TransferFromOutfeed(MutableBorrowingLiteral literal) const override;
+  Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
  private:
   const int id_;

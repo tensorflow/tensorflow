@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_4x4_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -242,7 +243,7 @@ absl::Status TransposeConv4x4Test(TestExecutionEnvironment* env) {
   attr.padding.appended = HW(1, 1);
   attr.stride = HW(2, 2);
 
-  for (auto storage : {TensorStorageType::BUFFER}) {
+  for (auto storage : {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
     for (auto precision : env->GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
@@ -308,6 +309,11 @@ absl::Status TransposeConv4x4Test(TestExecutionEnvironment* env) {
 
 - (void)testConvolutionTransposed {
   auto status = ConvolutionTransposedTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvolutionTransposed4x4SimpleWeights {
+  auto status = ConvolutionTransposed4x4SimpleWeightsTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

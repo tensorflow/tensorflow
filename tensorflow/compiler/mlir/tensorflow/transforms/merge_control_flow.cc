@@ -89,42 +89,50 @@ bool SafeToMerge(TF::IfRegionOp source, TF::IfRegionOp destination,
   // If there is an intermediate data or side effect dependency between the
   // ops in destination and the ops in the source, it's not safe to merge
   // them.
-  llvm::SmallSetVector<Operation*, 4> op_stack;
+  std::vector<Operation*> dependencies;
   for (auto* user : destination.getOperation()->getUsers()) {
-    if (!source_ops.contains(user)) op_stack.insert(user);
+    if (!source_ops.contains(user)) dependencies.push_back(user);
   }
   for (Operation& op : destination.then_branch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
-      if (!source_ops.contains(successor)) op_stack.insert(successor);
+      if (!source_ops.contains(successor)) dependencies.push_back(successor);
     }
   }
   for (Operation& op : destination.else_branch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
-      if (!source_ops.contains(successor)) op_stack.insert(successor);
+      if (!source_ops.contains(successor)) dependencies.push_back(successor);
     }
   }
 
   bool safe_to_merge = true;
 
-  while (!op_stack.empty()) {
-    auto* next_op = op_stack.pop_back_val();
-    for (auto* user : next_op->getUsers()) {
+  llvm::SmallPtrSet<Operation*, 4> visited;
+  while (!dependencies.empty()) {
+    Operation* dependency = dependencies.back();
+    dependencies.pop_back();
+    if (visited.count(dependency)) continue;
+    visited.insert(dependency);
+    for (auto* user : dependency->getUsers()) {
       if (source_ops.contains(user)) {
         safe_to_merge = false;
         break;
       } else {
-        op_stack.insert(user);
+        dependencies.push_back(user);
       }
     }
     for (auto* successor :
-         side_effect_analysis.DirectControlSuccessors(next_op)) {
+         side_effect_analysis.DirectControlSuccessors(dependency)) {
       if (source_ops.contains(successor)) {
         safe_to_merge = false;
         break;
       } else {
-        op_stack.insert(successor);
+        dependencies.push_back(successor);
       }
     }
+    // If the op is nested, then also consider the users and successors of the
+    // parent op.
+    if (dependency->getBlock() != destination.getOperation()->getBlock())
+      dependencies.push_back(dependency->getParentOp());
     if (!safe_to_merge) break;
   }
   return safe_to_merge;
@@ -162,26 +170,41 @@ void MoveBranches(TF::IfRegionOp source, TF::IfRegionOp destination) {
 }
 
 // Move all ops that depends on the results from `result_op` after `after_op`.
-void MoveResultsAfter(Operation* result_op, Operation* after_op) {
+void MoveResultsAfter(
+    Operation* result_op, Operation* after_op,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   std::queue<Operation*> queue;
-  for (Operation* user : result_op->getUsers()) {
-    queue.push(user);
-  }
+
+  auto enqueue_deps = [&](Operation* source_op) {
+    for (Operation* user : source_op->getUsers()) {
+      queue.push(user);
+    }
+    source_op->walk([&](Operation* walked_op) {
+      for (Operation* successor :
+           side_effect_analysis.DirectControlSuccessors(walked_op)) {
+        if (!source_op->isProperAncestor(successor)) queue.push(successor);
+      }
+    });
+  };
+  enqueue_deps(result_op);
+
   while (!queue.empty()) {
     auto* op = queue.front();
     queue.pop();
+    while (op->getBlock() != after_op->getBlock()) op = op->getParentOp();
     if (op->isBeforeInBlock(after_op)) {
       op->moveAfter(after_op);
       after_op = op;
-      for (Operation* user : op->getUsers()) queue.push(user);
+      enqueue_deps(op);
     }
   }
 }
 
-TF::IfRegionOp CreateMergedIf(ArrayRef<int> source_return_indices_to_keep,
-                              ArrayRef<int> destination_return_indices_to_keep,
-                              TF::IfRegionOp source,
-                              TF::IfRegionOp destination) {
+TF::IfRegionOp CreateMergedIf(
+    ArrayRef<int> source_return_indices_to_keep,
+    ArrayRef<int> destination_return_indices_to_keep, TF::IfRegionOp source,
+    TF::IfRegionOp destination,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   llvm::SmallVector<Type, 4> merged_return_types;
   for (int i : destination_return_indices_to_keep)
     merged_return_types.push_back(destination.getResult(i).getType());
@@ -211,7 +234,8 @@ TF::IfRegionOp CreateMergedIf(ArrayRef<int> source_return_indices_to_keep,
         source.else_branch());
   }
 
-  MoveResultsAfter(destination.getOperation(), new_if_op.getOperation());
+  MoveResultsAfter(destination.getOperation(), new_if_op.getOperation(),
+                   side_effect_analysis);
 
   // Replace external usages of merged if ops.
   int new_return_index = 0;
@@ -284,9 +308,9 @@ void OptimizeIfRegions(
         auto second_return_indices_to_keep =
             GetReturnIndicesToKeep(second_if_op, first_if_op);
 
-        auto new_if_op = CreateMergedIf(second_return_indices_to_keep,
-                                        first_return_indices_to_keep,
-                                        second_if_op, first_if_op);
+        auto new_if_op = CreateMergedIf(
+            second_return_indices_to_keep, first_return_indices_to_keep,
+            second_if_op, first_if_op, side_effect_analysis);
 
         if_ops.erase(it2--);
         first_if_op = new_if_op;

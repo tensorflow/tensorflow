@@ -18,12 +18,14 @@ limitations under the License.
 #include <cmath>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace reference_ops {
 
-inline RuntimeShape ExtendShape(const RuntimeShape& shape) {
+// TODO(b/135760455): Move this method anonymous namespace in a cc file.
+inline RuntimeShape ExtendShapeSpaceToBatch(const RuntimeShape& shape) {
   if (shape.DimensionsCount() == 4) {
     return shape;
   }
@@ -51,8 +53,10 @@ inline void SpaceToBatchND(const SpaceToBatchParams& params,
                    unextended_output_shape.DimensionsCount());
 
   // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
-  const RuntimeShape input1_shape = ExtendShape(unextended_input1_shape);
-  const RuntimeShape output_shape = ExtendShape(unextended_output_shape);
+  const RuntimeShape input1_shape =
+      ExtendShapeSpaceToBatch(unextended_input1_shape);
+  const RuntimeShape output_shape =
+      ExtendShapeSpaceToBatch(unextended_output_shape);
 
   const int depth = input1_shape.Dims(3);
   const int input_width = input1_shape.Dims(2);

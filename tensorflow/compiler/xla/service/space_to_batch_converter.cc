@@ -693,6 +693,7 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
           (old_producer->opcode() == HloOpcode::kBroadcast &&
            IsBroadcastPropagatable(old_producer, producer)) ||
           (consumer->IsElementwiseBinary() &&
+           old_producer->opcode() == HloOpcode::kBroadcast &&
            IsBroadcastTree(old_producer, producer, to_transform));
 
       if (!old_to_new_instrs_.contains(old_producer) &&
@@ -1310,6 +1311,8 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
         TF_CHECK_OK(
             new_consumer->ReplaceOperandWithDifferentShape(i, operand_to_use));
       } else if (consumer->IsElementwiseBinary() &&
+                 consumer->mutable_operand(i)->opcode() ==
+                     HloOpcode::kBroadcast &&
                  IsBroadcastTree(consumer->mutable_operand(i), producer,
                                  instructions_to_transform)) {
         RewriteBroadcastTree(producer, instructions_to_transform);

@@ -87,8 +87,8 @@ void OutsideCompiledToHostLaunch::runOnOperation() {
 
   auto result = module.walk([&](tf_device::ClusterOp tpu_cluster) {
     std::string host_device;
-    tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
-                                                &host_device);
+    (void)tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
+                                                      &host_device);
     tpu_cluster.walk([&](Operation* op) {
       if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
         WrapOpInLaunch(op, host_device);

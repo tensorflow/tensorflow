@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/util.h"
+
 namespace xla {
 
 static mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements,
@@ -119,6 +121,21 @@ mlir::mhlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
       builder->getI64IntegerAttr(dnums.output_batch_dimension()),
       builder->getI64IntegerAttr(dnums.output_feature_dimension()),
       Convert(output_spatial_dims, builder), builder->getContext());
+}
+
+StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {
+  switch (type) {
+    case FftType::FFT:
+      return mlir::mhlo::FftType::FFT;
+    case FftType::IFFT:
+      return mlir::mhlo::FftType::IFFT;
+    case FftType::RFFT:
+      return mlir::mhlo::FftType::RFFT;
+    case FftType::IRFFT:
+      return mlir::mhlo::FftType::IRFFT;
+    default:
+      return InvalidArgument("Unknown FFT type enum value #%d", type);
+  }
 }
 
 }  // namespace xla

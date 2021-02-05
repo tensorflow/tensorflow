@@ -961,8 +961,7 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
 }
 
 // Transfer the given literal to the infeed queue of the given local device.
-Status PjRtStreamExecutorDevice::TransferToInfeed(
-    const LiteralSlice& literal) const {
+Status PjRtStreamExecutorDevice::TransferToInfeed(const LiteralSlice& literal) {
   // Only support infeed to local device.
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferToInfeedLocal(
@@ -970,7 +969,7 @@ Status PjRtStreamExecutorDevice::TransferToInfeed(
 }
 
 Status PjRtStreamExecutorDevice::TransferFromOutfeed(
-    MutableBorrowingLiteral literal) const {
+    MutableBorrowingLiteral literal) {
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferFromOutfeedLocal(
       local_device->device_ordinal(), literal);

@@ -40,7 +40,9 @@ if [[ "$IS_NIGHTLY" -eq 1 ]]; then
 
   tar -zcvf macos_cpu_libtensorflow_binaries.tar.gz lib_package
 
-  gsutil cp macos_cpu_libtensorflow_binaries.tar.gz gs://libtensorflow-nightly/prod/tensorflow/release/macos/latest
+  # Using gsutil on Kokoro MacOS VMs is forbidden, so a secondary internal job
+  # tensorflow/release/upload_macos_libtensorflow copies the results into the
+  # bucket path gs://libtensorflow-nightly/prod/tensorflow/release/macos/latest
 
 else
   # Install latest bazel

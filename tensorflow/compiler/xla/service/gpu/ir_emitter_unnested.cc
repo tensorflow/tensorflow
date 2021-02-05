@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -490,34 +491,36 @@ llvm::Type* GetIndexTypeForKernelFromMlir(mlir::Operation* op,
 // slices are the same and the slices are non-strided. Otherwise, returns
 // FailedPrecondition.
 StatusOr<Shape> GetConsistentInputShapeForRootSlices(
-    const HloInstruction& fusion) {
+    mlir::lmhlo::FusionOp fusion) {
   if (!IsInputFusibleSlices(fusion, /*verify_no_strides=*/true)) {
     return FailedPrecondition(
         "Unsupported root for slice input fusion. "
         "Only non-strided slices are supported.");
   }
 
-  const HloInstruction& root = *fusion.fused_expression_root();
-  if (root.opcode() == HloOpcode::kSlice) {
-    return root.operands()[0]->shape();
-  }
-
-  CHECK_EQ(root.opcode(), HloOpcode::kTuple);
-  const Shape& first_slice_operand_shape =
-      root.operands()[0]->operands()[0]->shape();
-  for (size_t i = 1; i < root.operands().size(); ++i) {
-    const HloInstruction* slice = root.operands()[i];
-    const Shape& operand_shape = slice->operands()[0]->shape();
-    if (!ShapeUtil::EqualIgnoringElementType(first_slice_operand_shape,
-                                             operand_shape)) {
-      return FailedPrecondition(
-          "Fused slices do not have the same input shape, fused computation = "
-          "%s.",
-          root.parent()->name());
+  absl::optional<Shape> first_slice_operand_shape;
+  for (mlir::Value result : fusion.getFusionResults()) {
+    auto slice =
+        mlir::dyn_cast_or_null<mlir::mhlo::SliceOp>(result.getDefiningOp());
+    if (!slice) {
+      return FailedPrecondition("Expected a slice op");
+    }
+    if (first_slice_operand_shape.has_value()) {
+      Shape operand_shape = TypeToShape(slice.operand().getType());
+      if (!ShapeUtil::EqualIgnoringElementType(*first_slice_operand_shape,
+                                               operand_shape)) {
+        return FailedPrecondition(
+            "Fused slices do not have the same input shape, instruction is %s",
+            MlirToString(fusion));
+      }
+    } else {
+      first_slice_operand_shape = TypeToShape(slice.operand().getType());
     }
   }
-
-  return first_slice_operand_shape;
+  if (!first_slice_operand_shape.has_value()) {
+    return InvalidArgument("Fusion has no roots");
+  }
+  return *first_slice_operand_shape;
 }
 
 }  // namespace
@@ -1553,7 +1556,32 @@ Status IrEmitterUnnested::EmitCustomCallThunkFromMlir(MlirEmitterInput input) {
 }
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
-  return ThunkEmitter(this).HandleFft(fft);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(fft));
+  return EmitFftThunkFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitFftThunkFromMlir(MlirEmitterInput input) {
+  auto fft_op = mlir::cast<mlir::lmhlo::FftOp>(input.op);
+  const Shape operand_shape = TypeToShape(fft_op.operand().getType());
+  const Shape output_shape = TypeToShape(fft_op.output().getType());
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(operand_shape.layout()));
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout()));
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+                      GetAllocationSliceForMlir(fft_op.operand()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
+                      GetAllocationSliceForMlir(fft_op.output()));
+  TF_ASSIGN_OR_RETURN(xla::FftType fft_type, ConvertFftType(fft_op.fft_type()));
+  auto fft_length_values = fft_op.fft_length().getValues<int64>();
+  std::vector<int64> fft_length(fft_length_values.begin(),
+                                fft_length_values.end());
+  AddThunkToThunkSequence(
+      absl::make_unique<FftThunk>(input.thunk_info, fft_type, fft_length,
+                                  /*input_buffer=*/arg_slice,
+                                  /*output_buffer=*/dest_slice,
+                                  /*input_shape=*/operand_shape,
+                                  /*output_shape=*/output_shape));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {
@@ -1842,8 +1870,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
       // In the case of root tuple, it can be either reduce or slice input
       // fusion.
       case HloOpcode::kTuple: {
-        if (IsInputFusibleSlices(*fusion)) {
-          return EmitInputFusibleNonStridedSlices(fusion);
+        if (IsInputFusibleSlices(mlir_input.op, /*verify_no_strides=*/false)) {
+          return EmitInputFusibleNonStridedSlices(mlir_input);
         }
 
         CHECK_GE(mlir::cast<mlir::lmhlo::FusionOp>(mlir_input.op)
@@ -1864,7 +1892,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         return EmitReductionFromOrToContiguousDimensions(mlir_input);
       }
       case HloOpcode::kSlice: {
-        return EmitInputFusibleNonStridedSlices(fusion);
+        return EmitInputFusibleNonStridedSlices(mlir_input);
       }
       default:
         LOG(FATAL) << "Bad opcode for input fusion: "
@@ -2938,10 +2966,31 @@ Status IrEmitterUnnested::HandlePartitionId(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
-  CollectivePermuteConfig config = GetCollectivePermuteConfig(hlo);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitCollectivePermuteFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitCollectivePermuteFromMlir(
+    MlirEmitterInput input) {
+  auto collective_permute_op =
+      mlir::cast<mlir::lmhlo::CollectivePermuteOp>(input.op);
+  if (collective_permute_op.channel_id())
+    return Unimplemented("collective permute with channel_id not implemented");
+  using source_dest_pairs_t = std::vector<std::pair<int64, int64>>;
+  TF_ASSIGN_OR_RETURN(
+      source_dest_pairs_t source_dest_pairs,
+      ConvertNx2Attribute(collective_permute_op.source_target_pairs()));
+
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice source_slice,
+      GetAllocationSliceForMlir(collective_permute_op.operand()));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice result_slice,
+      GetAllocationSliceForMlir(collective_permute_op.output()));
+
   AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
-      GetThunkInfo(hlo), std::move(config),
-      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo)));
+      input.thunk_info, std::move(source_dest_pairs), source_slice,
+      result_slice));
   return Status::OK();
 }
 
@@ -5636,11 +5685,16 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
 //   Write to output of slice1
 // }
 //
-void IrEmitterUnnested::EmitElementForInputFusibleSlices(
-    HloInstruction* unnested_hlo, const llvm_ir::IrArray::Index& index) {
-  VLOG(10) << "Emitting slice input fusion for " << unnested_hlo->ToString();
+Status IrEmitterUnnested::EmitElementForInputFusibleSlices(
+    mlir::lmhlo::FusionOp fusion, absl::Span<const llvm_ir::IrArray> ir_arrays,
+    const llvm_ir::IrArray::Index& index) {
+  VLOG(10) << "Emitting slice input fusion for " << MlirToString(fusion);
 
-  HloInstruction* slice_or_tuple = unnested_hlo->fused_expression_root();
+  TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
+                      GetOrCreateSubComputationFromRegion(&fusion.region(),
+                                                          /*is_fusion=*/true));
+
+  HloInstruction* slice_or_tuple = fused_computation->root_instruction();
   auto slice_instructions = [&]() -> absl::Span<HloInstruction* const> {
     if (slice_or_tuple->opcode() == HloOpcode::kSlice) {
       return absl::Span<HloInstruction* const>(&slice_or_tuple, 1);
@@ -5654,7 +5708,13 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
   GpuElementalIrEmitter elem_emitter(hlo_module_config_, module_, &b_,
                                      GetNestedComputer());
   FusedIrEmitter fused_emitter(&elem_emitter);
-  BindFusionArguments(unnested_hlo, &fused_emitter);
+  for (int i = 0; i < fused_computation->num_parameters(); i++) {
+    fused_emitter.BindGenerator(
+        fused_computation->parameter_instruction(i),
+        [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
+          return ir_arrays[i].EmitReadArrayElement(index, &b_);
+        });
+  }
   for (const HloInstruction* slice : slice_instructions) {
     auto input_generator = *fused_emitter.GetGenerator(slice->operand(0));
     input_ir_values.push_back(input_generator(index).ValueOrDie());
@@ -5689,11 +5749,8 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
             Sub(src_multidim[dim],
                 index.GetConstantWithIndexType(slice->slice_starts(dim)));
       }
-      ShapeIndex shape_index = (slice_or_tuple->opcode() == HloOpcode::kSlice)
-                                   ? ShapeIndex()
-                                   : ShapeIndex({i});
       llvm_ir::IrArray src_ir_array =
-          GetIrArray(*unnested_hlo, *unnested_hlo, shape_index);
+          ir_arrays[fused_computation->num_parameters() + i];
       IrArray::Index slice_dst_index(dst_multidim, slice->shape(),
                                      index.GetType());
       src_ir_array.EmitWriteArrayElement(slice_dst_index, input_ir_values[i],
@@ -5702,16 +5759,23 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
 
     ksl.If(StrCat("slice", i), guarding_cond, emit_slice_elem_func);
   }
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
-    HloInstruction* unnested_hlo) {
+    MlirEmitterInput mlir_input) {
+  auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(mlir_input.op);
+
   constexpr int unroll_factor = 1;
-  std::unique_ptr<KernelThunk> kernel_thunk =
-      BuildKernelThunk(unnested_hlo, /*implements_whole_instruction=*/true);
+
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_thunk,
+      BuildKernelThunkForMlir(fusion, mlir_input.thunk_info,
+                              mlir_input.extra_slice, &ir_arrays));
 
   TF_ASSIGN_OR_RETURN(Shape element_shape,
-                      GetConsistentInputShapeForRootSlices(*unnested_hlo));
+                      GetConsistentInputShapeForRootSlices(fusion));
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
@@ -5720,13 +5784,12 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
   Status emit_status =
       ParallelLoopEmitter(
           [&](const llvm_ir::IrArray::Index index) -> Status {
-            EmitElementForInputFusibleSlices(unnested_hlo, index);
-            return Status::OK();
+            return EmitElementForInputFusibleSlices(fusion, ir_arrays, index);
           },
           element_shape, launch_dimensions, &b_)
-          .EmitLoop(IrName(unnested_hlo),
-                    GetIndexTypeForKernel(
-                        unnested_hlo, launch_dimensions.launch_bound(), &b_));
+          .EmitLoop(IrName(mlir::GetNameFromLoc(fusion.getLoc())),
+                    GetIndexTypeForKernelFromMlir(
+                        fusion, launch_dimensions.launch_bound(), &b_));
 
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
 
@@ -5746,6 +5809,9 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(
 Status IrEmitterUnnested::EmitOp(MlirEmitterInput mlir_input) {
   if (mlir::isa<mlir::lmhlo::SortOp>(mlir_input.op)) {
     return EmitSortFromMlir(mlir_input);
+  }
+  if (mlir::isa<mlir::lmhlo::CollectivePermuteOp>(mlir_input.op)) {
+    return EmitCollectivePermuteFromMlir(mlir_input);
   }
   LOG(FATAL)
       << "This function is for test only, and the op is not implemented: "

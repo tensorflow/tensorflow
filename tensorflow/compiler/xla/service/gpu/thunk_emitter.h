@@ -43,7 +43,6 @@ class ThunkEmitter {
 
   explicit ThunkEmitter(EmissionContext* context) : context_(context) {}
 
-  Status HandleFft(HloInstruction* fft);
   Status HandleTriangularSolve(HloInstruction* hlo);
 
  private:
@@ -66,9 +65,6 @@ class ThunkEmitter {
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {
     return MaybeGetAllocationSlice(hlo, index).ValueOrDie();
   }
-
-  // Returns a FftThunk that calls cuFFT to implement `inst`.
-  std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
 
   // Returns a CholeskyThunk that calls cuSolver to implement `inst`.
   std::unique_ptr<Thunk> BuildCholeskyThunk(const HloInstruction* inst);

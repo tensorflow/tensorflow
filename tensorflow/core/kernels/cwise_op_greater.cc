@@ -21,7 +21,7 @@ REGISTER9(BinaryOp, CPU, "Greater", functor::greater, float, Eigen::half,
 REGISTER3(BinaryOp, CPU, "Greater", functor::greater, int8, int16, bfloat16);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(BinaryOp, GPU, "Greater", functor::greater, float, Eigen::half,
           double, int8, int16, int64);
 REGISTER4(BinaryOp, GPU, "Greater", functor::greater, uint8, uint16, uint32,

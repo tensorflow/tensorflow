@@ -269,6 +269,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpWithoutAttrs<lmhlo::CbrtOp>(instr);
     case HloOpcode::kClamp:
       return CreateOpWithoutAttrs<lmhlo::ClampOp>(instr);
+    case HloOpcode::kCollectivePermute:
+      return EmitCollectivePermuteOp(instr);
     case HloOpcode::kClz:
       return CreateOpWithoutAttrs<lmhlo::ClzOp>(instr);
     case HloOpcode::kCompare:
@@ -291,6 +293,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitDynamicSliceOp(instr);
     case HloOpcode::kDynamicUpdateSlice:
       return CreateOpWithoutAttrs<lmhlo::DynamicUpdateSliceOp>(instr);
+    case HloOpcode::kFft:
+      return EmitFftOp(instr);
     case HloOpcode::kExp:
       return CreateOpWithoutAttrs<lmhlo::ExpOp>(instr);
     case HloOpcode::kExpm1:
@@ -1012,21 +1016,29 @@ StatusOr<lmhlo::ReducePrecisionOp> LhloDialectEmitter::EmitReducePrecisionOp(
   return reduce_precision_op;
 }
 
+namespace {
+template <typename OpT>
+void SetupChannelIdAttribute(OpT op, const xla::HloChannelInstruction* instr,
+                             mlir::Builder builder) {
+  if (instr->channel_id().has_value()) {
+    op.channel_idAttr(mlir::mhlo::ChannelHandle::get(
+        builder.getI64IntegerAttr(*instr->channel_id()),
+        builder.getI64IntegerAttr(0), builder.getContext()));
+  }
+}
+
 template <typename OpT>
 Status SetupCommonCollectiveOpAttributes(OpT op, const HloInstruction* instr,
                                          mlir::OpBuilder& builder) {
   auto* collective = xla::Cast<xla::HloCollectiveInstruction>(instr);
   auto replica_groups_attr = xla::HloFunctionImporter::ConvertReplicaGroups(
-      collective->replica_groups(), builder);
+      collective->replica_groups(), &builder);
   op->setAttr(replica_groups_attr.first, replica_groups_attr.second);
   op.constrain_layoutAttr(builder.getBoolAttr(collective->constrain_layout()));
-  if (collective->channel_id().has_value()) {
-    op.channel_idAttr(mlir::mhlo::ChannelHandle::get(
-        builder.getI64IntegerAttr(*collective->channel_id()),
-        builder.getI64IntegerAttr(0), builder.getContext()));
-  }
+  SetupChannelIdAttribute(op, collective, builder);
   return Status::OK();
 }
+}  // namespace
 
 StatusOr<lmhlo::AllToAllOp> LhloDialectEmitter::EmitAllToAllOp(
     const HloInstruction* instr) {
@@ -1069,6 +1081,20 @@ StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
       *instr->called_computations()[0], &all_reduce_op.computation(),
       &builder_));
   return all_reduce_op;
+}
+
+StatusOr<lmhlo::CollectivePermuteOp>
+LhloDialectEmitter::EmitCollectivePermuteOp(const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto permute_op,
+                      CreateOpWithoutAttrs<lmhlo::CollectivePermuteOp>(instr));
+  auto* permute = xla::Cast<xla::HloCollectivePermuteInstruction>(instr);
+  SetupChannelIdAttribute(permute_op, permute, builder_);
+  mlir::NamedAttribute source_target_pairs_attr =
+      xla::HloFunctionImporter::ConvertSourceTargetPairs(
+          permute->source_target_pairs(), &builder_);
+  permute_op->setAttr(source_target_pairs_attr.first,
+                      source_target_pairs_attr.second);
+  return permute_op;
 }
 
 StatusOr<lmhlo::InfeedOp> LhloDialectEmitter::EmitInfeedOp(
@@ -1249,6 +1275,19 @@ LhloDialectEmitter::EmitRngGetAndUpdateStateOp(
   auto hlo_rng = xla::Cast<xla::HloRngGetAndUpdateStateInstruction>(instr);
   rng.deltaAttr(builder_.getI64IntegerAttr(hlo_rng->delta()));
   return rng;
+}
+
+xla::StatusOr<lmhlo::FftOp> LhloDialectEmitter::EmitFftOp(
+    const HloInstruction* instr) {
+  auto hlo_fft = xla::Cast<xla::HloFftInstruction>(instr);
+  TF_ASSIGN_OR_RETURN(auto fft, CreateOpWithoutAttrs<lmhlo::FftOp>(instr));
+  TF_ASSIGN_OR_RETURN(mlir::mhlo::FftType fft_type,
+                      xla::ConvertFftType(hlo_fft->fft_type()));
+  StringAttr fft_type_attr =
+      builder_.getStringAttr(mlir::mhlo::stringifyFftType(fft_type));
+  fft.fft_typeAttr(fft_type_attr);
+  fft.fft_lengthAttr(GetI64DenseElementsAttr(instr->fft_length()));
+  return fft;
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(

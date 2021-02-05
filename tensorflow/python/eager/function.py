@@ -1522,11 +1522,6 @@ class ConcreteFunction(object):
     self._func_graph = func_graph
     self._captured_inputs = self._func_graph.external_captures
     self._captured_closures = self._func_graph.deferred_external_captures
-    structured_outputs = self._func_graph.structured_outputs
-    self._ndarrays_list = (
-        isinstance(structured_outputs, (list, tuple)) and structured_outputs and
-        all(isinstance(o, np_arrays.ndarray) for o in structured_outputs))
-    self._ndarray_singleton = isinstance(structured_outputs, np_arrays.ndarray)
 
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
@@ -2175,12 +2170,6 @@ class ConcreteFunction(object):
     # TODO(jlchu): call C++ version in function.cc when speed is improved
     if self._func_graph.structured_outputs is None:
       return result
-
-    if result:
-      if self._ndarrays_list:
-        return [np_arrays.tensor_to_ndarray(o) for o in result]
-      elif self._ndarray_singleton:
-        return np_arrays.tensor_to_ndarray(result[0])
 
     # Replace outputs with results, skipping over any 'None' values.
     outputs_list = nest.flatten(

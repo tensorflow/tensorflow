@@ -865,7 +865,7 @@ struct ConvertTFBroadcastTo : public RewritePattern {
       return failure();
 
     if (!(element_type.isa<BFloat16Type, Float32Type>() ||
-          element_type.isInteger(32)))
+          element_type.isInteger(32) || element_type.isInteger(16)))
       return failure();
 
     auto status_or_const_op =
@@ -1332,7 +1332,7 @@ void PrepareTFPass::runOnFunction() {
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
@@ -1347,7 +1347,7 @@ void PrepareTFPass::runOnFunction() {
   phase_2_patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
 
-  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

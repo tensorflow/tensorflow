@@ -252,7 +252,8 @@ class PackedVarAndDevice(object):
     self._device = device
 
   def __getattr__(self, name):
-    return getattr(self._var, name)
+    with ops.device(self._device):
+      return getattr(self._var, name)
 
   def var(self):
     return self._var

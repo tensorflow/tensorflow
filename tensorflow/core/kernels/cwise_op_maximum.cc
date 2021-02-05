@@ -20,7 +20,7 @@ REGISTER8(BinaryOp, CPU, "Maximum", functor::maximum, float, Eigen::half,
           bfloat16, double, uint8, int16, int32, int64);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(BinaryOp, GPU, "Maximum", functor::maximum, float, Eigen::half,
           double, uint8, int16, int64);
 #else

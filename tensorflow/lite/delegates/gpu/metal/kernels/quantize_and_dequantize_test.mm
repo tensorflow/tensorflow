@@ -15,25 +15,15 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
-#include <string>
-#include <vector>
-
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/tensor.h"
-#include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize_test_util.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 
 @interface QuantizeAndDequantizeTest : XCTestCase
 @end
 
 @implementation QuantizeAndDequantizeTest {
   tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
-}
-- (void)setUp {
-  [super setUp];
 }
 
 - (void)testQuantAndDequant_Dim2Bits8 {

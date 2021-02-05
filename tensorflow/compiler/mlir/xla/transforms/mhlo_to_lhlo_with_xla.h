@@ -93,6 +93,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
       const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::CollectivePermuteOp> EmitCollectivePermuteOp(
+      const xla::HloInstruction* instr);
 
   xla::StatusOr<lmhlo::BroadcastInDimOp> EmitBroadcastOp(
       const xla::HloInstruction* instr);
@@ -123,6 +125,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<lmhlo::DotOp> EmitDotOp(const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo::RngGetAndUpdateStateOp> EmitRngGetAndUpdateStateOp(
       const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::FftOp> EmitFftOp(const xla::HloInstruction* instr);
 
   // Create LHLO operation operands given an XLA HLO instruction. By default,
   // all XLA HLO operands and results are converted to MLIR and appended to

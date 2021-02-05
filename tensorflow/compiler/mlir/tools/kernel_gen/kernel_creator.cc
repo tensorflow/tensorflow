@@ -273,6 +273,54 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module,
   return Status::OK();
 }
 
+#if TENSORFLOW_USE_ROCM
+
+class RewriteFPToSIOp : public ::mlir::OpRewritePattern<::mlir::FPToSIOp> {
+ public:
+  explicit RewriteFPToSIOp(::mlir::MLIRContext* context)
+      : OpRewritePattern<::mlir::FPToSIOp>(context) {}
+
+  ::mlir::LogicalResult matchAndRewrite(
+      ::mlir::FPToSIOp op, ::mlir::PatternRewriter& rewriter) const override {
+    auto sourceType = op.in().getType();
+    auto targetType = op.getResult().getType();
+    if (sourceType.isF16() && targetType.isInteger(1)) {
+      auto fptosi = rewriter.create<::mlir::FPToSIOp>(
+          op.getLoc(), rewriter.getIntegerType(16), op.in());
+      auto trunci = rewriter.create<::mlir::TruncateIOp>(
+          op.getLoc(), rewriter.getIntegerType(1), fptosi);
+      rewriter.replaceOp(op, trunci.getResult());
+      return ::mlir::success();
+    }
+    return ::mlir::failure();
+  }
+};
+
+struct ROCmTransformsPass
+    : public mlir::PassWrapper<
+          ROCmTransformsPass, ::mlir::OperationPass<::mlir::gpu::GPUModuleOp>> {
+  void runOnOperation() override {
+    auto module = getOperation();
+
+    ::mlir::OwningRewritePatternList patterns;
+    patterns.insert<RewriteFPToSIOp>(module->getContext());
+
+    applyPatternsAndFoldGreedily(module, std::move(patterns));
+  }
+};
+
+Status ApplyROCmSpecificTransformsToKernelBodies(mlir::ModuleOp module) {
+  mlir::PassManager pm(module.getContext());
+  auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
+  kernelPm.addPass(std::make_unique<ROCmTransformsPass>());
+  if (failed(pm.run(module))) {
+    return InternalError("Failed to apply ROCm Specific Transforms.");
+  }
+  return Status::OK();
+}
+
+#endif
+
 Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
   auto gpu_modules = module.getOps<mlir::gpu::GPUModuleOp>();
   auto num_modules = std::distance(gpu_modules.begin(), gpu_modules.end());
@@ -374,6 +422,9 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   TF_RETURN_IF_ERROR(LowerLoopsToGPUorCPU(module.get(), tiling_params,
                                           embed_memref_prints, cpu_codegen));
   if (!cpu_codegen) {
+#if TENSORFLOW_USE_ROCM
+    TF_RETURN_IF_ERROR(ApplyROCmSpecificTransformsToKernelBodies(module.get()));
+#endif
     TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(module.get()));
     TF_RETURN_IF_ERROR(AmendKernelLLVMIRWithStaticKnowledge(module.get()));
     TF_RETURN_IF_ERROR(GenerateDeviceCode(module.get(), kGpuBinaryAttrName,

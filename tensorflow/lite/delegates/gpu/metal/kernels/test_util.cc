@@ -26,14 +26,13 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
+#include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 namespace tflite {
@@ -88,19 +87,6 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     }
     RETURN_IF_ERROR(CreateTensor(device_.device(), dst_shape,
                                  op_def.dst_tensors[i], &dst[i]));
-  }
-
-  std::vector<BHWC> src_shapes;
-  std::vector<BHWC> dst_shapes;
-  std::vector<ValueId> src_ids;
-  std::vector<ValueId> dst_ids;
-  for (int i = 0; i < src_cpu.size(); ++i) {
-    src_ids.push_back(i);
-    src_shapes.push_back(src_cpu[i].shape);
-  }
-  for (int i = 0; i < dst_cpu.size(); ++i) {
-    dst_ids.push_back(src_cpu.size() + i);
-    dst_shapes.push_back(dst_sizes[i]);
   }
 
   ComputeTask gpu_task;

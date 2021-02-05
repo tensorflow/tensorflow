@@ -33,6 +33,12 @@ bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name);
 // Return the list of allowlisted flex ops.
 const std::set<std::string>& GetFlexAllowlist();
 
+// Return the list of TF.Text flex ops.
+const std::set<std::string>& GetTFTextFlexAllowlist();
+
+// Return the list of SentencePiece flex ops.
+const std::set<std::string>& GetSentencePieceFlexAllowlist();
+
 }  // namespace flex
 }  // namespace tflite
 

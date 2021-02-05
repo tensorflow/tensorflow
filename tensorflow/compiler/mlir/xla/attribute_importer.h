@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -43,6 +44,8 @@ mlir::mhlo::DotDimensionNumbers ConvertDotDimensionNumbers(
 // Converts the conv dimensions to attributes.
 mlir::mhlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
     const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder);
+
+StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
 
 }  // namespace xla
 

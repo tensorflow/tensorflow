@@ -977,6 +977,19 @@ class DefFunctionTest(xla_test.XLATestCase):
                                   'def_function_xla_jit_test.py'):
         update_var(arg)
 
+  def testMustBeConstantInsideCondition(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x, d):
+        if math_ops.reduce_all(
+            math_ops.greater(x, random_ops.random_normal([10, 10]))):
+          return array_ops.reshape(x * 2, constant_op.constant([100]))
+        else:
+          return array_ops.reshape(x * 3, d)
+
+      f(random_ops.random_normal([10, 10]), constant_op.constant([100]))
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

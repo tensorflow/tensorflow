@@ -300,6 +300,15 @@ py_library(
 )
 
 py_library(
+    name = "tpu_util",
+    srcs = ["tpu_util.py"],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/tpu:tpu_py",
+    ],
+)
+
+py_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
     srcs_version = "PY3",
@@ -579,6 +588,7 @@ py_library(
         ":input_lib",
         ":numpy_dataset",
         ":reduce_util",
+        ":tpu_util",
         ":tpu_values",
         ":values",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
@@ -809,6 +819,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":packed_distributed_variable",
+        ":tpu_util",
         ":values",
         ":values_util",
         "//tensorflow/python:framework_ops",
@@ -816,7 +827,6 @@ py_library(
         "//tensorflow/python:resource_variable_ops_gen",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/tpu:tpu_py",
     ],
 )
 
@@ -1131,6 +1141,8 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:partitioned_variables",
@@ -1139,10 +1151,12 @@ py_library(
         "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/saved_model:revived_types",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1160,10 +1174,10 @@ tf_py_test(
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
@@ -1782,6 +1796,9 @@ distribute_py_test(
         "no_cuda_asan",  # times out
         "no_rocm",
         "notsan",  # TODO(b/160006974)
+    ],
+    tpu_tags = [
+        "no_oss",  # TODO(b/179045543)
     ],
     xla_enable_strict_auto_jit = True,
     deps = [

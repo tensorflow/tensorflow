@@ -181,10 +181,13 @@ cc_library(
 
 cc_library(
     name = "weights_conversion",
+    srcs = ["weights_conversion.cc"],
     hdrs = ["weights_conversion.h"],
     deps = [
+        ":weights_layout",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
