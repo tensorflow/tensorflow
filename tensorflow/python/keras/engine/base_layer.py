@@ -2152,7 +2152,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """Retrieves the output tensor(s) of a layer.
 
     Only applicable if the layer has exactly one output,
-    i.e. if it is connected to one incoming layer.
+    i.e. if it is connected to one outgoing layer.
 
     Returns:
       Output tensor or list of output tensors.
