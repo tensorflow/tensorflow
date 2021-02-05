@@ -44,7 +44,7 @@ def _get_quant_params(
   return None
 
 
-@tf_export.tf_export(v1=['lite.experimental.QuantizationDebugOptions'])
+@tf_export.tf_export('lite.experimental.QuantizationDebugOptions')
 class QuantizationDebugOptions:
   """Debug options to set up a given QuantizationDebugger."""
 
@@ -71,7 +71,7 @@ class QuantizationDebugOptions:
     self.model_debug_metrics = model_debug_metrics
 
 
-@tf_export.tf_export(v1=['lite.experimental.QuantizationDebugger'])
+@tf_export.tf_export('lite.experimental.QuantizationDebugger')
 class QuantizationDebugger:
   """Debugger for Quantized TensorFlow Lite debug mode models.
 
