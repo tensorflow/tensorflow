@@ -87,11 +87,10 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
   args_.AddInt("tiles_total");
   args_.AddInt("tiles_x");
 
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int DST_X = get_global_id(0);\n";
-  c += "  int DST_Y = get_global_id(1);\n";
-  c += "  int DST_Z = get_global_id(2);\n";
+  c += "MAIN_FUNCTION($0) {\n";
+  c += "  int DST_X = GLOBAL_ID_0;\n";
+  c += "  int DST_Y = GLOBAL_ID_1;\n";
+  c += "  int DST_Z = GLOBAL_ID_2;\n";
   c += "  if (DST_X >= args.tiles_total || DST_Y >= 6 || DST_Z >= "
        "args.dst_tensor.Slices()) {\n";
   c += "    return; \n";
@@ -127,7 +126,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     for (int x = 0; x < 6; ++x) {
       const std::string xs = std::to_string(x);
       c += "  int xc" + xs + " = tile_x + args.padding_x + " + xs + ";\n";
-      c += "  ACCUM_FLT m" + xs + "_x = (ACCUM_FLT)(xc" + xs + " >= 0 && xc" +
+      c += "  ACCUM_FLT m" + xs + "_x = TO_ACCUM_FLT(xc" + xs + " >= 0 && xc" +
            xs + " < args.src_tensor.Width());\n";
       c += "  bool inx" + xs + " = (xc" + xs + " >= 0 && xc" + xs +
            " < args.src_tensor.Width());\n";
@@ -148,7 +147,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
   if (is_buffer || is_image_buffer) {
     c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
     c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
-    c += "    ACCUM_FLT bt = bt_ar[0] * (ACCUM_FLT)(iny);\n";
+    c += "    ACCUM_FLT bt = bt_ar[0] * TO_ACCUM_FLT(iny);\n";
   } else {
     c += "    ACCUM_FLT bt = bt_ar[0];\n";
   }
@@ -166,7 +165,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     if (is_buffer || is_image_buffer) {
       c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
       c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
-      c += "    ACCUM_FLT bt = bt_ar[" + ys + "] * (ACCUM_FLT)(iny);\n";
+      c += "    ACCUM_FLT bt = bt_ar[" + ys + "] * TO_ACCUM_FLT(iny);\n";
     } else {
       c += "    ACCUM_FLT bt = bt_ar[" + ys + "];\n";
     }
@@ -271,6 +270,10 @@ int3 Winograd4x4To36TileX6::GetGridSize() const {
 void Winograd4x4To36TileX6::GetPossibleKernelWorkGroups(
     TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  if (gpu_info.IsIntel()) {
+    work_groups->push_back(int3(4, 6, 1));
+    return;
+  }
   switch (tuning_type) {
     case TuningType::kExhaustive:
       GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
@@ -338,11 +341,10 @@ std::string Winograd36To4x4Tile4x1::GetWinograd36To4x4Tile4x1Code(
   }
   c += "};\n";
 
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int tile_id = get_global_id(0);\n";
-  c += "  int DST_Y = get_global_id(1);\n";
-  c += "  int DST_Z = get_global_id(2);\n";
+  c += "MAIN_FUNCTION($0) {\n";
+  c += "  int tile_id = GLOBAL_ID_0;\n";
+  c += "  int DST_Y = GLOBAL_ID_1;\n";
+  c += "  int DST_Z = GLOBAL_ID_2;\n";
   c += "  int tile_x = (tile_id % args.tiles_x) * 4;\n";
   c += "  int tile_y = (tile_id / args.tiles_x) * 4 + DST_Y;\n";
 
@@ -458,6 +460,10 @@ int3 Winograd36To4x4Tile4x1::GetGridSize() const {
 void Winograd36To4x4Tile4x1::GetPossibleKernelWorkGroups(
     TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  if (gpu_info.IsIntel()) {
+    work_groups->push_back(int3(8, 4, 1));
+    return;
+  }
   switch (tuning_type) {
     case TuningType::kExhaustive:
       GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
