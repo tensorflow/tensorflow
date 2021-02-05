@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import enum
 
+from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.python.data.util import options
 from tensorflow.python.util.tf_export import tf_export
 
@@ -68,6 +69,20 @@ class MapVectorizationOptions(options.OptionsBase):
       return ["map_vectorization:use_choose_fastest:true"]
     else:
       return ["map_vectorization:use_choose_fastest:false"]
+
+  def _to_proto(self):
+    pb = dataset_options_pb2.MapVectorization()
+    if self.enabled is not None:
+      pb.enabled = self.enabled
+    if self.use_choose_fastest is not None:
+      pb.use_choose_fastest = self.use_choose_fastest
+    return pb
+
+  def _from_proto(self, pb):
+    if pb.WhichOneof("optional_enabled") is not None:
+      self.enabled = pb.enabled
+    if pb.WhichOneof("optional_use_choose_fastest") is not None:
+      self.use_choose_fastest = pb.use_choose_fastest
 
 
 @tf_export("data.experimental.OptimizationOptions")
@@ -327,3 +342,77 @@ class OptimizationOptions(options.OptionsBase):
         graph_rewrite_configs.append(optimization + ":autotune:true")
 
     return graph_rewrite_configs
+
+  def _to_proto(self):
+    pb = dataset_options_pb2.OptimizationOptions()
+    if self.apply_default_optimizations is not None:
+      pb.apply_default_optimizations = self.apply_default_optimizations
+    if self.autotune is not None:
+      pb.autotune = self.autotune
+    if self.autotune_buffers is not None:
+      pb.autotune_buffers = self.autotune_buffers
+    if self.autotune_cpu_budget is not None:
+      pb.autotune_cpu_budget = self.autotune_cpu_budget
+    if self.autotune_ram_budget is not None:
+      pb.autotune_ram_budget = self.autotune_ram_budget
+    if self.filter_fusion is not None:
+      pb.filter_fusion = self.filter_fusion
+    if self.filter_with_random_uniform_fusion is not None:
+      pb.filter_with_random_uniform_fusion = (
+          self.filter_with_random_uniform_fusion)
+    if self.hoist_random_uniform is not None:
+      pb.hoist_random_uniform = self.hoist_random_uniform
+    if self.map_and_batch_fusion is not None:
+      pb.map_and_batch_fusion = self.map_and_batch_fusion
+    if self.map_and_filter_fusion is not None:
+      pb.map_and_filter_fusion = self.map_and_filter_fusion
+    if self.map_fusion is not None:
+      pb.map_fusion = self.map_fusion
+    if self.map_parallelization is not None:
+      pb.map_parallelization = self.map_parallelization
+    pb.map_vectorization.CopyFrom(self.map_vectorization._to_proto())  # pylint: disable=protected-access
+    if self.noop_elimination is not None:
+      pb.noop_elimination = self.noop_elimination
+    if self.parallel_batch is not None:
+      pb.parallel_batch = self.parallel_batch
+    if self.reorder_data_discarding_ops is not None:
+      pb.reorder_data_discarding_ops = self.reorder_data_discarding_ops
+    if self.shuffle_and_repeat_fusion is not None:
+      pb.shuffle_and_repeat_fusion = self.shuffle_and_repeat_fusion
+    return pb
+
+  def _from_proto(self, pb):
+    if pb.WhichOneof("optional_apply_default_optimizations") is not None:
+      self.apply_default_optimizations = pb.apply_default_optimizations
+    if pb.WhichOneof("optional_autotune") is not None:
+      self.autotune = pb.autotune
+    if pb.WhichOneof("optional_autotune_buffers") is not None:
+      self.autotune_buffers = pb.autotune_buffers
+    if pb.WhichOneof("optional_autotune_cpu_budget") is not None:
+      self.autotune_cpu_budget = pb.autotune_cpu_budget
+    if pb.WhichOneof("optional_autotune_ram_budget") is not None:
+      self.autotune_ram_budget = pb.autotune_ram_budget
+    if pb.WhichOneof("optional_filter_fusion") is not None:
+      self.filter_fusion = pb.filter_fusion
+    if pb.WhichOneof("optional_filter_with_random_uniform_fusion") is not None:
+      self.filter_with_random_uniform_fusion = (
+          pb.filter_with_random_uniform_fusion)
+    if pb.WhichOneof("optional_hoist_random_uniform") is not None:
+      self.hoist_random_uniform = pb.hoist_random_uniform
+    if pb.WhichOneof("optional_map_and_batch_fusion") is not None:
+      self.map_and_batch_fusion = pb.map_and_batch_fusion
+    if pb.WhichOneof("optional_map_and_filter_fusion") is not None:
+      self.map_and_filter_fusion = pb.map_and_filter_fusion
+    if pb.WhichOneof("optional_map_fusion") is not None:
+      self.map_fusion = pb.map_fusion
+    if pb.WhichOneof("optional_map_parallelization") is not None:
+      self.map_parallelization = pb.map_parallelization
+    self.map_vectorization._from_proto(pb.map_vectorization)  # pylint: disable=protected-access
+    if pb.WhichOneof("optional_noop_elimination") is not None:
+      self.noop_elimination = pb.noop_elimination
+    if pb.WhichOneof("optional_parallel_batch") is not None:
+      self.parallel_batch = pb.parallel_batch
+    if pb.WhichOneof("optional_reorder_data_discarding_ops") is not None:
+      self.reorder_data_discarding_ops = pb.reorder_data_discarding_ops
+    if pb.WhichOneof("optional_shuffle_and_repeat_fusion") is not None:
+      self.shuffle_and_repeat_fusion = pb.shuffle_and_repeat_fusion
