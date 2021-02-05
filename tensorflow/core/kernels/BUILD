@@ -1670,6 +1670,7 @@ tf_cuda_cc_test(
     srcs = ["conv_ops_test.cc"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
+        "no_gpu",  # TODO(b/179419183): broken by cl/355688576.
     ],
     deps = [
         ":conv_ops",
