@@ -1280,7 +1280,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         values_and_devices.append((value, value.device))
 
     if (var.synchronization != variables_lib.VariableSynchronization.ON_READ and
-        var.synchronization != variables_lib.VariableAggregation.NONE):
+        var.aggregation != variables_lib.VariableAggregation.NONE):
       distribute_utils.assert_mirrored(args)
       distribute_utils.assert_mirrored(kwargs)
     for i, value_and_device in enumerate(values_and_devices):

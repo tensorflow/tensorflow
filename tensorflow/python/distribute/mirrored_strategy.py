@@ -757,7 +757,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
     if (var.synchronization != variables_lib.VariableSynchronization.ON_READ and
-        var.synchronization != variables_lib.VariableAggregation.NONE):
+        var.aggregation != variables_lib.VariableAggregation.NONE):
       distribute_utils.assert_mirrored(args)
       distribute_utils.assert_mirrored(kwargs)
     updates = []
