@@ -54,24 +54,18 @@ ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     work_group_launch_order_ = int3(2, 0, 1);
   }
 
+  if (gpu_info.IsApple()) {
+    weights_layout_ = WeightsLayout::kOICustomSpatialO4I4;
+  } else {
+    weights_layout_ = WeightsLayout::kOICustomSpatialI4O4;
+  }
+
   code_ = GenerateConvolutionTransposedCode(gpu_info, definition_,
                                             GetBestWeightsUploadType(gpu_info));
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
     compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
-}
-
-ConvolutionTransposed4x4::ConvolutionTransposed4x4(
-    ConvolutionTransposed4x4&& operation)
-    : GPUOperation(std::move(operation)) {}
-
-ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
-    ConvolutionTransposed4x4&& operation) {
-  if (this != &operation) {
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
 }
 
 std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
@@ -119,21 +113,30 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
           : "LOCAL_MEM_BARRIER";
 
   std::string c;
-  switch (op_def.precision) {
-    case CalculationsPrecision::F32:
-    case CalculationsPrecision::F16:
-      c += "#define CONV(R, SRC, F) \\\n";
-      c += "  R += SRC.x * weights_cache[F]; \\\n";
-      c += "  R += SRC.y * weights_cache[F + 1]; \\\n";
-      c += "  R += SRC.z * weights_cache[F + 2]; \\\n";
-      c += "  R += SRC.w * weights_cache[F + 3];   \n";
-      break;
-    case CalculationsPrecision::F32_F16:
-      c += "#define CONV(R, SRC, F) \\\n";
-      c += "  R += TO_ACCUM_TYPE(SRC.x * weights_cache[F] + SRC.y * "
-           "weights_cache[F + 1] + SRC.z * weights_cache[F + 2] + SRC.w * "
-           "weights_cache[F + 3]);\n";
-      break;
+  if (weights_layout_ == WeightsLayout::kOICustomSpatialI4O4) {
+    switch (op_def.precision) {
+      case CalculationsPrecision::F32:
+      case CalculationsPrecision::F16:
+        c += "#define CONV(R, SRC, F) \\\n";
+        c += "  R += SRC.x * weights_cache[F]; \\\n";
+        c += "  R += SRC.y * weights_cache[F + 1]; \\\n";
+        c += "  R += SRC.z * weights_cache[F + 2]; \\\n";
+        c += "  R += SRC.w * weights_cache[F + 3];   \n";
+        break;
+      case CalculationsPrecision::F32_F16:
+        c += "#define CONV(R, SRC, F) \\\n";
+        c += "  R += TO_ACCUM_TYPE(SRC.x * weights_cache[F] + SRC.y * "
+             "weights_cache[F + 1] + SRC.z * weights_cache[F + 2] + SRC.w * "
+             "weights_cache[F + 3]);\n";
+        break;
+    }
+  } else {
+    // WeightsLayout::kOICustomSpatialO4I4
+    c += "#define CONV(R, SRC, F) \\\n";
+    c += "  R.x += dot(SRC, weights_cache[F]); \\\n";
+    c += "  R.y += dot(SRC, weights_cache[F + 1]); \\\n";
+    c += "  R.z += dot(SRC, weights_cache[F + 2]); \\\n";
+    c += "  R.w += dot(SRC, weights_cache[F + 3]);   \n";
   }
 
   const std::string weights_space =

@@ -40,24 +40,25 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
   int3 GetGridSize() const override;
 
   // Move only
-  ConvolutionTransposed3x3Thin(ConvolutionTransposed3x3Thin&& operation);
+  ConvolutionTransposed3x3Thin(ConvolutionTransposed3x3Thin&& operation) =
+      default;
   ConvolutionTransposed3x3Thin& operator=(
-      ConvolutionTransposed3x3Thin&& operation);
+      ConvolutionTransposed3x3Thin&& operation) = default;
   ConvolutionTransposed3x3Thin(const ConvolutionTransposed3x3Thin&) = delete;
   ConvolutionTransposed3x3Thin& operator=(const ConvolutionTransposed3x3Thin&) =
       delete;
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
-    desc.layout = WeightsLayout::kOICustomSpatialI4O4;
+    desc.layout = weights_layout_;
     desc.spatial_remap = GetSpatialWeightsRemap();
     return desc;
   }
 
  private:
-  explicit ConvolutionTransposed3x3Thin(
-      const OperationDef& definition,
-      const ConvolutionTransposedAttributes& attr);
+  ConvolutionTransposed3x3Thin(const GpuInfo& gpu_info,
+                               const OperationDef& definition,
+                               const ConvolutionTransposedAttributes& attr);
 
   friend ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
       const GpuInfo& gpu_info, const OperationDef& definition,
@@ -74,6 +75,8 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
                                                 int src_depth, int dst_depth);
+
+  WeightsLayout weights_layout_;
 };
 
 bool IsConvolutionTransposed3x3ThinSupported(

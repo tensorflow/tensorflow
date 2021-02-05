@@ -47,14 +47,15 @@ class ConvolutionTransposed4x4 : public GPUOperation {
   int3 GetGridSize() const override;
 
   // Move only
-  ConvolutionTransposed4x4(ConvolutionTransposed4x4&& operation);
-  ConvolutionTransposed4x4& operator=(ConvolutionTransposed4x4&& operation);
+  ConvolutionTransposed4x4(ConvolutionTransposed4x4&& operation) = default;
+  ConvolutionTransposed4x4& operator=(ConvolutionTransposed4x4&& operation) =
+      default;
   ConvolutionTransposed4x4(const ConvolutionTransposed4x4&) = delete;
   ConvolutionTransposed4x4& operator=(const ConvolutionTransposed4x4&) = delete;
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
-    desc.layout = WeightsLayout::kOICustomSpatialI4O4;
+    desc.layout = weights_layout_;
     desc.spatial_remap = GetSpatialWeightsRemap();
     return desc;
   }
@@ -86,6 +87,8 @@ class ConvolutionTransposed4x4 : public GPUOperation {
   std::string GenerateConvolutionTransposedCode(
       const GpuInfo& gpu_info, const OperationDef& op_def,
       WeightsUploadType weights_upload_type);
+
+  WeightsLayout weights_layout_;
 };
 
 bool IsConvolutionTransposed4x4Supported(

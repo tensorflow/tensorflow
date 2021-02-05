@@ -25,23 +25,17 @@ namespace tflite {
 namespace gpu {
 
 ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
-    const OperationDef& definition, const ConvolutionTransposedAttributes& attr)
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr)
     : GPUOperation(definition) {
+  if (gpu_info.IsApple()) {
+    weights_layout_ = WeightsLayout::kOICustomSpatialO4I4;
+  } else {
+    weights_layout_ = WeightsLayout::kOICustomSpatialI4O4;
+  }
   code_ = GenerateConvolutionTransposedCode(
       definition_, DivideRoundUp(attr.weights.shape.i, 4),
       DivideRoundUp(attr.weights.shape.o, 4));
-}
-
-ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
-    ConvolutionTransposed3x3Thin&& operation)
-    : GPUOperation(std::move(operation)) {}
-
-ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
-    ConvolutionTransposed3x3Thin&& operation) {
-  if (this != &operation) {
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
 }
 
 std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
@@ -64,20 +58,29 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
 
   std::string c;
 
-  switch (op_def.precision) {
-    case CalculationsPrecision::F32:
-    case CalculationsPrecision::F16:
-      c += "#define CONV(R, SRC, F, i) \\\n";
-      c += "  R += SRC.x * F[i + 0]; \\\n";
-      c += "  R += SRC.y * F[i + 1]; \\\n";
-      c += "  R += SRC.z * F[i + 2]; \\\n";
-      c += "  R += SRC.w * F[i + 3];   \n";
-      break;
-    case CalculationsPrecision::F32_F16:
-      c += "#define CONV(R, SRC, F, i) \\\n";
-      c += "  R += convert_float4(SRC.x * F[i + 0] + SRC.y * F[i + 1]";
-      c += "+ SRC.z * F[i + 2] + SRC.w * F[i + 3]);\n";
-      break;
+  if (weights_layout_ == WeightsLayout::kOICustomSpatialI4O4) {
+    switch (op_def.precision) {
+      case CalculationsPrecision::F32:
+      case CalculationsPrecision::F16:
+        c += "#define CONV(R, SRC, F, i) \\\n";
+        c += "  R += SRC.x * F[i + 0]; \\\n";
+        c += "  R += SRC.y * F[i + 1]; \\\n";
+        c += "  R += SRC.z * F[i + 2]; \\\n";
+        c += "  R += SRC.w * F[i + 3];   \n";
+        break;
+      case CalculationsPrecision::F32_F16:
+        c += "#define CONV(R, SRC, F, i) \\\n";
+        c += "  R += convert_float4(SRC.x * F[i + 0] + SRC.y * F[i + 1]";
+        c += "+ SRC.z * F[i + 2] + SRC.w * F[i + 3]);\n";
+        break;
+    }
+  } else {
+    // WeightsLayout::kOICustomSpatialO4I4
+    c += "#define CONV(R, SRC, F, i) \\\n";
+    c += "  R.x += dot(SRC, F[i + 0]); \\\n";
+    c += "  R.y += dot(SRC, F[i + 1]); \\\n";
+    c += "  R.z += dot(SRC, F[i + 2]); \\\n";
+    c += "  R.w += dot(SRC, F[i + 3]);   \n";
   }
 
   c += "__kernel void main_function(\n";
@@ -233,7 +236,7 @@ bool IsConvolutionTransposed3x3ThinSupported(
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed3x3Thin result(definition, attr);
+  ConvolutionTransposed3x3Thin result(gpu_info, definition, attr);
   result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;
@@ -248,7 +251,7 @@ ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3ThinDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed3x3Thin result(definition, attr);
+  ConvolutionTransposed3x3Thin result(gpu_info, definition, attr);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;

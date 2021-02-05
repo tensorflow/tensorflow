@@ -38,28 +38,17 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
   } else {
     weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
   }
+  if (gpu_info.IsApple()) {
+    weights_layout_ = WeightsLayout::kOICustomSpatialO4I4;
+  } else {
+    weights_layout_ = WeightsLayout::kOICustomSpatialI4O4;
+  }
   code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type_,
                                             padding_, work_group_launch_order_);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
     compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
-}
-
-ConvolutionTransposed3x3::ConvolutionTransposed3x3(
-    ConvolutionTransposed3x3&& operation)
-    : GPUOperation(std::move(operation)),
-      padding_(operation.padding_),
-      weights_upload_type_(operation.weights_upload_type_) {}
-
-ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
-    ConvolutionTransposed3x3&& operation) {
-  if (this != &operation) {
-    std::swap(padding_, operation.padding_);
-    std::swap(weights_upload_type_, operation.weights_upload_type_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
 }
 
 std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
@@ -103,21 +92,30 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
           ConvolutionTransposed3x3::WeightsUploadType::LOCAL_MEM_ASYNC;
 
   std::string c;
-  switch (op_def.precision) {
-    case CalculationsPrecision::F32:
-    case CalculationsPrecision::F16:
-      c += "#define CONV(R, SRC, F) \\\n";
-      c += "  R += SRC.x * weights_cache[F]; \\\n";
-      c += "  R += SRC.y * weights_cache[F + 1]; \\\n";
-      c += "  R += SRC.z * weights_cache[F + 2]; \\\n";
-      c += "  R += SRC.w * weights_cache[F + 3];   \n";
-      break;
-    case CalculationsPrecision::F32_F16:
-      c += "#define CONV(R, SRC, F) \\\n";
-      c += "  R += convert_float4(SRC.x * weights_cache[F] + SRC.y * "
-           "weights_cache[F + 1] + SRC.z * weights_cache[F + 2] + SRC.w * "
-           "weights_cache[F + 3]);\n";
-      break;
+  if (weights_layout_ == WeightsLayout::kOICustomSpatialI4O4) {
+    switch (op_def.precision) {
+      case CalculationsPrecision::F32:
+      case CalculationsPrecision::F16:
+        c += "#define CONV(R, SRC, F) \\\n";
+        c += "  R += SRC.x * weights_cache[F]; \\\n";
+        c += "  R += SRC.y * weights_cache[F + 1]; \\\n";
+        c += "  R += SRC.z * weights_cache[F + 2]; \\\n";
+        c += "  R += SRC.w * weights_cache[F + 3];   \n";
+        break;
+      case CalculationsPrecision::F32_F16:
+        c += "#define CONV(R, SRC, F) \\\n";
+        c += "  R += convert_float4(SRC.x * weights_cache[F] + SRC.y * "
+             "weights_cache[F + 1] + SRC.z * weights_cache[F + 2] + SRC.w * "
+             "weights_cache[F + 3]);\n";
+        break;
+    }
+  } else {
+    // WeightsLayout::kOICustomSpatialO4I4
+    c += "#define CONV(R, SRC, F) \\\n";
+    c += "  R.x += dot(SRC, weights_cache[F]); \\\n";
+    c += "  R.y += dot(SRC, weights_cache[F + 1]); \\\n";
+    c += "  R.z += dot(SRC, weights_cache[F + 2]); \\\n";
+    c += "  R.w += dot(SRC, weights_cache[F + 3]);   \n";
   }
 
   const std::string weights_space =
