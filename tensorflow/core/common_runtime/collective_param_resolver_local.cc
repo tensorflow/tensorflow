@@ -59,13 +59,13 @@ namespace {
 const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   switch (cp->instance.type) {
     case BROADCAST_COLLECTIVE:
-      return "HierarchicalTreeBroadcast";
+      return nccl ? "NcclBroadcast" : "HierarchicalTreeBroadcast";
 
     case REDUCTION_COLLECTIVE:
       return nccl ? "NcclReduce" : "RingReduce";
 
     case GATHER_COLLECTIVE:
-      return "RingGather";
+      return nccl ? "NcclGather" : "RingGather";
 
     case PERMUTE_COLLECTIVE:
       return "Permute";
