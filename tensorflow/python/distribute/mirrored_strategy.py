@@ -331,7 +331,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._communication_options = collective_util.Options(
           implementation=collective_util.CommunicationImplementation.NCCL)
     else:
-      # TODO(wxinyi): is this missing?
       self._communication_options = collective_util.Options()
     self._collective_ops_in_use = False
     self._collective_key_base = container_strategy._collective_key_base
