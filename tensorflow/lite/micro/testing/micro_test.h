@@ -142,12 +142,14 @@ extern bool did_test_fail;
     }                                                                         \
   } while (false)
 
+// The check vx != vy is needed to properly handle the case where both
+// x and y evaluate to infinity. See #46960 for more details.
 #define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                              \
   do {                                                                        \
     auto vx = (x);                                                            \
     auto vy = (y);                                                            \
     auto delta = ((vx) > (vy)) ? ((vx) - (vy)) : ((vy) - (vx));               \
-    if (delta > epsilon) {                                                    \
+    if (vx != vy && delta > epsilon) {                                        \
       MicroPrintf(#x " (%f) near " #y " (%f) failed at %s:%d",                \
                   static_cast<double>(vx), static_cast<double>(vy), __FILE__, \
                   __LINE__);                                                  \
