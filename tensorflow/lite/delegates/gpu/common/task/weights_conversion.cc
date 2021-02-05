@@ -20,7 +20,9 @@ namespace gpu {
 uint GetTotalElementsCountForLayout(const WeightsDescription& weight_desc,
                                     const OHWI& shape) {
   if (weight_desc.layout == WeightsLayout::kOHWIOGroupI4O4 ||
-      weight_desc.layout == WeightsLayout::kOHWIOGroupO4I4) {
+      weight_desc.layout == WeightsLayout::kOHWIOGroupO4I4 ||
+      weight_desc.layout == WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4 ||
+      weight_desc.layout == WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4) {
     uint i_aligned = AlignByN(shape.i, 4);
     uint o_aligned = AlignByN(shape.o, 4 * weight_desc.output_group_size);
     return i_aligned * o_aligned * shape.h * shape.w;
@@ -90,6 +92,34 @@ void RearrangeWeights(
       RearrangeWeightsToOICustomSpatialO4I4(
           weights, dst_weight_desc.spatial_remap,
           absl::MakeSpan(f16_ptr, flt_count / 4));
+    }
+    return;
+  } else if (dst_weight_desc.layout ==
+             WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4) {
+    if (dst_type == DataType::FLOAT32) {
+      float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
+      RearrangeWeightsToI4HWIOOGroupO4(weights,
+                                       dst_weight_desc.output_group_size,
+                                       absl::MakeSpan(f32_ptr, flt_count / 4));
+    } else if (dst_type == DataType::FLOAT16) {
+      half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
+      RearrangeWeightsToI4HWIOOGroupO4(weights,
+                                       dst_weight_desc.output_group_size,
+                                       absl::MakeSpan(f16_ptr, flt_count / 4));
+    }
+    return;
+  } else if (dst_weight_desc.layout ==
+             WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4) {
+    if (dst_type == DataType::FLOAT32) {
+      float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
+      RearrangeWeightsToO4HWIOOGroupI4(weights,
+                                       dst_weight_desc.output_group_size,
+                                       absl::MakeSpan(f32_ptr, flt_count / 4));
+    } else if (dst_type == DataType::FLOAT16) {
+      half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
+      RearrangeWeightsToO4HWIOOGroupI4(weights,
+                                       dst_weight_desc.output_group_size,
+                                       absl::MakeSpan(f16_ptr, flt_count / 4));
     }
     return;
   }

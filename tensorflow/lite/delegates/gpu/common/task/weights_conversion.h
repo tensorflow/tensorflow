@@ -179,6 +179,42 @@ void RearrangeWeightsToI4HWIOOGroupO4(
 }
 
 template <DataType S, typename T>
+void RearrangeWeightsToO4HWIOOGroupI4(
+    const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
+    absl::Span<T> dst) {
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
+
+  int counter = 0;
+  for (int j = 0; j < 4; ++j) {
+    for (int y = 0; y < weights.shape.h; ++y) {
+      for (int x = 0; x < weights.shape.w; ++x) {
+        for (int s = 0; s < src_slices; ++s) {
+          for (int d = 0; d < dst_groups; ++d) {
+            for (int d_group = 0; d_group < out_group_size; ++d_group) {
+              T filter;
+              for (int i = 0; i < 4; ++i) {
+                const int s_ch = s * 4 + i;
+                const int d_ch = (d * out_group_size + d_group) * 4 + j;
+                if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                  const int f_index =
+                      weights.shape.LinearIndex({d_ch, y, x, s_ch});
+                  filter[i] = weights.data[f_index];
+                } else {
+                  filter[i] = 0.0f;
+                }
+              }
+              dst[counter++] = filter;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+template <DataType S, typename T>
 void RearrangeWeightsToI4DHWIOOGroupO4(
     const tflite::gpu::Tensor<OHWDI, S>& weights, int out_group_size,
     absl::Span<T> dst) {

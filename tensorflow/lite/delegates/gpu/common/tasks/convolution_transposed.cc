@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
@@ -34,6 +35,19 @@ ConvolutionTransposed::ConvolutionTransposed(
     : GPUOperation(definition),
       stride_(attr.stride.w, attr.stride.h, 1, 1),
       block_size_(2, 2, 1, 2) {
+  if (weights_are_buffer) {
+    if (gpu_info.IsApple()) {
+      weights_layout_ = WeightsLayout::kOHWIOGroupO4I4;
+    } else {
+      weights_layout_ = WeightsLayout::kOHWIOGroupI4O4;
+    }
+  } else {
+    if (gpu_info.IsApple()) {
+      weights_layout_ = WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4;
+    } else {
+      weights_layout_ = WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4;
+    }
+  }
   const bool is_f16 = definition.precision == CalculationsPrecision::F16;
   if (gpu_info.IsMali()) {
     if (gpu_info.mali_info.IsMidgard()) {
@@ -67,6 +81,19 @@ ConvolutionTransposed::ConvolutionTransposed(
     : GPUOperation(definition),
       stride_(attr.stride.w, attr.stride.h, attr.stride.d, 1),
       block_size_(2, 2, 1, 2) {
+  if (weights_are_buffer) {
+    if (gpu_info.IsApple()) {
+      weights_layout_ = WeightsLayout::kOHWIOGroupO4I4;
+    } else {
+      weights_layout_ = WeightsLayout::kOHWIOGroupI4O4;
+    }
+  } else {
+    if (gpu_info.IsApple()) {
+      weights_layout_ = WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4;
+    } else {
+      weights_layout_ = WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4;
+    }
+  }
   const bool is_f16 = definition.precision == CalculationsPrecision::F16;
   if (gpu_info.IsMali()) {
     if (gpu_info.mali_info.IsMidgard()) {
@@ -95,21 +122,6 @@ ConvolutionTransposed::ConvolutionTransposed(
   args_.AddInt("grid_size_y");
   code_ = GenerateConvolutionTransposedCode(definition_, gpu_info,
                                             weights_are_buffer, block_size_);
-}
-
-ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
-    : GPUOperation(std::move(operation)),
-      stride_(operation.stride_),
-      block_size_(operation.block_size_) {}
-
-ConvolutionTransposed& ConvolutionTransposed::operator=(
-    ConvolutionTransposed&& operation) {
-  if (this != &operation) {
-    std::swap(stride_, operation.stride_);
-    std::swap(block_size_, operation.block_size_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
 }
 
 std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
@@ -146,20 +158,31 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     const std::string f3 = weights_are_buffer ? "FLT16_cdef(weights_cache[" +
                                                     std::to_string(s) + "])"
                                               : "f" + std::to_string(s * 4 + 3);
-    switch (op_def.precision) {
-      case CalculationsPrecision::F32:
-      case CalculationsPrecision::F16:
-        c += "#define CONV" + std::to_string(s) + "(R, S)    \\\n";
-        c += "R += S.x * " + f0 + "; \\\n";
-        c += "R += S.y * " + f1 + "; \\\n";
-        c += "R += S.z * " + f2 + "; \\\n";
-        c += "R += S.w * " + f3 + ";   \n";
-        break;
-      case CalculationsPrecision::F32_F16:
-        c += "#define CONV" + std::to_string(s) + "(R, S) \\\n";
-        c += "R += TO_ACCUM_TYPE(S.x * " + f0 + " + S.y * " + f1 + " + S.z * " +
-             f2 + " + S.w * " + f3 + ");\n";
-        break;
+    if (weights_layout_ == WeightsLayout::kOHWIOGroupI4O4 ||
+        weights_layout_ == WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4) {
+      switch (op_def.precision) {
+        case CalculationsPrecision::F32:
+        case CalculationsPrecision::F16:
+          c += "#define CONV" + std::to_string(s) + "(R, S)    \\\n";
+          c += "R += S.x * " + f0 + "; \\\n";
+          c += "R += S.y * " + f1 + "; \\\n";
+          c += "R += S.z * " + f2 + "; \\\n";
+          c += "R += S.w * " + f3 + ";   \n";
+          break;
+        case CalculationsPrecision::F32_F16:
+          c += "#define CONV" + std::to_string(s) + "(R, S) \\\n";
+          c += "R += TO_ACCUM_TYPE(S.x * " + f0 + " + S.y * " + f1 +
+               " + S.z * " + f2 + " + S.w * " + f3 + ");\n";
+          break;
+      }
+    } else {
+      // WeightsLayout::kOHWIOGroupO4I4 or
+      // WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4
+      c += "#define CONV" + std::to_string(s) + "(R, S)    \\\n";
+      c += "R.x += dot(S, " + f0 + "); \\\n";
+      c += "R.y += dot(S, " + f1 + "); \\\n";
+      c += "R.z += dot(S, " + f2 + "); \\\n";
+      c += "R.w += dot(S, " + f3 + ");   \n";
     }
   }
 

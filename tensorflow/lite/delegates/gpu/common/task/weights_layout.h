@@ -27,13 +27,15 @@ enum class WeightsLayout {
   kOHWIOGroupO4I4,
   kOICustomSpatialI4O4,
   kOICustomSpatialO4I4,
+  k2DX4I4YIsHWIAndXIsOOGroupO4,
+  k2DX4O4YIsHWIAndXIsOOGroupI4,
 };
 
 struct WeightsDescription {
   WeightsLayout layout;
-  // applicable with kOHWIOGroupI4O4/O4I4
-  int output_group_size;
-  // applicable with kOICustomSpatialI4O4/O4I4
+  // applicable with layouts that have OGroup.
+  int output_group_size;  // OGroup size
+  // applicable with layouts that have CustomSpatial
   std::vector<int> spatial_remap;
 };
 
