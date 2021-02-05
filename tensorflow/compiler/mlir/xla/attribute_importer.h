@@ -46,6 +46,8 @@ mlir::mhlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
     const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder);
 
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
+StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
+    TriangularSolveOptions_Transpose transpose);
 
 }  // namespace xla
 

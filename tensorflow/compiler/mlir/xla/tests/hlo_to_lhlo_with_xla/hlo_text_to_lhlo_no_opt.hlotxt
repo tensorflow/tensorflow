@@ -1,4 +1,5 @@
-// RUN: tf-mlir-translate -split-input-file -hlo-text-to-lhlo -optimize-xla-hlo=false %s | FileCheck %s
+// RUN: tf-mlir-translate -split-input-file -hlo-text-to-lhlo -optimize-xla-hlo=false %s 
+/// | FileCheck %s
 
 HloModule TestModule
 
@@ -641,6 +642,7 @@ ENTRY main {
 }
 
 // -----
+
 HloModule TestReplicaId
 
 // CHECK: func @main
@@ -651,6 +653,7 @@ ENTRY main {
 }
 
 // -----
+
 HloModule fft
 
 // CHECK: func @main
@@ -660,4 +663,23 @@ HloModule fft
 ENTRY main {
   %input = c64[5,8,32] parameter(0)
   ROOT %fft = c64[5,8,32] fft(c64[5,8,32] %input), fft_type=IFFT, fft_length={8,32}
+}
+
+// -----
+
+HloModule TriangularSolve_module
+
+// CHECK: func @main
+// CHECK: "lmhlo.triangular_solve"
+// CHECK-SAME: layout_a = dense<[1, 0]> : tensor<2xindex>
+// CHECK-SAME: layout_b = dense<[1, 0]> : tensor<2xindex>
+// CHECK-SAME: layout_output = dense<[1, 0]> : tensor<2xindex>
+// CHECK-SAME: left_side = false
+// CHECK-SAME: lower = true
+// CHECK-SAME: transpose_a = "NO_TRANSPOSE"
+// CHECK-SAME: unit_diagonal = false
+ENTRY main {
+  %a = f32[4,4]{1,0} parameter(0)
+  %b = f32[3,4]{1,0} parameter(1)
+  ROOT %triangular-solve = f32[3,4]{1,0} triangular-solve(f32[4,4]{1,0} %a, f32[3,4]{1,0} %b), lower=true, transpose_a=NO_TRANSPOSE
 }
