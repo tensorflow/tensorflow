@@ -28,12 +28,12 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-Winograd4x4To36::Winograd4x4To36(const OperationDef& definition,
-                                 const Padding2D& padding,
-                                 const GpuInfo& gpu_info)
+Winograd4x4To36TileX6::Winograd4x4To36TileX6(const OperationDef& definition,
+                                             const Padding2D& padding,
+                                             const GpuInfo& gpu_info)
     : GPUOperation(definition), padding_(padding) {
   work_group_size_ = int3(32, 1, 1);
-  code_ = GetWinograd4x4To36Code(definition_);
+  code_ = GetWinograd4x4To36TileX6Code(definition_);
   if (gpu_info.IsAdreno()) {
     compiler_options_.push_back(CompilerOptions::kAdrenoMoreWaves);
   }
@@ -43,18 +43,7 @@ Winograd4x4To36::Winograd4x4To36(const OperationDef& definition,
   }
 }
 
-Winograd4x4To36::Winograd4x4To36(Winograd4x4To36&& operation)
-    : GPUOperation(std::move(operation)), padding_(operation.padding_) {}
-
-Winograd4x4To36& Winograd4x4To36::operator=(Winograd4x4To36&& operation) {
-  if (this != &operation) {
-    std::swap(padding_, operation.padding_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-std::string Winograd4x4To36::GetWinograd4x4To36Code(
+std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     const OperationDef& op_def) {
   std::string c;
 
@@ -230,7 +219,7 @@ std::string Winograd4x4To36::GetWinograd4x4To36Code(
   return c;
 }
 
-void Winograd4x4To36::UploadBt() {
+void Winograd4x4To36TileX6::UploadBt() {
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> bt_aligned;
   bt_aligned.shape = Linear(6 * 8);
   bt_aligned.data.resize(6 * 8);
@@ -251,14 +240,15 @@ void Winograd4x4To36::UploadBt() {
                   absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
 }
 
-int3 Winograd4x4To36::SelectBestWorkGroup(const KernelInfo& kernel_info) const {
+int3 Winograd4x4To36TileX6::SelectBestWorkGroup(
+    const KernelInfo& kernel_info) const {
   const std::vector<int3> wgs = {{8, 6, 4}, {8, 6, 2}, {4, 6, 2},
                                  {4, 6, 2}, {2, 6, 2}, {2, 6, 1},
                                  {1, 6, 1}, {1, 3, 1}, {1, 1, 1}};
   return GetFirstSuitableWorkGroup(wgs, kernel_info.max_work_group_size);
 }
 
-absl::Status Winograd4x4To36::BindArguments(ArgumentsBinder* args) {
+absl::Status Winograd4x4To36TileX6::BindArguments(ArgumentsBinder* args) {
   const int tiles_x = DivideRoundUp(
       src_[0]->Width() + padding_.prepended.w + padding_.appended.w - 2, 4);
   const int tiles_y = DivideRoundUp(
@@ -271,14 +261,14 @@ absl::Status Winograd4x4To36::BindArguments(ArgumentsBinder* args) {
   return absl::OkStatus();
 }
 
-int3 Winograd4x4To36::GetGridSize() const {
+int3 Winograd4x4To36TileX6::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = 6;
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 
-void Winograd4x4To36::GetPossibleKernelWorkGroups(
+void Winograd4x4To36TileX6::GetPossibleKernelWorkGroups(
     TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   switch (tuning_type) {
@@ -293,36 +283,26 @@ void Winograd4x4To36::GetPossibleKernelWorkGroups(
   }
 }
 
-Winograd4x4To36 CreateWinograd4x4To36(const GpuInfo& gpu_info,
-                                      const OperationDef& definition,
-                                      const Padding2D& padding) {
-  Winograd4x4To36 result(definition, padding, gpu_info);
+Winograd4x4To36TileX6 CreateWinograd4x4To36TileX6(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const Padding2D& padding) {
+  Winograd4x4To36TileX6 result(definition, padding, gpu_info);
   result.UploadBt();
   return result;
 }
 
-Winograd36To4x4::Winograd36To4x4(const OperationDef& definition,
-                                 const GpuInfo& gpu_info)
+Winograd36To4x4Tile4x1::Winograd36To4x4Tile4x1(const OperationDef& definition,
+                                               const GpuInfo& gpu_info)
     : GPUOperation(definition) {
   work_group_size_ = int3(32, 1, 1);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
     compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
-  code_ = GetWinograd36To4x4Code(definition_);
+  code_ = GetWinograd36To4x4Tile4x1Code(definition_);
 }
 
-Winograd36To4x4::Winograd36To4x4(Winograd36To4x4&& operation)
-    : GPUOperation(std::move(operation)) {}
-
-Winograd36To4x4& Winograd36To4x4::operator=(Winograd36To4x4&& operation) {
-  if (this != &operation) {
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-std::string Winograd36To4x4::GetWinograd36To4x4Code(
+std::string Winograd36To4x4Tile4x1::GetWinograd36To4x4Tile4x1Code(
     const OperationDef& op_def) {
   std::string c;
 
@@ -431,7 +411,7 @@ std::string Winograd36To4x4::GetWinograd36To4x4Code(
   return c;
 }
 
-void Winograd36To4x4::UploadAt() {
+void Winograd36To4x4Tile4x1::UploadAt() {
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> at_aligned;
   at_aligned.shape = Linear(4 * 8);
   at_aligned.data.resize(4 * 8);
@@ -452,20 +432,21 @@ void Winograd36To4x4::UploadAt() {
                   absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
 }
 
-int3 Winograd36To4x4::SelectBestWorkGroup(const KernelInfo& kernel_info) const {
+int3 Winograd36To4x4Tile4x1::SelectBestWorkGroup(
+    const KernelInfo& kernel_info) const {
   const std::vector<int3> wgs = {{32, 4, 2}, {16, 4, 2}, {16, 4, 1},
                                  {8, 4, 1},  {4, 4, 1},  {2, 4, 1},
                                  {1, 4, 1},  {1, 2, 1},  {1, 1, 1}};
   return GetFirstSuitableWorkGroup(wgs, kernel_info.max_work_group_size);
 }
 
-absl::Status Winograd36To4x4::BindArguments(ArgumentsBinder* args) {
+absl::Status Winograd36To4x4Tile4x1::BindArguments(ArgumentsBinder* args) {
   const int tiles_x = DivideRoundUp(dst_[0]->Width(), 4);
   RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
   return absl::OkStatus();
 }
 
-int3 Winograd36To4x4::GetGridSize() const {
+int3 Winograd36To4x4Tile4x1::GetGridSize() const {
   const int tiles_x = DivideRoundUp(dst_[0]->Width(), 4);
   const int tiles_y = DivideRoundUp(dst_[0]->Height(), 4);
   const int grid_x = tiles_x * tiles_y * dst_[0]->Batch();
@@ -474,7 +455,7 @@ int3 Winograd36To4x4::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-void Winograd36To4x4::GetPossibleKernelWorkGroups(
+void Winograd36To4x4Tile4x1::GetPossibleKernelWorkGroups(
     TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   switch (tuning_type) {
@@ -489,10 +470,10 @@ void Winograd36To4x4::GetPossibleKernelWorkGroups(
   }
 }
 
-Winograd36To4x4 CreateWinograd36To4x4(
+Winograd36To4x4Tile4x1 CreateWinograd36To4x4Tile4x1(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
-  Winograd36To4x4 result(definition, gpu_info);
+  Winograd36To4x4Tile4x1 result(definition, gpu_info);
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
