@@ -192,7 +192,7 @@ double NominalCPUFrequency() {
 }
 
 MemoryInfo GetMemoryInfo() {
-  MemoryInfo mem_info = {INT64_MAX, INT64_MAX, INT64_MAX};
+  MemoryInfo mem_info = {INT64_MAX, INT64_MAX};
   MEMORYSTATUSEX statex;
   statex.dwLength = sizeof(statex);
   if (GlobalMemoryStatusEx(&statex)) {
