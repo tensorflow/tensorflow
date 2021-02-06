@@ -14412,8 +14412,6 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
 
-  let hasFolder = 1;
-
   let verifier = [{ return VerifyStridedSliceBase(*this); }];
 
   let extraClassDeclaration = [{
