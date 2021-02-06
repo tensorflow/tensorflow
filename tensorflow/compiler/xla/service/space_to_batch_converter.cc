@@ -800,7 +800,13 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     auto activations = consumer->mutable_operand(0);
     auto kernel = consumer->mutable_operand(1);
 
-    if (!last_try) {
+    auto win_dims =
+        consumer->window().dimensions(get_chosen_spatial_dim(consumer));
+    const int64 rhs_dilation = win_dims.window_dilation();
+
+    // If the rhs_dilation is absent, we want both LHS and RHS to be space-to-
+    // batched for propagating on backprop convolutions.
+    if (!last_try || rhs_dilation == 1) {
       if (!old_to_new_instrs_.contains(kernel) ||
           !old_to_new_instrs_.contains(activations)) {
         return false;
@@ -811,10 +817,6 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
         !old_to_new_instrs_.contains(activations)) {
       return false;
     }
-
-    const int64 rhs_dilation = consumer->window()
-                                   .dimensions(get_chosen_spatial_dim(consumer))
-                                   .window_dilation();
 
     if (!old_to_new_instrs_.contains(kernel)) {
       const int64 rhs_batch =
