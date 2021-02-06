@@ -38,6 +38,9 @@ limitations under the License.
 
 namespace tensorflow {
 class EagerExecutor;
+class EagerContext;
+class CustomDevice;
+class CustomDeviceOpHandler;
 
 // LINT.IfChange
 // Note: Keep in sync with exported copy of enum in eager/c_api.h.
@@ -122,6 +125,7 @@ class ImmediateExecutionContext : public AbstractContext {
 
   // Return the ParsedName of Host CPU device.
   virtual const DeviceNameUtils::ParsedName& HostCPUParsedName() const = 0;
+  virtual const string& HostCPUName() const = 0;
 
   // Configure soft device placement policy.
   virtual void SetAllowSoftPlacement(bool enable) = 0;
@@ -146,6 +150,18 @@ class ImmediateExecutionContext : public AbstractContext {
   static bool classof(const AbstractContext* ptr) {
     return ptr->getKind() == kEager || ptr->getKind() == kTfrt;
   }
+
+  //===--------------------------------------------------------------------===//
+  // Experimental Custom Device.
+  //===--------------------------------------------------------------------===//
+  virtual CustomDeviceOpHandler& GetCustomDeviceOpHandler() = 0;
+
+  // Register a custom device. It will return error is the device name is
+  // already registered.
+  // TODO(tfrt-devs): Remove this method. Let caller register it directly into
+  // CustomDeviceOpHandler.
+  virtual Status RegisterCustomDevice(const string& name,
+                                      std::unique_ptr<CustomDevice> device) = 0;
 
   //===--------------------------------------------------------------------===//
   // Following are features in current TF Eager Runtime.

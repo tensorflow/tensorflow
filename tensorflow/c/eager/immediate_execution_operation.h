@@ -33,6 +33,8 @@ struct TFE_Op;
 
 namespace tensorflow {
 
+class ImmediateExecutionContext;
+
 // Abstract interface to an operation.
 class ImmediateExecutionOperation : public AbstractOperation {
  public:
@@ -41,6 +43,15 @@ class ImmediateExecutionOperation : public AbstractOperation {
   // Returns the inputs of this op.
   virtual absl::Span<ImmediateExecutionTensorHandle* const> GetInputs()
       const = 0;
+  virtual Status SetInput(size_t index,
+                          ImmediateExecutionTensorHandle* input) = 0;
+
+  virtual ImmediateExecutionContext* GetContext() const = 0;
+
+  // Following two methods are used to support custom device.
+  // Return true if the inputs contain custom device tensor handle. It means
+  // that the argument need to be handled by a custom device.
+  virtual bool HasCustomDeviceInput() const = 0;
 
   virtual const tensorflow::OpDef* OpDef() const = 0;
 
