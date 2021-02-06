@@ -249,6 +249,19 @@ tflite_micro_cc_test(
 )
 
 tflite_micro_cc_test(
+    name = "exp_test",
+    srcs = ["exp_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
     name = "zeros_like_test",
     srcs = ["zeros_like_test.cc"],
     deps = [

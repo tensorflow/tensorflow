@@ -1277,7 +1277,7 @@ Status EagerContext::UpdateRemoteMaster(
     context_view_id_++;
 
     remote_eager_workers_ = std::move(remote_eager_workers);
-    pflr_->InitializeDeviceSet();
+    pflr_->InitializeDeviceAndFlr();
     InitPrioritizedDeviceTypeList();
 
     default_executor_.ClearError();
@@ -1496,7 +1496,7 @@ Status EagerContext::UpdateRemoteWorker(
     remote_contexts_ = remote_contexts;
     remote_eager_workers_ = std::move(remote_eager_workers);
     InitPrioritizedDeviceTypeList();
-    pflr_->InitializeDeviceSet();
+    pflr_->InitializeDeviceAndFlr();
   }
 
   // No need to update remote_device_manager_ since it's not owned for remote

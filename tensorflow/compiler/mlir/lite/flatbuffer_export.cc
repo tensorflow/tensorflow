@@ -38,6 +38,7 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -525,6 +526,13 @@ class Translator {
   BufferOffset<tflite::Operator> BuildNumericVerifyOperator(
       mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
+
+  // Builds Assign/Read Variable ops.
+  template <typename T>
+  BufferOffset<tflite::Operator> BuildVariableOperator(
+      T op, const std::string& op_name, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   BufferOffset<tflite::Operator> BuildCustomOperator(
       Operation* inst, mlir::TFL::CustomOp op,
       const std::vector<int32_t>& operands,
@@ -936,6 +944,17 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
       tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
+// Builds Assign/Read Variable ops.
+template <typename T>
+BufferOffset<tflite::Operator> Translator::BuildVariableOperator(
+    T op, const std::string& op_name, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto opcode_index = GetOpcodeIndex(op_name, tflite::BuiltinOperator_CUSTOM);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE);
+}
+
 BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
     Operation* inst, mlir::TFL::CustomOp op,
     const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
@@ -1075,6 +1094,18 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
   if (!dialect) {
     inst->emitOpError("dialect is not registered");
     return llvm::None;
+  }
+
+  // TODO(b/149099381): Remove this once the kernels are promoted as
+  // builtin TFLite kernels.
+  // We export the Assign/Read variable ops as custom ops.
+  if (auto read_op = llvm::dyn_cast<mlir::TFL::ReadVariableOp>(inst)) {
+    return BuildVariableOperator<mlir::TFL::ReadVariableOp>(
+        read_op, "ReadVariable", operands, results);
+  } else if (auto assign_op =
+                 llvm::dyn_cast<mlir::TFL::AssignVariableOp>(inst)) {
+    return BuildVariableOperator<mlir::TFL::AssignVariableOp>(
+        assign_op, "AssignVariable", operands, results);
   }
 
   // If TFLite built in op, create operator as a builtin op.
