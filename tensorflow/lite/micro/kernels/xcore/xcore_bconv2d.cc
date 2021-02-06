@@ -37,19 +37,15 @@ struct BConv2DArguments {
     int8_t *Y_int8;
   };
 
-  // for bitpacked only, TODO: refactor, and use union
-  const int32_t *thresholds;
+  union {
+    const int32_t *thresholds;     // used in bitpacked only
+    const int16_t *accu_modifier;  // used in generic int8 only
+  };
 
-  // for int8 only, TODO: refactor, and use union
+  // for int8 only
   const int16_t *post_act_mult;
   const int16_t *post_act_bias;
-  const int16_t *accu_modifier;  // not used in DIDO
-  int16_t clamp_offset_close;
-  int16_t clamp_offset_far_1;
-  int16_t clamp_offset_far_2;
-  int accu_shr;
-  int16_t bias_multiplier;
-  int final_shr;
+  const output_transform_values_t *output_trf_parameters;
 };
 
 // -------------------------------------------------------------------- //
@@ -97,11 +93,8 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_int8_deepin_deepout_thread_worker(
     bconv2d_int8_DIDO_valid(
         td->args->Y_int8, (const bnn_b256_t *)td->args->X,
         (const bnn_b256_t *)td->args->K, td->args->post_act_mult,
-        td->args->post_act_bias, td->args->clamp_offset_close,
-        td->args->clamp_offset_far_1, td->args->clamp_offset_far_2,
-        td->args->accu_shr, td->args->bias_multiplier, td->args->final_shr,
-        &td->args->x, &td->args->y, &td->args->k, job->left, job->top,
-        job->cols, job->rows);
+        td->args->post_act_bias, td->args->output_trf_parameters, &td->args->x,
+        &td->args->y, &td->args->k, job->left, job->top, job->cols, job->rows);
     job = job->next;
   }
 }
@@ -112,10 +105,7 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_int8_thread_worker(void *context) {
   while (job) {
     bconv2d_int8_valid(td->args->Y_int8, td->args->X, td->args->K,
                        td->args->post_act_mult, td->args->post_act_bias,
-                       td->args->accu_modifier, td->args->clamp_offset_close,
-                       td->args->clamp_offset_far_1,
-                       td->args->clamp_offset_far_2, td->args->accu_shr,
-                       td->args->bias_multiplier, td->args->final_shr,
+                       td->args->accu_modifier, td->args->output_trf_parameters,
                        td->thread_scratch, &td->args->x, &td->args->y,
                        &td->args->k, job->left, job->top, job->cols, job->rows);
     job = job->next;
@@ -154,12 +144,15 @@ struct BConv2DOpData {
                       // thread workers
   int stack_scratch_index;  // The buffer index where the above stack will be
                             // allocated
+
+  // TODO: remove this  when better external memory handling is implemented
   // for loading from external mem
   int weights_scratch_idx = 0;
   int threshold_scratch_idx = 0;
   int bias_scratch_idx = 0;
   int multiplier_scratch_idx = 0;
   int accu_modifier_scratch_idx = 0;
+  int output_trf_scratch_idx = 0;
 };
 
 // -------------------------------------------------------------------- //
@@ -213,29 +206,28 @@ struct BConv2DKernel {
 // op function implementations
 // -------------------------------------------------------------------- //
 
-void InitCommon(TfLiteContext *context, const char *buffer, size_t length,
-                BConv2DOpData *op_data) {
+void *Init(TfLiteContext *context, const char *buffer, size_t length) {
+  auto *op_data = reinterpret_cast<BConv2DOpData *>(
+      context->AllocatePersistentBuffer(context, sizeof(BConv2DOpData)));
+
   // parse custom options
   TFLITE_DCHECK(buffer != nullptr);
   TFLITE_DCHECK(length > 0);  // in fact it must be at least 6x uint32_t big
 
-  flexbuffers::Vector Kshape =
-      get_named_uint32_custom_option_vector(context, buffer, length, "K");
+  auto parser = CustomOptionParser(buffer, length);
+  auto Kshape = parser.parseNamedCustomOption("K").AsVector();
   op_data->args.y.channels = Kshape[0].AsUInt32();
   op_data->args.k.shape.height = Kshape[1].AsUInt32();
   op_data->args.k.shape.width = Kshape[2].AsUInt32();
   op_data->args.x.channels = Kshape[3].AsUInt32();
 
-  flexbuffers::Vector strides =
-      get_named_uint32_custom_option_vector(context, buffer, length, "stride");
+  auto strides = parser.parseNamedCustomOption("stride").AsVector();
   op_data->args.k.stride.vertical = strides[0].AsInt32();
   op_data->args.k.stride.horizontal = strides[1].AsInt32();
 
   op_data->args.k.dilation.horizontal = 1;
   op_data->args.k.dilation.vertical = 1;
 
-  // TODO
-  // parse_custom_options(context, buffer, length, &op_data->execution_plan);
   op_data->n_threads = 1;
   op_data->n_jobs = 1;
 
@@ -263,26 +255,6 @@ void InitCommon(TfLiteContext *context, const char *buffer, size_t length,
   auto &td = op_data->threads[0];
   td.job = &job;
   td.args = &op_data->args;
-}
-
-template <BConv2DKernelType kernel_type>
-void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  auto *op_data = reinterpret_cast<BConv2DOpData *>(
-      context->AllocatePersistentBuffer(context, sizeof(BConv2DOpData)));
-
-  InitCommon(context, buffer, length, op_data);
-
-  if (kernel_type == BConv2DKernelType::INT8 ||
-      kernel_type == BConv2DKernelType::INT8_DIDO) {
-    flexbuffers::Vector q_params = get_named_uint32_custom_option_vector(
-        context, buffer, length, "q_params");
-    op_data->args.bias_multiplier = q_params[0].AsInt32();
-    op_data->args.accu_shr = q_params[1].AsInt32();
-    op_data->args.final_shr = q_params[2].AsInt32();
-    op_data->args.clamp_offset_close = q_params[3].AsInt32();
-    op_data->args.clamp_offset_far_1 = q_params[4].AsInt32();
-    op_data->args.clamp_offset_far_2 = q_params[5].AsInt32();
-  }
 
   return op_data;
 }
@@ -335,17 +307,18 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
         context, GetInput(context, node, 2), op_data->threshold_scratch_idx));
   } else if (kernel_type == BConv2DKernelType::INT8 ||
              kernel_type == BConv2DKernelType::INT8_DIDO) {
+    TF_LITE_ENSURE_EQ(context, NumInputs(node),
+                      (kernel_type == BConv2DKernelType::INT8) ? 6 : 5);
     TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
         context, GetInput(context, node, 2), op_data->multiplier_scratch_idx));
     TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
         context, GetInput(context, node, 3), op_data->bias_scratch_idx));
+    TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
+        context, GetInput(context, node, 4), op_data->output_trf_scratch_idx));
     if (kernel_type == BConv2DKernelType::INT8) {
-      TF_LITE_ENSURE_EQ(context, NumInputs(node), 5);
       TF_LITE_ENSURE_STATUS(
-          request_scratch_if_needed(context, GetInput(context, node, 4),
+          request_scratch_if_needed(context, GetInput(context, node, 5),
                                     op_data->accu_modifier_scratch_idx));
-    } else {
-      TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
     }
   } else {
     UNSUPPORTED_KERNEL_TYPE;
@@ -414,9 +387,13 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
         context, op_data->args.post_act_bias, GetInput(context, node, 3),
         op_data->bias_scratch_idx));
+    TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
+        context, op_data->args.output_trf_parameters,
+        GetInput(context, node, 4), op_data->output_trf_scratch_idx));
+
     if (kernel_type == BConv2DKernelType::INT8) {
       TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
-          context, op_data->args.accu_modifier, GetInput(context, node, 4),
+          context, op_data->args.accu_modifier, GetInput(context, node, 5),
           op_data->accu_modifier_scratch_idx));
     }
   } else {
@@ -447,13 +424,13 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   dispatcher->JoinTasks();
 
   return kTfLiteOk;
-}  // namespace bconv
+}
 
 }  // namespace bconv
 
 TfLiteRegistration *Register_BConv2D_Bitpacked_Deepin() {
   static TfLiteRegistration r = {
-      bconv::Init<bconv::BConv2DKernelType::BITPACKED_DI>, nullptr,
+      bconv::Init, nullptr,
       bconv::Prepare<bconv::BConv2DKernelType::BITPACKED_DI>,
       bconv::Eval<bconv::BConv2DKernelType::BITPACKED_DI>};
   return &r;
@@ -461,23 +438,20 @@ TfLiteRegistration *Register_BConv2D_Bitpacked_Deepin() {
 
 TfLiteRegistration *Register_BConv2D_Bitpacked() {
   static TfLiteRegistration r = {
-      bconv::Init<bconv::BConv2DKernelType::BITPACKED>, nullptr,
-      bconv::Prepare<bconv::BConv2DKernelType::BITPACKED>,
+      bconv::Init, nullptr, bconv::Prepare<bconv::BConv2DKernelType::BITPACKED>,
       bconv::Eval<bconv::BConv2DKernelType::BITPACKED>};
   return &r;
 }
 
 TfLiteRegistration *Register_BConv2D_Int8_Deepin_Deepout() {
   static TfLiteRegistration r = {
-      bconv::Init<bconv::BConv2DKernelType::INT8_DIDO>, nullptr,
-      bconv::Prepare<bconv::BConv2DKernelType::INT8_DIDO>,
+      bconv::Init, nullptr, bconv::Prepare<bconv::BConv2DKernelType::INT8_DIDO>,
       bconv::Eval<bconv::BConv2DKernelType::INT8_DIDO>};
   return &r;
 }
 
 TfLiteRegistration *Register_BConv2D_Int8() {
-  static TfLiteRegistration r = {bconv::Init<bconv::BConv2DKernelType::INT8>,
-                                 nullptr,
+  static TfLiteRegistration r = {bconv::Init, nullptr,
                                  bconv::Prepare<bconv::BConv2DKernelType::INT8>,
                                  bconv::Eval<bconv::BConv2DKernelType::INT8>};
   return &r;

@@ -45,10 +45,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   op->stack_scratch_index = -1;
   op->stack_size = 0;
 
-  // parse custom options
-  // TFLITE_DCHECK(buffer != nullptr);
-  // parse_custom_options(context, buffer, length, &op->execution_plan);
-
   return op;
 }
 
