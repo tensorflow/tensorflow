@@ -137,13 +137,14 @@ void CollectiveParamResolverDistributed::CompleteGroupAsync(
         "running the same version of Tensorflow on all workers."));
     return;
   }
-  CollectiveParams cp;
-  cp.group.group_key = request->group_key();
-  cp.group.group_size = request->group_size();
-  cp.group.device_type = DeviceType(request->device_type());
-  cp.instance.type = CollectiveType(request->collective_type());
+  auto* cp = new CollectiveParams();
+  core::ScopedUnref unref(cp);
+  cp->group.group_key = request->group_key();
+  cp->group.group_size = request->group_size();
+  cp->group.device_type = DeviceType(request->device_type());
+  cp->instance.type = CollectiveType(request->collective_type());
   CompleteGroupDistributed(
-      request->device_attributes(), &cp, cancel_mgr,
+      request->device_attributes(), cp, cancel_mgr,
       [response, done](const Status& s, const GroupRec* gr) {
         if (s.ok()) {
           mutex_lock l(gr->mu);
@@ -196,14 +197,15 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   }
   StatusCallback done_and_cleanup = [cp, done](const Status& s) {
     done(s);
-    delete cp;
+    cp->Unref();
   };
   CompleteInstanceDistributed(
       request->device(), gr, cp, cancel_mgr,
       [this, gr, cp, response, done_and_cleanup](Status status) {
         if (status.ok()) {
           // Now source_rank should be known, so retrieve it.
-          InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+          bool created_irec;
+          InstanceRec* ir = GetOrCreateInstanceRec(gr, cp, &created_irec);
           {
             mutex_lock l(ir->mu);
             status = ir->status;
@@ -340,7 +342,8 @@ Status CollectiveParamResolverDistributed::UpdateInstanceCache(
     const GroupRec* gr, CollectiveParams* cp,
     const CompleteInstanceResponse& resp) {
   int32 source_rank = resp.source_rank();
-  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+  bool created_irec;
+  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp, &created_irec);
   mutex_lock l(ir->mu);
   if (!ir->status.ok()) {
     return ir->status;

@@ -200,11 +200,20 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleSort(HloInstruction* sort) override;
   Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
+
+  template <typename NcclThunkType, typename OpTy>
+  Status EmitNcclThunkFromMlir(MlirEmitterInput mlir_input);
   Status HandleAllGather(HloInstruction* hlo) override;
-  Status HandleAllReduce(HloInstruction* crs) override;
+  Status HandleAllReduce(HloInstruction* hlo) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
+
   Status HandleAfterAll(HloInstruction* after_all) override;
+
+  template <typename ThunkType, typename OpT>
+  Status EmitReplicaOrPartitionIdFromMlir(MlirEmitterInput input);
   Status HandleReplicaId(HloInstruction* hlo) override;
+  Status HandlePartitionId(HloInstruction* hlo) override;
+
   Status HandleCollectivePermute(HloInstruction* hlo) override;
 
   Status EmitOp(MlirEmitterInput mlir_input);
@@ -437,11 +446,12 @@ class IrEmitterUnnested : public IrEmitter,
   // different. On the other hand, the input ranges of slices can be
   // overlapping. Further generalization/specialization when the needs are seen
   // in the future.
-  Status EmitInputFusibleNonStridedSlices(HloInstruction* unnested_hlo);
+  Status EmitInputFusibleNonStridedSlices(MlirEmitterInput mlir_input);
 
-  void EmitElementForInputFusibleSlices(
-      HloInstruction* unnested_hlo,
-      const llvm_ir::IrArray::Index& slice_input_index);
+  Status EmitElementForInputFusibleSlices(
+      mlir::lmhlo::FusionOp fusion,
+      absl::Span<const llvm_ir::IrArray> ir_arrays,
+      const llvm_ir::IrArray::Index& index);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. Scatter indices are taken from `scatter_indices_gen`, updates

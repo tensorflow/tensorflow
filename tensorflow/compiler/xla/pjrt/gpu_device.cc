@@ -46,9 +46,7 @@ class GpuClient : public xla::PjRtStreamExecutorClient {
 
 xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
-  // XLA:GPU does not support multiple partitions yet.
-  TF_RET_CHECK(num_partitions == 1) << num_partitions;
-  if (num_replicas <= addressable_devices().size()) {
+  if (num_partitions == 1 && num_replicas <= addressable_devices().size()) {
     xla::DeviceAssignment assignment(num_replicas, 1);
     for (int i = 0; i < num_replicas; ++i) {
       assignment(i, 0) = addressable_devices().at(i)->id();

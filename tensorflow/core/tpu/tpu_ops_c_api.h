@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -106,20 +105,40 @@ TFTPU_CAPI_EXPORT void TpuCompile_XrtCompileAndBuild(
     TpuSerializedProto xrt_computation, const XLA_TpuMeshState* mesh_state,
     XLA_TpuProgram** tpu_programs[], size_t* count, TF_Status* status);
 
-// Creates a new TPU profiler object.
-TFTPU_CAPI_EXPORT TpuProfiler* TpuProfiler_Create();
-
-TFTPU_CAPI_EXPORT TpuProfiler* TpuProfiler_Free(TpuProfiler* tpu_profiler);
-
+// Creates a TPU profiler that is ready to start profiling.
+TFTPU_CAPI_EXPORT void TpuProfiler_Create(TpuProfiler** tpu_profiler,
+                                          TF_Status* status);
+// Destroys the given TPU profiler.
+TFTPU_CAPI_EXPORT void TpuProfiler_Destroy(TpuProfiler* tpu_profiler);
+// Starts profiling if not already started, returns an error otherwise.
 TFTPU_CAPI_EXPORT void TpuProfiler_Start(TpuProfiler* tpu_profiler,
                                          TF_Status* status);
-
+// Stops profiling if not already stopped, returns an error otherwise.
 TFTPU_CAPI_EXPORT void TpuProfiler_Stop(TpuProfiler* tpu_profiler,
                                         TF_Status* status);
-
-TFTPU_CAPI_EXPORT void TpuProfiler_CollectData(
-    TpuProfiler* tpu_profiler, TF_Status* status,
-    tensorflow::profiler::XSpace* space);
+// Serializes profiled data into `buffer` and returns the size of `buffer`. The
+// profile data held by the TPU driver will be cleared after retrieval.
+//
+// Step 1. Query the size of buffer required into `size_in_bytes`.
+//
+//   size_t size_in_bytes;
+//   TpuProfiler_CollectData(profiler, status, nullptr, &size_in_bytes);
+//
+// Step 2. Retrieve the data into a `buffer` of size `size_in_bytes`.
+//         Subsequently,The TPU driver clears its copy of the profile data.
+//
+//   uint8_t buffer = new uint8_t[size_in_bytes];
+//   TpuProfiler_CollectData(profiler, status, buffer, size_in_bytes);
+//
+// Step 3. Unpack the data into an XSpace.
+//
+//   tensorflow::profiler::XSpace space;
+//   space.ParseFromArray(buffer, size_in_bytes);
+//
+TFTPU_CAPI_EXPORT void TpuProfiler_CollectData(TpuProfiler* tpu_profiler,
+                                               TF_Status* status,
+                                               uint8_t* buffer,
+                                               size_t* size_in_bytes);
 
 // Creates a new TPU mesh state object.
 TFTPU_CAPI_EXPORT XLA_TpuMeshState* TpuMeshState_Create();
@@ -416,7 +435,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_MeshCommonState);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Create);
-  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Destroy);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Start);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Stop);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_CollectData);

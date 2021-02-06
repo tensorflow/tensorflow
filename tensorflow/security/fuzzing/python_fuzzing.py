@@ -15,15 +15,23 @@
 """Helper class for TF Python fuzzing."""
 
 import atheris_no_libfuzzer as atheris
+import tensorflow as tf
 
-_MIN_INT = -100000
-_MAX_INT = 100000
+_MIN_INT = -10000
+_MAX_INT = 10000
 
-_MIN_FLOAT = -100000.0
-_MAX_FLOAT = 100000.0
+_MIN_FLOAT = -10000.0
+_MAX_FLOAT = 10000.0
 
 _MIN_LENGTH = 0
-_MAX_LENGTH = 100000
+_MAX_LENGTH = 10000
+
+_TF_DTYPES = [
+    tf.float16, tf.float32, tf.float64, tf.bfloat16, tf.complex64,
+    tf.complex128, tf.int8, tf.uint8, tf.uint16, tf.uint32, tf.uint64, tf.int16,
+    tf.int32, tf.int64, tf.bool, tf.string, tf.qint8, tf.quint8, tf.qint16,
+    tf.quint16, tf.qint32, tf.resource, tf.variant
+]
 
 
 class FuzzingHelper(object):
@@ -99,7 +107,7 @@ class FuzzingHelper(object):
       Consumed integer list based on input bytes and constraints.
     """
     length = self.get_int(min_length, max_length)
-    return self.fdp.ConsumeRegularFloatList(length)
+    return self.fdp.ConsumeFloatListInRange(length, _MIN_FLOAT, _MAX_FLOAT)
 
   def get_int_or_float_list(self,
                             min_length=_MIN_LENGTH,
@@ -113,8 +121,27 @@ class FuzzingHelper(object):
     Returns:
       Consumed integer or float list based on input bytes and constraints.
     """
-    length = self.get_int(min_length, max_length)
     if self.get_bool():
-      return self.fdp.ConsumeRegularIntList(length)
+      return self.get_int_list(min_length, max_length)
     else:
-      return self.fdp.ConsumeRegularFloatList(length)
+      return self.get_float_list(min_length, max_length)
+
+  def get_tf_dtype(self):
+    """Return a random tensorflow type.
+
+    Returns:
+      A random type from the list containing all TensorFlow types.
+    """
+    index = self.get_int(0, len(_TF_DTYPES) - 1)
+    return _TF_DTYPES[index]
+
+  def get_string(self, byte_count=_MAX_INT):
+    """Consume a string with given constraints based on a consumed bool.
+
+    Args:
+      byte_count: Byte count that defaults to _MAX_INT.
+
+    Returns:
+      Consumed string based on input bytes and constraints.
+    """
+    return self.fdp.ConsumeString(byte_count)

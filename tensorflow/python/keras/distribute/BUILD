@@ -9,6 +9,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-or
 package(
     # TODO(scottzhu): Remove this deps when distribute test are converted to integration test.
     default_visibility = [
+        "//tensorflow:internal",
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
@@ -447,6 +448,7 @@ distribute_py_test(
         "no_oss",  # TODO(b/173021094)
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "noasan",  # TODO(b/178803051)
         "nogpu",  # TODO(b/170905292)
         "notsan",
     ],

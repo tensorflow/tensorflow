@@ -671,12 +671,13 @@ class Functional(training_lib.Model):
     Raises:
         ValueError: In case of improperly formatted config dict.
     """
-    input_tensors, output_tensors, created_layers = reconstruct_from_config(
-        config, custom_objects)
-    model = cls(inputs=input_tensors, outputs=output_tensors,
-                name=config.get('name'))
-    connect_ancillary_layers(model, created_layers)
-    return model
+    with generic_utils.SharedObjectLoadingScope():
+      input_tensors, output_tensors, created_layers = reconstruct_from_config(
+          config, custom_objects)
+      model = cls(inputs=input_tensors, outputs=output_tensors,
+                  name=config.get('name'))
+      connect_ancillary_layers(model, created_layers)
+      return model
 
   def _validate_graph_inputs_and_outputs(self):
     """Validates the inputs and outputs of a Graph Network."""
@@ -1346,21 +1347,23 @@ def get_network_config(network, serialize_layer_fn=None):
         node_conversion_map[node_key] = kept_nodes
         kept_nodes += 1
   layer_configs = []
-  for layer in network.layers:  # From the earliest layers on.
-    filtered_inbound_nodes = []
-    for original_node_index, node in enumerate(layer._inbound_nodes):
-      node_key = _make_node_key(layer.name, original_node_index)
-      if node_key in network._network_nodes and not node.is_input:
-        # The node is relevant to the model:
-        # add to filtered_inbound_nodes.
-        node_data = node.serialize(_make_node_key, node_conversion_map)
-        filtered_inbound_nodes.append(node_data)
 
-    layer_config = serialize_layer_fn(layer)
-    layer_config['name'] = layer.name
-    layer_config['inbound_nodes'] = filtered_inbound_nodes
-    layer_configs.append(layer_config)
-  config['layers'] = layer_configs
+  with generic_utils.SharedObjectSavingScope():
+    for layer in network.layers:  # From the earliest layers on.
+      filtered_inbound_nodes = []
+      for original_node_index, node in enumerate(layer._inbound_nodes):
+        node_key = _make_node_key(layer.name, original_node_index)
+        if node_key in network._network_nodes and not node.is_input:
+          # The node is relevant to the model:
+          # add to filtered_inbound_nodes.
+          node_data = node.serialize(_make_node_key, node_conversion_map)
+          filtered_inbound_nodes.append(node_data)
+
+      layer_config = serialize_layer_fn(layer)
+      layer_config['name'] = layer.name
+      layer_config['inbound_nodes'] = filtered_inbound_nodes
+      layer_configs.append(layer_config)
+    config['layers'] = layer_configs
 
   # Gather info about inputs and outputs.
   model_inputs = []

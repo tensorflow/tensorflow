@@ -522,15 +522,6 @@ class Translator {
       mlir::TFL::CallOnceOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  // Builds custom operators.
-  // Templated on a) data type of custom_option to be stored into flatbuffer,
-  // and b) TFL custom op type.
-  template <typename CustomOptionType, typename TFLOp>
-  BufferOffset<tflite::Operator> BuildCustomOperator(
-      const CustomOptionType& custom_option, const std::string& opcode_name,
-      TFLOp op, const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-
   BufferOffset<tflite::Operator> BuildNumericVerifyOperator(
       mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
@@ -921,23 +912,6 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
   return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
                                 tflite::BuiltinOptions_WhileOptions,
                                 builtin_options);
-}
-
-template <typename CustomOptionType, typename TFLOp>
-BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
-    const CustomOptionType& custom_option, const std::string& opcode_name,
-    TFLOp op, const std::vector<int32_t>& operands,
-    const std::vector<int32_t>& results) {
-  std::vector<uint8_t> custom_option_vector(sizeof(CustomOptionType));
-  memcpy(custom_option_vector.data(), &custom_option, sizeof(CustomOptionType));
-  auto opcode_index =
-      GetOpcodeIndex(opcode_name, tflite::BuiltinOperator_CUSTOM);
-  return tflite::CreateOperator(
-      builder_, opcode_index, builder_.CreateVector(operands),
-      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
-      /*builtin_options=*/0,
-      builder_.CreateVector<uint8_t>(custom_option_vector),
-      tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(

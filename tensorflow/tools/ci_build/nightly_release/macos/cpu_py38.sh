@@ -57,7 +57,8 @@ for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
   # Upload the PIP package if whl test passes.
   if [ ${RETVAL} -eq 0 ]; then
     echo "Basic PIP test PASSED, Uploading package: ${f}"
-    python3.8 -m twine upload -r pypi-warehouse "${f}"
+    python -m pip install twine
+    python -m twine upload -r pypi-warehouse "${f}"
   else
     echo "Basic PIP test FAILED, will not upload ${f} package"
     return 1

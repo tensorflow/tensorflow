@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/add_test_util.h"
 
@@ -32,10 +31,6 @@ limitations under the License.
 
 @implementation AddTest {
   tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
-}
-
-- (void)setUp {
-  [super setUp];
 }
 
 - (void)testAddTwoEqualTensors {

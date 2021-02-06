@@ -56,7 +56,6 @@ limitations under the License.
 
 #define DEBUG_TYPE "tf-shape-inference-utils"
 
-using ::tensorflow::int64;
 using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;
@@ -83,12 +82,7 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
 // Extracts a PartialTensorShape from the MLIR type.
 Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
   if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
-    // Convert the MLIR shape indices (int64_t) to TensorFlow indices
-    // (int64).
-    ArrayRef<int64_t> shape = ranked_type.getShape();
-    SmallVector<int64, 8> tf_shape(shape.begin(), shape.end());
-    return tensorflow::PartialTensorShape(
-        MutableArrayRefToSpan<int64>(tf_shape));
+    return tensorflow::PartialTensorShape(ranked_type.getShape());
   }
   return None;
 }

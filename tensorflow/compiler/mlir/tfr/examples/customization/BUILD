@@ -39,7 +39,6 @@ tf_py_test(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:test_utils",
-        "//tensorflow/python:is_mlir_bridge_test_false",
         "//tensorflow/python:test_ops",
     ],
 )

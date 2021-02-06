@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -401,55 +401,65 @@ kernel void ComputeFunction($0
 }
 }  // namespace
 
-ComputeTaskDescriptor Winograd4x4To36(const OperationDef& definition,
+int3 Winograd4x4To36::GetGridSize() const {
+  int new_width = src_[0]->Width() + attr_.padding.prepended.w +
+                  attr_.padding.appended.w - 2;
+  int new_height = src_[0]->Height() + attr_.padding.prepended.h +
+                   attr_.padding.appended.h - 2;
+  int tiles_x = DivideRoundUp(new_width, 4);
+  int tiles_y = DivideRoundUp(new_height, 4);
+  return int3(tiles_x, tiles_y, src_[0]->Slices());
+}
+
+absl::Status Winograd4x4To36::BindArguments(ArgumentsBinder* args) {
+  int new_width = src_[0]->Width() + attr_.padding.prepended.w +
+                  attr_.padding.appended.w - 2;
+  int new_height = src_[0]->Height() + attr_.padding.prepended.h +
+                   attr_.padding.appended.h - 2;
+  int tiles_x = DivideRoundUp(new_width, 4);
+  int tiles_y = DivideRoundUp(new_height, 4);
+  RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
+  RETURN_IF_ERROR(args->SetInt("tiles_y", tiles_y));
+  return absl::OkStatus();
+}
+
+Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
                                       const Winograd4x4To36Attributes& attr) {
-  ComputeTaskDescriptor desc(definition);
-  desc.shader_source = GetKernelWinograd4x4To36();
+  Winograd4x4To36 desc(definition, attr);
+  desc.code_ = GetKernelWinograd4x4To36();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.args.AddInt("padding_x", -attr.padding.prepended.w);
-  desc.args.AddInt("padding_y", -attr.padding.prepended.h);
-  desc.args.AddInt("tiles_x");
-  desc.args.AddInt("tiles_y");
+  desc.args_.AddInt("padding_x", -attr.padding.prepended.w);
+  desc.args_.AddInt("padding_y", -attr.padding.prepended.h);
+  desc.args_.AddInt("tiles_x");
+  desc.args_.AddInt("tiles_y");
 
-  desc.update_function = {[attr](const std::vector<BHWC>& src_shapes,
-                                 const std::vector<BHWC>& dst_shapes,
-                                 ArgumentsBinder* args) -> absl::Status {
-    int new_width = src_shapes[0].w + attr.padding.prepended.w +
-                    attr.padding.appended.w - 2;
-    int new_height = src_shapes[0].h + attr.padding.prepended.h +
-                     attr.padding.appended.h - 2;
-    int tiles_x = DivideRoundUp(new_width, 4);
-    int tiles_y = DivideRoundUp(new_height, 4);
-    RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
-    RETURN_IF_ERROR(args->SetInt("tiles_y", tiles_y));
-    return absl::OkStatus();
-  }};
-
-  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
-                                const std::vector<BHWC>& dst_shapes) {
-    const uint3 groups_size{8, 4, 1};
-    int new_width = src_shapes[0].w + attr.padding.prepended.w +
-                    attr.padding.appended.w - 2;
-    int new_height = src_shapes[0].h + attr.padding.prepended.h +
-                     attr.padding.appended.h - 2;
-    int grid_x = DivideRoundUp(new_width, 4);
-    int grid_y = DivideRoundUp(new_height, 4);
-    int grid_z = DivideRoundUp(src_shapes[0].c, 4);
-    int groups_x = DivideRoundUp(grid_x, groups_size.x);
-    int groups_y = DivideRoundUp(grid_y, groups_size.y);
-    int groups_z = DivideRoundUp(grid_z, groups_size.z);
-    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
-  };
+  desc.work_group_size_ = int3(8, 4, 1);
   return desc;
 }
 
-ComputeTaskDescriptor Winograd4x4To36TileX6(
+int3 Winograd4x4To36TileX6::GetGridSize() const {
+  return int3(dst_[0]->Width(), 6, dst_[0]->Slices());
+}
+
+absl::Status Winograd4x4To36TileX6::BindArguments(ArgumentsBinder* args) {
+  int new_width = src_[0]->Width() + attr_.padding.prepended.w +
+                  attr_.padding.appended.w - 2;
+  int new_height = src_[0]->Height() + attr_.padding.prepended.h +
+                   attr_.padding.appended.h - 2;
+  int tiles_x = DivideRoundUp(new_width, 4);
+  int tiles_y = DivideRoundUp(new_height, 4);
+  RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
+  RETURN_IF_ERROR(args->SetInt("tiles_y", tiles_x * tiles_y));
+  return absl::OkStatus();
+}
+
+Winograd4x4To36TileX6 CreateWinograd4x4To36TileX6(
     const OperationDef& definition, const Winograd4x4To36Attributes& attr) {
-  ComputeTaskDescriptor desc(definition);
-  desc.shader_source = GetKernelWinograd4x4To36TileX6();
+  Winograd4x4To36TileX6 desc(definition, attr);
+  desc.code_ = GetKernelWinograd4x4To36TileX6();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -471,46 +481,26 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
   buf_desc.data = GetByteBufferConverted(bt_aligned, data_type);
   buf_desc.size = buf_desc.data.size();
 
-  desc.args.AddObject("bt_arr",
-                      absl::make_unique<BufferDescriptor>(std::move(buf_desc)));
+  desc.args_.AddObject(
+      "bt_arr", absl::make_unique<BufferDescriptor>(std::move(buf_desc)));
 
-  desc.args.AddInt("padding_x", -attr.padding.prepended.w);
-  desc.args.AddInt("padding_y", -attr.padding.prepended.h);
-  desc.args.AddInt("tiles_x");
-  desc.args.AddInt("tiles_y");
+  desc.args_.AddInt("padding_x", -attr.padding.prepended.w);
+  desc.args_.AddInt("padding_y", -attr.padding.prepended.h);
+  desc.args_.AddInt("tiles_x");
+  desc.args_.AddInt("tiles_y");
 
-  desc.update_function = {[attr](const std::vector<BHWC>& src_shapes,
-                                 const std::vector<BHWC>& dst_shapes,
-                                 ArgumentsBinder* args) -> absl::Status {
-    int new_width = src_shapes[0].w + attr.padding.prepended.w +
-                    attr.padding.appended.w - 2;
-    int new_height = src_shapes[0].h + attr.padding.prepended.h +
-                     attr.padding.appended.h - 2;
-    int tiles_x = DivideRoundUp(new_width, 4);
-    int tiles_y = DivideRoundUp(new_height, 4);
-    RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
-    RETURN_IF_ERROR(args->SetInt("tiles_y", tiles_x * tiles_y));
-    return absl::OkStatus();
-  }};
-
-  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
-                            const std::vector<BHWC>& dst_shapes) {
-    const uint3 groups_size{4, 6, 1};
-    int grid_x = dst_shapes[0].w;
-    int grid_y = 6;
-    int grid_z = DivideRoundUp(dst_shapes[0].c, 4);
-    int groups_x = DivideRoundUp(grid_x, groups_size.x);
-    int groups_y = DivideRoundUp(grid_y, groups_size.y);
-    int groups_z = DivideRoundUp(grid_z, groups_size.z);
-    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
-  };
+  desc.work_group_size_ = int3(4, 6, 1);
   return desc;
 }
 
-ComputeTaskDescriptor Winograd36To4x4(const OperationDef& definition,
+int3 Winograd36To4x4::GetGridSize() const {
+  return int3(src_[0]->Width(), 1, src_[0]->Slices());
+}
+
+Winograd36To4x4 CreateWinograd36To4x4(const OperationDef& definition,
                                       const Winograd36To4x4Attributes& attr) {
-  ComputeTaskDescriptor desc(definition);
-  desc.shader_source = GetKernelWinograd36To4x4();
+  Winograd36To4x4 desc(definition);
+  desc.code_ = GetKernelWinograd36To4x4();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -523,27 +513,31 @@ ComputeTaskDescriptor Winograd36To4x4(const OperationDef& definition,
       attr.biases.data, data_type, AlignByN(attr.output_shape.c, 4));
   bias_desc.size = bias_desc.data.size();
 
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
-  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
-                            const std::vector<BHWC>& dst_shapes) {
-    const uint3 groups_size{32, 1, 1};
-    int grid_x = src_shapes[0].w;
-    int grid_y = 1;
-    int grid_z = DivideRoundUp(src_shapes[0].c, 4);
-    int groups_x = DivideRoundUp(grid_x, groups_size.x);
-    int groups_y = DivideRoundUp(grid_y, groups_size.y);
-    int groups_z = DivideRoundUp(grid_z, groups_size.z);
-    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
-  };
+  desc.work_group_size_ = int3(32, 1, 1);
   return desc;
 }
 
-ComputeTaskDescriptor Winograd36To4x4Tile4x1(
+int3 Winograd36To4x4Tile4x1::GetGridSize() const {
+  const int tiles_x = DivideRoundUp(dst_[0]->Width(), 4);
+  const int tiles_y = DivideRoundUp(dst_[0]->Height(), 4);
+  return int3(tiles_x * tiles_y, 4, dst_[0]->Slices());
+}
+
+absl::Status Winograd36To4x4Tile4x1::BindArguments(ArgumentsBinder* args) {
+  const int tiles_x = DivideRoundUp(dst_[0]->Width(), 4);
+  const int tiles_y = DivideRoundUp(dst_[0]->Height(), 4);
+  RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
+  RETURN_IF_ERROR(args->SetInt("tiles_y", tiles_y));
+  return absl::OkStatus();
+}
+
+Winograd36To4x4Tile4x1 CreateWinograd36To4x4Tile4x1(
     const OperationDef& definition, const Winograd36To4x4Attributes& attr) {
-  ComputeTaskDescriptor desc(definition);
-  desc.shader_source = GetKernelWinograd36To4x4Tile4x1();
+  Winograd36To4x4Tile4x1 desc(definition);
+  desc.code_ = GetKernelWinograd36To4x4Tile4x1();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -566,7 +560,7 @@ ComputeTaskDescriptor Winograd36To4x4Tile4x1(
       attr.biases.data, data_type, AlignByN(attr.output_shape.c, 4));
   bias_desc.size = bias_desc.data.size();
 
-  desc.args.AddObject(
+  desc.args_.AddObject(
       "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
   BufferDescriptor buf_desc;
@@ -575,35 +569,13 @@ ComputeTaskDescriptor Winograd36To4x4Tile4x1(
   buf_desc.data = GetByteBufferConverted(at_aligned, data_type);
   buf_desc.size = buf_desc.data.size();
 
-  desc.args.AddObject("at_arr",
-                      absl::make_unique<BufferDescriptor>(std::move(buf_desc)));
+  desc.args_.AddObject(
+      "at_arr", absl::make_unique<BufferDescriptor>(std::move(buf_desc)));
 
-  desc.args.AddInt("tiles_x");
-  desc.args.AddInt("tiles_y");
+  desc.args_.AddInt("tiles_x");
+  desc.args_.AddInt("tiles_y");
 
-  desc.update_function = {[attr](const std::vector<BHWC>& src_shapes,
-                                 const std::vector<BHWC>& dst_shapes,
-                                 ArgumentsBinder* args) -> absl::Status {
-    const int tiles_x = DivideRoundUp(dst_shapes[0].w, 4);
-    const int tiles_y = DivideRoundUp(dst_shapes[0].h, 4);
-    RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
-    RETURN_IF_ERROR(args->SetInt("tiles_y", tiles_y));
-    return absl::OkStatus();
-  }};
-
-  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
-                            const std::vector<BHWC>& dst_shapes) {
-    const uint3 groups_size{8, 4, 1};
-    const int tiles_x = DivideRoundUp(dst_shapes[0].w, 4);
-    const int tiles_y = DivideRoundUp(dst_shapes[0].h, 4);
-    int grid_x = tiles_x * tiles_y;
-    int grid_y = 4;
-    int grid_z = DivideRoundUp(dst_shapes[0].c, 4);
-    int groups_x = DivideRoundUp(grid_x, groups_size.x);
-    int groups_y = DivideRoundUp(grid_y, groups_size.y);
-    int groups_z = DivideRoundUp(grid_z, groups_size.z);
-    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
-  };
+  desc.work_group_size_ = int3(8, 4, 1);
   return desc;
 }
 

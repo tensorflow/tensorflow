@@ -41,6 +41,5 @@ tf_py_test(
         ":pad_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:test_utils",
-        "//tensorflow/python:is_mlir_bridge_test_false",
     ],
 )

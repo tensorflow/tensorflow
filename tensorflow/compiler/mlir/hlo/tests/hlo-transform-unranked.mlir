@@ -90,10 +90,10 @@ func @tan(%a : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[NUM_ELEMENTS:.*]] = shape.num_elements %[[SHAPE]]
   // CHECK: %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[NUM_ELEMENTS]] : tensor<1xindex>
   // CHECK: %[[FLAT_A:.*]] = "mhlo.dynamic_reshape"(%[[A]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
-  // CHECK: %[[FLAT_B:.*]] = chlo.tan %[[FLAT_A]] : tensor<?xf32>
+  // CHECK: %[[FLAT_B:.*]] = chlo.tan %[[FLAT_A]] : tensor<?xf32> -> tensor<?xf32>
   // CHECK: %[[B:.*]] = "mhlo.dynamic_reshape"(%[[FLAT_B]], %[[SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
   // CHECK: return %[[B]] : tensor<*xf32>
-  %result = chlo.tan %a : tensor<*xf32>
+  %result = chlo.tan %a : tensor<*xf32> -> tensor<*xf32>
   return %result : tensor<*xf32>
 }
 

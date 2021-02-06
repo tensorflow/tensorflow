@@ -249,6 +249,10 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr);
     case HloOpcode::kAdd:
       return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+    case HloOpcode::kAllToAll:
+      return EmitAllToAllOp(instr);
+    case HloOpcode::kAllGather:
+      return EmitAllGatherOp(instr);
     case HloOpcode::kAllReduce:
       return EmitAllReduceOp(instr);
     case HloOpcode::kAnd:
@@ -265,6 +269,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpWithoutAttrs<lmhlo::CbrtOp>(instr);
     case HloOpcode::kClamp:
       return CreateOpWithoutAttrs<lmhlo::ClampOp>(instr);
+    case HloOpcode::kCollectivePermute:
+      return EmitCollectivePermuteOp(instr);
     case HloOpcode::kClz:
       return CreateOpWithoutAttrs<lmhlo::ClzOp>(instr);
     case HloOpcode::kCompare:
@@ -323,6 +329,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpWithoutAttrs<lmhlo::OrOp>(instr);
     case HloOpcode::kOutfeed:
       return EmitOutfeedOp(instr);
+    case HloOpcode::kPartitionId:
+      return CreateOpWithoutAttrs<lmhlo::PartitionIdOp>(instr);
     case HloOpcode::kPad:
       return EmitPadOp(instr);
     case HloOpcode::kPopulationCount:
@@ -339,6 +347,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitReduceWindowOp(instr);
     case HloOpcode::kRemainder:
       return CreateOpWithoutAttrs<lmhlo::RemOp>(instr);
+    case HloOpcode::kReplicaId:
+      return CreateOpWithoutAttrs<lmhlo::ReplicaIdOp>(instr);
     case HloOpcode::kReverse:
       return EmitReverseOp(instr);
     case HloOpcode::kRoundNearestAfz:
@@ -1004,25 +1014,85 @@ StatusOr<lmhlo::ReducePrecisionOp> LhloDialectEmitter::EmitReducePrecisionOp(
   return reduce_precision_op;
 }
 
+namespace {
+template <typename OpT>
+void SetupChannelIdAttribute(OpT op, const xla::HloChannelInstruction* instr,
+                             mlir::Builder builder) {
+  if (instr->channel_id().has_value()) {
+    op.channel_idAttr(mlir::mhlo::ChannelHandle::get(
+        builder.getI64IntegerAttr(*instr->channel_id()),
+        builder.getI64IntegerAttr(0), builder.getContext()));
+  }
+}
+
+template <typename OpT>
+Status SetupCommonCollectiveOpAttributes(OpT op, const HloInstruction* instr,
+                                         mlir::OpBuilder& builder) {
+  auto* collective = xla::Cast<xla::HloCollectiveInstruction>(instr);
+  auto replica_groups_attr = xla::HloFunctionImporter::ConvertReplicaGroups(
+      collective->replica_groups(), &builder);
+  op->setAttr(replica_groups_attr.first, replica_groups_attr.second);
+  op.constrain_layoutAttr(builder.getBoolAttr(collective->constrain_layout()));
+  SetupChannelIdAttribute(op, collective, builder);
+  return Status::OK();
+}
+}  // namespace
+
+StatusOr<lmhlo::AllToAllOp> LhloDialectEmitter::EmitAllToAllOp(
+    const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto all_to_all_op,
+                      CreateOpWithoutAttrs<lmhlo::AllToAllOp>(instr));
+  auto* all_to_all = xla::Cast<xla::HloAllToAllInstruction>(instr);
+  TF_RETURN_IF_ERROR(
+      SetupCommonCollectiveOpAttributes(all_to_all_op, instr, builder_));
+  if (all_to_all->split_dimension().has_value()) {
+    all_to_all_op.split_dimensionAttr(
+        builder_.getI64IntegerAttr(*all_to_all->split_dimension()));
+  }
+  return all_to_all_op;
+}
+
+StatusOr<lmhlo::AllGatherOp> LhloDialectEmitter::EmitAllGatherOp(
+    const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto all_gather_op,
+                      CreateOpWithoutAttrs<lmhlo::AllGatherOp>(instr));
+  auto* all_gather = xla::Cast<xla::HloAllGatherInstruction>(instr);
+  TF_RETURN_IF_ERROR(
+      SetupCommonCollectiveOpAttributes(all_gather_op, instr, builder_));
+  all_gather_op.use_global_device_idsAttr(
+      builder_.getBoolAttr(all_gather->use_global_device_ids()));
+  all_gather_op.all_gather_dimensionAttr(
+      builder_.getI64IntegerAttr(all_gather->all_gather_dimension()));
+  return all_gather_op;
+}
+
 StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
     const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto all_reduce_op,
                       CreateOpWithoutAttrs<lmhlo::AllReduceOp>(instr));
   auto* all_reduce = xla::Cast<xla::HloAllReduceInstruction>(instr);
-  auto replica_groups_attr = xla::HloFunctionImporter::ConvertReplicaGroups(
-      all_reduce->replica_groups(), builder_);
-  all_reduce_op->setAttr(replica_groups_attr.first, replica_groups_attr.second);
-  all_reduce_op.constrain_layoutAttr(
-      builder_.getBoolAttr(all_reduce->constrain_layout()));
-  all_reduce_op.channel_idAttr(mlir::mhlo::ChannelHandle::get(
-      builder_.getI64IntegerAttr(all_reduce->channel_id().value_or(0)),
-      builder_.getI64IntegerAttr(0), builder_.getContext()));
+  TF_RETURN_IF_ERROR(
+      SetupCommonCollectiveOpAttributes(all_reduce_op, instr, builder_));
   all_reduce_op.use_global_device_idsAttr(
       builder_.getBoolAttr(all_reduce->use_global_device_ids()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *instr->called_computations()[0], &all_reduce_op.computation(),
       &builder_));
   return all_reduce_op;
+}
+
+StatusOr<lmhlo::CollectivePermuteOp>
+LhloDialectEmitter::EmitCollectivePermuteOp(const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto permute_op,
+                      CreateOpWithoutAttrs<lmhlo::CollectivePermuteOp>(instr));
+  auto* permute = xla::Cast<xla::HloCollectivePermuteInstruction>(instr);
+  SetupChannelIdAttribute(permute_op, permute, builder_);
+  mlir::NamedAttribute source_target_pairs_attr =
+      xla::HloFunctionImporter::ConvertSourceTargetPairs(
+          permute->source_target_pairs(), &builder_);
+  permute_op->setAttr(source_target_pairs_attr.first,
+                      source_target_pairs_attr.second);
+  return permute_op;
 }
 
 StatusOr<lmhlo::InfeedOp> LhloDialectEmitter::EmitInfeedOp(
@@ -1269,7 +1339,7 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
           "Failed to get strides and offset from the output type.");
     result = builder_.create<MemRefReinterpretCastOp>(
         loc, out_memref_type, result, out_offset, out_memref_type.getShape(),
-        out_strides, llvm::None, llvm::None, llvm::None);
+        out_strides);
   }
   return cached_value = result;
 }
@@ -1309,6 +1379,9 @@ Status LhloDialectEmitter::GetOrCreateView(
 }
 
 Status LhloDialectEmitter::Initialize() {
+  mlir::IntegerAttr unique_id =
+      builder_.getI32IntegerAttr(computation_.parent()->unique_id());
+  module_->setAttr("hlo.unique_id", unique_id);
   std::string function_name =
       computation_.name().empty() ? "__compute" : computation_.name();
 

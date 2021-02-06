@@ -80,6 +80,10 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr char kRepicationAttr[] = "mhlo.is_same_data_across_replicas";
 
+// Array attribute. Same shape as infeed result, but contains a
+// minor_to_major array for every tensor.
+constexpr char kLayoutAttr[] = "layout";
+
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
 // pointer. In particular, PrecisionConfig is passed to xla::Dot and xla::Conv
@@ -189,19 +193,7 @@ static std::vector<std::pair<int64, int64>> Convert_source_target_pairs(
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
     mlir::DenseIntElementsAttr groups) {
-  uint64_t num_groups = groups.getType().getDimSize(0);
-  uint64_t group_size = groups.getType().getDimSize(1);
-
-  std::vector<xla::ReplicaGroup> result;
-  result.reserve(num_groups);
-  for (uint64_t i = 0; i < num_groups; ++i) {
-    xla::ReplicaGroup group;
-    for (uint64_t j = 0; j < group_size; ++j) {
-      group.add_replica_ids(groups.getValue<int64_t>({i, j}));
-    }
-    result.push_back(group);
-  }
-  return result;
+  return xla::ConvertReplicaGroups(groups).ValueOrDie();
 }
 
 // Converts StringRef to xla Transpose enum.
@@ -1189,6 +1181,54 @@ xla::Layout ExtractLayout(mlir::Operation* op, int rank) {
   return xla::LayoutUtil::MakeDescendingLayout(rank);
 }
 
+LogicalResult ConvertLayout(mlir::Operation* op, const mlir::ArrayAttr& layout,
+                            xla::ShapeProto* shape) {
+  // In the case of tuples, ShapeProtos can be nested, and so can the mlir
+  // attribute describing the layout. So recurse into the subshapes in both data
+  // structures in parallel.
+  if (shape->element_type() == xla::TUPLE) {
+    auto subshapes = shape->mutable_tuple_shapes();
+    if (layout.size() != subshapes->size()) {
+      op->emitOpError() << "Expected layout of size " << layout.size()
+                        << ", but found " << subshapes->size();
+      return failure();
+    }
+    for (int i = 0; i < subshapes->size(); i++) {
+      mlir::Attribute child = layout[i];
+      if (child.isa<mlir::UnitAttr>()) {
+        // ignore unit attributes, they are used only for tokens.
+        continue;
+      }
+      mlir::ArrayAttr c = child.dyn_cast<mlir::ArrayAttr>();
+      if (!c) {
+        op->emitOpError() << "Type Error: Expected layout array attribute";
+        return failure();
+      }
+      if (failed(ConvertLayout(op, c, subshapes->Mutable(i)))) {
+        return failure();
+      }
+    }
+  } else {
+    int rank = shape->dimensions().size();
+    if (rank) {
+      if (layout.size() != rank) {
+        return failure();  // pass error down
+      }
+      std::vector<int64> array(rank);
+      for (int i = 0; i < rank; i++) {
+        mlir::IntegerAttr attr = layout[i].dyn_cast<mlir::IntegerAttr>();
+        if (!attr) {
+          op->emitOpError() << "Type Error: Expected layout integer attribute";
+          return failure();
+        }
+        array[i] = attr.getInt();
+      }
+      *shape->mutable_layout() = xla::LayoutUtil::MakeLayout(array).ToProto();
+    }
+  }
+  return success();
+}
+
 LogicalResult ConvertToHloModule::Lower(
     mlir::Operation* inst, bool is_entry_function,
     llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
@@ -1198,14 +1238,33 @@ LogicalResult ConvertToHloModule::Lower(
   *return_value = xla::XlaOp();
 
   // See MlirToHloConversionOptions for more about layouts.
-  auto propagate_layouts = [this](mlir::Operation* inst, xla::XlaOp xla_op) {
+  auto propagate_layouts = [this](mlir::Operation* inst,
+                                  xla::XlaOp xla_op) -> mlir::LogicalResult {
     if (options_.propagate_layouts) {
       auto* shape = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
                         ->mutable_shape();
       if (shape->tuple_shapes().empty())
+        // TODO(kramm): merge this with ConvertLayout.
         *shape->mutable_layout() =
             ExtractLayout(inst, shape->dimensions().size()).ToProto();
     }
+
+    // For infeed ops stemming back to InfeedDequeueTuple, respect the layout
+    // attribute, and create the corresponding layout in hlo.
+    if (isa<mhlo::InfeedOp>(inst)) {
+      mlir::ArrayAttr layout =
+          inst->getAttrOfType<mlir::ArrayAttr>(kLayoutAttr);
+      if (layout) {
+        xla::ShapeProto* shape =
+            xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
+                ->mutable_shape();
+
+        if (failed(ConvertLayout(inst, layout, shape))) {
+          return failure();
+        }
+      }
+    }
+    return success();
   };
 
   if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder}))) {
@@ -1216,7 +1275,9 @@ LogicalResult ConvertToHloModule::Lower(
             "inst has a result, but it's not found in value_lowering");
         return failure();
       }
-      propagate_layouts(inst, iter->second);
+      if (failed(propagate_layouts(inst, iter->second))) {
+        return failure();
+      }
     }
     return success();
   }
@@ -1243,7 +1304,9 @@ LogicalResult ConvertToHloModule::Lower(
     if (failed(GetXlaOp(operand, value_map, &xla_operand, op)))
       return failure();
     value_map[op.getResult()] = xla_operand;
-    propagate_layouts(inst, xla_operand);
+    if (failed(propagate_layouts(inst, xla_operand))) {
+      return failure();
+    }
     return success();
   }
 

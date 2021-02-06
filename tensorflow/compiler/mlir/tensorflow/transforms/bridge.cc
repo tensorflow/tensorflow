@@ -77,7 +77,14 @@ tensorflow::Status RunTPUBridge(
 }  // namespace
 
 void CreateTPUBridgePipeline(OpPassManager &pm) {
-  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorGraphPruningPass());
+  // The following ops must be preserved regardless of reachability. Ideally,
+  // all graphs should have control dependencies to enforce this but this is
+  // currently not the case (see b/177478741).
+  const llvm::SmallVector<std::string, 4> ops_to_preserve = {
+      "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
+      "tf.TPUReplicatedInput", "tf.TPUReplicatedOutput"};
+  pm.addNestedPass<FuncOp>(
+      tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
   // It is assumed at this stage there are no V1 control flow ops as Graph
   // functionalization is ran before import. Ops can be lifted out of
   // tf_executor dialect islands/graphs.
@@ -108,7 +115,6 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(createCSEPass());
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
-  pm.addPass(CreateTPUOutsideCompilationClusterPass());
   pm.addPass(CreateTPUExtractOutsideCompilationPass());
 
   pm.addNestedPass<FuncOp>(TFDevice::CreateClusterConstantSinkingPass());

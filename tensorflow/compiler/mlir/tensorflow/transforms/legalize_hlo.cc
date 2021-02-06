@@ -98,6 +98,11 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
             input_feature_dimension);
     int feature_group_count = conv_op.feature_group_count();
 
+    if (feature_group_count != 1 && feature_group_count != input_channels) {
+      // Group convolution is not supported yet.
+      return failure();
+    }
+
     const bool is_depthwise_conv = input_channels == feature_group_count;
     std::string padding;
 
@@ -124,7 +129,7 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
     }
 
     CreateConvOp(conv_op, strides, padding, dilation, is_depthwise_conv,
-                 rewriter);
+                 input_channels, rewriter);
     return success();
   };
 
@@ -153,12 +158,26 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
 
   void CreateConvOp(mhlo::ConvOp conv_op, ArrayRef<int64_t> strides,
                     StringRef padding, ArrayRef<int64_t> dilation,
-                    bool is_depthwise_conv,
+                    bool is_depthwise_conv, int input_channels,
                     ConversionPatternRewriter &rewriter) const {
     // TODO(chhe): To support more data formats other than "NHWC".
     if (is_depthwise_conv) {
+      // Reshapes filter format to [filter_height, filter_width, in_channels,
+      // channel_multiplier] from HLO's [filter_height, filter_width, 1,
+      // in_channels * channel_multiplier] format.
+      auto filter_type = conv_op.rhs().getType().cast<ShapedType>();
+      llvm::ArrayRef<int64_t> hlo_filter_shape = filter_type.getShape();
+      llvm::SmallVector<int64_t, 4> tf_filter_shape(hlo_filter_shape.begin(),
+                                                    hlo_filter_shape.end());
+      tf_filter_shape[2] = input_channels;
+      tf_filter_shape[3] = hlo_filter_shape.back() / input_channels;
+      auto reshaped_filter = rewriter.create<mhlo::ReshapeOp>(
+          conv_op.rhs().getLoc(),
+          RankedTensorType::get(tf_filter_shape, filter_type.getElementType()),
+          conv_op.rhs());
+
       rewriter.replaceOpWithNewOp<DepthwiseConv2dNativeOp>(
-          conv_op, conv_op.getType(), conv_op.lhs(), conv_op.rhs(),
+          conv_op, conv_op.getType(), conv_op.lhs(), reshaped_filter,
           rewriter.getI64ArrayAttr(strides),
           /*padding=*/rewriter.getStringAttr(padding),
           /*explicit_paddings=*/rewriter.getI64ArrayAttr({}),

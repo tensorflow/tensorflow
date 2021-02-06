@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
 
-GENERATE_BINARY_KERNEL(LogicalAnd, i1, DT_BOOL, bool);
+GENERATE_BINARY_GPU_KERNEL(LogicalAnd, i1, DT_BOOL, bool);
 // LogicalAnd does not have a "T" attribute because it only works with type
 // bool. So we need to register it without TypeConstraint<bool>("T").
-REGISTER_KERNEL_NO_TYPE_CONSTRAINT(LogicalAnd, i1);
+REGISTER_GPU_KERNEL_NO_TYPE_CONSTRAINT(LogicalAnd, i1, i1);
 
 }  // namespace tensorflow

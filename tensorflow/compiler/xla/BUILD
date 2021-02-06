@@ -264,6 +264,7 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/time",
     ],
 )
@@ -343,6 +344,7 @@ tf_cc_test(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test_benchmark",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/strings",
     ],

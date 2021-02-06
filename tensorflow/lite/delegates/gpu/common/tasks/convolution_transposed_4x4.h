@@ -84,7 +84,8 @@ class ConvolutionTransposed4x4 : public GPUOperation {
   std::vector<int> GetSpatialWeightsRemap() const;
 
   std::string GenerateConvolutionTransposedCode(
-      const OperationDef& op_def, WeightsUploadType weights_upload_type);
+      const GpuInfo& gpu_info, const OperationDef& op_def,
+      WeightsUploadType weights_upload_type);
 };
 
 template <DataType T>

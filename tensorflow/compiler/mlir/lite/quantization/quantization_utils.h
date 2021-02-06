@@ -86,9 +86,10 @@ typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
 // scales.
 QuantizedType DownCastScale(QuantizedType type,
                             const SmallVectorImpl<double>& mins,
-                            const SmallVectorImpl<double>& maxs);
+                            const SmallVectorImpl<double>& maxs, Location loc);
 
-QuantizedType DownCastScale(QuantizedType type, double min, double max);
+QuantizedType DownCastScale(QuantizedType type, double min, double max,
+                            Location loc);
 
 template <typename Q, typename DQ>
 struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
@@ -128,7 +129,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
                                       maxs, narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
-        quant_type = DownCastScale(quant_type, mins, maxs);
+        quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
@@ -143,7 +144,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
                                       narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
-        quant_type = DownCastScale(quant_type, rmin, rmax);
+        quant_type = DownCastScale(quant_type, rmin, rmax, op->getLoc());
       }
     } else {
       return failure();
@@ -152,6 +153,8 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     rewriter.setInsertionPointAfter(op.getOperation());
     Type result_type = quant_type.castFromExpressedType(op.getType());
     auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg());
+    q->setAttr(kVolatileOpAttrName, rewriter.getUnitAttr());
+
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
     op.getResult().replaceAllUsesWith(dq);
     q.getOperation()->replaceUsesOfWith(dq, op.arg());

@@ -41,6 +41,7 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",

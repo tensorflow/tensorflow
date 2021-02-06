@@ -33,8 +33,9 @@ class GraphDecomposePass : public MlirOptimizationPass {
 
   // Whether to run this pass. If this is enabled, the GraphDef will be imported
   // to MLIR even no tf composition file is found.
-  bool IsEnabled(const DeviceSet* device_set, const ConfigProto& config_proto,
-                 const Graph& graph) const override;
+  ::tensorflow::MlirOptimizationPassState GetPassState(
+      const DeviceSet* device_set, const ConfigProto& config_proto,
+      const Graph& graph) const override;
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.
