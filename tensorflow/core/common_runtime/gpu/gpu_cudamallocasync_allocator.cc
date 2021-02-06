@@ -108,10 +108,21 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 #endif
 
   VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator PoolSize " << pool_size;
-  if (reserve_memory) {
-    void* ptr = AllocateRaw(0, pool_size);
+  int64 prealloc_size = 0;
+  // TF_CUDA_MALLOC_ASYNC_PREALLOC=-1 is a special value that
+  // preallocates the total pool size.
+  ReadInt64FromEnvVar("TF_CUDA_MALLOC_ASYNC_PREALLOC", 0,
+                      &prealloc_size);
+  if (prealloc_size == -1) {
+    prealloc_size = pool_size;
+  } else if (reserve_memory) {
+    prealloc_size = pool_size;
+  }
+  if (prealloc_size != 0) {
+    void* ptr = AllocateRaw(0, prealloc_size);
     DeallocateRaw(ptr);
-    VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator reserved the pool";
+    VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator reserved the pool for "
+            << prealloc_size << " bytes";
     ClearStats();
   }
 }
