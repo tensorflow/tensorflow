@@ -584,10 +584,11 @@ void EventForest::ConnectInterThread(
   }
 }
 
-void EventForest::ProcessLegacyRootEvents(
-    const std::vector<int64 /*EventType*/>& root_event_types) {
-  for (int64 root_event_type : root_event_types) {
-    if (auto root_events = gtl::FindOrNull(event_node_map_, root_event_type)) {
+void EventForest::ProcessUserDefinedRootEvents(
+    const std::vector<int64 /*EventType*/>& user_defined_root_event_types) {
+  for (int64 user_defined_root_event_type : user_defined_root_event_types) {
+    if (auto root_events =
+            gtl::FindOrNull(event_node_map_, user_defined_root_event_type)) {
       for (const auto& root_event : *root_events) {
         root_event->SetIsRoot(true);
         root_events_.push_back(root_event.get());
@@ -869,10 +870,11 @@ void EventForest::ConnectTfDataEvents() {
   VLOG(1) << num_matched << " consumer iterators matched.";
 }
 
-void EventForest::GroupEvents(const std::vector<int64>& root_event_types) {
+void EventForest::GroupEvents(
+    const std::vector<int64>& user_defined_root_event_types) {
   ProcessTensorFlowLoop();
   ProcessWorker();
-  ProcessLegacyRootEvents(root_event_types);
+  ProcessUserDefinedRootEvents(user_defined_root_event_types);
   CreateEventGroups();
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
