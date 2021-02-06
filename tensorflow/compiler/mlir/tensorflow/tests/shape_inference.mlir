@@ -991,4 +991,17 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %0 = "tf.Identity"(%arg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>>
     return %0 : tensor<*x!tf.resource<tensor<f32>>>
   }
+
+  // CHECK-LABEL: func @InferFromValueFolding
+  func @InferFromValueFolding(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<*xf32> {
+    %cst1 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+    %mul = "tf.Mul"(%arg0, %arg0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    // Folding will infer that: Pow(%mul, 1.0) -> %mul
+    // However we don't have the actual value for the mul, but we can use the
+    // mul type!
+    // CHECK: tf.Pow
+    // CHECK-SAME: -> tensor<f32>
+    %pow = "tf.Pow"(%mul, %cst1) : (tensor<f32>, tensor<f32>) -> tensor<*xf32>
+    return %pow : tensor<*xf32>
+  }
 }
