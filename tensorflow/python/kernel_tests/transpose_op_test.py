@@ -531,6 +531,22 @@ class TransposeTest(test.TestCase):
     self._testError(
         np.arange(0., 30).reshape([2, 3, 5]), [0, 1, 1], "2 is missing")
 
+  @test_util.run_v1_only("b/120545219")
+  def testComplexScaler(self):
+    # Test case for GitHub issue 46891.
+    for dtype in [np.complex64, np.complex128]:
+      x = np.asarray(1+1j, dtype=dtype)
+      xt = self.evaluate(array_ops.transpose(x, conjugate=True))
+      self.assertAllEqual(xt, np.transpose(x).conj())
+
+  @test_util.run_v1_only("b/120545219")
+  def testComplex1D(self):
+    # Test case for GitHub issue 46891.
+    for dtype in [np.complex64, np.complex128]:
+      x = np.asarray([1+1j], dtype=dtype)
+      xt = self.evaluate(array_ops.transpose(x, conjugate=True))
+      self.assertAllEqual(xt, np.transpose(x).conj())
+
 
 if __name__ == "__main__":
   test.main()

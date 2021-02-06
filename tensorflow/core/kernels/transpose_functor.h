@@ -166,7 +166,6 @@ template <typename Device>
 Status DoTransposeImpl(const Device& d, const Tensor& in,
                        const gtl::ArraySlice<int32> perm, bool conjugate,
                        Tensor* out) {
-  CHECK_GE(in.dims(), 2);
   CHECK_EQ(in.dims(), out->dims());
   CHECK_EQ(in.dims(), perm.size());
   CHECK_EQ(in.dtype(), out->dtype());
