@@ -265,6 +265,9 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
                                     /*missing_ctx_input_prefix=*/0,
                                     input_output_alias);
   OP_REQUIRES_OK(ctx, execution_inputs.status());
+  const bool requires_synchronous_execution =
+      platform_info_.is_on_xla_device() &&
+      !platform_info_.SupportsAsyncExecutableRun();
 
   // Execute the computation.
   VLOG(2) << "Executing computation.";
@@ -277,7 +280,8 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   auto start_time = env->NowMicros();
 
   xla::StatusOr<xla::ExecutionOutput> execution_output;
-  if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId) {
+  if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId ||
+      requires_synchronous_execution) {
     execution_output =
         executable->Run(std::move(*execution_inputs), run_options);
   } else {
@@ -503,6 +507,9 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
         input_output_alias);
     OP_REQUIRES_OK(ctx, execution_inputs.status());
   }
+  const bool requires_synchronous_execution =
+      platform_info_.is_on_xla_device() &&
+      !platform_info_.SupportsAsyncExecutableRun();
 
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
@@ -513,7 +520,8 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   auto start_time = env->NowMicros();
 
   xla::StatusOr<xla::ExecutionOutput> execution_output;
-  if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId) {
+  if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId ||
+      requires_synchronous_execution) {
     execution_output =
         closure.executable()->Run(std::move(*execution_inputs), run_options);
   } else {

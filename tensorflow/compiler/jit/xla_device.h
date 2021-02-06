@@ -61,7 +61,8 @@ class XlaDevice : public LocalDevice {
     Metadata(int device_ordinal, se::Platform* platform,
              const DeviceType& device_type,
              XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-             PaddedShapeFn padded_shape_fn, bool use_multiple_streams);
+             PaddedShapeFn padded_shape_fn, bool use_multiple_streams,
+             bool supports_async_executable_run);
 
     // The index of the device on this host.
     int device_ordinal() const;
@@ -76,6 +77,10 @@ class XlaDevice : public LocalDevice {
 
     bool UseMultipleStreams() const { return use_multiple_streams_; }
 
+    bool SupportsAsyncExecutableRun() const {
+      return supports_async_executable_run_;
+    }
+
    private:
     const int device_ordinal_;
     const DeviceType device_type_;
@@ -83,6 +88,7 @@ class XlaDevice : public LocalDevice {
     XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
     PaddedShapeFn padded_shape_fn_;
     const bool use_multiple_streams_;
+    const bool supports_async_executable_run_;
 
     TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
   };
@@ -118,6 +124,10 @@ class XlaDevice : public LocalDevice {
     // If 'use_multiple_streams' is true, we create separate streams for
     // compute, host-to-device, and device-to-host communication.
     bool use_multiple_streams = false;
+
+    // If 'supports_async_executable_run' is true, then the executables are
+    // allowed to run asynchronously.
+    bool supports_async_executable_run = true;
 
     // A function that describes how the on-host shapes of
     // a) argument and return value, for entry computations
