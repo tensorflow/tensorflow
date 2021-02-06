@@ -111,7 +111,7 @@ ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
   *status = this->FindDeviceFromName(device_name, &device);
   if (!status->ok()) {
     tensorflow::CustomDevice* dev;
-    if (custom_device_op_handler_.FindCustomDeviceFromName(device_name, &dev)) {
+    if (this->FindCustomDeviceFromName(device_name, &dev)) {
       *status = dev->CopyTensorToDevice(handle, &result);
       if (status->ok()) {
         return result;
@@ -128,8 +128,7 @@ ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
     return nullptr;
   }
   tensorflow::CustomDevice* dev;
-  if (custom_device_op_handler_.FindCustomDeviceFromName(handle_device_name,
-                                                         &dev)) {
+  if (this->FindCustomDeviceFromName(handle_device_name, &dev)) {
     *status = dev->CopyTensorFromDevice(handle, device_name, &result);
     if (status->ok()) {
       return result;
@@ -203,8 +202,28 @@ Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
     }
   }
 
+  // Decide to either run the operation on a custom device or copy off all of
+  // the custom device inputs.
+  VariantDevice maybe_custom_device = Device();
+  if (absl::holds_alternative<CustomDevice*>(maybe_custom_device) ||
+      !inputs_are_tensor_handles_) {
+    // If the op wasn't placed on a custom device explicitly and there are no
+    // non-TensorHandle inputs, the op will definitely be placed on a physical
+    // device. Otherwise we need to check the inputs one by one.
+    TF_RETURN_IF_ERROR(
+        eager::MaybePinToCustomDevice(&maybe_custom_device, *this));
+    if (absl::holds_alternative<CustomDevice*>(maybe_custom_device)) {
+      ImmediateExecutionTensorHandle** retval_array =
+          reinterpret_cast<ImmediateExecutionTensorHandle**>(retvals.data());
+      return absl::get<CustomDevice*>(maybe_custom_device)
+          ->Execute(this, retval_array, num_retvals);
+    } else {
+      TF_RETURN_IF_ERROR(CopyOffCustomDeviceInputs());
+    }
+  }
+
   // Run eager placement logic.
-  class Device* device = absl::get<class Device*>(Device());
+  class Device* device = absl::get<class Device*>(maybe_custom_device);
   if (device == nullptr) {
     TF_RETURN_IF_ERROR(eager::MaybePinToResourceDevice(&device, *this));
   }

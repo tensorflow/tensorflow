@@ -36,7 +36,7 @@ void EagerOperation::Clear() {
     h->Unref();
   }
   inputs_.clear();
-  custom_device_tensor_handles_count_ = 0;
+  inputs_are_tensor_handles_ = true;
   ClearInferenceState();
 }
 
@@ -269,7 +269,7 @@ Status EagerOperation::AddInput(AbstractTensorHandle* input) {
       down_cast<ImmediateExecutionTensorHandle*>(input);
   // TODO(b/175427838): It would be nice to be able to use tensorflow::isa here.
   if (CustomDeviceTensorHandle::classof(h)) {
-    custom_device_tensor_handles_count_++;
+    inputs_are_tensor_handles_ = false;
   }
   AddTensorHandle(h);
   return MaybeInferSingleInputAttrs(h);
@@ -281,32 +281,13 @@ Status EagerOperation::AddInputList(
     // TODO(b/175427838): It would be nice to be able to use tensorflow::isa
     // here.
     if (CustomDeviceTensorHandle::classof(input)) {
-      custom_device_tensor_handles_count_++;
+      inputs_are_tensor_handles_ = false;
     }
     ImmediateExecutionTensorHandle* h =
         down_cast<ImmediateExecutionTensorHandle*>(input);
     AddTensorHandle(h);
   }
   return InferInputListAttrs(inputs.size());
-}
-
-Status EagerOperation::SetInput(size_t index,
-                                ImmediateExecutionTensorHandle* input) {
-  if (index >= inputs_.size()) {
-    return errors::InvalidArgument("Index >= inputs.size: %d >= %d", index,
-                                   inputs_.size());
-  }
-  auto* previous = inputs_[index];
-  if (CustomDeviceTensorHandle::classof(previous)) {
-    custom_device_tensor_handles_count_--;
-  }
-  if (CustomDeviceTensorHandle::classof(input)) {
-    custom_device_tensor_handles_count_++;
-  }
-  input->Ref();
-  inputs_[index] = input;
-  previous->Unref();
-  return Status::OK();
 }
 
 Status EagerOperation::Reset(
@@ -426,7 +407,7 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
 
 Status EagerOperation::TensorHandleInputs(
     const absl::InlinedVector<TensorHandle*, 4>** inputs) const {
-  if (TF_PREDICT_TRUE(!HasCustomDeviceInput())) {
+  if (TF_PREDICT_TRUE(inputs_are_tensor_handles_)) {
     *inputs = reinterpret_cast<const absl::InlinedVector<TensorHandle*, 4>*>(
         &inputs_);
     return Status::OK();
@@ -437,7 +418,7 @@ Status EagerOperation::TensorHandleInputs(
 
 Status EagerOperation::MutableTensorHandleInputs(
     absl::InlinedVector<TensorHandle*, 4>** inputs) {
-  if (TF_PREDICT_TRUE(!HasCustomDeviceInput())) {
+  if (TF_PREDICT_TRUE(inputs_are_tensor_handles_)) {
     *inputs =
         reinterpret_cast<absl::InlinedVector<TensorHandle*, 4>*>(&inputs_);
     return Status::OK();
@@ -455,7 +436,14 @@ Status EagerOperation::SetDeviceName(const char* c_name) {
     }
     last_set_device_name_ = name;
     device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
-    device_ = kVariantDeviceNull;
+    CustomDevice* custom_device;
+    if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device)) {
+      device_ = custom_device;
+    } else {
+      // Device placement for physical devices happens lazily in
+      // EagerExecute/EagerRemoteExecute, and can depend on the inputs.
+      device_ = kVariantDeviceNull;
+    }
   }
   return Status::OK();
 }
@@ -505,6 +493,32 @@ void EagerOperation::AddTensorHandle(ImmediateExecutionTensorHandle* h) {
   h->Ref();
   inputs_.push_back(h);
   attrs_.NumInputs(static_cast<int>(inputs_.size()));
+}
+
+Status EagerOperation::CopyOffCustomDeviceInputs() {
+  if (absl::holds_alternative<CustomDevice*>(device_)) {
+    return errors::Internal(
+        "Trying to copy inputs to a custom device op off a custom device.");
+  }
+  for (int i = 0; i < inputs_.size(); ++i) {
+    // TODO(b/175427838): It would be nice to be able to use tensorflow::isa
+    // here.
+    if (CustomDeviceTensorHandle::classof(inputs_[i])) {
+      CustomDeviceTensorHandle* previous =
+          down_cast<CustomDeviceTensorHandle*>(inputs_[i]);
+      class Device* target_device;
+      if (device_ == kVariantDeviceNull) {
+        target_device = ctx_.HostCPU();
+      } else {
+        target_device = absl::get<class Device*>(device_);
+      }
+      TF_RETURN_IF_ERROR(previous->device()->CopyTensorFromDevice(
+          previous, target_device->name(), &inputs_[i]));
+      previous->Unref();
+    }
+  }
+  inputs_are_tensor_handles_ = true;
+  return Status::OK();
 }
 
 }  // namespace tensorflow

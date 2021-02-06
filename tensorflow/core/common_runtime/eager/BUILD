@@ -87,7 +87,6 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
-        ":custom_device_op_handler",
         ":custom_device",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_tensor_internal",
@@ -133,28 +132,6 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
-            "//tensorflow/c/eager:immediate_execution_context",
-            "//tensorflow/c/eager:immediate_execution_tensor_handle",
-            "//tensorflow/c/eager:immediate_execution_operation",
-            "//tensorflow/core/lib/core:status",
-        ],
-    }),
-)
-
-tf_cuda_library(
-    name = "custom_device_op_handler",
-    srcs = ["custom_device_op_handler.cc"],
-    hdrs = ["custom_device_op_handler.h"],
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":custom_device",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
             "//tensorflow/c/eager:immediate_execution_context",
             "//tensorflow/c/eager:immediate_execution_tensor_handle",
             "//tensorflow/c/eager:immediate_execution_operation",
@@ -670,7 +647,6 @@ tf_cuda_library(
         ":custom_device",
         ":attr_builder",
         ":eager_operation",
-        "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
     ] + select({
         "//tensorflow:android": [
@@ -738,7 +714,6 @@ filegroup(
         "attr_builder.h",
         "context.h",
         "custom_device.h",
-        "custom_device_op_handler.h",
         "eager_executor.h",
         "eager_operation.h",
         "kernel_and_device.h",
