@@ -914,15 +914,15 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
       resource_arg_uses, body, &old_to_new_indices,
       &remaining_resource_data_types);
   RemoveUnusedResourceArgumentsAndForwardedRetvals(resource_arg_uses, cond);
-  LiftArgRetResourcesForFunction(
+  (void)LiftArgRetResourcesForFunction(
       body, remaining_resource_data_types,
       [&](int64_t index, Value value) { return_op->setOperand(index, value); });
-  LiftArgRetResourcesForFunction(cond, remaining_resource_data_types,
-                                 [&](int64_t index, Value value) {
-                                   // We already checked that cond should not
-                                   // have variable writes.
-                                   assert(false && "Should not happen");
-                                 });
+  (void)LiftArgRetResourcesForFunction(cond, remaining_resource_data_types,
+                                       [&](int64_t index, Value value) {
+                                         // We already checked that cond should
+                                         // not have variable writes.
+                                         assert(false && "Should not happen");
+                                       });
   // Recreate the while op.
   OpBuilder builder(while_op);
   // Now use the filtered original operands, which will be replaced by
@@ -1019,7 +1019,7 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
     auto new_return =
         builder.create<ReturnOp>(old_return->getLoc(), new_retvals);
     old_return->erase();
-    LiftArgRetResourcesForFunction(
+    (void)LiftArgRetResourcesForFunction(
         branch, remaining_resource_data_types, [&](int64_t index, Value value) {
           new_return.setOperand(resource_arg_to_new_output[index], value);
         });
@@ -1133,7 +1133,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   int64_t num_retvals = retval_indices_to_preserve.size();
   llvm::SmallVector<Value, 4> new_retvals;
   // Lift resources.
-  LiftArgRetResourcesForFunction(
+  (void)LiftArgRetResourcesForFunction(
       callee, remaining_resource_data_types, [&](int64_t index, Value value) {
         result->arg_data_type_and_updated_output_index[index].second =
             num_retvals++;
@@ -1238,19 +1238,19 @@ LogicalResult HoistForControlFlow(
       auto body = while_op.body_function();
       auto cond = while_op.cond_function();
       // Recursively handle the nested control flow.
-      HoistForControlFlow(&body.front(), module, vars_initialized,
-                          lifted_partitioned_call_callees);
-      HoistForControlFlow(&cond.front(), module, vars_initialized,
-                          lifted_partitioned_call_callees);
+      (void)HoistForControlFlow(&body.front(), module, vars_initialized,
+                                lifted_partitioned_call_callees);
+      (void)HoistForControlFlow(&cond.front(), module, vars_initialized,
+                                lifted_partitioned_call_callees);
       if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
       auto then_branch = if_op.then_function();
       auto else_branch = if_op.else_function();
       // Recursively handle the nested control flow.
-      HoistForControlFlow(&then_branch.front(), module, vars_initialized,
-                          lifted_partitioned_call_callees);
-      HoistForControlFlow(&else_branch.front(), module, vars_initialized,
-                          lifted_partitioned_call_callees);
+      (void)HoistForControlFlow(&then_branch.front(), module, vars_initialized,
+                                lifted_partitioned_call_callees);
+      (void)HoistForControlFlow(&else_branch.front(), module, vars_initialized,
+                                lifted_partitioned_call_callees);
       if (failed(HandleCaseOrIfOp(if_op, {then_branch, else_branch})))
         return failure();
     } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
@@ -1258,8 +1258,8 @@ LogicalResult HoistForControlFlow(
       case_op.get_branch_functions(branch_functions);
       for (FuncOp func : branch_functions) {
         // Recursively handle the nested control flow.
-        HoistForControlFlow(&func.front(), module, vars_initialized,
-                            lifted_partitioned_call_callees);
+        (void)HoistForControlFlow(&func.front(), module, vars_initialized,
+                                  lifted_partitioned_call_callees);
       }
       if (failed(HandleCaseOrIfOp(case_op, branch_functions))) return failure();
     } else if (auto call_op = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
@@ -1283,8 +1283,8 @@ LogicalResult HoistForControlFlow(
       }
     } else if (isa<TF::IfRegionOp, TF::CaseRegionOp, TF::WhileRegionOp>(op)) {
       for (Region& region : op.getRegions())
-        HoistForControlFlow(&region.front(), module, vars_initialized,
-                            lifted_partitioned_call_callees);
+        (void)HoistForControlFlow(&region.front(), module, vars_initialized,
+                                  lifted_partitioned_call_callees);
       LogicalResult result = RegionResourceHoister::ReplaceOpWithNewOp(&op);
       if (failed(result)) return failure();
     }

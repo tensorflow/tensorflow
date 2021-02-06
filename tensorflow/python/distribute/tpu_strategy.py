@@ -38,6 +38,7 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import tpu_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
@@ -1099,7 +1100,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._logical_device_stack.append(logical_device_id)
     try:
-      if tpu_values.enclosing_tpu_context() is None:
+      if tpu_util.enclosing_tpu_context() is None:
         yield
       else:
         with ops.device(tpu.core(logical_device_id)):
@@ -1213,7 +1214,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
   def _reduce_to(self, reduce_op, value, destinations, options):
     if (isinstance(value, values.DistributedValues) or
         tensor_util.is_tf_type(value)
-       ) and tpu_values.enclosing_tpu_context() is not None:
+       ) and tpu_util.enclosing_tpu_context() is not None:
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
         value *= (1. / self._num_replicas_in_sync)
@@ -1260,7 +1261,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
   def _update(self, var, fn, args, kwargs, group):
     assert isinstance(var, tpu_values.TPUVariableMixin) or isinstance(
         var, resource_variable_ops.BaseResourceVariable)
-    if tpu_values.enclosing_tpu_context() is not None:
+    if tpu_util.enclosing_tpu_context() is not None:
       if group:
         return fn(var, *args, **kwargs)
       else:
@@ -1279,7 +1280,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         values_and_devices.append((value, value.device))
 
     if (var.synchronization != variables_lib.VariableSynchronization.ON_READ and
-        var.synchronization != variables_lib.VariableAggregation.NONE):
+        var.aggregation != variables_lib.VariableAggregation.NONE):
       distribute_utils.assert_mirrored(args)
       distribute_utils.assert_mirrored(kwargs)
     for i, value_and_device in enumerate(values_and_devices):
@@ -1317,7 +1318,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # since the `1` gets broadcast as an int32 but global_step is int64.
     if isinstance(tensor, (float, int)):
       return tensor
-    if tpu_values.enclosing_tpu_context() is not None:
+    if tpu_util.enclosing_tpu_context() is not None:
       broadcast_tensor = [tensor for _ in range(self._num_replicas_in_sync)]
       result = tpu_ops.all_to_all(
           broadcast_tensor,
@@ -1437,15 +1438,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       """TF Function used to replicate the user computation."""
       if kwargs is None:
         kwargs = {}
-
-      # Remove None at the end of args as they are not replicatable
-      # If there are None in the middle we can't do anything about it
-      # so let those cases fail.
-      # For example when Keras model predict is used they pass the targets as
-      # None. We want to handle it here so all client libraries don't have to
-      # do this as other strategies can handle None values better.
-      while args and args[-1] is None:
-        args = args[:-1]
 
       # Used to re-structure flattened output tensors from `tpu.replicate()`
       # into a structured format.

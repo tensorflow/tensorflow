@@ -807,9 +807,13 @@ class Function(object):
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0
     return result
 
+  @property
+  def _run_functions_eagerly(self):
+    return RUN_FUNCTIONS_EAGERLY
+
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
-    if RUN_FUNCTIONS_EAGERLY:
+    if self._run_functions_eagerly:
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 

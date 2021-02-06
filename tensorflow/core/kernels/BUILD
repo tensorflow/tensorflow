@@ -798,7 +798,7 @@ cc_library(
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
-        "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
+        "//conditions:default": ["@mkl_dnn_v1//:dnnl_single_threaded"],
     }),
 )
 
@@ -3347,7 +3347,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_op",
     copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]) +
-            if_mlir_experimental_kernels_enabled(if_true = ["-DMLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED=1"]),
+            if_mlir_experimental_kernels_enabled(if_true = ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
     deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
 )
@@ -6079,6 +6079,7 @@ filegroup(
         "decode_wav_op.cc",
         "deep_conv2d.cc",
         "deep_conv2d.h",
+        "depthwise_conv_grad_op.cc",
         "depthwise_conv_op.cc",
         "dynamic_partition_op.cc",
         "eigen_contraction_kernel.cc",
@@ -6287,6 +6288,7 @@ filegroup(
         "//tensorflow/core/kernels/image:sample_distorted_bounding_box_op.cc",
         "//tensorflow/core/kernels/linalg:linalg_ops_common.cc",
         "//tensorflow/core/kernels/linalg:cholesky_op.cc",
+        "//tensorflow/core/kernels/linalg:determinant_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_diag_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_inverse_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_set_diag_op.cc",

@@ -434,7 +434,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
       if (while_region.cond().walk(check_while_cond).wasInterrupted())
         return WalkResult::interrupt();
       // For while region, the body input and output arg should match.
-      CanonicalizeWhileRegion(while_region);
+      (void)CanonicalizeWhileRegion(while_region);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
       FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
       if (!func) return WalkResult::interrupt();

@@ -46,7 +46,7 @@ void TestCastFloatToInt8(const int* input_dims_data, const float* input_data,
   const TfLiteRegistration registration = Register_CAST();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -78,7 +78,7 @@ void TestCastInt8ToFloat(const int* input_dims_data, const int8_t* input_data,
   const TfLiteRegistration registration = Register_CAST();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -96,7 +96,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(CastFloatToInt8) {
   int8_t output_data[6];
-  const int input_dims[] = {1, 3, 2};
+  const int input_dims[] = {2, 3, 2};
 
   // TODO(b/178391195): Test negative and out-of-range numbers.
   const float input_values[] = {100.f, 1.0f, 0.f, 0.4f, 1.999f, 1.1f};
@@ -107,7 +107,7 @@ TF_LITE_MICRO_TEST(CastFloatToInt8) {
 
 TF_LITE_MICRO_TEST(CastInt8ToFloat) {
   float output_data[6];
-  const int input_dims[] = {1, 3, 2};
+  const int input_dims[] = {2, 3, 2};
   const int8_t input_values[] = {123, 0, 1, 2, 3, 4};
   const float golden[] = {123.f, 0.f, 1.f, 2.f, 3.f, 4.f};
   tflite::testing::TestCastInt8ToFloat(input_dims, input_values, golden,

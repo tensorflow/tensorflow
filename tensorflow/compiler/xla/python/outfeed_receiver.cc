@@ -188,8 +188,8 @@ class OutfeedReceiverImpl {
   Status SendShutdownOutfeedHeader(int device_idx);
 
   // Receives a raw Literal from a device outfeed.
-  StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(
-      const PjRtDevice* device, const Shape& shape);
+  StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(PjRtDevice* device,
+                                                           const Shape& shape);
 
   // Enqueues received data in the callbaback queue.
   void EnqueueReceivedData(std::unique_ptr<OutfeedData> received)
@@ -340,7 +340,7 @@ void OutfeedReceiverImpl::EnqueueReceivedData(
 }
 
 StatusOr<std::unique_ptr<Literal>> OutfeedReceiverImpl::ReceiveRawFromOutfeed(
-    const PjRtDevice* device, const Shape& shape) {
+    PjRtDevice* device, const Shape& shape) {
   auto literal = std::make_unique<Literal>(shape);
   TF_RETURN_IF_ERROR(device->TransferFromOutfeed(literal.get()));
   return literal;

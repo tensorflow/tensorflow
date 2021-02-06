@@ -62,9 +62,6 @@ def tflite_copts_warnings():
         ],
         "//conditions:default": [
             "-Wall",
-            # TensorFlow is C++14 at the moment. This flag ensures that we warn
-            # on any code that isn't C++14. Not supported by MSVC.
-            "-Wc++14-compat",
         ],
     })
 

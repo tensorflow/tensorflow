@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "autograph"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "decorator"
     mtype: "<type \'module\'>"
   }
@@ -30,6 +34,10 @@ tf_module {
   }
   member {
     name: "function"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "monitoring"
     mtype: "<type \'module\'>"
   }
   member {

@@ -487,22 +487,22 @@ void TFE_ContextOptionsSetTfrt(TFE_ContextOptions* options, bool use_tfrt) {
 }
 
 TFE_CancellationManager* TFE_NewCancellationManager() {
-  return new TFE_CancellationManager;
+  return tensorflow::wrap(new tensorflow::CancellationManager);
 }
 
 void TFE_CancellationManagerStartCancel(
     TFE_CancellationManager* cancellation_manager) {
-  cancellation_manager->cancellation_manager.StartCancel();
+  tensorflow::unwrap(cancellation_manager)->StartCancel();
 }
 
 bool TFE_CancellationManagerIsCancelled(
     TFE_CancellationManager* cancellation_manager) {
-  return cancellation_manager->cancellation_manager.IsCancelled();
+  return tensorflow::unwrap(cancellation_manager)->IsCancelled();
 }
 
 void TFE_DeleteCancellationManager(
     TFE_CancellationManager* cancellation_manager) {
-  delete cancellation_manager;
+  delete tensorflow::unwrap(cancellation_manager);
 }
 
 void TFE_OpSetCancellationManager(TFE_Op* op,
@@ -510,8 +510,7 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TF_Status* status) {
   tensorflow::EagerOperation* operation =
       tensorflow::OperationFromInterface(tensorflow::unwrap(op));
-  operation->SetCancellationManager(
-      &cancellation_manager->cancellation_manager);
+  operation->SetCancellationManager(tensorflow::unwrap(cancellation_manager));
   status->status = tensorflow::Status::OK();
 }
 

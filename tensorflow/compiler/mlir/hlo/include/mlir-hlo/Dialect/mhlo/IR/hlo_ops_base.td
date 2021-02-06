@@ -99,6 +99,17 @@ def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, HLO_Complex]>;
 // Any pred, int or floating-point tensor types
 def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
 
+// A layout attribute (1D tensor of index type)
+def HLO_LayoutAttr : Attr<
+  And<[IndexElementsAttr.predicate,
+       CPred<[{$_self.cast<::mlir::DenseIntElementsAttr>().getType().getRank()
+               == 1}]>]>,
+  "A 1D tensor of index type (layout)"> {
+  let storageType = IndexElementsAttr.storageType;
+  let returnType = IndexElementsAttr.returnType;
+  let convertFromStorage = IndexElementsAttr.convertFromStorage;
+}
+
 //===----------------------------------------------------------------------===//
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//

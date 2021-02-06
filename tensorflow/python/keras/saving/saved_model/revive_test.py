@@ -178,6 +178,14 @@ class CustomNetworkWithConfigName(CustomNetworkWithConfig):
     self._config_dict['name'] = self.name
 
 
+class UnregisteredCustomSequentialModel(keras.Sequential):
+  # This class is *not* registered in the CustomObjectScope.
+
+  def __init__(self, **kwargs):
+    super(UnregisteredCustomSequentialModel, self).__init__(**kwargs)
+    self.add(keras.layers.InputLayer(input_shape=(2, 3)))
+
+
 class ReviveTestBase(keras_parameterized.TestCase):
 
   def setUp(self):
@@ -317,6 +325,14 @@ class TestModelRevive(ReviveTestBase):
     # Run data through the Model to create save spec and weights.
     x = sparse_ops.from_dense(np.ones((10, 2, 3), dtype=np.float32))
     model.predict(x, batch_size=10)
+    model.save(self.path, save_format='tf')
+    revived = keras_load.load(self.path)
+    self._assert_revived_correctness(model, revived)
+
+  def test_revive_unregistered_sequential(self):
+    model = UnregisteredCustomSequentialModel()
+    x = np.random.random((2, 2, 3)).astype(np.float32)
+    model(x)
     model.save(self.path, save_format='tf')
     revived = keras_load.load(self.path)
     self._assert_revived_correctness(model, revived)

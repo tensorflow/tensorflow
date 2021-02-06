@@ -34,7 +34,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.parallel_for.pfor import PFor
 from tensorflow.python.ops.parallel_for.pfor import PForConfig
 from tensorflow.python.platform import tf_logging as logging
@@ -289,7 +288,6 @@ def _pfor_impl(loop_fn,
                                                 loop_fn_outputs)
 
   # Convert outputs to Tensor if needed.
-  rewrap_as_ndarray = False
   tmp_loop_fn_outputs = []
   for loop_fn_output in nest.flatten(loop_fn_output_tensors):
     if (loop_fn_output is not None and not isinstance(
@@ -301,9 +299,6 @@ def _pfor_impl(loop_fn,
                      " IndexedSlices separately, and handle the vectorized"
                      " outputs directly." % loop_fn_output)
         loop_fn_output = ops.convert_to_tensor(loop_fn_output)
-      elif isinstance(loop_fn_output, np_arrays.ndarray):
-        loop_fn_output = loop_fn_output.data
-        rewrap_as_ndarray = True
       else:
         loop_fn_output = ops.convert_to_tensor(loop_fn_output)
     tmp_loop_fn_outputs.append(loop_fn_output)
@@ -327,8 +322,6 @@ def _pfor_impl(loop_fn,
       flattened_output_tensors = []
       for loop_fn_output in nest.flatten(loop_fn_output_tensors):
         output = converter.convert(loop_fn_output)
-        if rewrap_as_ndarray:
-          output = np_arrays.tensor_to_ndarray(output)
         flattened_output_tensors.append(output)
   else:
     if pfor_config is not None and pfor_config._has_reductions():  # pylint: disable=protected-access
@@ -346,8 +339,6 @@ def _pfor_impl(loop_fn,
       flattened_output_tensors = nest.flatten(loop_fn_output_tensors)
       for loop_fn_output in flattened_output_tensors:
         output = converter.convert(loop_fn_output)
-        if rewrap_as_ndarray:
-          output = np_arrays.tensor_to_ndarray(output)
         remaining_output_tensors.append(output)
 
     with ops.name_scope("pfor_tiled"):
@@ -398,10 +389,6 @@ def _pfor_impl(loop_fn,
             tensor_shape.TensorShape([iters_value]).concatenate(
                 original_output.shape))
 
-      if rewrap_as_ndarray:
-        flattened_output_tensors = [
-            np_arrays.tensor_to_ndarray(x) for x in flattened_output_tensors]
-
   return nest.map_structure_up_to(
       loop_fn_outputs,
       functools.partial(_composite_from_tensors, batch_size=iters_value),
@@ -418,8 +405,6 @@ def _broadcasting_gather(x, i):
   elif static_first_dim is None:
     i = array_ops.where_v2(array_ops.shape(x)[0] > 1, i, 0)
   result = array_ops.gather(x, i)
-  if isinstance(x, np_arrays.ndarray):
-    result = np_arrays.ndarray.from_tensor(result)
   return result
 
 
@@ -548,8 +533,6 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
                             is_batched=True),
           elems))
   def _get_shape(x):
-    if isinstance(x, np_arrays.ndarray):
-      x = x.data
     if x.shape.rank is None:
       return None
     return x.shape.as_list()[0]

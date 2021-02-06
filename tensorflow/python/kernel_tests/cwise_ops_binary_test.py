@@ -960,7 +960,8 @@ class ComparisonOpTest(test.TestCase):
       for f in funcs:
         with self.assertRaisesRegex(
             (ValueError, errors.InvalidArgumentError),
-            "Incompatible shapes|Dimensions must be equal"):
+            "Incompatible shapes|Dimensions must be equal|"
+            "required broadcastable shapes"):
           f(x.astype(t), y.astype(t))
 
   def testEqualDType(self):

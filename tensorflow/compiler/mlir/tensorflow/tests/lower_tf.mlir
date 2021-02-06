@@ -233,6 +233,18 @@ func @rsqrt_grad_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @sqrt_grad_unranked
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<*xcomplex<f32>>, %[[ARG1:.*]]: tensor<*xcomplex<f32>>)
+func @sqrt_grad_unranked(%arg0: tensor<*xcomplex<f32>>, %arg1: tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>> {
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<(5.000000e-01,0.000000e+00)> : tensor<complex<f32>>} : () -> tensor<complex<f32>>
+  // CHECK: %[[MUL:.*]] = "tf.Mul"(%arg1, %[[CST]]) : (tensor<*xcomplex<f32>>, tensor<complex<f32>>) -> tensor<*xcomplex<f32>>
+  // CHECK: %[[RET:.*]] = "tf.Div"(%[[MUL]], %arg0) : (tensor<*xcomplex<f32>>, tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>>
+
+  %0 = "tf.SqrtGrad"(%arg0, %arg1) : (tensor<*xcomplex<f32>>, tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>>
+  // CHECK: return %[[RET]]
+  return %0 : tensor<*xcomplex<f32>>
+}
+
 // %input has 1 batch dimension then 2 block dimensions then 1 remainder
 // dimension.
 // CHECK-LABEL: fourdim_space_to_batch_nd

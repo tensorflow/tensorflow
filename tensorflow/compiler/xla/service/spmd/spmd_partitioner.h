@@ -49,6 +49,9 @@ struct SpmdPartitionerOptions {
   // Whether unroll windowed einsum loop by degree of two.
   bool unroll_windowed_einsum = false;
 
+  // Whether doing bidirectional collective permute in windowed einsum loop.
+  bool bidirectional_windowed_einsum = false;
+
   // Whether the entry computations' signature could change after partitioning.
   bool allow_module_signature_change = false;
 

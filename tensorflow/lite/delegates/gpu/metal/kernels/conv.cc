@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -156,7 +155,7 @@ std::string GenerateUploadByThreads(const std::string& local_ptr_name,
 }
 
 std::string GenerateConvolution(const ConvolutionGeneric::ConvParams& params,
-                                CalculationsPrecision precision) {
+                                const OperationDef& definition) {
   GlobalIdsParams ids_params;
   ids_params.group_ids = {"group_id.x", "group_id.y", "group_id.z"};
   ids_params.global_ids = {"ugid.x", "ugid.y", "ugid.z"};
@@ -345,9 +344,16 @@ kernel void ComputeFunction(
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
       const std::string s_yx = s_y + s_x;
-      c += "  device FLT4* src_loc_" + s_yx +
-           " = args.src_tensor.GetHandle() + args.src_tensor.GetWHOffset(c_x" +
-           s_x + ", c_y" + s_y + ");\n";
+      if (definition.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
+        c +=
+            "  device FLT4* src_loc_" + s_yx +
+            " = args.src_tensor.GetHandle() + args.src_tensor.GetWHOffset(c_x" +
+            s_x + ", c_y" + s_y + ");\n";
+      } else if (definition.src_tensors[0].storage_type ==
+                 TensorStorageType::IMAGE_BUFFER) {
+        c += "  int src_loc_" + s_yx + " = args.src_tensor.GetWHOffset(c_x" +
+             s_x + ", c_y" + s_y + ");\n";
+      }
     }
   }
   c += "  int s = 0;\n";
@@ -390,10 +396,23 @@ kernel void ComputeFunction(
     for (int y = 0; y < params.block_size.y; ++y) {
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_yx = std::to_string(y) + std::to_string(x);
-        if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
-          c += "    src" + s_yx + " = *src_loc_" + s_yx + " * m" + s_yx + ";\n";
-        } else {
-          c += "    src" + s_yx + " = *src_loc_" + s_yx + ";\n";
+        if (definition.src_tensors[0].storage_type ==
+            TensorStorageType::BUFFER) {
+          if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
+            c += "    src" + s_yx + " = *src_loc_" + s_yx + " * m" + s_yx +
+                 ";\n";
+          } else {
+            c += "    src" + s_yx + " = *src_loc_" + s_yx + ";\n";
+          }
+        } else if (definition.src_tensors[0].storage_type ==
+                   TensorStorageType::IMAGE_BUFFER) {
+          if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
+            c += "    src" + s_yx + " = args.src_tensor.Read(src_loc_" + s_yx +
+                 ") * m" + s_yx + ";\n";
+          } else {
+            c += "    src" + s_yx + " = args.src_tensor.Read(src_loc_" + s_yx +
+                 ");\n";
+          }
         }
       }
     }
@@ -432,7 +451,7 @@ kernel void ComputeFunction(
                    ", " + s_val + ");\n";
             } else {  // WeightsInnerBlockLayout::I404
               std::string temp_sum = f_val + " * " + s_val + "." + channels[ch];
-              if (precision == CalculationsPrecision::F32_F16) {
+              if (definition.precision == CalculationsPrecision::F32_F16) {
                 temp_sum = "float4(" + temp_sum + ")";
               }
               c += "    " + r_val + " += " + temp_sum + ";\n";
@@ -951,7 +970,7 @@ ConvolutionGeneric CreateConvolutionGeneric(const OperationDef& definition,
 
   ConvolutionGeneric desc(definition);
   desc.params_ = params;
-  desc.code_ = GenerateConvolution(params, definition.precision);
+  desc.code_ = GenerateConvolution(params, definition);
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
@@ -1057,7 +1076,7 @@ ConvolutionGeneric CreateConvolutionWino4x4To6x6(
 
   ConvolutionGeneric desc(definition);
   desc.params_ = params;
-  desc.code_ = GenerateConvolution(params, definition.precision);
+  desc.code_ = GenerateConvolution(params, definition);
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 

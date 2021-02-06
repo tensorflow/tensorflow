@@ -53,7 +53,9 @@ static std::unique_ptr<OpKernel> BuildOpKernel(OpKernelConstruction* c,
 class CollectiveOpV1Kernel : public AsyncOpKernel {
  public:
   explicit CollectiveOpV1Kernel(OpKernelConstruction* c)
-      : AsyncOpKernel(c), name_(name()) {}
+      : AsyncOpKernel(c), name_(name()), col_params_(new CollectiveParams()) {}
+
+  ~CollectiveOpV1Kernel() override { col_params_->Unref(); }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
     CollectiveExecutor* col_exec = c->collective_executor();
@@ -88,28 +90,29 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
   // A string encoding instance, frame and iter to be handed off to
   // the implementation for use in generating RecvBuf keys.
   string GetCollectiveKey(OpKernelContext* c) {
-    return CollectiveKey(c, col_params_.group.group_key,
-                         col_params_.instance.instance_key);
+    return CollectiveKey(c, col_params_->group.group_key,
+                         col_params_->instance.instance_key);
   }
 
   // Returns false if calling invocation of ComputeAsync should return
   // immediately.
   bool CanProceedWithCompute(OpKernelContext* c, CollectiveExecutor* col_exec,
                              const DoneCallback& done) {
-    if (col_params_.group.group_size > col_params_.group.device_names.size()) {
+    if (col_params_->group.group_size >
+        col_params_->group.device_names.size()) {
       // This is the first invocation: Finish initializing col_params_.
       // Schedule the `CompleteParamsAsync` call on a work queue that can handle
       // blocking work because it's not guaranteed that this call cannot block.
-      c->collective_executor()->RunClosure([this, c, done, col_exec]() {
+      c->collective_executor()->RunClosure([this, c, col_exec, done]() {
         VLOG(1) << "CollectiveOpKernel CompleteParams for collective "
-                << col_params_.name << " device " << c->device()->name()
-                << " group " << col_params_.group.group_key << " instance "
-                << col_params_.instance.instance_key;
+                << col_params_->name << " device " << c->device()->name()
+                << " group " << col_params_->group.group_key << " instance "
+                << col_params_->instance.instance_key;
         col_exec->CompleteParamsAsync(
-            c->device()->attributes(), &col_params_, c->cancellation_manager(),
+            c->device()->attributes(), col_params_, c->cancellation_manager(),
             [this, c, done](const Status& s) {
               if (s.ok()) {
-                col_params_.instance.impl_details.dependencies = dependencies_;
+                col_params_->instance.impl_details.dependencies = dependencies_;
                 ComputeAsync(c, done);
               } else {
                 c->SetStatus(s);
@@ -128,7 +131,7 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
                                 DoneCallback done) = 0;
 
   string name_;
-  CollectiveParams col_params_;
+  CollectiveParams* col_params_;
   std::vector<int32> dependencies_;
 };
 
@@ -136,25 +139,25 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
  public:
   explicit CollectiveGatherOpKernel(OpKernelConstruction* c)
       : CollectiveOpV1Kernel(c) {
-    col_params_.instance.type = GATHER_COLLECTIVE;
-    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    col_params_->instance.type = GATHER_COLLECTIVE;
+    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_->group.group_size));
     OP_REQUIRES(
-        c, col_params_.group.group_size > 0,
+        c, col_params_->group.group_size > 0,
         errors::InvalidArgument("group_size must be positive integer but got ",
-                                col_params_.group.group_size));
-    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
+                                col_params_->group.group_size));
+    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_->group.group_key));
     OP_REQUIRES_OK(
-        c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
-    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
+        c, c->GetAttr("instance_key", &col_params_->instance.instance_key));
+    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_->instance.data_type));
     OP_REQUIRES_OK(
         c, c->GetAttr("communication_hint",
-                      &col_params_.instance.impl_details.communication_hint));
+                      &col_params_->instance.impl_details.communication_hint));
     OP_REQUIRES_OK(
         c, c->GetAttr("timeout_seconds",
-                      &col_params_.instance.impl_details.timeout_seconds));
+                      &col_params_->instance.impl_details.timeout_seconds));
     const NodeDef& real_node = c->def();
-    col_params_.name = strings::StrCat(real_node.name(), ": Gather");
-    col_params_.group.device_type = c->device_type();
+    col_params_->name = strings::StrCat(real_node.name(), ": Gather");
+    col_params_->group.device_type = c->device_type();
   }
 
  protected:
@@ -162,8 +165,8 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
                         DoneCallback done) override {
     auto output_shape = c->input(0).shape();
     output_shape.set_dim(
-        0, output_shape.dim_size(0) * col_params_.group.group_size);
-    col_params_.instance.shape = output_shape;
+        0, output_shape.dim_size(0) * col_params_->group.group_size);
+    col_params_->instance.shape = output_shape;
 
     // Allocate output on the first pass through this function.  This must be
     // done immediately, while we're still in the executor thread.  Otherwise
@@ -173,24 +176,24 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
       // Allocate the output tensor.
       Tensor* output = nullptr;
       OP_REQUIRES_OK_ASYNC(
-          c, c->allocate_output(0, col_params_.instance.shape, &output), done);
+          c, c->allocate_output(0, col_params_->instance.shape, &output), done);
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
 
-    auto actual_done = [c, group_key = col_params_.group.group_key,
-                        instance_key = col_params_.instance.instance_key,
-                        done](const Status& s) {
+    auto actual_done = [c, col_params = col_params_, done](const Status& s) {
       VLOG(1) << "CollectiveGatherOpKernel ExecuteAsync done for collective "
               << c->op_kernel().name() << " device " << c->device()->name()
-              << " group " << group_key << " instance " << instance_key
-              << " status " << s;
+              << " group " << col_params->group.group_key << " instance "
+              << col_params->instance.instance_key << " status " << s;
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
+      col_params->Unref();
     };
     VLOG(1) << "CollectiveGatherOpKernel ExecuteAsync start for collective "
-            << col_params_.name << " device " << c->device()->name()
-            << " group " << col_params_.group.group_key << " instance "
-            << col_params_.instance.instance_key;
+            << col_params_->name << " device " << c->device()->name()
+            << " group " << col_params_->group.group_key << " instance "
+            << col_params_->instance.instance_key;
+    col_params_->Ref();
     col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
   }
 
@@ -207,18 +210,18 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
  public:
   explicit CollectiveReduceOpKernel(OpKernelConstruction* c)
       : CollectiveOpV1Kernel(c) {
-    col_params_.instance.type = REDUCTION_COLLECTIVE;
-    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    col_params_->instance.type = REDUCTION_COLLECTIVE;
+    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_->group.group_size));
     OP_REQUIRES(
-        c, col_params_.group.group_size > 0,
+        c, col_params_->group.group_size > 0,
         errors::InvalidArgument("group_size must be positive integer but got ",
-                                col_params_.group.group_size));
-    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
+                                col_params_->group.group_size));
+    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_->group.group_key));
     OP_REQUIRES_OK(
-        c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
+        c, c->GetAttr("instance_key", &col_params_->instance.instance_key));
     OP_REQUIRES_OK(
         c, c->GetAttr("subdiv_offsets",
-                      &col_params_.instance.impl_details.subdiv_offsets));
+                      &col_params_->instance.impl_details.subdiv_offsets));
     string merge_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("merge_op", &merge_op_name));
     if (merge_op_name == "Max") {
@@ -232,24 +235,26 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
                 errors::InvalidArgument(
                     "final_op must be one of {\"Id\", \"Div\"} but got ",
                     final_op_name));
-    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_->instance.data_type));
     OP_REQUIRES_OK(c, c->GetAttr("wait_for", &dependencies_));
     OP_REQUIRES_OK(
         c, c->GetAttr("communication_hint",
-                      &col_params_.instance.impl_details.communication_hint));
+                      &col_params_->instance.impl_details.communication_hint));
     OP_REQUIRES_OK(
         c, c->GetAttr("timeout_seconds",
-                      &col_params_.instance.impl_details.timeout_seconds));
-    VLOG(2) << "CollectiveReduce instance " << col_params_.instance.instance_key
-            << " merge_op " << merge_op_name << " final_op " << final_op_name
+                      &col_params_->instance.impl_details.timeout_seconds));
+    VLOG(2) << "CollectiveReduce instance "
+            << col_params_->instance.instance_key << " merge_op "
+            << merge_op_name << " final_op " << final_op_name
             << " communication_hint "
-            << col_params_.instance.impl_details.communication_hint
-            << " timeout " << col_params_.instance.impl_details.timeout_seconds;
+            << col_params_->instance.impl_details.communication_hint
+            << " timeout "
+            << col_params_->instance.impl_details.timeout_seconds;
 
     const NodeDef& real_node = c->def();
-    col_params_.name = strings::StrCat(real_node.name(), ": Reduce(",
-                                       merge_op_name, ",", final_op_name, ")");
-    col_params_.group.device_type = c->device_type();
+    col_params_->name = strings::StrCat(real_node.name(), ": Reduce(",
+                                        merge_op_name, ",", final_op_name, ")");
+    col_params_->group.device_type = c->device_type();
 
     // Find the OpKernels by name, type and device type.
     NodeDef sub_node;
@@ -257,12 +262,12 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
     sub_node.add_input(real_node.input(0));
     sub_node.add_input(real_node.input(0));
     sub_node.set_device(real_node.device());
-    SetAttrValue(col_params_.instance.data_type,
+    SetAttrValue(col_params_->instance.data_type,
                  &(*sub_node.mutable_attr())["T"]);
     merge_op_ = BuildOpKernel(c, merge_op_name, &sub_node);
     final_op_ = BuildOpKernel(c, final_op_name, &sub_node);
-    col_params_.merge_op = merge_op_.get();
-    col_params_.final_op = final_op_.get();
+    col_params_->merge_op = merge_op_.get();
+    col_params_->final_op = final_op_.get();
   }
 
  protected:
@@ -279,24 +284,24 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
                            c->forward_input_or_allocate_output(
                                {0}, 0, c->input(0).shape(), &output),
                            done);
-      col_params_.instance.shape = c->input(0).shape();
+      col_params_->instance.shape = c->input(0).shape();
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
 
-    auto actual_done = [c, group_key = col_params_.group.group_key,
-                        instance_key = col_params_.instance.instance_key,
-                        done](const Status& s) {
+    auto actual_done = [c, col_params = col_params_, done](const Status& s) {
       VLOG(1) << "CollectiveReduceOpKernel ExecuteAsync done for collective "
               << c->op_kernel().name() << " device " << c->device()->name()
-              << " group " << group_key << " instance " << instance_key
-              << " status " << s;
+              << " group " << col_params->group.group_key << " instance "
+              << col_params->instance.instance_key << " status " << s;
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
+      col_params->Unref();
     };
     VLOG(1) << "CollectiveReduceOpKernel ExecuteAsync start for collective "
-            << col_params_.name << " device " << c->device()->name()
-            << " group " << col_params_.group.group_key << " instance "
-            << col_params_.instance.instance_key;
+            << col_params_->name << " device " << c->device()->name()
+            << " group " << col_params_->group.group_key << " instance "
+            << col_params_->instance.instance_key;
+    col_params_->Ref();
     col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
   }
 
@@ -315,29 +320,29 @@ class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
  public:
   explicit CollectiveBcastSendOpKernel(OpKernelConstruction* c)
       : CollectiveOpV1Kernel(c) {
-    col_params_.instance.type = BROADCAST_COLLECTIVE;
-    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    col_params_->instance.type = BROADCAST_COLLECTIVE;
+    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_->group.group_size));
     OP_REQUIRES(
-        c, col_params_.group.group_size > 0,
+        c, col_params_->group.group_size > 0,
         errors::InvalidArgument("group_size must be positive integer but got ",
-                                col_params_.group.group_size));
-    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
+                                col_params_->group.group_size));
+    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_->group.group_key));
     OP_REQUIRES_OK(
-        c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
-    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
-    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
+        c, c->GetAttr("instance_key", &col_params_->instance.instance_key));
+    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_->instance.data_type));
+    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_->instance.shape));
     OP_REQUIRES_OK(
         c, c->GetAttr("communication_hint",
-                      &col_params_.instance.impl_details.communication_hint));
+                      &col_params_->instance.impl_details.communication_hint));
     OP_REQUIRES_OK(
         c, c->GetAttr("timeout_seconds",
-                      &col_params_.instance.impl_details.timeout_seconds));
-    col_params_.is_source = true;
-    col_params_.instance.impl_details.subdiv_offsets = {0};
+                      &col_params_->instance.impl_details.timeout_seconds));
+    col_params_->is_source = true;
+    col_params_->instance.impl_details.subdiv_offsets = {0};
 
-    col_params_.name =
-        strings::StrCat(name(), ": Broadcast(", col_params_.is_source, ")");
-    col_params_.group.device_type = c->device_type();
+    col_params_->name =
+        strings::StrCat(name(), ": Broadcast(", col_params_->is_source, ")");
+    col_params_->group.device_type = c->device_type();
   }
 
  protected:
@@ -352,30 +357,30 @@ class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
       Tensor* output = nullptr;
       OP_REQUIRES_OK_ASYNC(c,
                            c->forward_input_or_allocate_output(
-                               {0}, 0, col_params_.instance.shape, &output),
+                               {0}, 0, col_params_->instance.shape, &output),
                            done);
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
     OP_REQUIRES_ASYNC(
-        c, col_params_.instance.shape.IsSameSize(c->input(0).shape()),
-        errors::Internal("Declared shape of op ", col_params_.name,
+        c, col_params_->instance.shape.IsSameSize(c->input(0).shape()),
+        errors::Internal("Declared shape of op ", col_params_->name,
                          " does not match shape of input"),
         done);
 
-    auto actual_done = [c, group_key = col_params_.group.group_key,
-                        instance_key = col_params_.instance.instance_key,
-                        done](const Status& s) {
+    auto actual_done = [c, col_params = col_params_, done](const Status& s) {
       VLOG(1) << "CollectiveBcastSendOpKernel ExecuteAsync done for collective "
               << c->op_kernel().name() << " device " << c->device()->name()
-              << " group " << group_key << " instance " << instance_key
-              << " status " << s;
+              << " group " << col_params->group.group_key << " instance "
+              << col_params->instance.instance_key << " status " << s;
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
+      col_params->Unref();
     };
     VLOG(1) << "CollectiveBcastSendOpKernel ExecuteAsync start for collective "
-            << col_params_.name << " device " << c->device()->name()
-            << " group " << col_params_.group.group_key << " instance "
-            << col_params_.instance.instance_key;
+            << col_params_->name << " device " << c->device()->name()
+            << " group " << col_params_->group.group_key << " instance "
+            << col_params_->instance.instance_key;
+    col_params_->Ref();
     col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
   }
 
@@ -392,29 +397,29 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpV1Kernel {
  public:
   explicit CollectiveBcastRecvOpKernel(OpKernelConstruction* c)
       : CollectiveOpV1Kernel(c) {
-    col_params_.instance.type = BROADCAST_COLLECTIVE;
-    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    col_params_->instance.type = BROADCAST_COLLECTIVE;
+    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_->group.group_size));
     OP_REQUIRES(
-        c, col_params_.group.group_size > 0,
+        c, col_params_->group.group_size > 0,
         errors::InvalidArgument("group_size must be positive integer but got ",
-                                col_params_.group.group_size));
-    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
+                                col_params_->group.group_size));
+    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_->group.group_key));
     OP_REQUIRES_OK(
-        c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
-    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
-    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
+        c, c->GetAttr("instance_key", &col_params_->instance.instance_key));
+    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_->instance.data_type));
+    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_->instance.shape));
     OP_REQUIRES_OK(
         c, c->GetAttr("communication_hint",
-                      &col_params_.instance.impl_details.communication_hint));
+                      &col_params_->instance.impl_details.communication_hint));
     OP_REQUIRES_OK(
         c, c->GetAttr("timeout_seconds",
-                      &col_params_.instance.impl_details.timeout_seconds));
-    col_params_.is_source = false;
-    col_params_.instance.impl_details.subdiv_offsets = {0};
+                      &col_params_->instance.impl_details.timeout_seconds));
+    col_params_->is_source = false;
+    col_params_->instance.impl_details.subdiv_offsets = {0};
 
-    col_params_.name =
-        strings::StrCat(name(), ": Broadcast(", col_params_.is_source, ")");
-    col_params_.group.device_type = c->device_type();
+    col_params_->name =
+        strings::StrCat(name(), ": Broadcast(", col_params_->is_source, ")");
+    col_params_->group.device_type = c->device_type();
   }
 
  protected:
@@ -428,24 +433,24 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpV1Kernel {
       // No input, so must allocate output.
       Tensor* output = nullptr;
       OP_REQUIRES_OK_ASYNC(
-          c, c->allocate_output(0, col_params_.instance.shape, &output), done);
+          c, c->allocate_output(0, col_params_->instance.shape, &output), done);
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
 
-    auto actual_done = [c, group_key = col_params_.group.group_key,
-                        instance_key = col_params_.instance.instance_key,
-                        done](const Status& s) {
+    auto actual_done = [c, col_params = col_params_, done](const Status& s) {
       VLOG(1) << "CollectiveBcastRecvOpKernel ExecuteAsync done for collective "
               << c->op_kernel().name() << " device " << c->device()->name()
-              << " group " << group_key << " instance_key " << instance_key
-              << " status  " << s;
+              << " group " << col_params->group.group_key << " instance_key "
+              << col_params->instance.instance_key << " status  " << s;
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
+      col_params->Unref();
     };
     VLOG(1) << "CollectiveBcastRecvOpKernel ExecuteAsync start for collective "
-            << col_params_.name << " device " << c->device()->name()
-            << " group " << col_params_.group.group_key << " instance "
-            << col_params_.instance.instance_key;
+            << col_params_->name << " device " << c->device()->name()
+            << " group " << col_params_->group.group_key << " instance "
+            << col_params_->instance.instance_key;
+    col_params_->Ref();
     col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
   }
 
@@ -534,8 +539,8 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
             << col_params->instance.instance_key;
 
     auto done_with_cleanup = [col_params, done = std::move(done)]() {
-      delete col_params;
       done();
+      col_params->Unref();
     };
 
     // Allocate the output tensor, trying to reuse the input.
@@ -577,7 +582,7 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
                       << " group " << col_params->group.group_key
                       << " instance " << col_params->instance.instance_key;
               col_exec->ExecuteAsync(
-                  c, *col_params,
+                  c, col_params,
                   CollectiveKey(c, col_params->group.group_key,
                                 col_params->instance.instance_key),
                   actual_done);
@@ -673,8 +678,8 @@ class CollectiveGatherV2OpKernel : public AsyncOpKernel {
     col_params->instance.shape = output_shape;
 
     auto done_with_cleanup = [col_params, done = std::move(done)]() {
-      delete col_params;
       done();
+      col_params->Unref();
     };
 
     Tensor* output = nullptr;
@@ -714,7 +719,7 @@ class CollectiveGatherV2OpKernel : public AsyncOpKernel {
                       << " group " << col_params->group.group_key
                       << " instance " << col_params->instance.instance_key;
               col_exec->ExecuteAsync(
-                  c, *col_params,
+                  c, col_params,
                   CollectiveKey(c, col_params->group.group_key,
                                 col_params->instance.instance_key),
                   actual_done);
@@ -797,8 +802,8 @@ class CollectiveBcastSendV2OpKernel : public AsyncOpKernel {
             << col_params->instance.instance_key;
 
     auto done_with_cleanup = [col_params, done = std::move(done)]() {
-      delete col_params;
       done();
+      col_params->Unref();
     };
 
     // Allocate the output tensor, trying to reuse the input.
@@ -840,7 +845,7 @@ class CollectiveBcastSendV2OpKernel : public AsyncOpKernel {
                       << " group " << col_params->group.group_key
                       << " instance " << col_params->instance.instance_key;
               col_exec->ExecuteAsync(
-                  c, *col_params,
+                  c, col_params,
                   CollectiveKey(c, col_params->group.group_key,
                                 col_params->instance.instance_key),
                   actual_done);
@@ -905,8 +910,8 @@ class CollectiveBcastRecvV2OpKernel : public AsyncOpKernel {
 
     auto col_params = new CollectiveParams();
     auto done_with_cleanup = [col_params, done = std::move(done)]() {
-      delete col_params;
       done();
+      col_params->Unref();
     };
 
     OP_REQUIRES_OK_ASYNC(
@@ -969,7 +974,7 @@ class CollectiveBcastRecvV2OpKernel : public AsyncOpKernel {
                       << " group " << col_params->group.group_key
                       << " instance " << col_params->instance.instance_key;
               col_exec->ExecuteAsync(
-                  c, *col_params,
+                  c, col_params,
                   CollectiveKey(c, col_params->group.group_key,
                                 col_params->instance.instance_key),
                   actual_done);

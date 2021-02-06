@@ -209,7 +209,7 @@ void TPUDynamicPaddingMapper::runOnOperation() {
   ModuleOp module = getOperation();
   SymbolTable symbol_table(module);
   module.walk([&](tf_device::ClusterFuncOp cluster_func) {
-    RemapAndAssignPaddingMaps(cluster_func, &symbol_table);
+    (void)RemapAndAssignPaddingMaps(cluster_func, &symbol_table);
   });
 }
 }  // anonymous namespace

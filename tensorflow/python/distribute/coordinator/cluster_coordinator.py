@@ -27,7 +27,6 @@ import enum
 import functools
 import os
 import re
-import sys
 import threading
 import time
 import weakref
@@ -1289,20 +1288,6 @@ class ClusterCoordinator(object):
 
     # TODO(yuefengz): we should fetch values in a batch.
     return nest.map_structure(_maybe_fetch, val)
-
-
-# pylint: disable=missing-function-docstring
-@contextlib.contextmanager
-def handle_parameter_server_failure():
-  try:
-    yield
-  except errors.UnavailableError as e:  # pylint: disable=broad-except
-    restart_exit_code = os.environ.get("TF_CLIENT_NON_FATAL_RESTART_EXIT_CODE",
-                                       None)
-    if restart_exit_code is not None:
-      sys.exit(int(restart_exit_code))
-    else:
-      raise
 
 
 class _PerWorkerDistributedDataset(object):
