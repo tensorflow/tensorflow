@@ -1415,18 +1415,11 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
     auto fold_result = std::get<1>(result);
     Attribute attr = nullptr;
     if ((attr = fold_result.dyn_cast<Attribute>())) {
-      DCOMMENT("\t\t- Attr Result: " << attr);
       RecordValue(ValuePort(std::get<0>(result)), attr);
     } else {
       auto value = fold_result.get<Value>();
-      if ((attr = ComputeOutputComponent(ValuePort(value)))) {
-        DCOMMENT("\t\tValue Result mapped to " << attr);
+      if ((attr = ComputeOutputComponent(ValuePort(value))))
         RecordValue(ValuePort(std::get<0>(result)), attr);
-      } else {
-        DCOMMENT("\t\tValue result unmapped, use value type:" << value);
-        UpdateTypeAndInsertIncompatibleUseCasts(value.getType(),
-                                                std::get<0>(result));
-      }
     }
 
     if (ElementsAttr eattr = attr.dyn_cast_or_null<ElementsAttr>()) {
@@ -1536,11 +1529,7 @@ LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
 
       // Before attempting inference, just try to compute the folded
       // value/shape.
-      if (succeeded(TryToFold(op)) &&
-          // Folding can "succeed" and yet not all types be refined. In such
-          // cases we still want to give a try at `InferShapeForSingleOperation`
-          none_of(op->getResultTypes(), CanBeRefined))
-        return;
+      if (succeeded(TryToFold(op))) return;
 
       // Best-effort shape inference in attached functions. Do not return
       // failure even if it doesn't get to fixed point.
