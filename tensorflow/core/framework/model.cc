@@ -25,6 +25,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace model {
+
+constexpr int64 Model::kOptimizationPeriodMinMs;
+constexpr int64 Model::kOptimizationPeriodMaxMs;
+
 namespace {
 
 // Helper function for node traversal that doesn't skip any nodes.
