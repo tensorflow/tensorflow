@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -31,7 +32,8 @@ namespace gpu {
 
 namespace {
 bool UseBufferForWeights(const GpuInfo& gpu_info) {
-  return gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsMali();
+  return gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsMali() ||
+         gpu_info.IsApple();
 }
 }  // namespace
 
@@ -46,11 +48,8 @@ FullyConnected::FullyConnected(const OperationDef& definition,
     } else {
       work_group_size_ = int3(32, 4, 1);
     }
-  } else if (gpu_info.IsIntel()) {
-    work_group_size_ = int3(8, 4, 1);
-  } else if (gpu_info.IsNvidia()) {
-    work_group_size_ = int3(8, 4, 1);
-  } else if (gpu_info.IsPowerVR()) {
+  } else if (gpu_info.IsIntel() || gpu_info.IsNvidia() ||
+             gpu_info.IsPowerVR() || gpu_info.IsApple()) {
     work_group_size_ = int3(8, 4, 1);
   } else {
     work_group_size_ = int3(16, 4, 1);
@@ -76,6 +75,11 @@ FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
 
 std::string FullyConnected::GetFullyConnectedKernelCode(
     const OperationDef& op_def, const GpuInfo& gpu_info) {
+  const int wg_total_size = work_group_size_.x * work_group_size_.y;
+  const std::string barrier =
+      wg_total_size == 32 && gpu_info.IsWaveSizeEqualTo32()
+          ? "SIMD_LOCAL_MEM_BARRIER"
+          : "LOCAL_MEM_BARRIER";
   AddSrcTensor("src_tensor", op_def.src_tensors[0]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
@@ -127,7 +131,9 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   }
   __local ACCUM_FLT4 temp[WG_X][WG_Y];
   temp[tid.x][tid.y] = s;
-  LOCAL_MEM_BARRIER;
+)";
+  c += "  " + barrier + ";\n";
+  c += R"(
   if (gid >= args.dst_tensor.Slices()) {
     return;
   }
@@ -157,6 +163,10 @@ FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
   TensorLinearDescriptor desc;
   desc.storage_type = gpu_info.SupportsImages() ? LinearStorageType::TEXTURE_2D
                                                 : LinearStorageType::BUFFER;
+  if (gpu_info.IsApple()) {
+    desc.storage_type =
+        DeduceLinearStorageType(definition.GetPrimaryStorageType());
+  }
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(

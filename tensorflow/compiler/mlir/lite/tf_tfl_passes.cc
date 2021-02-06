@@ -214,6 +214,11 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
 
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
+    if (pass_config.enable_tflite_variables) {
+      pass_manager->addPass(mlir::TFL::CreateInitializeVariablesPass());
+      pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
+      pass_manager->addPass(mlir::TFL::CreateRemoveArgsAndGlobalTensors());
+    }
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::TFL::CreateOptimizePass());
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops

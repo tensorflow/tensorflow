@@ -127,7 +127,7 @@ void BroadcastFoldPass::runOnFunction() {
   auto func = getFunction();
 
   patterns.insert<ConvertResultsBroadcastableShapeOp>();
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace

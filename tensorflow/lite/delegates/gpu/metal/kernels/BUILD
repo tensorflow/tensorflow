@@ -19,8 +19,6 @@ cc_library(
     name = "kernels",
     deps = [
         ":conv",
-        ":depthwise_conv",
-        ":fully_connected",
         ":transpose_conv",
         ":winograd",
     ],
@@ -80,7 +78,6 @@ cc_library(
         ":util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -115,31 +112,14 @@ ios_unit_test(
     deps = [":conv_test_lib"],
 )
 
-cc_library(
-    name = "depthwise_conv",
-    srcs = ["depthwise_conv.cc"],
-    hdrs = ["depthwise_conv.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:convert",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "depthwise_conv_test_lib",
     testonly = 1,
     srcs = ["depthwise_conv_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":depthwise_conv",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
     ],
@@ -180,30 +160,12 @@ ios_unit_test(
     deps = [":elementwise_test_lib"],
 )
 
-cc_library(
-    name = "fully_connected",
-    srcs = ["fully_connected.cc"],
-    hdrs = ["fully_connected.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "fully_connected_test_lib",
     testonly = 1,
     srcs = ["fully_connected_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":fully_connected",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
     ],
@@ -555,7 +517,6 @@ cc_library(
     deps = [
         ":util",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:util",
@@ -572,6 +533,7 @@ objc_library(
     deps = [
         ":test_util",
         ":transpose_conv",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
     ],
 )
@@ -627,7 +589,6 @@ objc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -638,7 +599,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
-        "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task",
         "//tensorflow/lite/delegates/gpu/metal:metal_device",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "@FP16",
@@ -663,7 +624,6 @@ cc_library(
     hdrs = ["winograd.h"],
     deps = [
         ":util",
-        "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -683,6 +643,7 @@ objc_library(
         ":test_util",
         ":winograd",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
     ],
 )
 
@@ -730,7 +691,10 @@ objc_library(
     ],
     sdk_frameworks = ["XCTest"],
     deps = [
+        ":conv",
         ":test_util",
+        ":transpose_conv",
+        ":winograd",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -738,7 +702,9 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
@@ -758,8 +724,8 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
-        "//tensorflow/lite/delegates/gpu/metal:inference_context",
     ],
 )
 

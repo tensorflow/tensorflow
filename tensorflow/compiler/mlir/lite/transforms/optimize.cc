@@ -965,7 +965,7 @@ void Optimize::runOnFunction() {
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
                   FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
                   FuseFullyConnectedAndMul>(ctx);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
   OwningRewritePatternList phase_2_patterns;
@@ -981,7 +981,7 @@ void Optimize::runOnFunction() {
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp>(
       ctx);
-  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

@@ -136,7 +136,7 @@ struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
     auto func = getFunction();
     populateWithGenerated(&getContext(), patterns);
     patterns.insert<SimplifyBroadcastReshape>(&getContext());
-    applyPatternsAndFoldGreedily(func, std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 

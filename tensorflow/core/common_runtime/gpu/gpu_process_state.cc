@@ -88,7 +88,9 @@ static SubAllocator* CreateSubAllocator(
                                                             platform_gpu_id)
                       .ValueOrDie();
 
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 10020
+  // FIXME(imintz): Observed OOM issues when using the virtual memory
+  // allocators. This should be reenabled when resolved.
+#if 0 && defined(GOOGLE_CUDA) && CUDA_VERSION >= 10020
   // Use the old allocator when unified memory is required.
   // TODO(imintz): Remove the cuMemAlloc capability of this allocator.
   if (options.per_process_gpu_memory_fraction() > 1.0 ||

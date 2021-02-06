@@ -49,7 +49,9 @@ class GpuKernelToNVVMPass
     GPUModuleOp m = getOperation();
 
     OwningRewritePatternList patterns;
-    LLVMTypeConverter converter(m.getContext());
+    mlir::LowerToLLVMOptions llvm_opts;
+    llvm_opts.indexBitwidth = 32;
+    LLVMTypeConverter converter(m.getContext(), llvm_opts);
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToNVVMConversionPatterns(converter, patterns);
     populateComplexToLLVMConversionPatterns(converter, patterns);

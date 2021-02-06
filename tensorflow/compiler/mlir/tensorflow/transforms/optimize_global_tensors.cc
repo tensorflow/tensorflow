@@ -68,7 +68,7 @@ class ResourceAnalyzer {
  public:
   explicit ResourceAnalyzer(ModuleOp module) {
     for (auto func : module.getOps<FuncOp>()) {
-      AnalyzeFunc(func);
+      (void)AnalyzeFunc(func);
     }
   }
 
@@ -150,7 +150,7 @@ class ResourceAnalyzer {
   // written resources.
   void PropagatePotentiallyWrittenUpFromCallee(
       FuncOp func, Operation::operand_range propagate_to) {
-    AnalyzeFunc(func);
+    (void)AnalyzeFunc(func);
     for (auto t : llvm::zip(func.getArguments(), propagate_to)) {
       if (!IsResource(std::get<0>(t))) {
         continue;

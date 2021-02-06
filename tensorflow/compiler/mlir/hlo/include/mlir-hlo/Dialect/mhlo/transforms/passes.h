@@ -45,7 +45,8 @@ std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
 /// Lowers from the CHLO dialect to the HLO dialect.
-std::unique_ptr<FunctionPass> createChloLegalizeToHloPass();
+std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
+    bool broadcast_only = false);
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.

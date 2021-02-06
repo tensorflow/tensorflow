@@ -88,8 +88,7 @@ void TestTanhFloat(const int input_dims_data[], const float* input_data,
 
   const TfLiteRegistration registration = tflite::ops::micro::Register_TANH();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, /*builtin_data=*/nullptr,
-                             micro_test::reporter);
+                             outputs_array, /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -132,8 +131,7 @@ void TestTanhQuantized(const int input_dims_data[], const float* input_data,
 
   const TfLiteRegistration registration = tflite::ops::micro::Register_TANH();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, /*builtin_data=*/nullptr,
-                             micro_test::reporter);
+                             outputs_array, /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

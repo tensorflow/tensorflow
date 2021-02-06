@@ -2070,10 +2070,12 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::OTHER) {
       for (int64 core : node_and_sharding->sharding.tile_assignment_devices()) {
         args_device_selector.ReportDeviceAssigned(core, i);
-        VLOG(3) << "Assigning argument " << i << " (" << n->DebugString()
-                << ") with tiled sharding to core " << core
-                << FormatNodeAndShardingMsg(node_and_sharding);
       }
+      VLOG(3) << "Assigning argument " << i << " (" << n->DebugString()
+              << ") with tiled sharding to cores "
+              << absl::StrJoin(
+                     node_and_sharding->sharding.tile_assignment_devices(), ",")
+              << " " << FormatNodeAndShardingMsg(node_and_sharding);
     } else {
       DCHECK_EQ(node_and_sharding->sharding.type(),
                 xla::OpSharding::REPLICATED);
@@ -2173,10 +2175,12 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::OTHER) {
       for (int64 core : node_and_sharding->sharding.tile_assignment_devices()) {
         retvals_device_selector.ReportDeviceAssigned(core, i);
-        VLOG(3) << "Assigning return value " << i << " ("
-                << retvals[i]->DebugString() << ") with tiled sharding to core "
-                << core << FormatNodeAndShardingMsg(node_and_sharding);
       }
+      VLOG(3) << "Assigning return value " << i << " ("
+              << retvals[i]->DebugString() << ") with tiled sharding to cores "
+              << absl::StrJoin(
+                     node_and_sharding->sharding.tile_assignment_devices(), ",")
+              << " " << FormatNodeAndShardingMsg(node_and_sharding);
     } else {
       DCHECK_EQ(node_and_sharding->sharding.type(),
                 xla::OpSharding::REPLICATED);

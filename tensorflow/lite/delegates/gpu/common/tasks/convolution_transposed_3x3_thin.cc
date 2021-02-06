@@ -25,23 +25,17 @@ namespace tflite {
 namespace gpu {
 
 ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
-    const OperationDef& definition, const ConvolutionTransposedAttributes& attr)
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr)
     : GPUOperation(definition) {
+  if (gpu_info.IsApple()) {
+    weights_layout_ = WeightsLayout::kOICustomSpatialO4I4;
+  } else {
+    weights_layout_ = WeightsLayout::kOICustomSpatialI4O4;
+  }
   code_ = GenerateConvolutionTransposedCode(
       definition_, DivideRoundUp(attr.weights.shape.i, 4),
       DivideRoundUp(attr.weights.shape.o, 4));
-}
-
-ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
-    ConvolutionTransposed3x3Thin&& operation)
-    : GPUOperation(std::move(operation)) {}
-
-ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
-    ConvolutionTransposed3x3Thin&& operation) {
-  if (this != &operation) {
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
 }
 
 std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
@@ -64,20 +58,29 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
 
   std::string c;
 
-  switch (op_def.precision) {
-    case CalculationsPrecision::F32:
-    case CalculationsPrecision::F16:
-      c += "#define CONV(R, SRC, F, i) \\\n";
-      c += "  R += SRC.x * F[i + 0]; \\\n";
-      c += "  R += SRC.y * F[i + 1]; \\\n";
-      c += "  R += SRC.z * F[i + 2]; \\\n";
-      c += "  R += SRC.w * F[i + 3];   \n";
-      break;
-    case CalculationsPrecision::F32_F16:
-      c += "#define CONV(R, SRC, F, i) \\\n";
-      c += "  R += convert_float4(SRC.x * F[i + 0] + SRC.y * F[i + 1]";
-      c += "+ SRC.z * F[i + 2] + SRC.w * F[i + 3]);\n";
-      break;
+  if (GetWeightsDescription().IsI4O4()) {
+    switch (op_def.precision) {
+      case CalculationsPrecision::F32:
+      case CalculationsPrecision::F16:
+        c += "#define CONV(R, SRC, F, i) \\\n";
+        c += "  R += SRC.x * F[i + 0]; \\\n";
+        c += "  R += SRC.y * F[i + 1]; \\\n";
+        c += "  R += SRC.z * F[i + 2]; \\\n";
+        c += "  R += SRC.w * F[i + 3];   \n";
+        break;
+      case CalculationsPrecision::F32_F16:
+        c += "#define CONV(R, SRC, F, i) \\\n";
+        c += "  R += convert_float4(SRC.x * F[i + 0] + SRC.y * F[i + 1]";
+        c += "+ SRC.z * F[i + 2] + SRC.w * F[i + 3]);\n";
+        break;
+    }
+  } else {
+    // O4I4
+    c += "#define CONV(R, SRC, F, i) \\\n";
+    c += "  R.x += dot(SRC, F[i + 0]); \\\n";
+    c += "  R.y += dot(SRC, F[i + 1]); \\\n";
+    c += "  R.z += dot(SRC, F[i + 2]); \\\n";
+    c += "  R.w += dot(SRC, F[i + 3]);   \n";
   }
 
   c += "__kernel void main_function(\n";
@@ -198,6 +201,29 @@ std::vector<int> ConvolutionTransposed3x3Thin::GetSpatialWeightsRemap() const {
   return std::vector<int>{4, 5, 3, 7, 1, 8, 6, 2, 0};
 }
 
+void ConvolutionTransposed3x3Thin::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights) {
+  const int flt_count =
+      GetTotalElementsCountForLayout(GetWeightsDescription(), weights.shape);
+
+  DataType weights_type = definition_.precision == CalculationsPrecision::F32
+                              ? DataType::FLOAT32
+                              : DataType::FLOAT16;
+
+  BufferDescriptor desc;
+  desc.element_type = weights_type;
+  desc.element_size = 4;
+  desc.memory_type = MemoryType::CONSTANT;
+  desc.size = flt_count * SizeOf(desc.element_type);
+  desc.data.resize(desc.size);
+
+  RearrangeWeights(weights, GetWeightsDescription(), weights_type,
+                   absl::MakeSpan(desc.data));
+
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+}
+
 bool IsConvolutionTransposed3x3ThinSupported(
     const ConvolutionTransposedAttributes& attr) {
   return attr.weights.shape.o <= 8 && attr.weights.shape.w == 3 &&
@@ -210,7 +236,7 @@ bool IsConvolutionTransposed3x3ThinSupported(
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed3x3Thin result(definition, attr);
+  ConvolutionTransposed3x3Thin result(gpu_info, definition, attr);
   result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;
@@ -225,7 +251,7 @@ ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3ThinDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed3x3Thin result(definition, attr);
+  ConvolutionTransposed3x3Thin result(gpu_info, definition, attr);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;

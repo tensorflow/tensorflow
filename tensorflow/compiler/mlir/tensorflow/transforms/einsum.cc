@@ -373,7 +373,7 @@ void TransformEinsumPass::runOnFunction() {
   auto func = getFunction();
 
   patterns.insert<ConvertTFEinsumOp>(&getContext());
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 static PassRegistration<TransformEinsumPass> pass(

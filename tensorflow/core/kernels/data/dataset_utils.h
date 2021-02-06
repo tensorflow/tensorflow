@@ -83,12 +83,6 @@ class AnonymousResourceOp : public OpKernel {
   bool create_deleter_ = true;
 };
 
-// Registers the given cancellation callback, returning a function that can be
-// used to deregister the callback.
-Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
-                                    std::function<void()> register_fn,
-                                    std::function<void()>* deregister_fn);
-
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
 Status VerifyTypesMatch(const DataTypeVector& expected,

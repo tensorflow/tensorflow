@@ -266,6 +266,9 @@ def _get_tensorrt_rewriter_config(conversion_params,
     raise ValueError(
         "max_batch_size has to be an integer for is_dynamic_op==False in TF1")
   rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
+  # Disable Grappler Remapper to avoid that fused OPs that may not be
+  # beneficial to TF-TRT and are not supported by TF-TRT.
+  rewriter_config_with_trt.remapping = False
 
   if not disable_non_trt_optimizers:
     # Layout optimizer may add Const nodes followed by Reshape nodes, thus we

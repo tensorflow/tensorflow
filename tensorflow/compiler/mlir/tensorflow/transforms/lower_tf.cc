@@ -69,8 +69,9 @@ static APFloat ConvertToAPFloat(double val, Type type) {
 }
 
 // Returns int, float, or complex DenseElementsAttr with scalar shape with the
-// given element type and the integer value.
-static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
+// given element type and the value.
+template <typename T>
+static DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
   if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
     FloatAttr attr = FloatAttr::get(float_ty, raw_value);
@@ -89,14 +90,6 @@ static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
     }
   }
   llvm_unreachable("unsupported type");
-}
-
-// Returns float DenseElementsAttr with scalar shape with the specified value.
-static DenseElementsAttr GetScalarOfFloatType(Type ty, double raw_value) {
-  auto float_ty = ty.cast<FloatType>();
-  FloatAttr attr = FloatAttr::get(float_ty, raw_value);
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-  return DenseElementsAttr::get(scalar_ty, attr);
 }
 
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
@@ -1412,9 +1405,9 @@ class LowerResizeNearestNeighbor : public RewritePattern {
         out_w_f32);
 
     Value zero_f32 = rewriter.create<ConstOp>(
-        loc, GetScalarOfFloatType(rewriter.getF32Type(), 0.0));
+        loc, GetScalarOfType(rewriter.getF32Type(), 0.0));
     Value one_f32 = rewriter.create<ConstOp>(
-        loc, GetScalarOfFloatType(rewriter.getF32Type(), 1.0));
+        loc, GetScalarOfType(rewriter.getF32Type(), 1.0));
 
     Value y_range = rewriter.create<RangeOp>(
         loc,
@@ -1528,13 +1521,20 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
 
 void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
                                          OwningRewritePatternList *patterns) {
-  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-                   LowerDynamicStitchOp<DynamicStitchOp>,
-                   LowerDynamicStitchOp<ParallelDynamicStitchOp>,
-                   LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
-                   LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
-                   LowerResizeNearestNeighbor, LowerSparseMatMulOp,
-                   Lower_UnaryOpsComposition>(context);
+  // clang-format off
+  patterns->insert<
+      ConvertFakeQuantWithMinMaxVarsOp,
+      LowerAddNOp,
+      LowerBatchToSpaceND,
+      LowerDynamicStitchOp<DynamicStitchOp>,
+      LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+      LowerInvertPermutationOp,
+      LowerPackOp,
+      LowerResizeNearestNeighbor,
+      LowerSpaceToBatchNDOp,
+      LowerSparseMatMulOp,
+      Lower_UnaryOpsComposition>(context);
+  // clang-format on
 
   // Populate the relevant generated patterns.
   // clang-format off
@@ -1545,7 +1545,6 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerExpm1Op,
       LowerFakeQuantWithMinMaxArgs,
       LowerFillOp,
-      LowerIsInfOp,
       LowerIsNanOp,
       LowerL2LossOp,
       LowerMulNoNanOp,
@@ -1560,6 +1559,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerSizeOp,
       LowerSoftmaxCrossEntropyWithLogitsOp,
       LowerSparseSoftmaxCrossEntropyWithLogitsOp,
+      LowerSqrtGradOp,
       LowerSquareOp,
       LowerSquaredDifferenceOpOnRealTensors,
       LowerSquaredDifferenceOpOneComplexTensors,
