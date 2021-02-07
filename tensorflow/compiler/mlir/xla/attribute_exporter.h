@@ -41,5 +41,8 @@ StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
     llvm::Optional<mlir::DenseIntElementsAttr> optional_attr);
 
 StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);
+StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
+    llvm::StringRef transpose_string);
+
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_

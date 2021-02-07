@@ -45,14 +45,15 @@ class ConvolutionTransposed3x3 : public GPUOperation {
   int3 GetGridSize() const override;
 
   // Move only
-  ConvolutionTransposed3x3(ConvolutionTransposed3x3&& operation);
-  ConvolutionTransposed3x3& operator=(ConvolutionTransposed3x3&& operation);
+  ConvolutionTransposed3x3(ConvolutionTransposed3x3&& operation) = default;
+  ConvolutionTransposed3x3& operator=(ConvolutionTransposed3x3&& operation) =
+      default;
   ConvolutionTransposed3x3(const ConvolutionTransposed3x3&) = delete;
   ConvolutionTransposed3x3& operator=(const ConvolutionTransposed3x3&) = delete;
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
-    desc.layout = WeightsLayout::kOICustomSpatialI4O4;
+    desc.layout = weights_layout_;
     desc.spatial_remap = GetSpatialWeightsRemap();
     return desc;
   }
@@ -86,6 +87,7 @@ class ConvolutionTransposed3x3 : public GPUOperation {
 
   int2 padding_;
   WeightsUploadType weights_upload_type_;
+  WeightsLayout weights_layout_;
 };
 
 bool IsConvolutionTransposed3x3Supported(

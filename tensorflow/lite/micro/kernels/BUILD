@@ -236,6 +236,19 @@ tflite_micro_cc_test(
 )
 
 tflite_micro_cc_test(
+    name = "exp_test",
+    srcs = ["exp_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
     name = "pooling_test",
     srcs = [
         "pooling_test.cc",
@@ -668,6 +681,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
     ],
 )

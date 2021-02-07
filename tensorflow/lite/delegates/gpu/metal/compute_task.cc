@@ -133,6 +133,7 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
     @"INIT_ACCUM_FLT4(value)" :
         [NSString stringWithFormat:@"%@4(value)", accumulatorType],
     @"TO_ACCUM_TYPE" : toAccumulatorType4,
+    @"TO_ACCUM_FLT" : accumulatorType,
     @"TO_FLT4" : [NSString stringWithFormat:@"%@4", storageType],
     @"SIMDGROUP_BARRIER" : barrier,
     @"SIMD_LOCAL_MEM_BARRIER" : barrier,

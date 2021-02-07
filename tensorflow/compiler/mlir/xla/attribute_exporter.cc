@@ -152,4 +152,25 @@ StatusOr<FftType> ConvertFftType(llvm::StringRef type_string) {
   }
 }
 
+StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
+    llvm::StringRef transpose_string) {
+  llvm::Optional<mlir::mhlo::Transpose> transpose =
+      mlir::mhlo::symbolizeTranspose(transpose_string);
+  if (!transpose)
+    return InvalidArgument("Unknown transpose type %s", transpose_string.str());
+
+  switch (*transpose) {
+    case mlir::mhlo::Transpose::NO_TRANSPOSE:
+      return TriangularSolveOptions::NO_TRANSPOSE;
+    case mlir::mhlo::Transpose::TRANSPOSE:
+      return TriangularSolveOptions::TRANSPOSE;
+    case mlir::mhlo::Transpose::ADJOINT:
+      return TriangularSolveOptions::ADJOINT;
+    case mlir::mhlo::Transpose::TRANSPOSE_INVALID:
+      return TriangularSolveOptions::TRANSPOSE_INVALID;
+    default:
+      return InvalidArgument("Unknown transpose enum value #%d", *transpose);
+  }
+}
+
 }  // namespace xla

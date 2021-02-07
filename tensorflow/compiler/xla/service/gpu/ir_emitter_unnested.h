@@ -197,10 +197,10 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitRngGetAndUpdateState(MlirEmitterInput mlir_input);
   Status HandleScatter(HloInstruction* scatter) override;
   Status EmitScatterFromMlir(MlirEmitterInput mlir_input);
-  Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
   Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
+  Status EmitTriangularSolveFromMlir(MlirEmitterInput mlir_input);
 
   template <typename NcclThunkType, typename OpTy>
   Status EmitNcclThunkFromMlir(MlirEmitterInput mlir_input);

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
 
+#include "tensorflow/lite/micro/micro_error_reporter.h"
+
 namespace tflite {
 namespace micro {
 
@@ -30,12 +32,12 @@ uint8_t KernelRunner::kKernelRunnerBuffer_[];
 KernelRunner::KernelRunner(const TfLiteRegistration& registration,
                            TfLiteTensor* tensors, int tensors_size,
                            TfLiteIntArray* inputs, TfLiteIntArray* outputs,
-                           void* builtin_data, ErrorReporter* error_reporter)
-    : allocator_(SimpleMemoryAllocator::Create(
-          error_reporter, kKernelRunnerBuffer_, kKernelRunnerBufferSize_)),
+                           void* builtin_data)
+    : allocator_(SimpleMemoryAllocator::Create(GetMicroErrorReporter(),
+                                               kKernelRunnerBuffer_,
+                                               kKernelRunnerBufferSize_)),
       registration_(registration),
-      tensors_(tensors),
-      error_reporter_(error_reporter) {
+      tensors_(tensors) {
   // Prepare TfLiteContext:
   context_.impl_ = static_cast<void*>(this);
   context_.ReportError = ReportOpError;
@@ -65,8 +67,7 @@ TfLiteStatus KernelRunner::InitAndPrepare(const char* init_data,
 
 TfLiteStatus KernelRunner::Invoke() {
   if (registration_.invoke == nullptr) {
-    TF_LITE_REPORT_ERROR(error_reporter_,
-                         "TfLiteRegistration missing invoke function pointer!");
+    MicroPrintf("TfLiteRegistration missing invoke function pointer!");
     return kTfLiteError;
   }
   return registration_.invoke(&context_, &node_);
@@ -119,10 +120,8 @@ TfLiteStatus KernelRunner::RequestScratchBufferInArena(TfLiteContext* context,
   TFLITE_DCHECK(runner != nullptr);
 
   if (runner->scratch_buffer_count_ == kNumScratchBuffers_) {
-    TF_LITE_REPORT_ERROR(
-        runner->error_reporter_,
-        "Exceeded the maximum number of scratch tensors allowed (%d).",
-        kNumScratchBuffers_);
+    MicroPrintf("Exceeded the maximum number of scratch tensors allowed (%d).",
+                kNumScratchBuffers_);
     return kTfLiteError;
   }
 
@@ -152,13 +151,9 @@ void* KernelRunner::GetScratchBuffer(TfLiteContext* context, int buffer_index) {
 
 void KernelRunner::ReportOpError(struct TfLiteContext* context,
                                  const char* format, ...) {
-  TFLITE_DCHECK(context != nullptr);
-  KernelRunner* runner = reinterpret_cast<KernelRunner*>(context->impl_);
-  TFLITE_DCHECK(runner != nullptr);
-
   va_list args;
   va_start(args, format);
-  TF_LITE_REPORT_ERROR(runner->error_reporter_, format, args);
+  GetMicroErrorReporter()->Report(format, args);
   va_end(args);
 }
 

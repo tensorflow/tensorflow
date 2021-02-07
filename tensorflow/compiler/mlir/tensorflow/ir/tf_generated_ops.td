@@ -53,7 +53,7 @@ an output element, this operation computes \\(y = |x|\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AcosOp : TF_Op<"Acos", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_AcosOp : TF_Op<"Acos", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes acos of x element-wise.";
 
   let description = [{
@@ -73,7 +73,7 @@ Provided an input tensor, the `tf.math.acos` operation returns the inverse cosin
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AcoshOp : TF_Op<"Acosh", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_AcoshOp : TF_Op<"Acosh", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes inverse hyperbolic cosine of x element-wise.";
 
   let description = [{
@@ -527,7 +527,7 @@ array([b'3.14', b'2.72'], dtype=object)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AsinOp : TF_Op<"Asin", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_AsinOp : TF_Op<"Asin", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the trignometric inverse sine of x element-wise.";
 
   let description = [{
@@ -559,7 +559,7 @@ tf.math.asin(y) # [1.047, 0.785] = x
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AsinhOp : TF_Op<"Asinh", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_AsinhOp : TF_Op<"Asinh", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes inverse hyperbolic sine of x element-wise.";
 
   let description = [{
@@ -718,7 +718,7 @@ where \(r = \sqrt(x^2 + y^2) \).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AtanhOp : TF_Op<"Atanh", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_AtanhOp : TF_Op<"Atanh", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes inverse hyperbolic tangent of x element-wise.";
 
   let description = [{
@@ -1534,7 +1534,7 @@ def TF_CeilOp : TF_Op<"Ceil", [Idempotent, NoSideEffect, SameOperandsAndResultTy
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CheckNumericsOp : TF_Op<"CheckNumerics", [SameOperandsAndResultType]> {
+def TF_CheckNumericsOp : TF_Op<"CheckNumerics", [TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Checks a tensor for NaN and Inf values.";
 
   let description = [{
@@ -1673,7 +1673,7 @@ Mutually accumulates multiple tensors of identical type and shape.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CollectiveReduceOp : TF_Op<"CollectiveReduce", [SameOperandsAndResultType]> {
+def TF_CollectiveReduceOp : TF_Op<"CollectiveReduce", [TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Mutually reduces multiple tensors of identical type and shape.
   }];
@@ -2164,7 +2164,7 @@ Computes the gradients of 3-D convolution with respect to the input.
   TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CosOp : TF_Op<"Cos", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_CosOp : TF_Op<"Cos", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes cos of x element-wise.";
 
   let description = [{
@@ -2190,7 +2190,7 @@ Given an input tensor, this function computes cosine of every
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CoshOp : TF_Op<"Cosh", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_CoshOp : TF_Op<"Cosh", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes hyperbolic cosine of x element-wise.";
 
   let description = [{
@@ -2370,7 +2370,7 @@ tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
   }];
 }
 
-def TF_DataFormatDimMapOp : TF_Op<"DataFormatDimMap", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_DataFormatDimMapOp : TF_Op<"DataFormatDimMap", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Returns the dimension index in the destination data format given the one in
   }];
@@ -3056,7 +3056,7 @@ this op runs. The length of the list is returned in two cases:
   );
 }
 
-def TF_DiagOp : TF_Op<"Diag", [NoSideEffect, SameOperandsAndResultElementType]> {
+def TF_DiagOp : TF_Op<"Diag", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
   let summary = "Returns a diagonal tensor with a given diagonal values.";
 
   let description = [{
@@ -3125,7 +3125,7 @@ tf.diag_part(input) ==> [1, 2, 3, 4]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_DigammaOp : TF_Op<"Digamma", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_DigammaOp : TF_Op<"Digamma", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Computes Psi, the derivative of Lgamma (the log of the absolute value of
   }];
@@ -3378,7 +3378,7 @@ Comparison with `numpy.einsum`:
   }];
 }
 
-def TF_EluOp : TF_Op<"Elu", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_EluOp : TF_Op<"Elu", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
   }];
@@ -3399,7 +3399,7 @@ See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_EluGradOp : TF_Op<"EluGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_EluGradOp : TF_Op<"EluGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Computes gradients for the exponential linear (Elu) operation.
   }];
@@ -3624,7 +3624,7 @@ tf.math.equal(x, y) ==> array([True,  True])
   }];
 }
 
-def TF_ErfOp : TF_Op<"Erf", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_ErfOp : TF_Op<"Erf", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the Gauss error function of `x` element-wise.";
 
   let arguments = (ins
@@ -3638,7 +3638,7 @@ def TF_ErfOp : TF_Op<"Erf", [NoSideEffect, SameOperandsAndResultType]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_ErfcOp : TF_Op<"Erfc", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_ErfcOp : TF_Op<"Erfc", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Computes the complementary error function of `x` element-wise.
   }];
@@ -3766,7 +3766,7 @@ size 1.
   ];
 }
 
-def TF_Expm1Op : TF_Op<"Expm1", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_Expm1Op : TF_Op<"Expm1", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes `exp(x) - 1` element-wise.";
 
   let description = [{
@@ -3893,7 +3893,7 @@ def TF_FakeParamOp : TF_Op<"FakeParam", [NoSideEffect, TF_NoConstantFold]> {
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_FakeQuantWithMinMaxArgsOp : TF_Op<"FakeQuantWithMinMaxArgs", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_FakeQuantWithMinMaxArgsOp : TF_Op<"FakeQuantWithMinMaxArgs", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
   }];
@@ -3939,7 +3939,7 @@ Quantization is called fake since the output is still in floating point.
   }];
 }
 
-def TF_FakeQuantWithMinMaxArgsGradientOp : TF_Op<"FakeQuantWithMinMaxArgsGradient", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_FakeQuantWithMinMaxArgsGradientOp : TF_Op<"FakeQuantWithMinMaxArgsGradient", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Compute gradients for a FakeQuantWithMinMaxArgs operation.";
 
   let arguments = (ins
@@ -5165,7 +5165,7 @@ operation create / operate on a copy of `x`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_InvOp : TF_Op<"Inv", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_InvOp : TF_Op<"Inv", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the reciprocal of x element-wise.";
 
   let description = [{
@@ -5593,7 +5593,7 @@ def TF_LRNGradOp : TF_Op<"LRNGrad", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType, TF_ContractionFusableInterface]> {
+def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, TF_ContractionFusableInterface, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes rectified linear: `max(features, features * alpha)`.";
 
   let arguments = (ins
@@ -5616,7 +5616,7 @@ def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType
   }];
 }
 
-def TF_LeakyReluGradOp : TF_Op<"LeakyReluGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_LeakyReluGradOp : TF_Op<"LeakyReluGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Computes rectified linear gradients for a LeakyRelu operation.
   }];
@@ -5750,7 +5750,7 @@ tf.math.less_equal(x, y) ==> [True, True, True]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_LgammaOp : TF_Op<"Lgamma", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_LgammaOp : TF_Op<"Lgamma", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Computes the log of the absolute value of `Gamma(x)` element-wise.
   }];
@@ -9102,7 +9102,7 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
   let hasFolder = 1;
 }
 
-def TF_PreventGradientOp : TF_Op<"PreventGradient", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_PreventGradientOp : TF_Op<"PreventGradient", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 An identity op that triggers an error if a gradient is requested.
   }];
@@ -9212,7 +9212,7 @@ q_full, r_full = qr(a, full_matrices=True)
   }];
 }
 
-def TF_QuantizeAndDequantizeOp : TF_Op<"QuantizeAndDequantize", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_QuantizeAndDequantizeOp : TF_Op<"QuantizeAndDequantize", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Use QuantizeAndDequantizeV2 instead.";
 
   let arguments = (ins
@@ -9669,7 +9669,7 @@ Programming, Volume 2. Addison Wesley
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RandomShuffleOp : TF_Op<"RandomShuffle", [SameOperandsAndResultType, TF_CannotDuplicate]> {
+def TF_RandomShuffleOp : TF_Op<"RandomShuffle", [TF_CannotDuplicate, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Randomly shuffles a tensor along its first dimension.";
 
   let description = [{
@@ -9795,13 +9795,13 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$start,
-    TF_IntOrFpTensor:$limit,
-    TF_IntOrFpTensor:$delta
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$start,
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$limit,
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$delta
   );
 
   let results = (outs
-    TF_IntOrFpTensor:$output
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$output
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
@@ -9938,7 +9938,7 @@ I.e., \\(y = 1 / x\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_ReciprocalGradOp : TF_Op<"ReciprocalGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_ReciprocalGradOp : TF_Op<"ReciprocalGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the gradient for the inverse of `x` wrt its input.";
 
   let description = [{
@@ -10081,7 +10081,7 @@ def TF_Relu6Op : TF_Op<"Relu6", [Idempotent, NoSideEffect, SameOperandsAndResult
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_Relu6GradOp : TF_Op<"Relu6Grad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_Relu6GradOp : TF_Op<"Relu6Grad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes rectified linear 6 gradients for a Relu6 operation.";
 
   let arguments = (ins
@@ -10096,7 +10096,7 @@ def TF_Relu6GradOp : TF_Op<"Relu6Grad", [NoSideEffect, SameOperandsAndResultType
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_ReluGradOp : TF_Op<"ReluGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_ReluGradOp : TF_Op<"ReluGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes rectified linear gradients for a Relu operation.";
 
   let arguments = (ins
@@ -12119,7 +12119,7 @@ I.e., \\(y = 1 / \sqrt{x}\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RsqrtGradOp : TF_Op<"RsqrtGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_RsqrtGradOp : TF_Op<"RsqrtGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the gradient for the rsqrt of `x` wrt its input.";
 
   let description = [{
@@ -12582,7 +12582,7 @@ e = self_adjoint_eig(a, compute_v=False)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SeluOp : TF_Op<"Selu", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SeluOp : TF_Op<"Selu", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
   }];
@@ -12608,7 +12608,7 @@ See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SeluGradOp : TF_Op<"SeluGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SeluGradOp : TF_Op<"SeluGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Computes gradients for the scaled exponential linear (Selu) operation.
   }];
@@ -12828,7 +12828,7 @@ The op returns an error if no system is running.
   let results = (outs);
 }
 
-def TF_SigmoidOp : TF_Op<"Sigmoid", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SigmoidOp : TF_Op<"Sigmoid", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes sigmoid of `x` element-wise.";
 
   let description = [{
@@ -12846,7 +12846,7 @@ Specifically, `y = 1 / (1 + exp(-x))`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SigmoidGradOp : TF_Op<"SigmoidGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SigmoidGradOp : TF_Op<"SigmoidGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the gradient of the sigmoid of `x` wrt its input.";
 
   let description = [{
@@ -12915,7 +12915,7 @@ Given an input tensor, this function computes sine of every
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SinhOp : TF_Op<"Sinh", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SinhOp : TF_Op<"Sinh", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes hyperbolic sine of x element-wise.";
 
   let description = [{
@@ -13003,7 +13003,7 @@ whose values are extracted from 'input' starting at the offsets in
   }];
 }
 
-def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns a copy of the input tensor.";
 
   let arguments = (ins
@@ -13067,7 +13067,7 @@ Inputs are the logits, not probabilities.
   }];
 }
 
-def TF_SoftplusOp : TF_Op<"Softplus", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SoftplusOp : TF_Op<"Softplus", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes softplus: `log(exp(features) + 1)`.";
 
   let arguments = (ins
@@ -13081,7 +13081,7 @@ def TF_SoftplusOp : TF_Op<"Softplus", [NoSideEffect, SameOperandsAndResultType]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SoftplusGradOp : TF_Op<"SoftplusGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SoftplusGradOp : TF_Op<"SoftplusGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes softplus gradients for a softplus operation.";
 
   let arguments = (ins
@@ -13096,7 +13096,7 @@ def TF_SoftplusGradOp : TF_Op<"SoftplusGrad", [NoSideEffect, SameOperandsAndResu
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SoftsignOp : TF_Op<"Softsign", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SoftsignOp : TF_Op<"Softsign", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes softsign: `features / (abs(features) + 1)`.";
 
   let arguments = (ins
@@ -13110,7 +13110,7 @@ def TF_SoftsignOp : TF_Op<"Softsign", [NoSideEffect, SameOperandsAndResultType]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SoftsignGradOp : TF_Op<"SoftsignGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SoftsignGradOp : TF_Op<"SoftsignGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes softsign gradients for a softsign operation.";
 
   let arguments = (ins
@@ -13653,7 +13653,7 @@ I.e., \\(y = \sqrt{x} = x^{1/2}\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SqrtGradOp : TF_Op<"SqrtGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SqrtGradOp : TF_Op<"SqrtGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the gradient for the sqrt of `x` wrt its input.";
 
   let description = [{
@@ -14894,7 +14894,7 @@ variables.
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_TanOp : TF_Op<"Tan", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_TanOp : TF_Op<"Tan", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes tan of x element-wise.";
 
   let description = [{
@@ -14920,7 +14920,7 @@ Given an input tensor, this function computes tangent of every
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType, TF_LayoutAgnostic]> {
+def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, TF_LayoutAgnostic, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes hyperbolic tangent of `x` element-wise.";
 
   let description = [{
@@ -14946,7 +14946,7 @@ Given an input tensor, this function computes hyperbolic tangent of every
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_TanhGradOp : TF_Op<"TanhGrad", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_TanhGradOp : TF_Op<"TanhGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the gradient for the tanh of `x` wrt its input.";
 
   let description = [{
@@ -17358,7 +17358,7 @@ create these operators.
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
 }
 
-def TF__FusedMatMulOp : TF_Op<"_FusedMatMul", [NoSideEffect, SameOperandsAndResultElementType]> {
+def TF__FusedMatMulOp : TF_Op<"_FusedMatMul", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
   let summary = [{
 Performs a MatMul followed by a specified series of operations.
   }];
@@ -17547,7 +17547,7 @@ rewrite passes must replace this op with a _TPUCompileMlir op `program` output.
   );
 }
 
-def TF__UnaryOpsCompositionOp : TF_Op<"_UnaryOpsComposition", [NoSideEffect, SameOperandsAndResultType]> {
+def TF__UnaryOpsCompositionOp : TF_Op<"_UnaryOpsComposition", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
   }];

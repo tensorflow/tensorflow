@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -135,6 +136,22 @@ StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {
       return mlir::mhlo::FftType::IRFFT;
     default:
       return InvalidArgument("Unknown FFT type enum value #%d", type);
+  }
+}
+
+StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
+    xla::TriangularSolveOptions_Transpose transpose) {
+  switch (transpose) {
+    case TriangularSolveOptions::NO_TRANSPOSE:
+      return mlir::mhlo::Transpose::NO_TRANSPOSE;
+    case TriangularSolveOptions::TRANSPOSE:
+      return mlir::mhlo::Transpose::TRANSPOSE;
+    case TriangularSolveOptions::ADJOINT:
+      return mlir::mhlo::Transpose::ADJOINT;
+    case TriangularSolveOptions::TRANSPOSE_INVALID:
+      return mlir::mhlo::Transpose::TRANSPOSE_INVALID;
+    default:
+      return InvalidArgument("Unknown transpose enum value #%d", transpose);
   }
 }
 

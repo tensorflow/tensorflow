@@ -28,6 +28,7 @@ import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import distribute_options
@@ -3038,6 +3039,34 @@ class Options(options_lib.OptionsBase):
       "IGNORE: External state is ignored without a warning; WARN: External "
       "state is ignored and a warning is logged; FAIL: External state results "
       "in an error.")
+
+  def _to_proto(self):
+    pb = dataset_options_pb2.Options()
+    if self.experimental_deterministic is not None:
+      pb.deterministic = self.experimental_deterministic
+    pb.distribute_options.CopyFrom(self.experimental_distribute._to_proto())  # pylint: disable=protected-access
+    if self.experimental_external_state_policy is not None:
+      pb.external_state_policy = (
+          distribute_options.ExternalStatePolicy._to_proto(  # pylint: disable=protected-access
+              self.experimental_external_state_policy))
+    pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
+    if self.experimental_slack is not None:
+      pb.slack = self.experimental_slack
+    pb.threading_options.CopyFrom(self.experimental_threading._to_proto())  # pylint: disable=protected-access
+    return pb
+
+  def _from_proto(self, pb):
+    if pb.WhichOneof("optional_deterministic") is not None:
+      self.experimental_deterministic = pb.deterministic
+    self.experimental_distribute._from_proto(pb.distribute_options)  # pylint: disable=protected-access
+    if pb.WhichOneof("optional_external_state_policy") is not None:
+      self.experimental_external_state_policy = (
+          distribute_options.ExternalStatePolicy._from_proto(  # pylint: disable=protected-access
+              pb.external_state_policy))
+    self.experimental_optimization._from_proto(pb.optimization_options)  # pylint: disable=protected-access
+    if pb.WhichOneof("optional_slack") is not None:
+      self.experimental_slack = pb.slack
+    self.experimental_threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _graph_rewrites(self):
     """Produces lists of enabled, disabled, default static graph rewrites.

@@ -643,6 +643,7 @@ objc_library(
         ":test_util",
         ":winograd",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
     ],
 )
 
@@ -723,6 +724,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
     ],
 )

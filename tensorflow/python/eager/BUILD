@@ -511,6 +511,7 @@ cuda_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:list_ops",
+        "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:resource_variable_ops",

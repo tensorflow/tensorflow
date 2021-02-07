@@ -197,6 +197,7 @@ cc_library(
 
 cc_library(
     name = "weights_layout",
+    srcs = ["weights_layout.cc"],
     hdrs = ["weights_layout.h"],
 )
 

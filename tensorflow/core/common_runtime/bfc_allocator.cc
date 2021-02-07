@@ -35,6 +35,7 @@ limitations under the License.
 namespace tensorflow {
 
 constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
+constexpr uint64 BFCAllocator::kMemDebugHistorySize;
 
 BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
                            bool allow_growth, const string& name,

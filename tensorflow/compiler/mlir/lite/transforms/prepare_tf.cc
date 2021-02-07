@@ -1056,8 +1056,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
                                                     /*x=*/tblgen_value_0,
                                                     /*y=*/tblgen_value_1);
       // We need to make sure the Add operands are broadcastable.
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(add_op_1)
-              .value == LogicalResult::Failure) {
+      if (mlir::failed(mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+              add_op_1))) {
         return failure();
       }
     }
@@ -1077,8 +1077,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       multiplier = rewriter.create<::mlir::TF::MulOp>(odsLoc,
                                                       /*x=*/tblgen_value_0,
                                                       /*y=*/tblgen_value_1);
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(multiplier)
-              .value == LogicalResult::Failure) {
+      if (mlir::failed(mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+              multiplier))) {
         return failure();
       }
     }
@@ -1090,8 +1090,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
                                                     /*x=*/tblgen_value_0,
                                                     /*y=*/tblgen_value_1);
       // We need to make sure the Mul operands are broadcastable.
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(mul_op_1)
-              .value == LogicalResult::Failure) {
+      if (mlir::failed(mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+              mul_op_1))) {
         return failure();
       }
     }
@@ -1102,8 +1102,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       mul_op_2 = rewriter.create<::mlir::TF::MulOp>(odsLoc,
                                                     /*x=*/tblgen_value_0,
                                                     /*y=*/tblgen_value_1);
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(mul_op_2)
-              .value == LogicalResult::Failure) {
+      if (mlir::failed(mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+              mul_op_2))) {
         return failure();
       }
     }
@@ -1114,8 +1114,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       sub_op = rewriter.create<::mlir::TF::SubOp>(odsLoc,
                                                   /*x=*/tblgen_value_0,
                                                   /*y=*/tblgen_value_1);
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(sub_op).value ==
-          LogicalResult::Failure) {
+      if (failed(
+              mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(sub_op))) {
         return failure();
       }
     }
@@ -1132,8 +1132,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       add_op_2 = rewriter.create<::mlir::TF::AddOp>(
           odsLoc, tblgen_types, tblgen_values, tblgen_attrs);
       // We need to make sure the Add operands are broadcastable.
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(add_op_2)
-              .value == LogicalResult::Failure) {
+      if (mlir::failed(mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+              add_op_2))) {
         return failure();
       }
     }

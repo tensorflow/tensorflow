@@ -292,6 +292,7 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
     is_gcs_fs &= absl::StartsWith(filenames[i], kGcsFsPrefix);
     is_s3_fs &= absl::StartsWith(filenames[i], kS3FsPrefix);
+    metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
 
   tstring compression_type;

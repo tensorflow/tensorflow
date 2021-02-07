@@ -882,3 +882,17 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
     ],
 )
+
+cc_library(
+    name = "winograd_test_util",
+    testonly = 1,
+    srcs = ["winograd_test_util.cc"],
+    hdrs = ["winograd_test_util.h"],
+    deps = [
+        ":winograd",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)

@@ -641,7 +641,10 @@ def LHLO_TriangularSolveOp: LHLO_Op<"triangular_solve", [SameOperandsElementType
     BoolAttr:$left_side,
     BoolAttr:$lower,
     BoolAttr:$unit_diagonal,
-    HLO_TransposeAttr:$transpose_a
+    HLO_TransposeAttr:$transpose_a,
+    HLO_LayoutAttr:$layout_a,
+    HLO_LayoutAttr:$layout_b,
+    HLO_LayoutAttr:$layout_output
   );
 }
 
