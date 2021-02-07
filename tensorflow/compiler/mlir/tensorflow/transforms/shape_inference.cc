@@ -1418,8 +1418,14 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
       RecordValue(ValuePort(std::get<0>(result)), attr);
     } else {
       auto value = fold_result.get<Value>();
-      if ((attr = ComputeOutputComponent(ValuePort(value))))
+      if ((attr = ComputeOutputComponent(ValuePort(value)))) {
+        DCOMMENT("\t\tValue Result mapped to " << attr);
         RecordValue(ValuePort(std::get<0>(result)), attr);
+      } else {
+        DCOMMENT("\t\tValue result unmapped, consider value type:" << value);
+        RefineResultType(op,
+                                                  std::get<0>(result), value.getType());
+      }
     }
 
     if (ElementsAttr eattr = attr.dyn_cast_or_null<ElementsAttr>()) {
@@ -1529,7 +1535,11 @@ LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
 
       // Before attempting inference, just try to compute the folded
       // value/shape.
-      if (succeeded(TryToFold(op))) return;
+      if (succeeded(TryToFold(op)) &&
+          // Folding can "succeed" and yet not all types be refined. In such
+          // cases we still want to give a try at `InferShapeForSingleOperation`
+          none_of(op->getResultTypes(), CanBeRefined))
+        return;
 
       // Best-effort shape inference in attached functions. Do not return
       // failure even if it doesn't get to fixed point.
@@ -1629,7 +1639,7 @@ LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations) {
     return success();
   }
   int64_t producer = producer_or.ValueOrDie();
-  // TODO(jpienaar): Clean up propagate_caller_callee_constants if it is no
+  // TODO(jpienaar): Clean up propagate_NextIterationSinkOp_callee_constants if it is no
   // longer needed.
   ShapeInference context(producer, module.getContext(),
                          /*propagate_caller_callee_constants=*/false);
@@ -1641,8 +1651,8 @@ LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations) {
   auto max_iteration = context.QueueSize() * 4;
   while (!context.EmptyQueue()) {
     FuncOp func = context.front();
-    auto res = InferShapeForFunction(context, func, max_iterations);
-    if (failed(res)) return res;
+    if (failed(InferShapeForFunction(context, func, max_iterations)))
+        return failure();
     context.pop_front();
 
     if ((--max_iteration) == 0) {
