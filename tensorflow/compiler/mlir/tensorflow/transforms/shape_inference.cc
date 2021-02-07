@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <initializer_list>
 #include <iterator>
@@ -462,12 +463,14 @@ class ShapeInference {
   LogicalResult InferShapeUntilFixPoint(Region* region, int64_t max_iterations);
 
   // Updates input types and refine shapes inside body of functions that are
-  // attached to ControlFlow ops (If/While). These functions include Then/Else
-  // branches of IfOp and Cond/Body functions of WhileOp. These functions share
-  // following common properties:
+  // attached to ControlFlow ops (If/While) or Calls. These functions include
+  // Then/Else branches of IfOp and Cond/Body functions of WhileOp. Functions
+  // attached to control flow share following common properties:
   //   1) They are never reused, ie. having a single use in module.
   //   2) Their input types match those of their parent ops (excluding inputs
   //      like predicate).
+  // For calls, functions can be reused across multiple call sites. In this case
+  // we propagate the types when all call sites have the same operand types.
   LogicalResult PropagateShapeToFunctions(ModuleOp module,
                                           TypeRange input_types,
                                           ArrayRef<FuncOp> functions,
@@ -590,7 +593,7 @@ class ShapeInference {
   // with insertions to the callers map. This could occur if GetCallers is
   // called with two separate functions, the 2nd one incurs a resize and then
   // both first and 2nd stored callers are used.
-  ArrayRef<FuncOp> GetCallers(FuncOp fn);
+  ArrayRef<Operation*> GetCallers(FuncOp fn);
 
   // Mapping between ValuePort (which corresponds to an OpResult or smaller,
   // e.g., first element of OpResult produced) to an Attribute if the ValuePort
@@ -598,7 +601,7 @@ class ShapeInference {
   ValuePortResultMap results_;
 
   // Map from a function to the callers of that function.
-  llvm::DenseMap<FuncOp, SmallVector<FuncOp, 4>> callers_of_func_;
+  llvm::DenseMap<FuncOp, SmallVector<Operation*, 4>> callers_of_func_;
 
   // Queue of functions being processed.
   llvm::DenseSet<FuncOp> queue_set_;
@@ -617,7 +620,7 @@ ShapeInference::ShapeInference(int64_t graph_version, MLIRContext* context,
       graph_version_(graph_version),
       propagate_caller_callee_constants_(propagate_caller_callee_constants) {}
 
-ArrayRef<FuncOp> ShapeInference::GetCallers(FuncOp fn) {
+ArrayRef<Operation*> ShapeInference::GetCallers(FuncOp fn) {
   auto pair = callers_of_func_.try_emplace(fn);
   if (pair.second) {
     ModuleOp module = fn->getParentOfType<ModuleOp>();
@@ -625,7 +628,7 @@ ArrayRef<FuncOp> ShapeInference::GetCallers(FuncOp fn) {
     if (uses) {
       pair.first->second.reserve(pair.first->second.size());
       for (auto use : *uses) {
-        pair.first->second.push_back(use.getUser()->getParentOfType<FuncOp>());
+        pair.first->second.push_back(use.getUser());
       }
     }
   }
@@ -633,7 +636,7 @@ ArrayRef<FuncOp> ShapeInference::GetCallers(FuncOp fn) {
 }
 
 void ShapeInference::EnqueueCallers(FuncOp fn) {
-  for (auto user : GetCallers(fn)) enqueue(user);
+  for (auto user : GetCallers(fn)) enqueue(user->getParentOfType<FuncOp>());
 }
 
 void ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
@@ -1141,16 +1144,28 @@ LogicalResult ShapeInference::PropagateShapeToFunctions(
   // have a best-effort propagation.
   for (FuncOp func : functions) {
     DCOMMENT("Propating shape to" << func.getName());
-    auto func_uses = GetCallers(func);
-    if (!llvm::hasSingleElement(func_uses)) {
-      func.emitWarning(
-          formatv("expected control flow function @{0} to have exactly 1 use, "
-                  "found {1}.",
-                  func.getName(), func_uses.size()));
+    ArrayRef<Operation*> callers = GetCallers(func);
+    if (!llvm::hasSingleElement(callers) &&
+        !llvm::all_of(callers, [&](Operation* caller) {
+          /// TODO(aminim): this is overly conservative as some operations
+          /// (like TPUPartitionedCallOp) may have extra operands that aren't
+          /// propagated to the callee.
+          return isa<CallOpInterface>(caller) &&
+                 std::equal(caller->getOperandTypes().begin(),
+                            caller->getOperandTypes().end(),
+                            callers.front()->getOperandTypes().begin());
+        })) {
       all_succeeded = false;
+      if (llvm::any_of(callers, [](Operation* op) {
+            return isa<IfOp, WhileOp, CaseOp>(op);
+          }))
+        func.emitWarning(formatv(
+            "expected control flow function @{0} to have exactly 1 use, "
+            "found {1}.",
+            func.getName(), callers.size()));
+
       continue;
     }
-
     FunctionType func_type = func.getType();
     func.setType(FunctionType::get(func.getContext(), input_types,
                                    func_type.getResults()));
@@ -1194,8 +1209,8 @@ LogicalResult ShapeInference::PropagateShapeToRegions(TypeRange input_types,
 
 void ShapeInference::PropagateConstantToCallee(CallOpInterface call_op,
                                                FuncOp func, ModuleOp module) {
-  auto func_uses = GetCallers(func);
-  if (!llvm::hasSingleElement(func_uses)) return;
+  auto callers = GetCallers(func);
+  if (!llvm::hasSingleElement(callers)) return;
 
   OpBuilder builder(&func.front().front());
   Operation* op = call_op.getOperation();
