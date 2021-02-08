@@ -323,6 +323,7 @@ tf_cc_tests(
         "adjust_contrast_op_test.cc",
         "colorspace_op_test.cc",
         "crop_and_resize_op_test.cc",
+        "image_projective_transform_test.cc",
         "mirror_pad_op_test.cc",
         "non_max_suppression_op_test.cc",
         "resize_area_op_test.cc",
