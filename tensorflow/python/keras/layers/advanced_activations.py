@@ -209,6 +209,9 @@ class ELU(Layer):
 
   def __init__(self, alpha=1.0, **kwargs):
     super(ELU, self).__init__(**kwargs)
+    if alpha is None:
+      raise ValueError('alpha of ELU layer '
+                       'cannot be None. Required a float')
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
 

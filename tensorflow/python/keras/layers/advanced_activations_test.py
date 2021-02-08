@@ -109,9 +109,19 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2)
 
   def test_leaky_relu_with_invalid_alpha(self):
+    # Test case for GitHub issue 46993.
     with self.assertRaisesRegex(
         ValueError, 'alpha of leaky Relu layer cannot be None'):
       testing_utils.layer_test(keras.layers.LeakyReLU,
+                               kwargs={'alpha': None},
+                               input_shape=(2, 3, 4),
+                               supports_masking=True)
+
+  def test_leaky_elu_with_invalid_alpha(self):
+    # Test case for GitHub issue 46993.
+    with self.assertRaisesRegex(
+        ValueError, 'alpha of ELU layer cannot be None'):
+      testing_utils.layer_test(keras.layers.ELU,
                                kwargs={'alpha': None},
                                input_shape=(2, 3, 4),
                                supports_masking=True)
