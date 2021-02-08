@@ -953,6 +953,19 @@ cc_test(
 )
 
 cc_test(
+    name = "common_test",
+    srcs = [
+        "common_test.cc",
+    ],
+    shard_count = 2,
+    deps = [
+        ":common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "conv_per_channel_quantized_16x8_test",
     srcs = [
         "conv_per_channel_quantized_16x8_test.cc",

@@ -248,13 +248,16 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
                                                int32_t* act_max);
 
 // Calculates the useful range of an activation layer given its activation
-// tensor.a
+// tensor.a. For floating point with unbounded activation such as relu and none,
+// sets max/min to positive/negative infinity in case infinity is clipped.
 template <typename T>
 void CalculateActivationRange(TfLiteFusedActivation activation,
                               T* activation_min, T* activation_max) {
   if (activation == kTfLiteActRelu) {
     *activation_min = 0;
-    *activation_max = std::numeric_limits<T>::max();
+    *activation_max = std::numeric_limits<T>::has_infinity
+                          ? std::numeric_limits<T>::infinity()
+                          : std::numeric_limits<T>::max();
   } else if (activation == kTfLiteActRelu6) {
     *activation_min = 0;
     *activation_max = 6;
@@ -262,8 +265,15 @@ void CalculateActivationRange(TfLiteFusedActivation activation,
     *activation_min = -1;
     *activation_max = 1;
   } else {
-    *activation_min = std::numeric_limits<T>::lowest();
-    *activation_max = std::numeric_limits<T>::max();
+    // At least for most common floating point representations such as
+    // IEC 559/IEEE 754 and bfloat16, -infinity is the representation of
+    // negative infinity. Otherwise, there is no such guarantee.
+    *activation_min = std::numeric_limits<T>::has_infinity
+                          ? -std::numeric_limits<T>::infinity()
+                          : std::numeric_limits<T>::lowest();
+    *activation_max = std::numeric_limits<T>::has_infinity
+                          ? std::numeric_limits<T>::infinity()
+                          : std::numeric_limits<T>::max();
   }
 }
 
