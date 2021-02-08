@@ -63,9 +63,9 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
     dataset = dataset.map(
         math_ops.matmul, num_parallel_calls=dataset_ops.AUTOTUNE)
     return self._run_benchmark(
-        dataset,
-        autotune,
-        autotune_buffers,
+        dataset=dataset,
+        autotune=autotune,
+        autotune_buffers=autotune_buffers,
         benchmark_iters=10000,
         benchmark_label="map")
 
@@ -86,9 +86,9 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
         math_ops.matmul, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset.batch(batch_size=batch_size)
     return self._run_benchmark(
-        dataset,
-        autotune,
-        autotune_buffers,
+        dataset=dataset,
+        autotune=autotune,
+        autotune_buffers=autotune_buffers,
         benchmark_iters=1000,
         benchmark_label="map_and_batch")
 
@@ -110,9 +110,9 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
         cycle_length=10,
         num_parallel_calls=dataset_ops.AUTOTUNE)
     return self._run_benchmark(
-        dataset,
-        autotune,
-        autotune_buffers,
+        dataset=dataset,
+        autotune=autotune,
+        autotune_buffers=autotune_buffers,
         benchmark_iters=10000,
         benchmark_label="interleave")
 
@@ -158,9 +158,9 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
     dataset = dataset_ops.Dataset.zip((dataset, dataset_c))
     dataset = dataset.map(f2, num_parallel_calls=dataset_ops.AUTOTUNE)
     return self._run_benchmark(
-        dataset,
-        autotune,
-        autotune_buffers,
+        dataset=dataset,
+        autotune=autotune,
+        autotune_buffers=autotune_buffers,
         benchmark_iters=10000,
         benchmark_label="map_and_interleave")
 
@@ -206,9 +206,9 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
     dataset_c = dataset_c.batch(batch_size=batch_size)
     dataset = dataset_ops.Dataset.zip((dataset, dataset_c))
     return self._run_benchmark(
-        dataset,
-        autotune,
-        autotune_buffers,
+        dataset=dataset,
+        autotune=autotune,
+        autotune_buffers=autotune_buffers,
         benchmark_iters=1000,
         benchmark_label="map_batch_and_interleave")
 
