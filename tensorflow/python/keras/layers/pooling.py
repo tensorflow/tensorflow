@@ -366,7 +366,7 @@ class MaxPooling2D(Pooling2D):
   ...                  [9., 10., 11., 12.]])
   >>> x = tf.reshape(x, [1, 3, 4, 1])
   >>> max_pool_2d = tf.keras.layers.MaxPooling2D(pool_size=(2, 2),
-  ...    strides=(1, 1), padding='valid')
+  ...    strides=(2, 2), padding='valid')
   >>> max_pool_2d(x)
   <tf.Tensor: shape=(1, 2, 3, 1), dtype=float32, numpy=
     array([[[[ 6.],
