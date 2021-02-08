@@ -66,7 +66,7 @@ class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
 // broadcasting (via the broadcast_dimensions attribute) and implicit degenerate
 // shape broadcasting.
 //
-// These correspond to operations in the mhlo dialect without the
+// These correspond to operations in the chlo and mhlo dialects without the
 // "broadcast_" prefix, except that those ops require same-shaped operands and
 // results.
 //
@@ -256,8 +256,31 @@ def HLOClient_BroadcastSubOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
+def HLOClient_BroadcastZetaOp : HLOClient_BroadcastBinaryElementwiseOp<
+    "broadcast_zeta",
+    [NoSideEffect, SameOperandsAndResultElementType]> {
+  let summary = "Hurwitz zeta function";
+
+  let description = [{
+    Returns `Zeta(operand, operand)` element-wise.
+
+    $$
+    \(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\)
+    $$
+  }];
+
+  let arguments = (ins
+    HLO_FpTensor:$lhs,
+    HLO_FpTensor:$rhs,
+    // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
+    // padded rank-broadcast semantics if omitted.
+    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
+  );
+  let results = (outs HLO_FpTensor);
+}
+
 //===----------------------------------------------------------------------===//
-// XLA binary elementwise op definitions.
+// XLA binary logical elementwise op definitions.
 // The same description as the arithmetic binary elementwise ops applies.
 //===----------------------------------------------------------------------===//
 
@@ -310,6 +333,37 @@ def HLOClient_BroadcastXorOp : HLOClient_BroadcastBinaryLogicalElementwiseOp<
 }
 
 //===----------------------------------------------------------------------===//
+// XLA non-broadcasting binary operations.
+//
+// These are operations that are supported by the XLA Builder API but that are
+// not part of the HLO compiler instructions as modelled by the MHLO dialect.
+//===----------------------------------------------------------------------===//
+
+def HLOClient_ZetaOp : HLOClient_Op<"zeta",
+    [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Hurwitz zeta function";
+
+  let description = [{
+    Returns `Zeta(operand, operand)` element-wise.
+
+    $$
+    \(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\)
+    $$
+  }];
+
+  let arguments = (ins
+    HLO_FpTensor:$x,
+    HLO_FpTensor:$q
+  );
+
+  let results = (outs HLO_FpTensor);
+
+  let assemblyFormat = [{
+    $x `,` $q attr-dict `:` `(` type($x) `,` type($q) `)` `->` type(results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // Broadcasting complex op
 //===----------------------------------------------------------------------===//
 
@@ -337,16 +391,19 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 //===----------------------------------------------------------------------===//
 
 class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
-    Type TensorType> : HLOClient_Op<mnemonic, !listconcat(traits, [
-    InferFusibilityOpInterface, NoSideEffect, SameOperandsAndResultType])> {
-  let arguments = (ins TensorType:$operand);
-  let results = (outs TensorType:$result);
+    Type ArgTensorType, Type ResultTensorType> : HLOClient_Op<mnemonic,
+    !listconcat(traits, [InferFusibilityOpInterface, NoSideEffect,
+    SameOperandsAndResultShape])> {
+  let arguments = (ins ArgTensorType:$operand);
+  let results = (outs ResultTensorType:$result);
 
-  let assemblyFormat = "$operand attr-dict `:` type($operand)";
+  let assemblyFormat = [{
+    $operand attr-dict `:` type($operand) `->` type($result)
+  }];
 }
 
-def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos", [],
-    HLO_FpOrComplexTensor> {
+def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos",
+    [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Acos operator";
 
   let description = [{
@@ -359,8 +416,8 @@ def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos", [],
   }];
 }
 
-def HLOClient_AcoshOp : HLOClient_UnaryElementwiseOp<"acosh", [],
-    HLO_FpOrComplexTensor> {
+def HLOClient_AcoshOp : HLOClient_UnaryElementwiseOp<"acosh",
+    [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Acosh operation";
 
   let description = [{
@@ -373,8 +430,8 @@ def HLOClient_AcoshOp : HLOClient_UnaryElementwiseOp<"acosh", [],
   }];
 }
 
-def HLOClient_AsinOp : HLOClient_UnaryElementwiseOp<"asin", [],
-    HLO_FpOrComplexTensor> {
+def HLOClient_AsinOp : HLOClient_UnaryElementwiseOp<"asin",
+    [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Asin operator";
 
   let description = [{
@@ -386,8 +443,8 @@ def HLOClient_AsinOp : HLOClient_UnaryElementwiseOp<"asin", [],
   }];
 }
 
-def HLOClient_AsinhOp : HLOClient_UnaryElementwiseOp<"asinh", [],
-    HLO_FpOrComplexTensor> {
+def HLOClient_AsinhOp : HLOClient_UnaryElementwiseOp<"asinh",
+    [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Asinh operation";
 
   let description = [{
@@ -399,8 +456,8 @@ def HLOClient_AsinhOp : HLOClient_UnaryElementwiseOp<"asinh", [],
   }];
 }
 
-def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
-    HLO_FpOrComplexTensor> {
+def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan",
+    [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Atan operator";
 
   let description = [{
@@ -412,8 +469,8 @@ def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
   }];
 }
 
-def HLOClient_AtanhOp : HLOClient_UnaryElementwiseOp<"atanh", [],
-    HLO_FpOrComplexTensor> {
+def HLOClient_AtanhOp : HLOClient_UnaryElementwiseOp<"atanh",
+    [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Atanh operator";
 
   let description = [{
@@ -426,8 +483,8 @@ def HLOClient_AtanhOp : HLOClient_UnaryElementwiseOp<"atanh", [],
   }];
 }
 
-def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj", [],
-    HLO_FpOrComplexTensor> {
+def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj",
+    [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Conj operator";
 
   let description = [{
@@ -439,8 +496,8 @@ def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj", [],
   }];
 }
 
-def HLOClient_CoshOp : HLOClient_UnaryElementwiseOp<"cosh", [],
-    HLO_FpOrComplexTensor> {
+def HLOClient_CoshOp : HLOClient_UnaryElementwiseOp<"cosh",
+    [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Cosh operator";
 
   let description = [{
@@ -452,8 +509,8 @@ def HLOClient_CoshOp : HLOClient_UnaryElementwiseOp<"cosh", [],
   }];
 }
 
-def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh", [],
-    HLO_FpOrComplexTensor> {
+def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh",
+    [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Sinh operation";
 
   let description = [{
@@ -466,8 +523,8 @@ def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh", [],
   }];
 }
 
-def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan", [],
-    HLO_FpOrComplexTensor> {
+def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan",
+    [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Tan operation";
 
   let description = [{
@@ -497,9 +554,17 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
   let hasCanonicalizer = 1;
 }
 
+def HLOClient_DigammaOp : HLOClient_UnaryElementwiseOp<"digamma",
+    [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
+  let summary = "Digamma function";
+
+  let description = [{
+    Returns `Digamma(operand)` element-wise.
+  }];
+}
+
 def HLOClient_ErfOp : HLOClient_UnaryElementwiseOp<"erf",
-    [NoSideEffect, SameOperandsAndResultShape],
-    HLO_FpTensor> {
+   [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
   let summary = "Erfc operator";
 
   let description = [{
@@ -511,8 +576,7 @@ def HLOClient_ErfOp : HLOClient_UnaryElementwiseOp<"erf",
 }
 
 def HLOClient_ErfcOp : HLOClient_UnaryElementwiseOp<"erfc",
-    [NoSideEffect, SameOperandsAndResultShape],
-    HLO_FpTensor> {
+    [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
   let summary = "Erfc operator";
 
   let description = [{
@@ -520,6 +584,45 @@ def HLOClient_ErfcOp : HLOClient_UnaryElementwiseOp<"erfc",
 
     erfc(x) = erfc_impl(x)           if |x| > 1
             = 1 - erf_impl(x)        otherwise
+  }];
+}
+
+def HLOClient_IsInfOp : HLOClient_UnaryElementwiseOp<"is_inf",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_FpTensor,
+    HLO_PredTensor> {
+  let summary = "IsInf predicate";
+
+  let description = [{
+    Returns if a value is +/-inf element-wise.
+  }];
+}
+
+def HLOClient_IsNegInfOp : HLOClient_UnaryElementwiseOp<"is_neg_inf",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_FpTensor,
+    HLO_PredTensor> {
+  let summary = "IsNegInf predicate";
+
+  let description = [{
+    Returns if a value is -inf element-wise.
+  }];
+}
+
+def HLOClient_IsPosInfOp : HLOClient_UnaryElementwiseOp<"is_pos_inf",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_FpTensor,
+    HLO_PredTensor> {
+  let summary = "IsPosInf predicate";
+
+  let description = [{
+    Returns if a value is +inf element-wise.
+  }];
+}
+
+def HLOClient_LgammaOp : HLOClient_UnaryElementwiseOp<"lgamma",
+    [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
+  let summary = "Lgamma function";
+
+  let description = [{
+    Returns `Lgamma(operand)` element-wise.
   }];
 }
 

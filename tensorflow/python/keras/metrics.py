@@ -2023,8 +2023,8 @@ class AUC(Metric):
               label_weights,
               message='All values of `label_weights` must be non-negative.')
       ]
-      self.label_weights = control_flow_ops.with_dependencies(
-          checks, label_weights)
+      with ops.control_dependencies(checks):
+        self.label_weights = label_weights
 
     else:
       self.label_weights = None

@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
@@ -437,6 +438,23 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::LogOp>(Location loc,
       loc, result_types, args, b);
 }
 
+inline Value LhloAlwaysPropagateNaN(Value v, ArrayRef<Value> args, Location loc,
+                                    OpBuilder* b) {
+  Type element_type = getElementTypeOrSelf(args.front().getType());
+  if (auto float_type = element_type.dyn_cast<FloatType>()) {
+    Value isnan =
+        b->create<mlir::CmpFOp>(loc, CmpFPredicate::UNO, args[0], args[1]);
+
+    auto nan_apfloat = APFloat::getQNaN(float_type.getFloatSemantics());
+    Value nan = b->create<mlir::ConstantFloatOp>(loc, nan_apfloat, float_type);
+    if (VectorType vec_type = args[0].getType().dyn_cast<VectorType>()) {
+      nan = b->create<::mlir::SplatOp>(loc, vec_type, nan);
+    }
+    v = b->create<mlir::SelectOp>(loc, isnan, nan, v);
+  }
+  return v;
+}
+
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::LogisticOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
@@ -464,10 +482,13 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MaxOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return CompareSelectOpToStdScalarOp<
-      IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
-      ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "GT", result_types,
-                                                       args, b);
+  return LhloAlwaysPropagateNaN(
+      CompareSelectOpToStdScalarOp<
+          IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
+          ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "GT",
+                                                           result_types, args,
+                                                           b),
+      args, loc, b);
 }
 
 template <>
@@ -475,10 +496,13 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MinOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return CompareSelectOpToStdScalarOp<
-      IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
-      ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "LT", result_types,
-                                                       args, b);
+  return LhloAlwaysPropagateNaN(
+      CompareSelectOpToStdScalarOp<
+          IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
+          ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "LT",
+                                                           result_types, args,
+                                                           b),
+      args, loc, b);
 }
 
 template <>
@@ -565,6 +589,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::PowOp>(Location loc,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
   lmhlo::PowOp::Adaptor adaptor(args);
+  auto lb = ImplicitLocOpBuilder(loc, *b);
   // Floating point can use std::powf
   auto result_type = result_types.front();
   if (result_type.isa<::mlir::FloatType>())
@@ -574,53 +599,66 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::PowOp>(Location loc,
   assert(result_type.isa<::mlir::IntegerType>() &&
          "only float and integer `pow` is supported right now");
 
-  // There is no powi, so lower to a simple product.
-  Value neg_one =
-      b->create<ConstantOp>(loc, b->getIntegerAttr(result_type, -1));
-  Value zero = b->create<ConstantOp>(loc, b->getIntegerAttr(result_type, 0));
-  Value one = b->create<ConstantOp>(loc, b->getIntegerAttr(result_type, 1));
-  Value two = b->create<ConstantOp>(loc, b->getIntegerAttr(result_type, 2));
+  // Exponentiation by squaring:
+  // https://en.wikipedia.org/wiki/Exponentiation_by_squaring;
+  Value neg_one = lb.create<ConstantOp>(lb.getIntegerAttr(result_type, -1));
+  Value zero = lb.create<ConstantOp>(lb.getIntegerAttr(result_type, 0));
+  Value one = lb.create<ConstantOp>(lb.getIntegerAttr(result_type, 1));
+  Value two = lb.create<ConstantOp>(lb.getIntegerAttr(result_type, 2));
+  Value step = lb.create<ConstantIndexOp>(1);
+  Value lowerBound = lb.create<ConstantIndexOp>(0);
+  // Everything else would overflow for any exponent > 1, as 2^64
+  // is the larget possible exponent for a 64-bit integer, and
+  // that's 1 << 6.
+  Value upperBound = lb.create<ConstantIndexOp>(6);
+  auto original_base = adaptor.lhs();
+  auto original_exponent = adaptor.rhs();
 
-  Value lowerBound = b->create<ConstantIndexOp>(loc, 0);
-  Value upperBound =
-      b->create<IndexCastOp>(loc, adaptor.rhs(), b->getIndexType());
-  Value step = b->create<ConstantIndexOp>(loc, 1);
-  Value for_result =
-      b->create<scf::ForOp>(
-           loc, lowerBound, upperBound, step, llvm::makeArrayRef(one),
-           [&](OpBuilder& b, Location l, Value v, ValueRange iters) {
-             Value prod =
-                 b.create<::mlir::MulIOp>(l, adaptor.lhs(), iters.front());
-             b.create<scf::YieldOp>(l, prod);
-           })
+  Value accum =
+      lb.create<scf::ForOp>(
+            lowerBound, upperBound, step,
+            SmallVector<Value>({one, original_base, original_exponent}),
+            [&](OpBuilder& b, Location, Value v, ValueRange iters) {
+              Value accum = iters[0];
+              Value base = iters[1];
+              Value exponent = iters[2];
+
+              Value condition = b.create<CmpIOp>(
+                  loc, CmpIPredicate::eq,
+                  b.create<::mlir::AndOp>(loc, exponent, one), one);
+              Value multiplied = b.create<::mlir::MulIOp>(loc, accum, base);
+              accum =
+                  b.create<::mlir::SelectOp>(loc, condition, multiplied, accum);
+              base = b.create<::mlir::MulIOp>(loc, base, base);
+              exponent =
+                  b.create<::mlir::UnsignedShiftRightOp>(loc, exponent, one);
+              b.create<scf::YieldOp>(
+                  loc, SmallVector<Value>({accum, base, exponent}));
+            })
           .getResult(0);
 
-  Value rhs_is_even =
-      b->create<CmpIOp>(loc, CmpIPredicate::eq,
-                        b->create<SignedRemIOp>(loc, adaptor.rhs(), two), zero);
+  Value rhs_is_even = lb.create<CmpIOp>(
+      CmpIPredicate::eq, lb.create<SignedRemIOp>(adaptor.rhs(), two), zero);
   Value rhs_is_negative =
-      b->create<CmpIOp>(loc, CmpIPredicate::slt, adaptor.rhs(), zero);
-  Value lhs_is_one =
-      b->create<CmpIOp>(loc, CmpIPredicate::eq, adaptor.lhs(), one);
+      lb.create<CmpIOp>(CmpIPredicate::slt, adaptor.rhs(), zero);
+  Value lhs_is_one = lb.create<CmpIOp>(CmpIPredicate::eq, adaptor.lhs(), one);
   Value lhs_is_neg_one =
-      b->create<CmpIOp>(loc, CmpIPredicate::eq, adaptor.lhs(), neg_one);
+      lb.create<CmpIOp>(CmpIPredicate::eq, adaptor.lhs(), neg_one);
 
-  // The for_result is correct when the rhs is non-negative. When rhs is
+  // The accum is correct when the rhs is non-negative. When rhs is
   // negative, we return 0 for integer, with the exception of lhs values of 1
   // and -1 which have integer results for negative exponents. Specifically, the
   // calulation is the following:
   //
-  // - Return for_result if the rhs is not negative.
+  // - Return accum if the rhs is not negative.
   // - Return 1 or -1 depending on the parity of rhs when the lhs is -1.
   // - Return 1 if lhs is 1.
   // - Else return 0.
-  Value if_lhs_is_one = b->create<::mlir::SelectOp>(loc, lhs_is_one, one, zero);
-  Value if_lhs_is_neg_one = b->create<::mlir::SelectOp>(
-      loc, lhs_is_neg_one,
-      b->create<::mlir::SelectOp>(loc, rhs_is_even, one, neg_one),
+  Value if_lhs_is_one = lb.create<::mlir::SelectOp>(lhs_is_one, one, zero);
+  Value if_lhs_is_neg_one = lb.create<::mlir::SelectOp>(
+      lhs_is_neg_one, lb.create<::mlir::SelectOp>(rhs_is_even, one, neg_one),
       if_lhs_is_one);
-  return b->create<::mlir::SelectOp>(loc, rhs_is_negative, if_lhs_is_neg_one,
-                                     for_result);
+  return lb.create<::mlir::SelectOp>(rhs_is_negative, if_lhs_is_neg_one, accum);
 }
 
 template <>

@@ -177,19 +177,26 @@ func @testConcatCwiseBinaryOnInnerDim(%arg0: tensor<?x1xf32>,
   // CHECK: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>}
   // CHECK: %[[RHS_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>}
 
-  // CHECK: %[[LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]])
-  // CHECK: %[[RHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
+  // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
+  // CHECK: %[[MUL_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]])
+  // CHECK: %[[MUL_RHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
 
-  // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[LHS_CONCAT]], %[[RHS_CONCAT]])
+  // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[MUL_LHS_CONCAT]], %[[MUL_RHS_CONCAT]])
   // CHECK-SAME: (tensor<?x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
-  // CHECK: return %[[MUL]]
+  // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[ADD_LHS_CONCAT]], %[[MUL]])
+  // CHECK-SAME: (tensor<2xf32>, tensor<?x2xf32>) -> tensor<?x2xf32>
+  // CHECK: return %[[ADD]]
 
   %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  // Mul of a tensor and a scalar const.
   %1 = "tf.Mul"(%arg0, %arg2) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
   %2 = "tf.Mul"(%arg1, %arg3) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
-  %3 = "tf.ConcatV2"(%1, %2, %0) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
+  // Add of a scalar const and a tensor.
+  %3 = "tf.AddV2"(%arg2, %1) : (tensor<f32>, tensor<?x1xf32>) -> tensor<?x1xf32>
+  %4 = "tf.AddV2"(%arg3, %2) : (tensor<f32>, tensor<?x1xf32>) -> tensor<?x1xf32>
+  %5 = "tf.ConcatV2"(%3, %4, %0) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
 
-  return %3 : tensor<?x2xf32>
+  return %5 : tensor<?x2xf32>
 }
 
 // CHECK-LABEL: testConcatCwiseBinaryInvalidInnerDim
@@ -205,6 +212,18 @@ func @testConcatCwiseBinaryInvalidInnerDim(%arg0: tensor<?x2xf32>,
   %3 = "tf.ConcatV2"(%1, %2, %0) : (tensor<?x2xf32>, tensor<?x2xf32>, tensor<i32>) -> tensor<?x4xf32>
 
   return %3 : tensor<?x4xf32>
+}
+
+// CHECK-LABEL: testConcatCwiseBinaryNegativeAxis
+func @testConcatCwiseBinaryNegativeAxis(%arg0: tensor<f32>,
+  %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<2xf32> {
+  // The test should not crash with negative axis.
+  %0 = "tf.Const"() { value = dense<-1> : tensor<i32> } : () -> tensor<i32>
+  %1 = "tf.Mul"(%arg0, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %2 = "tf.Mul"(%arg1, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %3 = "tf.ConcatV2"(%1, %2, %0) : (tensor<f32>, tensor<f32>, tensor<i32>) -> tensor<2xf32>
+
+  return %3 : tensor<2xf32>
 }
 
 // CHECK-LABEL: testLogOfSoftmax

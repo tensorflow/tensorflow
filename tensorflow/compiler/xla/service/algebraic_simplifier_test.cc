@@ -7161,5 +7161,35 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndPadReorderWithNonScalar) {
               GmockMatch(m::Tuple(m::Broadcast(
                   m::Pad(m::Broadcast(m::Parameter()), m::Constant())))));
 }
+
+// Test that dynamic-update-slice with a scalar broadcast becomes a pad when the
+// start_indices are too big.
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceOfBroadcastToPadOob) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY f {
+  constant.546 = f32[] constant(0)
+  broadcast.467 = f32[2]{0} broadcast(constant.546), dimensions={}
+  parameter.1 = f32[1]{0} parameter(0)
+  constant.551 = s32[] constant(2)
+  ROOT dynamic-update-slice.44 = f32[2]{0} dynamic-update-slice(broadcast.467, parameter.1, constant.551)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  auto* pad = module->entry_computation()->root_instruction();
+  EXPECT_THAT(pad,
+              GmockMatch(m::Pad(m::Parameter(0), m::ConstantScalar(0.0f))));
+  EXPECT_FALSE(HasInteriorPadding(pad->padding_config()));
+  ASSERT_EQ(pad->padding_config().dimensions_size(), 1);
+  EXPECT_EQ(pad->padding_config().dimensions(0).edge_padding_low(), 1);
+  EXPECT_EQ(pad->padding_config().dimensions(0).edge_padding_high(), 0);
+}
+
 }  // namespace
 }  // namespace xla

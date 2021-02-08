@@ -71,7 +71,7 @@ LogicalResult ConvertMaxUnpoolingFunc::RewriteFunc() {
   func_.eraseBody();
   func_.addEntryBlock();
   func_->setAttr(kTFImplements,
-                 StringAttr::get(kMaxUnpooling, func_.getContext()));
+                 StringAttr::get(func_.getContext(), kMaxUnpooling));
 
   OpBuilder builder(func_.getBody());
   std::string custom_option_buffer;
@@ -148,7 +148,7 @@ LogicalResult ConvertDenseImageWarpFunc::RewriteFunc() {
   func_.eraseBody();
   func_.addEntryBlock();
   func_->setAttr(kTFImplements,
-                 StringAttr::get(kImageWarping, func_.getContext()));
+                 StringAttr::get(func_.getContext(), kImageWarping));
 
   OpBuilder builder(func_.getBody());
   auto op = builder.create<CustomOp>(

@@ -66,6 +66,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
   OperatorProperty property;
   switch (op_code) {
     case BuiltinOperator_ABS:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      property.restrict_same_input_output_scale = true;
+      break;
     case BuiltinOperator_RSQRT:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
@@ -192,6 +197,13 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.outputs = {{0, {}}};
       property.version = 1;
       break;
+    case BuiltinOperator_FILL: {
+      property.inputs = {{1, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
+    }
     case BuiltinOperator_FULLY_CONNECTED: {
       TensorProperty tensor_property;
       tensor_property.symmetric = true;
@@ -900,6 +912,12 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.restrict_same_input_output_scale = true;
       property.version = 3;
       break;
+    case BuiltinOperator_SELECT:
+      property.inputs = {{1, {}}, {2, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
+      break;
     case BuiltinOperator_SHAPE:
       property.inputs = {{0, {}}};
       // Shape has no quantizable output.
@@ -1008,6 +1026,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
+      break;
+    case BuiltinOperator_WHERE:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 1;
       break;
     default:
       // No quantized implementation exists for this operation.

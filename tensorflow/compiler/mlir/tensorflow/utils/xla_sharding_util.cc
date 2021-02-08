@@ -590,8 +590,9 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     }
 
     if (output_sharding_type == xla::OpSharding::OTHER) {
-      HandleTileShardedOutputs(output_index, output_sharding, location,
-                               cluster_func_output, parallel_execute, builder);
+      (void)HandleTileShardedOutputs(output_index, output_sharding, location,
+                                     cluster_func_output, parallel_execute,
+                                     builder);
       continue;
     }
 

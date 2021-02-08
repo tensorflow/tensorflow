@@ -518,16 +518,14 @@ def ragged_assert_compatible_and_get_flat_values(values, mask=None):
     if isinstance(mask, ragged_tensor.RaggedTensor):
       assertion_list_for_mask = _assert_splits_match(
           [nested_row_split_list[0], mask.nested_row_splits])
-      tmp = control_flow_ops.with_dependencies(assertion_list_for_mask,
-                                               mask.flat_values)
-      mask = array_ops.expand_dims(tmp, -1)
+      with ops.control_dependencies(assertion_list_for_mask):
+        mask = array_ops.expand_dims(mask.flat_values, -1)
 
     # values has at least 1 element.
     flat_values = []
     for value in values:
-      tmp = control_flow_ops.with_dependencies(assertion_list,
-                                               value.flat_values)
-      flat_values.append(array_ops.expand_dims(tmp, -1))
+      with ops.control_dependencies(assertion_list):
+        flat_values.append(array_ops.expand_dims(value.flat_values, -1))
 
     values = flat_values[0] if to_be_stripped else flat_values
 

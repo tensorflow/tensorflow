@@ -81,43 +81,5 @@ TEST(RefcountingHashMapTest, CustomFactory) {
   EXPECT_EQ(*m.GetOrCreateIfAbsent(100, factory), 101);
 }
 
-TEST(RefcountingHashMapTest, TrySuccessful) {
-  RefcountingHashMap<int, int> m;
-  auto factory = [](const int&) { return absl::make_unique<int>(7); };
-  StatusOr<std::shared_ptr<int>> result = m.GetOrTryCreateIfAbsent(42, factory);
-  ASSERT_TRUE(result.ok());
-  EXPECT_EQ(**result, 7);
-}
-
-TEST(RefcountingHashMapTest, TryFailure) {
-  RefcountingHashMap<int, int> m;
-  Status status = tensorflow::errors::Internal("Arrggg!");
-  auto factory = [&](const int&) { return status; };
-  EXPECT_EQ(m.GetOrTryCreateIfAbsent(42, factory).status(), status);
-}
-
-TEST(RefcountingHashMapTest, ForEachEmpty) {
-  RefcountingHashMap<int, int> m;
-  int64 count = 0;
-  m.ForEach([&](const int&, std::shared_ptr<int>) { ++count; });
-  EXPECT_EQ(count, 0);
-}
-
-TEST(RefcountingHashMapTest, ForEachNonempty) {
-  RefcountingHashMap<int, int> m;
-  auto factory = [](const int&) { return absl::make_unique<int>(); };
-  auto a = m.GetOrCreateIfAbsent(0, factory);
-  auto b = m.GetOrCreateIfAbsent(1, factory);
-
-  std::vector<int> seen_keys;
-  std::vector<int*> seen_values;
-  m.ForEach([&](const int& k, std::shared_ptr<int> v) {
-    seen_keys.push_back(k);
-    seen_values.push_back(v.get());
-  });
-  EXPECT_THAT(seen_keys, testing::UnorderedElementsAre(0, 1));
-  EXPECT_THAT(seen_values, testing::UnorderedElementsAre(a.get(), b.get()));
-}
-
 }  // anonymous namespace
 }  // namespace xla

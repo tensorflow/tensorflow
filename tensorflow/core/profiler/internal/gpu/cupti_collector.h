@@ -59,6 +59,12 @@ struct MemAllocDetails {
 
 using MemFreeDetails = MemAllocDetails;
 
+// Memory residency contains details read from CUpti_ActivityMemory type. This
+// is populated in the CUPTI tracer encounters a CUPTI_ACTIVITY_KIND_MEMORY
+// event. The start of this even corresponse to a cudaMalloc, and the end
+// corresponds to a cudaFree.
+using MemoryResidencyDetails = MemAllocDetails;
+
 struct MemsetDetails {
   // Size of memory to be written over in bytes.
   size_t num_bytes;
@@ -117,6 +123,7 @@ enum class CuptiTracerEventType {
   UnifiedMemory = 9,
   MemoryFree = 10,
   Memset = 11,
+  MemoryResidency = 12,
   Generic = 100,
 };
 
@@ -166,6 +173,8 @@ struct CuptiTracerEvent {
     MemFreeDetails memfree_info;
     // Used for Memset API and activities. `type` must be Memset.
     MemsetDetails memset_info;
+    // Used for Memory residency activities. `type` must be MemoryResidency.
+    MemoryResidencyDetails memory_residency_info;
   };
 };
 

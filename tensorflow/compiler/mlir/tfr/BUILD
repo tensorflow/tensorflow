@@ -265,7 +265,7 @@ cc_library(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",

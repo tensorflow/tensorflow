@@ -132,6 +132,12 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
     if (auto q = llvm::dyn_cast_or_null<QuantizeOp>(input_op)) {
       if (!q->getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
 
+      // Don't remove leading and tailing QDQ for PQT workflow, so the io
+      // modifying lib can work correctly.
+      if (!q.input().getDefiningOp()) return failure();
+      if (op->hasOneUse() && op->user_begin()->isKnownTerminator())
+        return failure();
+
       op.replaceAllUsesWith(q.input());
       return success();
     }
@@ -175,7 +181,7 @@ void PostQuantizePass::runOnFunction() {
       .insert<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
           ctx);
   patterns.insert<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getFunction());
@@ -186,7 +192,7 @@ void PostQuantizePass::runOnFunction() {
   phase_2_patterns
       .insert<quant::FoldTrivalRequantizeOp<QuantizeOp>, RemoveVolatileOps>(
           ctx);
-  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

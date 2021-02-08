@@ -778,6 +778,19 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertIn('tuple',
                     f.experimental_get_compiler_ir(l)())
 
+  def testGetCompilerIrSerialized(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def fn(x):
+        return x - x
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      for stage in ('hlo_serialized', 'optimized_hlo_serialized'):
+        hlo = fn.experimental_get_compiler_ir(inputs)(
+            stage=stage, device_name=f'/device:{self.device}:0')
+        self.assertIsInstance(hlo, bytes)
+
   def testConstantOnWrongDevice(self):
     with ops.device('device:{}:0'.format(self.device)):
 
@@ -943,6 +956,39 @@ class DefFunctionTest(xla_test.XLATestCase):
       f3(constant_op.constant(1))
       self.assertEqual(cell_nojit.value(), orig_nojit + 2)
       self.assertEqual(cell_jit.value(), orig_jit + 3)
+
+  @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns '
+                                 ' wrong status type')
+  def testResourceWrongDevice(self):
+    if 'gpu' not in self.device.lower():
+      self.skipTest('Need a GPU to have non-trivial device placement')
+
+    with ops.device('device:CPU:0'):
+      v = variables.Variable([3.1, 3.2])
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def update_var(a):
+        v.assign_add(a)
+
+      arg = random_ops.random_normal([2])
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'def_function_xla_jit_test.py'):
+        update_var(arg)
+
+  def testMustBeConstantInsideCondition(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x, d):
+        if math_ops.reduce_all(
+            math_ops.greater(x, random_ops.random_normal([10, 10]))):
+          return array_ops.reshape(x * 2, constant_op.constant([100]))
+        else:
+          return array_ops.reshape(x * 3, d)
+
+      f(random_ops.random_normal([10, 10]), constant_op.constant([100]))
 
 
 if __name__ == '__main__':

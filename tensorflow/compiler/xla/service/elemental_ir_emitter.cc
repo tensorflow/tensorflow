@@ -2480,10 +2480,20 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       };
     case HloOpcode::kReduceWindow:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        auto reduce_window_instr = Cast<HloReduceWindowInstruction>(hlo);
+        std::vector<llvm_ir::ElementGenerator> input_generators;
+        for (const HloInstruction* instr :
+             reduce_window_instr->input_arrays()) {
+          input_generators.push_back(operand_to_generator.at(instr));
+        }
+
+        std::vector<llvm_ir::ElementGenerator> initial_value_generators;
+        for (const HloInstruction* instr : reduce_window_instr->init_values()) {
+          initial_value_generators.push_back(operand_to_generator.at(instr));
+        }
         return EmitElementalReduceWindow(
-            Cast<HloReduceWindowInstruction>(hlo),
-            operand_to_generator.at(hlo->operand(0)),
-            operand_to_generator.at(hlo->operand(1)), index);
+            Cast<HloReduceWindowInstruction>(hlo), std::move(input_generators),
+            std::move(initial_value_generators), index);
       };
     case HloOpcode::kReduce:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
@@ -2568,8 +2578,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalMap(
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
     const HloReduceWindowInstruction* reduce_window,
-    const llvm_ir::ElementGenerator& input_generator,
-    const llvm_ir::ElementGenerator& initial_value_generator,
+    std::vector<llvm_ir::ElementGenerator> input_generators,
+    std::vector<llvm_ir::ElementGenerator> initial_value_generators,
     const llvm_ir::IrArray::Index& index) {
   // Pseudocode:
   // for each index I in output
@@ -2580,22 +2590,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   //     if I in bounds of input
   //       value = function(value, input[I])
   //     output[O] = value
-  if (reduce_window->shape().IsTuple()) {
-    return Status(tensorflow::error::UNIMPLEMENTED,
-                  "Variadic reduce window op is not yet fully supported.");
-  }
-  const HloInstruction* operand = reduce_window->operand(0);
-  const Window& window = reduce_window->window();
-
-  PrimitiveType operand_element_type = operand->shape().element_type();
-  llvm::Value* accum_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
-      llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
-      "reduce_window_accum_ptr", b_);
-  {
-    TF_ASSIGN_OR_RETURN(
-        llvm::Value* const init_value,
-        initial_value_generator(llvm_ir::IrArray::Index(index.GetType())));
-    Store(init_value, accum_ptr);
+  int64 input_count = reduce_window->input_count();
+  std::vector<PrimitiveType> operand_element_types;
+  std::vector<llvm::Type*> accum_types;
+  std::vector<llvm::Value*> accum_ptrs;
+  for (int64 operand_index = 0; operand_index < input_count; ++operand_index) {
+    auto operand = reduce_window->input_arrays()[operand_index];
+    PrimitiveType operand_element_type = operand->shape().element_type();
+    operand_element_types.push_back(operand_element_type);
+    llvm::Type* llvm_type =
+        llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_);
+    accum_types.push_back(llvm_type);
+    llvm::Value* accum_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
+        llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
+        "reduce_window_accum_ptr", b_);
+    accum_ptrs.push_back(accum_ptr);
+    {
+      auto initial_value_generator = initial_value_generators[operand_index];
+      TF_ASSIGN_OR_RETURN(
+          llvm::Value* const init_value,
+          initial_value_generator(llvm_ir::IrArray::Index(index.GetType())));
+      Store(init_value, accum_ptr);
+    }
   }
 
   llvm::Type* index_type = index.GetType();
@@ -2603,13 +2619,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
     return index.GetConstantWithIndexType(c);
   };
 
+  const Window& window = reduce_window->window();
   llvm_ir::ForLoopNest loops(IrName(reduce_window), b_, index_type);
   std::vector<int64> window_size;
   for (const auto& dim : window.dimensions()) {
     window_size.push_back(dim.size());
   }
   const IrArray::Index window_index = loops.AddLoopsForShape(
-      ShapeUtil::MakeShape(operand_element_type, window_size), "window");
+      ShapeUtil::MakeShape(operand_element_types[0], window_size), "window");
   CHECK_EQ(window_index.size(), index.size());
 
   SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);
@@ -2643,9 +2660,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
     // comparison is equivalent to the unsigned comparison
     // input_multi_index[i] < bound, as a negative value wraps to a large
     // positive value.
-    in_bounds = And(in_bounds,
-                    ICmpULT(input_multi_index[i],
-                            index_typed_const(operand->shape().dimensions(i))));
+    in_bounds = And(
+        in_bounds,
+        ICmpULT(input_multi_index[i],
+                index_typed_const(
+                    reduce_window->input_arrays()[0]->shape().dimensions(i))));
   }
 
   llvm_ir::LlvmIfData if_data =
@@ -2653,17 +2672,27 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   SetToFirstInsertPoint(if_data.true_block, b_);
 
   // We are not in pad, so do the computation.
-  IrArray::Index input_index(input_multi_index, operand->shape(), index_type);
-  TF_ASSIGN_OR_RETURN(llvm::Value * input_value, input_generator(input_index));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<llvm::Value*> accum_values,
-      EmitThreadLocalCall(*reduce_window->to_apply(),
-                          {Load(accum_ptr), input_value}, "reducer_function"));
-  CHECK_EQ(accum_values.size(), 1);
-  Store(accum_values[0], accum_ptr);
+  std::vector<llvm::Value*> input_values(reduce_window->operand_count());
+  IrArray::Index input_index(
+      input_multi_index, reduce_window->input_arrays()[0]->shape(), index_type);
+  for (int64 operand_idx = 0; operand_idx < input_count; ++operand_idx) {
+    TF_ASSIGN_OR_RETURN(llvm::Value * input_value,
+                        input_generators[operand_idx](input_index));
+    input_values[input_count + operand_idx] = input_value;
+    input_values[operand_idx] = Load(accum_ptrs[operand_idx]);
+  }
+  TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accum_values,
+                      EmitThreadLocalCall(*reduce_window->to_apply(),
+                                          input_values, "reducer_function"));
+
+  for (int64 operand_idx = 0; operand_idx < accum_values.size();
+       ++operand_idx) {
+    Store(accum_values[operand_idx], accum_ptrs[operand_idx]);
+  }
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b_);
-  return Load(accum_ptr);
+  return EmitAccumResult(accum_ptrs, accum_types,
+                         reduce_window->shape().IsTuple());
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
@@ -2753,12 +2782,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
     Store(results[i], accumulator_addrs[i]);
   }
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b());
+  return EmitAccumResult(accumulator_addrs, accumulator_types, is_variadic);
+}
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitAccumResult(
+    absl::Span<llvm::Value* const> accumulator_addrs,
+    llvm::ArrayRef<llvm::Type*> accumulator_types, bool is_variadic) {
+  TF_RET_CHECK(accumulator_addrs.size() == accumulator_types.size());
   if (is_variadic) {
     // Emit a structure, as that what the LoopEmitter expects.
     llvm::Value* returned_structure = llvm::UndefValue::get(
         llvm::StructType::get(b()->getContext(), accumulator_types));
-    for (int i = 0; i < accumulators_count; i++) {
+    for (int64 i = 0; i < accumulator_addrs.size(); i++) {
       llvm::Value* accumulator_value = Load(accumulator_addrs[i]);
       returned_structure =
           b()->CreateInsertValue(returned_structure, accumulator_value, i);

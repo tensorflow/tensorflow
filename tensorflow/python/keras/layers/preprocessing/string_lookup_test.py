@@ -153,6 +153,19 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     output_data = model.predict(input_array)
     self.assertAllEqual(expected_output, output_data)
 
+  def test_int_output_explicit_vocab_with_special_tokens(self):
+    vocab_data = ["", "[UNK]", "earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(vocabulary=vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
   def test_no_vocab(self):
     with self.assertRaisesRegex(
         ValueError, "You must set the layer's vocabulary"):

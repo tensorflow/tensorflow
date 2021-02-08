@@ -179,6 +179,7 @@ class IrEmitterUnnested : public IrEmitter,
 #endif  // GOOGLE_CUDA
   Status EmitCustomCallThunkFromMlir(MlirEmitterInput input);
   Status HandleFft(HloInstruction* fft) override;
+  Status EmitFftThunkFromMlir(MlirEmitterInput input);
   Status HandleFusion(HloInstruction* fusion) override;
   Status EmitLoopFusionFromMlir(
       MlirEmitterInput input, const Shape& output_shape,
@@ -193,18 +194,29 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleRng(HloInstruction* random) override;
   Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
+  Status EmitRngGetAndUpdateState(MlirEmitterInput mlir_input);
   Status HandleScatter(HloInstruction* scatter) override;
   Status EmitScatterFromMlir(MlirEmitterInput mlir_input);
-  Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
   Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
+  Status EmitTriangularSolveFromMlir(MlirEmitterInput mlir_input);
+
+  template <typename NcclThunkType, typename OpTy>
+  Status EmitNcclThunkFromMlir(MlirEmitterInput mlir_input);
   Status HandleAllGather(HloInstruction* hlo) override;
-  Status HandleAllReduce(HloInstruction* crs) override;
+  Status HandleAllReduce(HloInstruction* hlo) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
+
   Status HandleAfterAll(HloInstruction* after_all) override;
+
+  template <typename ThunkType, typename OpT>
+  Status EmitReplicaOrPartitionIdFromMlir(MlirEmitterInput input);
   Status HandleReplicaId(HloInstruction* hlo) override;
+  Status HandlePartitionId(HloInstruction* hlo) override;
+
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+  Status EmitCollectivePermuteFromMlir(MlirEmitterInput input);
 
   Status EmitOp(MlirEmitterInput mlir_input);
 
@@ -436,11 +448,12 @@ class IrEmitterUnnested : public IrEmitter,
   // different. On the other hand, the input ranges of slices can be
   // overlapping. Further generalization/specialization when the needs are seen
   // in the future.
-  Status EmitInputFusibleNonStridedSlices(HloInstruction* unnested_hlo);
+  Status EmitInputFusibleNonStridedSlices(MlirEmitterInput mlir_input);
 
-  void EmitElementForInputFusibleSlices(
-      HloInstruction* unnested_hlo,
-      const llvm_ir::IrArray::Index& slice_input_index);
+  Status EmitElementForInputFusibleSlices(
+      mlir::lmhlo::FusionOp fusion,
+      absl::Span<const llvm_ir::IrArray> ir_arrays,
+      const llvm_ir::IrArray::Index& index);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. Scatter indices are taken from `scatter_indices_gen`, updates

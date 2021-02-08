@@ -12,3 +12,7 @@ def workspace():
             "https://github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",  # 2019-06-13
         ],
     )
+
+# Alias so it can be loaded without assigning to a different symbol to prevent
+# shadowing previous loads and trigger a buildifier warning.
+tf_workspace3 = workspace

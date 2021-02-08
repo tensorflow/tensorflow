@@ -273,9 +273,6 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   // Literals
   py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
       .def("__repr__", &Literal::ToString);
-  py::class_<LiteralSlice> literal_slice(m, "LiteralSlice");
-  py::implicitly_convertible<Literal, LiteralSlice>();
-  py::implicitly_convertible<BorrowingLiteral, LiteralSlice>();
 
   py::class_<XlaComputation>(m, "XlaComputation")
       .def(py::init([](const py::bytes& serialized_hlo_module_proto)

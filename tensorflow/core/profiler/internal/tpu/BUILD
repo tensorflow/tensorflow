@@ -1,5 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("//tensorflow:tensorflow.bzl", "if_with_tpu_support")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -8,7 +9,7 @@ package(
 
 cc_library(
     name = "tpu_tracer",
-    srcs = ["tpu_tracer.cc"],
+    srcs = if_with_tpu_support(["tpu_tracer.cc"]),
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
@@ -21,6 +22,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_api_dlsym_initializer",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:status_helper",
         "@com_google_absl//absl/strings",

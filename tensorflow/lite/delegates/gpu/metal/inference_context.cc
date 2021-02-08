@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
@@ -33,10 +34,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 #include "tensorflow/lite/delegates/gpu/metal/selectors/operation_selector.h"
-#include "tensorflow/lite/delegates/gpu/metal/selectors/subgraph.h"
 
 namespace tflite {
 namespace gpu {
@@ -240,11 +239,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
       MetalNode metal_node;
-      if (gpu_op.task_desc) {
-        metal_node.task.Init(std::move(gpu_op.task_desc));
-      } else {
-        metal_node.task.Init(std::move(gpu_op.operation));
-      }
+      metal_node.task.Init(std::move(gpu_op.operation));
       metal_node.inputs.resize(gpu_op.input_ids.size());
       for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
         int id = gpu_op.input_ids[j];
@@ -341,8 +336,8 @@ absl::Status InferenceContext::AllocateTensors(MetalDevice* device) {
   const bool f32_storage = precision_ == CalculationsPrecision::F32;
   for (auto& tensor_id : preallocated_ids) {
     const auto& t = tensor_reserver_.Get(tensor_id);
-    preallocated_tensors_[tensor_id] =
-        CreateSharedBufferTensor(nil, t.shape, t.descriptor);
+    RETURN_IF_ERROR(CreateSharedBufferTensor(
+        nil, t.shape, t.descriptor, &preallocated_tensors_[tensor_id]));
   }
 
   RETURN_IF_ERROR(AllocateMemoryForBuffers(device));
@@ -383,7 +378,7 @@ absl::Status InferenceContext::UpdateParams(const GpuInfo& gpu_info) {
     for (const auto& out_id : node.outputs) {
       dst_shapes.push_back(tensor_reserver_.Get(out_id).shape);
     }
-    RETURN_IF_ERROR(node.task.UpdateParams(gpu_info, src_shapes, dst_shapes));
+    RETURN_IF_ERROR(node.task.UpdateParams());
   }
   return absl::OkStatus();
 }
@@ -458,10 +453,6 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
   shared_buffer_tensors_.resize(buffer_usage_records.size());
-  TensorDescriptor descriptor;
-  descriptor.storage_type = TensorStorageType::BUFFER;
-  descriptor.data_type = f32_storage ? DataType::FLOAT32 : DataType::FLOAT16;
-  descriptor.layout = Layout::HWC;
   for (auto& node : nodes_) {
     std::vector<ValueId> all_ids = node.inputs;
     all_ids.insert(all_ids.end(), node.outputs.begin(), node.outputs.end());
@@ -470,10 +461,11 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
         continue;
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[tensor_id];
       if (created_tensors[tensor_index]) continue;
-      const auto& shape = tensor_reserver_.Get(tensor_id).shape;
+      const auto& tensor_dummy = tensor_reserver_.Get(tensor_id);
       const int buffer_index = buffer_assignment.object_ids[tensor_index];
-      shared_buffer_tensors_[tensor_index] = CreateSharedBufferTensor(
-          shared_buffers_[buffer_index], shape, descriptor);
+      RETURN_IF_ERROR(CreateSharedBufferTensor(
+          shared_buffers_[buffer_index], tensor_dummy.shape,
+          tensor_dummy.descriptor, &shared_buffer_tensors_[tensor_index]));
       created_tensors[tensor_index] = true;
     }
   }
@@ -489,9 +481,7 @@ absl::Status InferenceContext::Tune(TuningType tuning_type,
 }
 
 void InferenceContext::EncodeWithEncoder(
-    id<MTLComputeCommandEncoder> command_encoder,
-    const std::map<ValueId, id<MTLBuffer>>& in_out_buffers) {
-  UpdatePreallocatedTensors(in_out_buffers);
+    id<MTLComputeCommandEncoder> command_encoder) {
   for (int i = 0; i < nodes_.size(); ++i) {
     auto& task = nodes_[i].task;
     task.Encode(command_encoder);
@@ -499,9 +489,7 @@ void InferenceContext::EncodeWithEncoder(
 }
 
 void InferenceContext::EncodeWithCommandBuffer(
-    id<MTLCommandBuffer> command_buffer,
-    const std::map<ValueId, id<MTLBuffer>>& in_out_buffers) {
-  UpdatePreallocatedTensors(in_out_buffers);
+    id<MTLCommandBuffer> command_buffer) {
   for (int i = 0; i < nodes_.size(); ++i) {
     id<MTLComputeCommandEncoder> encoder =
         [command_buffer computeCommandEncoder];
@@ -511,10 +499,8 @@ void InferenceContext::EncodeWithCommandBuffer(
   }
 }
 
-void InferenceContext::EncodeWithCommandQueue(
-    id<MTLCommandQueue> command_queue,
-    const std::map<ValueId, id<MTLBuffer>>& in_out_buffers, int flush_period) {
-  UpdatePreallocatedTensors(in_out_buffers);
+void InferenceContext::EncodeWithCommandQueue(id<MTLCommandQueue> command_queue,
+                                              int flush_period) {
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   for (int i = 0; i < nodes_.size(); ++i) {
     id<MTLComputeCommandEncoder> encoder =
@@ -533,7 +519,7 @@ void InferenceContext::EncodeWithCommandQueue(
 void InferenceContext::UpdatePreallocatedTensors(
     const std::map<ValueId, id<MTLBuffer>>& preallocated) {
   for (const auto& it : preallocated) {
-    preallocated_tensors_[it.first].SetBufferHandle(it.second);
+    auto status = preallocated_tensors_[it.first].SetBufferHandle(it.second);
   }
   for (auto& task_index : task_ids_with_preallocated_tensors_) {
     auto& task = nodes_[task_index].task;

@@ -26,6 +26,7 @@ package_group(
     includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/quantization/...",
+        "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//tensorflow/compiler/mlir/...",
     ],
 )

@@ -75,13 +75,17 @@ if '--project_name' in sys.argv:
 # comment the versioning scheme.
 # NOTE: Please add test only packages to `TEST_PACKAGES` below.
 REQUIRED_PACKAGES = [
+    # NOTE: As numpy has releases that break semver guarantees and several other
+    # deps depend on numpy without an upper bound, we must install numpy before
+    # everything else.
+    'numpy ~= 1.19.2',
+    # Install other dependencies
     'absl-py ~= 0.10',
     'astunparse ~= 1.6.3',
     'flatbuffers ~= 1.12.0',
     'google_pasta ~= 0.2',
     'h5py ~= 3.1.0',
     'keras_preprocessing ~= 1.1.2',
-    'numpy ~= 1.19.2',
     'opt_einsum ~= 3.3.0',
     'protobuf >= 3.9.2',
     'six ~= 1.15.0',
@@ -97,7 +101,7 @@ REQUIRED_PACKAGES = [
     # They are updated during the release process
     # When updating these, please also update the nightly versions below
     'tensorboard ~= 2.4',
-    'tensorflow_estimator ~= 2.3.0',
+    'tensorflow_estimator ~= 2.4.0',
 ]
 
 

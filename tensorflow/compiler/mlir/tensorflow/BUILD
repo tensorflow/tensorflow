@@ -17,6 +17,7 @@ package_group(
     includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/dtensor/...",
+        "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/tfrt/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/sparse_core/...",
@@ -881,7 +882,6 @@ cc_library(
         "transforms/executor_tpuv1_island_coarsening.cc",
         "transforms/executor_tpuv1_outline_tpu_island.cc",
         "transforms/fold_broadcast.cc",
-        "transforms/fold_switch.cc",
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/functional_control_flow_to_regions.cc",
         "transforms/fused_kernel_matcher.cc",
@@ -934,7 +934,6 @@ cc_library(
         "transforms/tpu_host_computation_expansion.cc",
         "transforms/tpu_identity_pruning.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
-        "transforms/tpu_outside_compilation_cluster.cc",
         "transforms/tpu_parallel_execute_sink_resource_write.cc",
         "transforms/tpu_reorder_replicate_and_partitioned_inputs.cc",
         "transforms/tpu_resource_partitioning.cc",
@@ -1095,6 +1094,7 @@ cc_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
     ],
 )

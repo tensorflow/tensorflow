@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "numpy/arrayobject.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/attr.h"
@@ -55,6 +54,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
+// TODO(phawkins): remove host_id properties after JAX is update to avoid them.
+
 namespace xla {
 namespace {
 
@@ -71,20 +72,6 @@ bool IsOptimizedBuild() {
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
-  // Caution: import_array1 works by initializing a static variable
-  // (PyArray_API) which is *defined* in a NumPy header. import_array1() must
-  // therefore be called from the *same translation unit* as any users of
-  // NumPy C APIs.
-  auto init_numpy = []() -> bool {
-    // import_array1 might look like a function. It's not. It's a macro that
-    // calls `return`, which is why we wrap it in this strange-looking lambda.
-    import_array1(false);
-    return true;
-  };
-  if (!init_numpy()) {
-    throw std::runtime_error("Unable to initialize Numpy API");
-  }
-
   CHECK(tensorflow::RegisterNumpyBfloat16());
 
   // Types
@@ -124,9 +111,12 @@ PYBIND11_MODULE(xla_extension, m) {
           "id", &PjRtDevice::id,
           "Integer ID of this device.\n\nUnique across all available devices "
           "of this type, including remote devices on multi-host platforms.")
-      .def_property_readonly("host_id", &PjRtDevice::host_id,
-                             "Integer ID of this device's host.\n\n"
-                             "This is always 0 except on multi-host platforms.")
+      .def_property_readonly("host_id", &PjRtDevice::task_id,
+                             "Integer ID of this device's task.\n\n"
+                             "This is always 0 except on multi-task platforms.")
+      .def_property_readonly("task_id", &PjRtDevice::task_id,
+                             "Integer ID of this device's task.\n\n"
+                             "This is always 0 except on multi-task platforms.")
       .def_property_readonly("platform",
                              [](const PjRtDevice& device) {
                                return device.client()->platform_name();
@@ -137,16 +127,15 @@ PYBIND11_MODULE(xla_extension, m) {
           [](const ClientAndPtr<PjRtDevice>& device) { return device.client; })
       .def("__str__", &PjRtDevice::DebugString)
       .def("transfer_to_infeed",
-           [](const PjRtDevice& device, const LiteralSlice& literal) {
+           [](PjRtDevice& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
              return device.TransferToInfeed(literal);
            })
       .def("transfer_from_outfeed",
-           [](const PjRtDevice& device,
-              const Shape& shape) -> StatusOr<py::object> {
+           [](PjRtDevice& device, const Shape& shape) -> StatusOr<py::object> {
              GlobalPyRefManager()->CollectGarbage();
-             std::shared_ptr<Literal> literal_shared;
+             std::shared_ptr<Literal> literal;
              {
                py::gil_scoped_release gil_release;
                Shape shape_with_layout = shape;
@@ -156,12 +145,10 @@ PYBIND11_MODULE(xla_extension, m) {
                        LayoutUtil::SetToDefaultLayout(subshape);
                      }
                    });
-               TF_ASSIGN_OR_RETURN(Literal literal, device.TransferFromOutfeed(
-                                                        shape_with_layout));
-
-               literal_shared = std::make_shared<Literal>(std::move(literal));
+               literal = std::make_shared<Literal>(shape_with_layout);
+               TF_RETURN_IF_ERROR(device.TransferFromOutfeed(literal.get()));
              }
-             return LiteralToPython(std::move(literal_shared));
+             return LiteralToPython(std::move(literal));
            });
 
   py::class_<CpuDevice, PjRtDevice, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
@@ -176,7 +163,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
       m, "TpuDevice")
-      .def_property_readonly("host_id", &PjRtTpuDevice::host_id)
+      .def_property_readonly("host_id", &PjRtTpuDevice::task_id)
+      .def_property_readonly("task_id", &PjRtTpuDevice::task_id)
       .def_property_readonly(
           "coords",
           [](const PjRtTpuDevice& device) -> pybind11::tuple {
@@ -189,7 +177,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("__repr__", [](const PjRtTpuDevice& device) {
         return absl::StrFormat(
             "TpuDevice(id=%i, host=%i, coords=(%s), core_on_chip=%i)",
-            device.id(), device.host_id(), absl::StrJoin(device.coords(), ","),
+            device.id(), device.task_id(), absl::StrJoin(device.coords(), ","),
             device.core_on_chip());
       });
 
@@ -219,7 +207,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
       .def("live_buffers", &PyClient::LiveBuffers)
-      .def("host_id", &PyClient::host_id)
+      .def("host_id", &PyClient::task_id)
+      .def("task_id", &PyClient::task_id)
       .def("get_default_device_assignment",
            &PyClient::GetDefaultDeviceAssignment)
       // TODO(skye): delete after all callers can handle 2D output
@@ -296,13 +285,13 @@ PYBIND11_MODULE(xla_extension, m) {
           "shape",
           [](const PyBuffer& pybuffer) -> pybind11::tuple {
             return IntSpanToTuple(
-                pybuffer.buffer()->on_host_shape().dimensions());
+                pybuffer.buffer()->on_device_shape().dimensions());
           })
       .def_property_readonly(
           "dtype",
           [](const PyBuffer& buffer) {
             PrimitiveType primitive =
-                buffer.buffer()->on_host_shape().element_type();
+                buffer.buffer()->on_device_shape().element_type();
             return PrimitiveTypeToDtype(primitive).ValueOrDie();
           })
       .def_property_readonly("size", &PyBuffer::size)
@@ -325,8 +314,7 @@ PYBIND11_MODULE(xla_extension, m) {
              return buffer_obj;
            })
       .def("block_host_until_ready", &PyBuffer::BlockHostUntilReady)
-      .def("copy_to_host_async", &PyBuffer::CopyToHostAsync,
-           py::call_guard<py::gil_scoped_release>())
+      .def("copy_to_host_async", &PyBuffer::CopyToHostAsync)
       .def("to_py",
            [](py::handle buffer_obj) {
              PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
@@ -368,6 +356,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("execute", &PyExecutable::Execute, py::arg("arguments"))
       .def("execute_on_local_devices", &PyExecutable::ExecuteOnLocalDevices,
            py::arg("arguments"))
+      .def("execute_sharded_on_local_devices",
+           &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)
       .def_property_readonly("traceback", &PyExecutable::traceback);
 

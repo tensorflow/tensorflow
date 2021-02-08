@@ -23,6 +23,8 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -166,8 +168,8 @@ bool IsReductionFromOrToContiguousDimensions(mlir::Operation* reduce);
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
 // ROOT slices have no strides.
-bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
-                          bool verify_no_strides = false);
+bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
+                          bool verify_no_strides);
 
 struct ReductionDimensions {
   // Indicates whether the reduction is a row reduction or a column reduction.
@@ -257,6 +259,13 @@ template <typename T>
 std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
   return std::vector<T>(v.begin(), v.end());
 }
+
+StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
+    mlir::Value v, absl::Span<const BufferAllocation> allocations);
+
+bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+    mlir::lmhlo::FusionOp fusion,
+    absl::Span<const BufferAllocation> allocations);
 
 }  // namespace gpu
 }  // namespace xla

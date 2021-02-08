@@ -132,7 +132,7 @@ struct CollTaskParams {
 };
 
 // Unique to a single CollectiveOp node.
-struct CollectiveParams {
+struct CollectiveParams : public core::RefCounted {
   CollGroupParams group;
   CollInstanceParams instance;
   CollTaskParams task;
@@ -298,7 +298,7 @@ class CollectiveExecutor : public core::RefCounted {
   virtual void StartAbort(const Status& s) {}
 
   virtual void ExecuteAsync(OpKernelContext* ctx,
-                            const CollectiveParams& col_params,
+                            const CollectiveParams* col_params,
                             const string& exec_key, StatusCallback done) {
     done(errors::Internal(
         "A collective Op has been called in a context in which "
@@ -367,7 +367,7 @@ struct CollectiveContext {
   const DeviceMgr* dev_mgr;                      // Not owned
   OpKernelContext* op_ctx;                       // Not owned
   OpKernelContext::Params* op_params;            // Not owned
-  const CollectiveParams& col_params;
+  const CollectiveParams* col_params;            // Not owned
   const string exec_key;
   const int64 step_id;
   const Tensor* input;  // Not owned
@@ -380,7 +380,7 @@ struct CollectiveContext {
                     NcclCommunicatorInterface* nccl_communicator,
                     const DeviceMgr* dev_mgr, OpKernelContext* ctx,
                     OpKernelContext::Params* op_params,
-                    const CollectiveParams& col_params, const string& exec_key,
+                    const CollectiveParams* col_params, const string& exec_key,
                     int64 step_id, const Tensor* input, Tensor* output);
 };
 

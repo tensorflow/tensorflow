@@ -32,6 +32,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
@@ -207,6 +208,8 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
@@ -230,12 +233,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",  # TODO(zhangqiaorjc): Remove after adding a factory method for PjRtBuffer.
-        "//tensorflow/compiler/xla/pjrt:tracked_device_buffer",
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:platform",
-        "//tensorflow/stream_executor/cuda:cuda_platform_id",
-        "//tensorflow/stream_executor/host:host_platform_id",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
@@ -338,10 +335,15 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":absl_casters",
+        ":jax_jit",
         ":py_client",
+        ":types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
     ],
@@ -517,7 +519,6 @@ pybind_extension(
         ":xla_compiler",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "//third_party/py/numpy:headers",
         "@pybind11",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/compiler/xla:literal",

@@ -544,17 +544,42 @@ def LHLO_ReducePrecisionOp: LHLO_Op<"reduce_precision", [SameTypeOperands]>,
   );
 }
 
-def LHLO_AllReduceOp : LHLO_Op<"all_reduce", [SameTypeOperands]>,
-                       BASE_HLO_AllReduceOp {
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+// Common base class for AllReduce, AllGather, and AllToAll.
+class LHLO_CollectiveCommunicationOp<string name, list<OpTrait> traits = []> :
+  LHLO_Op<name, !listconcat(traits, [SameVariadicOperandSize, SameOperandsElementType])> {
+  dag arguments_base = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results,
     I64ElementsAttr:$replica_groups,
     DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<ChannelHandle>:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
   );
+  let verifier = [{ return Verify(*this); }];
+  let extraClassDeclaration = [{
+    // AllGather is cross replica if channel_id is not set.
+    bool IsCrossReplica() { return !channel_id().hasValue(); }
+  }];
+}
+
+def LHLO_AllGatherOp : LHLO_CollectiveCommunicationOp<"all_gather">,
+                       BASE_HLO_AllGatherOp {
+  let arguments = !con(
+    arguments_base,
+    (ins I64Attr:$all_gather_dimension));
+}
+
+def LHLO_AllReduceOp : LHLO_CollectiveCommunicationOp<"all_reduce">,
+                       BASE_HLO_AllReduceOp {
+  let arguments = arguments_base;
   let regions = (region SizedRegion<1>:$computation);
+}
+
+def LHLO_AllToAllOp : LHLO_CollectiveCommunicationOp<"all_to_all">,
+                       BASE_HLO_AllToAllOp {
+  let arguments = !con(
+    arguments_base,
+    (ins OptionalAttr<I64Attr>:$split_dimension));
 }
 
 def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]>,
@@ -603,6 +628,10 @@ def LHLO_ReplicaIdOp : LHLO_Op<"replica_id", []>, BASE_HLO_ReplicaIdOp {
   let arguments = (ins Arg<MemRefOf<[UI32]>, "", [MemWrite]>);
 }
 
+def LHLO_PartitionIdOp : LHLO_Op<"partition_id", []>, BASE_HLO_PartitionIdOp {
+  let arguments = (ins Arg<MemRefOf<[UI32]>, "", [MemWrite]>);
+}
+
 def LHLO_TriangularSolveOp: LHLO_Op<"triangular_solve", [SameOperandsElementType]>,
                             BASE_HLO_TriangularSolveOp {
   let arguments = (ins
@@ -612,7 +641,10 @@ def LHLO_TriangularSolveOp: LHLO_Op<"triangular_solve", [SameOperandsElementType
     BoolAttr:$left_side,
     BoolAttr:$lower,
     BoolAttr:$unit_diagonal,
-    HLO_TransposeAttr:$transpose_a
+    HLO_TransposeAttr:$transpose_a,
+    HLO_LayoutAttr:$layout_a,
+    HLO_LayoutAttr:$layout_b,
+    HLO_LayoutAttr:$layout_output
   );
 }
 

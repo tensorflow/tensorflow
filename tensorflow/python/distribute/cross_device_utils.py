@@ -257,8 +257,7 @@ class CollectiveKeys(object):
 class CollectiveReplicaLauncher(object):
   """Launch collectives on one replica."""
 
-  _prefer_scoped_allocator = True
-  _prefer_collective_v2 = True
+  _prefer_unique_instance_key = True
   _prefer_ordering_token = True
 
   def __init__(self,
@@ -281,26 +280,21 @@ class CollectiveReplicaLauncher(object):
       return ops.control_dependencies([control_input])
     return ops.NullContextmanager()
 
-  def _use_collective_v2(self):
+  def _use_unique_instance_key(self):
     if not ops.executing_eagerly_outside_functions():
       return False
-    return CollectiveReplicaLauncher._prefer_collective_v2
-
-  def _use_scoped_allocator(self):
-    if self._use_collective_v2():
-      # ScopedAllocator doesn't support collective V2.
-      return False
-    return CollectiveReplicaLauncher._prefer_scoped_allocator
+    return CollectiveReplicaLauncher._prefer_unique_instance_key
 
   def _use_ordering_token(self):
-    if not self._use_collective_v2():
-      # Only collective V2 supports ordering token.
+    # We rely on auto control dep to insert control edges between NCCL calls,
+    # but for tf1 graph mode auto control dep is not used.
+    if not ops.executing_eagerly_outside_functions():
       return False
     return CollectiveReplicaLauncher._prefer_ordering_token
 
   def _next_instance_key(self):
     """Returns the next instance key."""
-    if self._use_collective_v2():
+    if self._use_unique_instance_key():
       # Assigning instance keys at function building time have issues since
       # different workers may retrace the function at different times. With
       # collective V2 we can use capture_call_time_value to use a placeholder as
@@ -360,23 +354,14 @@ class CollectiveReplicaLauncher(object):
     ordering_token = self._get_ordering_token(communication_hint)
     with ops.device(self._device), \
          self._control_input(control_input):
-      if self._use_collective_v2():
-        return collective_ops.all_reduce_v2(
-            input_tensor,
-            self._group_size,
-            self._group_key,
-            instance_key,
-            communication_hint=communication_hint,
-            timeout=timeout,
-            ordering_token=ordering_token)
-      else:
-        return collective_ops.all_reduce(
-            input_tensor,
-            self._group_size,
-            self._group_key,
-            instance_key,
-            communication_hint=communication_hint,
-            timeout=timeout)
+      return collective_ops.all_reduce_v2(
+          input_tensor,
+          self._group_size,
+          self._group_key,
+          instance_key,
+          communication_hint=communication_hint,
+          timeout=timeout,
+          ordering_token=ordering_token)
 
   def _all_gather(self, input_tensor, communication_hint='AUTO', timeout=0):
     """All-gather a dense tensor.
@@ -393,23 +378,14 @@ class CollectiveReplicaLauncher(object):
     instance_key = self._next_instance_key()
     ordering_token = self._get_ordering_token(communication_hint)
     with ops.device(self._device):
-      if self._use_collective_v2():
-        return collective_ops.all_gather_v2(
-            input_tensor,
-            self._group_size,
-            self._group_key,
-            instance_key,
-            communication_hint=communication_hint,
-            timeout=timeout,
-            ordering_token=ordering_token)
-      else:
-        return collective_ops.all_gather(
-            input_tensor,
-            self._group_size,
-            self._group_key,
-            instance_key,
-            communication_hint=communication_hint,
-            timeout=timeout)
+      return collective_ops.all_gather_v2(
+          input_tensor,
+          self._group_size,
+          self._group_key,
+          instance_key,
+          communication_hint=communication_hint,
+          timeout=timeout,
+          ordering_token=ordering_token)
 
   def batch_all_reduce(self,
                        input_tensor_packs,
@@ -430,17 +406,17 @@ class CollectiveReplicaLauncher(object):
     Returns:
       A flat list of reduced tensors.
     """
-    # We don't batch with concat in eager. It's easy to get it wrong because
-    # we need to avoid any numpy() calls on values produced by the async
-    # executor. This effectively disables batching in eager, but it's unlikely
-    # to all-reduce a large number of tensors in eager.
-    batch_with_concat = (not self._use_scoped_allocator() and
-                         not context.executing_eagerly())
     outputs = []
     for pack in input_tensor_packs:
-      # TODO(b/169168846): inserts a parallel all_gather to verify packings
-      # are the same on each replica.
-      if batch_with_concat:
+      if context.executing_eagerly():
+        # We don't batch in eager as it sometimes makes the performance worse
+        # due the concat/split ops.
+        for input_tensor in pack:
+          outputs.append(
+              self.all_reduce(input_tensor, None, communication_hint, timeout))
+      else:
+        # TODO(b/169168846): inserts a parallel all_gather to verify packings
+        # are the same on each replica.
         with ops.device(self._device):
           flat_tensors = [array_ops.reshape(t, [-1]) for t in pack]
           shapes = [array_ops.shape(t) for t in pack]
@@ -455,19 +431,6 @@ class CollectiveReplicaLauncher(object):
           flat_outputs = array_ops.split(reduced, num_elements, axis=0)
           for shape, flat_output in zip(shapes, flat_outputs):
             outputs.append(array_ops.reshape(flat_output, shape))
-      else:
-        # By placing all CollectiveReduce ops in a batch under single name
-        # scope, we ensure they will be picked up by the `ScopedAllocator`
-        # grappler optimizer and packed into a single all-reduce.
-        with ops.name_scope('allreduce'):
-          for input_tensor in pack:
-            if communication_hint == 'NCCL' and outputs:
-              control_input = outputs[-1]
-            else:
-              control_input = None
-            outputs.append(
-                self.all_reduce(input_tensor, control_input, communication_hint,
-                                timeout))
 
     return outputs
 

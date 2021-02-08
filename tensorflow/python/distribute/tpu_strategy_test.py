@@ -635,6 +635,26 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual("/job:localhost/replica:0/task:0/device:TPU:1",
                         results[1].backing_device)
 
+  def test_run_passing_and_returning_nones(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      # Note that this input None is nested.
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=([1, [2, None]],)))
+      return outputs
+
+    results = train_step()
+
+    self.assertAllEqual(1, results[0][0].values[0])
+    self.assertAllEqual(2, results[0][1][0].values[0])
+    self.assertIsNone(results[0][1][1])
+
   def test_composite_input_output(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
     if strategy.num_replicas_in_sync != 2:

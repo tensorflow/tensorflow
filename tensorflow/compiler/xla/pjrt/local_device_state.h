@@ -107,6 +107,7 @@ class LocalDeviceState {
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
   }
+  se::Stream* callback_stream() const { return callback_stream_.get(); }
 
   // Returns a device to host stream. Allocates streams in a round-robin fashion
   // amongst the available streams.

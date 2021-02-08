@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
@@ -41,10 +42,7 @@ cc_library(
     features = [
         "-use_header_modules",  # Required for pybind11
     ],
-    visibility = [
-        "//learning/deepmind/courier:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
@@ -63,7 +61,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",
@@ -513,6 +511,7 @@ cuda_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:list_ops",
+        "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:resource_variable_ops",
@@ -819,6 +818,15 @@ py_library(
         "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python:util",
     ],
+)
+
+# Check that the main TensorFlow python library depends on and links XLA.
+check_deps(
+    name = "def_function_check_deps",
+    required_deps = [
+        "//tensorflow/compiler/jit:xla_kernel_creator",
+    ],
+    deps = [":def_function"],
 )
 
 py_library(

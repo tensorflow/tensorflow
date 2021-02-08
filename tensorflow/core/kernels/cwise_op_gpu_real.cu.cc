@@ -19,7 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_UNARY2(get_real, complex64, complex128);
+#endif
 }  // namespace functor
 }  // namespace tensorflow
 

@@ -42,6 +42,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -303,7 +304,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   # If this is set to True, use NCCL collective ops instead of NCCL cross device
   # ops.
-  _prefer_collective_ops = True
+  _prefer_collective_ops = False
 
   def __init__(self, container_strategy, devices=None, cross_device_ops=None):
     super(MirroredExtended, self).__init__(container_strategy)
@@ -326,8 +327,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert devices, ("Got an empty `devices` list and unable to recognize "
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
-    self._communication_options = collective_util.Options(
-        implementation=collective_util.CommunicationImplementation.NCCL)
+    if self._prefer_collective_ops:
+      self._communication_options = collective_util.Options(
+          implementation=collective_util.CommunicationImplementation.NCCL)
+    else:
+      self._communication_options = collective_util.Options()
     self._collective_ops_in_use = False
     self._collective_key_base = container_strategy._collective_key_base
     self._initialize_strategy(devices)
@@ -348,11 +352,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         "No duplicates allowed in `devices` argument: %s" % (devices,))
     if _is_device_list_single_worker(devices):
       self._initialize_single_worker(devices)
-      if self._prefer_collective_ops and isinstance(
-          self._cross_device_ops,
-          cross_device_ops_lib.NcclAllReduce) or isinstance(
-              self._inferred_cross_device_ops,
-              cross_device_ops_lib.NcclAllReduce):
+      if self._prefer_collective_ops and (
+          isinstance(self._cross_device_ops, cross_device_ops_lib.NcclAllReduce)
+          or isinstance(self._inferred_cross_device_ops,
+                        cross_device_ops_lib.NcclAllReduce)):
         self._use_collective_ops(devices)
         self._inferred_cross_device_ops = None
       logging.info("Using MirroredStrategy with devices %r", devices)
@@ -691,16 +694,17 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return updated_config
 
   def _get_cross_device_ops(self, value):
-    if isinstance(value, values.DistributedValues):
-      value_int32 = True in {
-          dtypes.as_dtype(v.dtype) == dtypes.int32 for v in value.values
-      }
-    else:
-      value_int32 = dtypes.as_dtype(value.dtype) == dtypes.int32
-    if self._collective_ops_in_use and value_int32:
-      return cross_device_ops_lib.ReductionToOneDevice()
-    else:
-      return self._cross_device_ops or self._inferred_cross_device_ops
+    if self._collective_ops_in_use:
+      if isinstance(value, values.DistributedValues):
+        value_int32 = True in {
+            dtypes.as_dtype(v.dtype) == dtypes.int32 for v in value.values
+        }
+      else:
+        value_int32 = dtypes.as_dtype(value.dtype) == dtypes.int32
+      if value_int32:
+        return cross_device_ops_lib.ReductionToOneDevice()
+
+    return self._cross_device_ops or self._inferred_cross_device_ops
 
   def _gather_to_implementation(self, value, destinations, axis, options):
     if not isinstance(value, values.DistributedValues):
@@ -752,6 +756,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
+    if (var.synchronization != variables_lib.VariableSynchronization.ON_READ and
+        var.aggregation != variables_lib.VariableAggregation.NONE):
+      distribute_utils.assert_mirrored(args)
+      distribute_utils.assert_mirrored(kwargs)
     updates = []
     for i, v in enumerate(var.values):
       name = "update_%d" % i
@@ -760,8 +768,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
            ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(
-            fn(v, *distribute_utils.select_replica_mirrored(i, args),
-               **distribute_utils.select_replica_mirrored(i, kwargs)))
+            fn(v, *distribute_utils.select_replica(i, args),
+               **distribute_utils.select_replica(i, kwargs)))
     return distribute_utils.update_regroup(self, updates, group)
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):

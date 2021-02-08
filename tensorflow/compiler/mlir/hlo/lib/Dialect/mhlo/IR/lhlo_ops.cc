@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -48,12 +49,85 @@ limitations under the License.
 namespace mlir {
 namespace lmhlo {
 
-LmhloDialect::LmhloDialect(MLIRContext *context)
+LmhloDialect::LmhloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context, TypeID::get<LmhloDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
       >();
+}
+
+// Verifies replica groups attached to collective communication operations.
+// If the attribute is not empty, it must be a rank 2 tensor, and each replica
+// should appear exactly once. If `is_uniform_sized` is true, then we also check
+// that each group is of the same size. If the operation has
+// `use_global_device_id` set, then replica group cannot be empty.
+template <typename OpT>
+LogicalResult VerifyReplicaGroups(OpT op, bool is_uniform_sized) {
+  DenseIntElementsAttr attr = op.replica_groups();
+  auto replica_group_type = attr.getType().dyn_cast<RankedTensorType>();
+  if (!replica_group_type || replica_group_type.getRank() != 2 ||
+      !replica_group_type.getElementType().isInteger(/*width=*/64))
+    return op.emitOpError(
+        "replica groups should be a rank 2 tensor of 64 bit integers");
+
+  if (replica_group_type.getShape().equals(ArrayRef<int64_t>{0, 0}))
+    return success();
+
+  int64_t max_replica_id_seen = 0;
+  llvm::SmallSet<int64_t, 8> replica_seen;
+  for (int64_t id : attr.getValues<int64_t>()) {
+    if (is_uniform_sized && id == -1) {
+      return op.emitOpError("Invalid replica id -1");
+    }
+    if (id != -1) {
+      if (!replica_seen.insert(id).second) {
+        return op.emitOpError("replica id #") << id << " seen more than once";
+      }
+      max_replica_id_seen = std::max(max_replica_id_seen, id);
+    }
+  }
+
+  for (int64_t id = 0; id <= max_replica_id_seen; id++) {
+    if (!replica_seen.contains(id)) {
+      return op.emitOpError("replica id #")
+             << id << " not seen in replica groups";
+    }
+  }
+  return success();
+}
+
+// TODO(jurahul): Add verification for output shape.
+static LogicalResult Verify(AllGatherOp op) {
+  return VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
+}
+
+// TODO(jurahul): Add verification for output shape.
+static LogicalResult Verify(AllToAllOp op) {
+  return VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
+}
+
+//===----------------------------------------------------------------------===//
+// AllReduceOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AllReduceOp op) {
+  if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/false)))
+    return failure();
+
+  // AllReduce had variadic operands and results that have the same size.
+  // Each memeber of the operand should have the same type as the corresponding
+  // member of the result.
+  for (auto it : llvm::enumerate(
+           llvm::zip(op.operands().getTypes(), op.results().getTypes()))) {
+    Type operandType = std::get<0>(it.value());
+    Type resultType = std::get<1>(it.value());
+    if (operandType != resultType)
+      return op.emitOpError("requires operand #")
+             << it.index() << " (type: " << operandType << ") and result #"
+             << it.index() << " (type: " << resultType << ") to have same type";
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -99,10 +173,10 @@ namespace lmhlo {
 
 // TODO(cheshire): Support folding, reuse code from hlo_ops.cc.
 
-void FusionOp::build(OpBuilder &builder, OperationState &result,
+void FusionOp::build(OpBuilder& builder, OperationState& result,
                      ArrayRef<NamedAttribute> attributes) {
   result.addAttributes(attributes);
-  Region *bodyRegion = result.addRegion();
+  Region* bodyRegion = result.addRegion();
   FusionOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 

@@ -144,7 +144,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -197,7 +197,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -231,7 +231,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -248,7 +248,8 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -358,7 +359,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization",
+        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -613,8 +614,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:winograd_util",
-        "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
+        "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

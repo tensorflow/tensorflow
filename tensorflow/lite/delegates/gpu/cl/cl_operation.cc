@@ -49,6 +49,10 @@ int3 GetWorkGroupsCount(int grid_dimension, const int3& grid_size,
 std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   std::string result;
 
+  result += "#define FLT16_0123(V) V.s0123\n";
+  result += "#define FLT16_4567(V) V.s4567\n";
+  result += "#define FLT16_89ab(V) V.s89ab\n";
+  result += "#define FLT16_cdef(V) V.scdef\n";
   result += "#define GLOBAL_ID_0 get_global_id(0)\n";
   result += "#define GLOBAL_ID_1 get_global_id(1)\n";
   result += "#define GLOBAL_ID_2 get_global_id(2)\n";
@@ -58,6 +62,10 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result += "#define GROUP_ID_0 get_group_id(0)\n";
   result += "#define GROUP_ID_1 get_group_id(1)\n";
   result += "#define GROUP_ID_2 get_group_id(2)\n";
+  result += "#define GROUP_SIZE_0 get_local_size(0)\n";
+  result += "#define GROUP_SIZE_1 get_local_size(1)\n";
+  result += "#define GROUP_SIZE_2 get_local_size(2)\n";
+  result += "#define SIMD_LOCAL_MEM_BARRIER barrier(CLK_LOCAL_MEM_FENCE)\n";
   result += "#define LOCAL_MEM_BARRIER barrier(CLK_LOCAL_MEM_FENCE)\n";
   result += "#define MAIN_FUNCTION __kernel void main_function\n";
   result += "#define INIT_FLOAT(value) (float)(value)\n";

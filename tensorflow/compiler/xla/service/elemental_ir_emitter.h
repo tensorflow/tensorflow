@@ -179,6 +179,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                   PrimitiveType prim_type,
                                                   llvm::Value* operand_value);
 
+  StatusOr<llvm::Value*> EmitAccumResult(
+      absl::Span<llvm::Value* const> accumulator_addrs,
+      llvm::ArrayRef<llvm::Type*> accumulator_types, bool is_variadic);
+
   // Composes a complex struct. imag may be nullptr for simple cast operations.
   llvm::Value* EmitComposeComplex(const HloInstruction* op, llvm::Value* real,
                                   llvm::Value* imag);
@@ -241,8 +245,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   StatusOr<llvm::Value*> EmitElementalReduceWindow(
       const HloReduceWindowInstruction* reduce_window,
-      const llvm_ir::ElementGenerator& input_generator,
-      const llvm_ir::ElementGenerator& initial_value_generator,
+      std::vector<llvm_ir::ElementGenerator> input_generators,
+      std::vector<llvm_ir::ElementGenerator> initial_value_generators,
       const llvm_ir::IrArray::Index& index);
 
   StatusOr<llvm::Value*> EmitElementalReduce(

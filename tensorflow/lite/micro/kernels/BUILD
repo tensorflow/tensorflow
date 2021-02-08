@@ -107,6 +107,8 @@ cc_library(
         "hard_swish.cc",
         "add.cc",
         "arg_min_max.cc",
+        "batch_to_space_nd.cc",
+        "cast.cc",
         "ceil.cc",
         "circular_buffer.cc",
         "comparisons.cc",
@@ -132,6 +134,8 @@ cc_library(
         "resize_nearest_neighbor.cc",
         "round.cc",
         "shape.cc",
+        "softmax_common.cc",
+        "space_to_batch_nd.cc",
         "split.cc",
         "split_v.cc",
         "strided_slice.cc",
@@ -140,6 +144,7 @@ cc_library(
         "tanh.cc",
         "transpose_conv.cc",
         "unpack.cc",
+        "zeros_like.cc",
     ] + select({
         "//conditions:default": [
             "conv.cc",
@@ -159,6 +164,7 @@ cc_library(
     hdrs = [
         "micro_ops.h",
         "quantize.h",
+        "softmax.h",
         "svdf.h",
     ],
     copts = micro_copts(),
@@ -219,6 +225,19 @@ test_suite(
 tflite_micro_cc_test(
     name = "elementwise_test",
     srcs = ["elementwise_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "exp_test",
+    srcs = ["exp_test.cc"],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
@@ -662,6 +681,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
     ],
 )
@@ -732,7 +752,10 @@ tflite_micro_cc_test(
     srcs = [
         "pad_test.cc",
     ],
-    tags = ["nomsan"],  # b/175133159
+    tags = [
+        "noasan",
+        "nomsan",
+    ],  # TODO(b/175133159): currently failing with asan and msan
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
@@ -835,6 +858,21 @@ cc_test(
 )
 
 tflite_micro_cc_test(
+    name = "space_to_batch_nd_test",
+    srcs = [
+        "space_to_batch_nd_test.cc",
+    ],
+    deps = [
+        ":conv_test_common",
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
     name = "transpose_conv_test",
     srcs = [
         "transpose_conv_test.cc",
@@ -844,6 +882,20 @@ tflite_micro_cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "batch_to_space_nd_test",
+    srcs = [
+        "batch_to_space_nd_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

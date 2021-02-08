@@ -32,6 +32,9 @@
         examples in the same step.
     *   tf.data service supports custom data transfer protocols (other than
         gRPC).
+    *   `tf.data.Dataset.batch()` now supports `num_parallel_calls` argument,
+        which can be used to indicate that multiple input batches should be
+        computed in parallel.
 
 ## Bug Fixes and Other Changes
 
@@ -56,6 +59,9 @@
         the dataset elements. This avoids the need for explicitly specifying the
         `element_spec` argument of `tf.data.experimental.load` when loading the
         previously saved dataset.
+    *   Add `.element_spec` property to `tf.data.DatasetSpec` to access the
+        inner spec. This can be used to extract the structure of nested
+        datasets.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.

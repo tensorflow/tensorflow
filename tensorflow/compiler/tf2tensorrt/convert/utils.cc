@@ -17,14 +17,12 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
+Status TrtPrecisionModeToName(const TrtPrecisionMode mode, string* name) {
   switch (mode) {
     case TrtPrecisionMode::FP32:
       *name = "FP32";
@@ -36,6 +34,7 @@ Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
       *name = "INT8";
       break;
     default:
+      *name = "UNKNOWN";
       return errors::OutOfRange("Unknown precision mode");
   }
   return Status::OK();
@@ -55,8 +54,6 @@ Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
 }
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-using absl::StrAppend;
-using absl::StrCat;
 
 string DebugString(const nvinfer1::DimensionType type) {
   switch (type) {
@@ -87,6 +84,21 @@ string DebugString(const nvinfer1::Dims& dims) {
   return out;
 }
 
+string DebugString(const DataType tf_type) {
+  switch (tf_type) {
+    case DT_FLOAT:
+      return "DT_FLOAT";
+    case DT_HALF:
+      return "DT_HALF";
+    case DT_INT32:
+      return "DT_INT32";
+    case DT_INT8:
+      return "DT_INT8";
+    default:
+      return "Unknow TF DataType";
+  }
+}
+
 string DebugString(const nvinfer1::DataType trt_dtype) {
   switch (trt_dtype) {
     case nvinfer1::DataType::kFLOAT:
@@ -100,6 +112,12 @@ string DebugString(const nvinfer1::DataType trt_dtype) {
     default:
       return "Invalid TRT data type";
   }
+}
+
+string DebugString(const TrtPrecisionMode mode) {
+  string mode_str;
+  TF_CHECK_OK(TrtPrecisionModeToName(mode, &mode_str));
+  return StrCat("TrtPrecisionMode::", mode_str);
 }
 
 string DebugString(const nvinfer1::Permutation& permutation, int len) {

@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -97,7 +98,8 @@ Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
         effective_maxs[0], narrow_range, converter.expressedType, is_signed);
     if (legacy_float_scale) {
       quantizedEleType =
-          DownCastScale(quantizedEleType, effective_mins[0], effective_maxs[0]);
+          DownCastScale(quantizedEleType, effective_mins[0], effective_maxs[0],
+                        builder.getUnknownLoc());
     }
   } else if (min.size() == max.size()) {
     auto shape = input_type.dyn_cast<ShapedType>();
@@ -110,8 +112,8 @@ Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
         builder.getUnknownLoc(), storage_type_width, quant_dim, effective_mins,
         effective_maxs, narrow_range, converter.expressedType, is_signed);
     if (legacy_float_scale) {
-      quantizedEleType =
-          DownCastScale(quantizedEleType, effective_mins, effective_maxs);
+      quantizedEleType = DownCastScale(quantizedEleType, effective_mins,
+                                       effective_maxs, builder.getUnknownLoc());
     }
   }
   if (!quantizedEleType) return {};
@@ -300,6 +302,11 @@ void ExtractMinMaxFromAttr(DenseFPElementsAttr values, int dim_size,
       int channel_index = slice_index % dim_size;
       mins[channel_index] = std::min(mins[channel_index], ele_value);
       maxs[channel_index] = std::max(maxs[channel_index], ele_value);
+    }
+    // Expand range to include 0.
+    for (int i = 0; i < dim_size; ++i) {
+      maxs[i] = std::max(maxs[i], 0.0);
+      mins[i] = std::min(mins[i], 0.0);
     }
     if (symmetric) {
       for (int i = 0; i < dim_size; ++i) {
@@ -538,19 +545,27 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type) {
   return {};
 }
 
-QuantizedType DownCastScale(QuantizedType type, double min, double max) {
+QuantizedType DownCastScale(QuantizedType type, double min, double max,
+                            Location loc) {
   SmallVector<double, 1> mins = {min};
   SmallVector<double, 1> maxs = {max};
-  return DownCastScale(type, mins, maxs);
+  return DownCastScale(type, mins, maxs, loc);
 }
 
 QuantizedType DownCastScale(QuantizedType type,
                             const SmallVectorImpl<double>& mins,
-                            const SmallVectorImpl<double>& maxs) {
+                            const SmallVectorImpl<double>& maxs, Location loc) {
   SmallVector<double, 4> scales(mins.size());
   for (int i = 0; i < mins.size(); ++i) {
     scales[i] = (static_cast<float>(maxs[i]) - static_cast<float>(mins[i])) /
                 (type.getStorageTypeMax() - type.getStorageTypeMin());
+    if (scales[i] < kNearZeroTolerance &&
+        type.getStorageTypeIntegralWidth() == 8) {
+      emitWarning(loc) << "The scale " << scales[i] << " is too small, and "
+                       << "might cause overflow for bias. Forcing to use scale "
+                       << kNearZeroTolerance;
+      scales[i] = kNearZeroTolerance;
+    }
   }
   if (auto q_type = type.dyn_cast<UniformQuantizedType>()) {
     return UniformQuantizedType::get(

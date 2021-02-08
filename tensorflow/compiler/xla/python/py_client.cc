@@ -47,8 +47,8 @@ std::vector<ClientAndPtr<PjRtDevice>> PyClient::Devices() {
 
 std::vector<ClientAndPtr<PjRtDevice>> PyClient::LocalDevices() {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
-  devices.reserve(pjrt_client_->local_devices().size());
-  for (PjRtDevice* device : pjrt_client_->local_devices()) {
+  devices.reserve(pjrt_client_->addressable_devices().size());
+  for (PjRtDevice* device : pjrt_client_->addressable_devices()) {
     devices.push_back(WrapWithClient(shared_from_this(), device));
   }
   return devices;
@@ -103,8 +103,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
     pybind11::handle argument, PjRtDevice* device, bool force_copy,
     PjRtClient::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
-    TF_RET_CHECK(!pjrt_client_->local_devices().empty());
-    device = pjrt_client_->local_devices().front();
+    TF_RET_CHECK(!pjrt_client_->addressable_devices().empty());
+    device = pjrt_client_->addressable_devices().front();
   }
   CHECK(device != nullptr);
   TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,
@@ -123,15 +123,23 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
         py::cast<std::string>(py::repr(argument)));
   }
 
-  std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-      GlobalPyRefManager()->ManageReference(std::move(c->array));
+  std::function<void()> on_done_with_host_buffer;
+  if (host_buffer_semantics !=
+      PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall) {
+    std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
+        GlobalPyRefManager()->ManageReference(std::move(c->array));
+    on_done_with_host_buffer =
+        [py_buffer_ref{
+            std::move(py_buffer_ref)}]() { /* keeps py_buffer_ref alive */ };
+  }
 
   std::unique_ptr<PjRtBuffer> buffer;
   {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(buffer, pjrt_client_->BufferFromHostBuffer(
-                                    c->buf_ptr, c->shape, host_buffer_semantics,
-                                    std::move(py_buffer_ref), device));
+    TF_ASSIGN_OR_RETURN(buffer,
+                        pjrt_client_->BufferFromHostBuffer(
+                            c->buf_ptr, c->shape, host_buffer_semantics,
+                            std::move(on_done_with_host_buffer), device));
   }
   return buffer;
 }

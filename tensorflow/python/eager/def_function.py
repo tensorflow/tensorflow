@@ -807,9 +807,13 @@ class Function(object):
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0
     return result
 
+  @property
+  def _run_functions_eagerly(self):
+    return RUN_FUNCTIONS_EAGERLY
+
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
-    if RUN_FUNCTIONS_EAGERLY:
+    if self._run_functions_eagerly:
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 
@@ -958,13 +962,21 @@ class Function(object):
       **kwargs: Keyword arguments used for compilation.
 
     Returns:
-      Function callable with the stage at which the compiler IR should be
-      serialized. Allowed values for the `stage` are:
-       - `hlo`: HLO output after conversion from TF
-         (https://www.tensorflow.org/xla/operation_semantics).
-       - `optimized_hlo`: HLO after compiler optimizations.
-       - `optimized_hlo_dot`: optimized HLO in DOT format suitable for
-         Graphviz.
+      Function callable with the following kwargs:
+        - `stage` at which the compiler IR should be serialized. Allowed values
+          are:
+           - `hlo`: HLO output after conversion from TF
+            (https://www.tensorflow.org/xla/operation_semantics).
+           - `hlo_serialized`: Like stage=`hlo`, but the output is a serialized
+             HLO module proto (a bytes object).
+           - `optimized_hlo`: HLO after compiler optimizations.
+           - `optimized_hlo_serialized`: Like stage=`optimized_hlo`, but the
+             output is a serialized HLO module proto (a bytes object).
+           - `optimized_hlo_dot`: optimized HLO in DOT format suitable for
+             Graphviz.
+        - `device_name` can be either None, in which case the preferred device
+          is used for compilation, or a device name. It can be a full device
+          name, or a partial one, e.g., `/device:CPU:0`.
 
       For example, for
 
@@ -1013,21 +1025,20 @@ class Function(object):
         concrete_fn._function_spec.canonicalize_function_inputs(
             *args, **kwargs)
 
-    def compiler_ir_generator(stage='hlo'):
-      """Returns compiler IR for the given `stage`.
-
-      Args:
-        stage: Stage at which to return the IR. Allowed values are 'hlo' and
-        'optimized_hlo'.
-      """
+    def compiler_ir_generator(stage="hlo", device_name=None):
       # TODO(cheshire): This is a hack to get the current "preferred" device,
       # there is no current API to get it otherwise.
-      device = random_ops.random_normal([]).device
-      return context.context().get_compiler_ir(
-          device_name=device,
+      if device_name is None:
+        device_name = random_ops.random_normal([]).device
+      res_bytes = context.context().get_compiler_ir(
+          device_name=device_name,
           stage=stage,
           function_name=fn_name,
           args=list(filtered_flat_args) + concrete_fn.captured_inputs)
+      if stage in ("hlo_serialized", "optimized_hlo_serialized"):
+        return res_bytes
+      else:
+        return res_bytes.decode("utf-8")
 
     return compiler_ir_generator
 

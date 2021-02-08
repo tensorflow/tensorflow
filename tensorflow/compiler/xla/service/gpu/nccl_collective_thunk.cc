@@ -68,7 +68,7 @@ NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction* hlo,
 
   if (hlo->channel_id().has_value()) {
     config.collective_op_kind = RendezvousKey::kCrossModule;
-    config.op_id = hlo->channel_id().value();
+    config.op_id = *hlo->channel_id();
   } else {
     config.collective_op_kind = RendezvousKey::kCrossReplica;
     config.op_id = static_cast<int64>(hlo->GetModule()->unique_id());
@@ -115,16 +115,12 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
       AcquireNcclClique(rendezvous_key, device_ordinal, params.stream,
                         local_participants, params.nccl_unique_id_callback));
   ncclComm_t comm =
-      locked_clique.clique->GetCommForDeviceOrdinal(device_ordinal);
+      locked_clique.clique.GetCommForDeviceOrdinal(device_ordinal);
 
   se::StreamExecutor* executor = params.stream->parent();
   se::gpu::ScopedActivateExecutorContext scoped_context(executor);
 
   TF_RETURN_IF_ERROR(RunNcclCollective(params, comm));
-
-  // Keep the clique we used alive for as long as this thunk lives.
-  absl::MutexLock lock(&mu_);
-  cliques_.insert(std::move(locked_clique.clique));
   return Status::OK();
 }
 
