@@ -71,6 +71,9 @@ class LeakyReLU(Layer):
 
   def __init__(self, alpha=0.3, **kwargs):
     super(LeakyReLU, self).__init__(**kwargs)
+    if alpha is None:
+      raise ValueError('alpha of leaky Relu layer '
+                       'cannot be None. Required a float')
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
 
