@@ -570,6 +570,7 @@ cc_library(
         "reference/add.h",
         "reference/add_n.h",
         "reference/arg_min_max.h",
+        "reference/batch_matmul.h",
         "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
         "reference/cast.h",
@@ -807,6 +808,7 @@ cc_library(
     ],
     hdrs = [
         "tensor_utils.h",
+        "tensor_utils_common.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,

@@ -256,7 +256,7 @@ def HLOClient_BroadcastSubOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOCLient_BroadcastZetaOp : HLOClient_BroadcastBinaryElementwiseOp<
+def HLOClient_BroadcastZetaOp : HLOClient_BroadcastBinaryElementwiseOp<
     "broadcast_zeta",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = "Hurwitz zeta function";
@@ -352,15 +352,14 @@ def HLOClient_ZetaOp : HLOClient_Op<"zeta",
   }];
 
   let arguments = (ins
-    HLO_FpTensor:$lhs,
-    HLO_FpTensor:$rhs
+    HLO_FpTensor:$x,
+    HLO_FpTensor:$q
   );
 
   let results = (outs HLO_FpTensor);
 
   let assemblyFormat = [{
-    $lhs `,` $rhs attr-dict `:`
-      `(` type($lhs) `,` type($rhs) `)` `->` type(results)
+    $x `,` $q attr-dict `:` `(` type($x) `,` type($q) `)` `->` type(results)
   }];
 }
 
@@ -553,6 +552,15 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
   let results = (outs HLO_Tensor);
 
   let hasCanonicalizer = 1;
+}
+
+def HLOClient_DigammaOp : HLOClient_UnaryElementwiseOp<"digamma",
+    [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
+  let summary = "Digamma function";
+
+  let description = [{
+    Returns `Digamma(operand)` element-wise.
+  }];
 }
 
 def HLOClient_ErfOp : HLOClient_UnaryElementwiseOp<"erf",

@@ -438,7 +438,7 @@ class KerasObjectLoader(object):
       obj = self._revive_metric_from_config(metadata)
     else:
       obj = (
-          self._revive_graph_network(metadata, node_id) or
+          self._revive_graph_network(identifier, metadata, node_id) or
           self._revive_layer_or_model_from_config(metadata, node_id))
 
     if obj is None:
@@ -449,7 +449,7 @@ class KerasObjectLoader(object):
         obj, self._proto.nodes[node_id], node_id)
     return obj, setter
 
-  def _revive_graph_network(self, metadata, node_id):
+  def _revive_graph_network(self, identifier, metadata, node_id):
     """Revives a graph network from config."""
     # Determine whether the metadata contains information for reviving a
     # functional or Sequential model.
@@ -473,6 +473,10 @@ class KerasObjectLoader(object):
     # have been revived.
     if class_name == 'Sequential':
       model = models_lib.Sequential(name=config['name'])
+    # The model is a custom Sequential model.
+    elif identifier == constants.SEQUENTIAL_IDENTIFIER:
+      # Uses the custom class name, since the config does not have one.
+      model = models_lib.Sequential(name=class_name)
     else:
       model = models_lib.Functional(
           inputs=[], outputs=[], name=config['name'])
@@ -493,13 +497,15 @@ class KerasObjectLoader(object):
     #       found.
     class_name = metadata.get('class_name')
     config = metadata.get('config')
+    shared_object_id = metadata.get('shared_object_id')
     must_restore_from_config = metadata.get('must_restore_from_config')
     if not generic_utils.validate_config(config):
       return None
 
     try:
       obj = layers_module.deserialize(
-          generic_utils.serialize_keras_class_and_config(class_name, config))
+          generic_utils.serialize_keras_class_and_config(
+              class_name, config, shared_object_id=shared_object_id))
     except ValueError:
       if must_restore_from_config:
         raise RuntimeError(

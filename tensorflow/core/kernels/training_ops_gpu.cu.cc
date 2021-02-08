@@ -786,10 +786,14 @@ struct SparseApplyFtrl<GPUDevice, T, Tindex, has_l2_shrinkage> {
     if (grad_size == 0) {
       return Status::OK();
     }
-    GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
+    // The simpler overload of GetGpuLaunchConfig() would result in a "too many
+    // resources requested for launch" error.
+    auto* device_func = SparseApplyFtrlKernel<T, Tindex, has_l2_shrinkage>;
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(grad_size, d, device_func, 0, 0);
     return GpuLaunchKernel(
-        SparseApplyFtrlKernel<T, Tindex, has_l2_shrinkage>, config.block_count,
-        config.thread_per_block, 0, d.stream(), /*var=*/var.data(),
+        device_func, config.block_count, config.thread_per_block, 0, d.stream(),
+        /*var=*/var.data(),
         /*accum=*/accum.data(),
         /*linear=*/linear.data(), /*lr=*/lr.data(), /*l1=*/l1.data(),
         /*l2=*/l2.data(), /*l2_shrinkage=*/l2_shrinkage.data(),

@@ -17,6 +17,12 @@ func @main(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/devi
   %2 = "tf.AddV2"(%arg1, %arg1) {device = "/job:worker/replica:0/task:1/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   return %1, %2 : tensor<i32>, tensor<i32>
 }
+// Subgraph of @main function that is placed on worker:1
+// CHECK: func @[[MAIN_PARTITION_0]](%[[ARG_0:.*]]: tensor<i32> {tf.device = "/job:worker/replica:0/task:1/device:CPU:0"})
+// CHECK-SAME:  host = "/job:worker/replica:0/task:1"
+// CHECK-NEXT:   %[[RESULT_0:.*]] = "tf.AddV2"(%[[ARG_0]], %[[ARG_0]])
+// CHECK-SAME:  device = "/job:worker/replica:0/task:1/device:CPU:0"
+// CHECK-NEXT:   return %[[RESULT_0]]
 
 // CHECK: func @while_cond(%[[ARG_0:.*]]: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"})
 // CHECK-NEXT:   %[[RESULT_0:.*]] = "tf.Const"()
@@ -58,12 +64,6 @@ func @while_body(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:
 
   return %1 : tensor<i32>
 }
-// Subgraph of @main function that is placed on worker:1
-// CHECK: func @[[MAIN_PARTITION_0]](%[[ARG_0:.*]]: tensor<i32> {tf.device = "/job:worker/replica:0/task:1/device:CPU:0"})
-// CHECK-SAME:  host = "/job:worker/replica:0/task:1"
-// CHECK-NEXT:   %[[RESULT_0:.*]] = "tf.AddV2"(%[[ARG_0]], %[[ARG_0]])
-// CHECK-SAME:  device = "/job:worker/replica:0/task:1/device:CPU:0"
-// CHECK-NEXT:   return %[[RESULT_0]]
 
 // Subgraph of @while_body function that is placed on worker:1
 // CHECK: func @[[BODY_PARTITION_0]]() attributes {host = "/job:worker/replica:0/task:1"}

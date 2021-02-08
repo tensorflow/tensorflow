@@ -232,7 +232,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SpaceToBatchOp>(),
     TypeID::get<TF::SpaceToDepthOp>(),
     TypeID::get<TF::SparseToDenseOp>(),
-    TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),
     TypeID::get<TF::StatelessMultinomialOp>(),
     TypeID::get<TF::StatelessRandomGetAlgOp>(),
@@ -572,10 +571,9 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
 
 class Tf2XlaRewritePattern : public RewritePattern {
  public:
-  // Set benefit to 0 (= least benefit) so this pattern is only used as a
-  // fallback.
   explicit Tf2XlaRewritePattern(const std::string& device_type)
-      : RewritePattern(0, MatchAnyOpTypeTag()), device_type_(device_type) {}
+      : RewritePattern(/*benefit=*/1, MatchAnyOpTypeTag()),
+        device_type_(device_type) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {

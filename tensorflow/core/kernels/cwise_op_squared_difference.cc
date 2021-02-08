@@ -21,7 +21,7 @@ REGISTER8(BinaryOp, CPU, "SquaredDifference", functor::squared_difference,
           complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "SquaredDifference", functor::squared_difference,
           float, Eigen::half, double, int64);
 #endif

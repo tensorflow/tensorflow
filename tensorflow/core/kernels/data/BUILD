@@ -30,6 +30,7 @@ tf_kernel_library(
     srcs = ["batch_dataset_op.cc"],
     hdrs = ["batch_dataset_op.h"],
     deps = [
+        ":dataset_utils",
         ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -680,6 +681,50 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "parallel_batch_dataset_op",
+    srcs = ["parallel_batch_dataset_op.cc"],
+    hdrs = ["parallel_batch_dataset_op.h"],
+    deps = [
+        ":dataset_utils",
+        ":name_utils",
+        ":stats_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
+    ],
+)
+
+tf_cc_test(
+    name = "parallel_batch_dataset_op_test",
+    size = "medium",
+    srcs = ["parallel_batch_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":name_utils",
+        ":parallel_batch_dataset_op",
+        ":range_dataset_op",
+        ":stats_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
     ],
 )
 
@@ -1476,6 +1521,7 @@ tf_kernel_library(
         ":optimize_dataset_op",
         ":optional_ops",
         ":padded_batch_dataset_op",
+        ":parallel_batch_dataset_op",
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",

@@ -138,6 +138,8 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.DenseToSparseSetOperation`
 *   `raw_ops.DepthToSpace`
 *   `raw_ops.DepthwiseConv2dNative`
+*   `raw_ops.DepthwiseConv2dNativeBackpropFilter`
+*   `raw_ops.DepthwiseConv2dNativeBackpropInput`
 *   `raw_ops.Dequantize`
 *   `raw_ops.DestroyResourceOp`
 *   `raw_ops.DestroyTemporaryVariable`

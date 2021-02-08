@@ -168,8 +168,8 @@ bool IsReductionFromOrToContiguousDimensions(mlir::Operation* reduce);
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
 // ROOT slices have no strides.
-bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
-                          bool verify_no_strides = false);
+bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
+                          bool verify_no_strides);
 
 struct ReductionDimensions {
   // Indicates whether the reduction is a row reduction or a column reduction.

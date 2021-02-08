@@ -184,7 +184,7 @@ class XlaBuilder {
 
   // Similar to SetOpMetadata, but only set the metadata for the next op.
   void SetOneShotOpMetadata(OpMetadata metadata) {
-    metadata_ = std::move(metadata);
+    one_shot_metadata_ = std::move(metadata);
   }
 
   // Clears the HloMetadata state.

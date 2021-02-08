@@ -45,14 +45,15 @@ class ConvolutionTransposed3x3 : public GPUOperation {
   int3 GetGridSize() const override;
 
   // Move only
-  ConvolutionTransposed3x3(ConvolutionTransposed3x3&& operation);
-  ConvolutionTransposed3x3& operator=(ConvolutionTransposed3x3&& operation);
+  ConvolutionTransposed3x3(ConvolutionTransposed3x3&& operation) = default;
+  ConvolutionTransposed3x3& operator=(ConvolutionTransposed3x3&& operation) =
+      default;
   ConvolutionTransposed3x3(const ConvolutionTransposed3x3&) = delete;
   ConvolutionTransposed3x3& operator=(const ConvolutionTransposed3x3&) = delete;
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
-    desc.layout = WeightsLayout::kOICustomSSpatialI4O4;
+    desc.layout = weights_layout_;
     desc.spatial_remap = GetSpatialWeightsRemap();
     return desc;
   }
@@ -74,8 +75,8 @@ class ConvolutionTransposed3x3 : public GPUOperation {
       const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
 
-  template <DataType T>
-  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
+  void UploadWeights(
+      const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights);
 
   std::vector<int> GetSpatialWeightsRemap() const;
 
@@ -86,44 +87,8 @@ class ConvolutionTransposed3x3 : public GPUOperation {
 
   int2 padding_;
   WeightsUploadType weights_upload_type_;
+  WeightsLayout weights_layout_;
 };
-
-template <DataType T>
-void ConvolutionTransposed3x3::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights) {
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  const int kernel_x = 3;  //  This operation support only 3x3 kernel
-  const int kernel_y = 3;
-  const int flt4_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
-
-  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
-  const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
-
-  BufferDescriptor desc;
-  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-  desc.element_size = 4;
-  desc.memory_type =
-      weights_upload_type_ ==
-              ConvolutionTransposed3x3::WeightsUploadType::CONSTANT_MEM
-          ? MemoryType::CONSTANT
-          : MemoryType::GLOBAL;
-  desc.size = flt4_size * flt4_count;
-  desc.data.resize(desc.size);
-
-  if (f32_weights) {
-    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
-    RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
-                                          absl::MakeSpan(ptr, flt4_count));
-  } else {
-    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
-    RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
-                                          absl::MakeSpan(ptr, flt4_count));
-  }
-
-  args_.AddObject("weights",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
-}
 
 bool IsConvolutionTransposed3x3Supported(
     const OperationDef& definition,

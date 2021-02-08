@@ -44,20 +44,16 @@ enum ExecutionPreference {
   FORCE_CPU = 3;
 }
 
-// TFLite accelerator to use. It can be either a delegate or an external
-// context.
+// TFLite accelerator to use.
 enum Delegate {
   NONE = 0;
 
-  // DELEGATE OPTIONS.
   NNAPI = 1;
   GPU = 2;
   HEXAGON = 3;
   XNNPACK = 4;
   // The EdgeTpu in Pixel devices.
   EDGETPU = 5;
-
-  // EXTERNAL CONTEXT OPTIONS.
   // The Coral EdgeTpu Dev Board / USB accelerator.
   EDGETPU_CORAL = 6;
 }
@@ -263,10 +259,10 @@ message EdgeTpuSettings {
   optional EdgeTpuDeviceSpec edgetpu_device_spec = 4;
 }
 
-// Coral Dev Board / USB accelerator external context settings.
+// Coral Dev Board / USB accelerator delegate settings.
 //
 // See
-// https://github.com/google-coral/edgetpu/blob/master/libedgetpu/edgetpu.h
+// https://github.com/google-coral/edgetpu/blob/master/libedgetpu/edgetpu_c.h
 message CoralSettings {
   enum Performance {
     UNDEFINED = 0;
@@ -320,7 +316,7 @@ message TFLiteSettings {
   // For configuring the EdgeTpuDelegate.
   optional EdgeTpuSettings edgetpu_settings = 8;
 
-  // For configuring the Coral External Context (EdgeTpuContext).
+  // For configuring the Coral EdgeTpu Delegate.
   optional CoralSettings coral_settings = 10;
 
   // Whether to automatically fall back to TFLite CPU path.

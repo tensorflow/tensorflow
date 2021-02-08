@@ -110,7 +110,7 @@ class ParameterValueBenchmark(benchmark_base.DatasetBenchmarkBase):
     return self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=10000,
-        name="interleave_and_batch_num_parallel_calls_%d_buffer_size_%d" %
+        name="interleave_num_parallel_calls_%d_buffer_size_%d" %
         (num_parallel_calls, buffer_size))
 
   def benchmark_interleave(self):

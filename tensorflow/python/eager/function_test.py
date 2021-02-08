@@ -22,6 +22,7 @@ import copy
 import functools
 import itertools
 import multiprocessing.pool
+import os
 import sys
 import time
 import weakref
@@ -70,6 +71,7 @@ from tensorflow.python.ops import gen_sendrecv_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -3448,7 +3450,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testAddFunctionCallback(self):
     functions = []
-    def function_callback(f):
+    def function_callback(f, name, graph, inputs, outputs):
+      del name, graph, inputs, outputs
       functions.append(f)
 
     @def_function.function
@@ -3471,13 +3474,41 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     finally:
       function.clear_function_callbacks()
 
+  def testFunctionCallbackAddOps(self):
+    file_name = os.path.join(self.get_temp_dir(), 'test')
+
+    def function_callback(f, name, graph, inputs, outputs):
+      del f, name, inputs
+
+      with graph.as_default():
+        printer = logging_ops.print_v2(
+            'hello',
+            output_stream='file://' + file_name
+        )
+        outputs[0].op._add_control_input(printer)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    self.addCleanup(function.clear_function_callbacks)
+    function.add_function_callback(function_callback)
+    x_float32 = numpy.array(3.0, dtype=numpy.float32)
+
+    self.assertAllClose(plus_one(x_float32), 4.0)
+
+    with open(file_name, 'r') as f:
+      self.assertEqual(f.read().strip(), 'hello')
+
   def testRemoveFunctionCallback(self):
     functions_1 = []
-    def function_callback_1(f):
+    def function_callback_1(f, name, graph, inputs, outputs):
+      del name, graph, inputs, outputs
       functions_1.append(f)
 
     functions_2 = []
-    def function_callback_2(f):
+    def function_callback_2(f, name, graph, inputs, outputs):
+      del name, graph, inputs, outputs
       functions_2.append(f)
 
     @def_function.function

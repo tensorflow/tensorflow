@@ -163,32 +163,14 @@ static xla::FftType Convert_fft_type(llvm::StringRef fft_type_str) {
   return fft_type_enum;
 }
 
-// Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
-// and source-target pairs are defined in HLO.
-static std::vector<std::pair<int64, int64>> Convert_Nx2_attribute(
-    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr) {
-  if (!optional_attr.hasValue()) return {};
-  mlir::DenseIntElementsAttr attr = *optional_attr;
-  auto it = attr.getValues<int64>().begin();
-  std::vector<std::pair<int64, int64>> out(attr.getNumElements() / 2);
-  for (auto& item : out) {
-    int64 first = *it;
-    ++it;
-    int64 second = *it;
-    ++it;
-    item = {first, second};
-  }
-  return out;
-}
-
 static std::vector<std::pair<int64, int64>> Convert_padding(
     llvm::Optional<mlir::DenseIntElementsAttr> padding) {
-  return Convert_Nx2_attribute(padding);
+  return xla::ConvertNx2Attribute(padding).ValueOrDie();
 }
 
 static std::vector<std::pair<int64, int64>> Convert_source_target_pairs(
     llvm::Optional<mlir::DenseIntElementsAttr> source_target_pairs) {
-  return Convert_Nx2_attribute(source_target_pairs);
+  return xla::ConvertNx2Attribute(source_target_pairs).ValueOrDie();
 }
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
@@ -199,13 +181,7 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
 // Converts StringRef to xla Transpose enum.
 static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
     llvm::StringRef transpose_str) {
-  xla::TriangularSolveOptions::Transpose transpose_enum;
-  // Illegal tanspose string would be caught by the verifier, so
-  // 'Transpose_Parse' call below should never return false.
-  if (!xla::TriangularSolveOptions::Transpose_Parse(std::string(transpose_str),
-                                                    &transpose_enum))
-    return xla::TriangularSolveOptions::NO_TRANSPOSE;
-  return transpose_enum;
+  return xla::ConvertTranspose(transpose_str).ValueOrDie();
 }
 
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
@@ -1355,7 +1331,7 @@ LogicalResult ConvertToHloModule::Lower(
         xla::OpSharding sharding;
         sharding.set_type(xla::OpSharding::TUPLE);
         for (auto& ret_sharding : ret_shardings)
-          *sharding.add_tuple_shardings() = ret_sharding.value();
+          *sharding.add_tuple_shardings() = *ret_sharding;
 
         builder->SetSharding(sharding);
       }
@@ -1508,8 +1484,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
     xla::OpSharding sharding;
     sharding.set_type(xla::OpSharding::TUPLE);
     for (auto arg_sharding : llvm::enumerate(arg_shardings)) {
-      auto hlo_sharding =
-          xla::HloSharding::FromProto(arg_sharding.value().value());
+      auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
       if (!hlo_sharding.ok())
         return block->getParentOp()->emitError()
                << hlo_sharding.status().error_message();
@@ -1520,7 +1495,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
       if (!status.ok())
         return block->getParentOp()->emitError() << status.error_message();
 
-      *sharding.add_tuple_shardings() = arg_sharding.value().value();
+      *sharding.add_tuple_shardings() = *arg_sharding.value();
     }
 
     builder->SetSharding(sharding);
@@ -1561,7 +1536,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         !arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings);
     for (BlockArgument& arg : block->getArguments()) {
       if (set_tuple_element_sharding)
-        builder->SetSharding(arg_shardings[arg.getArgNumber()].value());
+        builder->SetSharding(*arg_shardings[arg.getArgNumber()]);
       lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
     }
     builder->ClearSharding();

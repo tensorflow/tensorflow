@@ -1427,7 +1427,7 @@ class PFor(object):
 
   def _convert_reduction(self, y):
     # Handle reductions.
-    if self._pfor_config is None:
+    if self._pfor_config is None or isinstance(y, ops.Operation):
       return None
     reduction = self._pfor_config._lookup_reduction(y)
     if reduction is None:

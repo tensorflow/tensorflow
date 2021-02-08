@@ -756,12 +756,14 @@ class RepeatVector(Layer):
 class Lambda(Layer):
   """Wraps arbitrary expressions as a `Layer` object.
 
-  The `Lambda` layer exists so that arbitrary TensorFlow functions
-  can be used when constructing `Sequential` and Functional API
-  models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced use cases, follow
+  The `Lambda` layer exists so that arbitrary expressions can be used
+  as a `Layer` when constructing `Sequential`
+  and Functional API models. `Lambda` layers are best suited for simple
+  operations or quick experimentation. For more advanced use cases, follow
   [this guide](https://www.tensorflow.org/guide/keras/custom_layers_and_models)
   for subclassing `tf.keras.layers.Layer`.
+
+  WARNING: `tf.keras.layers.Lambda` layers have (de)serialization limitations!
 
   The main reason to subclass `tf.keras.layers.Layer` instead of using a
   `Lambda` layer is saving and inspecting a Model. `Lambda` layers

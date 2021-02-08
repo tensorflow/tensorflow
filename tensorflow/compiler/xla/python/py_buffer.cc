@@ -118,8 +118,7 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
     // Objects that must be kept alive while the array is alive.
     struct Hold {
       py::object buffer;
-      std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
-          external_reference_hold;
+      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
     };
     auto hold = std::make_unique<Hold>();
     TF_ASSIGN_OR_RETURN(hold->external_reference_hold,
@@ -158,9 +157,9 @@ StatusOr<std::uintptr_t> PyBuffer::UnsafeBufferPointer() const {
         "buffers.");
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
-                          external_reference_hold,
-                      buffer_->AcquireExternalReference());
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
+      buffer_->AcquireExternalReference());
   const void* ptr = external_reference_hold->OpaqueDeviceMemoryDataPointer();
   return absl::bit_cast<std::uintptr_t>(ptr);
 }
@@ -188,9 +187,9 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() const {
                       TypeDescriptorForPrimitiveType(
                           buffer_->on_device_shape().element_type()));
   result["typestr"] = std::move(typestr);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
-                          external_reference_hold,
-                      buffer_->AcquireExternalReference());
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
+      buffer_->AcquireExternalReference());
   const void* root_ptr =
       external_reference_hold->OpaqueDeviceMemoryDataPointer();
   py::tuple data(2);
@@ -207,8 +206,8 @@ namespace {
 
 // Extra data to be kept alive by the consumer of the buffer protocol.
 struct ExtraBufferInfo {
-  explicit ExtraBufferInfo(std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
-                               external_reference_hold)
+  explicit ExtraBufferInfo(
+      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold)
       : external_reference_hold(std::move(external_reference_hold)) {}
 
   std::string format;
@@ -217,7 +216,7 @@ struct ExtraBufferInfo {
   // use-after-free in the event that Delete() is called on a buffer with an
   // live buffer protocol view. It does however mean that Delete() sometimes
   // won't actually delete immediately.
-  std::unique_ptr<PjRtBuffer::ExternalReferenceHold> external_reference_hold;
+  std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
 };
 
 int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
@@ -247,9 +246,9 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
       return InvalidArgument("XLA buffers are read-only.");
     }
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
-                            external_reference_hold,
-                        buffer.AcquireExternalReference());
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
+        buffer.AcquireExternalReference());
     if (buffer.IsDeleted()) {
       return InvalidArgument("Deleted buffer used in buffer protocol.");
     }

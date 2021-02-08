@@ -27,10 +27,9 @@ TfLiteStatus InvokeConv(TfLiteTensor* tensors, int tensors_size,
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  tflite::MicroErrorReporter reporter;
-  micro::KernelRunner runner(
-      registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<TfLiteStatus*>(conv_params), &reporter);
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             reinterpret_cast<TfLiteStatus*>(conv_params));
 
   const char* init_data = reinterpret_cast<const char*>(conv_params);
   TfLiteStatus status = runner.InitAndPrepare(init_data);

@@ -962,6 +962,9 @@ def _slice_helper(tensor, slice_spec, var=None):
       tf.newaxis or scalar int32/int64 tensors.
   """
   tensor = ops.convert_to_tensor(tensor)
+  # TODO(wangpeng): Consider supporting var
+  if var is None and ops._numpy_style_slicing:  # pylint: disable=protected-access
+    return tensor._numpy_style_getitem(slice_spec)  # pylint: disable=protected-access
 
   if isinstance(slice_spec, bool) or \
   (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
@@ -6069,14 +6072,14 @@ def searchsorted(sorted_sequence,
     name: Optional name for the operation.
 
   Returns:
-    An N-D `Tensor` the size of values containing the result of applying either
-    lower_bound or upper_bound (depending on side) to each value.  The result
-    is not a global index to the entire `Tensor`, but the index in the last
-    dimension.
+    An N-D `Tensor` the size of `values` containing the result of applying
+    either lower_bound or upper_bound (depending on side) to each value.  The
+    result is not a global index to the entire `Tensor`, but the index in the
+    last dimension.
 
   Raises:
     ValueError: If the last dimension of `sorted_sequence >= 2^31-1` elements.
-                If the total size of values exceeds `2^31 - 1` elements.
+                If the total size of `values` exceeds `2^31 - 1` elements.
                 If the first `N-1` dimensions of the two tensors don't match.
   """
   sequence_size = shape_internal(sorted_sequence)[-1]

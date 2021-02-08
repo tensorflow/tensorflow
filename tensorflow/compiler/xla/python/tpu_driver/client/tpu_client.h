@@ -65,11 +65,11 @@ class TpuDevice : public PjRtDevice {
 
   absl::string_view device_kind() const override { return device_kind_; }
 
-  Status TransferToInfeed(const LiteralSlice& literal) const override {
+  Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented("Infeed not yet implemented via this API");
   }
 
-  Status TransferFromOutfeed(MutableBorrowingLiteral literal) const override {
+  Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
     return Unimplemented("Outfeed not yet implemented via this API");
   }
 

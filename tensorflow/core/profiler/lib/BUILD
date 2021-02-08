@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_not_android", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/core/profiler/builds:build_config.bzl",
@@ -120,7 +120,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/profiler/internal/cpu:host_tracer",
-    ],
+    ] + if_libtpu(["//tensorflow/core/profiler/internal/tpu:tpu_tracer"]),
     alwayslink = True,
 )
 
