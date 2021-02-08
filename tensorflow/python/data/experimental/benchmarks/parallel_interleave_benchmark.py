@@ -103,13 +103,13 @@ class ParallelInterleaveBenchmark(benchmark_base.DatasetBenchmarkBase):
                  num_parallel_calls=None,
                  attach_stats_aggregator=False,
                  name=None):
-    ds = self.make_dataset(interleave_version, initial_delay_us,
-                           remainder_delay_us, cycle_length, num_parallel_calls)
+    dataset = self.make_dataset(interleave_version, initial_delay_us,
+                                remainder_delay_us, cycle_length, num_parallel_calls)
     if attach_stats_aggregator:
       aggregator = stats_aggregator.StatsAggregator()
       opts = dataset_ops.Options()
       opts.experimental_stats.aggregator = aggregator
-      ds = ds.with_options(opts)
+      dataset = dataset.with_options(opts)
 
     self.run_and_report_benchmark(
         dataset=dataset,
