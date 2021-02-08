@@ -428,6 +428,7 @@ tf_cuda_cc_test(
         "//tensorflow/c/experimental/ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:tensor_float_32_utils",
         "@com_google_absl//absl/types:span",
     ],
 )
