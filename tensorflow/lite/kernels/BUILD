@@ -558,6 +558,7 @@ BUILTIN_KERNEL_SRCS = [
     "cast.cc",
     "ceil.cc",
     "comparisons.cc",
+    "complex_support.cc",
     "concatenation.cc",
     "conv.cc",
     "conv3d.cc",
@@ -731,7 +732,6 @@ cc_test(
 cc_library(
     name = "custom_ops",
     srcs = [
-        "complex_support.cc",
         "multinomial.cc",
         "random_standard_normal.cc",
     ],
@@ -2378,7 +2378,6 @@ cc_test(
     name = "complex_support_test",
     srcs = ["complex_support_test.cc"],
     deps = [
-        ":custom_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
