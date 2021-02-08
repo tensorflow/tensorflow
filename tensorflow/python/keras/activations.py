@@ -70,6 +70,7 @@ def softmax(x, axis=-1):
         and sum to 1).
   """
   output = nn.softmax(x, axis=axis)
+  # Cache the logits to use for crossentropy loss.
   output._keras_logits = x  # pylint: disable=protected-access
   return output
 
