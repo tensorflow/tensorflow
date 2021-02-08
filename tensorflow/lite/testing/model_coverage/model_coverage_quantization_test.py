@@ -39,6 +39,7 @@ NUM_CALIBRATION_STEPS = 100
 
 @enum.unique
 class QuantizationType(enum.Enum):
+  DYNAMIC_RANGE = "dynamicRange"
   FLOAT16 = "float16"
   FULL_INTEGER = "int"
   FULL_INTEGER_16X8 = "int16x8"
@@ -93,6 +94,7 @@ class ModelQuantizationTest(parameterized.TestCase):
     converter.experimental_new_quantizer = True
     converter.optimizations = [_lite.Optimize.DEFAULT]
 
+    # QuantizationType.DYNAMIC_RANGE: No additional converter option necessary
     if quantization_type == QuantizationType.FLOAT16:
       converter.target_spec.supported_types = [dtypes.float16]
     elif quantization_type in (QuantizationType.FULL_INTEGER,
