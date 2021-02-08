@@ -36,13 +36,13 @@ limitations under the License.
 extern "C" {
 #endif
 
-TF_CAPI_EXPORT extern TF_TString* TF_StringInit(TF_Tensor* t);
+TF_CAPI_EXPORT extern void TF_StringInit(TF_TString* t);
 
 TF_CAPI_EXPORT extern void TF_StringCopy(TF_TString *dst, const char *src, size_t size);
 
 TF_CAPI_EXPORT extern void TF_StringAssignView(TF_TString *dst, const char *src, size_t size);
 
-TF_CAPI_EXPORT extern const char* TF_StringGetDataPointer(TF_TString* tstr);
+TF_CAPI_EXPORT extern const char* TF_StringGetDataPointer(const TF_TString *tstr);
 
 TF_CAPI_EXPORT extern TF_TString_Type TF_StringGetType(const TF_TString *str);
 
