@@ -439,10 +439,10 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-filegroup(
+alias(
     name = "libtensorflowlite_jni",
-    srcs = select({
-        "//conditions:default": [":libtensorflowlite_jni.so"],
+    actual = select({
+        "//conditions:default": ":libtensorflowlite_jni.so",
     }),
     tags = [
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
