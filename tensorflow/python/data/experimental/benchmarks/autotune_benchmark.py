@@ -17,18 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
 
 import numpy as np
 
-from tensorflow.python.client import session
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
 from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
 
 
-class AutotuneBenchmark(test.Benchmark):
+class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for autotuning performance knobs."""
 
   def _run_benchmark(self, dataset, autotune, autotune_buffers,
@@ -38,30 +35,18 @@ class AutotuneBenchmark(test.Benchmark):
     options.experimental_optimization.autotune = autotune
     options.experimental_optimization.autotune_buffers = autotune_buffers
     dataset = dataset.with_options(options)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    get_next = iterator.get_next()
-    # Run the op directly to avoid copying the tensor to python.
-    get_next_op = nest.flatten(get_next)[0].op
-
-    deltas = []
-    with session.Session() as sess:
-      for _ in range(5):
-        sess.run(get_next_op)
-      for _ in range(benchmark_iters):
-        start = time.time()
-        sess.run(get_next_op)
-        end = time.time()
-        deltas.append(end - start)
 
     autotune_string = "_autotune_{}".format(
         "parallelism_and_buffer_sizes"
         if autotune_buffers else "parallelism_only")
-
-    self.report_benchmark(
+    wall_time = self.run_and_report_benchmark(
+        dataset=dataset,
+        num_elements=1,
+        warmup=True,
         iters=benchmark_iters,
-        wall_time=np.median(deltas),
-        name=benchmark_label + (autotune_string if autotune else ""))
-    return np.median(deltas)
+        name=benchmark_label + (autotune_string if autotune else "")
+    )
+    return wall_time
 
   def benchmark_map(self):
     a = self._benchmark_map(autotune=False)
@@ -229,4 +214,4 @@ class AutotuneBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
-  test.main()
+  benchmark_base.test.main()
