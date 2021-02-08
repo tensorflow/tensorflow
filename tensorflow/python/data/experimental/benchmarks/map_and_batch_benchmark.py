@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmarks for `tf.data.experimental.map_and_batch()`."""
+"""Benchmarks for `tf.data.experimental.map_and_batch()`.
+
+NOTE: Eager support is not added to these benchmarks as the `map_and_batch`
+  functionality is being deprecated.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -70,7 +74,8 @@ class MapAndBatchBenchmark(test.Benchmark):
           # Use a C++ callable to minimize the Python overhead in the benchmark.
           callable_opts = config_pb2.CallableOptions()
           callable_opts.target.append(next_element.op.name)
-          op_callable = sess._make_callable_from_options(callable_opts)  # pylint: disable=protected-access
+          op_callable = sess._make_callable_from_options(  # pylint: disable=protected-access
+              callable_opts)
 
           # Run five steps to warm up the session caches before taking the
           # first measurement.

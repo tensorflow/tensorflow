@@ -17,16 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
-import numpy as np
 
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import testing
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import test
 
 NON_PARALLEL = "non_parallel"
 EXPERIMENTAL_PARALLEL = "experimental_parallel"
@@ -65,7 +61,7 @@ def _make_fake_dataset_fn(initial_delay_us, remainder_delay_us):
   return fake_dataset_fn
 
 
-class ParallelInterleaveBenchmark(test.Benchmark):
+class ParallelInterleaveBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.experimental.parallel_interleave()`."""
 
   def apply_interleave(self, interleave_version, dataset, interleave_fn,
@@ -115,13 +111,13 @@ class ParallelInterleaveBenchmark(test.Benchmark):
       opts.experimental_stats.aggregator = aggregator
       ds = ds.with_options(opts)
 
-    ds = ds.skip(num_elements)
-    deltas = []
-    for _ in range(iters):
-      start = time.time()
-      next(iter(ds))
-      deltas.append(time.time() - start)
-    self.report_benchmark(iters=iters, wall_time=np.median(deltas), name=name)
+    self.run_and_report_benchmark(
+        dataset=dataset,
+        num_elements=num_elements,
+        iters=iters,
+        warmup=True,
+        name=name
+    )
 
   def benchmark_remote_file_simulation(self):
     for version in [EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
@@ -174,5 +170,4 @@ class ParallelInterleaveBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution()
-  test.main()
+  benchmark_base.test.main()
