@@ -167,6 +167,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // Update the Eager Executor for current thread.
   virtual void SetExecutorForThread(EagerExecutor* executor) = 0;
 
+  // Return a list of local tensorflow::Device*.
+  virtual std::vector<tensorflow::Device*> ListLocalTfDevices() = 0;
+
   //===--------------------------------------------------------------------===//
   // Following are helper functions to assist integrating TFRT with current
   // TF eager runtime.
