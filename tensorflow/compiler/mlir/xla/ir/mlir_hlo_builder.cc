@@ -466,9 +466,11 @@ StatusOr<XlaOp> MlirHloBuilder::InfeedWithTokenInternal(
   TF_ASSIGN_OR_RETURN(mlir::Type result_type,
                       ConvertShapeToType<mlir::RankedTensorType>(
                           infeed_instruction_shape, builder_));
+  mlir::ArrayAttr layout;
   return MakeXlaOp(
       builder_.create<mlir::mhlo::InfeedOp>(loc_, result_type, GetValue(token),
-                                            /*infeed_config=*/config));
+                                            /*infeed_config=*/config,
+                                            /*layout=*/layout));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::OutfeedWithTokenInternal(
