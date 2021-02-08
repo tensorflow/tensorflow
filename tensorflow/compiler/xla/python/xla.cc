@@ -142,14 +142,13 @@ PYBIND11_MODULE(xla_extension, m) {
           [](const ClientAndPtr<PjRtDevice>& device) { return device.client; })
       .def("__str__", &PjRtDevice::DebugString)
       .def("transfer_to_infeed",
-           [](const PjRtDevice& device, const LiteralSlice& literal) {
+           [](PjRtDevice& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
              return device.TransferToInfeed(literal);
            })
       .def("transfer_from_outfeed",
-           [](const PjRtDevice& device,
-              const Shape& shape) -> StatusOr<py::object> {
+           [](PjRtDevice& device, const Shape& shape) -> StatusOr<py::object> {
              GlobalPyRefManager()->CollectGarbage();
              std::shared_ptr<Literal> literal;
              {

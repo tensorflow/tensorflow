@@ -525,15 +525,6 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
                                      source_address);
 }
 
-Status IrEmitter::HandleSelect(HloInstruction* select) {
-  auto pred = select->operand(0);
-  TF_RET_CHECK(pred->shape().element_type() == PRED);
-  // We must not call the subclass `DefaultAction` method, lest its
-  // `HandleSelect` call `IrEmitter::HandleSelect` and its `DefaultAction`
-  // assume no handler has already been called.
-  return IrEmitter::DefaultAction(select);
-}
-
 Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
   return InternalError(
       "Dynamic selection of tuples is not supported. Please file a bug against "

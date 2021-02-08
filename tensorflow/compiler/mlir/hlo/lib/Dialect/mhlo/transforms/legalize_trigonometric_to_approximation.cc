@@ -259,7 +259,7 @@ struct LegalizeTrigonometricToApproximationPass
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
-    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

@@ -21,7 +21,6 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
@@ -38,6 +37,8 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/Utils.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
@@ -65,6 +66,7 @@ namespace tensorflow {
 namespace kernel_gen {
 namespace {
 
+using mlir::scf::ParallelOp;
 using tensorflow::Status;
 using xla::InternalError;
 using xla::StatusOr;
@@ -72,7 +74,6 @@ using xla::StatusOr;
 constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
 
 // TODO(herhut): Remove this once leftover tensor_to_memref are handled in core.
-namespace {
 struct RemoveUnusedTensorToMemrefOperations
     : public mlir::PassWrapper<RemoveUnusedTensorToMemrefOperations,
                                mlir::FunctionPass> {
@@ -91,7 +92,7 @@ struct RemoveUnusedTensorToMemrefOperations
 struct CollapseParallelLoopsTo1D
     : public mlir::PassWrapper<CollapseParallelLoopsTo1D, mlir::FunctionPass> {
   void runOnFunction() override {
-    getFunction().walk([&](mlir::scf::ParallelOp op) {
+    getFunction().walk([&](ParallelOp op) {
       unsigned num_loops = op.getNumLoops();
       if (num_loops == 1) return;
       std::vector<unsigned> combinedLoops;
@@ -103,11 +104,55 @@ struct CollapseParallelLoopsTo1D
     });
   }
 };
-}  // end anonymous namespace
 
-Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
-                    llvm::ArrayRef<uint32_t> unroll_factors,
-                    bool embed_memref_prints) {
+class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
+ public:
+  explicit TileLoops(llvm::ArrayRef<int64_t> tile_sizes,
+                     llvm::ArrayRef<int64_t> unroll_factors) {
+    tile_sizes_ = llvm::to_vector<4>(tile_sizes);
+    outer_tile_ = tile_sizes_;
+
+    // We have to anticipate later unrolling in tiling to make sure that we get
+    // the requested tiling after unrolling.
+    if (unroll_factors.size() == tile_sizes.size()) {
+      inner_tile_ = llvm::to_vector<4>(unroll_factors);
+      for (auto en : llvm::enumerate(unroll_factors)) {
+        outer_tile_[en.index()] *= en.value();
+      }
+    }
+  }
+
+  void runOnFunction() override {
+    llvm::SmallVector<ParallelOp, 2> innermostPloops;
+    mlir::getInnermostParallelLoops(this->getFunction().getOperation(),
+                                    innermostPloops);
+    for (ParallelOp ploop : innermostPloops) {
+      // Support unrolling only for the simple shapes (same shapes or when one
+      // of the arguments is a constant), i.e. it's not inside `shape.assuming`.
+      if (ploop->getParentOfType<mlir::shape::AssumingOp>() != nullptr) {
+        tileParallelLoop(ploop, tile_sizes_);
+        continue;
+      }
+      auto tiled_loops = tileParallelLoop(ploop, outer_tile_);
+      // Tile twice if the inner_tile is non-empty.
+      if (!inner_tile_.empty()) {
+        tileParallelLoop(tiled_loops.second, inner_tile_);
+      }
+    }
+  }
+
+ private:
+  // Outer tile size = unroll_factor.empty() ? tile_sizes : tile_sizes *
+  // unroll_factors.
+  llvm::SmallVector<int64_t, 4> outer_tile_;
+  // Inner tile size if the unrolling factors were specified.
+  llvm::SmallVector<int64_t, 4> inner_tile_;
+  // Original tile sizes.
+  llvm::SmallVector<int64_t, 4> tile_sizes_;
+};
+
+Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
+                      llvm::ArrayRef<int64_t> unroll_factors) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
@@ -154,29 +199,26 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
 
   // Collapse and tile parallel loops.
   pm.addNestedPass<mlir::FuncOp>(std::make_unique<CollapseParallelLoopsTo1D>());
-  // We have to anticipate later unrolling in tiling to make sure that we get
-  // the requested tiling after unrolling. Compute the new tiling here if
-  // needed.
-  llvm::SmallVector<int64_t, 4> tiling_for_unrolling, inner_tile;
-  tiling_for_unrolling.reserve(tile_sizes.size());
-  for (auto pair : llvm::zip(tile_sizes, unroll_factors)) {
-    tiling_for_unrolling.push_back(std::get<0>(pair) * std::get<1>(pair));
-    inner_tile.push_back(std::get<1>(pair));
-  }
-  tiling_for_unrolling.append(
-      tile_sizes.drop_front(unroll_factors.size()).begin(), tile_sizes.end());
   pm.addNestedPass<mlir::FuncOp>(
-      ::mlir::createParallelLoopTilingPass(tiling_for_unrolling));
-  if (!unroll_factors.empty()) {
-    pm.addNestedPass<mlir::FuncOp>(
-        ::mlir::createParallelLoopTilingPass(inner_tile));
-  }
+      std::make_unique<TileLoops>(tile_sizes, unroll_factors));
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  if (failed(pm.run(module))) {
+    return InternalError("Lowering TF to loops failed.");
+  }
+  return Status::OK();
+}
 
-  // Greedily map the remaining loop to GPU hardware dimensions.
-  pm.addNestedPass<::mlir::FuncOp>(
-      mlir::kernel_gen::transforms::CreateMapParallelLoopsPass());
+Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
+                            bool cpu_codegen) {
+  mlir::PassManager pm(module.getContext());
+  applyTensorflowAndCLOptions(pm);
+
+  if (!cpu_codegen) {
+    // Greedily map the remaining loop to GPU hardware dimensions.
+    pm.addNestedPass<::mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateMapParallelLoopsPass());
+  }
 
   // Now lower the shape computations, bufferize all remaining ops and insert
   // deallocs.
@@ -213,21 +255,22 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   // Apply the mapping and go to GPU. We cannot do this earlier due to missing
   // interfaces on the GPU dialect.
   // TODO(b/174830459): Move up once implemented.
-  pm.addNestedPass<::mlir::FuncOp>(mlir::createParallelLoopToGpuPass());
+  if (!cpu_codegen) {
+    pm.addNestedPass<::mlir::FuncOp>(mlir::createParallelLoopToGpuPass());
+  }
 
   // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Make loops with min bounds into a conditional plus static bounds.
-  // Only do this if we unrolled in the first place.
-  if (!unroll_factors.empty()) {
-    pm.addNestedPass<::mlir::FuncOp>(mlir::createForLoopSpecializationPass());
-  }
+  pm.addNestedPass<::mlir::FuncOp>(mlir::createForLoopSpecializationPass());
   // Approximate Tanh using standard operations.
   pm.addNestedPass<::mlir::FuncOp>(
       ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
   // Take launches to launches with kernels.
-  pm.addPass(::mlir::createGpuKernelOutliningPass());
+  if (!cpu_codegen) {
+    pm.addPass(::mlir::createGpuKernelOutliningPass());
+  }
 
   pm.addPass(::mlir::createLowerAffinePass());
   // Constraints are removed as late as possible and before lowering to CFG.
@@ -244,6 +287,10 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
   }
+  return Status::OK();
+}
+
+Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
   auto gpu_modules = module.getOps<mlir::gpu::GPUModuleOp>();
   auto num_modules = std::distance(gpu_modules.begin(), gpu_modules.end());
   if (num_modules != 1) {
@@ -252,10 +299,6 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
                  << ". Currently we leak memory if there is more than one "
                     "module, see https://bugs.llvm.org/show_bug.cgi?id=48385";
   }
-  return Status::OK();
-}
-
-Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
   return InternalError(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
@@ -335,20 +378,24 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module) {
 StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
-    llvm::ArrayRef<uint32_t> tile_sizes,
-    llvm::ArrayRef<uint32_t> unroll_factors, bool embed_memref_prints,
-    bool generate_fatbin, bool print_ptx, bool enable_ftz) {
+    llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
+    bool embed_memref_prints, bool generate_fatbin, bool print_ptx,
+    bool enable_ftz, bool cpu_codegen) {
   auto& registry = context.getDialectRegistry();
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
-  TF_RETURN_IF_ERROR(LowerTFtoGPU(module.get(), tile_sizes, unroll_factors,
-                                  embed_memref_prints));
-  TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(module.get()));
-  TF_RETURN_IF_ERROR(AmendKernelLLVMIRWithStaticKnowledge(module.get()));
-  TF_RETURN_IF_ERROR(GenerateDeviceCode(module.get(), kGpuBinaryAttrName,
-                                        architectures, generate_fatbin,
-                                        print_ptx, enable_ftz));
+
+  TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors));
+  TF_RETURN_IF_ERROR(
+      LowerLoopsToGPUorCPU(module.get(), embed_memref_prints, cpu_codegen));
+  if (!cpu_codegen) {
+    TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(module.get()));
+    TF_RETURN_IF_ERROR(AmendKernelLLVMIRWithStaticKnowledge(module.get()));
+    TF_RETURN_IF_ERROR(GenerateDeviceCode(module.get(), kGpuBinaryAttrName,
+                                          architectures, generate_fatbin,
+                                          print_ptx, enable_ftz));
+  }
   TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get()));
   return module;
 }

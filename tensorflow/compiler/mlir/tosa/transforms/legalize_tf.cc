@@ -2112,7 +2112,7 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFReverseV2Op>(ctx);
   patterns.insert<ConvertTFFakeQuantWithMinMaxArgsOp>(ctx);
   patterns.insert<ConvertTFFakeQuantWithMinMaxVarsOp>(ctx);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // anonymous namespace

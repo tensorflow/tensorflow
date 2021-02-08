@@ -105,9 +105,9 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   std::string DebugString() const override;
 
-  Status TransferToInfeed(const LiteralSlice& literal) const override;
+  Status TransferToInfeed(const LiteralSlice& literal) override;
 
-  Status TransferFromOutfeed(MutableBorrowingLiteral literal) const override;
+  Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
  private:
   const int id_;
@@ -477,29 +477,10 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
   int64 OnDeviceSizeInBytes() const override;
 
-  // Implement PjRtBuffer::ExternalReferenceHold a wrapped
-  // ScopedHold::kExternalReference.
-  class ScopedHoldAsExternalReference
-      : public PjRtBuffer::ExternalReferenceHold {
-   public:
-    explicit ScopedHoldAsExternalReference(ScopedHold hold)
-        : external_reference_(std::move(hold)) {
-      CHECK(hold.type() == ScopedHold::kExternalReference);
-    }
-
-    ~ScopedHoldAsExternalReference() override = default;
-
-    void* OpaqueDeviceMemoryDataPointer() const override {
-      return external_reference_->device_memory().front().opaque();
-    }
-
-   private:
-    ScopedHold external_reference_;
-  };
-  StatusOr<std::unique_ptr<ExternalReferenceHold>> AcquireExternalReference()
+  StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
-  StatusOr<absl::optional<std::shared_ptr<void>>> ReleaseDeviceMemoryOwnership(
+  StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
       bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteral;

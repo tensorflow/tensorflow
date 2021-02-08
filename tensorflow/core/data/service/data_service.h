@@ -118,8 +118,8 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
 
   // Heartbeats to the dispatcher, getting back the tasks that should be
   // running, and whether the job is finished.
-  Status ClientHeartbeat(int64 job_client_id, std::vector<TaskInfo>& tasks,
-                         bool& job_finished);
+  Status ClientHeartbeat(ClientHeartbeatRequest& req,
+                         ClientHeartbeatResponse& resp);
 
   // Queries the dispatcher for its registered workers. The worker info will be
   // stored in `workers`.

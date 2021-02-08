@@ -68,7 +68,7 @@ NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction* hlo,
 
   if (hlo->channel_id().has_value()) {
     config.collective_op_kind = RendezvousKey::kCrossModule;
-    config.op_id = hlo->channel_id().value();
+    config.op_id = *hlo->channel_id();
   } else {
     config.collective_op_kind = RendezvousKey::kCrossReplica;
     config.op_id = static_cast<int64>(hlo->GetModule()->unique_id());

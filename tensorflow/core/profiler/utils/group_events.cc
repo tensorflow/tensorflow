@@ -299,6 +299,28 @@ bool IsIteratorEventType(absl::optional<int64> event_type) {
          event_type == HostEventType::kDeviceInputPipelineSecondIterator;
 }
 
+// Returns true if TF's loop ops exist in the given XSpace's metadata.
+bool CheckLoopOp(XSpace* space) {
+  for (const XPlane& plane : space->planes()) {
+    for (const auto& event_metadata : plane.event_metadata()) {
+      absl::optional<int64> event_type =
+          FindHostEventType(event_metadata.second.name());
+      if (!event_type.has_value()) continue;
+      switch (*event_type) {
+        case HostEventType::kWhileOpEvalCond:
+        case HostEventType::kWhileOpStartBody:
+        case HostEventType::kForOp:
+        case HostEventType::kParallelForOp:
+        case HostEventType::kForeverOp:
+          return true;
+        default:
+          break;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
@@ -562,10 +584,11 @@ void EventForest::ConnectInterThread(
   }
 }
 
-void EventForest::ProcessLegacyRootEvents(
-    const std::vector<int64 /*EventType*/>& root_event_types) {
-  for (int64 root_event_type : root_event_types) {
-    if (auto root_events = gtl::FindOrNull(event_node_map_, root_event_type)) {
+void EventForest::ProcessUserDefinedRootEvents(
+    const std::vector<int64 /*EventType*/>& user_defined_root_event_types) {
+  for (int64 user_defined_root_event_type : user_defined_root_event_types) {
+    if (auto root_events =
+            gtl::FindOrNull(event_node_map_, user_defined_root_event_type)) {
       for (const auto& root_event : *root_events) {
         root_event->SetIsRoot(true);
         root_events_.push_back(root_event.get());
@@ -847,10 +870,11 @@ void EventForest::ConnectTfDataEvents() {
   VLOG(1) << num_matched << " consumer iterators matched.";
 }
 
-void EventForest::GroupEvents(const std::vector<int64>& root_event_types) {
+void EventForest::GroupEvents(
+    const std::vector<int64>& user_defined_root_event_types) {
   ProcessTensorFlowLoop();
   ProcessWorker();
-  ProcessLegacyRootEvents(root_event_types);
+  ProcessUserDefinedRootEvents(user_defined_root_event_types);
   CreateEventGroups();
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
@@ -872,6 +896,10 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
 }
 
 void GroupTfEvents(XSpace* space, EventForest* event_forest) {
+  if (CheckLoopOp(space)) {
+    // TODO(b/154510598): Support TF's loop ops.
+    return;
+  }
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
   event_forest->AddSpace(CreateTfXPlaneVisitor, space);

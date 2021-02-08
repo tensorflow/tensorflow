@@ -16,10 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_WINOGRAD_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_WINOGRAD_H_
 
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 
 namespace tflite {
 namespace gpu {

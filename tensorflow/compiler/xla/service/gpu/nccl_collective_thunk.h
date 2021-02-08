@@ -85,6 +85,12 @@ class NcclCollectiveThunk : public Thunk {
  public:
   using Thunk::Thunk;
 
+  struct Buffer {
+    int64 element_count;
+    BufferAllocation::Slice source_buffer;
+    BufferAllocation::Slice destination_buffer;
+  };
+
   // Returns whether NCCL operations appear possible to perform; e.g. if we
   // haven't done a build with the CUDA compiler enabled, we can't compile the
   // NCCL header, and thus this will be false.

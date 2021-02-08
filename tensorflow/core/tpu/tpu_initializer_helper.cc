@@ -26,23 +26,22 @@ std::pair<std::vector<std::string>, std::vector<const char*>>
 GetLibTpuInitArguments() {
   // We make copies of the arguments returned by getenv because the memory
   // returned may be altered or invalidated by further calls to getenv.
-  std::vector<std::string> argv;
-  std::vector<const char*> argv_ptr;
+  std::vector<std::string> args;
+  std::vector<const char*> arg_ptrs;
 
   // Retrieve arguments from environment if applicable.
   char* env = getenv("LIBTPU_INIT_ARGS");
   if (env != nullptr) {
     // TODO(frankchn): Handles quotes properly if necessary.
-    argv = absl::StrSplit(env, ' ');
+    args = absl::StrSplit(env, ' ');
   }
 
-  argv_ptr.reserve(argv.size());
-  for (int i = 0; i < argv.size(); ++i) {
-    argv_ptr.push_back(argv[i].data());
+  arg_ptrs.reserve(args.size());
+  for (int i = 0; i < args.size(); ++i) {
+    arg_ptrs.push_back(args[i].data());
   }
-  argv_ptr.push_back(nullptr);
 
-  return {argv, argv_ptr};
+  return {args, arg_ptrs};
 }
 
 }  // namespace tpu

@@ -18,11 +18,17 @@ limitations under the License.
 #include <memory>
 
 #include "absl/time/clock.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace model {
+
+constexpr int64 Model::kOptimizationPeriodMinMs;
+constexpr int64 Model::kOptimizationPeriodMaxMs;
+
 namespace {
 
 // Helper function for node traversal that doesn't skip any nodes.
@@ -232,6 +238,12 @@ class InterleaveMany : public Node {
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
   }
+
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::INTERLEAVE_MANY);
+    return Status::OK();
+  }
 };
 
 // The first input of AsyncInterleaveMany corresponds to the input dataset whose
@@ -402,6 +414,12 @@ class AsyncInterleaveMany : public Node {
     }
     return result;
   }
+
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::ASYNC_INTERLEAVE_MANY);
+    return Status::OK();
+  }
 };
 
 class KnownRatio : public Node {
@@ -491,15 +509,22 @@ class KnownRatio : public Node {
         self_processing_time + inputs_processing_time;
   }
 
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::KNOWN_RATIO);
+    node_proto->set_ratio(ratio_);
+    return Status::OK();
+  }
+
  private:
   const double ratio_;
 };
 
 class AsyncKnownRatio : public Node {
  public:
-  AsyncKnownRatio(Node::Args args, double ratio,
+  AsyncKnownRatio(Node::Args args, double ratio, double memory_ratio,
                   std::vector<std::shared_ptr<Parameter>> parameters)
-      : Node(args), ratio_(ratio) {
+      : Node(args), ratio_(ratio), memory_ratio_(memory_ratio) {
     for (auto& parameter : parameters) {
       parameters_[parameter->name] = std::move(parameter);
     }
@@ -515,7 +540,7 @@ class AsyncKnownRatio : public Node {
       parameters.push_back(pair.second);
     }
     return std::make_shared<AsyncKnownRatio>(
-        Args{id_, name_, std::move(output)}, ratio_, parameters);
+        Args{id_, name_, std::move(output)}, ratio_, memory_ratio_, parameters);
   }
 
   // The input time is the sum of inherited input time and parallelism adjusted
@@ -692,20 +717,39 @@ class AsyncKnownRatio : public Node {
     }
 
     if (parameter) {
-      if (ratio_ == 0) {
+      if (memory_ratio_ == 0) {
         result += (*parameter)->value * AverageBufferedElementSize();
       } else {
         // The estimation is currently not accurate for MapAndBatchDataset for
         // the maximum buffer size does not match `num_parallel_calls`
         // parameter.
-        result += (*parameter)->value * AverageBufferedElementSize() / ratio_;
+        result +=
+            (*parameter)->value * AverageBufferedElementSize() / memory_ratio_;
       }
     }
     return result;
   }
 
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
+    node_proto->set_ratio(ratio_);
+    node_proto->set_memory_ratio(memory_ratio_);
+    return Status::OK();
+  }
+
  private:
+  // Identifies how many input elements need to be created to construct an
+  // element for the dataset.
+  //
+  // Currently the value is 1 for PrefetchDataset and ParallelMapDataset,
+  // batch_size for MapAndBatchDataset and ParallelBatchDataset.
   const double ratio_;
+  // For parallelism nodes, identifies how many parallelism calls are introduced
+  // by one buffered element. The value is defined to correctly estimate RAM
+  // budget bound with given num_parallel_calls (or buffer_size) combined with
+  // the estimated average size of buffered elements.
+  const double memory_ratio_;
 };
 
 class UnknownRatio : public Node {
@@ -807,6 +851,12 @@ class UnknownRatio : public Node {
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
   }
+
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::UNKNOWN_RATIO);
+    return Status::OK();
+  }
 };
 
 class Unknown : public Node {
@@ -858,6 +908,12 @@ class Unknown : public Node {
     (*total_processing_times)[long_name()] =
         TotalProcessingTimeForInputs(*total_processing_times);
   }
+
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::UNKNOWN);
+    return Status::OK();
+  }
 };
 
 }  // namespace
@@ -885,10 +941,17 @@ std::shared_ptr<Node> MakeKnownRatioNode(Node::Args args, double ratio) {
 }
 
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
+    Node::Args args, double ratio, double memory_ratio,
+    std::vector<std::shared_ptr<Parameter>> parameters) {
+  return std::make_shared<AsyncKnownRatio>(std::move(args), ratio, memory_ratio,
+                                           std::move(parameters));
+}
+
+std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio,
     std::vector<std::shared_ptr<Parameter>> parameters) {
-  return std::make_shared<AsyncKnownRatio>(std::move(args), ratio,
-                                           std::move(parameters));
+  return MakeAsyncKnownRatioNode(std::move(args), /*ratio=*/ratio,
+                                 /*memory_ratio=*/ratio, std::move(parameters));
 }
 
 std::shared_ptr<Node> MakeSourceNode(Node::Args args) {
@@ -1422,6 +1485,115 @@ double Node::MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
   return 0;
 }
 
+Status Node::ToProto(ModelProto::Node* node_proto) const {
+  tf_shared_lock l(mu_);
+  node_proto->set_id(id_);
+  node_proto->set_name(name_);
+  node_proto->set_autotune(autotune_);
+  node_proto->set_buffered_bytes(buffered_bytes_);
+  node_proto->set_buffered_elements(buffered_elements_);
+  node_proto->set_bytes_consumed(bytes_consumed_);
+  node_proto->set_bytes_produced(bytes_produced_);
+  node_proto->set_num_elements(num_elements_);
+  node_proto->set_processing_time(processing_time_);
+  node_proto->set_record_metrics(record_metrics_);
+
+  // Produce protos for all parameters.
+  for (auto const& parameter : parameters_) {
+    ModelProto::Node::Parameter* parameter_proto = node_proto->add_parameters();
+    parameter_proto->set_name(parameter.first);
+    parameter_proto->set_value(parameter.second->value);
+    parameter_proto->set_min(parameter.second->min);
+    parameter_proto->set_max(parameter.second->max);
+    parameter_proto->set_state_value(parameter.second->state->value);
+    parameter_proto->set_tunable(parameter.second->state->tunable);
+  }
+
+  // Produce protos for all inputs.
+  for (auto const& input : inputs_) {
+    ModelProto::Node* input_proto = node_proto->add_inputs();
+    TF_RETURN_IF_ERROR(input->ToProto(input_proto));
+  }
+  return Status::OK();
+}
+
+Status Node::FromProtoHelper(ModelProto::Node node_proto,
+                             std::shared_ptr<Node> node) {
+  tf_shared_lock l(node->mu_);
+  node->autotune_.store(node_proto.autotune());
+  node->buffered_bytes_.store(node_proto.buffered_bytes());
+  node->buffered_elements_.store(node_proto.buffered_elements());
+  node->bytes_consumed_.store(node_proto.bytes_consumed());
+  node->bytes_produced_.store(node_proto.bytes_produced());
+  node->num_elements_.store(node_proto.num_elements());
+  node->processing_time_.store(node_proto.processing_time());
+  node->record_metrics_.store(node_proto.record_metrics());
+
+  // Restore parameters.
+  int64 num_parameters = node_proto.parameters_size();
+  for (int i = 0; i < num_parameters; i++) {
+    const ModelProto::Node::Parameter& parameter_proto =
+        node_proto.parameters(i);
+    std::shared_ptr<SharedState> state;
+    if (parameter_proto.tunable()) {
+      state =
+          std::make_shared<SharedState>(kAutotune, std::make_shared<mutex>(),
+                                        std::make_shared<condition_variable>());
+      state->value = parameter_proto.state_value();
+    } else {
+      state = std::make_shared<SharedState>(
+          parameter_proto.state_value(), std::make_shared<mutex>(),
+          std::make_shared<condition_variable>());
+    }
+    node->parameters_[parameter_proto.name()] =
+        MakeParameter(parameter_proto.name(), state, parameter_proto.min(),
+                      parameter_proto.max());
+  }
+  return Status::OK();
+}
+
+Status Node::FromProto(ModelProto::Node node_proto,
+                       std::shared_ptr<Node> output,
+                       std::shared_ptr<Node>* node) {
+  // Note that parameters are restored in `FromProtoHelper`.
+  Args args = {node_proto.id(), node_proto.name(), std::move(output)};
+  std::shared_ptr<Node> restored_node;
+  switch (node_proto.node_class()) {
+    case NodeClass::INTERLEAVE_MANY:
+      restored_node = std::make_shared<InterleaveMany>(args);
+      break;
+    case NodeClass::ASYNC_INTERLEAVE_MANY:
+      restored_node = std::make_shared<AsyncInterleaveMany>(
+          args, /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
+      break;
+    case NodeClass::KNOWN_RATIO:
+      restored_node = std::make_shared<KnownRatio>(args, node_proto.ratio());
+      break;
+    case NodeClass::ASYNC_KNOWN_RATIO:
+      restored_node = std::make_shared<AsyncKnownRatio>(
+          args, node_proto.ratio(), node_proto.memory_ratio(),
+          /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
+      break;
+    case NodeClass::UNKNOWN_RATIO:
+      restored_node = std::make_shared<UnknownRatio>(args);
+      break;
+    default:
+      restored_node = std::make_shared<Unknown>(args);
+  }
+  TF_RETURN_IF_ERROR(FromProtoHelper(node_proto, restored_node));
+
+  // Restore all input nodes as well.
+  int64 num_inputs = node_proto.inputs_size();
+  for (int64 i = 0; i < num_inputs; i++) {
+    const ModelProto::Node& input_proto = node_proto.inputs(i);
+    std::shared_ptr<Node> input;
+    TF_RETURN_IF_ERROR(FromProto(input_proto, restored_node, &input));
+    restored_node->add_input(input);
+  }
+  (*node) = std::move(restored_node);
+  return Status::OK();
+}
+
 void Model::AddNode(Node::Factory factory, const string& name,
                     std::shared_ptr<Node> parent,
                     std::shared_ptr<Node>* out_node) {
@@ -1443,6 +1615,10 @@ void Model::AddNode(Node::Factory factory, const string& name,
   collect_resource_usage_ =
       collect_resource_usage_ || node->has_tunable_parameters();
   *out_node = std::move(node);
+  // Reset the optimization period when a node is added so that autotuning
+  // adapts to changes to the input pipeline faster.
+  optimization_period_ms_ = kOptimizationPeriodMinMs;
+  cond_var_.notify_all();
 }
 
 void Model::FlushMetrics() {
@@ -1521,6 +1697,55 @@ bool Model::ShouldStop(
   // If all parameters have reached their maximum values or RAM budget is
   // reached, we stop the iterations.
   return all_max || TotalMaximumBufferedBytes(snapshot) > ram_budget;
+}
+
+// TODO(jsimsa): Add support for tracking and using the model input time.
+Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
+                           int64 ram_budget,
+                           CancellationManager* cancellation_manager) {
+  std::function<void()> unused;
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      cancellation_manager,
+      [this]() {
+        mutex_lock l(mu_);
+        cond_var_.notify_all();
+      },
+      /*deregister_fn=*/&unused));
+
+  int64 last_optimization_ms = 0;
+  int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+  while (true) {
+    {
+      mutex_lock l(mu_);
+      while (!cancellation_manager->IsCancelled() &&
+             last_optimization_ms + optimization_period_ms_ > current_time_ms) {
+        auto wait_ms =
+            last_optimization_ms + optimization_period_ms_ - current_time_ms;
+        VLOG(2) << "Waiting for " << wait_ms << " ms.";
+        cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
+        current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+      }
+      if (cancellation_manager->IsCancelled()) {
+        return Status::OK();
+      }
+    }
+
+    int64 optimization_start_us = EnvTime::NowMicros();
+    Optimize(algorithm, cpu_budget, ram_budget, /*model_input_time=*/0);
+    VLOG(2) << "Optimized for "
+            << (EnvTime::NowMicros() - optimization_start_us) << " us.";
+
+    // Exponentially increase the period of running the optimization
+    // until a threshold is reached.
+    {
+      mutex_lock l(mu_);
+      optimization_period_ms_ =
+          std::min(optimization_period_ms_ << 1, kOptimizationPeriodMaxMs);
+    }
+    current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+    last_optimization_ms = current_time_ms;
+    FlushMetrics();
+  }
 }
 
 void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
@@ -1644,11 +1869,11 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
       pair.second->value--;
     }
     if (!best_parameter) {
-      VLOG(2) << "Failed to find a tunable parameter that would decrease the "
-                 "output time. This means that the autotuning optimization got "
-                 "stuck in a local maximum. The optimization attempt will be "
-                 "aborted.";
-      return;
+      VLOG(2) << "Failed to find a tunable parameter that would further "
+                 "decrease the output time. This means that the autotuning "
+                 "optimization got stuck in a local maximum. The optimization "
+                 "attempt will terminate early.";
+      break;
     }
     best_parameter->value++;
   }
@@ -1681,6 +1906,29 @@ double Model::TotalMaximumBufferedBytes(std::shared_ptr<Node> node) {
 
 double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
   return node->TotalProcessingTime(/*processing_times=*/nullptr);
+}
+
+Status Model::ToProto(ModelProto* model_proto) {
+  ModelProto::Node* output_proto = model_proto->mutable_output();
+  tf_shared_lock lock(mu_);
+  TF_RETURN_IF_ERROR(output_->ToProto(output_proto));
+  model_proto->set_id_counter(id_counter_);
+  model_proto->set_collect_resource_usage(collect_resource_usage_);
+  return Status::OK();
+}
+
+Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {
+  std::unique_ptr<Model> restored_model = std::make_unique<Model>();
+  std::shared_ptr<Node> output;
+  TF_RETURN_IF_ERROR(
+      Node::FromProto(model_proto.output(), /*output=*/nullptr, &output));
+  mutex_lock lock(restored_model->mu_);
+  restored_model->output_ = output;
+  restored_model->id_counter_ = model_proto.id_counter();
+  restored_model->collect_resource_usage_.store(
+      model_proto.collect_resource_usage());
+  *model = std::move(restored_model);
+  return Status::OK();
 }
 
 }  // namespace model

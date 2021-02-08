@@ -1450,7 +1450,8 @@ def _replace_row_partitions(value, new_partitions):
         fields=new_fields,
         shape=value.shape,
         nrows=value.nrows(),
-        row_partitions=new_partitions,
+        row_partitions=new_partitions +
+        value.row_partitions[len(new_partitions):],
         internal=_structured_tensor_factory_key)
 
 

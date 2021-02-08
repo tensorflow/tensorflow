@@ -46,6 +46,13 @@ Value getConstantLikeInfValue(OpBuilder& b, Location loc, Value val,
       b, loc, llvm::APFloat::getInf(ty.getFloatSemantics(), negative), val);
 }
 
+Value getConstantLikeSmallestFiniteValue(OpBuilder& b, Location loc,
+                                         Value val) {
+  auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
+  return getConstantLike(
+      b, loc, llvm::APFloat::getSmallest(ty.getFloatSemantics()), val);
+}
+
 Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
                       Value val) {
   Type ty = getElementTypeOrSelf(val.getType());

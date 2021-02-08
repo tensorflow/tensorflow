@@ -855,7 +855,7 @@ class CompiledFunction {
   py::object Call(py::args args, py::kwargs kwargs);
 
   // This allows `inspect.signature(cpp_jitted_f)` from Python.
-  py::object __signature__() {
+  py::object PythonSignature() {
     static const auto* inspect = new py::module(py::module::import("inspect"));
     return inspect->attr("signature")(fun_);
   }
@@ -1212,7 +1212,8 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   py::class_<CompiledFunction, std::unique_ptr<CompiledFunction>> cfun(
       jitlib, "CompiledFunction");
   cfun.def("__call__", &CompiledFunction::Call);
-  cfun.def_property_readonly("__signature__", &CompiledFunction::__signature__);
+  cfun.def_property_readonly("__signature__",
+                             &CompiledFunction::PythonSignature);
 
   jitlib.def("set_disable_jit", &SetDisableJit);
   jitlib.def("get_disable_jit", &GetDisableJit);

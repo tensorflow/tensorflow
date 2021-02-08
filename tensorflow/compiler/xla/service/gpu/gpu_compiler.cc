@@ -1119,11 +1119,8 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
       IrEmitterUnnested::Create(module_config, /*hlo_computation=*/nullptr,
                                 ir_emitter_context));
   ThunkSequence thunk_sequence;
-  for (mlir::Operation& op : entry_function.getBody().front()) {
-    // Omit the terminator.
-    if (&op == &entry_function.getBody().front().back()) {
-      continue;
-    }
+  for (mlir::Operation& op :
+       entry_function.getBody().front().without_terminator()) {
     MlirEmitterInput input;
     input.op = &op;
     TF_RETURN_IF_ERROR(ir_emitter->EmitOp(input));

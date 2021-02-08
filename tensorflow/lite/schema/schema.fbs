@@ -360,6 +360,9 @@ enum BuiltinOperator : int32 {
   BROADCAST_TO = 130,
   RFFT2D = 131,
   CONV_3D = 132,
+  IMAG=133,
+  REAL=134,
+  COMPLEX_ABS=135,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 

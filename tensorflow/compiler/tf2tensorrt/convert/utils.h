@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
@@ -65,6 +67,9 @@ struct VectorTensorShapeHasher {
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
+using absl::StrAppend;
+using absl::StrCat;
+
 #define IS_TRT_VERSION_GE(major, minor, patch, build)           \
   ((NV_TENSORRT_MAJOR > major) ||                               \
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
@@ -73,6 +78,27 @@ struct VectorTensorShapeHasher {
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
     NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
 
+// This utility template converts an arithmetic type to a string. This function
+// is necessary to allow the following function to behave recursively:
+// `string DebugString(const std::vector<CType>&)`.
+template <typename CType, typename = typename std::enable_if<
+                              std::is_arithmetic<CType>::value, CType>::type>
+string DebugString(const CType& el) {
+  string el_str = std::to_string(el);
+  // Prettify std::to_string which can sometimes returns 1.50000 instead of 1.5.
+  // In short it removes trailing 0s in a string-formatted number.
+  el_str.erase(el_str.find_last_not_of('0') + 1, std::string::npos);
+  return el_str;
+}
+// This utility template converts nested vectors to a string for debug purposes.
+template <typename CType>
+string DebugString(const std::vector<CType>& vector) {
+  string tmp_s = "";
+  for (const auto el : vector) {
+    StrAppend(&tmp_s, StrCat(DebugString(el), ", "));
+  }
+  return StrCat("{", tmp_s.substr(0, tmp_s.length() - 2), "}");
+}
 string DebugString(const nvinfer1::DimensionType type);
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::DataType trt_dtype);

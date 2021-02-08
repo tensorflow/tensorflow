@@ -56,7 +56,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       EmitConvolutionForwardAsMlir(conv, "Conv", &context).ValueOrDie();
 
   mlir_module->push_back(function);
-  mlir_module->verify();
+  (void)mlir_module->verify();
 
   std::string mlir_text;
   {

@@ -340,6 +340,7 @@ class DatasetTestBase(test.TestCase):
       dataset = dataset_fn(delay_ms)
       actual = self.getDatasetOutput(dataset)
       self.assertCountEqual(expected_elements, actual)
-      if actual[0] != expected_elements[0]:
-        return
+      for i in range(len(actual)):
+        if actual[i] != expected_elements[i]:
+          return
     self.fail("Failed to observe nondeterministic ordering")

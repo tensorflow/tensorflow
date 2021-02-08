@@ -1183,3 +1183,14 @@ func @main(%arg: tensor<3x4xf32>) -> tensor<3x4x1xf32> {
   %0 = "mhlo.bitcast"(%arg) : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
   return %0 : tensor<3x4x1xf32>
 }
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> tensor<3x4xf32> {
+// CHECK: %[[ARG0:.*]] = f32[4,4] parameter(0)
+// CHECK: %[[ARG1:.*]] = f32[3,4] parameter(1)
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4] triangular-solve(f32[4,4] %[[ARG0]], f32[3,4] %[[ARG1]]), lower=true, transpose_a=NO_TRANSPOSE
+  %0 = "mhlo.triangular_solve"(%arg0, %arg1) {left_side = false, lower = true, transpose_a = "NO_TRANSPOSE", unit_diagonal = false} : (tensor<4x4xf32>, tensor<3x4xf32>) -> tensor<3x4xf32>
+  return %0: tensor<3x4xf32>
+}

@@ -949,7 +949,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             are supported in `x`, eg, dict, generator or `keras.utils.Sequence`.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch'). This argument is ignored
-            when `x` is a generator. 'batch' is a special option for dealing
+            when `x` is a generator or an object of tf.data.Dataset.
+            'batch' is a special option for dealing
             with the limitations of HDF5 data; it shuffles in batch-sized
             chunks. Has no effect when `steps_per_epoch` is not `None`.
         class_weight: Optional dictionary mapping class indices (integers)

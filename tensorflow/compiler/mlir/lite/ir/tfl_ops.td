@@ -531,6 +531,7 @@ def TFL_AbsOp : TFL_Op<"abs", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
+    SameOperandsAndResultsScale,
     NoQuantizableResult]> {
   let summary = "Absolute value operator";
 

@@ -20,7 +20,10 @@ REGISTER2(BinaryOp, CPU, "Zeta", functor::zeta, float, double);
 REGISTER2(BinaryOp, CPU, "Polygamma", functor::polygamma, float, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER2(BinaryOp, GPU, "Zeta", functor::zeta, float, double);
+#endif
 REGISTER2(BinaryOp, GPU, "Polygamma", functor::polygamma, float, double);
 #endif
 }  // namespace tensorflow

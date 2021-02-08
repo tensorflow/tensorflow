@@ -79,6 +79,7 @@ tpu_py_test(
     size = "medium",
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
+    disable_mlir_bridge = False,
     deps = [
         ":async_checkpoint",
         ":tpu_estimator",
