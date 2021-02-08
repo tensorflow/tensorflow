@@ -31,10 +31,10 @@ from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.platform import test
 
 
-def _ref_softmax(values):
-  m = np.max(values)
+def _ref_softmax(values, axis=-1):
+  m = np.max(values, axis=axis, keepdims=True)
   e = np.exp(values - m)
-  return e / np.sum(e)
+  return e / np.sum(e, axis=axis, keepdims=True)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -79,26 +79,16 @@ class KerasActivationsTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(deserialized_layer.activation.__class__.__name__,
                      activation.__class__.__name__)
 
-  def test_softmax(self):
-    x = backend.placeholder(ndim=2)
-    f = backend.function([x], [activations.softmax(x)])
-    test_values = np.random.random((2, 5))
-
+  @parameterized.named_parameters(("1d", (5,)),
+                                  ("2d", (2, 5)),
+                                  ("3d", (2, 2, 3)))
+  def test_softmax(self, shape):
+    x = backend.placeholder(ndim=len(shape))
+    f = backend.function([x], [activations.softmax(x, axis=-1)])
+    test_values = np.random.random(shape)
     result = f([test_values])[0]
-    expected = _ref_softmax(test_values[0])
-    self.assertAllClose(result[0], expected, rtol=1e-05)
-
-    x = backend.placeholder(ndim=1)
-    with self.assertRaises(ValueError):
-      activations.softmax(x)
-
-  def test_temporal_softmax(self):
-    x = backend.placeholder(shape=(2, 2, 3))
-    f = backend.function([x], [activations.softmax(x)])
-    test_values = np.random.random((2, 2, 3)) * 10
-    result = f([test_values])[0]
-    expected = _ref_softmax(test_values[0, 0])
-    self.assertAllClose(result[0, 0], expected, rtol=1e-05)
+    expected = _ref_softmax(test_values, axis=-1)
+    self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_selu(self):
     x = backend.placeholder(ndim=2)

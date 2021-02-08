@@ -68,22 +68,8 @@ def softmax(x, axis=-1):
   Returns:
       Tensor, output of softmax transformation (all values are non-negative
         and sum to 1).
-
-  Raises:
-      ValueError: In case `dim(x) == 1`.
   """
-  rank = x.shape.rank
-  if rank == 2:
-    output = nn.softmax(x)
-  elif rank > 2:
-    e = math_ops.exp(x - math_ops.reduce_max(x, axis=axis, keepdims=True))
-    s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
-    output = e / s
-  else:
-    raise ValueError('Cannot apply softmax to a tensor that is 1D. '
-                     'Received input: %s' % (x,))
-
-  # Cache the logits to use for crossentropy loss.
+  output = nn.softmax(x, axis=axis)
   output._keras_logits = x  # pylint: disable=protected-access
   return output
 
