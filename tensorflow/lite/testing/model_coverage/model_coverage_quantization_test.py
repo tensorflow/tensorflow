@@ -147,6 +147,22 @@ class ModelQuantizationTest(parameterized.TestCase):
         input_data=[img_array],
         golden_name="mobilenet_v2_%s" % quantization_type.value)
 
+  @parameterize_by_quantization(*ALL_QUANTIZATION_TYPES)
+  def test_inception_v3(self, quantization_type):
+    keras_model = keras.models.load_model(
+        model_coverage.get_filepath("keras_applications/inception_v3.h5"))
+    keras_model.inputs[0].set_shape([1, 299, 299, 3])
+
+    converter = _lite.TFLiteConverterV2.from_keras_model(keras_model)
+    img_array = keras.applications.inception_v3.preprocess_input(
+        model_coverage.get_image(299))
+
+    self._test_quantization_goldens(
+        quantization_type,
+        converter,
+        input_data=[img_array],
+        golden_name="inception_v3_%s" % quantization_type.value)
+
 
 if __name__ == "__main__":
   test.main()
