@@ -957,7 +957,6 @@ cc_test(
     srcs = [
         "common_test.cc",
     ],
-    shard_count = 2,
     deps = [
         ":common",
         "//tensorflow/lite/kernels:kernel_util",
