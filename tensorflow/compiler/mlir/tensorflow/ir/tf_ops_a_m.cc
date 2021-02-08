@@ -1673,8 +1673,8 @@ LogicalResult Conv2DBackpropFilterOp::UpdateDataFormat(StringRef data_format) {
   // Permute filter sizes operand.
   OpBuilder builder(getOperation());
   auto filter_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
-      getLoc(), filter_sizes(), StringAttr::get(src_data_format, getContext()),
-      StringAttr::get(data_format, getContext()));
+      getLoc(), filter_sizes(), StringAttr::get(getContext(), src_data_format),
+      StringAttr::get(getContext(), data_format));
   setOperand(1, filter_sizes_permuted);
 
   return success();
@@ -1746,8 +1746,8 @@ LogicalResult Conv2DBackpropInputOp::UpdateDataFormat(StringRef data_format) {
   // Permute input sizes operand.
   OpBuilder builder(getOperation());
   auto input_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
-      getLoc(), input_sizes(), StringAttr::get(src_data_format, getContext()),
-      StringAttr::get(data_format, getContext()));
+      getLoc(), input_sizes(), StringAttr::get(getContext(), src_data_format),
+      StringAttr::get(getContext(), data_format));
   setOperand(0, input_sizes_permuted);
 
   return success();

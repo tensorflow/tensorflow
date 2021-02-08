@@ -380,14 +380,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kInfeed: {
       attributes.push_back(builder_->getNamedAttr(
-          "infeed_config", mlir::StringAttr::get(instruction->infeed_config(),
-                                                 builder_->getContext())));
+          "infeed_config",
+          mlir::StringAttr::get(builder_->getContext(),
+                                instruction->infeed_config())));
       MakeAndReturn(InfeedOp);
     }
     case HloOpcode::kOutfeed: {
       attributes.push_back(builder_->getNamedAttr(
-          "outfeed_config", mlir::StringAttr::get(instruction->outfeed_config(),
-                                                  builder_->getContext())));
+          "outfeed_config",
+          mlir::StringAttr::get(builder_->getContext(),
+                                instruction->outfeed_config())));
       MakeAndReturn(OutfeedOp);
     }
     case HloOpcode::kPad: {
