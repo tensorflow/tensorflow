@@ -1118,6 +1118,8 @@ class PForConfig(object):
 
   def _set_iters(self, iters):
     """Set number of pfor iterations."""
+    if isinstance(iters, ops.Tensor):
+      iters = tensor_util.constant_value(iters)
     self._maybe_iters = iters
 
   def reduce(self, fn, *args):
