@@ -220,6 +220,7 @@ tf_cc_test(
         ":mlir_graph_optimization_pass",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
