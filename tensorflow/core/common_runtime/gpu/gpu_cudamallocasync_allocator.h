@@ -32,22 +32,33 @@ limitations under the License.
 
 namespace tensorflow {
 
-// An allocator that wraps cudaMallocAsync. It has less fragmentation
+// An allocator that wraps cudaMallocAsync. It has fewer fragmentation
 // issues then the BFC memory allocator.  The compute-sanitizer tool
-// helps to detect OOB memory error of cudaMallocAsync. Use the
-// environment variable TF_GPU_ALLOCATOR=cuda_malloc_async to enable
-// it.
+// helps to detect OOB memory errors when using cudaMallocAsync. Use
+// the environment variable `TF_GPU_ALLOCATOR=cuda_malloc_async` to
+// enable it.
 //
 // It needs CUDA 11.2+. When using a container, this only needs the
 // container driver to be 11.2. It has a WAR again a driver bug in
-// multi-GPU with CUDA 11.2. The WAR creates an extra context on GPU 0.
+// multi-GPU setup with CUDA 11.2. The WAR creates an extra context on
+// GPU 0.
 //
 // We configure cudaMallocAsync to grow when more memory is needed
-// instead of preallocating everything up front.  But it never releases
-// to other process the GPU memory.  So no other process will "steal"
-// the GPU memory already used by the current process. This is to
-// prevent crashes of long running jobs.  Use 'reserve_memory=true' if
-// you want to preallocate the memory.
+// instead of preallocating everything up front and to keep a local
+// pool up to pool_size bytes that is never released to other processes.
+// So no other process will "steal" the GPU memory already used by the
+// current process. This is to speed up execution and prevent crashes
+// of long-running jobs. Use `reserve_memory=true` if you want to
+// preallocate the full pool_size. You can also use the environment
+// variable `TF_CUDA_MALLOC_ASYNC_PREALLOC=nb_bytes` to preallocate
+// that amount of memory. `TF_CUDA_MALLOC_ASYNC_PREALLOC=-1` is a
+// special value that preallocate all what the BFC memory allocator
+// would have allocated. This is useful when benchmarking as it doesn't
+// change when driver allocations are done.
+//
+// Here, the pool_size isn't the absolute max as for [Gpu]BFCAllocator.
+// The pool can grow above that up to the total GPU memory.  But the
+// driver can return the excess memory to other processes.
 class GpuCudaMallocAsyncAllocator : public Allocator {
  public:
   explicit GpuCudaMallocAsyncAllocator(PlatformGpuId platform_gpu_id,
