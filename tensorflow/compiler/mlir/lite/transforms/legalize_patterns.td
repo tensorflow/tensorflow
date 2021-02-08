@@ -495,9 +495,3 @@ def LegalizeStridedSlice : Pat<
 def LegalizeRfft2d : Pat<
   (TF_RFFT2DOp $input, $fft_length),
   (TFL_RFFT2dOp $input, $fft_length)>;
-
-def LegalizeComplexAbs : Pat<(TF_ComplexAbsOp $arg), (TFL_ComplexAbsOp $arg)>;
-
-def LegalizeReal : Pat<(TF_RealOp $arg), (TFL_RealOp $arg)>;
-
-def LegalizeImag : Pat<(TF_ImagOp $arg), (TFL_ImagOp $arg)>;

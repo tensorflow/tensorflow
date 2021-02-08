@@ -111,10 +111,6 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
 
   if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random_sample(shape) + min_value
-  elif dtype in (tf.complex64, tf.complex128):
-    real = (max_value - min_value) * np.random.random_sample(shape) + min_value
-    imag = (max_value - min_value) * np.random.random_sample(shape) + min_value
-    value = real + imag * 1j
   elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:

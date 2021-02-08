@@ -2015,30 +2015,3 @@ func @conv3d_invalid_strides(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x?x?x?
   // CHECK:  [[BCT:%.*]] = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [2, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
   // CHECK:  return [[BCT]] : tensor<?x?x?x?x?xf32>
 }
-
-func @complex_abs(%arg0: tensor<1 x complex<f32>>) -> tensor<1xf32> {
-  %0 = "tf.ComplexAbs"(%arg0) : (tensor<1 x complex<f32>>) -> tensor<1xf32>
-  return %0: tensor<1xf32>
-
-// CHECK-LABEL: complex_abs
-// CHECK:  "tfl.complex_abs"(%arg0) : (tensor<1xcomplex<f32>>) -> tensor<1xf32>
-// CHECK:  return
-}
-
-func @real(%arg0: tensor<1 x complex<f64>>) -> tensor<1xf64> {
-  %0 = "tf.Real"(%arg0) : (tensor<1 x complex<f64>>) -> tensor<1xf64>
-  return %0: tensor<1xf64>
-
-// CHECK-LABEL: real
-// CHECK:  "tfl.real"(%arg0) : (tensor<1xcomplex<f64>>) -> tensor<1xf64>
-// CHECK:  return
-}
-
-func @imag(%arg0: tensor<1 x complex<f64>>) -> tensor<1xf64> {
-  %0 = "tf.Imag"(%arg0) : (tensor<1 x complex<f64>>) -> tensor<1xf64>
-  return %0: tensor<1xf64>
-
-// CHECK-LABEL: imag
-// CHECK:  "tfl.imag"(%arg0) : (tensor<1xcomplex<f64>>) -> tensor<1xf64>
-// CHECK:  return
-}
