@@ -31,6 +31,49 @@ from tensorflow.python.platform import test
 class DatasetBenchmarkBase(test.Benchmark):
   """Base class for dataset benchmarks."""
 
+  def run_op_benchmark(self,
+                       op,
+                       iters=1,
+                       warmup=True):
+    """Benchmarks the op.
+
+    Runs the op `iters` times. In each iteration, the benchmark measures
+    the time it takes to go execute the op.
+
+    Args:
+      op: The tf op to benchmark.
+      iters: Number of times to repeat the timing.
+      warmup: If true, warms up the session caches by running an untimed run.
+
+    Returns:
+      A float, representing the per-execution wall time of the op in seconds.
+      This is the median time (with respect to `iters`) it takes for the op
+      to be executed `iters` num of times.
+    """
+
+    if context.executing_eagerly():
+      if warmup:
+        iterator = iter(op)
+        next(iterator)
+
+      iterator = iter(dataset)
+      start = time.time()
+      for _ in range(iters):
+        next(iterator)
+      end = time.time()
+      return (end - start) / iters
+
+    with session.Session() as sess:
+      if warmup:
+        # Run once to warm up the session caches.
+        sess.run(op)
+      start = time.time()
+      for _ in range(iters):
+        sess.run(op)
+      end = time.time()
+
+    return (end - start) / iters
+
   def run_benchmark(self,
                     dataset,
                     num_elements,
