@@ -33,12 +33,20 @@ class BinaryOpsTest : public BinaryOpsTestBase {
   }
 };
 
-/// Test `tf.AddV2`.
+/// Test `tf.Add`.
 
 template <typename T>
 T baseline_add(T lhs, T rhs) {
   return lhs + rhs;
 }
+
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_add)
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Float, float, float, baseline_add)
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Double, double, double, baseline_add)
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int64, int64, int64, baseline_add)
+
+/// Test `tf.AddV2`.
 
 GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Half, Eigen::half, Eigen::half,
                        baseline_add)

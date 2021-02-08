@@ -125,7 +125,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
 
     SmallVector<Location, 3> locations{contraction.getLoc(), bias_add.getLoc()};
     SmallVector<Attribute, 2> fused_ops{StringAttr::get(
-        bias_add.getOperation()->getName().stripDialect(), context)};
+        context, bias_add.getOperation()->getName().stripDialect())};
 
     // BiasAdd may or may not feed into an activation function.
     auto activation = GetActivation(bias_add);
@@ -139,7 +139,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     if (fuse_activation) {
       locations.push_back(activation->getLoc());
       fused_ops.push_back(
-          StringAttr::get(activation->getName().stripDialect(), context));
+          StringAttr::get(context, activation->getName().stripDialect()));
       result_type = activation->getResultTypes().front();
     } else {
       result_type = bias_add.getResult().getType();
@@ -157,7 +157,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     // contraction, with two additions: the list of ops which have been fused
     // together; epsilon (only with FusedBatchNorm).
     std::vector<NamedAttribute> attrs = contraction.getAttrs();
-    ArrayAttr fused_ops_attr = ArrayAttr::get(fused_ops, context);
+    ArrayAttr fused_ops_attr = ArrayAttr::get(context, fused_ops);
     attrs.push_back(
         NamedAttribute(Identifier::get("fused_ops", context), fused_ops_attr));
     // Epsilon is used only in fusions with the FusedBatchNorm op, so we zero it

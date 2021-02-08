@@ -146,7 +146,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
       if (!symref) continue;
       if (symref.getValue() != func.getName()) continue;
       op->setAttr(attr.first,
-                  FlatSymbolRefAttr::get(cloned.getName(), op->getContext()));
+                  FlatSymbolRefAttr::get(op->getContext(), cloned.getName()));
       break;
     }
   }
@@ -217,8 +217,8 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   FuncOp cloned_cond = CloneFunctionIfNeeded(cond);
   FuncOp cloned_body = CloneFunctionIfNeeded(body);
-  op.condAttr(FlatSymbolRefAttr::get(cloned_cond.getName(), op.getContext()));
-  op.bodyAttr(FlatSymbolRefAttr::get(cloned_body.getName(), op.getContext()));
+  op.condAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_cond.getName()));
+  op.bodyAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_body.getName()));
 
   // Drop cond/body args and return value. WhileOp result will be dropped later
   // in EliminateUnusedResults. Traverse in reverse order so that indices to be

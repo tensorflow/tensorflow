@@ -233,7 +233,7 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
   if (failed(ConvertToI32Attr(axis_int, &axis_i32))) return failure();
 
   StringAttr fused_activation_function =
-      StringAttr::get("NONE", rewriter.getContext());
+      StringAttr::get(rewriter.getContext(), "NONE");
   rewriter.replaceOpWithNewOp<ConcatenationOp>(
       op, output_type, values, axis_i32, fused_activation_function);
   return success();

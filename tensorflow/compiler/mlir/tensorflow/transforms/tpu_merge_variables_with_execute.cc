@@ -478,7 +478,7 @@ LogicalResult UpdateSerializedModule(tf_device::LaunchOp execute_launch,
   // Serialize the updated module back into the TPUCompileMlir op.
   auto module_string = tensorflow::SerializeMlirModule(module_ref.get());
   compile.mlir_moduleAttr(
-      mlir::StringAttr::get(module_string, module_ref->getContext()));
+      mlir::StringAttr::get(module_ref->getContext(), module_string));
   return success();
 }
 

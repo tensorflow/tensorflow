@@ -1292,5 +1292,29 @@ TEST_F(HloVerifierTest, ComparisonTypePred) {
               HasSubstr("Expected comparison type UNSIGNED"));
 }
 
+TEST_F(HloVerifierTest, UseGlobalDeviceIdsEmptyReplicaGroup) {
+  const char* const hlo_string = R"(
+  HloModule Module
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY CRS {
+    input = f32[8]{0} parameter(0)
+    ROOT crs = f32[8]{0} all-reduce(input), replica_groups={},
+                         use_global_device_ids=true, to_apply=add
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Replica group must be specified when "
+                        "use_global_device_ids is true"));
+}
+
 }  // namespace
 }  // namespace xla

@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
-#include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
 #include "tensorflow/lite/delegates/utils.h"
@@ -379,6 +378,15 @@ bool IsHybridOperator(const TfLiteContext* context, int builtin_code,
     default:
       return false;
   }
+}
+
+bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
+  if (tensor->dims_signature) {
+    for (int i : TfLiteIntArrayView(tensor->dims_signature)) {
+      if (i == -1) return true;
+    }
+  }
+  return false;
 }
 
 ANeuralNetworksOperandType ConvertTensorTypeToNNType(

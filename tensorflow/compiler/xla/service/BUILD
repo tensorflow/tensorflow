@@ -4821,6 +4821,40 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "while_loop_expensive_invariant_code_motion",
+    srcs = ["while_loop_expensive_invariant_code_motion.cc"],
+    hdrs = ["while_loop_expensive_invariant_code_motion.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":tuple_util",
+        ":while_loop_analysis",
+        ":while_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
+)
+
+tf_cc_test(
+    name = "while_loop_expensive_invariant_code_motion_test",
+    srcs = ["while_loop_expensive_invariant_code_motion_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":while_loop_expensive_invariant_code_motion",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "while_loop_constant_sinking",
     srcs = ["while_loop_constant_sinking.cc"],
     hdrs = ["while_loop_constant_sinking.h"],

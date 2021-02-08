@@ -405,7 +405,7 @@ void PromoteVarHandlesToArgsPass::runOnOperation() {
     for (auto var_name_and_index : llvm::enumerate(var_handle_shared_names))
       function.setArgAttr(var_name_and_index.index() + var_handle_args_offset,
                           kResourceNameArgAttr,
-                          StringAttr::get(var_name_and_index.value(), context));
+                          StringAttr::get(context, var_name_and_index.value()));
   }
 }
 

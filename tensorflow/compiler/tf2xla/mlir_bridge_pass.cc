@@ -76,12 +76,14 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 
   MlirBridgeRolloutPolicy policy =
       GetMlirBridgeRolloutPolicy(graph, config_proto);
-  if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
-    return MlirOptimizationPassState::Enabled;
-  } else if (policy == MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis) {
-    return MlirOptimizationPassState::ShadowEnabled;
-  } else {
-    return MlirOptimizationPassState::Disabled;
+  switch (policy) {
+    case MlirBridgeRolloutPolicy::kEnabledByUser:
+      return MlirOptimizationPassState::Enabled;
+    case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
+      return MlirOptimizationPassState::ShadowEnabled;
+    case MlirBridgeRolloutPolicy::kDisabledByUser:
+    case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
+      return MlirOptimizationPassState::Disabled;
   }
 }
 
