@@ -24,7 +24,7 @@ namespace functor {
 DEFINE_BINARY8(left_shift, int8, int16, int32, int64, uint8, uint16, uint32,
                uint64);
 #else
-DEFINE_BINARY4(left_shift, uint8, uint16, uint32, uint64)
+DEFINE_BINARY4(left_shift, uint8, uint16, uint32, uint64);
 #endif
 }  // namespace functor
 }  // namespace tensorflow
