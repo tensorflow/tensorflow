@@ -112,13 +112,10 @@ int SingleOpModel::AddIntermediate(TensorType type,
       CreateQuantizationParameters(builder_, /*min=*/0, /*max=*/0,
                                    builder_.CreateVector<float>(scale),
                                    builder_.CreateVector<int64_t>(zero_point));
-  tensors_.push_back(
-      CreateTensor(builder_, builder_.CreateVector<int>({}), type,
-                   /*buffer=*/0,
-                   /*name=*/
-                   builder_.CreateString("Intermediate:" +
-                                         std::to_string(intermediates_.size())),
-                   q_params, false));
+  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>({}),
+                                  type,
+                                  /*buffer=*/0,
+                                  /*name=*/0, q_params, false));
   intermediates_.push_back(id);
   return id;
 }
