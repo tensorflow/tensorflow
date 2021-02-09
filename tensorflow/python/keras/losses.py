@@ -1293,6 +1293,12 @@ def mean_absolute_error(y_true, y_pred):
   return K.mean(math_ops.abs(y_pred - y_true), axis=-1)
 
 
+@dispatch.dispatch_for_types(mean_absolute_error, ragged_tensor.RaggedTensor)
+def _ragged_tensor_mae(y_true, y_pred):
+  """ RaggedTensor adapter for mean_absolute_error"""
+  return _ragged_tensor_apply_loss(mean_absolute_error, y_true, y_pred)
+
+
 @keras_export('keras.metrics.mean_absolute_percentage_error',
               'keras.metrics.mape', 'keras.metrics.MAPE',
               'keras.losses.mean_absolute_percentage_error',
