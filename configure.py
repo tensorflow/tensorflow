@@ -24,8 +24,7 @@ import glob
 import os
 import platform
 import re
-import subprocess
-import sys
+
 
 # pylint: disable=g-import-not-at-top
 try:
