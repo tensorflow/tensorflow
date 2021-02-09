@@ -15245,6 +15245,8 @@ clamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`}]>:$str
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
 
+  let hasFolder = 1;
+
   let verifier = [{ return VerifyStridedSliceBase(*this); }];
 
   let extraClassDeclaration = [{
