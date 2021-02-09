@@ -55,7 +55,7 @@ class MapAndBatchBenchmark(benchmark_base.DatasetBenchmarkBase):
 
         self.run_and_report_benchmark(
             dataset=dataset,
-            num_elements=100,
+            num_elements=batch_size,
             iters=100,
             warmup=True,
             name="num_elements_%d_batch_size_%d" % (np.prod(shape), batch_size)
