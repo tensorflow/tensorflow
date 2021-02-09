@@ -1886,6 +1886,124 @@ bool StridedSliceOp::GetSlicedBoundRanges(
   return true;
 }
 
+OpFoldResult StridedSliceOp::fold(ArrayRef<Attribute> operands) {
+  // Fold StridedSlice operation if it extracts statically known dimensions.
+  //
+  // For example,
+  //
+  //   %shape  = tf.Shape(%arg)                   // %arg: tensor<?x2x3x1xf32>
+  //   %height = tf.StridedSlice(%shape, 1, 2, 1)
+  //
+  // In this case %height can be replaced with a constant 2.
+  //
+  // Or,
+  //
+  //   %shape  = tf.Shape(%arg)                   // %arg: tensor<?x2x3x1xf32>
+  //   %spatial_shape = tf.StridedSlice(%shape, 1, 3, 1)
+  //
+  // In this case %spatial_shape can be replaced with a constant [2, 3].
+
+  // Input to strided slice op is defined by shape operation.
+  auto shape_op = input().getDefiningOp<ShapeOp>();
+  if (!shape_op) {
+    return {};
+  }
+
+  // `begin`, `end` and `strides` should be constant in order to infer static
+  // dimension.
+  DenseIntElementsAttr begin_attr, end_attr, strides_attr;
+  if (!matchPattern(begin(), m_Constant(&begin_attr)) ||
+      !matchPattern(end(), m_Constant(&end_attr)) ||
+      !matchPattern(strides(), m_Constant(&strides_attr)) ||
+      begin_attr.getNumElements() != 1 || end_attr.getNumElements() != 1 ||
+      strides_attr.getNumElements() != 1) {
+    return {};
+  }
+
+  // Do not fold when `new_axis_mask` is set. It's likely to break the shape
+  // of output. Typically, `new_axis_mask` is not set in this canonicalization
+  // pattern.
+  if (new_axis_mask() != 0) return {};
+
+  auto tensor_ty = shape_op.input().getType().dyn_cast<RankedTensorType>();
+  // Only ranked tensor can be folded.
+  if (!tensor_ty) return {};
+
+  int64_t rank = tensor_ty.getRank();
+  int64_t begin_int = begin_attr.getValue<APInt>(0).getSExtValue();
+  int64_t end_int = end_attr.getValue<APInt>(0).getSExtValue();
+  int64_t strides_int = strides_attr.getValue<APInt>(0).getSExtValue();
+
+  // Canonicalize `begin` and `end` in case of negative index.
+  if (begin_int < 0) begin_int += rank;
+  if (end_int < 0) end_int += rank;
+
+  // Create `begin` and `end` from `*_mask`. Note that we don't care about
+  // `new_axis_mask` as it can be inferred from `output_ty`.
+  if (shrink_axis_mask() == 1) {
+    // When `shrink_axis_mask` is set, output is always a scalar so only
+    // one element is sliced.
+    end_int = begin_int + 1;
+  }
+  if (begin_mask() == 1) {
+    begin_int = (strides_int > 0) ? 0 : rank - 1;
+  }
+  if (end_mask() == 1) {
+    end_int = (strides_int > 0) ? rank : -1;
+  }
+  if (ellipsis_mask() == 1) {
+    begin_int = 0;
+    end_int = rank;
+  }
+
+  // It's possible that `begin` and `end` are out of bound. See
+  // https://docs.python.org/3/library/stdtypes.html#common-sequence-operations.
+  if (strides_int > 0) {
+    begin_int = std::min(begin_int, rank);
+    end_int = std::min(end_int, rank);
+  } else {
+    begin_int = std::min(begin_int, rank - 1);
+    end_int = std::min(end_int, rank - 1);
+  }
+
+  SmallVector<int64_t, 2> sub_shape;
+  // Only handle cases that have something to slice to avoid infinite for-loop.
+  if ((end_int > begin_int && strides_int > 0) ||
+      (end_int < begin_int && strides_int < 0)) {
+    // Extract sub-shape only if all of those dimensions are static.
+    for (int64_t i = begin_int; (strides_int > 0) ? i < end_int : i > end_int;
+         i += strides_int) {
+      if (tensor_ty.isDynamicDim(i)) {
+        return {};
+      }
+      sub_shape.push_back(tensor_ty.getDimSize(i));
+    }
+  }
+
+  // For unranked or dynamic output, we infer the output type to either a
+  // scalar or a vector based on `shrink_axis_mask` because we have rejected
+  // the case of `new_axis_mask` != 0.
+  auto output_elt_ty = output().getType().cast<ShapedType>().getElementType();
+  auto output_ty = output().getType().dyn_cast<RankedTensorType>();
+  if (!output_ty || !output_ty.hasStaticShape()) {
+    if (shrink_axis_mask() == 1) {
+      output_ty = RankedTensorType::get({}, output_elt_ty);
+    } else {
+      output_ty = RankedTensorType::get(
+          {static_cast<int64_t>(sub_shape.size())}, output_elt_ty);
+    }
+  }
+
+  // Down-cast to 32 bit int if needed.
+  if (output_elt_ty.isInteger(32)) {
+    SmallVector<int32_t, 2> sub_shape_i32(sub_shape.size());
+    std::transform(sub_shape.begin(), sub_shape.end(), sub_shape_i32.begin(),
+                   [](int64_t d) { return static_cast<int32_t>(d); });
+    return DenseIntElementsAttr::get(output_ty, sub_shape_i32);
+  }
+  return DenseIntElementsAttr::get(output_ty, sub_shape);
+}
+
 //===----------------------------------------------------------------------===//
 // StridedSliceGradOp
 //===----------------------------------------------------------------------===//
@@ -2967,6 +3085,92 @@ void WhileRegionOp::getCanonicalizationPatterns(
 void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<XdivyWithSqrtDivisor>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaBroadcastHelperOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto loc = location ? *location : mlir::UnknownLoc::get(context);
+  XlaBroadcastHelperOpAdaptor op(operands, attributes);
+  if (failed(op.verify(loc))) {
+    return failure();
+  }
+
+  Value lhs = op.lhs();
+  Value rhs = op.rhs();
+  auto set_unranked_results = [&]() {
+    auto unranked_lhs = UnrankedTensorType::get(getElementTypeOrSelf(lhs));
+    inferredReturnTypes.push_back(unranked_lhs);
+    auto unranked_rhs = UnrankedTensorType::get(getElementTypeOrSelf(rhs));
+    inferredReturnTypes.push_back(unranked_rhs);
+    return success();
+  };
+
+  RankedTensorType lhs_ty = lhs.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType rhs_ty = rhs.getType().dyn_cast<RankedTensorType>();
+  if (!lhs_ty || !rhs_ty) return set_unranked_results();
+
+  int64_t lhs_rank = lhs_ty.getRank();
+  int64_t rhs_rank = rhs_ty.getRank();
+
+  DenseIntElementsAttr dims;
+  if (!matchPattern(op.broadcast_dims(), m_Constant(&dims))) {
+    return set_unranked_results();
+  }
+
+  if (dims.size() == 0) {
+    if (lhs_rank != rhs_rank && lhs_rank != 0 && rhs_rank != 0) {
+      return emitOptionalError(
+          location,
+          "if broadcast_dims is empty, both arguments must have equal rank or "
+          "at least one argument must be a scalar");
+    }
+    inferredReturnTypes.push_back(lhs_ty);
+    inferredReturnTypes.push_back(rhs_ty);
+    return success();
+  }
+
+  const bool broadcast_lhs = lhs_rank < rhs_rank;
+  RankedTensorType min_rank_ty = broadcast_lhs ? lhs_ty : rhs_ty;
+  RankedTensorType max_rank_ty = broadcast_lhs ? rhs_ty : lhs_ty;
+
+  if (dims.size() != min_rank_ty.getRank()) {
+    return emitOptionalError(
+        location,
+        "broadcast_dims must have size equal to the smaller argument rank");
+  }
+
+  int64_t output_rank = max_rank_ty.getRank();
+  llvm::SmallVector<int64_t, 4> broadcast_shape(output_rank, 1LL);
+  llvm::SmallVector<bool, 4> is_broadcasted(output_rank, false);
+  for (auto item : llvm::enumerate(dims)) {
+    int64_t index = item.index();
+    int64_t dim = item.value().getSExtValue();
+    if (dim < 0 || dim > output_rank) {
+      return emitOptionalError(location, "out of range broadcast dim");
+    }
+    if (is_broadcasted[dim]) {
+      return emitOptionalError(location, "broadcast_dims has duplicates");
+    }
+    broadcast_shape[dim] = min_rank_ty.getDimSize(index);
+    is_broadcasted[dim] = true;
+  }
+
+  if (broadcast_lhs) {
+    inferredReturnTypes.push_back(
+        RankedTensorType::get(broadcast_shape, lhs_ty.getElementType()));
+    inferredReturnTypes.push_back(rhs_ty);
+  } else {
+    inferredReturnTypes.push_back(lhs_ty);
+    inferredReturnTypes.push_back(
+        RankedTensorType::get(broadcast_shape, rhs_ty.getElementType()));
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

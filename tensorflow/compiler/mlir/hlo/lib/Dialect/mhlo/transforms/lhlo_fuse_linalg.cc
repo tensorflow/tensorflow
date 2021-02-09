@@ -164,17 +164,17 @@ class LhloFuseLinalgPass
       }
     });
     auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-    applyPatternsAndFoldGreedily(func, std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
     SmallVector<LinalgOp, 8> linalg_ops;
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
     for (LinalgOp op : llvm::reverse(linalg_ops)) {
-      for (unsigned id = 0, e = op.getNumInputs(); id < e; ++id) {
+      for (OpOperand& inputOperand : op.getInputOpOperands()) {
         linalg::Aliases aliases;
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
-        if (auto info = fuseProducerOfBuffer(b, op, id, graph)) {
+        if (auto info = fuseProducerOfBuffer(b, inputOperand, graph)) {
           auto originalOp = info->originalProducer.getOperation();
           erase_set.insert(originalOp);
           auto originalOpInLinalgOpsVector = std::find_if(
@@ -185,7 +185,7 @@ class LhloFuseLinalgPass
       }
 
       auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-      applyPatternsAndFoldGreedily(func, std::move(patterns));
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
     for (auto* e : erase_set) e->erase();
   }

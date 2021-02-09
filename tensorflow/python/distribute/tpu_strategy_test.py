@@ -29,6 +29,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
+from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -300,7 +301,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return strategy.experimental_local_results(
           strategy.run(step_fn, args=(next(iterator),)))
 
-    with self.assertRaisesRegex(errors.InternalError, "Compilation failure"):
+    with self.assertRaises(errors.InvalidArgumentError):
       logging.info(train_fn(iterator))
 
   def test_computation_on_subset_cores(self, enable_packed_var):
@@ -427,6 +428,133 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
     bar(1)
 
+  def test_tpu_variable_run_argument(self, enable_packed_var):
+    # TPUStrategy.run() casts inputs to Tensor, but has logic to preserve
+    # variables to avoid unintuitive errors.
+    # Here we test that a TPUDistributedVariable passed to TPUStrategy.run()
+    # remains a variable.
+
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    with strategy.scope():
+      tpu_variable = variables.Variable(1)
+
+    def replica_step(first_arg, variable):
+      del first_arg  # Just here to make sure we're not relying on arg position.
+
+      if variable is not None:
+        self.assertIsInstance(variable, tpu_values.TPUDistributedVariable)
+
+    @def_function.function
+    def step():
+      strategy.run(
+          replica_step, args=(
+              2,
+              tpu_variable,
+          ))
+
+    step()
+
+  def test_tpu_run_arg_parsing(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    with strategy.scope():
+      tpu_vars = [variables.Variable(1)]
+
+    def only_star_args(*args):
+      del args
+
+    def pos_and_star_args(first_arg, *args):
+      del first_arg
+      del args
+
+    def named_args(first_arg, second_arg):
+      del first_arg
+      del second_arg
+
+    def star_args_and_kw_only(*args, kw):
+      del args
+      del kw
+
+    # pylint:disable=function-redefined
+    @def_function.function
+    def step():
+      strategy.run(only_star_args, args=(2,))
+
+    step()
+
+    @def_function.function
+    def step():
+      strategy.run(named_args, kwargs={"first_arg": 2, "second_arg": 3})
+
+    step()
+
+    with self.assertRaisesRegex(TypeError, r"got multiple values for argument"):
+
+      @def_function.function
+      def step():
+        strategy.run(
+            named_args, args=(1,), kwargs={
+                "first_arg": 2,
+                "second_arg": 3
+            })
+
+      step()
+
+    with self.assertRaisesRegex(ValueError,
+                                r"cannot handle Variables passed to \*args"):
+
+      @def_function.function
+      def step():
+        strategy.run(
+            only_star_args, args=(
+                2,
+                tpu_vars,
+            ))
+
+      step()
+
+    @def_function.function
+    def step():
+      strategy.run(pos_and_star_args, args=(2, 3, 4))
+
+    step()
+
+    @def_function.function
+    def step():
+      strategy.run(star_args_and_kw_only, args=(2, 3), kwargs={"kw": tpu_vars})
+
+    step()
+
+    with self.assertRaisesRegex(ValueError,
+                                r"mix of positional args and \*args"):
+
+      @def_function.function
+      def step():
+        strategy.run(pos_and_star_args, args=(tpu_vars, 3, 4))
+
+      step()
+
+    with self.assertRaisesRegex(ValueError, r"Too many positional arguments"):
+
+      @def_function.function
+      def step():
+        strategy.run(named_args, args=(2, 3, 4))
+
+      step()
+
+    class DummyClass:
+
+      @def_function.function
+      def method(self, arg_1):
+        del arg_1
+
+      def step(self):
+        strategy.run(self.method, args=(tpu_vars,))
+
+    DummyClass().step()
+    # pylint:enable=function-redefined
+
   def test_using_external_variable_inside_tf_function(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
     dataset = dataset_ops.Dataset.range(
@@ -506,6 +634,26 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
                         results[0].backing_device)
     self.assertAllEqual("/job:localhost/replica:0/task:0/device:TPU:1",
                         results[1].backing_device)
+
+  def test_run_passing_and_returning_nones(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      # Note that this input None is nested.
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=([1, [2, None]],)))
+      return outputs
+
+    results = train_step()
+
+    self.assertAllEqual(1, results[0][0].values[0])
+    self.assertAllEqual(2, results[0][1][0].values[0])
+    self.assertIsNone(results[0][1][1])
 
   def test_composite_input_output(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)

@@ -309,9 +309,11 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64> dimensions,
     absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
     int64 element_size_in_bits, int64 memory_space) {
-  return MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
-                                     tiles, element_size_in_bits, memory_space)
-      .ValueOrDie();
+  auto ret =
+      MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
+                                  tiles, element_size_in_bits, memory_space);
+  if (!ret.ok()) LOG(ERROR) << ret.status();
+  return ret.ValueOrDie();
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(
@@ -642,6 +644,12 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return absl::c_equal(lhs.dimensions(), rhs.dimensions());
 }
 
+/* static */ bool ShapeUtil::SameRank(const Shape& lhs, const Shape& rhs) {
+  CHECK(lhs.IsArray());
+  CHECK(rhs.IsArray());
+  return lhs.rank() == rhs.rank();
+}
+
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
   return Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(lhs, rhs);
 }
@@ -652,6 +660,15 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       .IgnoreDynamicDimension()
       .IgnoreElementType()
       .IgnoreLayout()(lhs, rhs);
+}
+
+/* static */ bool ShapeUtil::CompatibleKind(const Shape& lhs,
+                                            const Shape& rhs) {
+  return Shape::Equal()
+      .IgnoreElementType()
+      .IgnoreLayout()
+      .IgnoreDimensions()
+      .IgnoreDynamicDimension()(lhs, rhs);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringFpPrecision(const Shape& lhs,
@@ -1245,7 +1262,9 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     return false;
   }
 
-  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape));
+  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape))
+      << "input_shape=" << input_shape.ShortDebugString()
+      << ", output_shape=" << output_shape.ShortDebugString();
   if (ElementsIn(input_shape) == 0) {
     return true;
   }

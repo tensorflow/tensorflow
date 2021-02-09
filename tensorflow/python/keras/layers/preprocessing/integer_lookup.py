@@ -64,15 +64,21 @@ class IntegerLookup(index_lookup.IndexLookup):
     invert: If true, this layer will map indices to vocabulary items instead
       of mapping vocabulary items to indices.
     output_mode: Specification for the output of the layer. Only applicable
-      when `invert` is False.
-      Defaults to "int". Values can
-      be "int", "binary", or "count", configuring the layer as follows:
+      when `invert` is False. Defaults to "int". Values can be "int", "binary",
+      or "count", configuring the layer as follows:
         "int": Return the raw integer indices of the input values.
         "binary": Outputs a single int array per batch, of either vocab_size or
           max_tokens size, containing 1s in all elements where the token mapped
           to that index exists at least once in the batch item.
         "count": Like "binary", but the int array contains a count of the number
           of times the token at that index appeared in the batch item.
+        "tf-idf": As "binary", but the TF-IDF algorithm is applied to find the
+          value in each token slot.
+    pad_to_max_tokens: Only valid in  "binary", "count", and "tf-idf" modes. If
+      True, the output will have its feature axis padded to `max_tokens` even if
+      the number of unique tokens in the vocabulary is less than max_tokens,
+      resulting in a tensor of shape [batch_size, max_tokens] regardless of
+      vocabulary size. Defaults to True.
     sparse: Boolean. Only applicable to "binary" and "count" output modes.
       If true, returns a `SparseTensor` instead of a dense `Tensor`.
       Defaults to `False`.
@@ -90,21 +96,6 @@ class IntegerLookup(index_lookup.IndexLookup):
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
   array([[2, 4, 5],
          [5, 1, 3]])>
-
-  **Configuring the layer to apply multi-hot encoding after lookup**
-
-  Just set `output_mode='binary'`. Note that the first two dimensions
-  in the binary encoding represent the mask value and the OOV value,
-  respectively.
-
-  >>> vocab = [12, 36, 1138, 42]
-  >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])  # Note OOV values
-  >>> layer = IntegerLookup(vocabulary=vocab, output_mode='binary')
-  >>> layer(data)
-  <tf.Tensor: shape=(2, 6), dtype=float32, numpy=
-    array([[0., 0., 1., 0., 1., 1.],
-           [0., 1., 0., 1., 0., 1.]], dtype=float32)>
-
 
   **Creating a lookup layer with an adapted vocabulary**
 
@@ -150,6 +141,71 @@ class IntegerLookup(index_lookup.IndexLookup):
   earlier examples (12 maps to 3, etc) in order to make space for the extra OOV
   value.
 
+  **Multi-hot output**
+
+  Configure the layer with `output_mode='binary'`. Note that the first two
+  dimensions in the binary encoding represent the mask value and the OOV value
+  (if any).
+
+  >>> vocab = [12, 36, 1138, 42]
+  >>> data = tf.constant([[12, 1138, 42, 42], [42, 7, 36, 7]]) # Note OOV values
+  >>> layer = IntegerLookup(vocabulary=vocab, output_mode='binary')
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 6), dtype=float32, numpy=
+    array([[0., 0., 1., 0., 1., 1.],
+           [0., 1., 0., 1., 0., 1.]], dtype=float32)>
+
+  **Value count output**
+
+  Configure the layer with `output_mode='count'`. As with binary output, the
+  first two dimensions in the output represent the mask value and the OOV value
+  (if any).
+
+  >>> vocab = [12, 36, 1138, 42]
+  >>> data = tf.constant([[12, 1138, 42, 42], [42, 7, 36, 7]]) # Note OOV values
+  >>> layer = IntegerLookup(vocabulary=vocab, output_mode='count')
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 6), dtype=float32, numpy=
+    array([[0., 0., 1., 0., 1., 2.],
+           [0., 2., 0., 1., 0., 1.]], dtype=float32)>
+
+  **TF-IDF output**
+
+  Configure the layer with `output_mode='tf-idf'`. As with binary output, the
+  first two dimensions in the output represent the mask value and the OOV value,
+  respectively.
+
+  Each value bin will output `value_count * idf_weight`, where the idf weights
+  are the inverse document frequency weights per value. These should be provided
+  along with the vocabulary. Note that the `idf_weight` for mask values and OOV
+  values will default to the average of all idf weights passed in.
+
+  >>> vocab = [12, 36, 1138, 42]
+  >>> idf_weights = [0.25, 0.75, 0.6, 0.4]
+  >>> data = tf.constant([[12, 1138, 42, 42], [42, 7, 36, 7]]) # Note OOV values
+  >>> layer = IntegerLookup(output_mode='tf-idf')
+  >>> layer.set_vocabulary(vocab, idf_weights=idf_weights)
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 6), dtype=float32, numpy=
+    array([[0.  , 0.  , 0.25, 0.  , 0.6 , 0.8 ],
+           [0.  , 1.0 , 0.  , 0.75, 0.  , 0.4 ]], dtype=float32)>
+
+  To specify the idf weights for mask and oov values, you will need to pass the
+  entire vocabularly including these values.
+
+  >>> vocab = [0, -1, 12, 36, 1138, 42]
+  >>> idf_weights = [0.0, 0.9, 0.25, 0.75, 0.6, 0.4]
+  >>> data = tf.constant([[12, 1138, 42, 42], [42, 7, 36, 7]]) # Note OOV values
+  >>> layer = IntegerLookup(output_mode='tf-idf')
+  >>> layer.set_vocabulary(vocab, idf_weights=idf_weights)
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 6), dtype=float32, numpy=
+    array([[0.  , 0.  , 0.25, 0.  , 0.6 , 0.8 ],
+           [0.  , 1.8 , 0.  , 0.75, 0.  , 0.4 ]], dtype=float32)>
+
+  When adapting the layer in tf-idf mode, each input sample will be considered a
+  document, and idf weight per value will be calculated as
+  `log(1 + num_documents / (1 + value_document_count))`.
 
   **Inverse lookup**
 
@@ -200,6 +256,7 @@ class IntegerLookup(index_lookup.IndexLookup):
                invert=False,
                output_mode=index_lookup.INT,
                sparse=False,
+               pad_to_max_values=False,
                **kwargs):
     allowed_dtypes = [dtypes.int64]
 
@@ -217,8 +274,9 @@ class IntegerLookup(index_lookup.IndexLookup):
                        "You passed %s" % (max_values,))
 
     if num_oov_indices < 0:
-      raise ValueError("num_oov_indices must be greater than 0. You passed %s" %
-                       (num_oov_indices,))
+      raise ValueError(
+          "num_oov_indices must be greater than or equal to 0. You passed %s" %
+          (num_oov_indices,))
 
     if vocabulary is not None:
       if isinstance(vocabulary, str):
@@ -234,6 +292,7 @@ class IntegerLookup(index_lookup.IndexLookup):
         invert=invert,
         output_mode=output_mode,
         sparse=sparse,
+        pad_to_max_tokens=pad_to_max_values,
         **kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell("IntegerLookup").set(True)
 
@@ -249,10 +308,23 @@ class IntegerLookup(index_lookup.IndexLookup):
 
     base_config["oov_value"] = base_config["oov_token"]
     del base_config["oov_token"]
+
+    base_config["pad_to_max_values"] = base_config["pad_to_max_tokens"]
+    del base_config["pad_to_max_tokens"]
+
     return base_config
 
-  def set_vocabulary(self, vocab):
+  def set_vocabulary(self, vocab, idf_weights=None):
     if isinstance(vocab, str):
+      if self.output_mode == index_lookup.TFIDF:
+        raise RuntimeError(
+            "Setting vocabulary directly from a file is not "
+            "supported in TF-IDF mode, since this layer cannot "
+            "read files containing TF-IDF weight data. Please "
+            "read the file using Python and set the vocab "
+            "and weights by passing lists or arrays to the "
+            "set_vocabulary function's `vocab` and `idf_weights` "
+            "args.")
       vocab = table_utils.get_vocabulary_from_file(vocab)
       vocab = [int(v) for v in vocab]
-    super().set_vocabulary(vocab)
+    super().set_vocabulary(vocab, idf_weights=idf_weights)

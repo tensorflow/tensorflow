@@ -330,31 +330,6 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                                  module_config, libdevice_dir));
   }
 
-  if (DumpingEnabledForHloModule(*debug_module)) {
-    if (debug_module) {
-      llvm_ir::DumpIrIfEnabled(*debug_module, *llvm_module, /*optimized=*/true);
-    } else {
-      LOG(ERROR) << "Dumping is not implemented since the file name cannot be "
-                    "inferred. Please implement (potentially MLIR) module -> "
-                    "filename heuristic.";
-    }
-  }
-
-  if (user_post_optimization_hook_) {
-    user_post_optimization_hook_(*llvm_module);
-  }
-
-  // Write PTX to IR dump directory, if IR dumping was requested.
-  if (DumpingEnabledForHloModule(*debug_module)) {
-    if (debug_module) {
-      DumpToFileInDirOrStdout(*debug_module, "", "ptx", ptx);
-    } else {
-      LOG(ERROR) << "Dumping is not implemented since the file name cannot be "
-                    "inferred. Please implement (potentially MLIR) module -> "
-                    "filename heuristic.";
-    }
-  }
-
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, compute_capability.first, compute_capability.second,
       module_config, relocatable);

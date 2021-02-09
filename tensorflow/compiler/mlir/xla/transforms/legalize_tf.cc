@@ -677,7 +677,7 @@ static void CreateWhile32(Location loc, int num_iterations,
     auto loop_iv = builder->create<GetTupleElementOp>(loc, arg, 0);
     auto upper_limit = builder->create<mhlo::ConstOp>(
         loc, builder->getI32IntegerAttr(num_iterations));
-    StringAttr compare_direction = StringAttr::get("LT", builder->getContext());
+    StringAttr compare_direction = StringAttr::get(builder->getContext(), "LT");
     Value compare = builder->create<mhlo::CompareOp>(loc, loop_iv, upper_limit,
                                                      compare_direction);
 
@@ -942,7 +942,7 @@ static void BuildArgMinMaxReductionBody(Type input_element_type,
 
   Location loc = body->getLoc();
   StringAttr compare_direction =
-      StringAttr::get(direction, builder->getContext());
+      StringAttr::get(builder->getContext(), direction);
   Value compare = builder->create<CompareOp>(
       loc, block->getArgument(0), block->getArgument(2), compare_direction);
 
@@ -1399,7 +1399,7 @@ class ConvertDiagPartOp : public OpRewritePattern<TF::DiagPartOp> {
                                          rewriter.getI64IntegerAttr(1));
     Value compare = rewriter.create<CompareOp>(
         op.getLoc(), iota0, iota1,
-        StringAttr::get("EQ", rewriter.getContext()));
+        StringAttr::get(rewriter.getContext(), "EQ"));
     Value zero = GetScalarConstOfType(input_type.getElementType(), op.getLoc(),
                                       0, &rewriter);
     Value zero_matrix = rewriter.create<BroadcastOp>(
@@ -2751,59 +2751,6 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
   }
 };
 
-// Converts Size to HLO ops, computing the size of a ranked input tensor.
-// TODO(b/145253252): Update this to not require ranked input tensor shapes.
-//
-// The main logic of this pattern is to calculate the size by multiplying every
-// dimension of the input tensor's shape together.
-//
-// For example, the following source IR:
-//
-//   %size = "tf.Size"(%input) : (tensor<2x?x8xf32>) -> tensor<i32>
-//
-// will be converted into:
-//
-//   %const = mhlo.constant dense<1> : tensor<i32>
-//   %dim_0 = "mhlo.get_dimension_size"(%input) {dimension = 0 : i64} :
-//                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %prod_0 = mhlo.multiply %const, %dim_0 : tensor<i32>
-//   %dim_1 = "mhlo.get_dimension_size"(%input) {dimension = 1 : i64} :
-//                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %prod_1 = mhlo.multiply %prod_0, %dim_1 : tensor<i32>
-//   %dim_2 = "mhlo.get_dimension_size"(%input) {dimension = 2 : i64} :
-//                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %size = mhlo.multiply %prod_1, %dim_2 : tensor<i32>
-class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::SizeOp op,
-                                PatternRewriter &rewriter) const override {
-    Value input = op.input();
-    auto input_ty = input.getType().dyn_cast<RankedTensorType>();
-    if (!input_ty) return failure();
-
-    const int64_t rank = input_ty.getRank();
-    auto result_ty = op.getResult().getType();
-    auto element_ty = result_ty.cast<TensorType>().getElementType();
-    Value size = GetScalarConstOfType(element_ty, op.getLoc(), 1, &rewriter);
-    for (int64_t i = 0; i < rank; ++i) {
-      auto i32_ty = rewriter.getIntegerType(32);
-      auto size_ty = RankedTensorType::get({}, i32_ty);
-      auto dim_index = rewriter.getI64IntegerAttr(i);
-      Value dim = rewriter.create<GetDimensionSizeOp>(op.getLoc(), size_ty,
-                                                      input, dim_index);
-      dim = rewriter.create<mhlo::ConvertOp>(op.getLoc(), result_ty, dim);
-      size = rewriter.create<chlo::BroadcastMulOp>(
-          op.getLoc(), size, dim,
-          /*DenseIntElementsAttr=*/DenseIntElementsAttr());
-    }
-    rewriter.replaceOp(op, size);
-
-    return success();
-  }
-};
-
 static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
                                            Value *out_lhs, Value *out_rhs,
                                            PatternRewriter *rewriter) {
@@ -2869,7 +2816,16 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
 
 class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  // TODO(hinsu): Legalize this op to Einsum op. HLO Einsum op needs to be moved
+  // to CHLO and it is missing legalization to MHLO. Once that is done, this
+  // pattern's benefit can be changed back to one as well as the fallback
+  // lowering pattern for the op can be removed.
+  //
+  // Set benefit of this pattern to zero to prefer the fallback pattern when
+  // available and applicable. That pattern avoids broadcast on operands and is
+  // therefore faster.
+  explicit ConvertBatchMatMulV2Op(MLIRContext *context)
+      : OpRewritePattern<TF::BatchMatMulV2Op>(context, /*benefit=*/0) {}
 
   LogicalResult matchAndRewrite(TF::BatchMatMulV2Op op,
                                 PatternRewriter &rewriter) const override {
@@ -4120,7 +4076,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<OpTy> {
 
       auto reducer = rewriter.create<CompareOp>(
           loc, block->getArgument(0), block->getArgument(1),
-          StringAttr::get("GE", rewriter.getContext()));
+          StringAttr::get(rewriter.getContext(), "GE"));
       rewriter.create<ReturnOp>(loc, reducer.getResult());
     }
 
@@ -4237,12 +4193,31 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
     const int64_t feature_group_count = in_depth / filter_in_depth;
 
     if (feature_group_count != 1) {
-      /*
-      // TODO(parkers): Convert this code to mlir.
-    filter = TransposeFilterForGroupConvolutionBackpropInput(
-        filter, filter_shape, feature_group_count, attrs.num_spatial_dims);
-        */
-      return failure();
+      // 1. Reshape filter from
+      //   [H, W, ..., filter_in_depth, out_depth] to
+      //   [H, W, ..., filter_in_depth, G, out_depth / G].
+      auto new_shape = llvm::to_vector<6>(filter_shape);
+      new_shape.back() = feature_group_count;
+      new_shape.push_back(filter_shape.back() / feature_group_count);
+      Type filter_element_ty = filter_ty.getElementType();
+      auto ty = RankedTensorType::get(new_shape, filter_element_ty);
+      filter = rewriter.create<ReshapeOp>(op.getLoc(), ty, filter);
+
+      // 2. Transpose to [H, W, ..., G, filter_in_depth, out_depth / G].
+      llvm::SmallVector<int64_t, 6> perm(num_dims + 1);
+      std::iota(perm.begin(), perm.end(), 0);
+      std::swap(perm[num_spatial_dims], perm[num_spatial_dims + 1]);
+      std::swap(new_shape[num_spatial_dims], new_shape[num_spatial_dims + 1]);
+      ty = RankedTensorType::get(new_shape, filter_element_ty);
+      filter = rewriter.create<TransposeOp>(
+          op.getLoc(), ty, filter, GetI64ElementsAttr(perm, &rewriter));
+
+      // 3. Reshape to [H, W, ..., in_depth, out_depth / G].
+      new_shape[num_spatial_dims] *= new_shape[num_spatial_dims + 1];
+      new_shape[num_spatial_dims + 1] = new_shape.back();
+      new_shape.pop_back();
+      ty = RankedTensorType::get(new_shape, filter_element_ty);
+      filter = rewriter.create<ReshapeOp>(op.getLoc(), ty, filter);
     }
 
     auto kernel_spatial_dims_attr =
@@ -4380,17 +4355,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
         tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
     const int64_t in_depth = input_shape[feature_dim];
     const int64_t filter_in_depth = *(filter_shape.begin() + num_spatial_dims);
-    const int64_t feature_group_count = in_depth / filter_in_depth;
-
-    if (feature_group_count != 1) {
-      /*
-          // TODO(parkers): translate this code to mlir.
-          activations = TransposeInputForGroupConvolutionBackpropFilter(
-              activations, input_shape, feature_group_count, batch_dim,
-         feature_dim);
-      */
-      return failure();
-    }
+    const int64_t batch_group_count = in_depth / filter_in_depth;
 
     // Compute ConvDimensionNumbers, dilation, and padding.
     SmallVector<int64_t, num_spatial_dims> spatial_dims;
@@ -4501,8 +4466,8 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
             /*output_spatial_dimensions=*/
             GetI64ElementsAttrForSeq(0, num_spatial_dims, &rewriter),
             rewriter.getContext()),
-        rewriter.getI64IntegerAttr(feature_group_count),
-        /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
+        /*feature_group_count=*/rewriter.getI64IntegerAttr(1),
+        rewriter.getI64IntegerAttr(batch_group_count),
         /*precision_config=*/ArrayAttr());
 
     rewriter.replaceOp(op, {result});
@@ -4561,7 +4526,7 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
 
     Value compare = rewriter.create<mhlo::CompareOp>(
         loc, broadcast_indices, iota,
-        StringAttr::get("EQ", rewriter.getContext()));
+        StringAttr::get(rewriter.getContext(), "EQ"));
     Value on_value = rewriter.create<BroadcastOp>(
         loc, op.getType(), op.on_value(),
         GetI64ElementsAttr(output_dims, &rewriter));
@@ -4605,6 +4570,31 @@ class ConvertInfeedDequeueTupleOp
  public:
   using OpRewritePattern::OpRewritePattern;
 
+  Attribute GetLayout(const Type &type, PatternRewriter &rewriter) const {
+    auto i64_type = rewriter.getIntegerType(64);
+    if (type.isa<TupleType>()) {
+      TupleType tuple_type = type.dyn_cast<TupleType>();
+      std::vector<mlir::Attribute> v;
+      for (const mlir::Type &t : tuple_type.getTypes()) {
+        v.push_back(GetLayout(t, rewriter));
+      }
+      ArrayRef<Attribute> shape(v);
+      return rewriter.getArrayAttr(shape);
+    } else if (type.isa<RankedTensorType>()) {
+      RankedTensorType t = type.dyn_cast<RankedTensorType>();
+      std::vector<mlir::Attribute> attrs;
+      std::vector<Attribute> elements;
+      // Tuples are always serialized with an ascending layout. See
+      // LiteralLinearizer::LinearizeToBuffers.
+      for (int64_t i = 0; i < t.getRank(); i++) {
+        elements.push_back(rewriter.getIntegerAttr(i64_type, i));
+      }
+      return rewriter.getArrayAttr(elements);
+    } else {
+      return rewriter.getUnitAttr();  // e.g. tokens
+    }
+  }
+
   LogicalResult matchAndRewrite(TF::InfeedDequeueTupleOp op,
                                 PatternRewriter &rewriter) const override {
     std::vector<Type> result_types(op.outputs().size());
@@ -4623,9 +4613,16 @@ class ConvertInfeedDequeueTupleOp
     auto data_and_token_type = mlir::TupleType::get(
         rewriter.getContext(), {data_tuple_type, token.getType()});
 
+    ArrayAttr layout =
+        GetLayout(data_and_token_type, rewriter).cast<ArrayAttr>();
     auto data_and_token =
         rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
-                                  /*infeed_config=*/rewriter.getStringAttr(""));
+                                  /*infeed_config=*/rewriter.getStringAttr(""),
+                                  /*layout=*/layout);
+
+    // TODO(b/171212005): Reenable layout.
+    data_and_token.removeAttr("layout");
+
     if (op._XlaSharding().hasValue()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
       // proto, so convert to a text form here.
@@ -5621,7 +5618,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
                                          rewriter.getI64IntegerAttr(1));
     Value compare = rewriter.create<CompareOp>(
         op.getLoc(), iota0, iota1,
-        StringAttr::get("EQ", rewriter.getContext()));
+        StringAttr::get(rewriter.getContext(), "EQ"));
     Value identity_matrix =
         rewriter.create<ConvertOp>(op.getLoc(), compare, type.getElementType());
     auto q_shape = llvm::to_vector<4>(type.getShape());
@@ -5729,7 +5726,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
         builder->getI64IntegerAttr(0));
     Value gtk = builder->create<chlo::BroadcastCompareOp>(
         loc, iota, k, GetI64ElementsAttr({}, builder),
-        StringAttr::get("GT", builder->getContext()));
+        StringAttr::get(builder->getContext(), "GT"));
     gtk = builder->create<ConvertOp>(loc, gtk, x_type.getElementType());
     Value x_after_k = builder->create<chlo::BroadcastMulOp>(
         loc, x, gtk, GetI64ElementsAttr({minor_dim}, builder));
@@ -5745,10 +5742,10 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
 
     Value sigma_is_zero = builder->create<chlo::BroadcastCompareOp>(
         loc, sigma.getResult(0), zero, GetI64ElementsAttr({}, builder),
-        StringAttr::get("EQ", builder->getContext()));
+        StringAttr::get(builder->getContext(), "EQ"));
     Value alpha_is_negative = builder->create<chlo::BroadcastCompareOp>(
         loc, alpha, zero, GetI64ElementsAttr({}, builder),
-        StringAttr::get("LT", builder->getContext()));
+        StringAttr::get(builder->getContext(), "LT"));
     auto batch_size_one = builder->create<BroadcastOp>(
         loc, alpha.getType(), one, GetI64ElementsAttr(batch_dims, builder));
     Value signed_mu = builder->create<chlo::BroadcastMulOp>(
@@ -5771,7 +5768,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
 
     Value eqk = builder->create<chlo::BroadcastCompareOp>(
         loc, iota, k, GetI64ElementsAttr({}, builder),
-        StringAttr::get("EQ", builder->getContext()));
+        StringAttr::get(builder->getContext(), "EQ"));
     eqk = builder->create<ConvertOp>(loc, eqk, x_type.getElementType());
     llvm::SmallVector<int64_t, 4> e_k_shape(batch_dims.size(), 1);
     e_k_shape.push_back(m);
@@ -5875,12 +5872,12 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
           builder->getI64IntegerAttr(0));
       Value predecessor_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota, j, GetI64ElementsAttr({}, builder),
-          StringAttr::get("LT", builder->getContext()));
+          StringAttr::get(builder->getContext(), "LT"));
       predecessor_mask = builder->create<ConvertOp>(loc, predecessor_mask,
                                                     a_type.getElementType());
       Value mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota, j, GetI64ElementsAttr({}, builder),
-          StringAttr::get("EQ", builder->getContext()));
+          StringAttr::get(builder->getContext(), "EQ"));
       mask = builder->create<ConvertOp>(loc, mask, a_type.getElementType());
       llvm::SmallVector<int64_t, 4> broadcast_mask_shape(a_type.getRank(), 1);
       broadcast_mask_shape[a_type.getRank() - 2] = m;
@@ -5910,7 +5907,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
           builder->getI64IntegerAttr(minor_dim + 1));
       Value xa_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_mn, j, GetI64ElementsAttr({}, builder),
-          StringAttr::get("EQ", builder->getContext()));
+          StringAttr::get(builder->getContext(), "EQ"));
       a = builder->create<SelectOp>(loc, a_type, xa_mask, new_x, a);
 
       // vs[:, j] = v
@@ -5947,7 +5944,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
                              builder));
       Value taus_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_n, j, GetI64ElementsAttr({}, builder),
-          StringAttr::get("EQ", builder->getContext()));
+          StringAttr::get(builder->getContext(), "EQ"));
       auto taus_update = builder->create<SelectOp>(
           loc, taus.getType(), taus_mask,
           StaticBinaryBroadcast<AddOp>(
@@ -6032,7 +6029,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
                              builder));
       auto compare = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_mn, j, GetI64ElementsAttr({}, builder),
-          StringAttr::get("GE", builder->getContext()));
+          StringAttr::get(builder->getContext(), "GE"));
       auto y = builder->create<SelectOp>(loc, vs.getType(), compare, zero, vs);
 
       // yv has shape [..., n, 1]
@@ -6150,15 +6147,19 @@ LogicalResult legalizeTF(
   OwningRewritePatternList patterns;
   // Note that the `OperationConverter` orders patterns lexicographically by:
   // 1) Ascending legalization depth (i.e., minimum number of patterns necessary
-  //    to arrive at conversion target).
+  //    to arrive at conversion target). This requires relevant patterns to
+  //    specify the list of ops generated by it which most of patterns
+  //    implemented in C++ don't do so this comparison doesn't work in those
+  //    cases.
   // 2) Descending pattern benefit.
-  // 3) Order of patterns in `OwningRewritePatternList`.
+  // 3) Op specific patterns over patterns with MatchAnyOpTypeTag.
+  // 4) Order of patterns in `OwningRewritePatternList`.
 
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &patterns);
 
   // Add TF->TF lowering patterns.
-  TF::PopulateLoweringTFPatterns(context, &patterns);
+  TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
 
   // Add TF->HLO legalization patterns via TF2XLA fallback.
   if (tf2xla_fallback_device_type.hasValue()) {
@@ -6228,7 +6229,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
       ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
       ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
       ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertSigmoidOp, ConvertShapeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,

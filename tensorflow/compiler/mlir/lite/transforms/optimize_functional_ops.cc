@@ -150,7 +150,7 @@ void OptimizeFunctionalOpsPass::runOnOperation() {
   patterns.insert<FoldIfOp>(&getContext());
 
   ModuleOp module = getOperation();
-  applyPatternsAndFoldGreedily(module, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
 }
 
 PassRegistration<OptimizeFunctionalOpsPass> pass(

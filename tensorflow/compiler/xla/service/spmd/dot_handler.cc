@@ -297,6 +297,27 @@ StatusOr<HloInstruction*> PartitionBaseCase(
       rhs = rhs.PadWithValue(zero);
     }
     auto result_buffer = CreateZero(padded_result_buffer_shape, b);
+    auto extra_buffer =
+        (!(options.bidirectional_windowed_einsum && num_partitions % 4 == 0) ||
+         operands_sharded_at_contracting_dims)
+            ? CreateZero(padded_result_buffer_shape, b)
+        : windowing_operand == 0 ? lhs.hlo()
+                                 : rhs.hlo();
+
+    if (options.bidirectional_windowed_einsum && num_partitions % 4 == 0 &&
+        !operands_sharded_at_contracting_dims) {
+      std::vector<std::pair<int64, int64>> pre_sd_pairs(num_partitions);
+      for (int64 source = 0; source < num_partitions; ++source) {
+        // 0 -> 1, 1 -> 2, 2 -> 3, ...
+        pre_sd_pairs[source] = {source, (source + 1) % num_partitions};
+      }
+      extra_buffer =
+          lhs.state()
+              .collective_ops_creator.create_cross_partition_collective_permute(
+                  b, extra_buffer, pre_sd_pairs,
+                  (*lhs.state().next_channel_id)++);
+    }
+
     auto iteration = b->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(0)));
 
@@ -304,10 +325,293 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     // iteration, each partition sends its input window to its neighbor using
     // collective-permute for the next iteration.
     SpmdBuilder body_b("windowed_dot_general_body", original_hlo);
+
+    // Generate partial results used by bidirectional algorithm.
+    auto get_partial_bid_results =
+        [&](HloInstruction* l, HloInstruction* r, HloInstruction* o,
+            HloInstruction* extra_inout, HloInstruction* cw_cp_output,
+            HloInstruction* i) -> StatusOr<std::vector<HloInstruction*>> {
+      auto partition_id =
+          lhs.state().collective_ops_creator.create_partition_id(&body_b);
+      auto partition_count =
+          body_b.AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<uint32>(num_partitions)));
+      auto ccw_data_partition_id =
+          body_b.AddInstruction(HloInstruction::CreateBinary(
+              i->shape(), HloOpcode::kAdd, i, partition_id));
+      auto cw_data_partition_id =
+          body_b.AddInstruction(HloInstruction::CreateBinary(
+              i->shape(), HloOpcode::kAdd, partition_count, partition_id));
+      if (operands_sharded_at_contracting_dims) {
+        ccw_data_partition_id =
+            body_b.AddInstruction(HloInstruction::CreateBinary(
+                i->shape(), HloOpcode::kAdd, ccw_data_partition_id,
+                body_b.AddInstruction(HloInstruction::CreateConstant(
+                    LiteralUtil::CreateR0<uint32>(num_partitions / 2 + 1)))));
+        cw_data_partition_id =
+            body_b.AddInstruction(HloInstruction::CreateBinary(
+                i->shape(), HloOpcode::kSubtract, cw_data_partition_id,
+                body_b.AddInstruction(HloInstruction::CreateConstant(
+                    LiteralUtil::CreateR0<uint32>(num_partitions / 2)))));
+      } else {
+        cw_data_partition_id =
+            body_b.AddInstruction(HloInstruction::CreateBinary(
+                i->shape(), HloOpcode::kSubtract, cw_data_partition_id,
+                CreateOne(cw_data_partition_id->shape(), &body_b)));
+      }
+      ccw_data_partition_id = body_b.AddInstruction(
+          HloInstruction::CreateBinary(i->shape(), HloOpcode::kRemainder,
+                                       ccw_data_partition_id, partition_count));
+      cw_data_partition_id = body_b.AddInstruction(HloInstruction::CreateBinary(
+          i->shape(), HloOpcode::kSubtract, cw_data_partition_id, i));
+      cw_data_partition_id = body_b.AddInstruction(
+          HloInstruction::CreateBinary(i->shape(), HloOpcode::kRemainder,
+                                       cw_data_partition_id, partition_count));
+      auto ccw_dot_lhs = l;
+      auto ccw_dot_rhs = r;
+      auto cw_dot_lhs = windowing_operand == 0 ? extra_inout : l;
+      auto cw_dot_rhs = windowing_operand == 0 ? r : extra_inout;
+      if (windowed_at_contracting_dims || windowed_at_batch_dims ||
+          operands_sharded_at_contracting_dims) {
+        // Slice the matching operand according to the partitioned dimensions on
+        // the windowed operand or the output.
+        auto slice_operand = matching_operand == 0 ? l : r;
+
+        // We do this by treating the matching operand as replicated, and
+        // resharding it to match the windowed operand or the output.
+        auto gen_slice =
+            [&](HloInstruction* data_partition_id) -> HloInstruction* {
+          slice_operand->set_sharding(HloSharding::Replicate());
+          auto state = lhs.state();
+          state.b = &body_b;
+          state.partition_id = data_partition_id;
+          state.reshard_cache->per_hlo_cache.erase(slice_operand);
+          const HloSharding* slice_sharding;
+          if (operands_sharded_at_contracting_dims) {
+            slice_sharding = windowing_operand == 0
+                                 ? &*output_sharding_transposed_to_match_rhs
+                                 : &*output_sharding_transposed_to_match_lhs;
+          } else {
+            slice_sharding = windowing_operand == 0
+                                 ? &*lhs_sharding_transposed_to_match_rhs
+                                 : &*rhs_sharding_transposed_to_match_lhs;
+          }
+          auto slice =
+              PartitionedHlo(slice_operand, slice_operand->shape(), state)
+                  .Reshard(*slice_sharding)
+                  .hlo();
+          slice_operand->clear_sharding();
+          return slice;
+        };
+
+        auto ccw_slice = gen_slice(ccw_data_partition_id);
+        auto cw_slice = gen_slice(cw_data_partition_id);
+        if (matching_operand == 0) {
+          ccw_dot_lhs = ccw_slice;
+          cw_dot_lhs = cw_slice;
+        } else {
+          ccw_dot_rhs = ccw_slice;
+          cw_dot_rhs = cw_slice;
+        }
+      }
+
+      const HloSharding* slice_sharding;
+      if (operands_sharded_at_contracting_dims) {
+        slice_sharding = windowing_operand == 0
+                             ? &*output_sharding_transposed_to_match_rhs
+                             : &*output_sharding_transposed_to_match_lhs;
+      } else if (windowed_at_contracting_dims || windowed_at_batch_dims) {
+        slice_sharding = windowing_operand == 0
+                             ? &*lhs_sharding_transposed_to_match_rhs
+                             : &*rhs_sharding_transposed_to_match_lhs;
+      } else {
+        slice_sharding = windowing_operand == 0
+                             ? &*lhs_sharding_transposed_to_match_output
+                             : &*rhs_sharding_transposed_to_match_output;
+      }
+      int64 slice_sharding_dim = -1;
+      for (int64 i = 0; i < slice_sharding->tile_assignment().num_dimensions();
+           ++i) {
+        if (slice_sharding->tile_assignment().dim(i) == num_partitions) {
+          slice_sharding_dim = i;
+          break;
+        }
+      }
+      int64 lhs_concat_dim = -1;
+      int64 rhs_concat_dim = -1;
+      if (operands_sharded_at_contracting_dims) {
+        if (windowing_operand == 0) {
+          rhs_concat_dim = slice_sharding_dim;
+        } else {
+          lhs_concat_dim = slice_sharding_dim;
+        }
+      } else if (windowed_at_contracting_dims || windowed_at_batch_dims) {
+        lhs_concat_dim = windowing_operand == 0
+                             ? rhs_to_lhs_indices[slice_sharding_dim]
+                             : slice_sharding_dim;
+        rhs_concat_dim = windowing_operand == 0
+                             ? slice_sharding_dim
+                             : lhs_to_rhs_indices[slice_sharding_dim];
+      } else {
+        if (windowing_operand == 0) {
+          lhs_concat_dim = output_to_lhs_indices[slice_sharding_dim];
+        } else {
+          rhs_concat_dim = output_to_rhs_indices[slice_sharding_dim];
+        }
+      }
+
+      auto dot_lhs = ccw_dot_lhs;
+      auto dot_rhs = ccw_dot_rhs;
+      if (lhs_concat_dim != -1) {
+        auto lhs_concat_shape = ccw_dot_lhs->shape();
+        lhs_concat_shape.set_dimensions(
+            lhs_concat_dim,
+            ccw_dot_lhs->shape().dimensions(lhs_concat_dim) * 2);
+        dot_lhs = body_b.AddInstruction(HloInstruction::CreateConcatenate(
+            lhs_concat_shape, {ccw_dot_lhs, cw_dot_lhs}, lhs_concat_dim));
+      }
+      if (rhs_concat_dim != -1) {
+        auto rhs_concat_shape = ccw_dot_rhs->shape();
+        rhs_concat_shape.set_dimensions(
+            rhs_concat_dim,
+            ccw_dot_rhs->shape().dimensions(rhs_concat_dim) * 2);
+        dot_rhs = body_b.AddInstruction(HloInstruction::CreateConcatenate(
+            rhs_concat_shape, {ccw_dot_rhs, cw_dot_rhs}, rhs_concat_dim));
+      }
+
+      TF_ASSIGN_OR_RETURN(
+          auto dot, create_sharded_dot(dot_lhs, dot_rhs, &body_b, conv_window));
+      if (windowed_at_contracting_dims) {
+        // Accumulate the partial output to the result buffer.
+        o = body_b.AddInstruction(
+            HloInstruction::CreateBinary(o->shape(), HloOpcode::kAdd, o, dot));
+      } else {
+        // The windowing operand is partitioned along batch/non-contracting
+        // dimensions, so we need a dynamic-update-slice to save the partial
+        // output in the result buffer.
+        auto slice_shape = dot->shape();
+        auto slice_dim = lhs_concat_dim != -1
+                             ? lhs_to_output_indices[lhs_concat_dim]
+                             : rhs_to_output_indices[rhs_concat_dim];
+        slice_shape.set_dimensions(slice_dim,
+                                   dot->shape().dimensions(slice_dim) / 2);
+        std::vector<int64> ccw_start_indices(dot->shape().rank(), 0);
+        std::vector<int64> cw_start_indices(dot->shape().rank(), 0);
+        cw_start_indices[slice_dim] = dot->shape().dimensions(slice_dim) / 2;
+        auto ccw_dot = body_b.AddInstruction(HloInstruction::CreateSlice(
+            slice_shape, dot, ccw_start_indices, slice_shape.dimensions(),
+            std::vector<int64>(dot->shape().rank(), 1)));
+        auto cw_dot = body_b.AddInstruction(HloInstruction::CreateSlice(
+            slice_shape, dot, cw_start_indices, dot->shape().dimensions(),
+            std::vector<int64>(dot->shape().rank(), 1)));
+
+        if (operands_sharded_at_contracting_dims) {
+          // Accumulate the partial output to the result buffer.
+          o = body_b.AddInstruction(HloInstruction::CreateBinary(
+              o->shape(), HloOpcode::kAdd, o, ccw_dot));
+          cw_cp_output = body_b.AddInstruction(HloInstruction::CreateBinary(
+              o->shape(), HloOpcode::kAdd, cw_cp_output, cw_dot));
+        } else {
+          auto ccw_offsets = MakePartitionOffsets(
+              o->shape(),
+              windowing_operand == 0 ? *lhs_sharding_transposed_to_match_output
+                                     : *rhs_sharding_transposed_to_match_output,
+              ccw_data_partition_id, &body_b);
+          auto cw_offsets = MakePartitionOffsets(
+              o->shape(),
+              windowing_operand == 0 ? *lhs_sharding_transposed_to_match_output
+                                     : *rhs_sharding_transposed_to_match_output,
+              cw_data_partition_id, &body_b);
+          o = body_b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+              o->shape(), o, ccw_dot, ccw_offsets));
+          o = body_b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+              o->shape(), o, cw_dot, cw_offsets));
+        }
+      }
+
+      std::vector<HloInstruction*> partial_results;
+      partial_results.push_back(o);
+      partial_results.push_back(cw_cp_output);
+      return partial_results;
+    };
+
+    // Generate partial result used by unidirectional algorithm.
+    auto get_partial_unid_result =
+        [&](HloInstruction* l, HloInstruction* r, HloInstruction* o,
+            HloInstruction* i) -> StatusOr<HloInstruction*> {
+      auto partition_id =
+          lhs.state().collective_ops_creator.create_partition_id(&body_b);
+      auto data_partition_id =
+          body_b.AddInstruction(HloInstruction::CreateBinary(
+              i->shape(), HloOpcode::kAdd, i, partition_id));
+      auto partition_count =
+          body_b.AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<uint32>(num_partitions)));
+      data_partition_id = body_b.AddInstruction(
+          HloInstruction::CreateBinary(i->shape(), HloOpcode::kRemainder,
+                                       data_partition_id, partition_count));
+      auto dot_lhs = l;
+      auto dot_rhs = r;
+      if (windowed_at_contracting_dims || windowed_at_batch_dims ||
+          operands_sharded_at_contracting_dims) {
+        // Slice the matching operand according to the partitioned dimensions on
+        // the windowed operand or the output.
+        auto slice_operand = matching_operand == 0 ? l : r;
+        // We do this by treating the matching operand as replicated, and
+        // resharding it to match the windowed operand or the output.
+        slice_operand->set_sharding(HloSharding::Replicate());
+        auto state = lhs.state();
+        state.b = &body_b;
+        state.partition_id = data_partition_id;
+        state.reshard_cache->per_hlo_cache.erase(slice_operand);
+        const HloSharding* slice_sharding;
+        if (operands_sharded_at_contracting_dims) {
+          slice_sharding = windowing_operand == 0
+                               ? &*output_sharding_transposed_to_match_rhs
+                               : &*output_sharding_transposed_to_match_lhs;
+        } else {
+          slice_sharding = windowing_operand == 0
+                               ? &*lhs_sharding_transposed_to_match_rhs
+                               : &*rhs_sharding_transposed_to_match_lhs;
+        }
+        auto slice =
+            PartitionedHlo(slice_operand, slice_operand->shape(), state)
+                .Reshard(*slice_sharding)
+                .hlo();
+        slice_operand->clear_sharding();
+        if (matching_operand == 0) {
+          dot_lhs = slice;
+        } else {
+          dot_rhs = slice;
+        }
+      }
+      TF_ASSIGN_OR_RETURN(
+          auto dot, create_sharded_dot(dot_lhs, dot_rhs, &body_b, conv_window));
+      if (windowed_at_contracting_dims ||
+          operands_sharded_at_contracting_dims) {
+        // Accumulate the partial output to the result buffer.
+        o = body_b.AddInstruction(
+            HloInstruction::CreateBinary(o->shape(), HloOpcode::kAdd, o, dot));
+      } else {
+        // The windowing operand is partitioned along batch/non-contracting
+        // dimensions, so we need a dynamic-update-slice to save the partial
+        // output in the result buffer.
+        auto offsets = MakePartitionOffsets(
+            o->shape(),
+            windowing_operand == 0 ? *lhs_sharding_transposed_to_match_output
+                                   : *rhs_sharding_transposed_to_match_output,
+            data_partition_id, &body_b);
+        o = body_b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+            o->shape(), o, dot, offsets));
+      }
+      return o;
+    };
+
     auto param = body_b.AddInstruction(HloInstruction::CreateParameter(
         /*parameter_number=*/0,
         ShapeUtil::MakeTupleShape({lhs.hlo()->shape(), rhs.hlo()->shape(),
-                                   result_buffer->shape(), iteration->shape()}),
+                                   result_buffer->shape(),
+                                   extra_buffer->shape(), iteration->shape()}),
         "param"));
     auto l = body_b.AddInstruction(
         HloInstruction::CreateGetTupleElement(lhs.hlo()->shape(), param, 0));
@@ -315,165 +619,325 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         HloInstruction::CreateGetTupleElement(rhs.hlo()->shape(), param, 1));
     auto o = body_b.AddInstruction(HloInstruction::CreateGetTupleElement(
         result_buffer->shape(), param, 2));
+    auto extra_inout = body_b.AddInstruction(
+        HloInstruction::CreateGetTupleElement(extra_buffer->shape(), param, 3));
     auto i = body_b.AddInstruction(
-        HloInstruction::CreateGetTupleElement(iteration->shape(), param, 3));
+        HloInstruction::CreateGetTupleElement(iteration->shape(), param, 4));
 
-    auto partition_id =
-        lhs.state().collective_ops_creator.create_partition_id(&body_b);
-    auto data_partition_id = body_b.AddInstruction(HloInstruction::CreateBinary(
-        i->shape(), HloOpcode::kAdd, i, partition_id));
-    if (operands_sharded_at_contracting_dims) {
-      // For reduce-scatter case, start from the data_partition_id + 1 to make
-      // the data_partition_id of the final data shard in each partition the
-      // same as the corresponding partition_id.
-      auto one = body_b.AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(1)));
-      data_partition_id = body_b.AddInstruction(HloInstruction::CreateBinary(
-          data_partition_id->shape(), HloOpcode::kAdd, data_partition_id, one));
-    }
-    auto partition_count = body_b.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<uint32>(num_partitions)));
-    data_partition_id = body_b.AddInstruction(HloInstruction::CreateBinary(
-        i->shape(), HloOpcode::kRemainder, data_partition_id, partition_count));
-    auto dot_lhs = l;
-    auto dot_rhs = r;
-    if (windowed_at_contracting_dims || windowed_at_batch_dims ||
-        operands_sharded_at_contracting_dims) {
-      // Slice the matching operand according to the partitioned dimensions on
-      // the windowed operand or the output.
-      auto slice_operand = matching_operand == 0 ? l : r;
-      // We do this by treating the matching operand as replicated, and
-      // resharding it to match the windowed operand or the output.
-      slice_operand->set_sharding(HloSharding::Replicate());
-      auto state = lhs.state();
-      state.b = &body_b;
-      state.partition_id = data_partition_id;
-      const HloSharding* slice_sharding;
+    // The bidirectional collective permute implementation has loop unrolling
+    // of degree 2, so num_partitions is required to be a multiple of 4.
+    if (options.bidirectional_windowed_einsum && num_partitions % 4 == 0) {
+      std::vector<std::pair<int64, int64>> ccw_sd_pairs(num_partitions);
+      for (int64 source = 0; source < num_partitions; ++source) {
+        // 0 -> n-1, 1 -> 0, 2 -> 1, ...
+        ccw_sd_pairs[source] = {source,
+                                (source - 1 + num_partitions) % num_partitions};
+      }
+      std::vector<std::pair<int64, int64>> cw_sd_pairs(num_partitions);
+      for (int64 source = 0; source < num_partitions; ++source) {
+        // 0 -> 1, 1 -> 2, 2 -> 3, ...
+        cw_sd_pairs[source] = {source, (source + 1) % num_partitions};
+      }
+
+      // Even number iteration.
+      auto next_l = l;
+      auto next_r = r;
+      auto ccw_cp_input = operands_sharded_at_contracting_dims ? o
+                          : windowing_operand == 0             ? l
+                                                               : r;
+      auto ccw_cp_output =
+          lhs.state()
+              .collective_ops_creator.create_cross_partition_collective_permute(
+                  &body_b, ccw_cp_input, ccw_sd_pairs,
+                  (*lhs.state().next_channel_id)++);
       if (operands_sharded_at_contracting_dims) {
-        slice_sharding = windowing_operand == 0
-                             ? &*output_sharding_transposed_to_match_rhs
-                             : &*output_sharding_transposed_to_match_lhs;
+        o = ccw_cp_output;
+      } else if (windowing_operand == 0) {
+        next_l = ccw_cp_output;
       } else {
-        slice_sharding = windowing_operand == 0
-                             ? &*lhs_sharding_transposed_to_match_rhs
-                             : &*rhs_sharding_transposed_to_match_lhs;
+        next_r = ccw_cp_output;
       }
-      auto slice = PartitionedHlo(slice_operand, slice_operand->shape(), state)
-                       .Reshard(*slice_sharding)
-                       .hlo();
-      slice_operand->clear_sharding();
-      if (matching_operand == 0) {
-        dot_lhs = slice;
-      } else {
-        dot_rhs = slice;
-      }
-    }
-    TF_ASSIGN_OR_RETURN(
-        auto dot, create_sharded_dot(dot_lhs, dot_rhs, &body_b, conv_window));
-    if (windowed_at_contracting_dims || operands_sharded_at_contracting_dims) {
-      // Accumulate the partial output to the result buffer.
-      o = body_b.AddInstruction(
-          HloInstruction::CreateBinary(o->shape(), HloOpcode::kAdd, o, dot));
-    } else {
-      // The windowing operand is partitioned along batch/non-contracting
-      // dimensions, so we need a dynamic-update-slice to save the partial
-      // output in the result buffer.
-      auto offsets = MakePartitionOffsets(
-          o->shape(),
-          windowing_operand == 0 ? *lhs_sharding_transposed_to_match_output
-                                 : *rhs_sharding_transposed_to_match_output,
-          data_partition_id, &body_b);
-      o = body_b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          o->shape(), o, dot, offsets));
-    }
+      auto cw_cp_input = extra_inout;
+      auto cw_cp_output =
+          lhs.state()
+              .collective_ops_creator.create_cross_partition_collective_permute(
+                  &body_b, cw_cp_input, cw_sd_pairs,
+                  (*lhs.state().next_channel_id)++);
 
-    // ++i
-    i = body_b.AddInstruction(HloInstruction::CreateBinary(
-        i->shape(), HloOpcode::kAdd, i,
+      TF_ASSIGN_OR_RETURN(
+          auto outputs,
+          get_partial_bid_results(l, r, o, extra_inout, cw_cp_output, i));
+      o = outputs[0];
+      cw_cp_output = outputs[1];
+
+      // ++i
+      i = body_b.AddInstruction(HloInstruction::CreateBinary(
+          i->shape(), HloOpcode::kAdd, i, CreateOne(i->shape(), &body_b)));
+
+      // Odd number iteration.
+      auto second_next_l = next_l;
+      auto second_next_r = next_r;
+      ccw_cp_input = operands_sharded_at_contracting_dims ? o
+                     : windowing_operand == 0             ? next_l
+                                                          : next_r;
+      ccw_cp_output =
+          lhs.state()
+              .collective_ops_creator.create_cross_partition_collective_permute(
+                  &body_b, ccw_cp_input, ccw_sd_pairs,
+                  (*lhs.state().next_channel_id)++);
+      if (operands_sharded_at_contracting_dims) {
+        o = ccw_cp_output;
+      } else if (windowing_operand == 0) {
+        second_next_l = ccw_cp_output;
+      } else {
+        second_next_r = ccw_cp_output;
+      }
+      auto next_cw_cp_input = cw_cp_output;
+      auto next_cw_cp_output =
+          lhs.state()
+              .collective_ops_creator.create_cross_partition_collective_permute(
+                  &body_b, next_cw_cp_input, cw_sd_pairs,
+                  (*lhs.state().next_channel_id)++);
+
+      TF_ASSIGN_OR_RETURN(
+          outputs, get_partial_bid_results(next_l, next_r, o, cw_cp_output,
+                                           next_cw_cp_output, i));
+      o = outputs[0];
+      next_cw_cp_output = outputs[1];
+
+      // ++i
+      i = body_b.AddInstruction(HloInstruction::CreateBinary(
+          i->shape(), HloOpcode::kAdd, i, CreateOne(i->shape(), &body_b)));
+
+      body_b.AddInstruction(HloInstruction::CreateTuple(
+          {second_next_l, second_next_r, o, next_cw_cp_output, i}));
+
+    } else if (options.unroll_windowed_einsum && num_partitions % 2 == 0) {
+      if (operands_sharded_at_contracting_dims) {
+        std::vector<std::pair<int64, int64>> output_sd_pairs(num_partitions);
+        for (int64 source = 0; source < num_partitions; ++source) {
+          // 0 -> n-2, 1 -> n-1, 2 -> 0, ...
+          output_sd_pairs[source] = {
+              source, (source - 2 + num_partitions) % num_partitions};
+        }
+
+        o = lhs.state()
+                .collective_ops_creator
+                .create_cross_partition_collective_permute(
+                    &body_b, o, output_sd_pairs,
+                    (*lhs.state().next_channel_id)++);
+
+        TF_ASSIGN_OR_RETURN(extra_inout,
+                            get_partial_unid_result(l, r, extra_inout, i));
+
+        extra_inout = lhs.state()
+                          .collective_ops_creator
+                          .create_cross_partition_collective_permute(
+                              &body_b, extra_inout, output_sd_pairs,
+                              (*lhs.state().next_channel_id)++);
+
+        // i+2
+        i = body_b.AddInstruction(HloInstruction::CreateBinary(
+            i->shape(), HloOpcode::kAdd, i,
+            body_b.AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::CreateR0<uint32>(2)))));
+        auto real_i = body_b.AddInstruction(HloInstruction::CreateBinary(
+            i->shape(), HloOpcode::kAdd, i,
+            body_b.AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::CreateR0<uint32>(1)))));
+
+        TF_ASSIGN_OR_RETURN(o, get_partial_unid_result(l, r, o, real_i));
         body_b.AddInstruction(
-            HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(1)))));
-    auto has_more = body_b.AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::MakeShape(PRED, {}), i,
-        body_b.AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<uint32>(num_partitions))),
-        ComparisonDirection::kLt));
-    // Collective-permute for the next window. We don't need it for the last
-    // iteration, so we use a conditional around the collective-permute.
-    HloInstruction* conditional;
-    {
-      SpmdBuilder cp_b("window_collective_permute", original_hlo);
-      {
-        auto p = cp_b.AddInstruction(HloInstruction::CreateParameter(
-            0,
-            operands_sharded_at_contracting_dims ? o->shape()
-            : windowing_operand == 0             ? l->shape()
-                                                 : r->shape(),
-            "window"));
+            HloInstruction::CreateTuple({l, r, o, extra_inout, i}));
+      } else {
         std::vector<std::pair<int64, int64>> sd_pairs(num_partitions);
         for (int64 source = 0; source < num_partitions; ++source) {
           // 0 -> n-1, 1 -> 0, 2 -> 1, ...
           sd_pairs[source] = {source,
                               (source - 1 + num_partitions) % num_partitions};
         }
-        lhs.state()
-            .collective_ops_creator.create_cross_partition_collective_permute(
-                &cp_b, p, sd_pairs, (*lhs.state().next_channel_id)++);
+
+        // Even number iteration.
+        auto next_l = l;
+        auto next_r = r;
+        auto cp_input = windowing_operand == 0 ? l : r;
+        auto cp_output = lhs.state()
+                             .collective_ops_creator
+                             .create_cross_partition_collective_permute(
+                                 &body_b, cp_input, sd_pairs,
+                                 (*lhs.state().next_channel_id)++);
+        if (windowing_operand == 0) {
+          next_l = cp_output;
+        } else {
+          next_r = cp_output;
+        }
+        TF_ASSIGN_OR_RETURN(o, get_partial_unid_result(l, r, o, i));
+
+        // ++i
+        i = body_b.AddInstruction(HloInstruction::CreateBinary(
+            i->shape(), HloOpcode::kAdd, i,
+            body_b.AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::CreateR0<uint32>(1)))));
+
+        // Odd number iteration.
+        auto second_next_l = next_l;
+        auto second_next_r = next_r;
+        cp_input = windowing_operand == 0 ? next_l : next_r;
+        cp_output = lhs.state()
+                        .collective_ops_creator
+                        .create_cross_partition_collective_permute(
+                            &body_b, cp_input, sd_pairs,
+                            (*lhs.state().next_channel_id)++);
+        if (windowing_operand == 0) {
+          second_next_l = cp_output;
+        } else {
+          second_next_r = cp_output;
+        }
+        TF_ASSIGN_OR_RETURN(o, get_partial_unid_result(next_l, next_r, o, i));
+
+        // ++i
+        i = body_b.AddInstruction(HloInstruction::CreateBinary(
+            i->shape(), HloOpcode::kAdd, i,
+            body_b.AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::CreateR0<uint32>(1)))));
+
+        body_b.AddInstruction(HloInstruction::CreateTuple(
+            {second_next_l, second_next_r, o, extra_inout, i}));
       }
-      SpmdBuilder ncp_b("last_iteration_noop", original_hlo);
+    } else {
+      auto real_i = i;
+      if (operands_sharded_at_contracting_dims) {
+        // For reduce-scatter case, start from the data_partition_id + 1 to make
+        // the data_partition_id of the final data shard in each partition the
+        // same as the corresponding partition_id.
+        real_i = body_b.AddInstruction(HloInstruction::CreateBinary(
+            real_i->shape(), HloOpcode::kAdd, real_i,
+            CreateOne(real_i->shape(), &body_b)));
+      }
+      TF_ASSIGN_OR_RETURN(o, get_partial_unid_result(l, r, o, real_i));
+
+      // ++i
+      i = body_b.AddInstruction(HloInstruction::CreateBinary(
+          i->shape(), HloOpcode::kAdd, i,
+          body_b.AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<uint32>(1)))));
+      auto has_more = body_b.AddInstruction(HloInstruction::CreateCompare(
+          ShapeUtil::MakeShape(PRED, {}), i,
+          body_b.AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<uint32>(num_partitions))),
+          ComparisonDirection::kLt));
+      // Collective-permute for the next window. We don't need it for the last
+      // iteration, so we use a conditional around the collective-permute.
+      HloInstruction* conditional;
       {
-        ncp_b.AddInstruction(HloInstruction::CreateParameter(
-            0,
+        SpmdBuilder cp_b("window_collective_permute", original_hlo);
+        {
+          auto p = cp_b.AddInstruction(HloInstruction::CreateParameter(
+              0,
+              operands_sharded_at_contracting_dims ? o->shape()
+              : windowing_operand == 0             ? l->shape()
+                                                   : r->shape(),
+              "window"));
+          std::vector<std::pair<int64, int64>> sd_pairs(num_partitions);
+          for (int64 source = 0; source < num_partitions; ++source) {
+            // 0 -> n-1, 1 -> 0, 2 -> 1, ...
+            sd_pairs[source] = {source,
+                                (source - 1 + num_partitions) % num_partitions};
+          }
+          lhs.state()
+              .collective_ops_creator.create_cross_partition_collective_permute(
+                  &cp_b, p, sd_pairs, (*lhs.state().next_channel_id)++);
+        }
+        SpmdBuilder ncp_b("last_iteration_noop", original_hlo);
+        {
+          ncp_b.AddInstruction(HloInstruction::CreateParameter(
+              0,
+              operands_sharded_at_contracting_dims ? o->shape()
+              : windowing_operand == 0             ? l->shape()
+                                                   : r->shape(),
+              "window"));
+        }
+        conditional = body_b.AddInstruction(HloInstruction::CreateConditional(
             operands_sharded_at_contracting_dims ? o->shape()
             : windowing_operand == 0             ? l->shape()
                                                  : r->shape(),
-            "window"));
+            has_more,
+            operands_sharded_at_contracting_dims ? o
+            : windowing_operand == 0             ? l
+                                                 : r,
+            module->AddEmbeddedComputation(cp_b.Build()),
+            operands_sharded_at_contracting_dims ? o
+            : windowing_operand == 0             ? l
+                                                 : r,
+            module->AddEmbeddedComputation(ncp_b.Build())));
       }
-      conditional = body_b.AddInstruction(HloInstruction::CreateConditional(
-          operands_sharded_at_contracting_dims ? o->shape()
-          : windowing_operand == 0             ? l->shape()
-                                               : r->shape(),
-          has_more,
-          operands_sharded_at_contracting_dims ? o
-          : windowing_operand == 0             ? l
-                                               : r,
-          module->AddEmbeddedComputation(cp_b.Build()),
-          operands_sharded_at_contracting_dims ? o
-          : windowing_operand == 0             ? l
-                                               : r,
-          module->AddEmbeddedComputation(ncp_b.Build())));
+      if (operands_sharded_at_contracting_dims) {
+        o = conditional;
+      } else if (windowing_operand == 0) {
+        l = conditional;
+      } else {
+        r = conditional;
+      }
+      body_b.AddInstruction(
+          HloInstruction::CreateTuple({l, r, o, extra_inout, i}));
     }
-    if (operands_sharded_at_contracting_dims) {
-      o = conditional;
-    } else if (windowing_operand == 0) {
-      l = conditional;
-    } else {
-      r = conditional;
-    }
-    body_b.AddInstruction(HloInstruction::CreateTuple({l, r, o, i}));
 
     SpmdBuilder cond_b("windowed_dot_general_cond", original_hlo);
     auto cond_param = cond_b.AddInstruction(HloInstruction::CreateParameter(
         /*parameter_number=*/0,
         ShapeUtil::MakeTupleShape({lhs.hlo()->shape(), rhs.hlo()->shape(),
-                                   result_buffer->shape(), iteration->shape()}),
+                                   result_buffer->shape(),
+                                   extra_buffer->shape(), iteration->shape()}),
         "param"));
     auto cond_i = cond_b.AddInstruction(HloInstruction::CreateGetTupleElement(
-        iteration->shape(), cond_param, 3));
+        iteration->shape(), cond_param, 4));
+    int64 adapted_num_partitions =
+        (options.bidirectional_windowed_einsum && num_partitions % 4 == 0)
+            ? num_partitions / 2
+            : num_partitions;
     cond_b.AddInstruction(HloInstruction::CreateCompare(
         ShapeUtil::MakeShape(PRED, {}), cond_i,
         cond_b.AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<uint32>(num_partitions))),
+            LiteralUtil::CreateR0<uint32>(adapted_num_partitions))),
         ComparisonDirection::kLt));
     auto while_loop = b->AddInstruction(HloInstruction::CreateWhile(
         cond_param->shape(), module->AddEmbeddedComputation(cond_b.Build()),
         module->AddEmbeddedComputation(body_b.Build()),
         b->AddInstruction(HloInstruction::CreateTuple(
-            {lhs.hlo(), rhs.hlo(), result_buffer, iteration}))));
+            {lhs.hlo(), rhs.hlo(), result_buffer, extra_buffer, iteration}))));
     windowed_dot_general_loops->push_back(
         {while_loop, windowing_operand, windowed_at_contracting_dims,
          windowed_at_batch_dims, operands_sharded_at_contracting_dims});
     auto result = b->AddInstruction(HloInstruction::CreateGetTupleElement(
         result_buffer->shape(), while_loop, 2));
+    if (((options.bidirectional_windowed_einsum && num_partitions % 4 == 0) ||
+         (options.unroll_windowed_einsum && num_partitions % 2 == 0)) &&
+        operands_sharded_at_contracting_dims) {
+      std::vector<std::pair<int64, int64>> extra_sd_pairs(num_partitions);
+      for (int64 source = 0; source < num_partitions; ++source) {
+        // 0 -> 1, 1 -> 2, 2 -> 3, ...
+        extra_sd_pairs[source] = {source, (source + 1) % num_partitions};
+      }
+      auto extra_result =
+          b->AddInstruction(HloInstruction::CreateGetTupleElement(
+              extra_buffer->shape(), while_loop, 3));
+      if (options.bidirectional_windowed_einsum && num_partitions % 4 == 0) {
+        extra_result = lhs.state()
+                           .collective_ops_creator
+                           .create_cross_partition_collective_permute(
+                               b, extra_result, extra_sd_pairs,
+                               (*lhs.state().next_channel_id)++);
+      }
+      if (options.unroll_windowed_einsum && num_partitions % 2 == 0) {
+        result = lhs.state()
+                     .collective_ops_creator
+                     .create_cross_partition_collective_permute(
+                         b, result, extra_sd_pairs,
+                         (*lhs.state().next_channel_id)++);
+      }
+      result = b->AddInstruction(HloInstruction::CreateBinary(
+          result->shape(), HloOpcode::kAdd, result, extra_result));
+    }
     if (!ShapeUtil::Compatible(padded_result_buffer_shape,
                                unpadded_result_buffer_shape)) {
       result = b->AddInstruction(HloInstruction::CreateSlice(
@@ -2249,7 +2713,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
 }  // namespace
 
 Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
-    HloComputation* computation) {
+    HloComputation* computation, const SpmdPartitionerOptions& options) {
   for (auto& loop : windowed_dot_general_loops_) {
     if (loop.windowed_in_contracting_dims || loop.windowed_in_batch_dims ||
         loop.operands_sharded_at_contracting_dims) {
@@ -2261,7 +2725,9 @@ Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
           SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
               loop.while_loop, 1 - loop.windowed_operand));
     }
-    if (!loop.windowed_in_contracting_dims &&
+    // Currently unrolled loop does not support this optimization.
+    if (!options.bidirectional_windowed_einsum &&
+        !options.unroll_windowed_einsum && !loop.windowed_in_contracting_dims &&
         !loop.operands_sharded_at_contracting_dims) {
       // We have a dynamic-update-slice for the output in
       // batch/non-contracting-dim windowed dot-general. So moving reduce ops

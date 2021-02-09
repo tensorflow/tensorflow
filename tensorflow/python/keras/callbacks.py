@@ -27,6 +27,7 @@ import io
 import json
 import os
 import re
+import sys
 import time
 
 import numpy as np
@@ -670,7 +671,8 @@ class Callback(object):
         logs: Dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`. For training epoch, the values of the
-         `Model`'s metrics are returned. Example : `{'loss': 0.2, 'acc': 0.7}`.
+         `Model`'s metrics are returned. Example : `{'loss': 0.2, 'accuracy':
+           0.7}`.
     """
 
   @doc_controls.for_subclass_implementers
@@ -1252,7 +1254,7 @@ class ModelCheckpoint(Callback):
           options, checkpoint_options_lib.CheckpointOptions):
         self._options = options or checkpoint_options_lib.CheckpointOptions()
       else:
-        raise TypeError('If save_weights_only is True, then `options` must be'
+        raise TypeError('If save_weights_only is True, then `options` must be '
                         'either None or a tf.train.CheckpointOptions')
     else:
       if options is None or isinstance(options, save_options_lib.SaveOptions):
@@ -1697,7 +1699,10 @@ class EarlyStopping(Callback):
     restore_best_weights: Whether to restore model weights from
         the epoch with the best value of the monitored quantity.
         If False, the model weights obtained at the last step of
-        training are used.
+        training are used. An epoch will be restored regardless
+        of the performance relative to the `baseline`. If no epoch
+        improves on `baseline`, training will run for `patience`
+        epochs and restore weights from the best epoch in that set.
 
   Example:
 
@@ -1757,30 +1762,33 @@ class EarlyStopping(Callback):
     # Allow instances to be re-used
     self.wait = 0
     self.stopped_epoch = 0
-    if self.baseline is not None:
-      self.best = self.baseline
-    else:
-      self.best = np.Inf if self.monitor_op == np.less else -np.Inf
+    self.best = np.Inf if self.monitor_op == np.less else -np.Inf
     self.best_weights = None
 
   def on_epoch_end(self, epoch, logs=None):
     current = self.get_monitor_value(logs)
     if current is None:
       return
-    if self.monitor_op(current - self.min_delta, self.best):
+    if self.restore_best_weights and self.best_weights is None:
+      # Restore the weights after first epoch if no progress is ever made.
+      self.best_weights = self.model.get_weights()
+
+    self.wait += 1
+    if self._is_improvement(current, self.best):
       self.best = current
-      self.wait = 0
       if self.restore_best_weights:
         self.best_weights = self.model.get_weights()
-    else:
-      self.wait += 1
-      if self.wait >= self.patience:
-        self.stopped_epoch = epoch
-        self.model.stop_training = True
-        if self.restore_best_weights:
-          if self.verbose > 0:
-            print('Restoring model weights from the end of the best epoch.')
-          self.model.set_weights(self.best_weights)
+      # Only restart wait if we beat both the baseline and our previous best.
+      if self.baseline is None or self._is_improvement(current, self.baseline):
+        self.wait = 0
+
+    if self.wait >= self.patience:
+      self.stopped_epoch = epoch
+      self.model.stop_training = True
+      if self.restore_best_weights and self.best_weights is not None:
+        if self.verbose > 0:
+          print('Restoring model weights from the end of the best epoch.')
+        self.model.set_weights(self.best_weights)
 
   def on_train_end(self, logs=None):
     if self.stopped_epoch > 0 and self.verbose > 0:
@@ -1794,6 +1802,9 @@ class EarlyStopping(Callback):
                       'which is not available. Available metrics are: %s',
                       self.monitor, ','.join(list(logs.keys())))
     return monitor_value
+
+  def _is_improvement(self, monitor_value, reference_value):
+    return self.monitor_op(monitor_value - self.min_delta, reference_value)
 
 
 @keras_export('keras.callbacks.RemoteMonitor')
@@ -2263,35 +2274,24 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self.update_freq == 'epoch':
       return
 
-    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
-    self._prev_summary_state.append({
-        'is_recording': summary_state.is_recording,
-        'writer': summary_state.writer,
-        'step': summary_state.step
-    })
-
-    if self.update_freq == 'epoch':
-      should_record = False
-      writer = None
-    else:
-      should_record = lambda: math_ops.equal(step % self.update_freq, 0)
-
-    summary_state.is_recording = should_record
-    summary_state.writer = writer
+    should_record = lambda: math_ops.equal(step % self.update_freq, 0)
     # TODO(b/151339474): Fix deadlock when not using .value() here.
-    summary_ops_v2.set_step(step.value())
+    summary_context = (writer.as_default(step.value()),
+                       summary_ops_v2.record_if(should_record))
+    self._prev_summary_state.append(summary_context)
+    summary_context[0].__enter__()
+    summary_context[1].__enter__()
 
   def _pop_writer(self):
     """Pops the current writer."""
     if self.update_freq == 'epoch':
       return
 
-    prev_state = self._prev_summary_state.pop()
-
-    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
-    summary_state.is_recording = prev_state['is_recording']
-    summary_state.writer = prev_state['writer']
-    summary_ops_v2.set_step(prev_state['step'])
+    # See _push_writer for the content of the previous_context, which is pair
+    # of context.
+    previous_context = self._prev_summary_state.pop()
+    previous_context[1].__exit__(*sys.exc_info())
+    previous_context[0].__exit__(*sys.exc_info())
 
   def _close_writers(self):
     for writer in self._writers.values():
@@ -2367,7 +2367,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._pop_writer()
 
   def _implements_train_batch_hooks(self):
-    return self._should_trace  # Only call batch hooks when tracing is enabled
+    # Only call batch hooks when tracing or write_steps_per_second are enabled
+    return self._should_trace or self.write_steps_per_second
 
   def on_train_batch_begin(self, batch, logs=None):
     self._global_train_batch += 1

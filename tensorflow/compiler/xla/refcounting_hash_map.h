@@ -59,18 +59,6 @@ class RefcountingHashMap {
   std::shared_ptr<V> GetOrCreateIfAbsent(
       const K& key,
       const std::function<std::unique_ptr<V>(const K&)>& value_factory) {
-    return *GetOrTryCreateIfAbsent(key, [&](const K& key) {
-      return StatusOr<std::unique_ptr<V>>(value_factory(key));
-    });
-  }
-
-  // Gets the value for the given key.
-  //
-  // If the map doesn't contain a live value for the key, constructs one
-  // using `value_factory`, or returns the status from `value_factory`.
-  StatusOr<std::shared_ptr<V>> GetOrTryCreateIfAbsent(
-      const K& key, const std::function<StatusOr<std::unique_ptr<V>>(const K&)>&
-                        value_factory) {
     absl::MutexLock lock(&mu_);
     auto it = map_.find(key);
     if (it != map_.end()) {
@@ -83,26 +71,11 @@ class RefcountingHashMap {
 
     // Create entry in the map and then set its value, so the value can
     // contain a pointer back into the map.
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<V> value_unique, value_factory(key));
     it = map_.emplace(key, std::weak_ptr<V>()).first;
-    std::shared_ptr<V> value(value_unique.release(), Deleter{it->first, *this});
+    std::shared_ptr<V> value(value_factory(key).release(),
+                             Deleter{it->first, *this});
     it->second = value;  // Set the weak ptr to the shared ptr.
     return value;
-  }
-
-  // Runs a function over every key/value in the map.
-  //
-  // Touching the map from within this function may deadlock; don't do it.
-  //
-  // Function signature must be compatible with
-  //   void fn(const K&, std::shared_ptr<V>)
-  //
-  template <typename Fn>
-  void ForEach(Fn&& fn) {
-    absl::MutexLock lock(&mu_);
-    for (const auto& kv : map_) {
-      fn(kv.first, kv.second.lock());
-    }
   }
 
  private:

@@ -19,21 +19,73 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor ConvolutionTransposed(
-    const OperationDef& definition,
-    const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info);
+class ConvolutionTransposed : public GPUOperation {
+ public:
+  ConvolutionTransposed() = default;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
+  }
+  int3 GetGridSize() const override;
 
-ComputeTaskDescriptor ConvolutionTransposed4x4(
-    const OperationDef& definition,
-    const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info);
+  // Move only
+  ConvolutionTransposed(ConvolutionTransposed&& kernel) = default;
+  ConvolutionTransposed& operator=(ConvolutionTransposed&& kernel) = default;
+  ConvolutionTransposed(const ConvolutionTransposed&) = delete;
+  ConvolutionTransposed& operator=(const ConvolutionTransposed&) = delete;
+
+ private:
+  explicit ConvolutionTransposed(const OperationDef& definition)
+      : GPUOperation(definition) {}
+  friend ConvolutionTransposed CreateConvolutionTransposed(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
+};
+
+ConvolutionTransposed CreateConvolutionTransposed(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
+
+class ConvolutionTransposed4x4 : public GPUOperation {
+ public:
+  ConvolutionTransposed4x4() = default;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
+  }
+  int3 GetGridSize() const override;
+
+  // Move only
+  ConvolutionTransposed4x4(ConvolutionTransposed4x4&& kernel) = default;
+  ConvolutionTransposed4x4& operator=(ConvolutionTransposed4x4&& kernel) =
+      default;
+  ConvolutionTransposed4x4(const ConvolutionTransposed4x4&) = delete;
+  ConvolutionTransposed4x4& operator=(const ConvolutionTransposed4x4&) = delete;
+
+ private:
+  explicit ConvolutionTransposed4x4(const OperationDef& definition)
+      : GPUOperation(definition) {}
+  friend ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
+
+  int2 block_size_;
+};
+
+ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
 
 bool CheckConvolutionTransposed4x4Support(
     const ConvolutionTransposedAttributes& attr);

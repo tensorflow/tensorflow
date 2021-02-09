@@ -37,6 +37,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations_lib
@@ -296,6 +297,24 @@ class NamedDistribution(object):
 
   def __repr__(self):
     return self._name
+
+
+# This is to allow adding combinations that runs a function both as a
+# tf.function and eagerly.
+#
+# @combinations.generate(
+#   combinations.combine(
+#     tf_function = [combinations.tf_function, combinations.no_tf_function]
+#   )
+# )
+# def testXXX(tf_function):
+#   @tf_function
+#   def foo():
+#     tf.add(1., 1.)
+#
+#   foo()
+tf_function = combinations_lib.NamedObject("TfFunction", def_function.function)
+no_tf_function = combinations_lib.NamedObject("NoTfFunction", lambda f: f)
 
 
 def concat(*combined):

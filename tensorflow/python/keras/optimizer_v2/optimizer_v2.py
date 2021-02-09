@@ -1061,7 +1061,7 @@ class OptimizerV2(trackable.Trackable):
       return learning_rate_schedule.serialize(value)
     if callable(value):
       return value()
-    if tensor_util.is_tensor(value):
+    if tensor_util.is_tf_type(value):
       return backend.get_value(value)
     return value
 

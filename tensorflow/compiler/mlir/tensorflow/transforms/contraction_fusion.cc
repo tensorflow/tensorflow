@@ -100,14 +100,14 @@ class FuseIntoContractionOp : public RewritePattern {
 
     // Add a fused output kernel name to the list of fusions.
     Identifier fusion_id = Identifier::get("fusion", ctx);
-    StringAttr fusion_name = StringAttr::get(fusion->output_kernel, ctx);
+    StringAttr fusion_name = StringAttr::get(ctx, fusion->output_kernel);
 
     auto is_fusion = [&](const NamedAttribute &attr) -> bool {
       return attr.first == fusion_id;
     };
 
     if (isa<BaseOp>(fuse_into)) {
-      NamedAttribute fusion_attr(fusion_id, ArrayAttr::get({fusion_name}, ctx));
+      NamedAttribute fusion_attr(fusion_id, ArrayAttr::get(ctx, {fusion_name}));
       attrs.push_back(fusion_attr);
 
     } else {
@@ -119,7 +119,7 @@ class FuseIntoContractionOp : public RewritePattern {
       SmallVector<Attribute, 4> updated(rng.begin(), rng.end());
       updated.push_back(fusion_name);
 
-      attrs.push_back(NamedAttribute(fusion_id, ArrayAttr::get(updated, ctx)));
+      attrs.push_back(NamedAttribute(fusion_id, ArrayAttr::get(ctx, updated)));
     }
 
     // Update all uses of a fusable op with a new fused operation.
@@ -144,7 +144,7 @@ void ContractionFusionPass::runOnFunction() {
 
   OwningRewritePatternList patterns;
   patterns.insert<FuseIntoMatMulOp>();
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace

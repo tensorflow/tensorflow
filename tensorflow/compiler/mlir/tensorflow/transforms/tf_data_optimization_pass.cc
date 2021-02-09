@@ -29,7 +29,7 @@ struct TFDataOptimization
     OwningRewritePatternList patterns;
     mlir::TF::PopulateTFDataOptimizationPatterns(&getContext(), &patterns);
 
-    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

@@ -27,6 +27,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import losses_utils
@@ -37,6 +38,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
+from tensorflow.python.ops.ragged import ragged_map_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -248,8 +252,9 @@ class LossFunctionWrapper(Loss):
     Returns:
       Loss values per sample.
     """
-    if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
+    if tensor_util.is_tf_type(y_pred) and tensor_util.is_tf_type(y_true):
       y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(y_pred, y_true)
+
     ag_fn = autograph.tf_convert(self.fn, ag_ctx.control_status_ctx())
     return ag_fn(y_true, y_pred, **self._fn_kwargs)
 
@@ -1213,6 +1218,51 @@ def mean_squared_error(y_true, y_pred):
   return K.mean(math_ops.squared_difference(y_pred, y_true), axis=-1)
 
 
+def _ragged_tensor_apply_loss(loss_fn, y_true, y_pred):
+  """Apply a loss function on a per batch basis.
+
+  Args:
+    loss_fn: The loss function
+    y_true: truth values (RaggedTensor)
+    y_pred: predicted values (RaggedTensor)
+
+  Returns:
+    Loss-function result. A dense tensor if the output has a single dimension
+    (per-batch loss value); a ragged tensor otherwise.
+  """
+
+  def _wrapper(inputs):
+    return loss_fn(*inputs)
+
+  lshape = y_pred.shape.as_list()[1:-1]
+  if len(lshape) > 0:
+    spec = ragged_tensor.RaggedTensorSpec(shape=lshape, dtype=y_pred.dtype)
+  else:
+    spec = tensor_spec.TensorSpec(shape=[], dtype=y_pred.dtype)
+
+  nested_splits_list = [rt.nested_row_splits for rt in (y_true, y_pred)]
+  assertion_list = ragged_util.assert_splits_match(nested_splits_list)
+  with ops.control_dependencies(assertion_list):
+    return ragged_map_ops.map_fn(_wrapper, elems=(y_true, y_pred), dtype=spec)
+
+
+@dispatch.dispatch_for_types(mean_squared_error, ragged_tensor.RaggedTensor)
+def _ragged_tensor_mse(y_true, y_pred):
+  """ Implements support for handling RaggedTensors.
+
+  Args:
+    y_true: RaggedTensor truth values. shape = `[batch_size, d0, .. dN]`.
+    y_pred: RaggedTensor predicted values. shape = `[batch_size, d0, .. dN]`.
+
+  Returns:
+    Mean squared error values. shape = `[batch_size, d0, .. dN-1]`.
+    When the number of dimensions of the batch feature vector [d0, .. dN] is
+    greater than one the return value is a RaggedTensor. Otherwise a Dense
+    tensor with dimensions [batch_size] is returned.
+  """
+  return _ragged_tensor_apply_loss(mean_squared_error, y_true, y_pred)
+
+
 @keras_export('keras.metrics.mean_absolute_error', 'keras.metrics.mae',
               'keras.metrics.MAE', 'keras.losses.mean_absolute_error',
               'keras.losses.mae', 'keras.losses.MAE')
@@ -1404,7 +1454,7 @@ def categorical_hinge(y_true, y_pred):
   where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Standalone usage:
-
+  
   >>> y_true = np.random.randint(0, 3, size=(2,))
   >>> y_true = tf.keras.utils.to_categorical(y_true, num_classes=3)
   >>> y_pred = np.random.random(size=(2, 3))
@@ -1413,9 +1463,10 @@ def categorical_hinge(y_true, y_pred):
   >>> pos = np.sum(y_true * y_pred, axis=-1)
   >>> neg = np.amax((1. - y_true) * y_pred, axis=-1)
   >>> assert np.array_equal(loss.numpy(), np.maximum(0., neg - pos + 1.))
-
+  
   Args:
-    y_true: The ground truth values. `y_true` values are expected to be 0 or 1.
+    y_true: The ground truth values. `y_true` values are expected to be
+    either `{-1, +1}` or `{0, 1}` (i.e. a one-hot-encoded tensor).
     y_pred: The predicted values.
 
   Returns:

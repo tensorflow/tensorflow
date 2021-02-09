@@ -91,6 +91,8 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteComplex64), "COMPLEX64");
   EXPECT_EQ(type_name(kTfLiteComplex128), "COMPLEX128");
   EXPECT_EQ(type_name(kTfLiteString), "STRING");
+  EXPECT_EQ(type_name(kTfLiteResource), "RESOURCE");
+  EXPECT_EQ(type_name(kTfLiteVariant), "VARIANT");
 }
 
 TEST(Quantization, TestQuantizationFree) {

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/string_util.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <cstdlib>
 #include <cstring>
 #include <vector>

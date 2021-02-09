@@ -60,6 +60,9 @@ class AddingPreprocessingLayer(
         dtype=dtypes.float32,
         initializer=init_ops.zeros_initializer)
 
+  def reset_state(self):
+    self._sum.assign([0.])
+
   def set_total(self, sum_value):
     """This is an example of how a subclass would implement a direct setter.
 
@@ -137,8 +140,12 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     input_dataset = {"foo": 0}
 
     layer = get_layer()
-    with self.assertRaisesRegex(ValueError, "requires a"):
-      layer.adapt(input_dataset)
+    if context.executing_eagerly():
+      with self.assertRaisesRegex(ValueError, "Failed to find data adapter"):
+        layer.adapt(input_dataset)
+    else:
+      with self.assertRaisesRegex(ValueError, "requires a"):
+        layer.adapt(input_dataset)
 
   def test_adapt_infinite_dataset_fails(self):
     """Test that preproc layers fail if an infinite dataset is passed."""
@@ -146,8 +153,13 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
         np.array([[1], [2], [3], [4], [5], [0]])).repeat()
 
     layer = get_layer()
-    with self.assertRaisesRegex(ValueError, ".*infinite number of elements.*"):
-      layer.adapt(input_dataset)
+    if context.executing_eagerly():
+      with self.assertRaisesRegex(ValueError, "infinite dataset"):
+        layer.adapt(input_dataset)
+    else:
+      with self.assertRaisesRegex(ValueError,
+                                  ".*infinite number of elements.*"):
+        layer.adapt(input_dataset)
 
   def test_pre_build_injected_update_with_no_build_fails(self):
     """Test external update injection before build() is called fails."""
@@ -247,17 +259,6 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     model._run_eagerly = testing_utils.should_run_eagerly()
 
     self.assertAllEqual([[16], [17], [18]], model.predict([1., 2., 3.]))
-
-  def test_adapt_dataset_of_tuples_fails(self):
-    """Test that preproc layers can adapt() before build() is called."""
-    input_dataset = dataset_ops.Dataset.from_tensor_slices((
-        np.array([[1], [2], [3], [4], [5], [0]]),
-        np.array([[1], [2], [3], [4], [5], [0]])))
-
-    layer = get_layer()
-
-    with self.assertRaisesRegex(TypeError, "single-Tensor elements"):
-      layer.adapt(input_dataset)
 
   def test_post_build_adapt_update_dataset(self):
     """Test that preproc layers can adapt() after build() is called."""

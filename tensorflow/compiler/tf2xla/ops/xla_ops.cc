@@ -611,7 +611,9 @@ REGISTER_OP("XlaVariadicReduce")
       return Status::OK();
     })
     .Doc(R"doc(
-Wraps the variadic XLA Reduce operator, documented at
+Wraps the variadic XLA Reduce operator.
+
+Semantics are documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
 
 input: the input tensor(s)
@@ -730,16 +732,16 @@ sorted_values: A `Tensor` of type V.
 )doc");
 
 REGISTER_OP("XlaVariadicSort")
-    .Input("input: T")
-    .Output("output: T")
+    .Input("inputs: T")
+    .Input("dimension: int32")
+    .Output("outputs: T")
     .Attr("T: list(type) >= 1")
     .Attr("comparator: func")
-    .Attr("dimension: int")
     .Attr("is_stable: bool")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      for (int i = 0; i < c->num_inputs(); ++i) {
-        c->set_output(i, c->input(i));
-      }
+      std::vector<shape_inference::ShapeHandle> input_shapes;
+      TF_RETURN_IF_ERROR(c->input("inputs", &input_shapes));
+      TF_RETURN_IF_ERROR(c->set_output("outputs", input_shapes));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -750,13 +752,13 @@ Wraps the XLA Sort operator, documented at
 Sorts one or more tensors, with support for custom comparator, dimension, and
 is_stable attributes.
 
-input: A list of `Tensor` of identical shape by possibly different types.
+inputs: A list of `Tensor` of identical shape but possibly different types.
+dimension: The dimension along which to sort. Must be a compile-time constant.
+is_stable: Whether to use stable sort.
 comparator: A comparator function to apply to 2*N scalars and returning a
   boolean. N is the number of sort inputs. If you want to sort in ascending
   order then the comparator should perform a less-than comparison.
-output: A list of `Tensor` of type T.
-dimension: The dimension along which to sort.
-is_stable: Whether to use stable sort.
+outputs: A list of `Tensor` of same shape and types as the `input`.
 )doc");
 
 // TODO(b/37549631) setting the While Op to always be stateful is too
@@ -897,6 +899,7 @@ REGISTER_OP("XlaSharding")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("sharding: string = ''")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 An op which shards the input based on the given sharding attribute.

@@ -10,6 +10,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -387,5 +388,4 @@ bzl_library(
     name = "build_def_bzl",
     srcs = ["build_def.bzl"],
     visibility = [":micro"],
-    deps = ["//tensorflow:tensorflow_bzl"],
 )

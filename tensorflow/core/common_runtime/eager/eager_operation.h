@@ -39,7 +39,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   explicit EagerOperation(tensorflow::EagerContext* ctx)
       : ImmediateExecutionOperation(kEager), ctx_(*ctx) {}
   ~EagerOperation() override {
-    for (TensorHandle* h : inputs_) {
+    for (ImmediateExecutionTensorHandle* h : inputs_) {
       h->Unref();
     }
   }
@@ -55,6 +55,8 @@ class EagerOperation : public ImmediateExecutionOperation {
 
   const string& DeviceName() const override { return device_name_; }
 
+  ImmediateExecutionContext* GetContext() const override { return &ctx_; }
+
   const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
     return device_parsed_name_;
   }
@@ -69,8 +71,9 @@ class EagerOperation : public ImmediateExecutionOperation {
 
   void SetDevice(VariantDevice device) {
     device_ = device;
-    device_name_ =
-        device == kVariantDeviceNull ? "" : VariantDeviceName(device);
+    device_name_ = absl::visit(
+        [](auto* device) { return device == nullptr ? "" : device->name(); },
+        device);
     DeviceNameUtils::ParseFullName(device_name_, &device_parsed_name_);
     // TODO(b/154133594): Due to intricacies of external logic, we can not
     // set this do device_name_ as it would be natural, because we need the
@@ -82,7 +85,11 @@ class EagerOperation : public ImmediateExecutionOperation {
 
   Status AddInput(AbstractTensorHandle* input) override;
   Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override;
+  Status SetInput(size_t index, ImmediateExecutionTensorHandle* input) override;
   absl::Span<ImmediateExecutionTensorHandle* const> GetInputs() const override;
+  bool HasCustomDeviceInput() const override {
+    return custom_device_tensor_handles_count_ > 0;
+  }
   Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override;
   const tensorflow::OpDef* OpDef() const override { return op_def_; };
@@ -141,10 +148,18 @@ class EagerOperation : public ImmediateExecutionOperation {
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }
 
-  const absl::InlinedVector<TensorHandle*, 4>& Inputs() const {
+  // TensorHandleInputs and MutableTensorHandleInputs first check that all
+  // inputs are TensorHandles, i.e. that there are no custom device inputs. They
+  // return a bad status otherwise.
+  Status TensorHandleInputs(
+      const absl::InlinedVector<TensorHandle*, 4>** inputs) const;
+  Status MutableTensorHandleInputs(
+      absl::InlinedVector<TensorHandle*, 4>** inputs);
+
+  const absl::InlinedVector<ImmediateExecutionTensorHandle*, 4>& Inputs()
+      const {
     return inputs_;
   }
-  absl::InlinedVector<TensorHandle*, 4>* MutableInputs() { return &inputs_; }
 
   void UpdateInput(int i, TensorHandle* h);
 
@@ -180,7 +195,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   }
 
  private:
-  void AddTensorHandle(TensorHandle* h);
+  void AddTensorHandle(ImmediateExecutionTensorHandle* h);
 
   const tensorflow::OpDef* GetOpDef(Status* status);
 
@@ -190,7 +205,7 @@ class EagerOperation : public ImmediateExecutionOperation {
     inference_attrs_.clear_no_resize();
   }
 
-  Status MaybeInferSingleInputAttrs(TensorHandle* handle);
+  Status MaybeInferSingleInputAttrs(ImmediateExecutionTensorHandle* handle);
   Status InferInputListAttrs(int num_inputs);
 
   void InferSingleTypeInputListAttrs(const OpDef::ArgDef& input_def,
@@ -202,7 +217,11 @@ class EagerOperation : public ImmediateExecutionOperation {
   const char* op_name_ = nullptr;
   AttrBuilder attrs_;
   const AttrTypeMap* attr_types_;
-  absl::InlinedVector<TensorHandle*, 4> inputs_;
+
+  // The number of custom device TensorHandle inputs. These inputs need to be
+  // processed by CustomDeviceOpHandler first.
+  int custom_device_tensor_handles_count_ = 0;
+  absl::InlinedVector<ImmediateExecutionTensorHandle*, 4> inputs_;
 
   // The last device name given to SetDeviceName.
   // This is used to avoid having to re-process the same device in repeated
@@ -240,8 +259,8 @@ class EagerOperation : public ImmediateExecutionOperation {
 };
 
 inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
-  TensorHandle** slot = &inputs_[i];
-  TensorHandle* existing = *slot;
+  ImmediateExecutionTensorHandle** slot = &inputs_[i];
+  ImmediateExecutionTensorHandle* existing = *slot;
   if (existing != h) {
     h->Ref();
     existing->Unref();

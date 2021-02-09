@@ -628,6 +628,10 @@ def MakeNdarray(tensor):
     values = np.fromiter(tensor.int_val, dtype=dtype)
   elif tensor_dtype == dtypes.int64:
     values = np.fromiter(tensor.int64_val, dtype=dtype)
+  elif tensor_dtype == dtypes.uint32:
+    values = np.fromiter(tensor.uint32_val, dtype=dtype)
+  elif tensor_dtype == dtypes.uint64:
+    values = np.fromiter(tensor.uint64_val, dtype=dtype)
   elif tensor_dtype == dtypes.complex64:
     it = iter(tensor.scomplex_val)
     values = np.array([complex(x[0], x[1]) for x in zip(it, it)], dtype=dtype)
@@ -1025,10 +1029,10 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
 
 # TODO(mdan): Deprecate in favor of more static-friendly types.
 @tf_export("is_tensor")
-def is_tensor(x):  # pylint: disable=invalid-name
+def is_tf_type(x):  # pylint: disable=invalid-name
   """Checks whether `x` is a TF-native type that can be passed to many TF ops.
 
-  Use is_tensor to differentiate types that can ingested by TensorFlow ops
+  Use `is_tensor` to differentiate types that can ingested by TensorFlow ops
   without any conversion (e.g., `tf.Tensor`, `tf.SparseTensor`, and
   `tf.RaggedTensor`) from types that need to be converted into tensors before
   they are ingested (e.g., numpy `ndarray` and Python scalars).
@@ -1038,21 +1042,27 @@ def is_tensor(x):  # pylint: disable=invalid-name
   ```python
   if not tf.is_tensor(t):
     t = tf.convert_to_tensor(t)
-  return t.dtype
+  return t.shape, t.dtype
   ```
 
   we check to make sure that `t` is a tensor (and convert it if not) before
-  accessing its `shape` and `dtype`.
+  accessing its `shape` and `dtype`.  (But note that not all TensorFlow native
+  types have shapes or dtypes; `tf.data.Dataset` is an example of a TensorFlow
+  native type that has neither shape nor dtype.)
 
   Args:
     x: A python object to check.
 
   Returns:
-    `True` if `x` is a tensor or "tensor-like", `False` if not.
+    `True` if `x` is a TensorFlow-native type.
   """
   return (isinstance(x, internal.NativeObject) or
           isinstance(x, core.Tensor) or
           getattr(x, "is_tensor_like", False))
+
+
+# Deprecated alias for tensor_util.is_tf_type.
+is_tensor = is_tf_type
 
 
 def shape_tensor(shape):  # pylint: disable=invalid-name

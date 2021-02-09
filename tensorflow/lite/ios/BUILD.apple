@@ -9,6 +9,13 @@ load(
 )
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
+
 package(
     default_visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -24,6 +31,52 @@ sh_binary(
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "//tensorflow_lite_support:__subpackages__",
+    ],
+)
+
+pytype_strict_library(
+    name = "extract_object_files",
+    srcs = [
+        "extract_object_files.py",
+    ],
+)
+
+pytype_strict_binary(
+    name = "extract_object_files_main",
+    srcs = [
+        "extract_object_files_main.py",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        ":extract_object_files",
+    ],
+)
+
+filegroup(
+    name = "extract_object_files_testdata",
+    srcs = glob(["testdata/**"]),
+)
+
+py_strict_test(
+    name = "extract_object_files_test",
+    srcs = [
+        "extract_object_files_test.py",
+    ],
+    data = [
+        ":extract_object_files_testdata",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":extract_object_files",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -146,6 +199,9 @@ build_test(
         "noasan",
         "nomsan",
         "notsan",
+        # TODO(b/176993122): restore once the apple_genrule issue is resolved.
+        "notap",
+        "nozapfhahn",
     ],
     targets = [
         ":TensorFlowLiteCCoreML_framework",

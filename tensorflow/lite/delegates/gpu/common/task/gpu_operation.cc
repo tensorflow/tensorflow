@@ -22,61 +22,18 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace {
-std::string GetCommonDefines(CalculationsPrecision precision) {
-  std::string result;
-
-  switch (precision) {
-    case CalculationsPrecision::F32:
-      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
-      result += "#define ACCUM_FLT4 float4\n";
-      result += "#define FLT float\n";
-      result += "#define FLT2 float2\n";
-      result += "#define FLT3 float3\n";
-      result += "#define FLT4 float4\n";
-      result += "#define TO_FLT4 convert_float4\n";
-      result += "#define TO_ACCUM_TYPE convert_float4\n";
-      result += "#define TO_ACCUM_FLT convert_float\n";
-      break;
-    case CalculationsPrecision::F16:
-      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
-      result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
-      result += "#define ACCUM_FLT4 half4\n";
-      result += "#define FLT half\n";
-      result += "#define FLT2 half2\n";
-      result += "#define FLT3 half3\n";
-      result += "#define FLT4 half4\n";
-      result += "#define TO_FLT4 convert_half4\n";
-      result += "#define TO_ACCUM_TYPE convert_half4\n";
-      result += "#define TO_ACCUM_FLT convert_half\n";
-      break;
-    case CalculationsPrecision::F32_F16:
-      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
-      result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
-      result += "#define ACCUM_FLT4 float4\n";
-      result += "#define FLT half\n";
-      result += "#define FLT2 half2\n";
-      result += "#define FLT3 half3\n";
-      result += "#define FLT4 half4\n";
-      result += "#define TO_FLT4 convert_half4\n";
-      result += "#define TO_ACCUM_TYPE convert_float4\n";
-      result += "#define TO_ACCUM_FLT convert_float\n";
-      break;
-  }
-  return result;
-}
-
 std::string GetElementWiseCode(const OperationDef& op_def,
                                bool check_src_slices) {
   std::string c;
-  c += "__kernel void main_function(\n";
+  c += "MAIN_FUNCTION(\n";
   c += "$0) {\n";
-  c += "  int X = get_global_id(0);\n";
-  c += "  int Y = get_global_id(1);\n";
-  c += "  int Z = get_global_id(2);\n";
+  c += "  int X = GLOBAL_ID_0;\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
+  c += "  int Z = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "Z >= args.dst_tensor.Slices()) return; \n";
   if (check_src_slices) {
-    c += "  FLT4 src = (FLT4)(0.0f);\n";
+    c += "  FLT4 src = INIT_FLT4(0.0f);\n";
     c += "  if (Z < args.src_tensor.Slices()) {\n";
     c += "    src = args.src_tensor.Read(X, Y, Z);\n";
     c += "  }\n";
@@ -240,7 +197,6 @@ void GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
     elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
     code_ = GetElementWiseCode(definition_, check_src_channels_size_);
   }
-  code_ = GetCommonDefines(definition_.precision) + code_;
 }
 
 void GPUOperation::GetPossibleKernelWorkGroups(

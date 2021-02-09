@@ -64,9 +64,11 @@ DataServiceWorkerImpl::~DataServiceWorkerImpl() {
   heartbeat_cv_.notify_one();
 }
 
-Status DataServiceWorkerImpl::Start(const std::string& worker_address) {
+Status DataServiceWorkerImpl::Start(const std::string& worker_address,
+                                    const std::string& transfer_address) {
   VLOG(3) << "Starting tf.data service worker at address " << worker_address;
   worker_address_ = worker_address;
+  transfer_address_ = transfer_address;
 
   dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
       config_.dispatcher_address(), config_.protocol());
@@ -178,8 +180,7 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
 Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
                                          GetElementResponse* response) {
   VLOG(3) << "Received GetElement request for task " << request->task_id();
-  bool end_of_sequence = false;
-  std::vector<tensorflow::Tensor> outputs;
+  Task* task;
   {
     mutex_lock l(mu_);
     if (!registered_) {
@@ -201,57 +202,18 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
         return errors::Unavailable("Task ", request->task_id(), " not found");
       }
     }
-    auto& task = it->second;
+    task = it->second.get();
     TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
-    TaskRunner::Request get_next_request;
-    if (request->optional_consumer_index_case() ==
-        GetElementRequest::kConsumerIndex) {
-      get_next_request.consumer_index = request->consumer_index();
-    }
-    if (request->optional_round_index_case() ==
-        GetElementRequest::kRoundIndex) {
-      get_next_request.round_index = request->round_index();
-    }
-    TF_RETURN_IF_ERROR(
-        task->task_runner->GetNext(get_next_request, outputs, end_of_sequence));
-    if (end_of_sequence) {
-      VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
-      pending_completed_tasks_.insert(request->task_id());
-      task_completion_cv_.notify_one();
-    }
   }
-
-  if (!end_of_sequence) {
+  TF_RETURN_IF_ERROR(task->task_runner->GetNext(*request, *response));
+  if (response->end_of_sequence()) {
+    mutex_lock l(mu_);
+    VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
+    pending_completed_tasks_.insert(request->task_id());
+    task_completion_cv_.notify_one();
+  } else if (!response->skip_task()) {
     VLOG(3) << "Producing an element for task " << request->task_id();
-    if (outputs.size() != 1) {
-      return errors::FailedPrecondition(
-          "Expected dataset to produce a single scalar variant tensor, but the "
-          "dataset produced ",
-          outputs.size(), " outputs");
-    }
-    if (outputs[0].dtype() != DT_VARIANT) {
-      return errors::FailedPrecondition(
-          "Expected dataset to produce a single scalar variant tensor, but "
-          "the dataset produced a tensor with type ",
-          DataTypeString(outputs[0].dtype()));
-    }
-    if (!TensorShapeUtils::IsScalar(outputs[0].shape())) {
-      return errors::FailedPrecondition(
-          "Expected dataset to produce a single scalar variant tensor, but "
-          "the dataset produced a tensor with shape ",
-          outputs[0].shape());
-    }
-    Variant& variant = outputs[0].scalar<Variant>()();
-    CompressedElement* compressed = variant.get<CompressedElement>();
-    if (compressed == nullptr) {
-      return errors::FailedPrecondition(
-          "Expected dataset to produce a CompressedElement variant tensor, but "
-          "it produced ",
-          variant.TypeName());
-    }
-    compressed->Swap(response->mutable_compressed_element());
   }
-  response->set_end_of_sequence(end_of_sequence);
 
   return Status::OK();
 }
@@ -355,8 +317,9 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   }
   std::vector<TaskDef> new_tasks;
   std::vector<int64> tasks_to_delete;
-  TF_RETURN_IF_ERROR(dispatcher_->WorkerHeartbeat(
-      worker_address_, current_tasks, new_tasks, tasks_to_delete));
+  TF_RETURN_IF_ERROR(
+      dispatcher_->WorkerHeartbeat(worker_address_, transfer_address_,
+                                   current_tasks, new_tasks, tasks_to_delete));
   mutex_lock l(mu_);
   for (const auto& task : new_tasks) {
     Status s = ProcessTaskInternal(task);

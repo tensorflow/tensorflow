@@ -1990,8 +1990,24 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                              filter_backprop_ptr, out_backprop_ptr, input_desc,
                              filter_desc, output_desc, conv_desc,
                              stream->parent(), results);
-      OP_REQUIRES_OK(context,
-                     BestCudnnConvAlgorithm(results, &algorithm_config));
+      Status s = BestCudnnConvAlgorithm(results, &algorithm_config);
+#if GOOGLE_CUDA
+      if (s.code() == error::NOT_FOUND) {
+        size_t version = cudnnGetVersion();
+        // For cuDNN 8.0.3 and 8.0.4, no cudnnConvolutionBwdFilterAlgo_t will
+        // work in certain cases. In such cases we improve the error message.
+        // This is fixed in cuDNN 8.0.5. For more context, see:
+        // https://github.com/tensorflow/tensorflow/issues/46589
+        if (version == 8003 || version == 8004) {
+          std::string version_str = (version == 8003 ? "8.0.3" : "8.0.4");
+          s = errors::NotFound(
+              "No algorithm worked! Please try upgrading to cuDNN 8.0.5. You "
+              "are using cuDNN ",
+              version_str, ", which has a bug causing this error.");
+        }
+      }
+#endif
+      OP_REQUIRES_OK(context, s);
       AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
                                                      algorithm_config);
     }

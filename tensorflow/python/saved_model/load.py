@@ -388,7 +388,7 @@ class Loader(object):
         return obj.handle
       elif isinstance(obj, tracking.Asset):
         return obj.asset_path
-      elif tensor_util.is_tensor(obj):
+      elif tensor_util.is_tf_type(obj):
         return obj
       elif isinstance(obj, tracking.CapturableResource):
         # Note: this executes restored functions in the CapturableResource.
@@ -488,31 +488,32 @@ class Loader(object):
     load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
 
-    # When running in eager mode, the `restore` call above has already run and
-    # restored the state of trackables, call `position.restore_ops()` will
-    # return an empty list as there is nothing left to do. In graph mode, that
-    # will return the list of ops that must run to restore the object on that
-    # position. We have to wire them in the initializers of the objects so that
-    # they get initialized properly when using common practices (e.g. the ones
-    # used by ManagedSession) without further user action.
-    for object_id, obj in dict(checkpoint.object_by_proto_id).items():
-      position = base.CheckpointPosition(checkpoint=checkpoint,
-                                         proto_id=object_id)
-      restore_ops = position.restore_ops()
-      if restore_ops:
-        if resource_variable_ops.is_resource_variable(obj):
-          if len(restore_ops) == 1:
-            obj._initializer_op = restore_ops[0]
+    if not context.executing_eagerly():
+      # When running in eager mode, the `restore` call above has already run and
+      # restored the state of trackables, and calling `position.restore_ops()`
+      # would re-run the restore. In graph mode, that will return a cached list
+      # of ops that must run to restore the object on that position. We have to
+      # wire them in the initializers of the objects so that they get
+      # initialized properly when using common practices (e.g. the ones used by
+      # ManagedSession) without further user action.
+      for object_id, obj in dict(checkpoint.object_by_proto_id).items():
+        position = base.CheckpointPosition(checkpoint=checkpoint,
+                                           proto_id=object_id)
+        restore_ops = position.restore_ops()
+        if restore_ops:
+          if resource_variable_ops.is_resource_variable(obj):
+            if len(restore_ops) == 1:
+              obj._initializer_op = restore_ops[0]
+            else:
+              obj._initializer_op = control_flow_ops.group(*restore_ops)
+          elif isinstance(obj, lookup_ops.LookupInterface):
+            # We don't need to check for eager execution here, since this code
+            # path should only be taken if we are restoring in graph mode.
+            ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, restore_ops)
           else:
-            obj._initializer_op = control_flow_ops.group(*restore_ops)
-        elif isinstance(obj, lookup_ops.LookupInterface):
-          # We don't need to check for eager execution here, since this code
-          # path should only be taken if we are restoring in graph mode.
-          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, restore_ops)
-        else:
-          raise NotImplementedError(
-              ("Missing functionality to restore state of object "
-               "%r from the checkpoint." % obj))
+            raise NotImplementedError(
+                ("Missing functionality to restore state of object "
+                 "%r from the checkpoint." % obj))
 
   def adjust_debug_info_func_names(self, debug_info):
     """Rewrite func names in the debug info by using the concrete func names."""

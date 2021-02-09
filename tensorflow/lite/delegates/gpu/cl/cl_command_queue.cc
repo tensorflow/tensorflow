@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 
+#include <array>
 #include <map>
 #include <string>
 #include <vector>
@@ -60,8 +61,8 @@ absl::Status CLCommandQueue::Dispatch(const CLKernel& kernel,
                                       const int3& work_groups_count,
                                       const int3& work_group_size,
                                       CLEvent* event) {
-  std::vector<size_t> local(3);
-  std::vector<size_t> global(3);
+  std::array<size_t, 3> local;
+  std::array<size_t, 3> global;
   for (int i = 0; i < 3; ++i) {
     local[i] = work_group_size[i];
     global[i] = work_groups_count[i] * work_group_size[i];

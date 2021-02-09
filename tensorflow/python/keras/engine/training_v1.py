@@ -67,7 +67,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.types import core
 from tensorflow.python.util import nest
 
 try:
@@ -228,7 +227,7 @@ class Model(training_lib.Model):
         ValueError: If `skip_mismatch` is set to `True` when `by_name` is
           `False`.
     """
-    if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
+    if K.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
           (not saving_utils.is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
@@ -1446,7 +1445,7 @@ class Model(training_lib.Model):
         for name in self.output_names:
           tmp_target_tensors.append(target_tensors.get(name, None))
         target_tensors = tmp_target_tensors
-      elif tensor_util.is_tensor(target_tensors):
+      elif tensor_util.is_tf_type(target_tensors):
         target_tensors = [target_tensors]
       else:
         raise TypeError('Expected `target_tensors` to be a list or tuple or '
@@ -2137,8 +2136,7 @@ class Model(training_lib.Model):
                                 'when using tf.distribute.Strategy.')
 
     if (sample_weight is not None and sample_weight.all() and
-        distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)):
+        K.is_tpu_strategy(self._distribution_strategy)):
       raise NotImplementedError('`sample_weight` is currently not supported '
                                 'when using TPUStrategy.')
 
@@ -2192,8 +2190,7 @@ class Model(training_lib.Model):
         # TODO(b/131720208): We still drop remainder here if number of examples
         # is divisible by batch size, as sometimes dynamic padder will time out
         # with keras.metrics.CategoricalAccuracy() metric.
-        if distributed_training_utils.is_tpu_strategy(
-            strategy) and not drop_remainder:
+        if K.is_tpu_strategy(strategy) and not drop_remainder:
           dataset_size = first_x_value.shape[0]
           if dataset_size % batch_size == 0:
             drop_remainder = True
@@ -2548,8 +2545,8 @@ class Model(training_lib.Model):
         all_inputs.append(target)
     # Type check that all inputs are *either* value *or* symbolic.
     # TODO(fchollet): this check could be removed in Eager mode?
-    if any(tensor_util.is_tensor(v) for v in all_inputs):
-      if not all(tensor_util.is_tensor(v) for v in all_inputs):
+    if any(tensor_util.is_tf_type(v) for v in all_inputs):
+      if not all(tensor_util.is_tf_type(v) for v in all_inputs):
         raise ValueError('Do not pass inputs that mix Numpy arrays and '
                          'TensorFlow tensors. '
                          'You passed: x=' + str(orig_inputs) +
@@ -2634,7 +2631,7 @@ class Model(training_lib.Model):
       raise ValueError('Model inputs are already set.')
 
     if self.__class__.__name__ == 'Sequential' and not self.built:
-      if tensor_util.is_tensor(inputs):
+      if tensor_util.is_tf_type(inputs):
         input_shape = (None,) + tuple(inputs.shape.as_list()[1:])
       elif isinstance(inputs, tensor_shape.TensorShape):
         input_shape = (None,) + tuple(inputs.as_list()[1:])
@@ -3142,7 +3139,7 @@ class _TrainingTarget(object):
 
 
 def _is_symbolic_tensor(x):
-  return tensor_util.is_tensor(x)
+  return tensor_util.is_tf_type(x)
 
 
 def _convert_scipy_sparse_tensor(value, expected_input):
@@ -3163,20 +3160,20 @@ def _convert_scipy_sparse_tensor(value, expected_input):
     The possibly-converted 'value'.
   """
   if issparse is not None and issparse(value):
-    if isinstance(expected_input, core.Tensor):
-      if ops.executing_eagerly_outside_functions():
-        # In TF2 we do not silently densify sparse matrices.
-        raise ValueError('A SciPy sparse matrix was passed to a model '
-                         'that expects dense inputs. Please densify your '
-                         'inputs first, such as by calling `x.toarray().')
-      return value.toarray()
-    else:
+    if K.is_sparse(expected_input):
       sparse_coo = value.tocoo()
       row, col = sparse_coo.row, sparse_coo.col
       data, shape = sparse_coo.data, sparse_coo.shape
       indices = np.concatenate((np.expand_dims(row, 1), np.expand_dims(col, 1)),
                                1)
       return sparse_tensor.SparseTensor(indices, data, shape)
+    else:
+      if ops.executing_eagerly_outside_functions():
+        # In TF2 we do not silently densify sparse matrices.
+        raise ValueError('A SciPy sparse matrix was passed to a model '
+                         'that expects dense inputs. Please densify your '
+                         'inputs first, such as by calling `x.toarray().')
+      return value.toarray()
   else:
     return value
 

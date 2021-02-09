@@ -2904,9 +2904,9 @@
 // CHECK:         br label %[[VAL_2636]]
 // CHECK:       entry:
 // CHECK:         %[[VAL_2682:.*]] = getelementptr inbounds i8, i8* %[[VAL_2683:.*]], i64 0
-// CHECK:         %[[VAL_2684:.*]] = bitcast i8* %[[VAL_2682]] to [100 x [200 x float]]*
+// CHECK:         %[[VAL_2684:.*]] = bitcast i8* %[[VAL_2682]] to [100 x [200 x i8]]*
 // CHECK:         %[[VAL_2685:.*]] = getelementptr inbounds i8, i8* %[[VAL_2686:.*]], i64 0
-// CHECK:         %[[VAL_2687:.*]] = bitcast i8* %[[VAL_2685]] to [100 x [200 x i8]]*
+// CHECK:         %[[VAL_2687:.*]] = bitcast i8* %[[VAL_2685]] to [100 x [200 x float]]*
 // CHECK:         %[[VAL_2688:.*]] = getelementptr inbounds i8, i8* %[[VAL_2689:.*]], i64 0
 // CHECK:         %[[VAL_2690:.*]] = bitcast i8* %[[VAL_2688]] to [100 x [200 x float]]*
 // CHECK:         %[[VAL_2691:.*]] = getelementptr inbounds i8, i8* %[[VAL_2692:.*]], i64 0
@@ -2938,60 +2938,60 @@
 // CHECK:       r44.in_bounds-after:                              ; preds = %[[VAL_2716]], %[[VAL_2718:.*]]
 // CHECK:         ret void
 // CHECK:       r44.in_bounds-true:                               ; preds = %[[VAL_2718]]
-// CHECK:         %[[VAL_2719:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2687]] to i8*
+// CHECK:         %[[VAL_2719:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2684]] to i8*
 // CHECK:         %[[VAL_2720:.*]] = getelementptr inbounds i8, i8* %[[VAL_2719]], i32 %[[VAL_2699]]
 // CHECK:         %[[VAL_2721:.*]] = load i8, i8* %[[VAL_2720]], align 1, !invariant.load !92
-// CHECK:         %[[VAL_2722:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2690]] to float*
+// CHECK:         %[[VAL_2722:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2687]] to float*
 // CHECK:         %[[VAL_2723:.*]] = getelementptr inbounds float, float* %[[VAL_2722]], i32 %[[VAL_2699]]
 // CHECK:         %[[VAL_2724:.*]] = load float, float* %[[VAL_2723]], align 4, !invariant.load !92
-// CHECK:         %[[VAL_2725:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2693]] to float*
+// CHECK:         %[[VAL_2725:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2690]] to float*
 // CHECK:         %[[VAL_2726:.*]] = getelementptr inbounds float, float* %[[VAL_2725]], i32 %[[VAL_2699]]
 // CHECK:         %[[VAL_2727:.*]] = load float, float* %[[VAL_2726]], align 4, !invariant.load !92
 // CHECK:         %[[VAL_2728:.*]] = trunc i8 %[[VAL_2721]] to i1
 // CHECK:         %[[VAL_2729:.*]] = select i1 %[[VAL_2728]], float %[[VAL_2724]], float %[[VAL_2727]]
-// CHECK:         %[[VAL_2730:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2684]] to float*
+// CHECK:         %[[VAL_2730:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2693]] to float*
 // CHECK:         %[[VAL_2731:.*]] = getelementptr inbounds float, float* %[[VAL_2730]], i32 %[[VAL_2699]]
 // CHECK:         store float %[[VAL_2729]], float* %[[VAL_2731]], align 4
-// CHECK:         %[[VAL_2732:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2687]] to i8*
+// CHECK:         %[[VAL_2732:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2684]] to i8*
 // CHECK:         %[[VAL_2733:.*]] = getelementptr inbounds i8, i8* %[[VAL_2732]], i32 %[[VAL_2703]]
 // CHECK:         %[[VAL_2734:.*]] = load i8, i8* %[[VAL_2733]], align 1, !invariant.load !92
-// CHECK:         %[[VAL_2735:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2690]] to float*
+// CHECK:         %[[VAL_2735:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2687]] to float*
 // CHECK:         %[[VAL_2736:.*]] = getelementptr inbounds float, float* %[[VAL_2735]], i32 %[[VAL_2703]]
 // CHECK:         %[[VAL_2737:.*]] = load float, float* %[[VAL_2736]], align 4, !invariant.load !92
-// CHECK:         %[[VAL_2738:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2693]] to float*
+// CHECK:         %[[VAL_2738:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2690]] to float*
 // CHECK:         %[[VAL_2739:.*]] = getelementptr inbounds float, float* %[[VAL_2738]], i32 %[[VAL_2703]]
 // CHECK:         %[[VAL_2740:.*]] = load float, float* %[[VAL_2739]], align 4, !invariant.load !92
 // CHECK:         %[[VAL_2741:.*]] = trunc i8 %[[VAL_2734]] to i1
 // CHECK:         %[[VAL_2742:.*]] = select i1 %[[VAL_2741]], float %[[VAL_2737]], float %[[VAL_2740]]
-// CHECK:         %[[VAL_2743:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2684]] to float*
+// CHECK:         %[[VAL_2743:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2693]] to float*
 // CHECK:         %[[VAL_2744:.*]] = getelementptr inbounds float, float* %[[VAL_2743]], i32 %[[VAL_2703]]
 // CHECK:         store float %[[VAL_2742]], float* %[[VAL_2744]], align 4
-// CHECK:         %[[VAL_2745:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2687]] to i8*
+// CHECK:         %[[VAL_2745:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2684]] to i8*
 // CHECK:         %[[VAL_2746:.*]] = getelementptr inbounds i8, i8* %[[VAL_2745]], i32 %[[VAL_2707]]
 // CHECK:         %[[VAL_2747:.*]] = load i8, i8* %[[VAL_2746]], align 1, !invariant.load !92
-// CHECK:         %[[VAL_2748:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2690]] to float*
+// CHECK:         %[[VAL_2748:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2687]] to float*
 // CHECK:         %[[VAL_2749:.*]] = getelementptr inbounds float, float* %[[VAL_2748]], i32 %[[VAL_2707]]
 // CHECK:         %[[VAL_2750:.*]] = load float, float* %[[VAL_2749]], align 4, !invariant.load !92
-// CHECK:         %[[VAL_2751:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2693]] to float*
+// CHECK:         %[[VAL_2751:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2690]] to float*
 // CHECK:         %[[VAL_2752:.*]] = getelementptr inbounds float, float* %[[VAL_2751]], i32 %[[VAL_2707]]
 // CHECK:         %[[VAL_2753:.*]] = load float, float* %[[VAL_2752]], align 4, !invariant.load !92
 // CHECK:         %[[VAL_2754:.*]] = trunc i8 %[[VAL_2747]] to i1
 // CHECK:         %[[VAL_2755:.*]] = select i1 %[[VAL_2754]], float %[[VAL_2750]], float %[[VAL_2753]]
-// CHECK:         %[[VAL_2756:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2684]] to float*
+// CHECK:         %[[VAL_2756:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2693]] to float*
 // CHECK:         %[[VAL_2757:.*]] = getelementptr inbounds float, float* %[[VAL_2756]], i32 %[[VAL_2707]]
 // CHECK:         store float %[[VAL_2755]], float* %[[VAL_2757]], align 4
-// CHECK:         %[[VAL_2758:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2687]] to i8*
+// CHECK:         %[[VAL_2758:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2684]] to i8*
 // CHECK:         %[[VAL_2759:.*]] = getelementptr inbounds i8, i8* %[[VAL_2758]], i32 %[[VAL_2711]]
 // CHECK:         %[[VAL_2760:.*]] = load i8, i8* %[[VAL_2759]], align 1, !invariant.load !92
-// CHECK:         %[[VAL_2761:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2690]] to float*
+// CHECK:         %[[VAL_2761:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2687]] to float*
 // CHECK:         %[[VAL_2762:.*]] = getelementptr inbounds float, float* %[[VAL_2761]], i32 %[[VAL_2711]]
 // CHECK:         %[[VAL_2763:.*]] = load float, float* %[[VAL_2762]], align 4, !invariant.load !92
-// CHECK:         %[[VAL_2764:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2693]] to float*
+// CHECK:         %[[VAL_2764:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2690]] to float*
 // CHECK:         %[[VAL_2765:.*]] = getelementptr inbounds float, float* %[[VAL_2764]], i32 %[[VAL_2711]]
 // CHECK:         %[[VAL_2766:.*]] = load float, float* %[[VAL_2765]], align 4, !invariant.load !92
 // CHECK:         %[[VAL_2767:.*]] = trunc i8 %[[VAL_2760]] to i1
 // CHECK:         %[[VAL_2768:.*]] = select i1 %[[VAL_2767]], float %[[VAL_2763]], float %[[VAL_2766]]
-// CHECK:         %[[VAL_2769:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2684]] to float*
+// CHECK:         %[[VAL_2769:.*]] = bitcast [100 x [200 x float]]* %[[VAL_2693]] to float*
 // CHECK:         %[[VAL_2770:.*]] = getelementptr inbounds float, float* %[[VAL_2769]], i32 %[[VAL_2711]]
 // CHECK:         store float %[[VAL_2768]], float* %[[VAL_2770]], align 4
 // CHECK:         br label %[[VAL_2717]]

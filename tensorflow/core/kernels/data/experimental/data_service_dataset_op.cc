@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
+#include <limits>
 #include <map>
 #include <memory>
 #include <queue>
@@ -23,7 +24,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -50,7 +54,11 @@ namespace data {
 /* static */ constexpr const char* const DataServiceDatasetOp::kProcessingMode;
 /* static */ constexpr const char* const DataServiceDatasetOp::kAddress;
 /* static */ constexpr const char* const DataServiceDatasetOp::kProtocol;
+/* static */ constexpr const char* const
+    DataServiceDatasetOp::kDataTransferProtocol;
 /* static */ constexpr const char* const DataServiceDatasetOp::kJobName;
+/* static */ constexpr const char* const DataServiceDatasetOp::kConsumerIndex;
+/* static */ constexpr const char* const DataServiceDatasetOp::kNumConsumers;
 /* static */ constexpr const char* const
     DataServiceDatasetOp::kMaxOutstandingRequests;
 /* static */ constexpr const char* const
@@ -63,6 +71,9 @@ namespace data {
 namespace {
 // Default interval between task list refreshes.
 const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
+
+constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
+constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -72,20 +83,26 @@ const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
 // to read from (in case workers are added or removed).
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 dataset_id,
+  Dataset(OpKernelContext* ctx, int op_version, int64 dataset_id,
           ProcessingMode processing_mode, const std::string& address,
-          const std::string& protocol, const std::string& job_name,
-          int64 max_outstanding_requests, int64 task_refresh_interval_ms,
-          IterationCounter* iteration_counter, bool owns_resource,
-          ResourceHandle iteration_counter_handle,
+          const std::string& protocol,
+          const std::string& data_transfer_protocol,
+          const std::string& job_name, absl::optional<int64> consumer_index,
+          absl::optional<int64> num_consumers, int64 max_outstanding_requests,
+          int64 task_refresh_interval_ms, IterationCounter* iteration_counter,
+          bool owns_resource, ResourceHandle iteration_counter_handle,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
+        op_version_(op_version),
         dataset_id_(dataset_id),
         processing_mode_(processing_mode),
         address_(address),
         protocol_(protocol),
+        data_transfer_protocol_(data_transfer_protocol),
         job_name_(job_name),
+        consumer_index_(consumer_index),
+        num_consumers_(num_consumers),
         max_outstanding_requests_(max_outstanding_requests),
         task_refresh_interval_ms_(task_refresh_interval_ms),
         iteration_counter_(iteration_counter),
@@ -135,42 +152,65 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
+    std::vector<Node*> inputs;
+
     Node* dataset_id;
     TF_RETURN_IF_ERROR(b->AddScalar(dataset_id_, &dataset_id));
+    inputs.push_back(dataset_id);
 
     Node* processing_mode;
     tstring processing_mode_str = ProcessingModeToString(processing_mode_);
     TF_RETURN_IF_ERROR(b->AddScalar(processing_mode_str, &processing_mode));
+    inputs.push_back(processing_mode);
 
     Node* address;
     TF_RETURN_IF_ERROR(b->AddScalar(address_, &address));
+    inputs.push_back(address);
 
     Node* protocol;
     TF_RETURN_IF_ERROR(b->AddScalar(protocol_, &protocol));
+    inputs.push_back(protocol);
+
+    AttrValue data_transfer_protocol;
+    b->BuildAttrValue(data_transfer_protocol_, &data_transfer_protocol);
 
     Node* job_name;
     TF_RETURN_IF_ERROR(b->AddScalar(job_name_, &job_name));
+    inputs.push_back(job_name);
+
+    if (op_version_ == 2) {
+      Node* consumer_index;
+      TF_RETURN_IF_ERROR(
+          b->AddScalar(consumer_index_.value_or(-1), &consumer_index));
+      inputs.push_back(consumer_index);
+
+      Node* num_consumers;
+      TF_RETURN_IF_ERROR(
+          b->AddScalar(num_consumers_.value_or(-1), &num_consumers));
+      inputs.push_back(num_consumers);
+    }
 
     Node* max_outstanding_requests;
     TF_RETURN_IF_ERROR(
         b->AddScalar(max_outstanding_requests_, &max_outstanding_requests));
+    inputs.push_back(max_outstanding_requests);
 
     Node* iteration_counter_handle = nullptr;
     Tensor handle(DT_RESOURCE, TensorShape({}));
     handle.scalar<ResourceHandle>()() = iteration_counter_handle_;
     TF_RETURN_IF_ERROR(b->AddTensor(handle, &iteration_counter_handle));
+    inputs.push_back(iteration_counter_handle);
 
     AttrValue task_refresh_interval_hint_ms;
     b->BuildAttrValue(task_refresh_interval_ms_,
                       &task_refresh_interval_hint_ms);
 
-    TF_RETURN_IF_ERROR(
-        b->AddDataset(this,
-                      {dataset_id, processing_mode, address, protocol, job_name,
-                       max_outstanding_requests, iteration_counter_handle},
-                      {std::make_pair(kTaskRefreshIntervalHintMs,
-                                      task_refresh_interval_hint_ms)},
-                      output));
+    TF_RETURN_IF_ERROR(b->AddDataset(
+        this, inputs,
+        {std::make_pair(kTaskRefreshIntervalHintMs,
+                        task_refresh_interval_hint_ms),
+         std::make_pair(kDataTransferProtocol, data_transfer_protocol)},
+        output));
     return Status::OK();
   }
 
@@ -205,7 +245,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
-      VLOG(1) << "Cancelling threads in DataServiceDataset::Iterator";
+      for (const auto& task : tasks_) {
+        task->worker->TryCancel();
+      }
       cancelled_ = true;
       worker_thread_cv_.notify_all();
       manager_thread_cv_.notify_all();
@@ -229,9 +271,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       TF_RETURN_IF_ERROR(grpc_util::Retry(
           [&]() {
-            return dispatcher_->GetOrCreateJob(dataset()->dataset_id_,
-                                               dataset()->processing_mode_, key,
-                                               job_client_id_);
+            return dispatcher_->GetOrCreateJob(
+                dataset()->dataset_id_, dataset()->processing_mode_, key,
+                dataset()->num_consumers_, job_client_id_);
           },
           /*description=*/
           strings::StrCat("get or create job with dispatcher at ",
@@ -254,27 +296,46 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             });
       }
 
-      while (results_.empty() &&
-             !(job_finished_ && num_running_worker_threads_ == 0) &&
-             !cancelled_ && status_.ok()) {
-        get_next_cv_.wait(l);
+      bool skip = true;
+      while (skip) {
+        while ((results_.empty() || !results_.front().ready) &&
+               !(job_finished_ && num_running_worker_threads_ == 0) &&
+               !cancelled_ && status_.ok()) {
+          VLOG(3) << "Blocking in GetNext. results_.size():" << results_.size()
+                  << " results_.front().ready:"
+                  << (!results_.empty() && results_.front().ready)
+                  << " job_finished_:" << job_finished_
+                  << " num_running_worker_threads_:"
+                  << num_running_worker_threads_;
+          get_next_cv_.wait(l);
+        }
+        if (cancelled_) {
+          VLOG(3) << "Returning from GetNext due to cancellation";
+          return errors::Cancelled("Data service iterator was cancelled");
+        }
+        if (!status_.ok()) {
+          VLOG(3) << "Returning from GetNext with error " << status_;
+          return status_;
+        }
+        if (results_.empty()) {
+          *end_of_sequence = true;
+          VLOG(3) << "Returning from GetNext with end_of_sequence";
+          return Status::OK();
+        }
+        skip = results_.front().skip;
+        if (skip) {
+          results_.pop();
+          worker_thread_cv_.notify_one();
+        }
       }
-      if (cancelled_) {
-        return errors::Cancelled("Data service iterator was cancelled");
+      *end_of_sequence = results_.front().end_of_sequence;
+      if (!*end_of_sequence) {
+        out_tensors->swap(results_.front().element);
       }
-      if (!status_.ok()) {
-        return status_;
-      }
-      if (results_.empty()) {
-        *end_of_sequence = true;
-        return Status::OK();
-      }
-      DCHECK(!results_.empty());
-      *end_of_sequence = false;
-      out_tensors->swap(results_.front());
       results_.pop();
       worker_thread_cv_.notify_one();
 
+      VLOG(3) << "Returning from GetNext with an element";
       return Status::OK();
     }
 
@@ -317,19 +378,29 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
    private:
     struct Task {
-      Task(int64 task_id, const std::string& address,
+      Task(const TaskInfo& info,
            std::unique_ptr<DataServiceWorkerClient> worker)
-          : task_id(task_id), address(address), worker(std::move(worker)) {}
+          : info(info), worker(std::move(worker)) {}
 
-      const int64 task_id;
-      // Address of the tf.data service worker for task `task_id`.
-      const std::string address;
+      const TaskInfo info;
       // Client for fetching task elements from the tf.data service worker.
       const std::unique_ptr<DataServiceWorkerClient> worker;
+      // The next round to read from the task.
+      int64 round = 0;
+      bool skipped_previous_round = false;
       // Indicates whether a worker thread is currently processing the task.
       bool in_use TF_GUARDED_BY(&Iterator::mu_) = false;
       // Indicates whether the worker has returned end_of_sequence for the task.
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
+    };
+
+    struct Result {
+      // Whether the result has been computed yet. GetNext needs to block
+      // until the next result is ready.
+      bool ready TF_GUARDED_BY(&Iterator::mu_) = false;
+      std::vector<Tensor> element TF_GUARDED_BY(&Iterator::mu_);
+      bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
+      bool skip TF_GUARDED_BY(&Iterator::mu_) = false;
     };
 
     // Periodically refresh the task list.
@@ -347,7 +418,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           // All units are microseconds.
           while (!cancelled_ && Env::Default()->NowMicros() < next_check) {
             int64 remaining_time = next_check - Env::Default()->NowMicros();
-            VLOG(3) << "Task thread manager waiting for " << remaining_time
+            VLOG(4) << "Task thread manager waiting for " << remaining_time
                     << "us";
             manager_thread_cv_.wait_for(
                 l, std::chrono::microseconds(remaining_time));
@@ -357,40 +428,102 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return;
           }
         }
-        UpdateTasks();
+        Heartbeat();
         UpdateWorkerThreads(ctx.get());
         next_check = Env::Default()->NowMicros() +
                      dataset()->task_refresh_interval_ms_ * 1000;
       }
     }
 
-    void UpdateTasks() TF_LOCKS_EXCLUDED(mu_) {
-      VLOG(3) << "Updating tasks";
-      std::vector<TaskInfo> tasks;
-      bool job_finished;
-      Status s = dispatcher_->GetTasks(job_client_id_, tasks, job_finished);
-      if (!s.ok()) {
-        LOG(WARNING) << "Failed to get task info for job client id "
-                     << job_client_id_ << ": " << s;
+    void TryBlockRound(int64 round) TF_LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(mu_);
+      if (round_robin_round_limit_.has_value() &&
+          round_robin_round_limit_.value() == round) {
         return;
       }
+      if (current_round_ >= round) {
+        // In the next heartbeat, notify the dispatcher that we failed to add
+        // the task.
+        VLOG(1) << "Rejecting request to block round " << round
+                << ", because processing has already begun for round "
+                << current_round_;
+        return;
+      }
+      VLOG(1) << "Accepting request to block round " << round;
+      round_robin_round_limit_ = round;
+    }
+
+    void UpdateJobFinished(bool job_finished) TF_LOCKS_EXCLUDED(mu_) {
+      if (!job_finished) {
+        return;
+      }
+      mutex_lock l(mu_);
+      job_finished_ = true;
+      get_next_cv_.notify_all();
+      worker_thread_cv_.notify_all();
+    }
+
+    Status AddTask(const TaskInfo& task_info) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      std::unique_ptr<DataServiceWorkerClient> worker;
+      TF_RETURN_IF_ERROR(CreateDataServiceWorkerClient(
+          task_info.transfer_address(), dataset()->protocol_,
+          dataset()->data_transfer_protocol_, worker));
+      VLOG(2) << "Adding task to read from worker "
+              << task_info.worker_address()
+              << ". task starting round: " << task_info.starting_round();
+      tasks_.push_back(std::make_shared<Task>(task_info, std::move(worker)));
+      return Status::OK();
+    }
+
+    void Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
+      ClientHeartbeatRequest req;
+      req.set_job_client_id(job_client_id_);
+      if (StrictRoundRobin()) {
+        mutex_lock l(mu_);
+        req.set_current_round(current_round_);
+        if (round_robin_round_limit_.has_value()) {
+          req.set_blocked_round(round_robin_round_limit_.value());
+        }
+      }
+      ClientHeartbeatResponse resp;
+      Status s = dispatcher_->ClientHeartbeat(req, resp);
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed to heartbeat to dispatcher from job client id "
+                     << job_client_id_
+                     << ". Dispatcher address: " << dataset()->address_
+                     << ". Error: " << s;
+        return;
+      }
+      UpdateJobFinished(resp.job_finished());
+      if (resp.optional_block_round_case() ==
+          ClientHeartbeatResponse::kBlockRound) {
+        TryBlockRound(resp.block_round());
+      }
+      UpdateTasks(resp);
+      if (resp.optional_block_round_case() !=
+          ClientHeartbeatResponse::kBlockRound) {
+        mutex_lock l(mu_);
+        round_robin_round_limit_ = absl::nullopt;
+        worker_thread_cv_.notify_all();
+      }
+    }
+
+    void UpdateTasks(const ClientHeartbeatResponse& resp)
+        TF_LOCKS_EXCLUDED(mu_) {
       absl::flat_hash_map<int64, TaskInfo> task_id_to_task;
-      for (auto& task : tasks) {
+      for (auto& task : resp.task_info()) {
         task_id_to_task[task.task_id()] = task;
       }
       mutex_lock l(mu_);
-      job_finished_ = job_finished;
-      if (job_finished) {
-        get_next_cv_.notify_all();
-        worker_thread_cv_.notify_all();
+      if (job_finished_) {
         return;
       }
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task> task = tasks_[i];
-        if (task_id_to_task.contains(task->task_id)) {
+        if (task_id_to_task.contains(task->info.task_id())) {
           // Remove already-known tasks from `task_id_to_task`, so that at the
           // end of the loop, only new tasks remain.
-          task_id_to_task.erase(task->task_id);
+          task_id_to_task.erase(task->info.task_id());
         } else {
           // Task has been removed.
           if (task->end_of_sequence) {
@@ -400,19 +533,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           tasks_.pop_back();
         }
       }
-      for (auto& new_task_entry : task_id_to_task) {
-        TaskInfo& task_info = new_task_entry.second;
-        std::unique_ptr<DataServiceWorkerClient> worker;
-        Status s = CreateDataServiceWorkerClient(task_info.worker_address(),
-                                                 dataset()->protocol_, worker);
+      for (auto& task : resp.task_info()) {
+        auto it = task_id_to_task.find(task.task_id());
+        if (it == task_id_to_task.end()) {
+          continue;
+        }
+        Status s = AddTask(it->second);
         if (!s.ok()) {
           status_ = s;
           get_next_cv_.notify_all();
-          continue;
+          break;
         }
-        tasks_.push_back(std::make_shared<Task>(task_info.task_id(),
-                                                task_info.worker_address(),
-                                                std::move(worker)));
       }
       if (dataset()->max_outstanding_requests_ == model::kAutotune) {
         // Adjust max_outstanding_requests to account for newly added tasks.
@@ -438,6 +569,49 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
+    void AdvanceTaskIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      next_task_index_++;
+      if (next_task_index_ >= tasks_.size()) {
+        current_round_++;
+        next_task_index_ = 0;
+      }
+    }
+
+    // Searches for a task to process, returning nullptr if none is found.
+    std::shared_ptr<Task> GetTaskToProcess() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      VLOG(3) << "Searching for task to process";
+      for (int i = 0; i < tasks_.size(); ++i) {
+        std::shared_ptr<Task>& task = tasks_[next_task_index_];
+        bool skip_task_not_started =
+            StrictRoundRobin() &&
+            (current_round_ < task->info.starting_round());
+        bool skip_busy = !StrictRoundRobin() && task->in_use;
+        if (skip_task_not_started || skip_busy || task->end_of_sequence) {
+          VLOG(3) << "Skipping task " << next_task_index_
+                  << ". starting round: " << task->info.starting_round()
+                  << ". current round: " << current_round_
+                  << ". busy: " << skip_busy
+                  << ". end_of_sequence: " << task->end_of_sequence;
+          AdvanceTaskIndex();
+          continue;
+        }
+        if (StrictRoundRobin() &&
+            (task->in_use ||
+             current_round_ >= round_robin_round_limit_.value_or(
+                                   std::numeric_limits<int64>::max()))) {
+          VLOG(3) << "No round robin task found. in_use: " << task->in_use
+                  << ". current_round: " << current_round_
+                  << ". round_robin_round_limit: "
+                  << round_robin_round_limit_.value_or(-1);
+          return nullptr;
+        }
+        task->round = current_round_;
+        AdvanceTaskIndex();
+        return task;
+      }
+      return nullptr;
+    }
+
     void RunWorkerThread(std::function<void()> done) {
       auto cleanup = gtl::MakeCleanup([done = std::move(done)]() {
         done();
@@ -446,6 +620,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(1) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
       while (true) {
+        Result* result;
         {
           mutex_lock l(mu_);
           if (task_to_process) {
@@ -454,69 +629,83 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             worker_thread_cv_.notify_one();
           }
           outstanding_requests_--;
-          while (!cancelled_ && !(SpaceInBuffer() && TaskAvailable()) &&
-                 !job_finished_) {
-            if (VLOG_IS_ON(3)) {
-              VLOG(3) << "Sleeping with results_.size=" << results_.size()
-                      << ", outstanding_requests_=" << outstanding_requests_
-                      << ", max_oustanding_requests="
-                      << max_outstanding_requests_
-                      << " finished_tasks=" << finished_tasks_
-                      << " tasks_.size()=" << tasks_.size();
+          while (true) {
+            if (cancelled_ || job_finished_) {
+              return;
+            }
+            if (ElementSpaceAvailable()) {
+              task_to_process = GetTaskToProcess();
+              if (task_to_process) {
+                break;
+              }
             }
             worker_thread_cv_.wait(l);
           }
           outstanding_requests_++;
-          if (cancelled_ || job_finished_) {
-            return;
-          }
-          // Search for a task to update.
-          int num_tasks = tasks_.size();
-          for (int i = 0; i < num_tasks; ++i) {
-            int index = (next_task_index_ + i) % num_tasks;
-            std::shared_ptr<Task>& task = tasks_[index];
-            if (!task->in_use && !task->end_of_sequence) {
-              task->in_use = true;
-              task_to_process = task;
-              next_task_index_ = (index + 1) % num_tasks;
-              break;
-            }
+          if (StrictRoundRobin()) {
+            // Reserve a spot in the results_ queue.
+            results_.emplace();
+            result = &results_.back();
           }
           DCHECK(task_to_process != nullptr);
-          VLOG(3) << "Processing task " << task_to_process->task_id;
+          task_to_process->in_use = true;
+          VLOG(3) << "Processing task " << task_to_process->info.task_id();
         }
         int64 deadline_micros = kint64max;
-        Status s = GetElement(task_to_process.get(), deadline_micros);
+        Status s;
+        if (StrictRoundRobin()) {
+          s = GetElement(task_to_process.get(), deadline_micros,
+                         /*enqueue_result=*/false, *result);
+        } else {
+          Result r;
+          s = GetElement(task_to_process.get(), deadline_micros,
+                         /*enqueue_result=*/true, r);
+        }
         if (!s.ok()) {
           mutex_lock l(mu_);
           VLOG(1) << "Failed to get element from worker "
-                  << task_to_process->address << ": " << s;
+                  << task_to_process->info.worker_address() << ": " << s;
           task_to_process->in_use = false;
-          status_ = Status(
-              s.code(),
-              absl::StrCat("Failed to get element from worker ",
-                           task_to_process->address, ": ", s.error_message()));
+          status_ = Status(s.code(),
+                           absl::StrCat("Failed to get element from worker ",
+                                        task_to_process->info.worker_address(),
+                                        ": ", s.error_message()));
           get_next_cv_.notify_all();
           return;
         }
       }
     }
 
-    // Gets an element from a task and adds the element to `results_`.
-    //
-    // If the task reaches end_of_sequence or is cancelled (e.g. due to a
-    // worker dying), GetElement returns Status::OK() without adding to
-    // `results_`.
-    Status GetElement(Task* task, int64 deadline_micros)
-        TF_LOCKS_EXCLUDED(mu_) {
-      VLOG(3) << "Getting an element for task id " << task->task_id;
+    // Gets an element from a task and stores the element in `result`. If
+    // `enqueue_result` is true, `GetElement` also enqueues (via std::move) any
+    // element-producing result in the `results_` queue.
+    Status GetElement(Task* task, int64 deadline_micros, bool enqueue_result,
+                      Result& result) TF_LOCKS_EXCLUDED(mu_) {
+      VLOG(3) << "Getting an element for task id " << task->info.task_id();
       tensorflow::profiler::TraceMe activity(
           "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
-      CompressedElement compressed;
-      bool end_of_sequence;
+      activity.AppendMetadata([&]() {
+        return profiler::TraceMeEncode(
+            {{"address", task->info.worker_address()}});
+      });
+      GetElementResponse resp;
       for (int num_retries = 0;; ++num_retries) {
-        Status s = task->worker->GetElement(task->task_id, compressed,
-                                            end_of_sequence);
+        GetElementRequest req;
+        if (StrictRoundRobin()) {
+          req.set_consumer_index(dataset()->consumer_index_.value());
+          req.set_round_index(task->round);
+          req.set_allow_skip(true);
+          VLOG(3) << "Requesting element from consumer index "
+                  << req.consumer_index() << ", round " << req.round_index();
+          activity.AppendMetadata([&]() {
+            return profiler::TraceMeEncode(
+                {{"consumer_index", req.consumer_index()},
+                 {"round_index", req.round_index()}});
+          });
+        }
+        req.set_task_id(task->info.task_id());
+        req.set_skipped_previous_round(task->skipped_previous_round);
+        Status s = task->worker->GetElement(req, resp);
         if (s.ok()) {
           break;
         }
@@ -530,7 +719,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           // If `UpdateTaskThreads` finds that the task has been cancelled, it
           // will set end_of_sequence to `true`.
           if (task->end_of_sequence || cancelled_) {
-            return Status::OK();
+            break;
           }
         }
         const int64 now_micros = EnvTime::NowMicros();
@@ -546,38 +735,58 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             (deadline_micros > deadline_with_backoff_micros)
                 ? deadline_with_backoff_micros
                 : deadline_micros;
-        VLOG(1) << "Failed to get an element from worker " << task->address
-                << ": " << s << ". Will retry in "
-                << (backoff_until - now_micros) << " microseconds";
+        VLOG(1) << "Failed to get an element from worker "
+                << task->info.worker_address() << ": " << s
+                << ". Will retry in " << (backoff_until - now_micros)
+                << " microseconds";
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
       }
 
       std::vector<Tensor> element;
-      if (!end_of_sequence) {
+      if (resp.has_compressed_element()) {
         Tensor tensor(DT_VARIANT, TensorShape{});
-        tensor.scalar<Variant>()() = std::move(compressed);
+        tensor.scalar<Variant>()() = std::move(resp.compressed_element());
         element.push_back(tensor);
       }
       mutex_lock l(mu_);
-      if (end_of_sequence) {
+      result.ready = true;
+      result.end_of_sequence = resp.end_of_sequence();
+      if (resp.has_compressed_element()) {
+        task->skipped_previous_round = false;
+        task->round++;
+        result.element = std::move(element);
+      } else if (resp.skip_task()) {
+        task->skipped_previous_round = true;
+        task->round++;
+        result.skip = true;
+      } else {
         task->end_of_sequence = true;
         finished_tasks_++;
-        return Status::OK();
       }
-      results_.push(std::move(element));
+      if (enqueue_result && !resp.end_of_sequence()) {
+        results_.push(std::move(result));
+      }
       get_next_cv_.notify_all();
-      VLOG(3) << "Got an element for task id " << task->task_id;
+      VLOG(3) << "Got an element for task id " << task->info.task_id();
       return Status::OK();
     }
 
-    bool SpaceInBuffer() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    // Reports whether we can request another element without violating
+    // max_outstanding_requests.
+    bool ElementSpaceAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      // When doing round-robin reads, outstanding requests pre-allocate a
+      // result in `results_`, so we only need to check the size of `results_`.
+      if (StrictRoundRobin()) {
+        return results_.size() < max_outstanding_requests_;
+      }
+      // Otherwise, results aren't added to `results_` until the data has been
+      // successfully retrieved. We need to count requests already added to
+      // `results_` as well as in-progress requests.
       return results_.size() + outstanding_requests_ <
              max_outstanding_requests_;
     }
 
-    bool TaskAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      return finished_tasks_ + outstanding_requests_ < tasks_.size();
-    }
+    bool StrictRoundRobin() { return dataset()->num_consumers_.has_value(); }
 
     const int64 iterator_index_;
 
@@ -607,10 +816,22 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // List of tasks to read from.
     std::vector<std::shared_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
 
+    // The current round robin round we are engaged in. A round involves reading
+    // from each task once.
+    int64 current_round_ TF_GUARDED_BY(mu_) = 0;
+
+    // Maximum round robin round to read up to before blocking, not inclusive.
+    absl::optional<int64> round_robin_round_limit_ TF_GUARDED_BY(mu_);
+
     // A status to be returned from the next call to `GetNext`. This is set by
     // asynchronous threads when they encounter errors.
     Status status_ TF_GUARDED_BY(mu_) = Status::OK();
-    std::queue<std::vector<Tensor>> results_ TF_GUARDED_BY(mu_);
+    // A queue of results for `GetElement` requests to read from. When doing
+    // strict round robin reads, the queue will contain placeholder results with
+    // their `Result::ready` field false until their data has been retrieved
+    // from a worker. When not doing round-robin reads, results are only added
+    // to the queue after they are ready, to avoid head-of-line blocking.
+    std::queue<Result> results_ TF_GUARDED_BY(mu_);
 
     bool initialized_ = false;
     // Set once in Initialize().
@@ -622,11 +843,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<Thread> task_thread_manager_ TF_GUARDED_BY(mu_);
   };
 
+  const int op_version_;
   const int64 dataset_id_;
   const ProcessingMode processing_mode_;
   const tstring address_;
   const tstring protocol_;
+  const tstring data_transfer_protocol_;
   const tstring job_name_;
+  const absl::optional<int64> consumer_index_;
+  const absl::optional<int64> num_consumers_;
   const int64 max_outstanding_requests_;
   const int64 task_refresh_interval_ms_;
   IterationCounter* const iteration_counter_;  // Owned
@@ -646,6 +871,21 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
   }
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  if (ctx->HasAttr(kDataTransferProtocol)) {
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr(kDataTransferProtocol, &data_transfer_protocol_));
+  }
+  if (data_transfer_protocol_.empty()) data_transfer_protocol_ = "grpc";
+  auto& op_name = ctx->def().op();
+  if (op_name == kDataServiceDatasetV1) {
+    op_version_ = 1;
+  } else if (op_name == kDataServiceDatasetV2) {
+    op_version_ = 2;
+  } else {
+    ctx->CtxFailure(errors::FailedPrecondition(
+        "Unrecognized data service dataset op name: ", op_name));
+    return;
+  }
 }
 
 void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
@@ -672,6 +912,24 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
 
   tstring job_name;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kJobName, &job_name));
+
+  absl::optional<int64> consumer_index;
+  absl::optional<int64> num_consumers;
+  if (op_version_ >= 2) {
+    int64 consumer_index_int;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument(ctx, kConsumerIndex, &consumer_index_int));
+    if (consumer_index_int >= 0) {
+      consumer_index = consumer_index_int;
+    }
+
+    int64 num_consumers_int;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument(ctx, kNumConsumers, &num_consumers_int));
+    if (num_consumers_int >= 0) {
+      num_consumers = num_consumers_int;
+    }
+  }
 
   int64 max_outstanding_requests;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kMaxOutstandingRequests,
@@ -712,14 +970,17 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       errors::InvalidArgument(kMaxOutstandingRequests, " must be positive or ",
                               model::kAutotune));
 
-  *output =
-      new Dataset(ctx, dataset_id, processing_mode, address, protocol, job_name,
-                  max_outstanding_requests, task_refresh_interval_hint_ms_,
-                  iteration_counter, owns_resource, iteration_counter_handle,
-                  output_types_, output_shapes_);
+  *output = new Dataset(ctx, op_version_, dataset_id, processing_mode, address,
+                        protocol, data_transfer_protocol_, job_name,
+                        consumer_index, num_consumers, max_outstanding_requests,
+                        task_refresh_interval_hint_ms_, iteration_counter,
+                        owns_resource, iteration_counter_handle, output_types_,
+                        output_shapes_);
 }
 
 REGISTER_KERNEL_BUILDER(Name("DataServiceDataset").Device(DEVICE_CPU),
+                        DataServiceDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("DataServiceDatasetV2").Device(DEVICE_CPU),
                         DataServiceDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("DummyIterationCounter").Device(DEVICE_CPU),
                         DummyResourceOp<IterationCounter>);

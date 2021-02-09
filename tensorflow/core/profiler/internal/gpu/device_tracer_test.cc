@@ -273,8 +273,8 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
   ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
   // one for MemcpyH2D, one for MemcpyD2H, two for Matmul (one from Eigen, one
-  // from cudnn).
-  EXPECT_EQ(device_plane->event_metadata_size(), 4);
+  // from cudnn), one for memset.
+  EXPECT_EQ(device_plane->event_metadata_size(), 5);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
   EXPECT_TRUE(plane.GetStat(kDevCapClockRateKHz).has_value());
@@ -306,10 +306,12 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   void* devptr = 0;
   // These four CUDA API calls will create 4 XEvents.
   ASSERT_EQ(cudaSuccess, cudaMalloc(&devptr, size_in_bytes));
+  VLOG(3) << "Allocated device memory, addr: " << devptr;
   ASSERT_EQ(cudaSuccess, cudaMemset(devptr, test_value, size_in_bytes));
   int8_t buffer[size_in_bytes];
   ASSERT_EQ(cudaSuccess,
             cudaMemcpy(buffer, devptr, size_in_bytes, cudaMemcpyDeviceToHost));
+  VLOG(3) << "Free device memory, addr: " << devptr;
   ASSERT_EQ(cudaSuccess, cudaFree(devptr));
   TF_EXPECT_OK(tracer->Stop());
   for (int8_t value_from_device : buffer) {
@@ -322,8 +324,8 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
       FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(cupti_host_plane, nullptr);
 
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(cupti_host_plane);
-  EXPECT_EQ(plane.NumLines(), 1);
+  XPlaneVisitor host_plane = CreateTfXPlaneVisitor(cupti_host_plane);
+  EXPECT_EQ(host_plane.NumLines(), 1);
 
   // These follow the order in which they were invoked above.
   const StatType expected_stat_type[] = {
@@ -335,7 +337,7 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
 
   int event_idx = 0;
 
-  plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+  host_plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
     VLOG(3) << "Line " << line.Id() << "\n";
     line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
       VLOG(3) << " Event " << *event.Type() << "\n";
@@ -348,8 +350,54 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
     });
   });
 
-  // One event for each API call.
+  // One host side event for each API call.
   EXPECT_EQ(event_idx, 4);
+
+  const XPlane* cupti_device_plane = FindPlaneWithName(space, GpuPlaneName(0));
+  ASSERT_NE(cupti_device_plane, nullptr);
+  XPlaneVisitor device_plane = CreateTfXPlaneVisitor(cupti_device_plane);
+
+  bool found_activity_memory = false;
+  bool found_activity_memset = false;
+  bool found_activity_memcpy = false;
+
+  device_plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+    line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
+      event.ForEachStat([&](XStatVisitor stat) {
+        if (stat.Type() == StatType::kMemoryResidencyDetails) {
+          size_t num_bytes = 0;
+          size_t addr = 0;
+          // These are the attributes set in cupti_collector::CreateXEvent.
+          auto details = absl::StrSplit(stat.StrOrRefValue(), " ");
+          for (const auto& detail : details) {
+            std::vector<absl::string_view> name_value =
+                absl::StrSplit(detail, ":");
+            if (absl::StartsWith(detail, "num_bytes:")) {
+              (void)absl::SimpleAtoi(name_value[1], &num_bytes);
+            } else if (absl::StartsWith(detail, "addr:")) {
+              (void)absl::SimpleAtoi(name_value[1], &addr);
+            }
+          }
+
+          if (addr == reinterpret_cast<size_t>(devptr) &&
+              num_bytes == size_in_bytes) {
+            found_activity_memory = true;
+          }
+        } else if (stat.Type() == StatType::kMemsetDetails) {
+          CHECK(!found_activity_memset);
+          found_activity_memset = true;
+        } else if (stat.Type() == StatType::kMemcpyDetails) {
+          CHECK(!found_activity_memcpy);
+          found_activity_memcpy = true;
+        }
+      });
+    });
+  });
+
+  // Expect these CUDA device activities to be found.
+  EXPECT_TRUE(found_activity_memory);
+  EXPECT_TRUE(found_activity_memset);
+  EXPECT_TRUE(found_activity_memcpy);
 }
 #endif
 

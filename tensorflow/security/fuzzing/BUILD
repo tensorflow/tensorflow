@@ -5,6 +5,7 @@
 load(
     "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
     "tf_fuzz_target",
+    "tf_py_fuzz_target",
 )
 
 package(
@@ -24,6 +25,26 @@ tf_fuzz_target(
     srcs = ["status_group_fuzz.cc"],
     deps = [
         "//tensorflow/core/platform:status",
+    ],
+)
+
+tf_fuzz_target(
+    name = "bfloat16_fuzz",
+    srcs = ["bfloat16_fuzz.cc"],
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core/framework:bfloat16",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
+    name = "AreAttrValuesEqual_fuzz",
+    srcs = ["AreAttrValuesEqual_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:attr_value_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -106,4 +127,30 @@ tf_fuzz_target(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
     ],
+)
+
+py_library(
+    name = "python_fuzzing",
+    srcs = ["python_fuzzing.py"],
+    srcs_version = "PY3",
+)
+
+tf_py_fuzz_target(
+    name = "constant_fuzz",
+    srcs = ["constant_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+)
+
+tf_py_fuzz_target(
+    name = "raggedCountSparseOutput_fuzz",
+    srcs = ["raggedCountSparseOutput_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "dataFormatVecPermute_fuzz",
+    srcs = ["dataFormatVecPermute_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
 )

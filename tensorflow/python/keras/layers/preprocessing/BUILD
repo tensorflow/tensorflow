@@ -27,7 +27,7 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":category_crossing",
         ":discretization",
@@ -49,7 +49,7 @@ py_library(
         "discretization.py",
         "discretization_v1.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:boosted_trees_ops",
@@ -72,7 +72,7 @@ py_library(
     srcs = [
         "category_crossing.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -95,10 +95,12 @@ py_library(
     srcs = [
         "hashing.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
@@ -106,8 +108,6 @@ py_library(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/utils:tf_utils",
-        "//tensorflow/python/ops/ragged:ragged_functional_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -119,7 +119,7 @@ py_library(
     srcs = [
         "image_preprocessing.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -150,7 +150,7 @@ py_library(
         "index_lookup.py",
         "index_lookup_v1.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":category_encoding",
         ":table_utils",
@@ -160,6 +160,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/engine",
         "//third_party/py/numpy",
     ],
@@ -171,7 +172,7 @@ py_library(
         "normalization.py",
         "normalization_v1.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -193,7 +194,7 @@ py_library(
         "integer_lookup.py",
         "integer_lookup_v1.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":index_lookup",
         ":table_utils",
@@ -208,7 +209,7 @@ py_library(
     srcs = [
         "table_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -231,7 +232,7 @@ py_library(
         "text_vectorization.py",
         "text_vectorization_v1.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":category_encoding",
         ":string_lookup",
@@ -260,7 +261,7 @@ py_library(
         "category_encoding.py",
         "category_encoding_v1.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bincount_ops",
@@ -288,7 +289,7 @@ py_library(
     srcs = [
         "reduction.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -303,7 +304,7 @@ py_library(
         "string_lookup.py",
         "string_lookup_v1.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":index_lookup",
         ":table_utils",
@@ -318,7 +319,7 @@ py_library(
     srcs = [
         "preprocessing_stage.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
@@ -332,7 +333,7 @@ py_library(
 py_library(
     name = "preprocessing_test_utils",
     srcs = ["preprocessing_test_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",

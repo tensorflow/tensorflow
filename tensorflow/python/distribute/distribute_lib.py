@@ -220,7 +220,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
@@ -286,7 +285,7 @@ def get_loss_reduction():
     return reduce_util.ReduceOp.SUM
   last_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
   if (last_reduction == losses_impl.Reduction.SUM or
-      last_reduction == loss_reduction.ReductionV2.SUM):
+      last_reduction == "sum"):  # Check for tf.keras.losses.Reduction.SUM
     return reduce_util.ReduceOp.SUM
   return reduce_util.ReduceOp.MEAN
 
@@ -1164,13 +1163,14 @@ class StrategyBase(object):
     `all_reduce`. Please see the module-level docstring of tf.distribute for the
     concept of replica context.
 
-    All arguments in `args` or `kwargs` should either be Python values of a
-    nested structure of tensors, e.g. a list of tensors, in which case `args`
-    and `kwargs` will be passed to the `fn` invoked on each replica. Or `args`
-    or `kwargs` can be `tf.distribute.DistributedValues` containing tensors or
-    composite tensors, i.e. `tf.compat.v1.TensorInfo.CompositeTensor`, in which
-    case each `fn` call will get the component of a
-    `tf.distribute.DistributedValues` corresponding to its replica.
+    All arguments in `args` or `kwargs` can be a nested structure of tensors,
+    e.g. a list of tensors, in which case `args` and `kwargs` will be passed to
+    the `fn` invoked on each replica. Or `args` or `kwargs` can be
+    `tf.distribute.DistributedValues` containing tensors or composite tensors,
+    i.e. `tf.compat.v1.TensorInfo.CompositeTensor`, in which case each `fn` call
+    will get the component of a `tf.distribute.DistributedValues` corresponding
+    to its replica. Note that arbitrary Python values that are not of the types
+    above are not supported.
 
     IMPORTANT: Depending on the implementation of `tf.distribute.Strategy` and
     whether eager execution is enabled, `fn` may be called one or more times. If
@@ -1236,10 +1236,10 @@ class StrategyBase(object):
 
     Args:
       fn: The function to run on each replica.
-      args: Optional positional arguments to `fn`. Its element can be a Python
-        value, a tensor or a `tf.distribute.DistributedValues`.
-      kwargs: Optional keyword arguments to `fn`. Its element can be a Python
-        value, a tensor or a `tf.distribute.DistributedValues`.
+      args: Optional positional arguments to `fn`. Its element can be a tensor,
+        a nested structure of tensors or a `tf.distribute.DistributedValues`.
+      kwargs: Optional keyword arguments to `fn`. Its element can be a tensor,
+        a nested structure of tensors or a `tf.distribute.DistributedValues`.
       options: An optional instance of `tf.distribute.RunOptions` specifying
         the options to run `fn`.
 
@@ -2878,7 +2878,7 @@ class ReplicaContextBase(object):
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
     if not (replica_id_in_sync_group is None or
-            tensor_util.is_tensor(replica_id_in_sync_group) or
+            tensor_util.is_tf_type(replica_id_in_sync_group) or
             isinstance(replica_id_in_sync_group, int)):
       raise ValueError(
           "replica_id_in_sync_group can only be an integer, a Tensor or None.")
@@ -2981,7 +2981,7 @@ class ReplicaContextBase(object):
     # error. Making the tensor at call time to ensure it is the same graph where
     # it's used. However to be compatible with tpu.replicate(),
     # self._replica_id_in_sync_group can also be a Tensor.
-    if tensor_util.is_tensor(self._replica_id_in_sync_group):
+    if tensor_util.is_tf_type(self._replica_id_in_sync_group):
       return self._replica_id_in_sync_group
     return constant_op.constant(
         self._replica_id_in_sync_group,

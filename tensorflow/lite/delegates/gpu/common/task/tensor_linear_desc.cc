@@ -46,13 +46,14 @@ GPUResources TensorLinearDescriptor::GetGPUResources() const {
 }
 
 absl::Status TensorLinearDescriptor::PerformSelector(
-    const std::string& selector, const std::vector<std::string>& args,
+    const GpuInfo& gpu_info, const std::string& selector,
+    const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Length") {
     *result = "length";
     return absl::OkStatus();
   } else if (selector == "Read") {
-    return PerformReadSelector(args, result);
+    return PerformReadSelector(gpu_info, args, result);
   } else if (selector == "GetPtr") {
     if (storage_type != LinearStorageType::BUFFER) {
       return absl::InvalidArgumentError(
@@ -67,7 +68,8 @@ absl::Status TensorLinearDescriptor::PerformSelector(
 }
 
 absl::Status TensorLinearDescriptor::PerformReadSelector(
-    const std::vector<std::string>& args, std::string* result) const {
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    std::string* result) const {
   if (args.size() != 1) {
     return absl::NotFoundError(
         absl::StrCat("TensorLinearDescriptor Read require one argument, but ",
@@ -77,10 +79,19 @@ absl::Status TensorLinearDescriptor::PerformReadSelector(
     *result = absl::StrCat("buffer[", args[0], "]");
     return absl::OkStatus();
   } else {
-    const std::string read =
-        element_type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
-    *result = absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0], ", 0))");
-    return absl::OkStatus();
+    if (gpu_info.IsApiMetal()) {
+      *result = absl::StrCat("tex2d.read(ushort2(", args[0], ", 0))");
+      return absl::OkStatus();
+    } else if (gpu_info.IsApiOpenCl()) {
+      const std::string read =
+          element_type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
+      *result =
+          absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0], ", 0))");
+      return absl::OkStatus();
+    } else {
+      return absl::UnimplementedError(
+          "No implementation of TensorLinear.Read for this API.");
+    }
   }
 }
 

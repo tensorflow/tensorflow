@@ -151,11 +151,14 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
 
   // Create an engine and add it to the cache of the resource.
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine();
-  TrtUniquePtrType<nvinfer1::IExecutionContext> context(
-      engine->createExecutionContext());
+  auto context_status =
+      ExecutionContext::Create(engine.get(), resource->allocator_.get());
+  TF_ASSERT_OK(context_status.status());
+
   resource->cache_.emplace(
       std::vector<TensorShape>{TensorShape({1, 1})},
-      absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
+      absl::make_unique<EngineContext>(std::move(engine),
+                                       std::move(context_status.ValueOrDie())));
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
   EXPECT_FALSE(resource->RefCountIsOne());

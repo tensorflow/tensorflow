@@ -199,7 +199,7 @@ void HandleConv2DStride(TF::Conv2DOp conv2d) {
     return IntegerAttr::get(IntegerType::get(context, 64), v);
   });
   // TODO(b/157276506): change type of strides to DenseElementsAttr
-  auto strides = ArrayAttr::get(llvm::to_vector<4>(attrs), context);
+  auto strides = ArrayAttr::get(context, llvm::to_vector<4>(attrs));
   conv2d->setAttr("strides", strides);
 }
 
@@ -353,7 +353,7 @@ void HandleConv2DBackPropFilter(TF::Conv2DBackpropFilterOp backprop,
   auto attrs = llvm::map_range(values, [context](int64_t v) -> Attribute {
     return IntegerAttr::get(IntegerType::get(context, 64), APInt(64, v));
   });
-  auto strides = ArrayAttr::get(llvm::to_vector<4>(attrs), context);
+  auto strides = ArrayAttr::get(context, llvm::to_vector<4>(attrs));
 
   // new result type.
   SmallVector<int64_t, 4> new_shape(new_filter_shape.begin(),
@@ -453,26 +453,23 @@ bool HandleHostReplicatedInputs(int64_t index,
                                 BlockArgument block_arg,
                                 tf_device::ReplicateOp replicate,
                                 int32_t block_size) {
-  int64_t replicate_arg_index = block_arg.getArgNumber();
   // We need to know the devices to copy to.
   if (!replicate.devices()) return false;
-  int64_t num_replicas = replicate.n();
-  // Gets inputs at replicate_arg_index for each replica.
-  auto inputs = replicate.getOperands()
-                    .drop_front(replicate_arg_index * num_replicas)
-                    .take_front(num_replicas);
-  for (auto input : inputs) {
-    auto input_op = input.getDefiningOp();
+
+  MutableArrayRef<OpOperand> inputs =
+      replicate.GetOperandsForBlockArgument(block_arg);
+  for (auto& input : inputs) {
+    auto input_op = input.get().getDefiningOp();
     if (!input_op || !IsSupportedHostInputOp(input_op)) return false;
   }
   for (auto entry : llvm::enumerate(inputs)) {
-    auto ranked_type = entry.value().getType().dyn_cast<RankedTensorType>();
+    Value input = entry.value().get();
+    auto ranked_type = input.getType().dyn_cast<RankedTensorType>();
     if (!ranked_type) return false;
     auto input_shape = ranked_type.getShape();
     auto space_to_depth =
-        BuildSpaceToDepth(cluster_func, entry.value(), block_size, input_shape);
-    replicate.setOperand(num_replicas * replicate_arg_index + entry.index(),
-                         space_to_depth);
+        BuildSpaceToDepth(cluster_func, input, block_size, input_shape);
+    entry.value().set(space_to_depth);
     block_arg.setType(space_to_depth.getType());
   }
   return true;

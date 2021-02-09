@@ -199,7 +199,8 @@ Status PropagateConstIntoFuncAttr(
       fld->UniqueFunctionName(absl::StrCat(func_attr.name(), "_const_"));
   TF_RETURN_IF_ERROR(
       GraphToFunctionDef(*func_graph, new_func_name, &replace_fdef));
-  TF_RETURN_IF_ERROR(fld->AddFunctionDef(replace_fdef));
+  TF_RETURN_IF_ERROR(fld->AddFunctionDef(
+      replace_fdef, lookup_fld->GetStackTraces(func_attr.name())));
 
   // Change the node to use rewritten function.
   func_attr.set_name(new_func_name);
@@ -506,7 +507,8 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
         absl::optional<xla::OpSharding> sharding,
         ParseShardingFromDevice(
             *possible_match,
-            /*num_cores_per_replica=*/std::numeric_limits<int32>::max()));
+            /*num_cores_per_replica=*/std::numeric_limits<int32>::max(),
+            /*add_metadata=*/false));
     if (sharding && sharding->type() == xla::OpSharding::MAXIMAL) {
       const int core_annotation = sharding.value().tile_assignment_devices(0);
       if (core == -1 || core > core_annotation) {

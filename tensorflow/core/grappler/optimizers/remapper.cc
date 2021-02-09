@@ -1457,7 +1457,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   Status status;
 
   string x_format = fused_node.attr().at(kDataFormat).s();
-  if (x_format == "NCHW" or x_format == "NCDHW") {
+  if (x_format == "NCHW" || x_format == "NCDHW") {
     // Need to reshape the last 4 inputs
     NodeDef new_shape;
     const string new_shape_name =
@@ -1867,13 +1867,10 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-// NOTE: We can only fuse BatchNorm into Conv2D nodes. In theory we can do
-// it for MatMul as well, but in practice this pattern does not appear in
-// real Tensorflow graphs.
+    // NOTE: We can only fuse BatchNorm into Conv2D nodes. In theory we can do
+    // it for MatMul as well, but in practice this pattern does not appear in
+    // real Tensorflow graphs.
 
-// TODO(penporn):
-// Remove this once TF-MKL supports _FusedConv2D with these operations.
-#ifndef INTEL_MKL
     // Remap Conv2D+Squeeze+BiasAdd into the _FusedConv2D+Squeeze.
     ContractionWithSqueezeAndBiasAdd contract_with_squeeze_and_bias;
     if (allow_non_differentiable_rewrites &&
@@ -1884,6 +1881,9 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
+// TODO(intel-tf):
+// Remove this once TF-MKL supports _FusedConv2D with these operations.
+#ifndef INTEL_MKL
     // Remap Conv2D+FusedBatchNorm into the _FusedConv2D;
     ContractionWithBatchNorm contract_with_batch_norm;
     if (allow_non_differentiable_rewrites &&

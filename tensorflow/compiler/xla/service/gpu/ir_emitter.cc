@@ -145,7 +145,11 @@ Status IrEmitter::EmitConstants(const HloComputation& computation,
 
     GpuExecutable::ConstantInfo info;
     info.symbol_name = global_name;
-    info.content = literal.Clone();
+
+    if (!should_emit_initializer) {
+      auto base = static_cast<const uint8*>(literal.untyped_data());
+      info.content.assign(base, base + literal.size_bytes());
+    }
     if (lookup_indices) {
       auto maybe_slice =
           ir_emitter_context_->buffer_assignment().GetUniqueSlice(instr, {});
@@ -519,15 +523,6 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
 
   return EmitAtomicOperationUsingCAS(computation, output_address,
                                      source_address);
-}
-
-Status IrEmitter::HandleSelect(HloInstruction* select) {
-  auto pred = select->operand(0);
-  TF_RET_CHECK(pred->shape().element_type() == PRED);
-  // We must not call the subclass `DefaultAction` method, lest its
-  // `HandleSelect` call `IrEmitter::HandleSelect` and its `DefaultAction`
-  // assume no handler has already been called.
-  return IrEmitter::DefaultAction(select);
 }
 
 Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {

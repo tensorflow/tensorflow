@@ -85,3 +85,12 @@ cc_proto_library(
     name = "preprocessing_steps_cc_proto",
     deps = ["preprocessing_steps_proto"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "evaluation_stages_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":evaluation_stages_proto"],
+# )
+# copybara:uncomment_end

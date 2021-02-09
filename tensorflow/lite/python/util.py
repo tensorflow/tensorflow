@@ -64,6 +64,8 @@ _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.int8: _types_pb2.INT8,
     dtypes.float64: _types_pb2.FLOAT64,
     dtypes.complex128: _types_pb2.COMPLEX128,
+    dtypes.resource: _types_pb2.RESOURCE,
+    dtypes.variant: _types_pb2.VARIANT,
 }
 
 _MAP_TFLITE_ENUM_TO_TF_TYPES = {
@@ -127,9 +129,9 @@ def _convert_tflite_enum_type_to_tf_type(tflite_enum_type):
   return tf_type
 
 
-def _get_tf_type_name(tf_type):
+def get_tf_type_name(tf_type):
   """Converts tf.dtype (eg: tf.float32) to str (eg: "tf.float32")."""
-  return "tf." + tf_type.name
+  return "tf." + tf_type.name if tf_type else None
 
 
 def get_tensor_name(tensor):
@@ -674,7 +676,7 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
           raise ValueError(
               "Initial model input type must be tf.float32. Expected type for "
               "tensor with name '{}' is tf.float32, instead type is {}".format(
-                  float_tensor.name, _get_tf_type_name(float_type)))
+                  float_tensor.name, get_tf_type_name(float_type)))
       # If found, validate that the operator output is quantized and compatible
       # with the final model input type
       quant_type = _convert_tflite_enum_type_to_tf_type(quant_tensor.type)
@@ -683,17 +685,17 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
             "Initial model input is not quantized. Expected type for "
             "tensor with name '{}' should be in {}, instead type is {}".format(
                 quant_tensor.name,
-                tuple(_get_tf_type_name(t) for t in
+                tuple(get_tf_type_name(t) for t in
                       _MAP_QUANT_TO_IO_TYPES.keys()),
-                _get_tf_type_name(quant_type)))
+                get_tf_type_name(quant_type)))
       else:
         inference_io_types = _MAP_QUANT_TO_IO_TYPES[quant_type]
         if inference_input_type not in inference_io_types:
           raise ValueError(
               "Unsupported `inference_input_type` value. Expected to be in "
               "{}, instead got {}.".format(
-                  tuple(_get_tf_type_name(t) for t in inference_io_types),
-                  _get_tf_type_name(inference_input_type)))
+                  tuple(get_tf_type_name(t) for t in inference_io_types),
+                  get_tf_type_name(inference_input_type)))
       input_quant_ops.append(op)
 
   if len(subgraph.inputs) != len(input_quant_ops):
@@ -725,7 +727,7 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
   else:
     raise ValueError(
         "Unsupported `inference_input_type` value {}.".format(
-            _get_tf_type_name(inference_input_type)))
+            get_tf_type_name(inference_input_type)))
 
 
 def _modify_model_output_type(model, inference_output_type=dtypes.float32):
@@ -768,7 +770,7 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
           raise ValueError(
               "Initial model output type must be tf.float32. Expected type for "
               "tensor with name '{}' is tf.float32, instead type is {}".format(
-                  float_tensor.name, _get_tf_type_name(float_type)))
+                  float_tensor.name, get_tf_type_name(float_type)))
       # If found, validate that the operator input is quantized and compatible
       # with the final model output type
       quant_type = _convert_tflite_enum_type_to_tf_type(quant_tensor.type)
@@ -777,17 +779,17 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
             "Initial model output is not dequantized. Expected type for "
             "tensor with name '{}' should be in {}, instead type is {}".format(
                 quant_tensor.name,
-                tuple(_get_tf_type_name(t) for t in
+                tuple(get_tf_type_name(t) for t in
                       _MAP_QUANT_TO_IO_TYPES.keys()),
-                _get_tf_type_name(quant_type)))
+                get_tf_type_name(quant_type)))
       else:
         inference_io_types = _MAP_QUANT_TO_IO_TYPES[quant_type]
         if inference_output_type not in inference_io_types:
           raise ValueError(
               "Unsupported `inference_output_type` value. Expected to be in "
               "{}, instead got {}.".format(
-                  tuple(_get_tf_type_name(t) for t in inference_io_types),
-                  _get_tf_type_name(inference_output_type)))
+                  tuple(get_tf_type_name(t) for t in inference_io_types),
+                  get_tf_type_name(inference_output_type)))
       output_dequant_ops.append(op)
 
   if len(subgraph.outputs) != len(output_dequant_ops):
@@ -834,7 +836,7 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
   else:
     raise ValueError(
         "Unsupported `inference_output_type` value {}.".format(
-            _get_tf_type_name(inference_output_type)))
+            get_tf_type_name(inference_output_type)))
 
 
 def modify_model_io_type(

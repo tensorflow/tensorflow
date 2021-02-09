@@ -865,16 +865,35 @@ Example:
     Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
   );
 
-  TF_DerivedOperandOrResultHandleTypeAttr dtype =
-    TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
-  TF_DerivedOperandOrResultHandleShapeAttr shape =
-    TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
+  let verifier = [{
+    // VarHandleOp requires the resource handle supply a single subtype from
+    // which to derive the dtype and shape attributes.
+    if (resource_type().getSubtypes().size() != 1) {
+      return emitOpError(
+          "must have exactly one subtype in the result resource type");
+    }
+
+    return success();
+  }];
+
+  DerivedTypeAttr dtype = DerivedTypeAttr<
+      "return getElementTypeOrSelf(resource_subtype());">;
+  DerivedAttr shape = DerivedAttr<
+      "ShapedType",
+      "return resource_subtype().cast<ShapedType>();",
+      [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
   let extraClassDeclaration = [{
     // TF_ResourceHandleAllocatorInterface:
     ResourceHandleValueAndId GetResourceHandleValueAndId(
       llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
       int64_t &next_id);
+
+    TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
+
+    ResourceType resource_type() {
+      return getElementTypeOrSelf(resource()).cast<TF::ResourceType>();
+    }
   }];
 }
 
@@ -994,6 +1013,7 @@ An op which shards the input based on the given sharding attribute.
   let arguments = (ins
     TF_Tensor:$input,
 
+    DefaultValuedAttr<StrAttr, "">:$sharding,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
@@ -1361,12 +1381,12 @@ def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastable
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$x,
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$y
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$x,
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$z
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

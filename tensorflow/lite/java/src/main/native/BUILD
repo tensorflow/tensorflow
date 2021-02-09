@@ -49,6 +49,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/shims:builtin_ops",
         "//tensorflow/lite/core/shims:framework",
+        "//tensorflow/lite/kernels:deprecated_backends",
     ],
     alwayslink = 1,
 )

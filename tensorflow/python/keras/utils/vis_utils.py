@@ -104,9 +104,10 @@ def model_to_dot(model,
 
   if not check_pydot():
     message = (
-        'Failed to import pydot. You must `pip install pydot` '
-        'and install graphviz (https://graphviz.gitlab.io/download/), ',
-        'for `pydotprint` to work.')
+        'You must install pydot (`pip install pydot`) '
+        'and install graphviz '
+        '(see instructions at https://graphviz.gitlab.io/download/) ',
+        'for plot_model/model_to_dot to work.')
     if 'IPython.core.magics.namespace' in sys.modules:
       # We don't raise an exception here in order to avoid crashing notebook
       # tests where graphviz is not available.

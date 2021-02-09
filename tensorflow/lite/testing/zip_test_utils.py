@@ -422,11 +422,11 @@ def make_zip_of_tests(options,
         """
 
         np.random.seed(RANDOM_SEED)
-        report = {"toco": report_lib.NOTRUN, "tf": report_lib.FAILED}
+        report = {"converter": report_lib.NOTRUN, "tf": report_lib.FAILED}
 
         # Build graph
         report["tf_log"] = ""
-        report["toco_log"] = ""
+        report["converter_log"] = ""
         tf.reset_default_graph()
 
         with tf.Graph().as_default():
@@ -446,7 +446,7 @@ def make_zip_of_tests(options,
                   ValueError):
             report["tf_log"] += traceback.format_exc()
             return None, report
-          report["toco"] = report_lib.FAILED
+          report["converter"] = report_lib.FAILED
           report["tf"] = report_lib.SUCCESS
           # Convert graph to toco
           input_tensors = [(input_tensor.name.split(":")[0], input_tensor.shape,
@@ -468,10 +468,10 @@ def make_zip_of_tests(options,
             output_tensors,
             extra_toco_options=extra_toco_options,
             test_params=param_dict_real)
-        report["toco"] = (
+        report["converter"] = (
             report_lib.SUCCESS
             if tflite_model_binary is not None else report_lib.FAILED)
-        report["toco_log"] = toco_log
+        report["converter_log"] = toco_log
 
         if options.save_graphdefs:
           archive.writestr(zip_path_label + ".pbtxt",
@@ -507,7 +507,7 @@ def make_zip_of_tests(options,
 
       _, report = build_example(label, param_dict, zip_path_label)
 
-      if report["toco"] == report_lib.FAILED:
+      if report["converter"] == report_lib.FAILED:
         ignore_error = False
         if not options.known_bugs_are_errors:
           for pattern, bug_number in options.known_bugs.items():
@@ -517,7 +517,7 @@ def make_zip_of_tests(options,
         if not ignore_error:
           toco_errors += 1
           print("-----------------\nconverter error!\n%s\n-----------------\n" %
-                report["toco_log"])
+                report["converter_log"])
 
       convert_report.append((param_dict, report))
 
@@ -541,7 +541,7 @@ def make_zip_of_tests(options,
   tf_success = sum(
       1 for x in convert_report if x[1]["tf"] == report_lib.SUCCESS)
   toco_success = sum(
-      1 for x in convert_report if x[1]["toco"] == report_lib.SUCCESS)
+      1 for x in convert_report if x[1]["converter"] == report_lib.SUCCESS)
   percent = 0
   if tf_success > 0:
     percent = float(toco_success) / float(tf_success) * 100.

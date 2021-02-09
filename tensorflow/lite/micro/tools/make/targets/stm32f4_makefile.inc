@@ -5,8 +5,11 @@ TARGET_ARCH := cortex-m4
 TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 TARGET_TOOLCHAIN_ROOT := $(TENSORFLOW_ROOT)$(MAKEFILE_DIR)/downloads/gcc_embedded/bin/
 
-$(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
-$(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/arm_gcc_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
+endif
+
 $(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
 
 DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/renode_download.sh ${MAKEFILE_DIR}/downloads)
@@ -14,7 +17,12 @@ ifneq ($(DOWNLOAD_RESULT), SUCCESS)
   $(error Something went wrong with the renode download: $(DOWNLOAD_RESULT))
 endif
 
-# TODO(b/161478030) : change - Wno - vla to - Wvla and remove - Wno-shadow once
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/cmsis_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the CMSIS download: $(DOWNLOAD_RESULT))
+endif
+
+# TODO(b/161478030): change -Wno-vla to -Wvla and remove -Wno-shadow once
 # we have a solution for fixing / avoiding being tripped up by these warnings.
 PLATFORM_FLAGS = \
   -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
@@ -44,6 +52,10 @@ PLATFORM_FLAGS = \
   -fomit-frame-pointer \
   -g \
   -Os
+
+# TODO(#46937): Remove once initialization of global variables is sorted out.
+PLATFORM_FLAGS += -DRENODE
+
 CXXFLAGS += $(PLATFORM_FLAGS) -std=gnu++11 -fno-rtti -fno-use-cxa-atexit
 CCFLAGS += $(PLATFORM_FLAGS)
 LDFLAGS += \
@@ -88,5 +100,4 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_with_renode.sh
 # implementation of `make test` for bluepill
 TARGET_SPECIFIC_MAKE_TEST := 1
 test: build
-	$(TEST_SCRIPT) $(BINDIR) $(TARGET)
-
+	$(TEST_SCRIPT) $(BINDIR) $(TEST_PASS_STRING) $(TARGET)

@@ -39,6 +39,15 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+py_strict_library(
+    name = "core",
+    deps = [
+        ":tf_decorator",
+        ":tf_export",
+        ":tf_stack",
+    ],
+)
+
 # TODO(mdan): Move this utility outside of TF.
 cc_library(
     name = "kernel_registry",
@@ -235,7 +244,7 @@ py_strict_library(
     name = "tf_export",
     srcs = ["tf_export.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":tf_decorator",
@@ -263,7 +272,7 @@ py_strict_library(
         "tf_inspect.py",
     ],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
         # TODO(mdan): Remove these dependencies.
@@ -280,7 +289,7 @@ py_strict_library(
 py_strict_library(
     name = "tf_stack",
     srcs = ["tf_stack.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     # TODO(mdan): Remove public visibility.
     visibility = ["//visibility:public"],
     deps = [
@@ -332,9 +341,10 @@ cc_library(
     srcs = ["stack_trace.cc"],
     hdrs = ["stack_trace.h"],
     deps = [
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -405,7 +415,7 @@ py_library(
         ],
     ),
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
@@ -451,6 +461,7 @@ py_library(
     name = "nest_test_main_lib",
     testonly = True,
     srcs = ["nest_test.py"],
+    srcs_version = "PY3",
     deps = [
         ":util",
         "//tensorflow/python:array_ops",
@@ -510,7 +521,7 @@ tf_py_test(
 py_library(
     name = "tf_should_use",
     srcs = ["tf_should_use.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":util",
         "//tensorflow/python:framework_ops",
@@ -544,7 +555,7 @@ tf_py_test(
 py_library(
     name = "example_parser_configuration",
     srcs = ["example_parser_configuration.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -566,12 +577,35 @@ tf_py_test(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "fast_module_type",
+    srcs = ["fast_module_type.cc"],
+    module_name = "fast_module_type",
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "fast_module_type_test",
+    srcs = ["fast_module_type_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":fast_module_type",
+        "//tensorflow/python:platform",
+    ],
+)
+
 tf_py_test(
     name = "module_wrapper_test",
     size = "small",
     srcs = ["module_wrapper_test.py"],
     python_version = "PY3",
     deps = [
+        ":fast_module_type",
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/tools/compatibility:all_renames_v2",
@@ -626,3 +660,13 @@ filegroup(
     name = "compare_test_proto_src",
     srcs = ["protobuf/compare_test.proto"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "compare_test_py_pb2",
+#     testonly = 1,
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":compare_test_proto"],
+# )
+# copybara:uncomment_end

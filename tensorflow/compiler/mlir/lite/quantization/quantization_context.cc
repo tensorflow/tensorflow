@@ -135,7 +135,7 @@ LogicalResult QuantizeContext::Finalize() {
         input_specs.push_back(TypeAttr::get(state.params));
       }
     }
-    op->setAttr("input_specs", ArrayAttr::get(input_specs, context));
+    op->setAttr("input_specs", ArrayAttr::get(context, input_specs));
 
     llvm::SmallVector<Attribute, 4> output_specs;
     auto original_output_specs = op.output_specs().getValue();
@@ -150,7 +150,7 @@ LogicalResult QuantizeContext::Finalize() {
         output_specs.push_back(TypeAttr::get(state.params));
       }
     }
-    op->setAttr("output_specs", ArrayAttr::get(output_specs, context));
+    op->setAttr("output_specs", ArrayAttr::get(context, output_specs));
   });
   return success();
 }

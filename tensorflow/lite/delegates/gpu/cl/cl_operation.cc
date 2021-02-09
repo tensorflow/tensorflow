@@ -45,6 +45,92 @@ int3 GetWorkGroupsCount(int grid_dimension, const int3& grid_size,
   }
   return work_groups_count;
 }
+
+std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
+  std::string result;
+
+  result += "#define FLT16_0123(V) V.s0123\n";
+  result += "#define FLT16_4567(V) V.s4567\n";
+  result += "#define FLT16_89ab(V) V.s89ab\n";
+  result += "#define FLT16_cdef(V) V.scdef\n";
+  result += "#define GLOBAL_ID_0 get_global_id(0)\n";
+  result += "#define GLOBAL_ID_1 get_global_id(1)\n";
+  result += "#define GLOBAL_ID_2 get_global_id(2)\n";
+  result += "#define LOCAL_ID_0 get_local_id(0)\n";
+  result += "#define LOCAL_ID_1 get_local_id(1)\n";
+  result += "#define LOCAL_ID_2 get_local_id(2)\n";
+  result += "#define GROUP_ID_0 get_group_id(0)\n";
+  result += "#define GROUP_ID_1 get_group_id(1)\n";
+  result += "#define GROUP_ID_2 get_group_id(2)\n";
+  result += "#define GROUP_SIZE_0 get_local_size(0)\n";
+  result += "#define GROUP_SIZE_1 get_local_size(1)\n";
+  result += "#define GROUP_SIZE_2 get_local_size(2)\n";
+  result += "#define SIMD_LOCAL_MEM_BARRIER barrier(CLK_LOCAL_MEM_FENCE)\n";
+  result += "#define LOCAL_MEM_BARRIER barrier(CLK_LOCAL_MEM_FENCE)\n";
+  result += "#define MAIN_FUNCTION __kernel void main_function\n";
+  result += "#define INIT_FLOAT(value) (float)(value)\n";
+  result += "#define INIT_FLOAT2(value) (float2)(value)\n";
+  result += "#define INIT_FLOAT2v2(v0, v1) (float2)(v0, v1)\n";
+  result += "#define INIT_FLOAT3(value) (float3)(value)\n";
+  result += "#define INIT_FLOAT3v3(v0, v1, v2) (float3)(v0, v1, v2)\n";
+  result += "#define INIT_FLOAT4(value) (float4)(value)\n";
+  result += "#define INIT_FLOAT4v4(v0, v1, v2, v3) (float4)(v0, v1, v2, v3)\n";
+  result += "#define INIT_INT(value) (int)(value)\n";
+  result += "#define INIT_INT2v2(v0, v1) (int2)(v0, v1)\n";
+  result += "#define INIT_INT4v4(v0, v1, v2, v3) (int4)(v0, v1, v2, v3)\n";
+  result += "#define CONVERT_TO_INT4(value) convert_int4(value)\n";
+  switch (precision) {
+    case CalculationsPrecision::F32:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
+      result += "#define ACCUM_FLT4 float4\n";
+      result += "#define INIT_ACCUM_FLT4(value) (float4)(value)\n";
+      result += "#define FLT float\n";
+      result += "#define FLT2 float2\n";
+      result += "#define FLT3 float3\n";
+      result += "#define FLT4 float4\n";
+      result += "#define TO_FLT4 convert_float4\n";
+      result += "#define TO_ACCUM_TYPE convert_float4\n";
+      result += "#define TO_ACCUM_FLT convert_float\n";
+      result += "#define INIT_FLT(value) (float)(value)\n";
+      result += "#define INIT_FLT4(value) (float4)(value)\n";
+      result +=
+          "#define INIT_FLT4v4(v0, v1, v2, v3) (float4)(v0, v1, v2, v3)\n";
+      break;
+    case CalculationsPrecision::F16:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
+      result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
+      result += "#define ACCUM_FLT4 half4\n";
+      result += "#define INIT_ACCUM_FLT4(value) (half4)(value)\n";
+      result += "#define FLT half\n";
+      result += "#define FLT2 half2\n";
+      result += "#define FLT3 half3\n";
+      result += "#define FLT4 half4\n";
+      result += "#define TO_FLT4 convert_half4\n";
+      result += "#define TO_ACCUM_TYPE convert_half4\n";
+      result += "#define TO_ACCUM_FLT convert_half\n";
+      result += "#define INIT_FLT(value) (half)(value)\n";
+      result += "#define INIT_FLT4(value) (half4)(value)\n";
+      result += "#define INIT_FLT4v4(v0, v1, v2, v3) (half4)(v0, v1, v2, v3)\n";
+      break;
+    case CalculationsPrecision::F32_F16:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
+      result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
+      result += "#define ACCUM_FLT4 float4\n";
+      result += "#define INIT_ACCUM_FLT4(value) (float4)(value)\n";
+      result += "#define FLT half\n";
+      result += "#define FLT2 half2\n";
+      result += "#define FLT3 half3\n";
+      result += "#define FLT4 half4\n";
+      result += "#define TO_FLT4 convert_half4\n";
+      result += "#define TO_ACCUM_TYPE convert_float4\n";
+      result += "#define TO_ACCUM_FLT convert_float\n";
+      result += "#define INIT_FLT(value) (half)(value)\n";
+      result += "#define INIT_FLT4(value) (half4)(value)\n";
+      result += "#define INIT_FLT4v4(v0, v1, v2, v3) (half4)(v0, v1, v2, v3)\n";
+      break;
+  }
+  return result;
+}
 }  // namespace
 
 ClOperation::ClOperation(ClOperation&& operation)
@@ -94,6 +180,9 @@ absl::Status ClOperation::UpdateParams() {
 
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   operation_->AssembleCode(creation_context.GetGpuInfo());
+  operation_->code_ =
+      GetCommonOpenCLDefines(operation_->definition_.precision) +
+      operation_->code_;
   RETURN_IF_ERROR(cl_args_.Init(
       creation_context.GetGpuInfo(),
       {{operation_->dst_tensors_names_[0], operation_->elementwise_code_}},

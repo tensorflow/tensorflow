@@ -55,6 +55,7 @@ from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 acd.register_read_only_resource_op("ReadVariableOp")
 acd.register_read_only_resource_op("VariableShape")
@@ -501,7 +502,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
         constraint=self._constraint,
         dtype=self._dtype,
         name=self._shared_name,
-        distribute_strategy=self._distribute_strategy)
+        distribute_strategy=self._distribute_strategy,
+        synchronization=self.synchronization,
+        aggregation=self.aggregation)
     memo[self._unique_id] = copied_variable
     return copied_variable
 
@@ -513,12 +516,12 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   @property
   def device(self):
     """The device this variable is on."""
-    return self._handle.device
+    return self.handle.device
 
   @property
   def graph(self):
     """The `Graph` of this variable."""
-    return self._handle.graph
+    return self.handle.graph
 
   @property
   def name(self):
@@ -593,7 +596,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   @property
   def op(self):
     """The op for this variable."""
-    return self._handle.op
+    return self.handle.op
 
   @property
   def trainable(self):
@@ -652,7 +655,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     else:
       new_variable = copy_to_graph_uninitialized(self)
     obj_map = {self: new_variable}
-    resource_map = {self._handle: new_variable.handle}
+    resource_map = {self.handle: new_variable.handle}
     return obj_map, resource_map
 
   def _read_variable_op(self):
@@ -660,8 +663,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
 
     def read_and_set_handle():
       result = gen_resource_variable_ops.read_variable_op(
-          self._handle, self._dtype)
-      _maybe_set_handle_data(self._dtype, self._handle, result)
+          self.handle, self._dtype)
+      _maybe_set_handle_data(self._dtype, self.handle, result)
       return result
 
     if getattr(self, "_caching_device", None) is not None:
@@ -675,7 +678,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       # Note that if a control flow context is active the input of the read op
       # might not actually be the handle. This line bypasses it.
       tape.record_operation(
-          "ReadVariableOp", [result], [self._handle],
+          "ReadVariableOp", [result], [self.handle],
           backward_function=lambda x: [x],
           forward_function=lambda x: [x])
     return result
@@ -700,12 +703,12 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     with ops.name_scope("Gather" if name is None else name) as name:
       variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
-          self._handle, indices, dtype=self._dtype, name=name)
+          self.handle, indices, dtype=self._dtype, name=name)
 
       if self._dtype == dtypes.variant:
         # For DT_VARIANT types, the handle's shape_and_type[1:] stores the
         # variant's handle data.  Extract it.
-        handle_data = get_eager_safe_handle_data(self._handle)
+        handle_data = get_eager_safe_handle_data(self.handle)
         if handle_data.is_set and len(handle_data.shape_and_type) > 1:
           value._handle_data = (  # pylint: disable=protected-access
               cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData(
@@ -719,7 +722,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       if self.trainable:
         variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather_nd(
-          self._handle, indices, dtype=self._dtype, name=name)
+          self.handle, indices, dtype=self._dtype, name=name)
 
     return array_ops.identity(value)
 
@@ -852,7 +855,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   def _lazy_read(self, op):
     variable_accessed(self)
     return _UnreadVariable(
-        handle=self._handle,
+        handle=self.handle,
         dtype=self.dtype,
         shape=self._shape,
         in_graph_mode=self._in_graph_mode,
@@ -2211,6 +2214,7 @@ ops.register_proto_function(
     from_proto=_from_proto_fn)
 
 
+@tf_export("__internal__.ops.is_resource_variable", v1=[])
 def is_resource_variable(var):
   """"Returns True if `var` is to be considered a ResourceVariable."""
   return isinstance(var, BaseResourceVariable) or hasattr(

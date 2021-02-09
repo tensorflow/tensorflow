@@ -320,11 +320,11 @@ void InsertSpecialAllocations(int64 unmapped_allocation_bytes, int64 step_id,
   if (unmapped_allocation_bytes > 0) {
     MemoryActivityMetadata* special_allocation =
         memory_profile->add_special_allocations();
-    FillActivityMetadata(
-        HostEventType::kMemoryAllocation,
-        {unmapped_allocation_bytes, unmapped_allocation_bytes, 0,
-         "preallocated/unknown", step_id, "persist/dynamic", 0, "unknown"},
-        special_allocation);
+    FillActivityMetadata(HostEventType::kMemoryAllocation,
+                         {unmapped_allocation_bytes, unmapped_allocation_bytes,
+                          0, "unused preallocated device memory", step_id,
+                          "persist/dynamic", 0, "unknown"},
+                         special_allocation);
     active_allocs->push_back({--index, special_allocation});
   }
   int64 stack_bytes =

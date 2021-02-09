@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
@@ -37,7 +38,7 @@ from tensorflow.python.platform import test
                                 'align_corners=False not supported by XLA')
 class ResizeNearestNeighborOpTestBase(test.TestCase):
 
-  TYPES = [np.float32, np.float64]
+  TYPES = [np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype]
 
   def testShapeIsCorrectAfterOp(self):
     in_shape = [1, 2, 2, 1]
@@ -67,7 +68,8 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
       with self.cached_session(use_gpu=True):
         input_tensor = constant_op.constant(x, shape=in_shape)
         err = gradient_checker_v2.max_error(
-            *gradient_checker_v2.compute_gradient(resize_nn, [input_tensor]))
+            *gradient_checker_v2.compute_gradient(
+                resize_nn, [input_tensor], delta=1 / 8))
         self.assertLess(err, 1e-3)
 
   def testGradFromResizeToSmallerInBothDims(self):
@@ -83,7 +85,8 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
       with self.cached_session(use_gpu=True):
         input_tensor = constant_op.constant(x, shape=in_shape)
         err = gradient_checker_v2.max_error(
-            *gradient_checker_v2.compute_gradient(resize_nn, [input_tensor]))
+            *gradient_checker_v2.compute_gradient(
+                resize_nn, [input_tensor], delta=1 / 8))
         self.assertLess(err, 1e-3)
 
   def testCompareGpuVsCpu(self):
@@ -101,12 +104,12 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
         with self.cached_session(use_gpu=False):
           input_tensor = constant_op.constant(x, shape=in_shape)
           grad_cpu = gradient_checker_v2.compute_gradient(
-              resize_nn, [input_tensor])
+              resize_nn, [input_tensor], delta=1 / 8)
 
         with self.cached_session(use_gpu=True):
           input_tensor = constant_op.constant(x, shape=in_shape)
           grad_gpu = gradient_checker_v2.compute_gradient(
-              resize_nn, [input_tensor])
+              resize_nn, [input_tensor], delta=1 / 8)
 
         self.assertAllClose(grad_cpu, grad_gpu, rtol=1e-5, atol=1e-5)
 
@@ -199,12 +202,14 @@ class ResizeBilinearOpTestBase(test.TestCase, parameterized.TestCase):
     in_shape = [1, 4, 6, 1]
     out_shape = [1, 2, 3, 1]
     for use_gpu in [False, True]:
-      for dtype in [np.float16, np.float32, np.float64]:
+      for dtype in [
+          np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+      ]:
         jacob_a, jacob_n = self._getJacobians(
             in_shape, out_shape, dtype=dtype, use_gpu=use_gpu)
-        if dtype == np.float16:
-          # Compare fp16 analytical gradients to fp32 numerical gradients,
-          # since fp16 numerical gradients are too imprecise unless great
+        if dtype in (np.float16, dtypes.bfloat16.as_numpy_dtype):
+          # Compare fp16/bf16 analytical gradients to fp32 numerical gradients,
+          # since fp16/bf16 numerical gradients are too imprecise unless great
           # care is taken with choosing the inputs and the delta. This is
           # a weaker, but pragmatic, check (in particular, it does not test
           # the op itself, only its gradient).

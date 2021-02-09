@@ -340,7 +340,7 @@ func @main(%arg0: tensor<!tf.resource>) {
 // Tests main function with invalid VarHandleOp resource subtype.
 
 func @main() {
-  // expected-error@+1 {{expects resource type to have one subtype, got '!tf.resource'}}
+  // expected-error @+1 {{must have exactly one subtype in the result resource type}}
   %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource>
   return
 }

@@ -160,6 +160,8 @@ class BasicCPUAllocator : public SubAllocator {
 
   void Free(void* ptr, size_t num_bytes) override;
 
+  bool SupportsCoalescing() const override { return false; }
+
  private:
   int numa_node_;
 

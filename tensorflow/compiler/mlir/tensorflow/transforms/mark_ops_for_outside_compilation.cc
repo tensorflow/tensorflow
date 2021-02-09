@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <queue>
 #include <string>
 #include <utility>
 
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -25,6 +27,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -58,6 +61,27 @@ void AddCanonicalizationPatterns(MLIRContext* context,
                                  OwningRewritePatternList* patterns) {
   for (auto* op : context->getRegisteredOperations())
     op->getCanonicalizationPatterns(*patterns, context);
+}
+
+// Adds the list of ops that are supported on TPU through constant folding which
+// may depend on the inputs shapes not known at this point. Such ops may not
+// have any legalization or canonicalization patterns but shouldn't be marked
+// for outside compilation.
+//
+// TODO(b/177523289): Remove manual handling once we support constant folding
+// and shape inference through the computation on the host side.
+void AddSupportedOpsUsingFolding(MLIRContext* context,
+                                 llvm::DenseSet<OperationName>* supported_ops) {
+  llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
+      OperationName(TF::BroadcastArgsOp::getOperationName(), context),
+      OperationName(TF::BroadcastGradientArgsOp::getOperationName(), context),
+      OperationName(TF::ConcatOffsetOp::getOperationName(), context),
+      OperationName(TF::EmptyOp::getOperationName(), context),
+      OperationName(TF::ListDiffOp::getOperationName(), context),
+      OperationName(TF::RangeOp::getOperationName(), context),
+  };
+
+  supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
 }
 
 // TODO(b/159128666): Check the control flow legalization passes instead once
@@ -184,6 +208,66 @@ bool HasCapturedStringOperand(Operation* op) {
   return string_operand;
 }
 
+bool IsVariant(Value value) {
+  return getElementTypeOrSelf(value.getType()).isa<TF::VariantType>();
+}
+
+bool HasOutsideCompiledAncestor(Operation* op) {
+  Operation* parent = op->getParentOp();
+  while (parent) {
+    if (parent->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+      return true;
+    parent = parent->getParentOp();
+  }
+  return false;
+}
+
+// If any tf.variants are inputs/outputs to the another outside compiled
+// Operation, `op`, mark  them for outside compilation unless they are already
+// marks with outside compilation attribute.
+void MarkVariantInputsOutputs(tf_device::ClusterOp tpu_cluster) {
+  std::queue<Operation*> outside_compiled_ops;
+  tpu_cluster.walk([&](Operation* op) {
+    if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+      outside_compiled_ops.push(op);
+  });
+
+  while (!outside_compiled_ops.empty()) {
+    Operation* host_op = outside_compiled_ops.front();
+    outside_compiled_ops.pop();
+    host_op->walk([&](Operation* op) {
+      // Add any operations that provide variant inputs to the cluster.
+      for (auto value : op->getOperands()) {
+        Operation* input_defining_op = value.getDefiningOp();
+        if (IsVariant(value) && input_defining_op &&
+            !HasOutsideCompiledAncestor(input_defining_op) &&
+            !input_defining_op->hasAttrOfType<StringAttr>(
+                kXlaOutsideCompilationAttr)) {
+          input_defining_op->setAttr(
+              kXlaOutsideCompilationAttr,
+              StringAttr::get(input_defining_op->getContext(), "auto"));
+          outside_compiled_ops.push(input_defining_op);
+        }
+      }
+      // Mark for outside compilation any operations that consume variant
+      // outputs from an outside compiled operation.
+      for (auto value : op->getResults()) {
+        if (IsVariant(value)) {
+          for (auto user : value.getUsers()) {
+            if (!user->isKnownTerminator() &&
+                !HasOutsideCompiledAncestor(user) &&
+                !user->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+              user->setAttr(kXlaOutsideCompilationAttr,
+                            StringAttr::get(user->getContext(), "auto"));
+              outside_compiled_ops.push(user);
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
 // Marks uncompilable ops that are in `tf_dialect` for outside compilation.
 LogicalResult MarkUncompilableOps(
     const Dialect* tf_dialect, Block* block,
@@ -201,11 +285,11 @@ LogicalResult MarkUncompilableOps(
       VLOG(3) << "Cloud TPU: Op " << op->getName().getStringRef().str()
               << " isn't compilable, adding outside_compilation attr. "
                  "This op will automatically be placed on CPU.";
-      op->setAttr(
-          kXlaOutsideCompilationAttr,
-          StringAttr::get(
-              llvm::formatv("auto{0}", outside_compiled_cluster_counter).str(),
-              op->getContext()));
+      op->setAttr(kXlaOutsideCompilationAttr,
+                  StringAttr::get(
+                      op->getContext(),
+                      llvm::formatv("auto{0}", outside_compiled_cluster_counter)
+                          .str()));
       outside_compiled_cluster_counter++;
     }
   });
@@ -257,6 +341,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
         if (root_kind.hasValue()) supported_ops.insert(root_kind.getValue());
       });
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
+  AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
   AddRewrittenCompositeOps(module.getContext(), &supported_ops);
 
@@ -265,12 +350,12 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     // for outside compilation.
     auto soft_placement_attr =
         cluster->getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
-    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
-      return WalkResult::advance();
+    if ((soft_placement_attr && soft_placement_attr.getValue())) {
+      if (failed(MarkUncompilableOps(tf_dialect, &cluster.GetBody(),
+                                     supported_ops)))
+        return WalkResult::interrupt();
     }
-    if (failed(
-            MarkUncompilableOps(tf_dialect, &cluster.GetBody(), supported_ops)))
-      return WalkResult::interrupt();
+    MarkVariantInputsOutputs(cluster);
 
     return WalkResult::advance();
   });

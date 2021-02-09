@@ -26,47 +26,16 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/util.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
-
-enum class WeightsUploadType {
-  PRIVATE_MEM_SIMD8_BROADCAST,
-  PRIVATE_MEM_SIMD16_BROADCAST,
-  PRIVATE_MEM_SIMD32_BROADCAST,
-  LOCAL_MEM_BY_THREADS,
-  GLOBAL_MEM,
-  CONSTANT_MEM,
-};
-
-enum class WeightsInnerBlockLayout {
-  O4I4,
-  I4O4,
-};
-
-struct ConvParams {
-  int3 block_size;
-  int3 work_group_size;
-  int3 work_group_launch_order;
-  int src_depth_loop_size;
-  bool need_src_loop = true;
-  bool need_dst_loop = true;
-  bool linear_wh;
-  bool linear_whs;
-  WeightsUploadType weights_upload_type;
-  WeightsInnerBlockLayout weight_layout;
-  bool different_weights_for_height = false;
-  bool x_kernel_is_1;
-  bool y_kernel_is_1;
-};
 
 namespace {
 
@@ -185,45 +154,49 @@ std::string GenerateUploadByThreads(const std::string& local_ptr_name,
   return c;
 }
 
-std::string GenerateConvolution(const ConvParams& params) {
+std::string GenerateConvolution(const ConvolutionGeneric::ConvParams& params,
+                                const OperationDef& definition) {
   GlobalIdsParams ids_params;
   ids_params.group_ids = {"group_id.x", "group_id.y", "group_id.z"};
   ids_params.global_ids = {"ugid.x", "ugid.y", "ugid.z"};
   ids_params.local_ids = {"tid3d.x", "tid3d.y", "tid3d.z"};
-  ids_params.local_sizes = {"params.work_group_size.x",
-                            "params.work_group_size.y",
-                            "params.work_group_size.z"};
+  ids_params.local_sizes = {"lsize.x", "lsize.y", "lsize.z"};
   ids_params.linear_wh = params.linear_wh;
-  ids_params.task_size_w = "params.task_sizes.x";
-  ids_params.task_size_wh = "params.task_sizes.y";
+  ids_params.task_size_w = "args.task_size_x";
+  ids_params.task_size_wh = "args.task_size_y";
   ids_params.linear_whs = params.linear_whs;
   ids_params.block_size = params.block_size;
   ids_params.launch_order = params.work_group_launch_order;
 
   std::string addr_space =
-      params.weights_upload_type == WeightsUploadType::CONSTANT_MEM ? "constant"
-                                                                    : "device";
+      params.weights_upload_type ==
+              ConvolutionGeneric::WeightsUploadType::CONSTANT_MEM
+          ? "constant"
+          : "device";
   const bool use_local_mem =
-      params.weights_upload_type == WeightsUploadType::LOCAL_MEM_BY_THREADS;
+      params.weights_upload_type ==
+      ConvolutionGeneric::WeightsUploadType::LOCAL_MEM_BY_THREADS;
   const int local_mem_size =
       params.block_size.z * 4 * params.src_depth_loop_size;
 
   const bool use_simd_broadcast =
       params.weights_upload_type ==
-          WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST ||
+          ConvolutionGeneric::WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST ||
       params.weights_upload_type ==
-          WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST ||
+          ConvolutionGeneric::WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST ||
       params.weights_upload_type ==
-          WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST;
+          ConvolutionGeneric::WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST;
   int simd_size = 1;
   if (params.weights_upload_type ==
-      WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST) {
+      ConvolutionGeneric::WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST) {
     simd_size = 8;
   } else if (params.weights_upload_type ==
-             WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST) {
+             ConvolutionGeneric::WeightsUploadType::
+                 PRIVATE_MEM_SIMD16_BROADCAST) {
     simd_size = 16;
   } else if (params.weights_upload_type ==
-             WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST) {
+             ConvolutionGeneric::WeightsUploadType::
+                 PRIVATE_MEM_SIMD32_BROADCAST) {
     simd_size = 32;
   }
 
@@ -235,34 +208,23 @@ std::string GenerateConvolution(const ConvParams& params) {
   std::string c;
   c.reserve(16 * 1024);  // Reserve large enough buffer.
   c += R"(
-#include <metal_stdlib>
-using namespace metal;
-
-struct uniforms {
-    int4 src_size;
-    int4 dst_size;
-    int4 stride_padding;
-    int4 kernel_dilation;
-    int4 task_sizes;
-    uint4 work_group_size;
-};
-$0
-
 kernel void ComputeFunction(
-    $1
+    $0
     uint tid[[thread_index_in_threadgroup]],
     uint3 group_id[[threadgroup_position_in_grid]],
     uint3 tid3d[[thread_position_in_threadgroup]],
+    uint3 lsize[[threads_per_threadgroup]],
 )";
   if (use_simd_broadcast) {
     c += "    uint simd_id[[thread_index_in_simdgroup]],\n";
   }
   c += "    uint3 ugid[[thread_position_in_grid]]){\n";
   c += GlobalIdsGen(ids_params);
-  c += "  if (Z >= params.dst_size.w) return;\n";
+  c += "  if (Z >= args.dst_tensor.Slices()) return;\n";
   bool late_xy_check = use_local_mem || use_simd_broadcast;
   if (!late_xy_check && !params.linear_whs) {
-    c += "  if (X >= params.dst_size.x || Y >= params.dst_size.y) return;\n";
+    c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
+         "return;\n";
   }
   for (int z = 0; z < params.block_size.z; ++z) {
     for (int y = 0; y < params.block_size.y; ++y) {
@@ -288,24 +250,24 @@ kernel void ComputeFunction(
         }
       };
   if (!use_filters_constants) {
-    std::string kern_x =
-        params.x_kernel_is_1 ? "" : " * params.kernel_dilation.x";
-    std::string kern_y =
-        params.y_kernel_is_1 ? "" : " * params.kernel_dilation.y";
+    std::string kern_x = params.x_kernel_is_1 ? "" : " * args.kernel_size_x";
+    std::string kern_y = params.y_kernel_is_1 ? "" : " * args.kernel_size_y";
     std::string dst_offset =
-        params.need_dst_loop ? " + Z * 4 * params.src_size.w" : "";
+        params.need_dst_loop ? " + Z * 4 * args.src_tensor.Slices()" : "";
     if (!params.need_dst_loop) {
-      c += "  " + addr_space + " FLT4* tmp = filters;\n";
+      c += "  " + addr_space + " FLT4* tmp = args.weights.GetPtr();\n";
     } else {
       if (params.different_weights_for_height) {
         c += "  " + addr_space +
-             " FLT4* tmp = filters + (Z * params.src_size.y + Y * " +
+             " FLT4* tmp = args.weights.GetPtr() + (Z * "
+             "args.src_tensor.Height() + Y * " +
              std::to_string(params.block_size.z) +
-             ") * 4 * params.src_size.w;\n";
+             ") * 4 * args.src_tensor.Slices();\n";
       } else {
         c += "  " + addr_space +
-             " FLT4* tmp = filters + Z * 4 * params.src_size.w" + kern_x +
-             kern_y + ";\n";
+             " FLT4* tmp = args.weights.GetPtr() + Z * 4 * "
+             "args.src_tensor.Slices()" +
+             kern_x + kern_y + ";\n";
       }
     }
   }
@@ -313,14 +275,14 @@ kernel void ComputeFunction(
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
       c += "  int x" + s_x + " = (X + " + s_x +
-           ") * params.stride_padding.x + params.stride_padding.z;\n";
+           ") * args.stride_x + args.padding_x;\n";
     }
   }
   if (!params.y_kernel_is_1) {
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       c += "  int y" + s_y + " = (Y + " + s_y +
-           ") * params.stride_padding.y + params.stride_padding.w;\n";
+           ") * args.stride_y + args.padding_y;\n";
     }
   }
   if (use_local_mem) {
@@ -332,18 +294,17 @@ kernel void ComputeFunction(
     c += "  do {\n";
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
-      c += "  int c_y" + s_y + " = y * params.kernel_dilation.w + y" + s_y +
-           ";\n";
+      c += "  int c_y" + s_y + " = y * args.dilation_y + y" + s_y + ";\n";
       c += "  bool y" + s_y + "_out = c_y" + s_y + " < 0 || c_y" + s_y +
-           " >= params.src_size.y;\n";
+           " >= args.src_tensor.Height();\n";
       c += "  c_y" + s_y + " = clamp(c_y" + s_y +
-           ", 0, params.src_size.y - 1);\n";
+           ", 0, args.src_tensor.Height() - 1);\n";
     }
   } else {
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       c += "  int c_y" + s_y + " = clamp(Y + " + s_y +
-           ", 0, params.src_size.y - 1);\n";
+           ", 0, args.src_tensor.Height() - 1);\n";
     }
   }
   if (!params.x_kernel_is_1) {
@@ -351,18 +312,17 @@ kernel void ComputeFunction(
     c += "  do {\n";
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
-      c += "  int c_x" + s_x + " = x * params.kernel_dilation.z + x" + s_x +
-           ";\n";
+      c += "  int c_x" + s_x + " = x * args.dilation_x + x" + s_x + ";\n";
       c += "  bool x" + s_x + "_out = c_x" + s_x + " < 0 || c_x" + s_x +
-           " >= params.src_size.x;\n";
+           " >= args.src_tensor.Width();\n";
       c += "  c_x" + s_x + " = clamp(c_x" + s_x +
-           ", 0, params.src_size.x - 1);\n";
+           ", 0, args.src_tensor.Width() - 1);\n";
     }
   } else {
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
       c += "  int c_x" + s_x + " = clamp(X + " + s_x +
-           ", 0, params.src_size.x - 1);\n";
+           ", 0, args.src_tensor.Width() - 1);\n";
     }
   }
   for (int y = 0; y < params.block_size.y; ++y) {
@@ -384,8 +344,16 @@ kernel void ComputeFunction(
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
       const std::string s_yx = s_y + s_x;
-      c += "  device FLT4* src_loc_" + s_yx + " = src_tensor + c_y" + s_y +
-           " * params.src_size.x + c_x" + s_x + ";\n";
+      if (definition.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
+        c +=
+            "  device FLT4* src_loc_" + s_yx +
+            " = args.src_tensor.GetHandle() + args.src_tensor.GetWHOffset(c_x" +
+            s_x + ", c_y" + s_y + ");\n";
+      } else if (definition.src_tensors[0].storage_type ==
+                 TensorStorageType::IMAGE_BUFFER) {
+        c += "  int src_loc_" + s_yx + " = args.src_tensor.GetWHOffset(c_x" +
+             s_x + ", c_y" + s_y + ");\n";
+      }
     }
   }
   c += "  int s = 0;\n";
@@ -428,24 +396,37 @@ kernel void ComputeFunction(
     for (int y = 0; y < params.block_size.y; ++y) {
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_yx = std::to_string(y) + std::to_string(x);
-        if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
-          c += "    src" + s_yx + " = *src_loc_" + s_yx + " * m" + s_yx + ";\n";
-        } else {
-          c += "    src" + s_yx + " = *src_loc_" + s_yx + ";\n";
+        if (definition.src_tensors[0].storage_type ==
+            TensorStorageType::BUFFER) {
+          if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
+            c += "    src" + s_yx + " = *src_loc_" + s_yx + " * m" + s_yx +
+                 ";\n";
+          } else {
+            c += "    src" + s_yx + " = *src_loc_" + s_yx + ";\n";
+          }
+        } else if (definition.src_tensors[0].storage_type ==
+                   TensorStorageType::IMAGE_BUFFER) {
+          if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
+            c += "    src" + s_yx + " = args.src_tensor.Read(src_loc_" + s_yx +
+                 ") * m" + s_yx + ";\n";
+          } else {
+            c += "    src" + s_yx + " = args.src_tensor.Read(src_loc_" + s_yx +
+                 ");\n";
+          }
         }
       }
     }
     for (int y = 0; y < params.block_size.y; ++y) {
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_yx = std::to_string(y) + std::to_string(x);
-        c += "    src_loc_" + s_yx + " += params.src_size.z;\n";
+        c += "    src_loc_" + s_yx + " += args.src_tensor.SliceStride();\n";
       }
     }
   };
   auto conv_core = [&](int offset) {
     std::string name = use_local_mem ? "weights_cache" : "tmp";
     if (use_filters_constants) {
-      name = "filters";
+      name = "args.weights.GetPtr()";
     }
     for (int z = 0; z < params.block_size.z; ++z) {
       for (int ch = 0; ch < 4; ++ch) {
@@ -464,12 +445,16 @@ kernel void ComputeFunction(
             }
             std::string s_val = "src" + s_id;
             std::string r_val = "r" + r_id;
-            if (params.weight_layout == WeightsInnerBlockLayout::O4I4) {
+            if (params.weight_layout ==
+                ConvolutionGeneric::WeightsInnerBlockLayout::O4I4) {
               c += "    " + r_val + "." + channels[ch] + " += dot(" + f_val +
                    ", " + s_val + ");\n";
             } else {  // WeightsInnerBlockLayout::I404
-              c += "    " + r_val + " += " + f_val + " * " + s_val + "." +
-                   channels[ch] + ";\n";
+              std::string temp_sum = f_val + " * " + s_val + "." + channels[ch];
+              if (definition.precision == CalculationsPrecision::F32_F16) {
+                temp_sum = "float4(" + temp_sum + ")";
+              }
+              c += "    " + r_val + " += " + temp_sum + ";\n";
             }
           }
         }
@@ -491,30 +476,31 @@ kernel void ComputeFunction(
          ";\n";
   }
   if (params.need_src_loop) {
-    c += "  } while (s < params.src_size.w);\n";
+    c += "  } while (s < args.src_tensor.Slices());\n";
   }
   if (!params.x_kernel_is_1) {
     c += "  x++;\n";
-    c += "  } while (x < params.kernel_dilation.x);\n";
+    c += "  } while (x < args.kernel_size_x);\n";
   }
   if (!params.y_kernel_is_1) {
     c += "  y++;\n";
-    c += "  } while (y < params.kernel_dilation.y);\n";
+    c += "  } while (y < args.kernel_size_y);\n";
   }
 
   if (late_xy_check && !params.linear_whs) {
-    c += "  if (X >= params.dst_size.x || Y >= params.dst_size.y) return;\n";
+    c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
+         "return;\n";
   }
 
   for_every_yx([](const std::string& s_yx, const std::string& s_x,
                   const std::string& s_y, int x, int y) {
-    return "  const int offset_" + s_yx + " = Z * params.dst_size.z + (Y + " +
-           s_y + ") * params.dst_size.x + X + " + s_x + ";";
+    return "  args.dst_tensor.GetAddress(offset_" + s_yx + ", X + " + s_x +
+           ", Y + " + s_y + ", Z);";
   });
 
-  std::string bias_name = "biases";
+  std::string bias_name = "args.biases.GetPtr()";
   if (params.need_dst_loop) {
-    c += "  device FLT4* bias_loc = biases + Z;\n";
+    c += "  device FLT4* bias_loc = args.biases.GetPtr() + Z;\n";
     bias_name = "bias_loc";
   }
   for (int y = 0; y < params.block_size.y; ++y) {
@@ -522,14 +508,14 @@ kernel void ComputeFunction(
       for (int z = 0; z < params.block_size.z; ++z) {
         std::string r_id =
             std::to_string(z) + std::to_string(y) + std::to_string(x);
-        c += "  r" + r_id + " += TO_ACCUM4_TYPE(" + bias_name + "[" +
+        c += "  r" + r_id + " += TO_ACCUM_TYPE(" + bias_name + "[" +
              std::to_string(z) + "]);\n";
       }
     }
   }
   for (int z = 0; z < params.block_size.z; ++z) {
     const std::string s_z = std::to_string(z);
-    c += "  if (Z + " + s_z + " < params.dst_size.w) {\n";
+    c += "  if (Z + " + s_z + " < args.dst_tensor.Slices()) {\n";
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       for (int x = 0; x < params.block_size.x; ++x) {
@@ -540,11 +526,11 @@ kernel void ComputeFunction(
         bool need_check_y = y >= 1;
         std::string check;
         if (need_check_x) {
-          check += "(X + " + s_x + ") < params.dst_size.x";
+          check += "(X + " + s_x + ") < args.dst_tensor.Width()";
         }
         if (need_check_y) {
           check += check.empty() ? "" : " && ";
-          check += "(Y + " + s_y + ") < params.dst_size.y";
+          check += "(Y + " + s_y + ") < args.dst_tensor.Height()";
         }
         if (!check.empty()) {
           c += "    if (" + check + ") {\n";
@@ -553,11 +539,10 @@ kernel void ComputeFunction(
         }
         c += "      FLT4 value = FLT4(r" + s_zyx + ");\n";
         c += "      int linear_index = offset_" + s_yx +
-             " + params.dst_size.z * " + s_z + ";\n";
-        c += "      uint3 gid = uint3(X + " + s_x + ", Y + " + s_y + ", Z + " +
-             s_z + ");\n";
-        c += "      $2\n";
-        c += "      dst_tensor[linear_index] = value;\n";
+             " + args.dst_tensor.SliceStride() * " + s_z + ";\n";
+        c += "      args.dst_tensor.Linking(value, X + " + s_x + ", Y + " +
+             s_y + ", Z + " + s_z + ");\n";
+        c += "      args.dst_tensor.WriteLinear(value, linear_index);\n";
         c += "    }\n";
       }
     }
@@ -569,14 +554,15 @@ kernel void ComputeFunction(
 
 std::vector<float> ReorderWeightsForConv(
     const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
-    const ConvParams& params) {
+    const ConvolutionGeneric::ConvParams& params) {
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   std::vector<float> weights_reordered(
       weights.shape.w * weights.shape.h *
       AlignByN(dst_depth, params.block_size.z) * 4 * src_depth * 4);
 
-  bool isO4I4 = params.weight_layout == WeightsInnerBlockLayout::O4I4;
+  bool isO4I4 =
+      params.weight_layout == ConvolutionGeneric::WeightsInnerBlockLayout::O4I4;
 
   int counter = 0;
   for (int d = 0; d < DivideRoundUp(dst_depth, params.block_size.z); ++d) {
@@ -610,75 +596,6 @@ std::vector<float> ReorderWeightsForConv(
     }
   }
   return weights_reordered;
-}
-
-std::vector<uint8_t> GetUniformBuffer(const BHWC& src_size,
-                                      const BHWC& dst_size,
-                                      const Convolution2DAttributes& attr,
-                                      const ConvParams& params) {
-  const int grid_x = DivideRoundUp(dst_size.w, params.block_size.x);
-  const int grid_y = DivideRoundUp(dst_size.h, params.block_size.y);
-  std::vector<int> uniform_params = {
-      src_size.w,
-      src_size.h,
-      src_size.w * src_size.h,
-      DivideRoundUp(src_size.c, 4),
-      dst_size.w,
-      dst_size.h,
-      dst_size.w * dst_size.h,
-      DivideRoundUp(dst_size.c, 4),
-      attr.strides.w,
-      attr.strides.h,
-      -attr.padding.prepended.w,
-      -attr.padding.prepended.h,
-      attr.weights.shape.w,
-      attr.weights.shape.h,
-      attr.dilations.w,
-      attr.dilations.h,
-      grid_x,
-      grid_x * grid_y,
-      0,  // dummy, for alignment
-      0,  // dummy, for alignment
-      params.work_group_size.x,
-      params.work_group_size.y,
-      params.work_group_size.z,
-      0,  // dummy, for alignment
-  };
-  return GetByteBuffer(uniform_params);
-}
-
-std::vector<uint8_t> GetUniformBufferForWinograd(const BHWC& src_size,
-                                                 const BHWC& dst_size,
-                                                 const ConvParams& params) {
-  const int grid_x = DivideRoundUp(dst_size.w, params.block_size.x);
-  const int grid_y = DivideRoundUp(dst_size.h, params.block_size.y);
-  std::vector<int> uniform_params = {
-      src_size.w,
-      src_size.h,
-      src_size.w * src_size.h,
-      DivideRoundUp(src_size.c, 4),
-      dst_size.w,
-      dst_size.h,
-      dst_size.w * dst_size.h,
-      DivideRoundUp(dst_size.c, 4),
-      1,
-      1,
-      0,
-      0,
-      1,
-      1,
-      1,
-      1,
-      grid_x,
-      grid_x * grid_y,
-      0,  // dummy, for alignment
-      0,  // dummy, for alignment
-      params.work_group_size.x,
-      params.work_group_size.y,
-      params.work_group_size.z,
-      0,  // dummy, for alignment
-  };
-  return GetByteBuffer(uniform_params);
 }
 
 int GetGroupsCount(const BHWC& dst_shape, const int3& wg_size,
@@ -752,14 +669,15 @@ int GetRecommendedBlockSize(const AppleInfo& apple_info,
   }
 }
 
-ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
-                                const Convolution2DAttributes& attr,
-                                const BHWC& dst_shape) {
+ConvolutionGeneric::ConvParams GetConvParamsForA7A8(
+    const AppleInfo& apple_info, const Convolution2DAttributes& attr,
+    const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
   const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
 
-  ConvParams params;
-  params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+  ConvolutionGeneric::ConvParams params;
+  params.weights_upload_type =
+      ConvolutionGeneric::WeightsUploadType::LOCAL_MEM_BY_THREADS;
   params.x_kernel_is_1 = IsKernelXIs1(attr);
   params.y_kernel_is_1 = IsKernelYIs1(attr);
   params.src_depth_loop_size = 1;
@@ -767,7 +685,7 @@ ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   params.linear_wh = false;
   params.linear_whs = false;
   params.work_group_launch_order = int3(0, 1, 2);
-  params.weight_layout = WeightsInnerBlockLayout::O4I4;
+  params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::O4I4;
 
   int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
 
@@ -810,7 +728,8 @@ ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
     params.linear_wh = false;
     params.linear_whs = true;
     params.work_group_size = int3(32, 1, 1);
-    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    params.weights_upload_type =
+        ConvolutionGeneric::WeightsUploadType::GLOBAL_MEM;
   }
 
   if (params.src_depth_loop_size == src_slices) {
@@ -823,15 +742,16 @@ ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
       !params.need_dst_loop && !params.need_src_loop && params.x_kernel_is_1 &&
       params.y_kernel_is_1;
   if (use_filters_constants) {
-    params.weights_upload_type = WeightsUploadType::CONSTANT_MEM;
+    params.weights_upload_type =
+        ConvolutionGeneric::WeightsUploadType::CONSTANT_MEM;
   }
 
   return params;
 }
 
-ConvParams GetConvParamsForA9AndHigher(const AppleInfo& apple_info,
-                                       const Convolution2DAttributes& attr,
-                                       const BHWC& dst_shape) {
+ConvolutionGeneric::ConvParams GetConvParamsForA9AndHigher(
+    const AppleInfo& apple_info, const Convolution2DAttributes& attr,
+    const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
   const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
   int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
@@ -856,8 +776,9 @@ ConvParams GetConvParamsForA9AndHigher(const AppleInfo& apple_info,
     blk_total_size /= 4;
   }
 
-  ConvParams params;
-  params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  ConvolutionGeneric::ConvParams params;
+  params.weights_upload_type =
+      ConvolutionGeneric::WeightsUploadType::GLOBAL_MEM;
   params.x_kernel_is_1 = IsKernelXIs1(attr);
   params.y_kernel_is_1 = IsKernelYIs1(attr);
   params.src_depth_loop_size = 1;
@@ -866,7 +787,7 @@ ConvParams GetConvParamsForA9AndHigher(const AppleInfo& apple_info,
   params.linear_whs = false;
   params.work_group_size = int3(8, 4, 1);
   params.work_group_launch_order = int3(2, 0, 1);
-  params.weight_layout = WeightsInnerBlockLayout::O4I4;
+  params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::O4I4;
   int g1 = GetGroupsCount(dst_shape, {8, 4, 1}, block_size);
   int g2 = GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, block_size);
   int g3 = GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, block_size);
@@ -905,19 +826,21 @@ ConvParams GetConvParamsForA9AndHigher(const AppleInfo& apple_info,
       !params.need_dst_loop && !params.need_src_loop && params.x_kernel_is_1 &&
       params.y_kernel_is_1;
   if (use_filters_constants) {
-    params.weights_upload_type = WeightsUploadType::CONSTANT_MEM;
+    params.weights_upload_type =
+        ConvolutionGeneric::WeightsUploadType::CONSTANT_MEM;
   }
 
   return params;
 }
 
-ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
-                                 CalculationsPrecision precision,
-                                 const BHWC& dst_shape) {
+ConvolutionGeneric::ConvParams GetConvParamsForIntel(
+    const Convolution2DAttributes& attr, CalculationsPrecision precision,
+    const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
   const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
-  ConvParams params;
-  params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
+  ConvolutionGeneric::ConvParams params;
+  params.weights_upload_type =
+      ConvolutionGeneric::WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
   params.x_kernel_is_1 = IsKernelXIs1(attr);
   params.y_kernel_is_1 = IsKernelYIs1(attr);
   params.src_depth_loop_size = 1;
@@ -932,9 +855,9 @@ ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
   }
   params.work_group_size = int3(8, 2, 1);
   if (precision == CalculationsPrecision::F32_F16) {
-    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+    params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::O4I4;
   } else {
-    params.weight_layout = WeightsInnerBlockLayout::I4O4;
+    params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::I4O4;
   }
 
   if (src_slices % 2 == 0) {
@@ -953,10 +876,10 @@ ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
   return params;
 }
 
-ConvParams GetConvParamsForAMD(const Convolution2DAttributes& attr,
-                               CalculationsPrecision precision,
-                               const BHWC& dst_shape) {
-  ConvParams params;
+ConvolutionGeneric::ConvParams GetConvParamsForAMD(
+    const Convolution2DAttributes& attr, CalculationsPrecision precision,
+    const BHWC& dst_shape) {
+  ConvolutionGeneric::ConvParams params;
   params.block_size = int3(1, 1, 4);
   params.work_group_size = int3(8, 4, 1);
   params.work_group_launch_order = int3(2, 0, 1);
@@ -965,22 +888,22 @@ ConvParams GetConvParamsForAMD(const Convolution2DAttributes& attr,
   params.need_dst_loop = true;
   params.linear_wh = false;
   params.linear_whs = false;
-  params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  params.weights_upload_type =
+      ConvolutionGeneric::WeightsUploadType::GLOBAL_MEM;
   params.different_weights_for_height = false;
   params.x_kernel_is_1 = IsKernelXIs1(attr);
   params.y_kernel_is_1 = IsKernelYIs1(attr);
   if (precision == CalculationsPrecision::F32_F16) {
-    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+    params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::O4I4;
   } else {
-    params.weight_layout = WeightsInnerBlockLayout::I4O4;
+    params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::I4O4;
   }
   return params;
 }
 
-ConvParams GetConvParams(const GpuInfo& gpu_info,
-                         const Convolution2DAttributes& attr,
-                         CalculationsPrecision precision,
-                         const BHWC& dst_shape) {
+ConvolutionGeneric::ConvParams GetConvParams(
+    const GpuInfo& gpu_info, const Convolution2DAttributes& attr,
+    CalculationsPrecision precision, const BHWC& dst_shape) {
   if (gpu_info.IsApple()) {
     if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
       return GetConvParamsForA7A8(gpu_info.apple_info, attr, dst_shape);
@@ -992,7 +915,7 @@ ConvParams GetConvParams(const GpuInfo& gpu_info,
   } else if (gpu_info.IsAMD()) {
     return GetConvParamsForAMD(attr, precision, dst_shape);
   } else {
-    ConvParams params;
+    ConvolutionGeneric::ConvParams params;
     params.block_size = int3(1, 1, 4);
     params.work_group_size = int3(8, 4, 1);
     params.work_group_launch_order = int3(2, 0, 1);
@@ -1001,96 +924,114 @@ ConvParams GetConvParams(const GpuInfo& gpu_info,
     params.need_dst_loop = true;
     params.linear_wh = false;
     params.linear_whs = false;
-    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    params.weights_upload_type =
+        ConvolutionGeneric::WeightsUploadType::GLOBAL_MEM;
     params.different_weights_for_height = false;
     params.x_kernel_is_1 = IsKernelXIs1(attr);
     params.y_kernel_is_1 = IsKernelYIs1(attr);
-    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+    params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::O4I4;
     return params;
   }
 }
 
-std::pair<uint3, uint3> GetDispatchSizes(const ConvParams& params,
-                                         const BHWC& shape) {
-  const int dst_slices = DivideRoundUp(shape.c, 4);
-
-  int grid_x = DivideRoundUp(shape.w, params.block_size.x);
-  int grid_y = DivideRoundUp(shape.h, params.block_size.y);
-  int grid_z = DivideRoundUp(dst_slices, params.block_size.z);
-
-  const uint3 group_size(params.work_group_size.x, params.work_group_size.y,
-                         params.work_group_size.z);
-  int3 wg;
-  uint3 groups_count;
-  if (params.linear_whs) {
-    wg.x = DivideRoundUp(grid_x * grid_y * grid_z, params.work_group_size.x);
-    groups_count = uint3(wg.x, 1, 1);
-  } else if (params.linear_wh) {
-    wg.x = DivideRoundUp(grid_x * grid_y, params.work_group_size.x);
-    wg.y = DivideRoundUp(grid_z, params.work_group_size.y);
-    groups_count = uint3(wg[params.work_group_launch_order.x],
-                         wg[params.work_group_launch_order.y], 1);
-  } else {
-    wg.x = DivideRoundUp(grid_x, params.work_group_size.x);
-    wg.y = DivideRoundUp(grid_y, params.work_group_size.y);
-    wg.z = DivideRoundUp(grid_z, params.work_group_size.z);
-    groups_count = uint3(wg[params.work_group_launch_order.x],
-                         wg[params.work_group_launch_order.y],
-                         wg[params.work_group_launch_order.z]);
-  }
-  return std::make_pair(group_size, groups_count);
-}
-
 }  // namespace
 
-ComputeTaskDescriptor ConvolutionGeneric(const OperationDef& definition,
-                                         const BHWC& dst_shape,
-                                         const Convolution2DAttributes& attr,
-                                         const GpuInfo& gpu_info) {
-  ConvParams params =
+absl::Status ConvolutionGeneric::BindArguments(ArgumentsBinder* args) {
+  const int grid_x = DivideRoundUp(dst_[0]->Width(), params_.block_size.x);
+  const int grid_y = DivideRoundUp(dst_[0]->Height(), params_.block_size.y);
+  RETURN_IF_ERROR(args->SetInt("task_size_x", grid_x));
+  RETURN_IF_ERROR(args->SetInt("task_size_y", grid_x * grid_y));
+  return absl::OkStatus();
+}
+
+int3 ConvolutionGeneric::GetGridSize() const {
+  int grid_x = DivideRoundUp(dst_[0]->Width(), params_.block_size.x);
+  int grid_y = DivideRoundUp(dst_[0]->Height(), params_.block_size.y);
+  int grid_z = DivideRoundUp(dst_[0]->Slices(), params_.block_size.z);
+
+  int3 group_size(params_.work_group_size);
+  int3 wg;
+  uint3 groups_count;
+  if (params_.linear_whs) {
+    return int3(grid_x * grid_y * grid_z, 1, 1);
+  } else if (params_.linear_wh) {
+    return int3(grid_x * grid_y, grid_z, 1);
+  } else {
+    return int3(grid_x, grid_y, grid_z);
+  }
+}
+
+ConvolutionGeneric CreateConvolutionGeneric(const OperationDef& definition,
+                                            const BHWC& dst_shape,
+                                            const Convolution2DAttributes& attr,
+                                            const GpuInfo& gpu_info) {
+  ConvolutionGeneric::ConvParams params =
       GetConvParams(gpu_info, attr, definition.precision, dst_shape);
 
-  ComputeTaskDescriptor desc(definition);
-  desc.shader_source = GenerateConvolution(params);
+  ConvolutionGeneric desc(definition);
+  desc.params_ = params;
+  desc.code_ = GenerateConvolution(params, definition);
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
+  desc.args_.AddInt("kernel_size_x", attr.weights.shape.w);
+  desc.args_.AddInt("kernel_size_y", attr.weights.shape.h);
+  desc.args_.AddInt("dilation_x", attr.dilations.w);
+  desc.args_.AddInt("dilation_y", attr.dilations.h);
+  desc.args_.AddInt("stride_x", attr.strides.w);
+  desc.args_.AddInt("stride_y", attr.strides.h);
+  desc.args_.AddInt("padding_x", -attr.padding.prepended.w);
+  desc.args_.AddInt("padding_y", -attr.padding.prepended.h);
+
   auto weights_reordered = ReorderWeightsForConv(attr.weights, params);
-  std::string addr_space =
-      params.weights_upload_type == WeightsUploadType::CONSTANT_MEM ? "constant"
-                                                                    : "device";
-  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {addr_space + " FLT4* const filters",
-       GetByteBufferConverted(weights_reordered, data_type)},
-      {addr_space + " FLT4* const biases",
-       GetByteBufferConvertedResized(
-           attr.bias.data, data_type,
-           AlignByN(dst_depth, params.block_size.z) * 4)},
-  };
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [attr, params](const std::vector<BHWC>& src_shapes,
-                      const std::vector<BHWC>& dst_shapes) {
-         return GetUniformBuffer(src_shapes[0], dst_shapes[0], attr, params);
-       }},
-  };
+  MemoryType mem_type =
+      params.weights_upload_type ==
+              ConvolutionGeneric::WeightsUploadType::CONSTANT_MEM
+          ? MemoryType::CONSTANT
+          : MemoryType::GLOBAL;
 
-  desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
-                                  const std::vector<BHWC>& dst_shapes) {
-    return GetDispatchSizes(params, dst_shapes[0]);
-  };
+  BufferDescriptor weights_desc;
+  weights_desc.element_type = data_type;
+  weights_desc.element_size = 4;
+  weights_desc.memory_type = mem_type;
+  weights_desc.data = GetByteBufferConverted(weights_reordered, data_type);
+  weights_desc.size = weights_desc.data.size();
+  desc.args_.AddObject(
+      "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
+
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = data_type;
+  bias_desc.element_size = 4;
+  bias_desc.memory_type = mem_type;
+  bias_desc.data = GetByteBufferConvertedResized(
+      attr.bias.data, data_type, AlignByN(dst_depth, params.block_size.z) * 4);
+  bias_desc.size = bias_desc.data.size();
+  desc.args_.AddObject(
+      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
+
+  desc.args_.AddInt("task_size_x");
+  desc.args_.AddInt("task_size_y");
+
+  desc.work_group_size_ = params.work_group_size;
+  desc.work_group_launch_order_ = params.work_group_launch_order;
+  if (params.linear_whs) {
+    desc.grid_dimension_ = 1;
+  } else if (params.linear_wh) {
+    desc.grid_dimension_ = 2;
+  } else {
+    desc.grid_dimension_ = 3;
+  }
 
   return desc;
 }
 
-ComputeTaskDescriptor ConvolutionWino4x4To6x6(
+ConvolutionGeneric CreateConvolutionWino4x4To6x6(
     const OperationDef& definition, const BHWC& dst_shape,
     const Convolution2DAttributes& attr, const GpuInfo& gpu_info) {
-  const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
-  ConvParams params;
+  ConvolutionGeneric::ConvParams params;
   params.work_group_launch_order = int3(2, 0, 1);
   params.src_depth_loop_size = 1;
   params.need_src_loop = true;
@@ -1101,65 +1042,90 @@ ComputeTaskDescriptor ConvolutionWino4x4To6x6(
   params.x_kernel_is_1 = true;
   params.y_kernel_is_1 = true;
   if (gpu_info.IsApple()) {
-    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+    params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::O4I4;
     if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-      params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+      params.weights_upload_type =
+          ConvolutionGeneric::WeightsUploadType::LOCAL_MEM_BY_THREADS;
       params.work_group_size = int3(32, 1, 1);
       params.block_size = int3(4, 1, 4);
     } else {
-      params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+      params.weights_upload_type =
+          ConvolutionGeneric::WeightsUploadType::GLOBAL_MEM;
       params.work_group_size = int3(8, 4, 1);
       params.block_size = int3(4, 1, 4);
     }
   } else if (gpu_info.IsIntel()) {
-    params.weight_layout = WeightsInnerBlockLayout::I4O4;
-    params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
+    params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::I4O4;
+    params.weights_upload_type =
+        ConvolutionGeneric::WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
     params.work_group_size = int3(16, 1, 1);
     params.block_size = int3(1, 1, 4);
   } else if (gpu_info.IsAMD()) {
-    params.weight_layout = WeightsInnerBlockLayout::I4O4;
-    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::I4O4;
+    params.weights_upload_type =
+        ConvolutionGeneric::WeightsUploadType::GLOBAL_MEM;
     params.work_group_size = int3(32, 1, 1);
     params.block_size = int3(2, 1, 4);
   } else {
-    params.weight_layout = WeightsInnerBlockLayout::I4O4;
-    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    params.weight_layout = ConvolutionGeneric::WeightsInnerBlockLayout::I4O4;
+    params.weights_upload_type =
+        ConvolutionGeneric::WeightsUploadType::GLOBAL_MEM;
     params.work_group_size = int3(32, 1, 1);
     params.block_size = int3(2, 1, 4);
   }
 
-  ComputeTaskDescriptor desc(definition);
-  desc.shader_source = GenerateConvolution(params);
+  ConvolutionGeneric desc(definition);
+  desc.params_ = params;
+  desc.code_ = GenerateConvolution(params, definition);
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+
+  desc.args_.AddInt("kernel_size_x", 1);
+  desc.args_.AddInt("kernel_size_y", 1);
+  desc.args_.AddInt("dilation_x", 1);
+  desc.args_.AddInt("dilation_y", 1);
+  desc.args_.AddInt("stride_x", 1);
+  desc.args_.AddInt("stride_y", 1);
+  desc.args_.AddInt("padding_x", 0);
+  desc.args_.AddInt("padding_y", 0);
 
   ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(attr.weights, &wino_weights);
   auto weights_reordered = ReorderWeightsForConv(wino_weights, params);
+  const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
   std::vector<float> dummy_biases(AlignByN(dst_slices, params.block_size.z) * 4,
                                   0.0f);
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {"device FLT4* const filters",
-       GetByteBufferConverted(weights_reordered, data_type)},
-      {"device FLT4* const biases",
-       GetByteBufferConverted(dummy_biases, data_type)},
-  };
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [params](const std::vector<BHWC>& src_shapes,
-                const std::vector<BHWC>& dst_shapes) {
-         return GetUniformBufferForWinograd(src_shapes[0], dst_shapes[0],
-                                            params);
-       }},
-  };
+  BufferDescriptor weights_desc;
+  weights_desc.element_type = data_type;
+  weights_desc.element_size = 4;
+  weights_desc.data = GetByteBufferConverted(weights_reordered, data_type);
+  weights_desc.size = weights_desc.data.size();
+  desc.args_.AddObject(
+      "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
-  desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
-                                  const std::vector<BHWC>& dst_shapes) {
-    return GetDispatchSizes(params, dst_shapes[0]);
-  };
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = data_type;
+  bias_desc.element_size = 4;
+  bias_desc.data = GetByteBufferConverted(dummy_biases, data_type);
+  bias_desc.size = bias_desc.data.size();
+  desc.args_.AddObject(
+      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
+
+  desc.args_.AddInt("task_size_x");
+  desc.args_.AddInt("task_size_y");
+
+  desc.work_group_size_ = params.work_group_size;
+  desc.work_group_launch_order_ = params.work_group_launch_order;
+  if (params.linear_whs) {
+    desc.grid_dimension_ = 1;
+  } else if (params.linear_wh) {
+    desc.grid_dimension_ = 2;
+  } else {
+    desc.grid_dimension_ = 3;
+  }
 
   return desc;
 }

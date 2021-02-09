@@ -188,12 +188,10 @@ class BFCAllocator : public Allocator {
 
     bool in_use() const { return allocation_id != -1; }
 
-#ifdef TENSORFLOW_MEM_DEBUG
     // optional debugging info
     const char* op_name = nullptr;
     uint64 step_id = 0;
-    int64 action_count = 0;
-#endif
+    uint64 action_count = 0;
 
     string DebugString(BFCAllocator* a,
                        bool recurse) TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -210,11 +208,9 @@ class BFCAllocator : public Allocator {
         Chunk* n = a->ChunkFromHandle(next);
         strings::StrAppend(&dbg, ", next: ", n->DebugString(a, false));
       }
-#ifdef TENSORFLOW_MEM_DEBUG
       strings::StrAppend(&dbg, ", for: ", op_name ? op_name : "UNKNOWN",
                          ", stepid: ", step_id,
                          ", last_action: ", action_count);
-#endif
       return dbg;
     }
   };
@@ -276,10 +272,7 @@ class BFCAllocator : public Allocator {
       DCHECK_EQ(0, memory_size % kMinAllocationSize);
       const size_t n_handles =
           (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
-      handles_.reset(new ChunkHandle[n_handles]);
-      for (size_t i = 0; i < n_handles; i++) {
-        handles_[i] = kInvalidChunkHandle;
-      }
+      handles_.resize(n_handles, kInvalidChunkHandle);
     }
 
     AllocationRegion() = default;
@@ -292,6 +285,15 @@ class BFCAllocator : public Allocator {
     void* ptr() const { return ptr_; }
     void* end_ptr() const { return end_ptr_; }
     size_t memory_size() const { return memory_size_; }
+    void extend(size_t size) {
+      memory_size_ += size;
+      DCHECK_EQ(0, memory_size_ % kMinAllocationSize);
+
+      end_ptr_ = static_cast<void*>(static_cast<char*>(end_ptr_) + size);
+      const size_t n_handles =
+          (memory_size_ + kMinAllocationSize - 1) / kMinAllocationSize;
+      handles_.resize(n_handles, kInvalidChunkHandle);
+    }
     ChunkHandle get_handle(const void* p) const {
       return handles_[IndexFor(p)];
     }
@@ -322,7 +324,7 @@ class BFCAllocator : public Allocator {
     // Array of size "memory_size / kMinAllocationSize".  It is
     // indexed by (p-base) / kMinAllocationSize, contains ChunkHandle
     // for the memory allocation represented by "p"
-    std::unique_ptr<ChunkHandle[]> handles_;
+    std::vector<ChunkHandle> handles_;
 
     TF_DISALLOW_COPY_AND_ASSIGN(AllocationRegion);
   };
@@ -338,10 +340,41 @@ class BFCAllocator : public Allocator {
     ~RegionManager() {}
 
     void AddAllocationRegion(void* ptr, size_t memory_size) {
-      // Insert sorted by end_ptr
+      // Insert sorted by end_ptr.
       auto entry =
           std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
       regions_.insert(entry, AllocationRegion(ptr, memory_size));
+    }
+
+    // Adds an alloation region for the given ptr and size, potentially
+    // extending a region if ptr matches the end_ptr of an existing region.
+    // If a region is extended, returns a pointer to the extended region so that
+    // the BFC allocator can reason about chunkification.
+    AllocationRegion* AddOrExtendAllocationRegion(void* ptr,
+                                                  size_t memory_size) {
+      // Insert sorted by end_ptr.
+      auto entry =
+          std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
+      // Check if can be coalesced with preceding region.
+      if (entry != regions_.begin()) {
+        auto preceding_region = entry - 1;
+        if (preceding_region->end_ptr() == ptr) {
+          if (VLOG_IS_ON(1)) {
+            LOG(INFO) << "Extending region " << preceding_region->ptr()
+                      << " of "
+                      << strings::HumanReadableNumBytes(
+                             preceding_region->memory_size())
+                      << "  by " << strings::HumanReadableNumBytes(memory_size)
+                      << " bytes";
+          }
+          preceding_region->extend(memory_size);
+          return &*preceding_region;
+        }
+      }
+      VLOG(1) << "Inserting new region " << ptr << " of "
+              << strings::HumanReadableNumBytes(memory_size);
+      regions_.insert(entry, AllocationRegion(ptr, memory_size));
+      return nullptr;
     }
 
     std::vector<AllocationRegion>::iterator RemoveAllocationRegion(
@@ -525,7 +558,14 @@ class BFCAllocator : public Allocator {
 
   // Whether the allocator will deallocate free regions to avoid OOM due to
   // memory fragmentation.
-  bool garbage_collection_;
+  const bool garbage_collection_;
+
+  // Whether the allocator will coalesce adjacent sub allocator provided
+  // AllocationRegions. This may be disabled if discrete sub allocator
+  // regions can't be treated as contiguous (e.g. if the allocation refers to
+  // device visible memory which is not adjacent to the other region in the
+  // device's address space).
+  const bool coalesce_regions_;
 
   std::unique_ptr<SubAllocator> sub_allocator_;
   string name_;
@@ -549,13 +589,14 @@ class BFCAllocator : public Allocator {
 
   // Stats.
   AllocatorStats stats_ TF_GUARDED_BY(lock_);
-#ifdef TENSORFLOW_MEM_DEBUG
-  int64 action_counter_ TF_GUARDED_BY(lock_);
-#define MEM_DEBUG_SIZE_HISTORY_SIZE 4096
-  int64 size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
-#endif
+  uint64 action_counter_ TF_GUARDED_BY(lock_);
+
+  // The circular buffer used to track memory operation history.
+  static constexpr uint64 kMemDebugHistorySize = 4096;
+  int64 size_history_[kMemDebugHistorySize];
 
   friend class GPUBFCAllocatorPrivateMethodsTest;
+  friend class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific;
   TF_DISALLOW_COPY_AND_ASSIGN(BFCAllocator);
 };
 

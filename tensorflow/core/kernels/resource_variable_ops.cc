@@ -136,10 +136,11 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
   const auto status = LookupResource(ctx, handle, &variable);
   OP_REQUIRES(ctx, status.ok(),
               errors::FailedPrecondition(
-                  "Error while reading resource variable ", handle.name(),
-                  " from Container: ", handle.container(),
-                  ". This could mean that the variable was uninitialized. ",
-                  status.ToString()));
+                  "Could not find variable ", handle.name(), ". ",
+                  "This could mean that the variable has been deleted. ",
+                  "In TF1, it can also mean the variable is uninitialized. ",
+                  "Debug info: container=", handle.container(),
+                  ", status=", status.ToString()));
 
   tf_shared_lock ml(*variable->mu());
   // We're acquiring a reference to the underlying buffer while
@@ -245,7 +246,8 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
     handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        ctx->stack_trace());
     ctx->set_output(0, handle);
   } else {
     ctx->set_output(0, resource_);
@@ -291,26 +293,6 @@ REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
                         ResourceHandlesOp<Var>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-template <typename T>
-class VariableShapeOp : public OpKernel {
- public:
-  explicit VariableShapeOp(OpKernelConstruction* c) : OpKernel(c) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    core::RefCountPtr<Var> variable;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
-    variable->mu()->lock_shared();
-    TensorShape shape = variable->tensor()->shape();
-    variable->mu()->unlock_shared();
-    Tensor* output;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {shape.dims()}, &output));
-    for (int i = 0; i < shape.dims(); ++i) {
-      output->flat<T>()(i) = shape.dim_size(i);
-    }
-  }
-};
 
 REGISTER_KERNEL_BUILDER(
     Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
@@ -394,7 +376,17 @@ class AssignVariableOp : public OpKernel {
                                   return Status::OK();
                                 }));
     mutex_lock ml(*variable->mu());
-    OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
+    // (variable->tensor()->dtype() == DT_INVALID && !variable->is_initialized)
+    // check below is to allow an XLA specific situation wherein update can
+    // happen first by the AssignVariableOp,
+    // in which case the variable is still uninitialized.
+    // When using TF-XLA, this scenario is possible when the execution uses the
+    // 'fallback' path (which essentially invokes Tensorflow ops via
+    // partitioned_call).
+    OP_REQUIRES(context,
+                (variable->tensor()->dtype() == DT_INVALID &&
+                 !variable->is_initialized) ||
+                    variable->tensor()->dtype() == dtype_,
                 errors::InvalidArgument(
                     "Trying to assign variable with wrong dtype. Expected ",
                     DataTypeString(variable->tensor()->dtype()), " got ",

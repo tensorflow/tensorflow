@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_TASK_RUNNER_H_
 
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -31,6 +32,8 @@ class TaskIterator {
   // `end_of_sequence to `true`.
   virtual Status GetNext(std::vector<Tensor>& element,
                          bool& end_of_sequence) = 0;
+  // Reports the cardinality of the dataset that created this iterator.
+  virtual int64 Cardinality() const = 0;
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -42,6 +45,7 @@ class StandaloneTaskIterator : public TaskIterator {
   StandaloneTaskIterator(std::unique_ptr<standalone::Dataset> dataset,
                          std::unique_ptr<standalone::Iterator> iterator);
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override;
+  int64 Cardinality() const override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;
@@ -51,28 +55,14 @@ class StandaloneTaskIterator : public TaskIterator {
 // Interface for providing elements to task consumers.
 class TaskRunner {
  public:
-  struct Request {
-    // Optional consumer index indicating which consumer is making the request.
-    // Only needed for round-robin reads.
-    int64 consumer_index = -1;
-    // Optional round index indicating which round the consumer wants to read
-    // from. Consumers are expected to read from consecutive rounds, starting
-    // with round 0. The task runner will attempt to serve all consumer
-    // requests for a round from the same block of `num_consumers` iterator
-    // indices, where block `n` is defined as elements `n*num_consumers` to
-    // `(n+1)*num_consumers`.
-    int64 round_index = -1;
-  };
-
   // Creates a `TaskRunner` and stores it in `out`.
   static Status Create(const TaskDef& task_def,
                        std::unique_ptr<TaskIterator> iterator,
                        std::unique_ptr<TaskRunner>& out);
   virtual ~TaskRunner() = default;
-  // Gets the next element for the given request, storing the results in
-  // `element` and `end_of_task`.
-  virtual Status GetNext(const Request& request, std::vector<Tensor>& element,
-                         bool& end_of_task) = 0;
+  // Gets the next element for the given request.
+  virtual Status GetNext(const GetElementRequest& req,
+                         GetElementResponse& resp) = 0;
 };
 
 // A task runner which provides elements on a first-come first-served basis.
@@ -81,20 +71,52 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
  public:
   explicit FirstComeFirstServedTaskRunner(
       std::unique_ptr<TaskIterator> iterator);
-  Status GetNext(const Request& request, std::vector<Tensor>& element,
-                 bool& end_of_task) override;
+  Status GetNext(const GetElementRequest& req,
+                 GetElementResponse& resp) override;
 
  private:
   std::unique_ptr<TaskIterator> iterator_;
 };
 
+// Thread for prefetching a round worth of elements.
+class PrefetchThread {
+ public:
+  explicit PrefetchThread(std::unique_ptr<TaskIterator> iterator,
+                          int64 round_size);
+  ~PrefetchThread();
+  // Runs the prefetch thread. It runs until an error is encountered or the
+  // destructor is called.
+  void Run();
+  // Fills `out` with a round of data. Waits for up to `wait_us` micoseconds
+  // before giving up and returning with `out` empty. A negative `wait_us`
+  // signals to wait indefinitely.
+  Status FillBuffer(int64 wait_us, std::vector<std::vector<Tensor>>& out);
+  // Returns the status for any failures encountered by the prefetch thread.
+  Status GetStatus();
+
+ private:
+  const std::unique_ptr<TaskIterator> iterator_;
+  const int64 round_size_;
+  mutex mu_;
+  // Buffered results for the next round.
+  std::vector<std::vector<Tensor>> buffer_ TF_GUARDED_BY(mu_);
+  // The status if the prefetch thread fails.
+  Status status_ TF_GUARDED_BY(mu_) = Status::OK();
+  // Thread which constantly tries to fill `buffer_` up with
+  // `num_consumers` elements.
+  std::unique_ptr<Thread> thread_;
+  // Condition variable notified when elements are added to or removed from
+  // `buffer_`, or when `status_` is changed.
+  condition_variable cv_;
+  bool cancelled_ TF_GUARDED_BY(mu_) = false;
+};
+
 // A task runner which enforces round-robin order for consuming a task's
-// elements. Requests must provide a consumer index and element index.
-// `RoundRobinTaskRunner` provides elements in a series of "rounds". In each
-// successive round, the runner waits to receive requests from all consumers.
-// These requests are blocked until all requests arrive. Once all requests
-// arrive, the runner hands out elements to consumers in order of their consumer
-// indices.
+// elements. `RoundRobinTaskRunner` provides elements in a series of "rounds".
+// In each successive round, the runner waits to receive requests from all
+// consumers. These requests are blocked until all requests arrive. Once all
+// requests arrive, the runner hands out elements to consumers in order of their
+// consumer indices.
 //
 // Consumers are expected to successively request consecutive element indices,
 // starting at 0. The same element can be requested multiple times by the same
@@ -110,31 +132,37 @@ class RoundRobinTaskRunner : public TaskRunner {
  public:
   RoundRobinTaskRunner(std::unique_ptr<TaskIterator> iterator,
                        int64 num_consumers);
-  Status GetNext(const Request& request, std::vector<Tensor>& element,
-                 bool& end_of_task) override;
+
+  Status GetNext(const GetElementRequest& req,
+                 GetElementResponse& resp) override;
 
  private:
-  struct Result {
-    std::vector<Tensor> element;
-    bool end_of_task = false;
-  };
-  // Fills `buffer_` with `num_consumers_` elements.
-  Status FillBuffer();
-
+  // Prepares a full round of data. `wait_us` indicates how long to wait before
+  // skipping if a full round of data is not yet ready.
+  Status PrepareFullRound(int64 wait_us) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Prepares a partial round to get consumers back in sync.
+  Status PreparePartialRound() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status ValidateRequest(const GetElementRequest& req);
+  // Prepares data for the next round, blocking until the round is ready to
+  // start.
+  Status PrepareRound(const GetElementRequest& req);
   const int64 num_consumers_;
-  std::unique_ptr<TaskIterator> iterator_;
   mutex mu_;
   // Condition variable notified whenever we start a new round of round-robin.
   condition_variable new_round_cv_;
-  // Map from round number to consumers waiting for data from that round.
-  absl::flat_hash_map<int64, absl::flat_hash_set<int64>> requests_
-      TF_GUARDED_BY(mu_);
+  // Map from round number to requests waiting for data from that round.
+  absl::flat_hash_map<int64, absl::flat_hash_set<const GetElementRequest*>>
+      requests_ TF_GUARDED_BY(mu_);
   // Index of the first round we plan to serve. At startup, this is the minimum
   // of all requested element indices.
   int64 first_round_ TF_GUARDED_BY(mu_) = kint64max;
   int64 current_round_ TF_GUARDED_BY(mu_) = -1;
+  bool round_skipped_ TF_GUARDED_BY(mu_) = false;
   // Buffered results for the current round.
-  std::vector<Result> buffer_ TF_GUARDED_BY(mu_);
+  std::vector<std::vector<Tensor>> buffer_ TF_GUARDED_BY(mu_);
+  // Thread which constantly tries to prepare `num_consumers` elements for the
+  // next round.
+  PrefetchThread prefetch_thread_;
 };
 
 }  // namespace data

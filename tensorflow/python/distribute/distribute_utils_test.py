@@ -85,6 +85,29 @@ class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
     self._is_per_replica(result["a"], ["a1", "a2"])
     self._is_per_replica(result["b"], ["b1", "b2"])
 
+  def testRegroupCollectionsMapping(self):
+    class CollectionsMappingBasedClass(collections.Mapping):
+      """Class inherited from collections.Mapping."""
+
+      def __init__(self, *args, **kwargs):
+        self._d = dict(*args, **kwargs)
+
+      def __getitem__(self, key):
+        return self._d.__getitem__(key)
+
+      def __iter__(self):
+        return iter(self._d)
+
+      def __len__(self):
+        return len(self._d)
+
+    result = distribute_utils.regroup(
+        (CollectionsMappingBasedClass(a="a1", b="b1"),
+         CollectionsMappingBasedClass(a="a2", b="b2")))
+    self.assertIsInstance(result, CollectionsMappingBasedClass)
+    self._is_per_replica(result["a"], ["a1", "a2"])
+    self._is_per_replica(result["b"], ["b1", "b2"])
+
   def testWrapClass(self):
     # Normally a mirrored value would be the same across devices, but
     # for a test it is convenient to be able to tell the values apart.

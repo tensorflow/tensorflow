@@ -27,6 +27,7 @@ import warnings
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
@@ -92,9 +93,9 @@ class Functional(training_lib.Model):
 
   Args:
     inputs: List of input tensors (must be created via `tf.keras.Input()`).
-    outputs: List of outputs tensors.
+    outputs: List of output tensors.
     name: String, optional. Name of the model.
-    trainable: Boolean, whether the model's variables should be trainable.
+    trainable: Boolean, optional. If the model's variables should be trainable.
   """
 
   # See tf.Module for the usage of this property.
@@ -107,7 +108,7 @@ class Functional(training_lib.Model):
   ))
 
   @trackable.no_automatic_dependency_tracking
-  def __init__(self, inputs=None, outputs=None, name=None, trainable=True,
+  def __init__(self, inputs, outputs, name=None, trainable=True,
                **kwargs):
     # This is used by the Model class, since we have some logic to swap the
     # class in the __new__ method, which will lead to __init__ get invoked
@@ -643,8 +644,11 @@ class Functional(training_lib.Model):
       # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
     elif tf_utils.is_extension_type(tensor):
-      # Dtype casting.
-      tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
+      # Dtype casting (If the extension type has a non-variant dtype and
+      # supports being cast)
+      ref_input_dtype = getattr(ref_input, 'dtype', None)
+      if ref_input_dtype is not None and ref_input_dtype != dtypes.variant:
+        tensor = math_ops.cast(tensor, dtype=ref_input_dtype)
 
     return tensor
 
@@ -667,12 +671,13 @@ class Functional(training_lib.Model):
     Raises:
         ValueError: In case of improperly formatted config dict.
     """
-    input_tensors, output_tensors, created_layers = reconstruct_from_config(
-        config, custom_objects)
-    model = cls(inputs=input_tensors, outputs=output_tensors,
-                name=config.get('name'))
-    connect_ancillary_layers(model, created_layers)
-    return model
+    with generic_utils.SharedObjectLoadingScope():
+      input_tensors, output_tensors, created_layers = reconstruct_from_config(
+          config, custom_objects)
+      model = cls(inputs=input_tensors, outputs=output_tensors,
+                  name=config.get('name'))
+      connect_ancillary_layers(model, created_layers)
+      return model
 
   def _validate_graph_inputs_and_outputs(self):
     """Validates the inputs and outputs of a Graph Network."""
@@ -1342,21 +1347,23 @@ def get_network_config(network, serialize_layer_fn=None):
         node_conversion_map[node_key] = kept_nodes
         kept_nodes += 1
   layer_configs = []
-  for layer in network.layers:  # From the earliest layers on.
-    filtered_inbound_nodes = []
-    for original_node_index, node in enumerate(layer._inbound_nodes):
-      node_key = _make_node_key(layer.name, original_node_index)
-      if node_key in network._network_nodes and not node.is_input:
-        # The node is relevant to the model:
-        # add to filtered_inbound_nodes.
-        node_data = node.serialize(_make_node_key, node_conversion_map)
-        filtered_inbound_nodes.append(node_data)
 
-    layer_config = serialize_layer_fn(layer)
-    layer_config['name'] = layer.name
-    layer_config['inbound_nodes'] = filtered_inbound_nodes
-    layer_configs.append(layer_config)
-  config['layers'] = layer_configs
+  with generic_utils.SharedObjectSavingScope():
+    for layer in network.layers:  # From the earliest layers on.
+      filtered_inbound_nodes = []
+      for original_node_index, node in enumerate(layer._inbound_nodes):
+        node_key = _make_node_key(layer.name, original_node_index)
+        if node_key in network._network_nodes and not node.is_input:
+          # The node is relevant to the model:
+          # add to filtered_inbound_nodes.
+          node_data = node.serialize(_make_node_key, node_conversion_map)
+          filtered_inbound_nodes.append(node_data)
+
+      layer_config = serialize_layer_fn(layer)
+      layer_config['name'] = layer.name
+      layer_config['inbound_nodes'] = filtered_inbound_nodes
+      layer_configs.append(layer_config)
+    config['layers'] = layer_configs
 
   # Gather info about inputs and outputs.
   model_inputs = []

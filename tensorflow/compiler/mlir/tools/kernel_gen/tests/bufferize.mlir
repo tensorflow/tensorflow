@@ -13,9 +13,9 @@ func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
   return %result : f32
 }
 
-// CHECK-LABEL: @tensor_from_elements
+// CHECK-LABEL: @tensor.from_elements
 // CHECK-SAME: (%[[A:.*]]: f32) -> f32
-func @tensor_from_elements(%a : f32) -> f32 {
+func @tensor.from_elements(%a : f32) -> f32 {
   // CHECK: %[[B:.*]] = constant 1.2
   // CHECK: %[[C:.*]] = constant 2.3
   // ALLOC: %[[MEM:.*]] = alloc() : memref<3xf32>
@@ -28,15 +28,15 @@ func @tensor_from_elements(%a : f32) -> f32 {
   // CHECK: store %[[C]], %[[MEM]][%[[C2]]] : memref<3xf32>
   %b = constant 1.2 : f32
   %c = constant 2.3 : f32
-  %tfe = tensor_from_elements %a, %b, %c : tensor<3xf32>
+  %tfe = tensor.from_elements %a, %b, %c : tensor<3xf32>
   %c0 = constant 0 : index
   %result = tensor.extract %tfe[%c0] : tensor<3xf32>
   return %result : f32
 }
 
-// CHECK-LABEL: @dynamic_tensor_from_elements
+// CHECK-LABEL: @tensor.generate
 // CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> index
-func @dynamic_tensor_from_elements(%arg : tensor<*xf32>) -> index {
+func @tensor.generate(%arg : tensor<*xf32>) -> index {
   // CHECK: %[[SIZE:.*]] = rank %[[ARG]] : memref<*xf32>
   // ALLOC: %[[MEM:.*]] = alloc(%[[SIZE]]) : memref<?xindex>
   // ALLOCA: %[[MEM:.*]] = alloca(%[[SIZE]]) : memref<?xindex>
@@ -48,10 +48,10 @@ func @dynamic_tensor_from_elements(%arg : tensor<*xf32>) -> index {
   // CHECK:   scf.yield
   // CHECK: }
   %size = rank %arg : tensor<*xf32>
-  %tfe = dynamic_tensor_from_elements %size {
+  %tfe = tensor.generate %size {
   ^bb0(%i : index):
     %elem = dim %arg, %i : tensor<*xf32>
-    yield %elem : index
+    tensor.yield %elem : index
   } : tensor<?xindex>
   %c0 = constant 0 : index
   %result = tensor.extract %tfe[%c0] : tensor<?xindex>

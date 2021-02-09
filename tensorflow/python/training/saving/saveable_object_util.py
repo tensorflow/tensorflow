@@ -450,7 +450,7 @@ class RestoredSaveableObject(saveable_object.SaveableObject):
     self.save_function = save_function
     self.restore_function = restore_function
 
-    if tensor_util.is_tensor(name):
+    if tensor_util.is_tf_type(name):
       name_tensor = name
     else:
       with ops.init_scope():

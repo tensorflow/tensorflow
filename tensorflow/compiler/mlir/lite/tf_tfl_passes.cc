@@ -167,9 +167,13 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   // This pass does dead code elimination based on symbol visibility.
   pass_manager->addPass(mlir::createSymbolDCEPass());
-  // This pass 'freezes' immutable global tensors and inlines them as tf
-  // constant ops.
-  pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
+
+  if (!pass_config.disable_variable_freezing) {
+    // This pass 'freezes' immutable global tensors and inlines them as tf
+    // constant ops.
+    pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
+        /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
+  }
 
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
@@ -189,7 +193,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // the TFLite dialect.
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::TFL::CreatePrepareTFPass(
         pass_config.unfold_batch_matmul,
-        /*allow_bf16_type_legalization=*/!pass_config.runtime_verification));
+        /*allow_bf16_and_f16_type_legalization=*/!pass_config
+            .runtime_verification));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     if (pass_config.shape_inference) {
       // Add a shape inference pass to optimize away the unnecessary casts.
@@ -209,6 +214,11 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
 
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
+    if (pass_config.enable_tflite_variables) {
+      pass_manager->addPass(mlir::TFL::CreateInitializeVariablesPass());
+      pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
+      pass_manager->addPass(mlir::TFL::CreateRemoveArgsAndGlobalTensors());
+    }
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::TFL::CreateOptimizePass());
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops

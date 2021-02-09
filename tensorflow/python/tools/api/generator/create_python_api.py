@@ -448,6 +448,7 @@ def add_imports_for_symbol(module_code_builder,
 
 
 def get_api_init_text(packages,
+                      packages_to_ignore,
                       output_package,
                       api_name,
                       api_version,
@@ -459,6 +460,8 @@ def get_api_init_text(packages,
   Args:
     packages: Base python packages containing python with target tf_export
       decorators.
+    packages_to_ignore: python packages to be ignored when checking for
+      tf_export decorators.
     output_package: Base output python package where generated API will be
       added.
     api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
@@ -493,6 +496,10 @@ def get_api_init_text(packages,
     if (not module or not hasattr(module, '__name__') or
         module.__name__ is None or not in_packages(module.__name__)):
       continue
+    if packages_to_ignore and any([p for p in packages_to_ignore
+                                   if p in module.__name__]):
+      continue
+
     # Do not generate __init__.py files for contrib modules for now.
     if (('.contrib.' in module.__name__ or module.__name__.endswith('.contrib'))
         and '.lite' not in module.__name__):
@@ -585,6 +592,7 @@ def get_module_docstring(module_name, package, api_name):
 
 def create_api_files(output_files,
                      packages,
+                     packages_to_ignore,
                      root_init_template,
                      output_dir,
                      output_package,
@@ -600,6 +608,8 @@ def create_api_files(output_files,
     output_files: List of __init__.py file paths to create.
     packages: Base python packages containing python with target tf_export
       decorators.
+    packages_to_ignore: python packages to be ignored when checking for
+      tf_export decorators.
     root_init_template: Template for top-level __init__.py file. "# API IMPORTS
       PLACEHOLDER" comment in the template file will be replaced with imports.
     output_dir: output API root directory.
@@ -633,8 +643,9 @@ def create_api_files(output_files,
       module_text_map,
       deprecation_footer_map,
       root_module_footer,
-  ) = get_api_init_text(packages, output_package, api_name, api_version,
-                        compat_api_versions, lazy_loading, use_relative_imports)
+  ) = get_api_init_text(packages, packages_to_ignore, output_package, api_name,
+                        api_version, compat_api_versions, lazy_loading,
+                        use_relative_imports)
 
   # Add imports to output files.
   missing_output_files = []
@@ -710,6 +721,14 @@ def main():
       help='Base packages that import modules containing the target tf_export '
       'decorators.')
   parser.add_argument(
+      '--packages_to_ignore',
+      default='',
+      type=str,
+      help='Packages to exclude from the api generation. This is used to hide '
+      'certain packages from this script when multiple copy of code exists, '
+      'eg Keras. It is useful to avoid the SymbolExposedTwiceError.'
+      )
+  parser.add_argument(
       '--root_init_template',
       default='',
       type=str,
@@ -784,6 +803,7 @@ def main():
   packages = args.packages.split(',')
   for package in packages:
     importlib.import_module(package)
+  packages_to_ignore = args.packages_to_ignore.split(',')
 
   # Determine if the modules shall be loaded lazily or statically.
   if args.loading == 'default':
@@ -797,7 +817,8 @@ def main():
     raise ValueError('Invalid value for --loading flag: %s. Must be one of '
                      'lazy, static, default.' % args.loading)
 
-  create_api_files(outputs, packages, args.root_init_template, args.apidir,
+  create_api_files(outputs, packages, packages_to_ignore,
+                   args.root_init_template, args.apidir,
                    args.output_package, args.apiname, args.apiversion,
                    args.compat_apiversions, args.compat_init_templates,
                    lazy_loading, args.use_relative_imports)

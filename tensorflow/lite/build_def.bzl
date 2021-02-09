@@ -7,11 +7,12 @@ load(
     "tf_cc_shared_object",
     "tf_cc_test",
 )
+load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 def tflite_copts():
-    """Defines compile time flags."""
+    """Defines common compile time flags for TFLite libraries."""
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
@@ -44,7 +45,25 @@ def tflite_copts():
         ],
     })
 
-    return copts
+    return copts + tflite_copts_extra()
+
+def tflite_copts_warnings():
+    """Defines common warning flags used primarily by internal TFLite libraries."""
+
+    # TODO(b/155906820): Include with `tflite_copts()` after validating clients.
+
+    return select({
+        clean_dep("//tensorflow:windows"): [
+            # We run into trouble on Windows toolchains with warning flags,
+            # as mentioned in the comments below on each flag.
+            # We could be more aggressive in enabling supported warnings on each
+            # Windows toolchain, but we compromise with keeping BUILD files simple
+            # by limiting the number of config_setting's.
+        ],
+        "//conditions:default": [
+            "-Wall",
+        ],
+    })
 
 EXPORTED_SYMBOLS = clean_dep("//tensorflow/lite/java/src/main/native:exported_symbols.lds")
 LINKER_SCRIPT = clean_dep("//tensorflow/lite/java/src/main/native:version_script.lds")
@@ -757,7 +776,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "--target_ops=%s" % target_op_sets,
             ] + args,
             data = data,
-            srcs_version = "PY2AND3",
+            srcs_version = "PY3",
             python_version = "PY3",
             tags = [
                 "no_gpu",  # Executing with TF GPU configurations is redundant.
@@ -833,7 +852,9 @@ def tflite_custom_android_library(
         srcs = [],
         deps = [],
         custom_package = "org.tensorflow.lite",
-        visibility = ["//visibility:private"]):
+        visibility = ["//visibility:private"],
+        include_xnnpack_delegate = True,
+        include_nnapi_delegate = True):
     """Generates a tflite Android library, stripping off unused operators.
 
     Note that due to a limitation in the JNI Java wrapper, the compiled TfLite shared binary
@@ -850,8 +871,16 @@ def tflite_custom_android_library(
         custom_package: Name of the Java package. It is required by android_library in case
             the Java source file can't be inferred from the directory where this rule is used.
         visibility: Visibility setting for the generated target. Default to private.
+        include_xnnpack_delegate: Whether to include the XNNPACK delegate or not.
+        include_nnapi_delegate: Whether to include the NNAPI delegate or not.
     """
     tflite_custom_cc_library(name = "%s_cc" % name, models = models, srcs = srcs, deps = deps, visibility = visibility)
+
+    delegate_deps = []
+    if include_nnapi_delegate:
+        delegate_deps.append("//tensorflow/lite/delegates/nnapi/java/src/main/native")
+    if include_xnnpack_delegate:
+        delegate_deps.append("//tensorflow/lite/delegates/xnnpack:xnnpack_delegate")
 
     # JNI wrapper expects a binary file called `libtensorflowlite_jni.so` in java path.
     tflite_jni_binary(
@@ -861,7 +890,7 @@ def tflite_custom_android_library(
         deps = [
             "//tensorflow/lite/java/src/main/native:native_framework_only",
             ":%s_cc" % name,
-        ],
+        ] + delegate_deps,
     )
 
     native.cc_library(
@@ -872,10 +901,10 @@ def tflite_custom_android_library(
 
     android_library(
         name = name,
+        srcs = ["//tensorflow/lite/java:java_srcs"],
         manifest = "//tensorflow/lite/java:AndroidManifest.xml",
         deps = [
             ":%s_jni" % name,
-            "//tensorflow/lite/java:tensorflowlite_java",
             "@org_checkerframework_qual",
         ],
         custom_package = custom_package,

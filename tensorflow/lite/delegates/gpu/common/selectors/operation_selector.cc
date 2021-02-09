@@ -217,7 +217,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
           &conv_weights_desc);
 
       int aligned_output =
-          AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
+          AlignByN(weights_shape.b, conv_weights_desc.GetOutputGroupSize() * 4);
       int aligned_input = AlignByN(weights_shape.c, 4);
       gpu_subgraph->new_tensors = {{BHWC(1, 1, 1,
                                          aligned_output * aligned_input *
@@ -293,8 +293,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
             attr, weights_shape, output_shape, gpu_info, conv_def, hints,
             &conv_weights_desc);
 
-        int aligned_output =
-            AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
+        int aligned_output = AlignByN(
+            weights_shape.b, conv_weights_desc.GetOutputGroupSize() * 4);
         int aligned_input = AlignByN(weights_shape.c, 4);
         gpu_subgraph->new_tensors = {
             {BHWC(1, 1, 1,
@@ -341,11 +341,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.operation = SelectConvolutionTransposedWithDynamicWeights(
             attr, gpu_info, conv_def, &conv_weights_desc);
 
-        const int out_group_size =
-            conv_weights_desc.layout == WeightsLayout::kOHWIOGroupI4O4
-                ? conv_weights_desc.output_group_size
-                : 1;
-        int aligned_output = AlignByN(weights_shape.b, out_group_size * 4);
+        int aligned_output = AlignByN(
+            weights_shape.b, conv_weights_desc.GetOutputGroupSize() * 4);
         int aligned_input = AlignByN(weights_shape.c, 4);
         gpu_subgraph->new_tensors = {
             {BHWC(1, 1, 1,
@@ -481,7 +478,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::SQRT:
     case OperationType::SQUARE:
     case OperationType::TANH: {
-      GPUOperation operation = CreateElementwiseOneInput(op_def, op_type);
+      GPUOperation operation =
+          CreateElementwiseOneInput(gpu_info, op_def, op_type);
       *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
       return absl::OkStatus();
     }

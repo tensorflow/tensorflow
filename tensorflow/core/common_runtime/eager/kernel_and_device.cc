@@ -97,7 +97,8 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   }
 }
 
-Status KernelAndDeviceOp::Init(const Context& ctx, const NodeDef& ndef,
+Status KernelAndDeviceOp::Init(const bool log_device_placement,
+                               const NodeDef& ndef,
                                GraphCollector* graph_collector) {
   OpKernel* k = nullptr;
   if (flr_ == nullptr) {
@@ -129,7 +130,7 @@ Status KernelAndDeviceOp::Init(const Context& ctx, const NodeDef& ndef,
   return Status::OK();
 }
 
-Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
+Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
                                             const NodeDef& ndef,
                                             GraphCollector* graph_collector) {
   const OpDef* op_def = nullptr;
@@ -184,7 +185,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
 #if !defined(IS_MOBILE_PLATFORM)
   // Android tf library does not include grappler.
   const auto& config_it = ndef.attr().find("config_proto");
-  if (it != ndef.attr().end()) {
+  if (config_it != ndef.attr().end()) {
     if (!options.config_proto.ParseFromString(config_it->second.s())) {
       return errors::InvalidArgument(
           "Failed to parse config_proto attribute as tensorflow::ConfigProto "
@@ -212,18 +213,19 @@ Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
       ->mutable_optimizer_options()
       ->set_do_function_inlining(true);
 
-  options.config_proto.set_log_device_placement(ctx.log_device_placement);
+  options.config_proto.set_log_device_placement(log_device_placement);
 
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);
 }
 
-Status KernelAndDeviceFunc::Init(const Context& ctx, const NodeDef& ndef,
+Status KernelAndDeviceFunc::Init(const bool log_device_placement,
+                                 const NodeDef& ndef,
                                  GraphCollector* graph_collector) {
-  TF_RETURN_IF_ERROR(InstantiateFunc(ctx, ndef, graph_collector));
-  return pflr_->GetOutputDevices(handle_, &output_devices_,
-                                 ctx.eager_lazy_copy);
+  TF_RETURN_IF_ERROR(
+      InstantiateFunc(log_device_placement, ndef, graph_collector));
+  return pflr_->GetOutputDevices(handle_, &output_devices_);
 }
 
 namespace {
@@ -241,7 +243,8 @@ Status KernelAndDeviceOp::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<EagerKernelRet>* outputs,
     CancellationManager* cancellation_manager,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const absl::optional<ManagedStackTrace>& stack_trace) {
   OpKernelContext::Params params;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
@@ -253,6 +256,7 @@ Status KernelAndDeviceOp::Run(
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendezvous_;
+  params.stack_trace = stack_trace;
   OpExecutionState* op_execution_state = nullptr;
 
   CancellationManager default_cancellation_manager;
@@ -318,7 +322,8 @@ Status KernelAndDeviceFunc::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<EagerKernelRet>* outputs,
     CancellationManager* cancellation_manager,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const absl::optional<ManagedStackTrace>& stack_trace) {
   Notification n;
   Status status;
   RunAsync(step_container, inputs, outputs, cancellation_manager,

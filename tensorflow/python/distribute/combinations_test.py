@@ -27,6 +27,7 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
+from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.platform import test
 
@@ -172,6 +173,28 @@ class CombinationsOnClassMultiWorkerExpectedFailureTest(test.TestCase,
     resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
     # This should fail.
     self.assertIsNone(resolver.task_id)
+
+
+class TfFunctionTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          tf_function_1=combinations.tf_function,
+          tf_function_2=combinations.no_tf_function,
+          mode="eager",
+      ))
+  def testFunc(self, tf_function_1, tf_function_2):
+
+    @tf_function_1
+    def foo():
+      self.assertFalse(context.executing_eagerly())
+
+    @tf_function_2
+    def bar():
+      self.assertTrue(context.executing_eagerly())
+
+    foo()
+    bar()
 
 
 if __name__ == "__main__":

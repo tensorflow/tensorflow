@@ -11,6 +11,8 @@ cc_library(
     srcs = ["mlir.cc"],
     hdrs = ["mlir.h"],
     deps = [
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -41,6 +43,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime:core_cpu_base_no_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

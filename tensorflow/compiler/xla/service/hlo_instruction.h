@@ -1349,9 +1349,6 @@ class HloInstruction {
       const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
 
-  const absl::optional<uint64>& fingerprint() const { return fingerprint_; }
-  void set_fingerprint(const uint64 fingerprint) { fingerprint_ = fingerprint; }
-
   // Returns a serialized representation of this instruction.
   virtual HloInstructionProto ToProto() const;
 
@@ -1616,6 +1613,9 @@ class HloInstruction {
   }
   void set_metadata_op_name(const std::string& name) {
     metadata_.set_op_name(name);
+  }
+  void set_logical_creation_pass_id(int64 pass_id) {
+    metadata_.set_logical_creation_pass_id(pass_id);
   }
   const OpMetadata& metadata() const { return metadata_; }
 
@@ -2059,9 +2059,6 @@ class HloInstruction {
   // HloInstruction.
   bool IsMarkedAsDead() const { return marked_as_dead_; }
 
-  // Fingerprint of this instruction alone.
-  absl::optional<uint64> fingerprint_;
-
   int unique_id_;  // Unique to this HloInstruction within a HloModule
 
   // Opcode for this instruction.
@@ -2165,7 +2162,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 string PaddingConfigToString(const PaddingConfig& padding);
 string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
-string OpMetadataToString(const OpMetadata& metadata);
 string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);

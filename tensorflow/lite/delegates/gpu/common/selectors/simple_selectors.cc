@@ -176,15 +176,15 @@ void SelectTranspose(const TransposeAttributes& attr,
 std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
     const GpuInfo& gpu_info, const Padding2D& padding,
     const OperationDef& op_def) {
-  return absl::make_unique<Winograd4x4To36>(
-      CreateWinograd4x4To36(gpu_info, op_def, padding));
+  return absl::make_unique<Winograd4x4To36TileX6>(
+      CreateWinograd4x4To36TileX6(gpu_info, op_def, padding));
 }
 
 std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
     const GpuInfo& gpu_info, const OperationDef& op_def,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
-  return absl::make_unique<Winograd36To4x4>(
-      CreateWinograd36To4x4(gpu_info, op_def, biases));
+  return absl::make_unique<Winograd36To4x4Tile4x1>(
+      CreateWinograd36To4x4Tile4x1(gpu_info, op_def, biases));
 }
 
 std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
