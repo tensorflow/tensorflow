@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
+#include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 
 namespace xla {
-namespace gpu {
 
-void GpuDebugInfoManager::RegisterModule(
+void XlaDebugInfoManager::RegisterModule(
     const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
   tensorflow::mutex_lock lock(mutex_);
@@ -28,7 +27,7 @@ void GpuDebugInfoManager::RegisterModule(
     active_modules_[module_id].instances.emplace_back(hlo_module,
                                                       buffer_assignment);
   } else {
-    GpuModuleEntry m;
+    XlaModuleEntry m;
     m.module_id = module_id;
     m.instances.emplace_back(hlo_module, buffer_assignment);
     active_modules_[module_id] = std::move(m);
@@ -38,14 +37,14 @@ void GpuDebugInfoManager::RegisterModule(
 // Unregister an active module, when the last active module of the same
 // module id is out of scope, we remove it from our database.
 // However during tracing, we will defer the cleanup after serialization.
-void GpuDebugInfoManager::UnregisterModule(
+void XlaDebugInfoManager::UnregisterModule(
     const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
   tensorflow::mutex_lock lock(mutex_);
   CHECK(active_modules_.find(module_id) != active_modules_.end());
-  GpuModuleEntry& active_module = active_modules_[module_id];
+  XlaModuleEntry& active_module = active_modules_[module_id];
   auto instance_it =
-      absl::c_find_if(active_module.instances, [&](GpuModuleInstance& e) {
+      absl::c_find_if(active_module.instances, [&](XlaModuleInstance& e) {
         return e.hlo_module == hlo_module &&
                e.buffer_assignment == buffer_assignment;
       });
@@ -62,12 +61,12 @@ void GpuDebugInfoManager::UnregisterModule(
   }
 }
 
-void GpuDebugInfoManager::OnModuleStart(ModuleIdentifier module_id) {
+void XlaDebugInfoManager::OnModuleStart(ModuleIdentifier module_id) {
   tensorflow::mutex_lock lock(mutex_);
   running_module_ids_[module_id]++;
 }
 
-void GpuDebugInfoManager::OnModuleStop(ModuleIdentifier module_id) {
+void XlaDebugInfoManager::OnModuleStop(ModuleIdentifier module_id) {
   tensorflow::mutex_lock lock(mutex_);
   if (--running_module_ids_[module_id] == 0) {
     if (!tracing_active_) {
@@ -76,17 +75,17 @@ void GpuDebugInfoManager::OnModuleStop(ModuleIdentifier module_id) {
   }
 }
 
-void GpuDebugInfoManager::StartTracing() {
+void XlaDebugInfoManager::StartTracing() {
   tensorflow::mutex_lock lock(mutex_);
   tracing_active_ = true;
 }
 
-void GpuDebugInfoManager::StopTracing(
-    std::vector<GpuModuleDebugInfo>* module_debug_info) {
-  std::vector<GpuModuleEntry> modules_to_serialize;
+void XlaDebugInfoManager::StopTracing(
+    std::vector<XlaModuleDebugInfo>* module_debug_info) {
+  std::vector<XlaModuleEntry> modules_to_serialize;
   {
     tensorflow::mutex_lock lock(mutex_);
-    CHECK(tracing_active_);
+    if (!tracing_active_) return;
     tracing_active_ = false;
     for (const auto& running_module_id : running_module_ids_) {
       const ModuleIdentifier& module_id = running_module_id.first;
@@ -94,13 +93,13 @@ void GpuDebugInfoManager::StopTracing(
         LOG(ERROR) << "Cannot find debug info for module: " << module_id;
         continue;
       }
-      const GpuModuleEntry& active_module = active_modules_[module_id];
+      const XlaModuleEntry& active_module = active_modules_[module_id];
 
       // Copy the instance so that we can serialize without holding the lock.
       // All instances are equivalent from the perspective of symbolization.
       // We only use the first one.
       if (!active_module.instances.empty()) {
-        GpuModuleEntry e;
+        XlaModuleEntry e;
         e.module_id = active_module.module_id;
         e.instances.push_back(active_module.instances[0]);
         modules_to_serialize.push_back(std::move(e));
@@ -140,7 +139,7 @@ void GpuDebugInfoManager::StopTracing(
   if (module_debug_info) {
     module_debug_info->clear();
     for (const auto& m : modules_to_serialize) {
-      GpuModuleDebugInfo info;
+      XlaModuleDebugInfo info;
       info.module_id = m.module_id;
       // In real world, hlo_module and buffer_assignment will always be
       // non-nullptr. Due to the inconvenience of creation of buffer_assignment
@@ -156,5 +155,4 @@ void GpuDebugInfoManager::StopTracing(
   }
 }
 
-}  // namespace gpu
 }  // namespace xla

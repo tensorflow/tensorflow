@@ -12,17 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
+#include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
-namespace gpu {
 
 using ::testing::UnorderedElementsAre;
 
-class GpuDebugInfoManagerTest : public HloTestBase {
+class XlaDebugInfoManagerTest : public HloTestBase {
  protected:
   struct DebugMetadata {
     // We allow same id to be registered multiple times. we need unique id to
@@ -41,7 +40,7 @@ class GpuDebugInfoManagerTest : public HloTestBase {
     debug_info.id = module_id;
     debug_info.module = std::make_shared<HloModule>(module_id, config);
     debug_info.buffer_assignment = nullptr;
-    gpu_debug_info_manager_.RegisterModule(module_id, debug_info.module,
+    xla_debug_info_manager_.RegisterModule(module_id, debug_info.module,
                                            debug_info.buffer_assignment);
     external_references_.push_back(std::move(debug_info));
     return serial_;
@@ -50,7 +49,7 @@ class GpuDebugInfoManagerTest : public HloTestBase {
   void UnregisterProgram(int unique_id) {
     for (int i = 0; i < external_references_.size(); i++) {
       if (external_references_[i].unique_id == unique_id) {
-        gpu_debug_info_manager_.UnregisterModule(
+        xla_debug_info_manager_.UnregisterModule(
             external_references_[i].id, external_references_[i].module,
             external_references_[i].buffer_assignment);
         external_references_.erase(external_references_.begin() + i);
@@ -62,7 +61,7 @@ class GpuDebugInfoManagerTest : public HloTestBase {
   void StartProgram(int unique_id) {
     for (int i = 0; i < external_references_.size(); i++) {
       if (external_references_[i].unique_id == unique_id) {
-        gpu_debug_info_manager_.OnModuleStart(external_references_[i].id);
+        xla_debug_info_manager_.OnModuleStart(external_references_[i].id);
         break;
       }
     }
@@ -71,7 +70,7 @@ class GpuDebugInfoManagerTest : public HloTestBase {
   void StopProgram(int unique_id) {
     for (int i = 0; i < external_references_.size(); i++) {
       if (external_references_[i].unique_id == unique_id) {
-        gpu_debug_info_manager_.OnModuleStop(external_references_[i].id);
+        xla_debug_info_manager_.OnModuleStop(external_references_[i].id);
         break;
       }
     }
@@ -83,17 +82,17 @@ class GpuDebugInfoManagerTest : public HloTestBase {
   }
 
   std::set<ModuleIdentifier> GetRunningModule() {
-    return gpu_debug_info_manager_.GetRunningModules();
+    return xla_debug_info_manager_.GetRunningModules();
   }
   std::set<ModuleIdentifier> GetActiveModule() {
-    return gpu_debug_info_manager_.GetActiveModules();
+    return xla_debug_info_manager_.GetActiveModules();
   }
 
-  void StartTrace() { gpu_debug_info_manager_.StartTracing(); }
+  void StartTrace() { xla_debug_info_manager_.StartTracing(); }
 
   std::set<ModuleIdentifier> StopTrace() {
-    std::vector<GpuModuleDebugInfo> module_debug_info;
-    gpu_debug_info_manager_.StopTracing(&module_debug_info);
+    std::vector<XlaModuleDebugInfo> module_debug_info;
+    xla_debug_info_manager_.StopTracing(&module_debug_info);
     std::set<ModuleIdentifier> serialized;
     for (const auto& module : module_debug_info) {
       serialized.insert(module.module_id);
@@ -107,11 +106,11 @@ class GpuDebugInfoManagerTest : public HloTestBase {
   std::vector<DebugMetadata> external_references_;
 
   // Use an instance per test instead of singleton to avoid interferences.
-  GpuDebugInfoManager gpu_debug_info_manager_;
+  XlaDebugInfoManager xla_debug_info_manager_;
 };
 
 // Test the cases where no trace session is involved.
-TEST_F(GpuDebugInfoManagerTest, NoTraceBasic) {
+TEST_F(XlaDebugInfoManagerTest, NoTraceBasic) {
   auto program0 = RegisterProgram("program0");
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0"));
   EXPECT_TRUE(GetRunningModule().empty());
@@ -135,7 +134,7 @@ TEST_F(GpuDebugInfoManagerTest, NoTraceBasic) {
   EXPECT_TRUE(GetActiveModule().empty());
 }
 
-TEST_F(GpuDebugInfoManagerTest, NoTraceDuplicateIds) {
+TEST_F(XlaDebugInfoManagerTest, NoTraceDuplicateIds) {
   auto program0A = RegisterProgram("program0");
   auto program0B = RegisterProgram("program0");  // duplicates
   auto program1 = RegisterProgram("program1");
@@ -163,7 +162,7 @@ TEST_F(GpuDebugInfoManagerTest, NoTraceDuplicateIds) {
 }
 
 // Test the cases where an active trace session is involved.
-TEST_F(GpuDebugInfoManagerTest, ActiveTrace) {
+TEST_F(XlaDebugInfoManagerTest, ActiveTrace) {
   auto program0A = RegisterProgram("program0");
   auto program0B = RegisterProgram("program0");  // duplicates
   auto program1 = RegisterProgram("program1");
@@ -195,7 +194,7 @@ TEST_F(GpuDebugInfoManagerTest, ActiveTrace) {
   EXPECT_TRUE(GetActiveModule().empty());
 }
 
-TEST_F(GpuDebugInfoManagerTest, UnregisterDuringTrace) {
+TEST_F(XlaDebugInfoManagerTest, UnregisterDuringTrace) {
   auto program0A = RegisterProgram("program0");
   auto program0B = RegisterProgram("program0");  // duplicates
   auto program1 = RegisterProgram("program1");
@@ -211,5 +210,4 @@ TEST_F(GpuDebugInfoManagerTest, UnregisterDuringTrace) {
   UnregisterProgram(program0A);
 }
 
-}  // namespace gpu
 }  // namespace xla

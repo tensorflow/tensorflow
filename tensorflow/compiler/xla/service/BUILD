@@ -5436,6 +5436,34 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "xla_debug_info_manager",
+    srcs = [
+        "xla_debug_info_manager.cc",
+    ],
+    hdrs = [
+        "xla_debug_info_manager.h",
+    ],
+    deps = [
+        ":hlo",
+        ":hlo_proto_cc",
+        ":hlo_proto_util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_debug_info_manager_test",
+    srcs = ["xla_debug_info_manager_test.cc"],
+    deps = [
+        ":hlo_proto_cc",
+        ":xla_debug_info_manager",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "hlo_pb2",

@@ -679,35 +679,6 @@ alias(
 )
 
 cc_library(
-    name = "gpu_debug_info_manager",
-    srcs = [
-        "gpu_debug_info_manager.cc",
-    ],
-    hdrs = [
-        "gpu_debug_info_manager.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_proto_util",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-tf_cc_test(
-    name = "gpu_debug_info_manager_test",
-    srcs = ["gpu_debug_info_manager_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":gpu_debug_info_manager",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-    ],
-)
-
-cc_library(
     name = "gpu_executable",
     srcs = [
         "collective_permute_thunk.cc",
@@ -763,7 +734,6 @@ cc_library(
         ":cudnn_batchnorm_runner",
         ":gpu_constants",
         ":gpu_conv_runner",
-        ":gpu_debug_info_manager",
         ":gpu_executable_run_options",
         ":gpu_types",
         ":hlo_execution_profiler",
@@ -795,6 +765,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/service:xla_debug_info_manager",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
