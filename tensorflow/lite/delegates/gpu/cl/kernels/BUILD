@@ -111,6 +111,23 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "conv_weights_converter_test",
+    srcs = ["conv_weights_converter_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "converter",
     srcs = ["converter.cc"],
@@ -627,6 +644,7 @@ test_suite(
         "conv_buffer_1x1_test",
         "conv_constants_test",
         "conv_powervr_test",
+        "conv_weights_converter_test",
         "convolution_transposed_3x3_test",
         "convolution_transposed_3x3_thin_test",
         "convolution_transposed_4x4_test",
