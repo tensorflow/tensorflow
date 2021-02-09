@@ -277,7 +277,8 @@ class SingleOpModel {
     tensors_.push_back(CreateTensor(
         builder_, builder_.CreateVector<int>(t.shape), t.type,
         /*buffer=*/buffer_id,
-        /*name=*/0, /*quantization=*/0, /*is_variable=*/false, s_param));
+        /*name=*/builder_.CreateString(std::to_string(tensors_.size())),
+        /*quantization=*/0, /*is_variable=*/false, s_param));
 
     inputs_.push_back(id);
     tensor_data_[id] = t;
@@ -361,11 +362,12 @@ class SingleOpModel {
       }
     }
 
-    tensors_.push_back(
-        CreateTensor(builder_, builder_.CreateVector<int>(t.shape),
-                     symmetric_quantize ? TensorType_INT8 : t.type,
-                     /*buffer=*/buffer_id,
-                     /*name=*/0, q_params, /*is_variable=*/false, s_param));
+    tensors_.push_back(CreateTensor(
+        builder_, builder_.CreateVector<int>(t.shape),
+        symmetric_quantize ? TensorType_INT8 : t.type,
+        /*buffer=*/buffer_id,
+        /*name=*/builder_.CreateString(std::to_string(tensors_.size())),
+        q_params, /*is_variable=*/false, s_param));
 
     inputs_.push_back(id);
     tensor_data_[id] = t;
@@ -683,7 +685,8 @@ class SingleOpModel {
     tensors_.push_back(CreateTensor(
         builder_, builder_.CreateVector<int>(t.shape), t.type,
         /*buffer=*/buffer_id,
-        /*name=*/0, q_params, is_variable,
+        /*name=*/builder_.CreateString(std::to_string(tensors_.size())),
+        q_params, is_variable,
         /*sparsity=*/0, builder_.CreateVector<int>(t.shape_signature)));
 
     tensor_data_[id] = t;
@@ -797,10 +800,11 @@ class SingleOpModel {
       buffers_.push_back(CreateBuffer(builder_, data_buffer));
     }
 
-    tensors_.push_back(
-        CreateTensor(builder_, builder_.CreateVector<int>(t.shape), t.type,
-                     /*buffer=*/buffer_id,
-                     /*name=*/0, q_params, /*is_variable=*/false));
+    tensors_.push_back(CreateTensor(
+        builder_, builder_.CreateVector<int>(t.shape), t.type,
+        /*buffer=*/buffer_id,
+        /*name=*/builder_.CreateString(std::to_string(tensors_.size())),
+        q_params, /*is_variable=*/false));
     tensor_data_[id] = t;
     return id;
   }
