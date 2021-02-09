@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_profiler.h"
 #include "tensorflow/lite/micro/micro_utils.h"
@@ -46,6 +47,8 @@ class MockProfiler : public MicroProfiler {
  private:
   int event_starts_;
   int event_ends_;
+
+  TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
 }  // namespace

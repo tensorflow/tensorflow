@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/micro/compatibility.h"
+
 namespace tflite {
 
 // MicroProfiler creates a common way to gain fine-grained insight into runtime
@@ -27,7 +29,7 @@ namespace tflite {
 class MicroProfiler {
  public:
   MicroProfiler() = default;
-  ~MicroProfiler() = default;
+  virtual ~MicroProfiler() = default;
 
   // Marks the start of a new event and returns an event handle that can be used
   // to mark the end of the event via EndEvent. The lifetime of the tag
@@ -64,6 +66,8 @@ class MicroProfiler {
   int32_t start_ticks_[kMaxEvents];
   int32_t end_ticks_[kMaxEvents];
   int num_events_ = 0;
+
+  TF_LITE_REMOVE_VIRTUAL_DELETE;
 };
 
 #if defined(NDEBUG)

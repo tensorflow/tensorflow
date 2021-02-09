@@ -248,6 +248,7 @@ tflite_micro_cc_test(
         "micro_interpreter_test.cc",
     ],
     deps = [
+        ":micro_compatibility",
         ":micro_framework",
         ":micro_utils",
         ":op_resolvers",

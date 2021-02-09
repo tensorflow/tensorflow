@@ -84,14 +84,14 @@ int main(int argc, char** argv) {
       CreateBenchmarkRunner(&profiler);
   profiler.EndEvent(event_handle);
   profiler.Log();
-  MicroPrintf("");
+  MicroPrintf("");  // null MicroPrintf serves as a newline.
 
   tflite::KeywordRunNIerations(1, "KeywordRunNIerations(1)", *benchmark_runner,
                                profiler);
   profiler.Log();
-  MicroPrintf("");
+  MicroPrintf("");  // null MicroPrintf serves as a newline.
 
   tflite::KeywordRunNIerations(10, "KeywordRunNIerations(10)",
                                *benchmark_runner, profiler);
-  MicroPrintf("");
+  MicroPrintf("");  // null MicroPrintf serves as a newline.
 }
