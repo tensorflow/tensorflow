@@ -52,15 +52,15 @@ class DatasetBenchmarkBase(test.Benchmark):
     """
 
     if context.executing_eagerly():
-      if warmup:
-        iterator = iter(op)
-        next(iterator)
-
-      iterator = iter(op)
-      start = time.time()
       for _ in range(iters):
+        if warmup:
+          iterator = iter(op)
+          next(iterator)
+
+        iterator = iter(op)
+        start = time.time()
         next(iterator)
-      end = time.time()
+        end = time.time()
       return (end - start) / iters
 
     with session.Session() as sess:
