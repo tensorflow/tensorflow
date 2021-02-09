@@ -654,12 +654,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         int64 deadline_micros = kint64max;
         Status s;
         if (StrictRoundRobin()) {
-          s = GetElement(task_to_process.get(), deadline_micros,
-                         /*enqueue_result=*/false, *result);
+          s = GetElementTraced(task_to_process.get(), deadline_micros,
+                               /*enqueue_result=*/false, *result);
         } else {
           Result r;
-          s = GetElement(task_to_process.get(), deadline_micros,
-                         /*enqueue_result=*/true, r);
+          s = GetElementTraced(task_to_process.get(), deadline_micros,
+                               /*enqueue_result=*/true, r);
         }
         if (!s.ok()) {
           mutex_lock l(mu_);
@@ -676,72 +676,23 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    // Gets an element from a task and stores the element in `result`. If
-    // `enqueue_result` is true, `GetElement` also enqueues (via std::move) any
-    // element-producing result in the `results_` queue.
-    Status GetElement(Task* task, int64 deadline_micros, bool enqueue_result,
-                      Result& result) TF_LOCKS_EXCLUDED(mu_) {
-      VLOG(3) << "Getting an element for task id " << task->info.task_id();
-      tensorflow::profiler::TraceMe activity(
-          "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
-      activity.AppendMetadata([&]() {
-        return profiler::TraceMeEncode(
-            {{"address", task->info.worker_address()}});
-      });
-      GetElementResponse resp;
-      for (int num_retries = 0;; ++num_retries) {
-        GetElementRequest req;
-        if (StrictRoundRobin()) {
-          req.set_consumer_index(dataset()->consumer_index_.value());
-          req.set_round_index(task->round);
-          req.set_allow_skip(true);
-          VLOG(3) << "Requesting element from consumer index "
-                  << req.consumer_index() << ", round " << req.round_index();
-          activity.AppendMetadata([&]() {
-            return profiler::TraceMeEncode(
-                {{"consumer_index", req.consumer_index()},
-                 {"round_index", req.round_index()}});
-          });
-        }
-        req.set_task_id(task->info.task_id());
-        req.set_skipped_previous_round(task->skipped_previous_round);
-        Status s = task->worker->GetElement(req, resp);
-        if (s.ok()) {
-          break;
-        }
-        // Retry all errors that could indicate preemption.
-        if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
-            !errors::IsAborted(s)) {
-          return s;
-        }
-        {
-          mutex_lock l(mu_);
-          // If `UpdateTaskThreads` finds that the task has been cancelled, it
-          // will set end_of_sequence to `true`.
-          if (task->end_of_sequence || cancelled_) {
-            break;
-          }
-        }
-        const int64 now_micros = EnvTime::NowMicros();
-        if (now_micros > deadline_micros) {
-          return s;
-        }
-        const int64 deadline_with_backoff_micros =
-            now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries);
-        // Wait for a short period of time before retrying the RPC. If our
-        // backoff would put us past the RPC deadline, we truncate it to ensure
-        // our RPC starts before the deadline.
-        const auto backoff_until =
-            (deadline_micros > deadline_with_backoff_micros)
-                ? deadline_with_backoff_micros
-                : deadline_micros;
-        VLOG(1) << "Failed to get an element from worker "
-                << task->info.worker_address() << ": " << s
-                << ". Will retry in " << (backoff_until - now_micros)
-                << " microseconds";
-        Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
+    Status TryGetElement(const Task& task, GetElementResponse& resp) {
+      GetElementRequest req;
+      req.set_task_id(task.info.task_id());
+      req.set_skipped_previous_round(task.skipped_previous_round);
+      absl::optional<int64> round_index;
+      if (StrictRoundRobin()) {
+        round_index = task.round;
+        req.set_consumer_index(dataset()->consumer_index_.value());
+        req.set_round_index(task.round);
+        req.set_allow_skip(true);
       }
+      return task.worker->GetElement(req, resp);
+    }
 
+    void ProcessGetElementResponse(bool enqueue_result,
+                                   GetElementResponse& resp, Result& result,
+                                   Task& task) {
       std::vector<Tensor> element;
       if (resp.has_compressed_element()) {
         Tensor tensor(DT_VARIANT, TensorShape{});
@@ -752,22 +703,62 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       result.ready = true;
       result.end_of_sequence = resp.end_of_sequence();
       if (resp.has_compressed_element()) {
-        task->skipped_previous_round = false;
-        task->round++;
+        task.skipped_previous_round = false;
+        task.round++;
         result.element = std::move(element);
       } else if (resp.skip_task()) {
-        task->skipped_previous_round = true;
-        task->round++;
+        task.skipped_previous_round = true;
+        task.round++;
         result.skip = true;
       } else {
-        task->end_of_sequence = true;
+        task.end_of_sequence = true;
         finished_tasks_++;
       }
       if (enqueue_result && !resp.end_of_sequence()) {
         results_.push(std::move(result));
       }
       get_next_cv_.notify_all();
-      VLOG(3) << "Got an element for task id " << task->info.task_id();
+    }
+
+    Status GetElementTraced(Task* task, int64 deadline_micros,
+                            bool enqueue_result, Result& result)
+        TF_LOCKS_EXCLUDED(mu_) {
+      VLOG(3) << "Getting an element for task id " << task->info.task_id();
+      tensorflow::profiler::TraceMe activity(
+          "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
+      activity.AppendMetadata([&]() {
+        return profiler::TraceMeEncode(
+            {{"address", task->info.worker_address()}});
+      });
+      GetElementResponse resp;
+      for (int num_retries = 0;; ++num_retries) {
+        Status s = TryGetElement(*task, resp);
+        if (s.ok()) break;
+        // Retry all errors that could indicate preemption.
+        if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
+            !errors::IsAborted(s)) {
+          return s;
+        }
+        {
+          mutex_lock l(mu_);
+          if (cancelled_) {
+            return errors::Cancelled("DataServiceDataset iterator cancelled");
+          }
+        }
+        int64 now_micros = Env::Default()->NowMicros();
+        if (now_micros > deadline_micros) {
+          return s;
+        }
+        int64 backoff_until = std::min(
+            deadline_micros,
+            now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
+        VLOG(1) << "Failed to get an element from worker "
+                << task->info.worker_address() << ": " << s
+                << ". Will retry in " << (backoff_until - now_micros)
+                << " microseconds";
+        Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
+      }
+      ProcessGetElementResponse(enqueue_result, resp, result, *task);
       return Status::OK();
     }
 
