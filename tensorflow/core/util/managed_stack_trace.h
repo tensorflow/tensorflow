@@ -19,22 +19,20 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/stack_frame.h"
 
 namespace tensorflow {
 
-using SourceLoc = std::tuple<std::string, int>;
-
 // Maps filename/line_no combination into a stack frame.
-using SourceMap = absl::flat_hash_map<SourceLoc, StackFrame>;
+using StackTraceMap =
+    std::function<absl::optional<StackFrame>(std::pair<const char*, int>)>;
 
 // Returns "true" on filenames which should be skipped.
 using StackTraceFilter = std::function<bool(const char*)>;
 
-using ToStackFramesFunctor = std::vector<StackFrame>(int, const SourceMap&,
+using ToStackFramesFunctor = std::vector<StackFrame>(int, const StackTraceMap&,
                                                      const StackTraceFilter&,
                                                      bool, int);
 
@@ -56,12 +54,11 @@ class ManagedStackTrace {
       : id_(id), to_stack_frames_(to_stack_frames) {}
 
   // Returns stack trace as a vector of `StackFrame`s.
-  std::vector<StackFrame> ToStackFrames(const SourceMap& source_map = {},
+  std::vector<StackFrame> ToStackFrames(const StackTraceMap& mapper = {},
                                         const StackTraceFilter& filtered = {},
                                         bool reverse_traversal = false,
                                         int limit = -1) const {
-    return to_stack_frames_(id_, source_map, filtered, reverse_traversal,
-                            limit);
+    return to_stack_frames_(id_, mapper, filtered, reverse_traversal, limit);
   }
 
  private:
