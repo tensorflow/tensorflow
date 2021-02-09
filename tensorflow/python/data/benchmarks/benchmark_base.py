@@ -79,7 +79,8 @@ class DatasetBenchmarkBase(test.Benchmark):
                     num_elements,
                     iters=1,
                     warmup=True,
-                    apply_default_optimizations=False):
+                    apply_default_optimizations=False,
+                    session_config=None):
     """Benchmarks the dataset.
 
     Runs the dataset `iters` times. In each iteration, the benchmark measures
@@ -93,6 +94,8 @@ class DatasetBenchmarkBase(test.Benchmark):
       warmup: If true, warms up the session caches by running an untimed run.
       apply_default_optimizations: Determines whether default optimizations
         should be applied.
+      session_config: A ConfigProto protocol buffer with configuration options
+        for the session. Applicable only for benchmarking in graph mode.
 
     Returns:
       A float, representing the per-element wall time of the dataset in seconds.
@@ -133,7 +136,7 @@ class DatasetBenchmarkBase(test.Benchmark):
     next_element = nest.flatten(next_element)[0]
 
     for _ in range(iters):
-      with session.Session() as sess:
+      with session.Session(config=session_config) as sess:
         if warmup:
           # Run once to warm up the session caches.
           sess.run(iterator.initializer)
@@ -153,7 +156,8 @@ class DatasetBenchmarkBase(test.Benchmark):
                                iters=5,
                                extras=None,
                                warmup=True,
-                               apply_default_optimizations=False):
+                               apply_default_optimizations=False,
+                               session_config=None):
     """Benchmarks the dataset and reports the stats.
 
     Runs the dataset `iters` times. In each iteration, the benchmark measures
@@ -170,6 +174,8 @@ class DatasetBenchmarkBase(test.Benchmark):
       warmup: If true, warms up the session caches by running an untimed run.
       apply_default_optimizations: Determines whether default optimizations
         should be applied.
+      session_config: A ConfigProto protocol buffer with configuration options
+        for the session. Applicable only for benchmarking in graph mode.
 
     Returns:
       A float, representing the per-element wall time of the dataset in seconds.
@@ -181,7 +187,8 @@ class DatasetBenchmarkBase(test.Benchmark):
         num_elements=num_elements,
         iters=iters,
         warmup=warmup,
-        apply_default_optimizations=apply_default_optimizations)
+        apply_default_optimizations=apply_default_optimizations,
+        session_config=session_config)
     if context.executing_eagerly():
       name = "{}.eager".format(name)
     else:
