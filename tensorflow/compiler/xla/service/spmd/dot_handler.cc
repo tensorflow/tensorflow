@@ -92,17 +92,6 @@ Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
 
 namespace {
 
-std::vector<int64> GetAllDevicesInOrder(const HloSharding& sharding) {
-  CHECK(!sharding.IsTileMaximal());
-  std::vector<int64> results;
-  results.reserve(sharding.tile_assignment().num_elements());
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64> /* indices */, int64 device) {
-        results.push_back(device);
-      });
-  return results;
-}
-
 StatusOr<HloInstruction*> PartitionBaseCase(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
     const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
@@ -1018,11 +1007,15 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     }
     TF_ASSIGN_OR_RETURN(
         auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
-    auto ar =
-        lhs.state().collective_ops_creator.create_cross_partition_all_reduce(
-            b, dot, MakeBinaryAdd(output_base_shape.element_type(), module),
-            {GetAllDevicesInOrder(lhs.sharding())},
-            (*lhs.state().next_channel_id)++);
+    std::vector<int64> lhs_contracting_dims;
+    lhs_contracting_dims.reserve(lhs.base_shape().rank());
+    for (const auto& cd : dims_mapping.contracting_dims) {
+      lhs_contracting_dims.push_back(cd.lhs);
+    }
+    auto ar = lhs.state().partitioner->AllReduceAlongShardingDims(
+        b, dot, lhs.sharding(), lhs.state().next_channel_id,
+        lhs_contracting_dims, lhs.state().collective_ops_creator,
+        MakeBinaryAdd(output_base_shape.element_type(), module));
     ar->set_sharding(HloSharding::Replicate());
     return PartitionedHlo(ar, output_base_shape, lhs.state())
         .Reshard(output_sharding)
@@ -1123,10 +1116,16 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     }
     TF_ASSIGN_OR_RETURN(
         auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
-    return lhs.state().collective_ops_creator.create_cross_partition_all_reduce(
-        b, dot, MakeBinaryAdd(output_base_shape.element_type(), module),
-        {GetAllDevicesInOrder(lhs.sharding())},
-        (*lhs.state().next_channel_id)++);
+
+    std::vector<int64> lhs_contracting_dims;
+    lhs_contracting_dims.reserve(lhs.base_shape().rank());
+    for (const auto& cd : dims_mapping.contracting_dims) {
+      lhs_contracting_dims.push_back(cd.lhs);
+    }
+    return lhs.state().partitioner->AllReduceAlongShardingDims(
+        b, dot, lhs.sharding(), lhs.state().next_channel_id,
+        lhs_contracting_dims, lhs.state().collective_ops_creator,
+        MakeBinaryAdd(output_base_shape.element_type(), module));
   }
   return nullptr;
 }
@@ -1679,20 +1678,10 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
   if (!dot) {
     return nullptr;
   }
-  std::vector<int64> other_lhs_dims;
-  for (int64 i = 0; i < lhs_sharding.tile_assignment().num_dimensions(); ++i) {
-    if (!absl::c_linear_search(lhs_dims, i)) {
-      other_lhs_dims.push_back(i);
-    }
-  }
-  auto inverse_grouped = GroupShardingOnDims(lhs_sharding, other_lhs_dims);
-  auto ar =
-      CreatePerGroupPartitioningState(lhs.state(),
-                                      inverse_grouped.device_groups, b)
-          .collective_ops_creator.create_cross_partition_all_reduce(
-              b, dot, MakeBinaryAdd(output_base_shape.element_type(), module),
-              {GetAllDevicesInOrder(inverse_grouped.sharding)},
-              (*lhs.state().next_channel_id)++);
+  auto ar = lhs.state().partitioner->AllReduceAlongShardingDims(
+      b, dot, lhs_sharding, lhs.state().next_channel_id, lhs_dims,
+      lhs.state().collective_ops_creator,
+      MakeBinaryAdd(output_base_shape.element_type(), module));
   ar->set_sharding(outer_output_tmp_sharding);
   return PartitionedHlo(ar, output_base_shape, lhs.state())
       .Reshard(output_sharding)
