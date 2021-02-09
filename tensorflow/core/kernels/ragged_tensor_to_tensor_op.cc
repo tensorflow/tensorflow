@@ -394,43 +394,6 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
 };
 
 template <typename VALUE_TYPE, typename INDEX_TYPE>
-void slow_copy_array(VALUE_TYPE* dst, const VALUE_TYPE* src, INDEX_TYPE size) {
-  for (INDEX_TYPE index = 0; index < size; ++index) {
-    dst[index] = src[index];
-  }
-}
-
-template <typename VALUE_TYPE, typename INDEX_TYPE>
-void copy_array(VALUE_TYPE* dst, const VALUE_TYPE* src, INDEX_TYPE size) {
-  memcpy(dst, src, size * sizeof(VALUE_TYPE));
-}
-
-template <>
-void copy_array<tstring, int64>(tstring* dst, const tstring* src, int64 size) {
-  slow_copy_array(dst, src, size);
-}
-
-template <>
-void copy_array<tstring, int32>(tstring* dst, const tstring* src, int32 size) {
-  slow_copy_array(dst, src, size);
-}
-
-// If we don't specialize for Eigen::half, we get:
-// undefined behavior, destination object type 'Eigen::half'
-// is not TriviallyCopyable
-template <>
-void copy_array<Eigen::half, int64>(Eigen::half* dst, const Eigen::half* src,
-                                    int64 size) {
-  slow_copy_array(dst, src, size);
-}
-
-template <>
-void copy_array<Eigen::half, int32>(Eigen::half* dst, const Eigen::half* src,
-                                    int32 size) {
-  slow_copy_array(dst, src, size);
-}
-
-template <typename VALUE_TYPE, typename INDEX_TYPE>
 class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
  public:
   explicit RaggedTensorToTensorOp(OpKernelConstruction* context)
@@ -506,7 +469,7 @@ class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
         const VALUE_TYPE* src = values_base + src_start * value_element_size;
         VALUE_TYPE* dst = output_base + dst_start * value_element_size;
         INDEX_TYPE nvals = (dst_end - dst_start) * value_element_size;
-        copy_array<VALUE_TYPE, INDEX_TYPE>(dst, src, nvals);
+        std::copy_n(src, nvals, dst);
       }
 
       // Add any necessary padding (w/ default_value).
@@ -523,8 +486,7 @@ class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
         } else {
           while (dst_i > dst_end) {
             VALUE_TYPE* dst = output_base + dst_end * value_element_size;
-            copy_array<VALUE_TYPE, INDEX_TYPE>(dst, default_value,
-                                               value_element_size);
+            std::copy_n(default_value, value_element_size, dst);
             ++dst_end;
           }
         }
