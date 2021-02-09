@@ -56,7 +56,7 @@ class DatasetBenchmarkBase(test.Benchmark):
         iterator = iter(op)
         next(iterator)
 
-      iterator = iter(dataset)
+      iterator = iter(op)
       start = time.time()
       for _ in range(iters):
         next(iterator)
