@@ -69,6 +69,16 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# explicitly remove the following subdirs from under $ROCM_PATH/include
+# These dirs will be removed from the ROCm install in a (near) future ROCm release, and 
+# ROCm TF has been updated (via a separate commit in the same PR as this commit) to account
+# for this future change.
+# This explicit removal is required because without it the creation of the "local_config_rocm" repo
+# runs into errors relating to two different copy rules (rocm-include + hiprand-include|rocrand-include)
+# trying to copy a header file to the same location.
+RUN rm -rf ${ROCM_PATH}/include/rocrand ${ROCM_PATH}/include/hiprand
+
+
 # Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
