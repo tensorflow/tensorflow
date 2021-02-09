@@ -41,7 +41,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
+#include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -532,7 +534,8 @@ TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   tensorflow::CustomDevice* device = nullptr;
-  if (!context->FindCustomDeviceFromName(device_name, &device)) {
+  if (!context->GetCustomDeviceOpHandler().FindCustomDeviceFromName(device_name,
+                                                                    &device)) {
     deallocator(data, arg);
     status->status =
         tensorflow::errors::InvalidArgument(device_name, " unknown device.");
@@ -562,7 +565,8 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   status->status = context->FindDeviceFromName(device_name, &device);
   tensorflow::CustomDevice* custom_device = nullptr;
   if (!status->status.ok()) {
-    if (!context->FindCustomDeviceFromName(device_name, &custom_device)) {
+    if (!context->GetCustomDeviceOpHandler().FindCustomDeviceFromName(
+            device_name, &custom_device)) {
       deallocator(data, len, deallocator_arg);
       status->status =
           tensorflow::errors::InvalidArgument(device_name, " unknown device.");
@@ -654,8 +658,7 @@ const char* TFE_OpGetName(const TFE_Op* op, TF_Status* status) {
 }
 
 TFE_Context* TFE_OpGetContext(const TFE_Op* op, TF_Status* status) {
-  return tensorflow::wrap(
-      &(OperationFromInterface(tensorflow::unwrap(op))->EagerContext()));
+  return tensorflow::wrap(tensorflow::unwrap(op)->GetContext());
 }
 
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
@@ -889,11 +892,15 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
-  status->status = tensorflow::unwrap(op)->Execute(
-      absl::MakeSpan(reinterpret_cast<tensorflow::AbstractTensorHandle**>(
-                         tensorflow::unwrap(retvals)),
-                     *num_retvals),
-      num_retvals);
+  tensorflow::ImmediateExecutionOperation* unwrapped_op =
+      tensorflow::unwrap(op);
+
+  status->status =
+      unwrapped_op->GetContext()->GetCustomDeviceOpHandler().Execute(
+          unwrapped_op,
+          reinterpret_cast<tensorflow::ImmediateExecutionTensorHandle**>(
+              retvals),
+          num_retvals);
 }
 
 TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
@@ -1150,10 +1157,8 @@ void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
   }
   auto custom_device = std::make_unique<tensorflow::CustomDeviceAPI>(
       ctx, device, device_info, device_name);
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  status->status =
-      context->RegisterCustomDevice(device_name, std::move(custom_device));
+  status->status = tensorflow::unwrap(ctx)->RegisterCustomDevice(
+      device_name, std::move(custom_device));
 }
 
 }  // extern "C"

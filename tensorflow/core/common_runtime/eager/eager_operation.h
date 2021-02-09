@@ -55,6 +55,8 @@ class EagerOperation : public ImmediateExecutionOperation {
 
   const string& DeviceName() const override { return device_name_; }
 
+  ImmediateExecutionContext* GetContext() const override { return &ctx_; }
+
   const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
     return device_parsed_name_;
   }
@@ -83,7 +85,11 @@ class EagerOperation : public ImmediateExecutionOperation {
 
   Status AddInput(AbstractTensorHandle* input) override;
   Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override;
+  Status SetInput(size_t index, ImmediateExecutionTensorHandle* input) override;
   absl::Span<ImmediateExecutionTensorHandle* const> GetInputs() const override;
+  bool HasCustomDeviceInput() const override {
+    return custom_device_tensor_handles_count_ > 0;
+  }
   Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override;
   const tensorflow::OpDef* OpDef() const override { return op_def_; };
@@ -207,20 +213,14 @@ class EagerOperation : public ImmediateExecutionOperation {
   void InferMixedTypeInputListAttrs(const OpDef::ArgDef& input_def,
                                     const std::vector<DataType>& dtypes);
 
-  // Replaces input tensors placed on custom devices with physical device
-  // equivalents. Used if an op is placed on a physical device but may have
-  // custom device inputs.
-  Status CopyOffCustomDeviceInputs();
-
   tensorflow::EagerContext& ctx_;
   const char* op_name_ = nullptr;
   AttrBuilder attrs_;
   const AttrTypeMap* attr_types_;
 
-  // Toggled to indicate whether all inputs are known to be TensorHandles and
-  // not another type (e.g. custom device tensor handles). Explicitly set to
-  // false when custom device TensorHandles are added.
-  bool inputs_are_tensor_handles_ = true;
+  // The number of custom device TensorHandle inputs. These inputs need to be
+  // processed by CustomDeviceOpHandler first.
+  int custom_device_tensor_handles_count_ = 0;
   absl::InlinedVector<ImmediateExecutionTensorHandle*, 4> inputs_;
 
   // The last device name given to SetDeviceName.
