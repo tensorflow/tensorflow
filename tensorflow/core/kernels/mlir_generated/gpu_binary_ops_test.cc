@@ -170,19 +170,13 @@ T baseline_div(T lhs, T rhs) {
   return lhs / rhs;
 }
 
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    Div,
-    /*test_name=*/Half, Eigen::half, Eigen::half,
-    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
-    baseline_div);
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    Div,
-    /*test_name=*/Float, float, float, test::DefaultInput<float>(),
-    test::DefaultInputNonZero<float>(), baseline_div);
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    Div,
-    /*test_name=*/Double, double, double, test::DefaultInput<double>(),
-    test::DefaultInputNonZero<double>(), baseline_div);
+GENERATE_DEFAULT_TESTS(Div,
+                       /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_div);
+GENERATE_DEFAULT_TESTS(Div,
+                       /*test_name=*/Float, float, float, baseline_div);
+GENERATE_DEFAULT_TESTS(Div,
+                       /*test_name=*/Double, double, double, baseline_div);
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Div,
     /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
@@ -476,19 +470,13 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(Pow,
 
 /// Test `tf.RealDiv`.
 
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    RealDiv,
-    /*test_name=*/Half, Eigen::half, Eigen::half,
-    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
-    baseline_div);
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    RealDiv,
-    /*test_name=*/Float, float, float, test::DefaultInput<float>(),
-    test::DefaultInputNonZero<float>(), baseline_div);
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    RealDiv,
-    /*test_name=*/Double, double, double, test::DefaultInput<double>(),
-    test::DefaultInputNonZero<double>(), baseline_div);
+GENERATE_DEFAULT_TESTS(RealDiv,
+                       /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_div);
+GENERATE_DEFAULT_TESTS(RealDiv,
+                       /*test_name=*/Float, float, float, baseline_div);
+GENERATE_DEFAULT_TESTS(RealDiv,
+                       /*test_name=*/Double, double, double, baseline_div);
 
 /// Test `tf.RightShift`.
 
