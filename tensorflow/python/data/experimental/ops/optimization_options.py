@@ -330,6 +330,7 @@ class OptimizationOptions(options.OptionsBase):
       graph_rewrite_configs = []
     autotune_only_optimizations = [
         "autotune_buffer_sizes",
+        "batch_parallelization",
         "disable_prefetch_legacy_autotune",
         "enable_gradient_descent",
         "map_parallelization"
