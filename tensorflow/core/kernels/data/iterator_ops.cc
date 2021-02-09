@@ -47,12 +47,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -967,18 +965,9 @@ void RecordElementSize(const std::vector<Tensor> element,
 Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   profiler::TraceMe traceme(
       [&] {
-        int64 mem_bw = port::GetMemoryInfo().bw_used;
-
-        if (mem_bw != INT64_MAX) {
-          return profiler::TraceMeEncode(
-              "IteratorGetNextOp::DoCompute",
-              {{"id", ctx->step_id()},
-               {"iter_num", ctx->frame_iter().iter_id},
-               {"mem_bw_used_megabytes_per_sec", mem_bw}});
-        }
-        return profiler::TraceMeEncode(
-            "IteratorGetNextOp::DoCompute",
-            {{"id", ctx->step_id()}, {"iter_num", ctx->frame_iter().iter_id}});
+        return strings::StrCat(
+            "IteratorGetNextOp::DoCompute#id=", ctx->step_id(),
+            ",iter_num=", ctx->frame_iter().iter_id, "#");
       },
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,

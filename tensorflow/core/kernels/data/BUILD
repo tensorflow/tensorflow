@@ -463,7 +463,6 @@ tf_kernel_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/memory",
     ],
 )
