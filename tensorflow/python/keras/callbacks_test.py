@@ -40,7 +40,6 @@ from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
@@ -1599,7 +1598,6 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             callbacks=cbks,
             epochs=1)
 
-  @test_util.disable_tfrt('b/179690526')
   def test_progbar_infers_steps(self):
     x, y = np.ones((10, 1)), np.ones((10, 1))
     data = dataset_ops.DatasetV2.from_tensor_slices((x, y)).batch(2)

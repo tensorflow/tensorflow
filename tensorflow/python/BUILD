@@ -3066,10 +3066,7 @@ tf_py_test(
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_rocm",
-        "no_tfrt",  # TODO(b/179692150)
-    ],
+    tags = ["no_rocm"],
     deps = [
         ":client_testlib",
         ":collective_ops",

@@ -27,7 +27,6 @@ from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
@@ -399,7 +398,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  @test_util.disable_tfrt('b/179459136')
   def test_finite_dataset_unknown_cardinality_no_step_with_train_and_val(self):
 
     class CaptureStdout(object):
