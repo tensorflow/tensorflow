@@ -601,8 +601,8 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
                     /*only_compare_minor_to_major_in_layout=*/true);
 }
 
-Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
-  auto* iota = Cast<HloIotaInstruction>(instruction);
+Status ShapeVerifier::HandleIota(HloInstruction* hlo) {
+  auto* iota = Cast<HloIotaInstruction>(hlo);
   if (!iota->shape().IsArray()) {
     return InternalError("Iota does not support non-array result.");
   }
@@ -1077,6 +1077,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kConstant:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kDot:
     case HloOpcode::kAllReduce:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
