@@ -437,10 +437,20 @@ endef
 
 # Handles the details of generating a binary target, including specializing
 # for the current platform, and generating project file targets.
+#
+# Note that while the function is called microlite_test, it is used for both
+# test and non-test binaries.
+
+# Files that end with _test are added as test targets (i.e. can be executed with
+# make test_<target>. ALl others can be executed with make run_<target>
+#
 # Arguments are:
-# 1 - Name of test.
-# 2 - C/C++ source files implementing the test.
-# 3 - C/C++ header files needed for the test.
+# 1 - Name of target.
+# 2 - C/C++ source files
+# 3 - C/C++ header files
+# 4 - if "exclude", then the non-test target will be excluded from
+#     MICROLITE_BUILD_TARGETS. This exception is needed because not all the
+#     microlite_test targets (e.g. the examples) are buildable on all platforms.
 # Calling eval on the output will create the targets that you need.
 define microlite_test
 ifeq (,$(findstring _test, $(1)))
@@ -461,24 +471,21 @@ $$($(1)_BINARY): $$($(1)_LOCAL_OBJS) $$(MICROLITE_LIB_PATH)
 	$$(MICROLITE_LIB_PATH) $$(LDFLAGS) $$(MICROLITE_LIBS)
 $(1): $$($(1)_BINARY)
 $(1)_bin: $$($(1)_BINARY).bin
-test_$(1): $$($(1)_BINARY)
-	@test -f $$(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $$(TARGET)?'; exit 1)
-	$$(TEST_SCRIPT) $$($(1)_BINARY) $$(TEST_PASS_STRING) $$(TARGET)
 
 ifneq (,$(findstring _test,$(1)))
   MICROLITE_TEST_TARGETS += test_$(1)
   MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
-endif
 
-# The ifneq can make is seem that the body of the if block is executed when
-# _benchmark is not found in $(1). Actually, the check is saying that if
-# findstring does not return empty, i.e. if _benchmark is found in $(1), we
-# should add something to the MICROLITE_BUILD_TARGETS.
-#
-# This ensures that a `make build` command will builds all the tests and
-# benchmarks, though `make test` will only run the tests.
-ifneq (,$(findstring _benchmark,$(1)))
-  MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
+test_$(1): $$($(1)_BINARY)
+	$$(TEST_SCRIPT) $$($(1)_BINARY) $$(TEST_PASS_STRING) $$(TARGET)
+
+else
+  ifeq ($(findstring exclude,$(4)),)
+    MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
+  endif
+
+run_$(1): $$($(1)_BINARY)
+	$$(TEST_SCRIPT) $$($(1)_BINARY) non_test_binary $$(TARGET)
 endif
 
 $(eval $(call generate_microlite_projects,$(1),$(call specialize,$(2)),$(3)))

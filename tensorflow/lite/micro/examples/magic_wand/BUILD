@@ -1,11 +1,5 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers "gesture recognition" example.
-
-load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
-)
-
 package(
     default_visibility = ["//visibility:public"],
     features = ["-layering_check"],
@@ -34,7 +28,7 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "magic_wand_test",
     srcs = [
         "magic_wand_test.cc",
@@ -71,7 +65,7 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "accelerometer_handler_test",
     srcs = [
         "accelerometer_handler_test.cc",
@@ -99,7 +93,7 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "gesture_predictor_test",
     srcs = [
         "gesture_predictor_test.cc",
@@ -126,7 +120,7 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "output_handler_test",
     srcs = [
         "output_handler_test.cc",
