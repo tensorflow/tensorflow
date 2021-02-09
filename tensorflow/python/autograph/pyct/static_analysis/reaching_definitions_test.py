@@ -22,6 +22,7 @@ import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
@@ -37,11 +38,17 @@ global_b = 17
 class ReachingDefinitionsAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
+    # TODO(mdan): Use a custom FunctionTransformer here.
     node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source, source_file=None, future_features=(), namespace={})
+        name=test_fn.__name__,
+        source_code=source,
+        source_file=None,
+        future_features=(),
+        namespace={})
     node = qual_names.resolve(node)
-    ctx = transformer.Context(entity_info)
+    namer = naming.Namer({})
+    ctx = transformer.Context(entity_info, namer, None)
     node = activity.resolve(node, ctx)
     graphs = cfg.build(node)
     node = reaching_definitions.resolve(node, ctx, graphs,
@@ -247,7 +254,11 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
     self.assertHasDefs(fn_body[2].value, 2)
 
     inner_fn_body = fn_body[1].body[1].body
-    self.assertSameDef(inner_fn_body[0].value, def_of_a_in_if)
+    def_of_a_in_foo = inner_fn_body[0].value
+    # Even though `a` is visible in the inner functio above, the late binding
+    # makes it impossible to assume that the same value will be visible at
+    # call time.
+    self.assertHasDefs(def_of_a_in_foo, 0)
 
   def test_nested_functions_isolation(self):
 
@@ -393,6 +404,46 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
 
     self.assertHasDefinedIn(fn_body[1], ('a',))
 
+  def test_definitions_in_except_block(self):
+
+    def test_fn():
+      try:
+        pass
+      except ValueError:
+        a = None
+      if a:  # pylint:disable=using-constant-test
+        a = None
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefs(fn_body[1].test, 1)
+    self.assertHasDefs(fn_body[1].body[0].targets[0], 1)
+    self.assertHasDefs(fn_body[2].value, 2)
+
+    self.assertHasDefinedIn(fn_body[1], ('a',))
+
+  def test_definitions_in_except_block_of_raising_try(self):
+
+    def test_fn():
+      try:
+        raise ValueError()
+      except ValueError:
+        a = None
+      if a:  # pylint:disable=using-constant-test
+        a = None
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefs(fn_body[1].test, 1)
+    self.assertHasDefs(fn_body[1].body[0].targets[0], 1)
+    self.assertHasDefs(fn_body[2].value, 2)
+
+    self.assertHasDefinedIn(fn_body[1], ('a',))
+
   def test_global(self):
 
     def test_fn():
@@ -413,6 +464,71 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
     self.assertSameDef(fn_body[2].test, fn_body[3].value.elts[0])
 
     self.assertHasDefinedIn(fn_body[2], ('global_a', 'global_b'))
+
+  def test_nonlocal(self):
+
+    a = 3
+    b = 13
+
+    def test_fn():
+      nonlocal a
+      nonlocal b
+      if a:
+        b = []
+      return a, b
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefs(fn_body[2].test, 1)
+    self.assertHasDefs(fn_body[2].body[0].targets[0], 1)
+    self.assertHasDefs(fn_body[3].value.elts[0], 1)
+    self.assertHasDefs(fn_body[3].value.elts[1], 2)
+
+    self.assertSameDef(fn_body[2].test, fn_body[3].value.elts[0])
+
+    self.assertHasDefinedIn(fn_body[2], ('a', 'b'))
+
+  def test_nonlocal_in_nested_function(self):
+
+    a = 3
+    b = 13
+
+    def test_fn():
+      a = 3
+      b = 13
+
+      def local_fn():
+        nonlocal a, b
+        if a:
+          b = []
+        return a, b
+
+      return local_fn()
+
+    node = self._parse_and_analyze(test_fn)
+    local_body = node.body[2].body
+
+    self.assertHasDefs(local_body[1].test, 1)
+    self.assertHasDefs(local_body[1].body[0].targets[0], 1)
+    self.assertHasDefs(local_body[2].value.elts[0], 1)
+    self.assertHasDefs(local_body[2].value.elts[1], 2)
+
+    self.assertSameDef(local_body[1].test, local_body[2].value.elts[0])
+
+    # Note: the function name is is visible inside the function body. But it's
+    # a closure variable, not a local.
+    #
+    # Example:
+    #
+    #   >>> def f():
+    #   ...  print(f)
+    #   >>> g = f
+    #   >>> f = 'something else'
+    #   >>> g()
+    #   something else
+    #
+    self.assertHasDefinedIn(local_body[1], ('a', 'b'))
 
 
 if __name__ == '__main__':

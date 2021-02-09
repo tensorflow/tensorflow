@@ -22,7 +22,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import array_ops
 
 
-# TODO(b/119837791): Add eager benchmarks.
 class FilterBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.filter()`."""
 

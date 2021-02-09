@@ -29,8 +29,8 @@ namespace xla {
 class XlaComputation {
  public:
   XlaComputation() : unique_id_(-1) {}
-  XlaComputation(const HloModuleProto& proto)
-      : unique_id_(proto.id()), proto_(proto) {}
+  XlaComputation(HloModuleProto proto)
+      : unique_id_(proto.id()), proto_(std::move(proto)) {}
 
   ~XlaComputation() {}
 

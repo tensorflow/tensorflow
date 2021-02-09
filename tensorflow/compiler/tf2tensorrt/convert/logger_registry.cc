@@ -12,8 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 
@@ -47,7 +46,7 @@ class LoggerRegistryImpl : public LoggerRegistry {
  private:
   mutable mutex mu_;
   mutable std::unordered_map<string, std::unique_ptr<nvinfer1::ILogger>>
-      registry_ GUARDED_BY(mu_);
+      registry_ TF_GUARDED_BY(mu_);
 };
 
 LoggerRegistry* GetLoggerRegistry() {
@@ -58,5 +57,4 @@ LoggerRegistry* GetLoggerRegistry() {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

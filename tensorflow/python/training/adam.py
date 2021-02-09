@@ -92,11 +92,14 @@ class AdamOptimizer(optimizer.Optimizer):
         Section 2.1), not the epsilon in Algorithm 1 of the paper.
       use_locking: If True use locks for update operations.
       name: Optional name for the operations created when applying gradients.
-        Defaults to "Adam".  @compatibility(eager) When eager execution is
-        enabled, `learning_rate`, `beta1`, `beta2`, and `epsilon` can each be a
-        callable that takes no arguments and returns the actual value to use.
-        This can be useful for changing these values across different
-        invocations of optimizer functions. @end_compatibility
+        Defaults to "Adam".
+
+    @compatibility(eager)
+    When eager execution is enabled, `learning_rate`, `beta1`, `beta2`, and
+    `epsilon` can each be a callable that takes no arguments and returns the
+    actual value to use. This can be useful for changing these values across
+    different invocations of optimizer functions.
+    @end_compatibility
     """
     super(AdamOptimizer, self).__init__(use_locking, name)
     self._lr = learning_rate

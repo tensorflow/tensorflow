@@ -20,11 +20,10 @@ namespace tensorflow {
 REGISTER4(UnaryOp, CPU, "Asinh", functor::asinh, float, double, complex64,
           complex128);
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Asinh", functor::asinh, float, double);
-#endif  // TENSORFLOW_USE_SYCL
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER2(UnaryOp, GPU, "Asinh", functor::asinh, float, double);
 #endif
+#endif
+
 }  // namespace tensorflow

@@ -80,26 +80,18 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
         input_dims=input_dims,
         expected_output_dims=expected_output_dims)
 
-  def GetConversionParams(self, run_params):
-    """Return a ConversionParams for test."""
-    conversion_params = super(DynamicInputShapesTest,
-                              self).GetConversionParams(run_params)
-    conversion_params._replace(maximum_cached_engines=10)
-    rewrite_config_with_trt = self.GetTrtRewriterConfig(
-        run_params=run_params,
-        conversion_params=conversion_params,
-        # Disable layout optimizer, since it will convert BiasAdd with NHWC
-        # format to NCHW format under four dimentional input.
-        disable_non_trt_optimizers=True)
-    return conversion_params._replace(
-        rewriter_config_template=rewrite_config_with_trt)
+  def setUp(self):
+    super(trt_test.TfTrtIntegrationTestBase, self).setUp()
+    # Disable layout optimizer, since it will convert BiasAdd with NHWC
+    # format to NCHW format under four dimentional input.
+    self.DisableNonTrtOptimizers()
 
   def ExpectedEnginesToBuild(self, run_params):
     return ["TRTEngineOp_0"]
 
   def ShouldRunTest(self, run_params):
-    return (run_params.dynamic_engine and
-            not trt_test.IsQuantizationMode(run_params.precision_mode))
+    return (run_params.dynamic_engine and not trt_test.IsQuantizationMode(
+        run_params.precision_mode)), "test dynamic engine and non-INT8"
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""

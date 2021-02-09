@@ -66,7 +66,7 @@ class LinearOperatorLowerTriangularTest(
     return operator, matrix
 
   def test_assert_non_singular(self):
-    # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
+    # Singular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.cached_session():
       tril = [[1., 0.], [1., 0.]]
       operator = linalg.LinearOperatorLowerTriangular(tril)
@@ -86,7 +86,7 @@ class LinearOperatorLowerTriangularTest(
     self.assertFalse(operator.is_self_adjoint)
 
   def test_tril_must_have_at_least_two_dims_or_raises(self):
-    with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
+    with self.assertRaisesRegex(ValueError, "at least 2 dimensions"):
       linalg.LinearOperatorLowerTriangular([1.])
 
   def test_triangular_diag_matmul(self):

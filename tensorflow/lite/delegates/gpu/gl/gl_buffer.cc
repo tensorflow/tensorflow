@@ -21,9 +21,10 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-Status CopyBuffer(const GlBuffer& read_buffer, const GlBuffer& write_buffer) {
+absl::Status CopyBuffer(const GlBuffer& read_buffer,
+                        const GlBuffer& write_buffer) {
   if (read_buffer.bytes_size() != write_buffer.bytes_size()) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "Read buffer does not match write buffer size.");
   }
   gl_buffer_internal::BufferBinder read_buffer_binder(GL_COPY_READ_BUFFER,
@@ -35,7 +36,7 @@ Status CopyBuffer(const GlBuffer& read_buffer, const GlBuffer& write_buffer) {
                             write_buffer.offset(), read_buffer.bytes_size());
 }
 
-Status GetSSBOSize(GLuint id, int64_t* size_bytes) {
+absl::Status GetSSBOSize(GLuint id, int64_t* size_bytes) {
   GLuint prev_id;
   RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glGetIntegerv,
                                      GL_SHADER_STORAGE_BUFFER_BINDING,
@@ -75,19 +76,19 @@ void GlBuffer::Invalidate() {
   }
 }
 
-Status GlBuffer::BindToIndex(uint32_t index) const {
+absl::Status GlBuffer::BindToIndex(uint32_t index) const {
   return TFLITE_GPU_CALL_GL(glBindBufferRange, target_, index, id_, offset_,
                             bytes_size_);
 }
 
-Status GlBuffer::MakeView(size_t offset, size_t bytes_size,
-                          GlBuffer* gl_buffer) {
+absl::Status GlBuffer::MakeView(size_t offset, size_t bytes_size,
+                                GlBuffer* gl_buffer) {
   if (offset + bytes_size > bytes_size_) {
-    return OutOfRangeError("GlBuffer view is out of range.");
+    return absl::OutOfRangeError("GlBuffer view is out of range.");
   }
   *gl_buffer = GlBuffer(target_, id_, bytes_size, offset_ + offset,
                         /*has_ownership=*/false);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 GlBuffer GlBuffer::MakeRef() {
@@ -121,12 +122,13 @@ GlPersistentBuffer::~GlPersistentBuffer() {
   glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 }
 
-Status CreatePersistentBuffer(size_t size, GlPersistentBuffer* gl_buffer) {
+absl::Status CreatePersistentBuffer(size_t size,
+                                    GlPersistentBuffer* gl_buffer) {
   PFNGLBUFFERSTORAGEEXTPROC glBufferStorageEXT = nullptr;
   glBufferStorageEXT = reinterpret_cast<PFNGLBUFFERSTORAGEEXTPROC>(
       eglGetProcAddress("glBufferStorageEXT"));
   if (!glBufferStorageEXT) {
-    return UnavailableError("glBufferStorageEXT is not supported");
+    return absl::UnavailableError("glBufferStorageEXT is not supported");
   }
   gl_buffer_internal::BufferId id;
   gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, id.id());
@@ -140,8 +142,21 @@ Status CreatePersistentBuffer(size_t size, GlPersistentBuffer* gl_buffer) {
       GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT_EXT));
   *gl_buffer = GlPersistentBuffer{
       GL_SHADER_STORAGE_BUFFER, id.Release(), size, 0, true, data};
-  return OkStatus();
+  return absl::OkStatus();
 }
+
+namespace gl_buffer_internal {
+
+BufferMapper::BufferMapper(GLenum target, size_t offset, size_t bytes,
+                           GLbitfield access)
+    : target_(target),
+      data_(glMapBufferRange(target_, offset, bytes, access)) {}
+
+BufferMapper::~BufferMapper() {
+  TFLITE_GPU_CALL_GL(glUnmapBuffer, target_).IgnoreError();
+}
+
+};  // namespace gl_buffer_internal
 
 }  // namespace gl
 }  // namespace gpu

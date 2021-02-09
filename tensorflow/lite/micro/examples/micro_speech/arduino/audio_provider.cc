@@ -28,6 +28,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_ARDUINO_NANO33BLE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_ARDUINO_NANO33BLE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/micro_speech/audio_provider.h"
 
 #include "PDM.h"
@@ -116,3 +122,5 @@ TfLiteStatus GetAudioSamples(tflite::ErrorReporter* error_reporter,
 }
 
 int32_t LatestAudioTimestamp() { return g_latest_audio_timestamp; }
+
+#endif  // ARDUINO_EXCLUDE_CODE

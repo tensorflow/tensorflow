@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/profiling/time.h"
 #include <gtest/gtest.h>
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace profiling {
@@ -48,9 +47,3 @@ TEST(TimeTest, SleepForMicros) {
 }  // namespace time
 }  // namespace profiling
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

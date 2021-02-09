@@ -23,7 +23,7 @@
 # the Python binary path.
 #
 # The --gpu flag informs the script that this is a GPU build, so that the
-# appropriate test blacklists can be applied accordingly.
+# appropriate test denylists can be applied accordingly.
 #
 
 echo ""

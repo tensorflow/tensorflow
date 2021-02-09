@@ -21,6 +21,7 @@ limitations under the License.
 #include <stdio.h>
 
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/multinomial_op.h"
 #include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
@@ -28,12 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-
-#if GOOGLE_CUDA
-namespace gpuprim = ::cub;
-#elif TENSORFLOW_USE_ROCM
-namespace gpuprim = ::hipcub;
-#endif
 
 namespace tensorflow {
 
@@ -71,8 +66,9 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
                   typename TTypes<OutputType>::Matrix output) {
     // Uniform, [0, 1).
     typedef random::UniformDistribution<random::PhiloxRandom, float> Dist;
-    functor::FillPhiloxRandom<GPUDevice, Dist>()(ctx, d, gen, noises.data(),
-                                                 noises.size(), Dist());
+    functor::FillPhiloxRandom<GPUDevice, Dist>()(
+        ctx, d, /*key=*/nullptr, /*counter=*/nullptr, gen, noises.data(),
+        noises.size(), Dist());
 
 #if defined(EIGEN_HAS_INDEX_LIST)
     Eigen::IndexList<int, int, int> bsc;

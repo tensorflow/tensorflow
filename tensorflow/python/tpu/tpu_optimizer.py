@@ -21,7 +21,6 @@ from __future__ import print_function
 
 
 from tensorflow.python.framework import ops
-from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_function
@@ -55,10 +54,11 @@ class CrossShardOptimizer(optimizer.Optimizer):
     """
     if reduction not in (losses.Reduction.SUM, losses.Reduction.MEAN):
       raise ValueError("Unsupported reduction: %s." % reduction)
-    if isinstance(opt, optimizer_v2.OptimizerV2):
+    if not isinstance(opt, optimizer.Optimizer):
       raise TypeError(
-          "CrossShardOptimizer does not work with OptimizerV2. If you are "
-          "using TPUStrategy, OptimizerV2 will sum gradients across replicas."
+          "CrossShardOptimizer only works with tf.training.Optimizer and not "
+          "Optimizer_v2. If you are using TPUStrategy, OptimizerV2 will sum "
+          "gradients across replicas."
           "If you are using TPUEstimator, you may instead sum your gradients "
           "with: grads = [tf.compat.v1.tpu.cross_replica_sum(g) for g in grads]"
           ". If you want to average your gradients, rescale your loss with: "

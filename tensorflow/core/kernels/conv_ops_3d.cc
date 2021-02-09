@@ -16,6 +16,7 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -38,6 +39,7 @@ limitations under the License.
 using stream_executor::dnn::DimIndex;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
@@ -327,7 +329,7 @@ struct LaunchConvOp<GPUDevice, T> {
         functor::PadInput<GPUDevice, T, int, 5>()(
             ctx->eigen_device<GPUDevice>(), To32Bit(input_param.tensor<T, 5>()),
             {{0, 0, 0}}, {{planes_odd, rows_odd, cols_odd}},
-            To32Bit(transformed_input.tensor<T, 5>()), data_format);
+            To32Bit(transformed_input.tensor<T, 5>()), data_format, T{});
         input = transformed_input;
         in_rows = new_in_rows;
         in_cols = new_in_cols;
@@ -335,7 +337,23 @@ struct LaunchConvOp<GPUDevice, T> {
       }
     }
 
-    if (data_format == FORMAT_NHWC) {
+#if GOOGLE_CUDA
+    const bool compute_in_nhwc =
+        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
+#else
+    // fast NHWC implementation is a CUDA only feature
+    const bool compute_in_nhwc = false;
+#endif
+    const TensorFormat compute_data_format =
+        (compute_in_nhwc && data_format == FORMAT_NHWC) ? FORMAT_NHWC
+                                                        : FORMAT_NCHW;
+
+    VLOG(3) << "Compute Conv3D with cuDNN:"
+            << " data_format=" << ToString(data_format)
+            << " compute_data_format=" << ToString(compute_data_format);
+
+    if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+      VLOG(4) << "Convert the input tensor from NDHWC to NCDHW.";
       const TensorShape nchw_shape = ShapeFromFormat(
           FORMAT_NCHW, in_batch, {{in_planes, in_rows, in_cols}}, in_depth);
       if (in_depth > 1) {
@@ -353,7 +371,25 @@ struct LaunchConvOp<GPUDevice, T> {
       } else {
         CHECK(input.CopyFrom(input, nchw_shape));
       }
+    } else {
+      CHECK(data_format == compute_data_format)  // Crash OK
+          << "Illegal data and compute format pair:"
+          << " data_format=" << ToString(data_format)
+          << " compute_data_format=" << ToString(compute_data_format);
     }
+
+    constexpr auto kComputeInNHWC =
+        std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
+                        se::dnn::FilterLayout::kOutputYXInput);
+    constexpr auto kComputeInNCHW =
+        std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
+                        se::dnn::FilterLayout::kOutputInputYX);
+
+    se::dnn::DataLayout compute_data_layout;
+    se::dnn::FilterLayout filter_layout;
+
+    std::tie(compute_data_layout, filter_layout) =
+        compute_data_format == FORMAT_NHWC ? kComputeInNHWC : kComputeInNCHW;
 
     CHECK(pad_rows >= 0 && pad_cols >= 0 && pad_planes >= 0)
         << "Negative paddings: (" << pad_rows << ", " << pad_cols << ", "
@@ -364,20 +400,21 @@ struct LaunchConvOp<GPUDevice, T> {
         .set_spatial_dim(DimIndex::X, in_cols)
         .set_spatial_dim(DimIndex::Y, in_rows)
         .set_spatial_dim(DimIndex::Z, in_planes)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
     se::dnn::BatchDescriptor output_desc(3);
     output_desc.set_count(in_batch)
         .set_spatial_dim(DimIndex::X, out_cols)
         .set_spatial_dim(DimIndex::Y, out_rows)
         .set_spatial_dim(DimIndex::Z, out_planes)
         .set_feature_map_count(out_depth)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
     se::dnn::FilterDescriptor filter_desc(3);
     filter_desc.set_spatial_dim(DimIndex::X, filter_cols)
         .set_spatial_dim(DimIndex::Y, filter_rows)
         .set_spatial_dim(DimIndex::Z, filter_planes)
         .set_input_feature_map_count(filter_depth)
-        .set_output_feature_map_count(out_depth);
+        .set_output_feature_map_count(out_depth)
+        .set_layout(filter_layout);
     se::dnn::ConvolutionDescriptor conv_desc(3);
     conv_desc.set_dilation_rate(DimIndex::X, dilations[2])
         .set_dilation_rate(DimIndex::Y, dilations[1])
@@ -391,25 +428,41 @@ struct LaunchConvOp<GPUDevice, T> {
         .set_group_count(in_depth / filter_depth);
 
     Tensor transformed_filter;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                TensorShape({out_depth, in_depth, filter_planes,
-                                             filter_rows, filter_cols}),
-                                &transformed_filter));
+    auto dst_format =
+        compute_data_format == FORMAT_NCHW ? FORMAT_OIHW : FORMAT_OHWI;
+    VLOG(4) << "Transform filter tensor from " << ToString(FORMAT_HWIO)
+            << " to " << ToString(dst_format);
+    TensorShape dst_shape =
+        dst_format == FORMAT_OIHW
+            ? TensorShape({filter.dim_size(4), filter.dim_size(3),
+                           filter.dim_size(0), filter.dim_size(1),
+                           filter.dim_size(2)})
+            : TensorShape({filter.dim_size(4), filter.dim_size(0),
+                           filter.dim_size(1), filter.dim_size(2),
+                           filter.dim_size(3)});
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
+                                           &transformed_filter));
     // filter: [x, y, z, in, out]
-    // t_filter: [out, in, x, y, z]
+    // t_filter: [out, in, x, y, z] (NCDHW) or
+    // t_filter: [out, x, y, z, in] (NDHWC)
     functor::TransformFilter<GPUDevice, T, int, 5>()(
-        ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+        ctx->eigen_device<GPUDevice>(), dst_format,
         To32Bit(filter.tensor<T, 5>()),
         To32Bit(transformed_filter.tensor<T, 5>()));
 
     Tensor transformed_output;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(
-                 DataTypeToEnum<T>::value,
-                 ShapeFromFormat(FORMAT_NCHW, in_batch,
-                                 {{out_planes, out_rows, out_cols}}, out_depth),
-                 &transformed_output));
+    if (data_format != compute_data_format) {
+      VLOG(4) << "Allocate temporary memory for output in compute data format";
+      OP_REQUIRES_OK(
+          ctx,
+          ctx->allocate_temp(
+              DataTypeToEnum<T>::value,
+              ShapeFromFormat(FORMAT_NCHW, in_batch,
+                              {{out_planes, out_rows, out_cols}}, out_depth),
+              &transformed_output));
+    } else {
+      transformed_output = *output;
+    }
 
     auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                     input.template flat<T>().size());
@@ -429,7 +482,7 @@ struct LaunchConvOp<GPUDevice, T> {
         in_batch,
         in_depth,
         {{in_planes, in_rows, in_cols}},
-        FORMAT_NCHW,
+        compute_data_format,
         out_depth,
         {{filter_planes, filter_rows, filter_cols}},
         {{dilations[0], dilations[1], dilations[2]}},
@@ -443,6 +496,12 @@ struct LaunchConvOp<GPUDevice, T> {
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
 
+#if TENSORFLOW_USE_ROCM
+    // cudnn_use_autotune is applicable only the CUDA flow
+    // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
+    // if we do not have a cached algorithm_config for this conv_parameters
+    cudnn_use_autotune = true;
+#endif
     AlgorithmConfig algorithm_config;
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
@@ -466,7 +525,7 @@ struct LaunchConvOp<GPUDevice, T> {
                       "see if a warning log message was printed above."));
 
       std::vector<tensorflow::AutotuneResult> results;
-      for (auto profile_algorithm : algorithms) {
+      for (const auto& profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
         DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
@@ -478,14 +537,11 @@ struct LaunchConvOp<GPUDevice, T> {
                 ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
                 : static_cast<se::ScratchAllocator*>(&scratch_allocator);
         ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr_rz, allocator_used,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
+        auto cudnn_launch_status = stream->ConvolveWithAlgorithm(
+            input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+            output_desc, &output_ptr_rz, allocator_used,
+            AlgorithmConfig(profile_algorithm), &profile_result);
+        if (cudnn_launch_status.ok()) {
           if (profile_result.is_valid()) {
             results.emplace_back();
             auto& result = results.back();
@@ -505,12 +561,15 @@ struct LaunchConvOp<GPUDevice, T> {
         }
       }
 #elif TENSORFLOW_USE_ROCM
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+
       std::vector<ProfileResult> algorithms;
       OP_REQUIRES(ctx,
                   stream->parent()->GetMIOpenConvolveAlgorithms(
-                      se::dnn::ConvolutionKind::FORWARD, stream,
-                      se::dnn::ToDataType<T>::value, input_desc, filter_desc,
-                      conv_desc, output_desc, &algorithms),
+                      se::dnn::ConvolutionKind::FORWARD,
+                      se::dnn::ToDataType<T>::value, stream, input_desc,
+                      input_ptr, filter_desc, filter_ptr, output_desc,
+                      output_ptr, conv_desc, &scratch_allocator, &algorithms),
                   errors::Unknown(
                       "Failed to get convolution algorithm. This is probably "
                       "because MIOpen failed to initialize, so try looking to "
@@ -531,16 +590,14 @@ struct LaunchConvOp<GPUDevice, T> {
       } else {
         for (auto miopen_algorithm : algorithms) {
           auto profile_algorithm = miopen_algorithm.algorithm();
-          DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
           ProfileResult profile_result;
-          bool miopen_launch_status =
-              stream
-                  ->ThenConvolveWithAlgorithm(
-                      input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                      output_desc, &output_ptr, &scratch_allocator,
-                      AlgorithmConfig(profile_algorithm), &profile_result)
-                  .ok();
-          if (miopen_launch_status) {
+          auto miopen_launch_status = stream->ConvolveWithAlgorithm(
+              input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+              output_desc, &output_ptr, &scratch_allocator,
+              AlgorithmConfig(profile_algorithm,
+                              miopen_algorithm.scratch_size()),
+              &profile_result);
+          if (miopen_launch_status.ok()) {
             if (profile_result.is_valid()) {
               results.emplace_back();
               auto& result = results.back();
@@ -565,29 +622,22 @@ struct LaunchConvOp<GPUDevice, T> {
     }
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-    bool cudnn_launch_status =
-        stream
-            ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
-                                        filter_ptr, conv_desc, output_desc,
-                                        &output_ptr, &scratch_allocator,
-                                        algorithm_config, nullptr)
-            .ok();
+    auto cudnn_launch_status = stream->ConvolveWithAlgorithm(
+        input_desc, input_ptr, filter_desc, filter_ptr, conv_desc, output_desc,
+        &output_ptr, &scratch_allocator, algorithm_config, nullptr);
 
-    if (!cudnn_launch_status) {
-      ctx->SetStatus(errors::Internal(
-          "cuDNN launch failure : input shape(", input.shape().DebugString(),
-          ") filter shape(", filter.shape().DebugString(), ")"));
+    if (!cudnn_launch_status.ok()) {
+      ctx->SetStatus(cudnn_launch_status);
     }
 
-    if (data_format == FORMAT_NHWC) {
+    if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+      VLOG(4) << "Convert the output tensor back from NCDHW to NDHWC.";
       // t_output: [b, out, x, y, z]
       // output: [b, x, y, z, out]
       functor::NCHWToNHWC<GPUDevice, T, 5>()(
           ctx->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(transformed_output).tensor<T, 5>(),
           output->tensor<T, 5>());
-    } else {
-      *output = transformed_output;
     }
   }
 };
@@ -612,7 +662,8 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 5, int>::ConstTensor in, \
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
-      typename TTypes<T, 5, int>::Tensor out, TensorFormat format);   \
+      typename TTypes<T, 5, int>::Tensor out, TensorFormat format,    \
+      const T& padding_value);                                        \
   template <>                                                         \
   void NHWCToNCHW<GPUDevice, T, 5>::operator()(                       \
       const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \

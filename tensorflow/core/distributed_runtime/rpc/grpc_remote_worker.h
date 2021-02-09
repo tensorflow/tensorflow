@@ -29,7 +29,8 @@ class WorkerInterface;
 WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
                                      thread::ThreadPool* callback_threadpool,
-                                     WorkerCacheLogger* logger);
+                                     WorkerCacheLogger* logger,
+                                     const string& target);
 
 }  // namespace tensorflow
 

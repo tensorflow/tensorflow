@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import hashlib
 import os
+
 
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -51,6 +53,18 @@ _FIELD_NAME_TOPOLOGICAL_SORT_SUCCEED = 'topological-sort-succeed:'
 
 _CURRENT_VERSION = 'use-outside-compilation'
 _TT_REPORT_PROTO = 'tensor_tracer_report.report_pb'
+
+
+def report_proto_path(trace_dir):
+  """Returns the path where report proto should be written.
+
+  Args:
+     trace_dir: String denoting the trace directory.
+
+  Returns:
+     A string denoting the path to the report proto.
+  """
+  return os.path.join(trace_dir, _TT_REPORT_PROTO)
 
 
 def topological_sort(g):
@@ -206,6 +220,12 @@ class OpenReportFile(object):
       self._report_file.close()
 
 
+def proto_fingerprint(message_proto):
+  serialized_message = message_proto.SerializeToString()
+  hasher = hashlib.sha256(serialized_message)
+  return hasher.hexdigest()
+
+
 class TTReportHandle(object):
   """Utility class responsible from creating a tensor tracer report."""
 
@@ -246,8 +266,6 @@ class TTReportHandle(object):
     report.config.num_cores = tt_config.num_replicas
     report.config.num_hosts = tt_config.num_hosts
     report.config.num_cores_per_host = tt_config.num_replicas_per_host
-    for core in tt_parameters.included_cores:
-      report.config.included_cores.append(core)
     report.config.submode = tt_parameters.submode
     report.config.trace_mode = tt_parameters.trace_mode
 
@@ -255,8 +273,6 @@ class TTReportHandle(object):
                                     key=lambda x: x[1]):
       report.config.signatures.append(signature_name)
 
-    tf_graph = tensor_trace_order.graph_order.graph
-    report.graphdef.CopyFrom(tf_graph.as_graph_def())
     for tensor in tensor_trace_order.graph_order.tensors:
       tensor_def = tensor_tracer_pb2.TensorTracerReport.TracedTensorDef()
       tensor_def.name = tensor.name
@@ -265,6 +281,11 @@ class TTReportHandle(object):
         tensor_def.cache_index = (
             tensor_trace_order.tensorname_to_cache_idx[tensor.name])
       else:
+        # To prevent small changes affecting the fingerprint calculation, avoid
+        # writing the untraced tensors to metadata. Fingerprints will be
+        # different only when the list of the traced tensors are different.
+        if tt_parameters.use_fingerprint_subdir:
+          continue
         tensor_def.is_traced = False
 
       if tensor.name in tensor_trace_points:
@@ -274,12 +295,17 @@ class TTReportHandle(object):
       elif tensor.op.name in self.instrument_records:
         tensor_def.explanation = self.instrument_records[tensor.op.name]
       report.tensordef[tensor.name].CopyFrom(tensor_def)
+    report.fingerprint = proto_fingerprint(report)
+    logging.info('TensorTracerProto fingerprint is %s.',
+                 report.fingerprint)
+    tf_graph = tensor_trace_order.graph_order.graph
+    report.graphdef.CopyFrom(tf_graph.as_graph_def())
     return report
 
   def write_report_proto(self, report_proto, tt_parameters):
     """Writes the given report proto under trace_dir."""
     gfile.MakeDirs(tt_parameters.trace_dir)
-    report_path = os.path.join(tt_parameters.trace_dir, _TT_REPORT_PROTO)
+    report_path = report_proto_path(tt_parameters.trace_dir)
     with gfile.GFile(report_path, 'wb') as f:
       f.write(report_proto.SerializeToString())
 
@@ -323,12 +349,8 @@ class TTReportHandle(object):
                                   tt_parameters.trace_mode))
     self._write_report('%s %s\n'%(_FIELD_NAME_SUBMODE,
                                   tt_parameters.submode))
-    if tt_parameters.included_cores:
-      self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS,
-                                    len(tt_parameters.included_cores)))
-    else:
-      self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS,
-                                    tt_config.num_replicas))
+    self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS,
+                                  tt_config.num_replicas))
     self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS_PER_HOST,
                                   tt_config.num_replicas_per_host))
     self._write_report('%s %s\n'%(_FIELD_NAME_NUM_HOSTS, tt_config.num_hosts))

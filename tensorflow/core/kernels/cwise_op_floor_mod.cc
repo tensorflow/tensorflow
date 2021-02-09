@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER2(BinaryOp, CPU, "FloorMod", functor::safe_floor_mod, int32, int64);
-REGISTER2(BinaryOp, CPU, "FloorMod", functor::floor_fmod, float, double);
+REGISTER3(BinaryOp, CPU, "FloorMod", functor::safe_floor_mod, int32, int64,
+          uint64);
+REGISTER3(BinaryOp, CPU, "FloorMod", functor::floor_fmod, bfloat16, float,
+          double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // A special GPU kernel for int32.
@@ -32,13 +34,4 @@ REGISTER_KERNEL_BUILDER(Name("FloorMod")
                         BinaryOp<CPUDevice, functor::safe_floor_mod<int32>>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("FloorMod")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_floor_mod<int32>>);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

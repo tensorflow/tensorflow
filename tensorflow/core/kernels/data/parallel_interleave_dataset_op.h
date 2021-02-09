@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -28,11 +29,16 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kOtherArguments = "other_arguments";
   static constexpr const char* const kCycleLength = "cycle_length";
   static constexpr const char* const kBlockLength = "block_length";
+  static constexpr const char* const kBufferOutputElements =
+      "buffer_output_elements";
+  static constexpr const char* const kPrefetchInputElements =
+      "prefetch_input_elements";
   static constexpr const char* const kNumParallelCalls = "num_parallel_calls";
   static constexpr const char* const kFunc = "f";
   static constexpr const char* const kTarguments = "Targuments";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
+  static constexpr const char* const kDeterministic = "deterministic";
   static constexpr const char* const kSloppy = "sloppy";
 
   explicit ParallelInterleaveDatasetOp(OpKernelConstruction* ctx);
@@ -43,10 +49,11 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   class Dataset;
+  const int op_version_;
   std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  bool sloppy_;
+  DeterminismPolicy deterministic_;
 };
 
 }  // namespace data

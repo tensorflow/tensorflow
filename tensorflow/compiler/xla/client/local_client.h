@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LOCAL_CLIENT_H_
 
 #include <memory>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client.h"
@@ -50,6 +51,11 @@ class LocalExecutable {
       const absl::Span<const ShapedBuffer* const> arguments,
       ExecutableRunOptions run_options);
 
+  // Similar to Run(), but allows for donating argument buffers to the
+  // executable.
+  StatusOr<ExecutionOutput> Run(std::vector<ExecutionInput> arguments,
+                                ExecutableRunOptions run_options);
+
   // Similar to Run(), but need not block the host waiting for the computation
   // to complete before returning.
   StatusOr<ScopedShapedBuffer> RunAsync(
@@ -58,10 +64,8 @@ class LocalExecutable {
 
   // Similar to RunAsync(), but allows for donating argument buffers to the
   // executable.
-  StatusOr<ExecutionOutput> RunAsync(
-      absl::Span<Shape const* const> argument_host_shapes,
-      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
-      ExecutableRunOptions run_options);
+  StatusOr<ExecutionOutput> RunAsync(std::vector<ExecutionInput> arguments,
+                                     ExecutableRunOptions run_options);
 
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }
@@ -70,13 +74,17 @@ class LocalExecutable {
   Executable* executable() const { return executable_.get(); }
 
  private:
+  StatusOr<ExecutionOutput> RunAsync(
+      absl::Span<Shape const* const> argument_host_shapes,
+      std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options);
+
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
   //
   // The given ExecutableRunOptions override any values from TF_XLA_FLAGS
   // environment variable.
-  Status ValidateExecutionOptions(
-      const ExecutableRunOptions& run_options, const Backend& backend);
+  Status ValidateExecutionOptions(const ExecutableRunOptions& run_options,
+                                  const Backend& backend);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);
@@ -89,6 +97,22 @@ class LocalExecutable {
   // executable can run on all equivalent devices (as determined by
   // Backend::devices_equivalent).
   int build_device_ordinal() const { return build_options_.device_ordinal(); }
+
+  template <typename T>
+  StatusOr<T> AsyncCallAndBlockHostUntilDone(
+      absl::Span<Shape const* const> argument_shapes,
+      const ExecutableRunOptions& run_options,
+      std::function<StatusOr<T>(const ExecutableRunOptions&)> async_callback) {
+    TF_ASSIGN_OR_RETURN(auto options_and_stream,
+                        RunHelper(argument_shapes, run_options));
+    ExecutableRunOptions options = options_and_stream.first.run_options();
+    options.set_device_ordinal(-1);
+    StatusOr<T> result = async_callback(options);
+    Status block_status = options.stream()->BlockHostUntilDone();
+    TF_RETURN_IF_ERROR(result.status());
+    TF_RETURN_IF_ERROR(block_status);
+    return result;
+  }
 
   // Compiled computation.
   std::unique_ptr<Executable> executable_;
@@ -110,12 +134,13 @@ class LocalClient : public Client {
   LocalClient(const LocalClient&) = delete;
   void operator=(const LocalClient&) = delete;
 
-  // Build and return a LocalExecutable object. The executable is compiled using
-  // the given XlaComputation, argument layouts and options.
+  // Build and return LocalExecutable objects (one per partition, as specified
+  // by the build options). The executable is compiled using the given
+  // XlaComputation, argument layouts and options.
   //
   // The given ExecutableBuildOptions overrides any values from XLA_FLAGS
   // environment variable.
-  StatusOr<std::unique_ptr<LocalExecutable>> Compile(
+  StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> Compile(
       const XlaComputation& computation,
       const absl::Span<const Shape* const> argument_layouts,
       const ExecutableBuildOptions& options);
@@ -147,13 +172,13 @@ class LocalClient : public Client {
   // Client::TransferToInfeed.
   Status TransferToInfeedLocal(const LiteralSlice& literal, int device_ordinal);
 
-  // Transfer and return a value of the given shape from the outfeed of the
-  // given device.
+  // Transfer and return a value from the outfeed of the given device. The
+  // shape of the object to transfer is determined by `literal`'s shape.
   // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
   // not inherit from Client and there is no possibility of confusion with
   // Client::TransferFromOutfeed.
-  StatusOr<Literal> TransferFromOutfeedLocal(const Shape& shape,
-                                             int device_ordinal);
+  Status TransferFromOutfeedLocal(int device_ordinal,
+                                  MutableBorrowingLiteral literal);
 
   // Returns the device ordinal that corresponds to the given replica number.
   //

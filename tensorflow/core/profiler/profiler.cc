@@ -45,7 +45,7 @@ namespace tensorflow {
 namespace tfprof {
 void completion(const char* buf, linenoiseCompletions* lc) {
   string buf_str = buf;
-  if (buf_str.find(" ") == buf_str.npos) {
+  if (buf_str.find(' ') == buf_str.npos) {
     for (const char* opt : kCmds) {
       if (string(opt).find(buf_str) == 0) {
         linenoiseAddCompletion(lc, opt);
@@ -282,7 +282,7 @@ int Run(int argc, char** argv) {
     if (line == nullptr) {
       if (!looped) {
         absl::FPrintF(stderr,
-                      "Cannot start interative shell, "
+                      "Cannot start interactive shell, "
                       "use 'bazel-bin' instead of 'bazel run'.\n");
       }
       break;

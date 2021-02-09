@@ -25,9 +25,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/image_resizer_state.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/image_resizer_state.h"
 
 namespace tensorflow {
 
@@ -39,7 +39,7 @@ template <typename T_SCALE>
 struct InterpolationCache {
   std::vector<int64> lower;  // Lower source index used in the interpolation
   std::vector<int64> upper;  // Upper source index used in the interpolation
-  // 1-D linear iterpolation scale (see:
+  // 1-D linear interpolation scale (see:
   // https://en.wikipedia.org/wiki/Bilinear_interpolation)
   std::vector<float> lerp;
   std::vector<T_SCALE> ilerp;

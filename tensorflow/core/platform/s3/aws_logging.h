@@ -34,7 +34,7 @@ class AWSLogSystem : public Aws::Utils::Logging::LogSystemInterface {
   virtual ~AWSLogSystem() = default;
 
   // Gets the currently configured log level.
-  virtual Aws::Utils::Logging::LogLevel GetLogLevel(void) const override {
+  Aws::Utils::Logging::LogLevel GetLogLevel(void) const override {
     return log_level_;
   }
 
@@ -47,13 +47,15 @@ class AWSLogSystem : public Aws::Utils::Logging::LogSystemInterface {
   // it's unsafe. See LogStream.
   // Since non-static C++ methods have an implicit this argument,
   // TF_PRINTF_ATTRIBUTE should be counted from two (vs. one).
-  virtual void Log(Aws::Utils::Logging::LogLevel log_level, const char* tag,
-                   const char* format, ...) override TF_PRINTF_ATTRIBUTE(4, 5);
+  void Log(Aws::Utils::Logging::LogLevel log_level, const char* tag,
+           const char* format, ...) override TF_PRINTF_ATTRIBUTE(4, 5);
 
   // Writes the stream to ProcessFormattedStatement.
-  virtual void LogStream(Aws::Utils::Logging::LogLevel log_level,
-                         const char* tag,
-                         const Aws::OStringStream& messageStream) override;
+  void LogStream(Aws::Utils::Logging::LogLevel log_level, const char* tag,
+                 const Aws::OStringStream& messageStream) override;
+
+  // Flushes the buffered messages if the logger supports buffering
+  void Flush() override;
 
  private:
   void LogMessage(Aws::Utils::Logging::LogLevel log_level,

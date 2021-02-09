@@ -32,22 +32,20 @@ namespace {
 
 class Reshape : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
-    auto input = ctx.graph->FindInputs(ctx.node->id)[0];
-    auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
-    if (input->tensor.shape.DimensionsProduct() !=
-        output->tensor.shape.DimensionsProduct()) {
-      return InvalidArgumentError("Dimensions product is reshape don't match");
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
+    if (ctx.input_shapes[0][1] * ctx.input_shapes[0][2] *
+            ctx.input_shapes[0][3] !=
+        ctx.output_shapes[0][1] * ctx.output_shapes[0][2] *
+            ctx.output_shapes[0][3]) {
+      return absl::InvalidArgumentError(
+          "Number of elements in input & output tensors don't match.");
     }
-    auto attr =
-        absl::any_cast<ReshapeAttributes>(ctx.node->operation.attributes);
-    if (input->tensor.shape.DimensionsProduct() !=
-        output->tensor.shape.DimensionsProduct()) {
-      return InvalidArgumentError("Dimensions product is reshape don't match");
-    }
-    if (attr.new_shape != output->tensor.shape) {
-      return InvalidArgumentError(
+    const auto& attr = absl::any_cast<const ReshapeAttributes&>(ctx.op_attr);
+    if (attr.new_shape.h != ctx.output_shapes[0][1] ||
+        attr.new_shape.w != ctx.output_shapes[0][2] ||
+        attr.new_shape.c != ctx.output_shapes[0][3]) {
+      return absl::InvalidArgumentError(
           "Dimensions for output does not match new_shape attribute");
     }
 
@@ -70,10 +68,10 @@ class Reshape : public NodeShader {
     )";
     *generated_code = {
         /*parameters=*/{
-            {"output_data_0_w", output->tensor.shape.w},
-            {"input_data_0_w", input->tensor.shape.w},
-            {"input_channels", input->tensor.shape.c},
-            {"output_channels", output->tensor.shape.c},
+            {"input_data_0_w", static_cast<int>(ctx.input_shapes[0][2])},
+            {"input_channels", static_cast<int>(ctx.input_shapes[0][3])},
+            {"output_data_0_w", static_cast<int>(ctx.output_shapes[0][2])},
+            {"output_channels", static_cast<int>(ctx.output_shapes[0][3])},
         },
         /*objects=*/{},
         /*shared_variables=*/{},
@@ -83,7 +81,7 @@ class Reshape : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

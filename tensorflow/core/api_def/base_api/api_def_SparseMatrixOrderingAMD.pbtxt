@@ -45,7 +45,7 @@ Usage example:
 
     with tf.Session() as sess:
       # Define (COO format) SparseTensor over Numpy array.
-      a_st = tf.SparseTensor(a_indices, a_values, a_dense_shape)
+      a_st = tf.sparse.SparseTensor(a_indices, a_values, a_dense_shape)
 
       # Convert SparseTensors to CSR SparseMatrix.
       a_sm = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(

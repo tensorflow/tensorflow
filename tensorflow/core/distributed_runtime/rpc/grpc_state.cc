@@ -24,8 +24,8 @@ const char* ToString(UntypedStreamingRPCState::Tag::TagType tag_type) {
       return "kCallStarted";
     case UntypedStreamingRPCState::Tag::TagType::kRequestWriteCompleted:
       return "kRequestWriteCompleted";
-    case UntypedStreamingRPCState::Tag::TagType::kResponseReadCommpleted:
-      return "kResponseReadCommpleted";
+    case UntypedStreamingRPCState::Tag::TagType::kResponseReadCompleted:
+      return "kResponseReadCompleted";
     case UntypedStreamingRPCState::Tag::TagType::kCallFinished:
       return "kCallFinished";
   }
@@ -43,7 +43,7 @@ void UntypedStreamingRPCState::Tag::OnCompleted(bool ok) {
     case TagType::kRequestWriteCompleted:
       streaming_state_->RequestWriteCompleted(ok);
       break;
-    case TagType::kResponseReadCommpleted:
+    case TagType::kResponseReadCompleted:
       streaming_state_->ResponseReadCompleted(ok);
       break;
     case TagType::kCallFinished:
@@ -203,7 +203,7 @@ void ExchangeQueue::CheckInvariants() {
     return;
   }
 
-  for (int i = 1; i < exchanges_.size(); ++i) {
+  for (int i = 1, end = exchanges_.size(); i < end; ++i) {
     const Exchange& e0 = exchanges_[i - 1];
     const Exchange& e1 = exchanges_[i];
     // The first exchange in the pair is the one that arrived later and is

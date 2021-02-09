@@ -15,10 +15,11 @@ limitations under the License.
 
 // Unit test cases for IntType.
 
+#include "tensorflow/core/lib/gtl/int_type.h"
+
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/core/lib/gtl/int_type.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -35,10 +36,7 @@ TF_LIB_GTL_DEFINE_INT_TYPE(UInt64_IT, uint64);
 TF_LIB_GTL_DEFINE_INT_TYPE(Long_IT, long);  // NOLINT
 
 template <typename IntType_Type>
-class IntTypeTest : public ::testing::Test {
- public:
-  typedef IntType_Type T;
-};
+class IntTypeTest : public ::testing::Test {};
 
 // All tests below will be executed on all supported IntTypes.
 typedef ::testing::Types<Int8_IT, UInt8_IT, Int16_IT, UInt16_IT, Int32_IT,
@@ -48,20 +46,20 @@ typedef ::testing::Types<Int8_IT, UInt8_IT, Int16_IT, UInt16_IT, Int32_IT,
 TYPED_TEST_SUITE(IntTypeTest, SupportedIntTypes);
 
 TYPED_TEST(IntTypeTest, TestInitialization) {
-  constexpr typename TestFixture::T a;
-  constexpr typename TestFixture::T b(1);
-  constexpr typename TestFixture::T c(b);
+  constexpr TypeParam a;
+  constexpr TypeParam b(1);
+  constexpr TypeParam c(b);
   EXPECT_EQ(0, a);  // default initialization to 0
   EXPECT_EQ(1, b);
   EXPECT_EQ(1, c);
 }
 
 TYPED_TEST(IntTypeTest, TestOperators) {
-  typename TestFixture::T a(0);
-  typename TestFixture::T b(1);
-  typename TestFixture::T c(2);
-  constexpr typename TestFixture::T d(3);
-  constexpr typename TestFixture::T e(4);
+  TypeParam a(0);
+  TypeParam b(1);
+  TypeParam c(2);
+  constexpr TypeParam d(3);
+  constexpr TypeParam e(4);
 
   // On all EXPECT_EQ below, we use the accessor value() as to not invoke the
   // comparison operators which must themselves be tested.
@@ -232,25 +230,22 @@ TYPED_TEST(IntTypeTest, TestOperators) {
 }
 
 TYPED_TEST(IntTypeTest, TestHashFunctor) {
-  std::unordered_map<typename TestFixture::T, char,
-                     typename TestFixture::T::Hasher>
-      map;
-  typename TestFixture::T a(0);
+  std::unordered_map<TypeParam, char, typename TypeParam::Hasher> map;
+  TypeParam a(0);
   map[a] = 'c';
   EXPECT_EQ('c', map[a]);
   map[++a] = 'o';
   EXPECT_EQ('o', map[a]);
 
-  typename TestFixture::T b(a);
-  EXPECT_EQ(typename TestFixture::T::Hasher()(a),
-            typename TestFixture::T::Hasher()(b));
+  TypeParam b(a);
+  EXPECT_EQ(typename TypeParam::Hasher()(a), typename TypeParam::Hasher()(b));
 }
 
 // Tests the use of the templatized value accessor that performs static_casts.
 // We use -1 to force casting in unsigned integers.
 TYPED_TEST(IntTypeTest, TestValueAccessor) {
-  constexpr typename TestFixture::T::ValueType i = -1;
-  constexpr typename TestFixture::T int_type(i);
+  constexpr typename TypeParam::ValueType i = -1;
+  constexpr TypeParam int_type(i);
   EXPECT_EQ(i, int_type.value());
   static_assert(int_type.value() == i, "value() failed");
   // The use of the keyword 'template' (suggested by Clang) is only necessary
@@ -274,12 +269,12 @@ TYPED_TEST(IntTypeTest, TestMove) {
   // struct can't be copied due to the unique_ptr, so it must be moved.
   // If this compiles, it means that the int types have move operators.
   struct NotCopyable {
-    typename TestFixture::T inttype;
+    TypeParam inttype;
     std::unique_ptr<int> ptr;
 
     static NotCopyable Make(int i) {
       NotCopyable f;
-      f.inttype = typename TestFixture::T(i);
+      f.inttype = TypeParam(i);
       f.ptr.reset(new int(i));
       return f;
     }

@@ -23,10 +23,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("signal.overlap_and_add")
+@dispatch.add_dispatch_support
 def overlap_and_add(signal, frame_step, name=None):
   """Reconstructs a signal from a framed representation.
 
@@ -59,13 +61,22 @@ def overlap_and_add(signal, frame_step, name=None):
     if not frame_step.dtype.is_integer:
       raise ValueError("frame_step must be an integer. Got %s" %
                        frame_step.dtype)
+    frame_step_static = tensor_util.constant_value(frame_step)
+    frame_step_is_static = frame_step_static is not None
+    frame_step = frame_step_static if frame_step_is_static else frame_step
 
     signal_shape = array_ops.shape(signal)
+    signal_shape_static = tensor_util.constant_value(signal_shape)
+    if signal_shape_static is not None:
+      signal_shape = signal_shape_static
 
     # All dimensions that are not part of the overlap-and-add. Can be empty for
     # rank 2 inputs.
     outer_dimensions = signal_shape[:-2]
     outer_rank = array_ops.size(outer_dimensions)
+    outer_rank_static = tensor_util.constant_value(outer_rank)
+    if outer_rank_static is not None:
+      outer_rank = outer_rank_static
 
     def full_shape(inner_shape):
       return array_ops.concat([outer_dimensions, inner_shape], 0)
@@ -78,9 +89,8 @@ def overlap_and_add(signal, frame_step, name=None):
 
     # If frame_length is equal to frame_step, there's no overlap so just
     # reshape the tensor.
-    frame_step_static = tensor_util.constant_value(frame_step)
-    if (frame_step_static is not None and signal.shape.dims is not None and
-        frame_step_static == signal.shape.dims[-1].value):
+    if (frame_step_is_static and signal.shape.dims is not None and
+        frame_step == signal.shape.dims[-1].value):
       output_shape = full_shape([output_length])
       return array_ops.reshape(signal, output_shape, name="fast_path")
 
@@ -124,6 +134,8 @@ def overlap_and_add(signal, frame_step, name=None):
     # e0 j0 o0 00 00 00
     perm = array_ops.concat(
         [math_ops.range(outer_rank), outer_rank + [1, 0, 2]], 0)
+    perm_static = tensor_util.constant_value(perm)
+    perm = perm_static if perm_static is not None else perm
     signal = array_ops.transpose(signal, perm)
 
     # Reshape so that signal.shape = (18, 2)

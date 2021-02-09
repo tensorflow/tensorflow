@@ -58,6 +58,9 @@ struct GraphOptimizationPassOptions {
   // Null for pre-partitioning passes.
   std::unordered_map<string, std::unique_ptr<Graph>>* partition_graphs =
       nullptr;
+
+  // Indicator of whether or not the graph was derived from a function.
+  bool is_function_graph = false;
 };
 
 // Optimization passes are implemented by inheriting from
@@ -70,7 +73,7 @@ class GraphOptimizationPass {
   string name() const { return name_; }
 
  private:
-  // The name of the opitimization pass, which is the same as the inherited
+  // The name of the optimization pass, which is the same as the inherited
   // class name.
   string name_;
 };

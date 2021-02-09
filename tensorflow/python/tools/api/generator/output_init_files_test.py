@@ -24,7 +24,15 @@ import sys
 # pylint: disable=unused-import
 from tensorflow import python as _tf_for_api_traversal
 from tensorflow.lite.python import lite as _tflite_for_api_traversal
+from tensorflow.python import modules_with_exports
+from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute.coordinator import cluster_coordinator
+from tensorflow.python.framework import combinations
+from tensorflow.python.framework import test_combinations
 # pylint: enable=unused-import
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_decorator
 
@@ -158,8 +166,8 @@ class OutputInitFilesTest(test.TestCase):
   def test_V2_init_files(self):
     modules = _get_modules(
         'tensorflow', '_tf_api_names', '_tf_api_constants')
-    file_path = (
-        'tensorflow/python/tools/api/generator/api_init_files.bzl')
+    file_path = resource_loader.get_path_to_datafile(
+        'api_init_files.bzl')
     paths = _get_files_set(
         file_path, '# BEGIN GENERATED FILES', '# END GENERATED FILES')
     module_paths = set(
@@ -170,8 +178,7 @@ class OutputInitFilesTest(test.TestCase):
   def test_V1_init_files(self):
     modules = _get_modules(
         'tensorflow', '_tf_api_names_v1', '_tf_api_constants_v1')
-    file_path = (
-        'tensorflow/python/tools/api/generator/'
+    file_path = resource_loader.get_path_to_datafile(
         'api_init_files_v1.bzl')
     paths = _get_files_set(
         file_path, '# BEGIN GENERATED FILES', '# END GENERATED FILES')

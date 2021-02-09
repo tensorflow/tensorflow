@@ -53,7 +53,7 @@ Status ValidateHostPortPair(const string& host_port) {
   uint32 port;
   auto colon_index = host_port.find_last_of(':');
   if (!strings::safe_strtou32(host_port.substr(colon_index + 1), &port) ||
-      host_port.substr(0, colon_index).find("/") != string::npos) {
+      host_port.substr(0, colon_index).find('/') != string::npos) {
     return errors::InvalidArgument("Could not interpret \"", host_port,
                                    "\" as a host-port pair.");
   }
@@ -219,7 +219,7 @@ class CachingGrpcChannelCache : public GrpcChannelCache {
  private:
   // TODO(zhifengc): Eviction when the map becomes too big.
   mutex mu_;
-  std::unordered_map<string, SharedGrpcChannelPtr> channels_ GUARDED_BY(mu_);
+  std::unordered_map<string, SharedGrpcChannelPtr> channels_ TF_GUARDED_BY(mu_);
 };
 
 // A ChannelCache that is the union of multiple ChannelCaches.
@@ -286,7 +286,8 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
   mutex mu_;
   // Cache of channels keyed by the target they are handling.
   // The same GrpcChannelCache can appear multiple times in the cache.
-  std::unordered_map<string, GrpcChannelCache*> target_caches_ GUARDED_BY(mu_);
+  std::unordered_map<string, GrpcChannelCache*> target_caches_
+      TF_GUARDED_BY(mu_);
 };
 
 class SparseGrpcChannelCache : public CachingGrpcChannelCache {

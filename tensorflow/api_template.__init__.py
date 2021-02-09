@@ -13,16 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 """
-Top-level module of TensorFlow. By convention, we refer to this module as 
-`tf` instead of `tensorflow`, following the common practice of importing 
+Top-level module of TensorFlow. By convention, we refer to this module as
+`tf` instead of `tensorflow`, following the common practice of importing
 TensorFlow via the command `import tensorflow as tf`.
 
-The primary function of this module is to import all of the public TensorFlow 
-interfaces into a single place. The interfaces themselves are located in 
+The primary function of this module is to import all of the public TensorFlow
+interfaces into a single place. The interfaces themselves are located in
 sub-modules, as described below.
 
-Note that the file `__init__.py` in the TensorFlow source code tree is actually 
-only a placeholder to enable test cases to run. The TensorFlow build replaces 
+Note that the file `__init__.py` in the TensorFlow source code tree is actually
+only a placeholder to enable test cases to run. The TensorFlow build replaces
 this file with a file generated from [`api_template.__init__.py`](https://www.github.com/tensorflow/tensorflow/blob/master/tensorflow/api_template.__init__.py)
 """
 
@@ -35,9 +35,16 @@ import inspect as _inspect
 import logging as _logging
 import os as _os
 import site as _site
+import six as _six
 import sys as _sys
 
 from tensorflow.python.tools import module_util as _module_util
+from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
+
+# Make sure code inside the TensorFlow codebase can use tf2.enabled() at import.
+_os.environ['TF2_BEHAVIOR'] = '1'
+from tensorflow.python import tf2 as _tf2
+_tf2.enable()
 
 # API IMPORTS PLACEHOLDER
 
@@ -69,13 +76,13 @@ except ImportError:
   _logging.warning(
       "Limited tf.summary API due to missing TensorBoard installation.")
 
-try:
-  from tensorflow_estimator.python.estimator.api._v2 import estimator
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
-  setattr(_current_module, "estimator", estimator)
-except ImportError:
-  pass
+# Lazy-load estimator.
+_estimator_module = "tensorflow_estimator.python.estimator.api._v2.estimator"
+estimator = _LazyLoader("estimator", globals(), _estimator_module)
+_module_dir = _module_util.get_parent_dir_for_name(_estimator_module)
+if _module_dir:
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
+setattr(_current_module, "estimator", estimator)
 
 try:
   from .python.keras.api._v2 import keras
@@ -85,6 +92,13 @@ try:
 except ImportError:
   pass
 
+# Explicitly import lazy-loaded modules to support autocompletion.
+# pylint: disable=g-import-not-at-top
+if not _six.PY2:
+  import typing as _typing
+  if _typing.TYPE_CHECKING:
+    from tensorflow_estimator.python.estimator.api._v2 import estimator
+# pylint: enable=g-import-not-at-top
 
 # Enable TF2 behaviors
 from tensorflow.python.compat import v2_compat as _compat  # pylint: disable=g-import-not-at-top
@@ -102,7 +116,8 @@ from tensorflow.python.lib.io import file_io as _fi
 
 # Get sitepackages directories for the python installation.
 _site_packages_dirs = []
-_site_packages_dirs += [_site.USER_SITE]
+if _site.ENABLE_USER_SITE and _site.USER_SITE is not None:
+  _site_packages_dirs += [_site.USER_SITE]
 _site_packages_dirs += [_p for _p in _sys.path if 'site-packages' in _p]
 if 'getsitepackages' in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
@@ -123,14 +138,16 @@ if _running_from_pip_package():
   # TODO(gunan): Add sanity checks to loaded modules here.
   for _s in _site_packages_dirs:
     # Load first party dynamic kernels.
-    _main_dir = _os.path.join(_s, 'tensorflow_core/core/kernels')
-    if _fi.file_exists(_main_dir):
+    _main_dir = _os.path.join(_s, 'tensorflow/core/kernels')
+    if _os.path.exists(_main_dir):
       _ll.load_library(_main_dir)
 
     # Load third party dynamic kernels.
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
-    if _fi.file_exists(_plugin_dir):
+    if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)
+      # Load Pluggable Device Library
+      _ll.load_pluggable_device_library(_plugin_dir)
 
 # Add module aliases
 if hasattr(_current_module, 'keras'):
@@ -143,5 +160,24 @@ if hasattr(_current_module, 'keras'):
   setattr(_current_module, "optimizers", optimizers)
   setattr(_current_module, "initializers", initializers)
 # pylint: enable=undefined-variable
+
+# Delete modules that should be hidden from dir().
+# Don't fail if these modules are not available.
+# For e.g. this file will be originally placed under tensorflow/_api/v1 which
+# does not have 'python', 'core' directories. Then, it will be copied
+# to tensorflow/ which does have these two directories.
+# pylint: disable=undefined-variable
+try:
+  del python
+except NameError:
+  pass
+try:
+  del core
+except NameError:
+  pass
+try:
+  del compiler
+except NameError:
+  pass
 
 # __all__ PLACEHOLDER

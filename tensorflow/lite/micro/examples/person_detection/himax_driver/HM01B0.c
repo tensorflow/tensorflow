@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "HM01B0.h"
 
 #include "HM01B0_Walking1s_01.h"
@@ -94,7 +100,7 @@ static uint32_t hm01b0_write_reg(hm01b0_cfg_t* psCfg, uint16_t ui16Reg,
   Transaction.ui32StatusSetClr = 0;
 
   //
-  // Execute the transction over IOM.
+  // Execute the transaction over IOM.
   //
   if (am_hal_iom_blocking_transfer(psCfg->pIOMHandle, &Transaction)) {
     return HM01B0_ERR_I2C;
@@ -138,7 +144,7 @@ static uint32_t hm01b0_read_reg(hm01b0_cfg_t* psCfg, uint16_t ui16Reg,
   Transaction.ui32StatusSetClr = 0;
 
   //
-  // Execute the transction over IOM.
+  // Execute the transaction over IOM.
   //
   if (am_hal_iom_blocking_transfer(psCfg->pIOMHandle, &Transaction)) {
     return HM01B0_ERR_I2C;
@@ -468,7 +474,7 @@ uint32_t hm01b0_get_modelid(hm01b0_cfg_t* psCfg, uint16_t* pui16MID) {
 //! @param ui32ScriptCmdNum     - No. of commands in HM01B0 initialization
 //! script.
 //!
-//! This function initilizes HM01B0 with a given script.
+//! This function initializes HM01B0 with a given script.
 //!
 //! @return Error code.
 //
@@ -495,45 +501,6 @@ uint32_t hm01b0_test_walking1s(hm01b0_cfg_t* psCfg) {
   hm_script_t* psScript = (hm_script_t*)sHM01b0TestModeScript_Walking1s;
 
   return hm01b0_load_script(psCfg, psScript, ui32ScriptCmdNum);
-}
-
-//*****************************************************************************
-//
-//! @brief Check the data read from HM01B0 in the walking 1s test mode
-//!
-//! @param pui8Buffer       - Pointer to data buffer.
-//! @param ui32BufferLen    - Buffer length
-//! @param ui32PrintCnt     - Number of mismatched data to be printed out
-//!
-//! This function sets HM01B0 in the walking 1s test mode.
-//!
-//! @return Error code.
-//
-//*****************************************************************************
-void hm01b0_test_walking1s_check_data_sanity(uint8_t* pui8Buffer,
-                                             uint32_t ui32BufferLen,
-                                             uint32_t ui32PrintCnt) {
-  uint8_t ui8ByteData = *pui8Buffer;
-  uint32_t ui32MismatchCnt = 0x00;
-
-  for (uint32_t ui32Idx = 0; ui32Idx < ui32BufferLen; ui32Idx++) {
-    if (*(pui8Buffer + ui32Idx) != ui8ByteData) {
-      if (ui32PrintCnt) {
-        am_util_stdio_printf("[0x%08X] actual 0x%02X expected 0x%02X\n",
-                             ui32Idx, *(pui8Buffer + ui32Idx), ui8ByteData);
-        am_util_delay_ms(1);
-        ui32PrintCnt--;
-      }
-      ui32MismatchCnt++;
-    }
-
-    if (ui8ByteData)
-      ui8ByteData = ui8ByteData << 1;
-    else
-      ui8ByteData = 0x01;
-  }
-
-  am_util_stdio_printf("Mismatch Rate %d/%d\n", ui32MismatchCnt, ui32BufferLen);
 }
 
 //*****************************************************************************
@@ -706,7 +673,8 @@ uint32_t hm01b0_blocking_read_oneframe(hm01b0_cfg_t* psCfg, uint8_t* pui8Buffer,
 
   am_util_stdio_printf("[%s] +\n", __func__);
 #ifdef ENABLE_ASYNC
-  while (!s_bVsyncAsserted);
+  while (!s_bVsyncAsserted)
+    ;
 
   while (s_bVsyncAsserted) {
     // we don't check HSYNC here on the basis of assuming HM01B0 in the gated
@@ -720,18 +688,21 @@ uint32_t hm01b0_blocking_read_oneframe(hm01b0_cfg_t* psCfg, uint8_t* pui8Buffer,
         goto end;
       }
 
-      while (read_pclk());
+      while (read_pclk())
+        ;
     }
   }
 #else
   uint32_t ui32HsyncCnt = 0x00;
 
   while ((ui32HsyncCnt < HM01B0_PIXEL_Y_NUM)) {
-    while (0x00 == read_hsync());
+    while (0x00 == read_hsync())
+      ;
 
     // read one row
     while (read_hsync()) {
-      while (0x00 == read_pclk());
+      while (0x00 == read_pclk())
+        ;
 
       *(pui8Buffer + ui32Idx++) = read_byte();
 
@@ -739,7 +710,8 @@ uint32_t hm01b0_blocking_read_oneframe(hm01b0_cfg_t* psCfg, uint8_t* pui8Buffer,
         goto end;
       }
 
-      while (read_pclk());
+      while (read_pclk())
+        ;
     }
 
     ui32HsyncCnt++;
@@ -756,3 +728,5 @@ uint32_t hm01b0_single_frame_capture(hm01b0_cfg_t* psCfg) {
                    HM01B0_REG_MODE_SELECT_STREAMING_NFRAMES, 1);
   hm01b0_write_reg(psCfg, HM01B0_REG_GRP_PARAM_HOLD, 0x01, 1);
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

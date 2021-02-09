@@ -1,0 +1,9 @@
+path: "tensorflow.tpu.experimental.embedding.TableConfig"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils.TableConfig\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'vocabulary_size\', \'dim\', \'initializer\', \'optimizer\', \'combiner\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'mean\', \'None\'], "
+  }
+}

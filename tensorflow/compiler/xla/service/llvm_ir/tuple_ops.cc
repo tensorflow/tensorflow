@@ -54,18 +54,19 @@ void EmitTupleSelect(const IrArray& select, const IrArray& pred,
   llvm::Value* dst = select.GetBasePointer();
   int64 table_size = ShapeUtil::ByteSizeOfTupleIndexTable(
       select.GetShape(), module->getDataLayout().getPointerSize());
-  b->CreateMemCpy(dst, /*DstAlign=*/1, src, /*SrcAlign=*/1,
-                  b->getInt64(table_size));
+  b->CreateMemCpy(dst, /*DstAlign=*/llvm::Align(1), src,
+                  /*SrcAlign=*/llvm::Align(1), b->getInt64(table_size));
 }
 
 void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
                llvm::IRBuilder<>* b) {
   llvm::Module* module = getModuleFromBuilder(b);
   for (size_t i = 0; i < operands.size(); ++i) {
+    auto* cast =
+        b->CreatePointerCast(operands[i], PrimitiveTypeToIrType(TUPLE, module));
     auto* store = b->CreateStore(
-        b->CreatePointerCast(operands[i], PrimitiveTypeToIrType(TUPLE, module)),
-        b->CreateInBoundsGEP(tuple.GetBasePointer(),
-                             {b->getInt64(0), b->getInt64(i)}));
+        cast, b->CreateInBoundsGEP(tuple.GetBasePointer(),
+                                   {b->getInt64(0), b->getInt64(i)}));
     tuple.AnnotateLoadStoreInstructionWithMetadata(store);
   }
 }

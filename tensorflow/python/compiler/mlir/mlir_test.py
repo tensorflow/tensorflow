@@ -19,22 +19,72 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.compiler.mlir import mlir
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import test
 
 
-class MLIRImportTest(test.TestCase):
+class MLIRGraphDefImportTest(test.TestCase):
 
-  def test_import_graph_def(self):
+  def testImport(self):
     """Tests the basic flow of `tf.mlir.experimental.convert_graph_def`."""
     mlir_module = mlir.convert_graph_def('')
     # An empty graph should contain at least an empty main function.
     self.assertIn('func @main', mlir_module)
 
-  def test_invalid_pbtxt(self):
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'Could not parse input proto'):
+  def testInvalidPbtxt(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not parse input proto'):
       mlir.convert_graph_def('some invalid proto')
+
+
+class MLIRConcreteFunctionImportTest(test.TestCase):
+
+  @test_util.run_v2_only
+  def testImport(self):
+
+    @def_function.function
+    def sqr(i):
+      return i * i
+
+    concrete_function = sqr.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32))
+    mlir_module = mlir.convert_function(concrete_function, show_debug_info=True)
+    self.assertRegex(mlir_module, r'func @.*sqr.*\(')
+    self.assertRegex(mlir_module, r'callsite\(".*mlir_test.py":')
+
+  @test_util.run_v2_only
+  def testImportWithCall(self):
+
+    @def_function.function
+    def callee(i):
+      return i
+
+    @def_function.function
+    def caller(i):
+      return callee(i)
+
+    concrete_function = caller.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32))
+    mlir_module = mlir.convert_function(concrete_function)
+    self.assertRegex(mlir_module, r'func @.*caller.*\(')
+    self.assertRegex(mlir_module, r'func private @.*callee.*\(')
+
+  @test_util.run_v2_only
+  def testImportWithControlRet(self):
+
+    @def_function.function
+    def logging():
+      logging_ops.print_v2('some message')
+
+    concrete_function = logging.get_concrete_function()
+    mlir_module = mlir.convert_function(concrete_function, pass_pipeline='')
+    self.assertRegex(mlir_module, r'tf\.PrintV2')
+    self.assertRegex(mlir_module, r'tf_executor.fetch.*: !tf_executor.control')
 
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
@@ -21,6 +22,17 @@ cc_library(
         "types.h",
     ],
     deps = [
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "timed",
+    hdrs = [
+        "timed.h",
+    ],
+    deps = [
+        "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -59,11 +71,6 @@ cc_library(
 cc_library(
     name = "counter",
     hdrs = ["counter.h"],
-    visibility = [
-        "//tensorflow/c/eager:__pkg__",
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/platform:__subpackages__",
-    ],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -80,11 +87,6 @@ cc_library(
 cc_library(
     name = "gauge",
     hdrs = ["gauge.h"],
-    visibility = [
-        "//tensorflow/c/eager:__pkg__",
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/platform:__subpackages__",
-    ],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -111,7 +113,8 @@ cc_library(
 
 cc_library(
     name = "mobile_counter",
-    hdrs = ["mobile_counter.h"],
+    textual_hdrs = ["mobile_counter.h"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:macros",
@@ -121,7 +124,8 @@ cc_library(
 
 cc_library(
     name = "mobile_gauge",
-    hdrs = ["mobile_gauge.h"],
+    textual_hdrs = ["mobile_gauge.h"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:macros",
@@ -131,7 +135,8 @@ cc_library(
 
 cc_library(
     name = "mobile_sampler",
-    hdrs = ["mobile_sampler.h"],
+    textual_hdrs = ["mobile_sampler.h"],
+    visibility = ["//visibility:private"],
     deps = [
         ":metric_def",
         "//tensorflow/core/framework:summary_proto_cc",
@@ -145,11 +150,6 @@ cc_library(
     name = "sampler",
     srcs = ["sampler.cc"],
     hdrs = ["sampler.h"],
-    visibility = [
-        "//tensorflow/c/eager:__pkg__",
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/platform:__subpackages__",
-    ],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -166,7 +166,8 @@ cc_library(
 
 cc_library(
     name = "mobile_percentile_sampler",
-    hdrs = ["mobile_percentile_sampler.h"],
+    textual_hdrs = ["mobile_percentile_sampler.h"],
+    visibility = ["//visibility:private"],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -181,11 +182,6 @@ cc_library(
     name = "percentile_sampler",
     srcs = ["percentile_sampler.cc"],
     hdrs = ["percentile_sampler.h"],
-    visibility = [
-        "//tensorflow/c/eager:__pkg__",
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/platform:__subpackages__",
-    ],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -208,8 +204,11 @@ filegroup(
         "metric_def.h",
         "mobile_counter.h",
         "mobile_gauge.h",
+        "mobile_percentile_sampler.h",
         "mobile_sampler.h",
+        "percentile_sampler.h",
         "sampler.h",
+        "timed.h",
         "types.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -225,6 +224,7 @@ filegroup(
         "metric_def.h",
         "percentile_sampler.h",
         "sampler.h",
+        "timed.h",
         "types.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

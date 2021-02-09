@@ -298,14 +298,14 @@ class DeviceFinder {
   std::vector<DeviceNameUtils::ParsedName> filters_;
 
   mutex mu_;
-  int num_pending_ GUARDED_BY(mu_);
+  int num_pending_ TF_GUARDED_BY(mu_);
   condition_variable pending_zero_;
-  std::vector<Device*> found_ GUARDED_BY(mu_);
+  std::vector<Device*> found_ TF_GUARDED_BY(mu_);
   // List of targets to be contacted by this DeviceFinder. The
   // respective `bool` in `seen_targets_` indicates whether we have
   // heard from this target or not.
   std::vector<string> targets_;
-  std::vector<bool> seen_targets_ GUARDED_BY(mu_);
+  std::vector<bool> seen_targets_ TF_GUARDED_BY(mu_);
   Status status_;
 
   void WhenFound(int target_index, const Status& s,

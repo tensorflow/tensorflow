@@ -18,7 +18,7 @@ limitations under the License.
 #include <Python.h>
 
 // clang-format: off
-// Must be inlcluded first.
+// Must be included first.
 #include "tensorflow/python/lib/core/numpy.h"
 // clang-format: on
 
@@ -26,15 +26,17 @@ limitations under the License.
 
 #include "numpy/arrayobject.h"
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -48,7 +50,7 @@ namespace tensorflow {
 namespace {
 
 static mutex mu(LINKER_INITIALIZED);
-static PyObject* py_trampoline GUARDED_BY(mu) = nullptr;
+static PyObject* py_trampoline TF_GUARDED_BY(mu) = nullptr;
 
 // Returns the py_trampoline that is used to pass the control to the
 // python runtime.
@@ -83,27 +85,31 @@ bool IsCPUDevice(const Device* d) {
 
 // Givens the 'call', prepares the token and inputs as a python tuple
 // that is appropriate for calling the trampoline.
-Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
+Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
   int64 n = call->ins.size();
   PyObject* lst = PyList_New(n);
   CHECK(lst);
   // TFE_TensorHandle assumes that CPU is identified by nullptr.
-  Device* device = IsCPUDevice(call->device) ? nullptr : call->device;
+  //
+  // Set device name to be empty if the device is CPU.
+  const char* device_name = nullptr;
+
+  if (call->device != nullptr && !IsCPUDevice(call->device))
+    device_name = call->device->name().c_str();
+
   for (int64 i = 0; i < n; ++i) {
     PyObject* arg = nullptr;
-    const Tensor& t = call->ins[i];
     if (call->eager) {
-      TensorHandle* handle;
-      TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-          t, ctx->CanonicalDevice(device), ctx, &handle));
-      arg = EagerTensorFromHandle(new TFE_TensorHandle{
-          std::make_unique<tensorflow::TensorHandleInterface>(handle)});
+      Tensor t = call->ins[i];
+      arg = EagerTensorFromHandle(tensorflow::wrap(
+          tensorflow::unwrap(ctx)->CreateLocalHandleFromTFTensor(t,
+                                                                 device_name)));
       if (arg == nullptr) {
         Py_DECREF(lst);
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
       }
     } else {
-      Status s = TensorToNdarray(t, &arg);
+      Status s = TensorToNdarray(call->ins[i], &arg);
       if (!s.ok()) {
         Py_DECREF(lst);
         return s;
@@ -112,8 +118,6 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
     }
     PyList_SetItem(lst, i, arg);
   }
-  const char* device_name =
-      device == nullptr ? nullptr : device->attributes().name().c_str();
   *tuple = Py_BuildValue("(ssN)", call->token.c_str(), device_name, lst);
   CHECK(*tuple);
   return Status::OK();
@@ -144,11 +148,13 @@ bool IsSingleNone(PyObject* obj) {
 // it isn't already there. This is left as a future exercise.  The required
 // device-copying logic is implemented in Python at the moment.
 tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
+                                                TFE_Context* ctx,
                                                 const Device* expected_device,
                                                 const Tensor** output_tensor) {
-  auto handle = down_cast<tensorflow::TensorHandleInterface*>(
-                    EagerTensor_Handle(eager_tensor)->handle.get())
-                    ->Handle();
+  tensorflow::TensorHandle* handle = down_cast<tensorflow::TensorHandle*>(
+      tensorflow::unwrap(ctx)->TFTensorHandleFromInterface(
+          tensorflow::unwrap(EagerTensor_Handle(eager_tensor))));
+
   Device* actual_device = handle->device();
   TF_RETURN_IF_ERROR(handle->Tensor(output_tensor));
   // actual_device may be nullptr, which implies local CPU.
@@ -187,18 +193,17 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
 
   // Prepare the argument.
   PyObject* args = nullptr;
-  TFE_Context* ctx = nullptr;
   std::unique_ptr<EagerExecutor> new_executor = nullptr;
   EagerExecutor* old_executor = nullptr;
   if (call->eager) {
     // See FuncRegistry._ctx.
-    ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
+    TFE_Context* ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
         PyObject_GetAttrString(trampoline, "_ctx"), nullptr));
     CHECK_NE(ctx, nullptr);
-    TF_RETURN_IF_ERROR(MakeArgTuple(call, ctx->context, &args));
+    TF_RETURN_IF_ERROR(MakeArgTuple(call, ctx, &args));
     new_executor.reset(new EagerExecutor(call->eager_async));
-    old_executor = &ctx->context->Executor();
-    ctx->context->SetExecutorForThread(new_executor.get());
+    old_executor = &(tensorflow::unwrap(ctx)->Executor());
+    tensorflow::unwrap(ctx)->SetExecutorForThread(new_executor.get());
   } else {
     TF_RETURN_IF_ERROR(MakeArgTuple(call, nullptr, &args));
   }
@@ -231,9 +236,11 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     }
   }
 
+  TFE_Context* ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
+      PyObject_GetAttrString(trampoline, "_ctx"), /*name=*/nullptr));
   if (new_executor != nullptr) {
     s.Update(new_executor->WaitForAllPendingNodes());
-    ctx->context->SetExecutorForThread(old_executor);
+    tensorflow::unwrap(ctx)->SetExecutorForThread(old_executor);
   }
 
   TF_RETURN_IF_ERROR(s);
@@ -250,7 +257,7 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
         const PyObject* item = PyList_GetItem(result, i);
         if (EagerTensor_CheckExact(item)) {
           const Tensor* tensor = nullptr;
-          s = ExtractTensorFromEagerTensor(item, call->device, &tensor);
+          s = ExtractTensorFromEagerTensor(item, ctx, call->device, &tensor);
           if (s.ok()) t = *tensor;
         } else {
           s = errors::FailedPrecondition(
@@ -271,7 +278,7 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     DCHECK(call->eager);
     if (result != Py_None) {
       const Tensor* t = nullptr;
-      s = ExtractTensorFromEagerTensor(result, call->device, &t);
+      s = ExtractTensorFromEagerTensor(result, ctx, call->device, &t);
       if (s.ok()) call->out.push_back(*t);
     }
   } else if (PyArray_Check(result)) {

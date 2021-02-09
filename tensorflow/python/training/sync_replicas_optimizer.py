@@ -45,7 +45,7 @@ from tensorflow.python.util.tf_export import tf_export
 class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
 
-  This class is deprecated. For synchrononous training, please use [Distribution
+  This class is deprecated. For synchronous training, please use [Distribution
   Strategies](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).
 
   In a typical asynchronous training environment, it's common to have some
@@ -145,8 +145,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   """
 
   @deprecation.deprecated(
-      None,
-      "The `SyncReplicaOptimizer` class is deprecated. For synchrononous "
+      None, "The `SyncReplicaOptimizer` class is deprecated. For synchronous "
       "training, please use [Distribution Strategies](https://github.com/"
       "tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).",
       warn_once=True)

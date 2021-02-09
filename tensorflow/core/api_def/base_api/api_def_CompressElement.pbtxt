@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "CompressElement"
+  visibility: HIDDEN
+  summary: "Compresses a dataset element."
+}

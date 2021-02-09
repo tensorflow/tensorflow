@@ -63,7 +63,8 @@ def main(argv=None):  # pylint: disable=function-redefined
     if args is None:
       args = sys.argv
     return app.run(main=g_main, argv=args)
-  benchmark.benchmarks_main(true_main=main_wrapper)
+
+  benchmark.benchmarks_main(true_main=main_wrapper, argv=argv)
 
 
 def GetTempDir():

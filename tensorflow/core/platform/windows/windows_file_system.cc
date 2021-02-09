@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/windows/windows_file_system.h"
+
 #include <Shlwapi.h>
 #include <Windows.h>
 #include <direct.h>
@@ -30,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/windows/error_windows.h"
 #include "tensorflow/core/platform/windows/wide_char.h"
-#include "tensorflow/core/platform/windows/windows_file_system.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 // TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
@@ -45,9 +47,11 @@ namespace {
 const auto CloseHandleFunc = [](HANDLE h) { ::CloseHandle(h); };
 typedef std::unique_ptr<void, decltype(CloseHandleFunc)> UniqueCloseHandlePtr;
 
-inline Status IOErrorFromWindowsError(const string& context, DWORD err) {
+inline Status IOErrorFromWindowsError(const string& context) {
+  auto last_error = ::GetLastError();
   return IOError(
-      context + string(" : ") + internal::GetWindowsErrorMessage(err), err);
+      context + string(" : ") + internal::WindowsGetLastErrorMessage(),
+      last_error);
 }
 
 // PLEASE NOTE: hfile is expected to be an async handle
@@ -143,6 +147,34 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     *result = StringPiece(scratch, dst - scratch);
     return s;
   }
+
+#if defined(TF_CORD_SUPPORT)
+  Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
+    if (n == 0) {
+      return Status::OK();
+    }
+    if (n < 0) {
+      return errors::InvalidArgument(
+          "Attempting to read ", n,
+          " bytes. You cannot read a negative number of bytes.");
+    }
+
+    char* scratch = new char[n];
+    if (scratch == nullptr) {
+      return errors::ResourceExhausted("Unable to allocate ", n,
+                                       " bytes for file reading.");
+    }
+
+    StringPiece tmp;
+    Status s = Read(offset, n, &tmp, scratch);
+
+    absl::Cord tmp_cord = absl::MakeCordFromExternal(
+        absl::string_view(static_cast<char*>(scratch), tmp.size()),
+        [scratch](absl::string_view) { delete[] scratch; });
+    cord->Append(tmp_cord);
+    return s;
+  }
+#endif
 };
 
 class WindowsWritableFile : public WritableFile {
@@ -166,13 +198,30 @@ class WindowsWritableFile : public WritableFile {
     BOOL write_result =
         ::WriteFile(hfile_, data.data(), data_size, &bytes_written, NULL);
     if (FALSE == write_result) {
-      return IOErrorFromWindowsError("Failed to WriteFile: " + filename_,
-                                     ::GetLastError());
+      return IOErrorFromWindowsError("Failed to WriteFile: " + filename_);
     }
 
     assert(size_t(bytes_written) == data.size());
     return Status::OK();
   }
+
+#if defined(TF_CORD_SUPPORT)
+  // \brief Append 'data' to the file.
+  Status Append(const absl::Cord& cord) override {
+    for (const auto& chunk : cord.Chunks()) {
+      DWORD bytes_written = 0;
+      DWORD data_size = static_cast<DWORD>(chunk.size());
+      BOOL write_result =
+          ::WriteFile(hfile_, chunk.data(), data_size, &bytes_written, NULL);
+      if (FALSE == write_result) {
+        return IOErrorFromWindowsError("Failed to WriteFile: " + filename_);
+      }
+
+      assert(size_t(bytes_written) == chunk.size());
+    }
+    return Status::OK();
+  }
+#endif
 
   Status Tell(int64* position) override {
     Status result = Flush();
@@ -183,8 +232,8 @@ class WindowsWritableFile : public WritableFile {
     *position = SetFilePointer(hfile_, 0, NULL, FILE_CURRENT);
 
     if (*position == INVALID_SET_FILE_POINTER) {
-      return IOErrorFromWindowsError(
-          "Tell(SetFilePointer) failed for: " + filename_, ::GetLastError());
+      return IOErrorFromWindowsError("Tell(SetFilePointer) failed for: " +
+                                     filename_);
     }
 
     return Status::OK();
@@ -199,8 +248,7 @@ class WindowsWritableFile : public WritableFile {
     }
 
     if (FALSE == ::CloseHandle(hfile_)) {
-      return IOErrorFromWindowsError("CloseHandle failed for: " + filename_,
-                                     ::GetLastError());
+      return IOErrorFromWindowsError("CloseHandle failed for: " + filename_);
     }
 
     hfile_ = INVALID_HANDLE_VALUE;
@@ -209,8 +257,8 @@ class WindowsWritableFile : public WritableFile {
 
   Status Flush() override {
     if (FALSE == ::FlushFileBuffers(hfile_)) {
-      return IOErrorFromWindowsError(
-          "FlushFileBuffers failed for: " + filename_, ::GetLastError());
+      return IOErrorFromWindowsError("FlushFileBuffers failed for: " +
+                                     filename_);
     }
     return Status::OK();
   }
@@ -259,7 +307,8 @@ class WinReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 }  // namespace
 
 Status WindowsFileSystem::NewRandomAccessFile(
-    const string& fname, std::unique_ptr<RandomAccessFile>* result) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<RandomAccessFile>* result) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
@@ -278,7 +327,7 @@ Status WindowsFileSystem::NewRandomAccessFile(
 
   if (INVALID_HANDLE_VALUE == hfile) {
     string context = "NewRandomAccessFile failed to Create/Open: " + fname;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   result->reset(new WindowsRandomAccessFile(translated_fname, hfile));
@@ -286,7 +335,8 @@ Status WindowsFileSystem::NewRandomAccessFile(
 }
 
 Status WindowsFileSystem::NewWritableFile(
-    const string& fname, std::unique_ptr<WritableFile>* result) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
@@ -298,7 +348,7 @@ Status WindowsFileSystem::NewWritableFile(
 
   if (INVALID_HANDLE_VALUE == hfile) {
     string context = "Failed to create a NewWriteableFile: " + fname;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   result->reset(new WindowsWritableFile(translated_fname, hfile));
@@ -306,7 +356,8 @@ Status WindowsFileSystem::NewWritableFile(
 }
 
 Status WindowsFileSystem::NewAppendableFile(
-    const string& fname, std::unique_ptr<WritableFile>* result) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
@@ -318,7 +369,7 @@ Status WindowsFileSystem::NewAppendableFile(
 
   if (INVALID_HANDLE_VALUE == hfile) {
     string context = "Failed to create a NewAppendableFile: " + fname;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   UniqueCloseHandlePtr file_guard(hfile, CloseHandleFunc);
@@ -326,7 +377,7 @@ Status WindowsFileSystem::NewAppendableFile(
   DWORD file_ptr = ::SetFilePointer(hfile, NULL, NULL, FILE_END);
   if (INVALID_SET_FILE_POINTER == file_ptr) {
     string context = "Failed to create a NewAppendableFile: " + fname;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   result->reset(new WindowsWritableFile(translated_fname, hfile));
@@ -336,7 +387,8 @@ Status WindowsFileSystem::NewAppendableFile(
 }
 
 Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
@@ -356,8 +408,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
 
   if (INVALID_HANDLE_VALUE == hfile) {
     return IOErrorFromWindowsError(
-        "NewReadOnlyMemoryRegionFromFile failed to Create/Open: " + fname,
-        ::GetLastError());
+        "NewReadOnlyMemoryRegionFromFile failed to Create/Open: " + fname);
   }
 
   UniqueCloseHandlePtr file_guard(hfile, CloseHandleFunc);
@@ -383,7 +434,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
           "Failed to create file mapping for "
           "NewReadOnlyMemoryRegionFromFile: " +
           fname;
-      return IOErrorFromWindowsError(context, ::GetLastError());
+      return IOErrorFromWindowsError(context);
     }
 
     UniqueCloseHandlePtr map_guard(hmap, CloseHandleFunc);
@@ -400,7 +451,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
           "Failed to MapViewOfFile for "
           "NewReadOnlyMemoryRegionFromFile: " +
           fname;
-      return IOErrorFromWindowsError(context, ::GetLastError());
+      return IOErrorFromWindowsError(context);
     }
 
     result->reset(new WinReadOnlyMemoryRegion(fname, hfile, hmap, mapped_region,
@@ -413,7 +464,8 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return s;
 }
 
-Status WindowsFileSystem::FileExists(const string& fname) {
+Status WindowsFileSystem::FileExists(const string& fname,
+                                     TransactionToken* token) {
   constexpr int kOk = 0;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
   if (_waccess(ws_translated_fname.c_str(), kOk) == 0) {
@@ -423,6 +475,7 @@ Status WindowsFileSystem::FileExists(const string& fname) {
 }
 
 Status WindowsFileSystem::GetChildren(const string& dir,
+                                      TransactionToken* token,
                                       std::vector<string>* result) {
   string translated_dir = TranslateName(dir);
   std::wstring ws_translated_dir = Utf8ToWideChar(translated_dir);
@@ -439,7 +492,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
   HANDLE find_handle = ::FindFirstFileW(pattern.c_str(), &find_data);
   if (find_handle == INVALID_HANDLE_VALUE) {
     string context = "FindFirstFile failed for: " + translated_dir;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   do {
@@ -452,13 +505,14 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 
   if (!::FindClose(find_handle)) {
     string context = "FindClose failed for: " + translated_dir;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   return Status::OK();
 }
 
-Status WindowsFileSystem::DeleteFile(const string& fname) {
+Status WindowsFileSystem::DeleteFile(const string& fname,
+                                     TransactionToken* token) {
   Status result;
   std::wstring file_name = Utf8ToWideChar(fname);
   if (_wunlink(file_name.c_str()) != 0) {
@@ -467,7 +521,8 @@ Status WindowsFileSystem::DeleteFile(const string& fname) {
   return result;
 }
 
-Status WindowsFileSystem::CreateDir(const string& name) {
+Status WindowsFileSystem::CreateDir(const string& name,
+                                    TransactionToken* token) {
   Status result;
   std::wstring ws_name = Utf8ToWideChar(name);
   if (ws_name.empty()) {
@@ -479,7 +534,8 @@ Status WindowsFileSystem::CreateDir(const string& name) {
   return result;
 }
 
-Status WindowsFileSystem::DeleteDir(const string& name) {
+Status WindowsFileSystem::DeleteDir(const string& name,
+                                    TransactionToken* token) {
   Status result;
   std::wstring ws_name = Utf8ToWideChar(name);
   if (_wrmdir(ws_name.c_str()) != 0) {
@@ -488,7 +544,8 @@ Status WindowsFileSystem::DeleteDir(const string& name) {
   return result;
 }
 
-Status WindowsFileSystem::GetFileSize(const string& fname, uint64* size) {
+Status WindowsFileSystem::GetFileSize(const string& fname,
+                                      TransactionToken* token, uint64* size) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_dir = Utf8ToWideChar(translated_fname);
   Status result;
@@ -501,12 +558,13 @@ Status WindowsFileSystem::GetFileSize(const string& fname, uint64* size) {
     *size = file_size.QuadPart;
   } else {
     string context = "Can not get size for: " + fname;
-    result = IOErrorFromWindowsError(context, ::GetLastError());
+    result = IOErrorFromWindowsError(context);
   }
   return result;
 }
 
-Status WindowsFileSystem::IsDirectory(const string& fname) {
+Status WindowsFileSystem::IsDirectory(const string& fname,
+                                      TransactionToken* token) {
   TF_RETURN_IF_ERROR(FileExists(fname));
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
   if (PathIsDirectoryW(ws_translated_fname.c_str())) {
@@ -515,7 +573,8 @@ Status WindowsFileSystem::IsDirectory(const string& fname) {
   return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
 }
 
-Status WindowsFileSystem::RenameFile(const string& src, const string& target) {
+Status WindowsFileSystem::RenameFile(const string& src, const string& target,
+                                     TransactionToken* token) {
   Status result;
   // rename() is not capable of replacing the existing file as on Linux
   // so use OS API directly
@@ -524,12 +583,13 @@ Status WindowsFileSystem::RenameFile(const string& src, const string& target) {
   if (!::MoveFileExW(ws_translated_src.c_str(), ws_translated_target.c_str(),
                      MOVEFILE_REPLACE_EXISTING)) {
     string context(strings::StrCat("Failed to rename: ", src, " to: ", target));
-    result = IOErrorFromWindowsError(context, ::GetLastError());
+    result = IOErrorFromWindowsError(context);
   }
   return result;
 }
 
 Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
+                                           TransactionToken* token,
                                            std::vector<string>* results) {
   // NOTE(mrry): The existing implementation of FileSystem::GetMatchingPaths()
   // does not handle Windows paths containing backslashes correctly. Since
@@ -547,11 +607,18 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
   return Status::OK();
 }
 
-Status WindowsFileSystem::Stat(const string& fname, FileStatistics* stat) {
+bool WindowsFileSystem::Match(const string& filename, const string& pattern) {
+  std::wstring ws_path(Utf8ToWideChar(filename));
+  std::wstring ws_pattern(Utf8ToWideChar(pattern));
+  return PathMatchSpecW(ws_path.c_str(), ws_pattern.c_str()) == TRUE;
+}
+
+Status WindowsFileSystem::Stat(const string& fname, TransactionToken* token,
+                               FileStatistics* stat) {
   Status result;
-  struct _stat sbuf;
+  struct _stat64 sbuf;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
-  if (_wstat(ws_translated_fname.c_str(), &sbuf) != 0) {
+  if (_wstat64(ws_translated_fname.c_str(), &sbuf) != 0) {
     result = IOError(fname, errno);
   } else {
     stat->mtime_nsec = sbuf.st_mtime * 1e9;

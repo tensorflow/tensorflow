@@ -50,7 +50,7 @@ class XlaAddNTest(xla_test.XLATestCase):
       l2 = list_ops.tensor_list_reserve(
           element_shape=[], element_dtype=dtypes.float32, num_elements=3)
       l = math_ops.add_n([l1, l2])
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           "TensorList arguments to AddN must all have the same shape"):
         list_ops.tensor_list_stack(l, element_dtype=dtypes.float32).eval()
@@ -70,7 +70,7 @@ class XlaAddNTest(xla_test.XLATestCase):
           element_dtype=dtypes.float32,
           num_elements=3)
       l = math_ops.add_n([l1, l2])
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           "TensorList arguments to AddN must all have the same shape"):
         session.run(

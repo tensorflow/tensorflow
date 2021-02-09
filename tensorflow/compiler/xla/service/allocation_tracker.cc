@@ -64,15 +64,6 @@ StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
   VLOG(2) << "RegisterInternal("
           << "tag: \"" << tag << "\" with " << replicated_buffers.size()
           << " shaped_buffers.";
-  for (const auto& shaped_buffer : replicated_buffers) {
-    VLOG(2) << "shaped_buffer:" << shaped_buffer;
-    if (shaped_buffer.platform() != backend_->platform()) {
-      return InvalidArgument(
-          "AllocationTracker for platform %s cannot register buffer from "
-          "platform %s",
-          backend_->platform()->Name(), shaped_buffer.platform()->Name());
-    }
-  }
 
   int64 handle = next_handle_++;
   for (auto& shaped_buffer : replicated_buffers) {
@@ -143,13 +134,10 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
   // We only need to care about replica id 0 here, since the GlobalDataHandle is
   // the same for all buffers across replicas.
   const ShapedBuffer* shaped_buffer = replicated_buffers[0];
-  if (!shaped_buffer->on_host_shape().IsTuple()) {
+  if (!shaped_buffer->on_device_shape().IsTuple()) {
     return InvalidArgument("global data handle %d is not a tuple",
                            data.handle());
   }
-  // If the on-host representation is a tuple, then the on-device one should be
-  // as well.
-  TF_RET_CHECK(shaped_buffer->on_device_shape().IsTuple());
 
   if (ShapeUtil::IsNestedTuple(shaped_buffer->on_device_shape())) {
     return Unimplemented("Deconstructing nested tuples is not implemented.");
@@ -160,9 +148,8 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
        i < ShapeUtil::TupleElementCount(shaped_buffer->on_device_shape());
        ++i) {
     auto element_buffer = ShapedBuffer(
-        ShapeUtil::GetTupleElementShape(shaped_buffer->on_host_shape(), i),
         ShapeUtil::GetTupleElementShape(shaped_buffer->on_device_shape(), i),
-        shaped_buffer->platform(), shaped_buffer->device_ordinal());
+        shaped_buffer->device_ordinal());
     element_buffer.set_buffer(shaped_buffer->buffer(/*index=*/{i}),
                               /*index=*/{});
     std::vector<ShapedBuffer> replicated_buffers;

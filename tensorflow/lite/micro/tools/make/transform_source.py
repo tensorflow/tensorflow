@@ -48,7 +48,7 @@ def replace_arduino_includes(line, supplied_headers_list):
 
 
 def replace_arduino_main(line):
-  """Updates any occurences of a bare main definition to the Arduino equivalent."""
+  """Updates any occurrences of a bare main definition to the Arduino equivalent."""
   main_match = re.match(r'(.*int )(main)(\(.*)', line)
   if main_match:
     line = main_match.group(1) + 'tflite_micro_main' + main_match.group(3)
@@ -61,11 +61,11 @@ def check_ino_functions(input_text):
   # have to have a setup() and loop() function, just like their IDE expects.
   if not re.search(r'void setup\(\) \{', input_text):
     raise Exception(
-        'All examples must have a setup() function for Arduino compatiblity\n' +
-        input_text)
+        'All examples must have a setup() function for Arduino compatibility\n'
+        + input_text)
   if not re.search(r'void loop\(\) \{', input_text):
     raise Exception(
-        'All examples must have a loop() function for Arduino compatiblity')
+        'All examples must have a loop() function for Arduino compatibility')
   return input_text
 
 
@@ -75,7 +75,7 @@ def add_example_ino_library_include(input_text):
                 input_text, 1)
 
 
-def replace_ardunio_example_includes(line, _):
+def replace_arduino_example_includes(line, _):
   """Updates any includes for local example files."""
   # Because the export process moves the example source and header files out of
   # their default locations into the top-level 'examples' folder in the Arduino
@@ -122,7 +122,7 @@ def transform_arduino_sources(input_lines, flags):
   for line in input_lines:
     line = replace_arduino_includes(line, supplied_headers_list)
     if flags.is_example_ino or flags.is_example_source:
-      line = replace_ardunio_example_includes(line, flags.source_path)
+      line = replace_arduino_example_includes(line, flags.source_path)
     else:
       line = replace_arduino_main(line)
     output_lines.append(line)

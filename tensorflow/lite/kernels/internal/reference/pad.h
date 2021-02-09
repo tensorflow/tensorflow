@@ -32,8 +32,8 @@ constexpr int PadKernelMaxDimensionCount() { return 4; }
 // equivalent to a simple input1_data.  For Pad, it should point to a zero
 // value.
 //
-// Note that two typenames are required, so that T=P=int32 is considered a
-// specialization distinct from P=int32.
+// Note that two typenames are required, so that T=P=int32_t is considered a
+// specialization distinct from P=int32_t.
 template <typename T, typename P>
 inline void PadImpl(const tflite::PadParams& op_params,
                     const RuntimeShape& input_shape, const T* input_data,
@@ -116,11 +116,11 @@ inline void Pad(const tflite::PadParams& op_params,
           output_data);
 }
 
-// The second (pad-value) input can be int32 when, say, the first is uint8.
+// The second (pad-value) input can be int32_t when, say, the first is uint8_t.
 template <typename T>
 inline void Pad(const tflite::PadParams& op_params,
                 const RuntimeShape& input_shape, const T* input_data,
-                const int32* pad_value_ptr, const RuntimeShape& output_shape,
+                const int32_t* pad_value_ptr, const RuntimeShape& output_shape,
                 T* output_data) {
   const T converted_pad_value = static_cast<T>(*pad_value_ptr);
   PadImpl(op_params, input_shape, input_data, &converted_pad_value,
@@ -130,40 +130,18 @@ inline void Pad(const tflite::PadParams& op_params,
 // This version avoids conflicting template matching.
 template <>
 inline void Pad(const tflite::PadParams& op_params,
-                const RuntimeShape& input_shape, const int32* input_data,
-                const int32* pad_value_ptr, const RuntimeShape& output_shape,
-                int32* output_data) {
+                const RuntimeShape& input_shape, const int32_t* input_data,
+                const int32_t* pad_value_ptr, const RuntimeShape& output_shape,
+                int32_t* output_data) {
   PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
           output_data);
 }
 
-// One could make all PadImageStyle calls simply delegate the work to the
-// ordinary Pad.  However, it is better that the reference code asserts false in
-// similar cases.
 template <typename T, typename P>
 inline void PadImageStyle(const tflite::PadParams& op_params,
                           const RuntimeShape& input_shape, const T* input_data,
                           const P* pad_value_ptr,
                           const RuntimeShape& output_shape, T* output_data) {
-  TFLITE_ASSERT_FALSE;
-}
-
-template <typename P>
-inline void PadImageStyle(const tflite::PadParams& op_params,
-                          const RuntimeShape& input_shape,
-                          const uint8* input_data, const P* pad_value_ptr,
-                          const RuntimeShape& output_shape,
-                          uint8* output_data) {
-  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-      output_data);
-}
-
-template <typename P>
-inline void PadImageStyle(const tflite::PadParams& op_params,
-                          const RuntimeShape& input_shape,
-                          const int8_t* input_data, const P* pad_value_ptr,
-                          const RuntimeShape& output_shape,
-                          int8_t* output_data) {
   Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
       output_data);
 }

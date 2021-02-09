@@ -101,6 +101,45 @@ TEST(SpectrogramOpTest, SquaredTest) {
       test::AsTensor<float>({0, 1, 4, 1, 0}, TensorShape({1, 1, 5})), 1e-3);
 }
 
+TEST(SpectrogramOpTest, MultichannelTest) {
+  Scope root = Scope::NewRootScope();
+
+  const int audio_size = 8;
+  const int channel_size = 2;
+  Tensor audio_tensor(DT_FLOAT, TensorShape({audio_size, channel_size}));
+  test::FillValues<float>(
+      &audio_tensor, {-1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, -1.0f,
+                      -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f});
+
+  Output audio_const_op = Const(root.WithOpName("audio_const_op"),
+                                Input::Initializer(audio_tensor));
+
+  AudioSpectrogram spectrogram_op =
+      AudioSpectrogram(root.WithOpName("spectrogram_op"), audio_const_op,
+                       audio_size, channel_size);
+
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+
+  TF_EXPECT_OK(session.Run(ClientSession::FeedType(),
+                           {spectrogram_op.spectrogram}, &outputs));
+
+  const Tensor& spectrogram_tensor = outputs[0];
+
+  EXPECT_EQ(3, spectrogram_tensor.dims());
+  EXPECT_EQ(5, spectrogram_tensor.dim_size(2));
+  EXPECT_EQ(1, spectrogram_tensor.dim_size(1));
+  EXPECT_EQ(channel_size, spectrogram_tensor.dim_size(0));
+
+  for (int channel = 0; channel < channel_size; channel++) {
+    test::ExpectTensorNear<float>(
+        spectrogram_tensor.SubSlice(channel),
+        test::AsTensor<float>({0, 1, 2, 1, 0}, TensorShape({1, 5})), 1e-3);
+  }
+}
+
 }  // namespace
 }  // namespace ops
 }  // namespace tensorflow

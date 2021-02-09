@@ -19,8 +19,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
@@ -28,6 +32,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+
+static constexpr char kCastOutputTypeAttrName[] = "DstT";
 
 class IONamePrefixes {
  public:
@@ -47,7 +53,7 @@ using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
 
 enum class TrtPrecisionMode { FP32, FP16, INT8 };
 
-Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name);
+Status TrtPrecisionModeToName(const TrtPrecisionMode mode, string* name);
 
 Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode);
 
@@ -61,6 +67,9 @@ struct VectorTensorShapeHasher {
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
+using absl::StrAppend;
+using absl::StrCat;
+
 #define IS_TRT_VERSION_GE(major, minor, patch, build)           \
   ((NV_TENSORRT_MAJOR > major) ||                               \
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
@@ -69,11 +78,37 @@ struct VectorTensorShapeHasher {
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
     NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
 
+// This utility template converts an arithmetic type to a string. This function
+// is necessary to allow the following function to behave recursively:
+// `string DebugString(const std::vector<CType>&)`.
+template <typename CType, typename = typename std::enable_if<
+                              std::is_arithmetic<CType>::value, CType>::type>
+string DebugString(const CType& el) {
+  string el_str = std::to_string(el);
+  // Prettify std::to_string which can sometimes returns 1.50000 instead of 1.5.
+  // In short it removes trailing 0s in a string-formatted number.
+  el_str.erase(el_str.find_last_not_of('0') + 1, std::string::npos);
+  return el_str;
+}
+// This utility template converts nested vectors to a string for debug purposes.
+template <typename CType>
+string DebugString(const std::vector<CType>& vector) {
+  string tmp_s = "";
+  for (const auto el : vector) {
+    StrAppend(&tmp_s, StrCat(DebugString(el), ", "));
+  }
+  return StrCat("{", tmp_s.substr(0, tmp_s.length() - 2), "}");
+}
 string DebugString(const nvinfer1::DimensionType type);
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::DataType trt_dtype);
+string DebugString(const TrtPrecisionMode mode);
+string DebugString(const DataType tf_type);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
+string DebugString(const std::vector<nvinfer1::Dims>& dimvec);
+string DebugString(const std::vector<TensorShape>& shapes);
+string DebugString(const std::vector<PartialTensorShape>& shapes);
 
 inline bool HasStaticShape(const nvinfer1::Dims& dims) {
   if (dims.nbDims < 0) return false;
@@ -81,6 +116,10 @@ inline bool HasStaticShape(const nvinfer1::Dims& dims) {
     if (dims.d[d] < 0) return false;
   }
   return true;
+}
+
+inline bool HasStaticShape(std::vector<int> dims) {
+  return !absl::c_any_of(dims, [](int i) { return i < 0; });
 }
 
 template <typename TensorShapeType>
@@ -95,13 +134,45 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   return trt_dims;
 }
 
-// Return a string that includes compile time
-// TensorRT library version information {Maj, Min, Patch}.
-string GetLinkedTensorRTVersion();
+Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape);
 
-// Return a string that includes runtime time
-// TensorRT library version information {Maj, Min, Patch}.
-string GetLoadedTensorRTVersion();
+Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape);
+
+Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type);
+Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type);
+
+// Returns true if an engine built for cached_shapes can also run actual_shapes.
+bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
+                         const std::vector<TensorShape>& cached_shapes);
+
+// Returns the number of inputs for the engine, which also correspends to the
+// number of input tensors for the network. This can differ from the number of
+// input bindings, because the number of total input bindings equals the number
+// of profiles times the number of engine inputs.
+int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine);
+
+// Returns the string representation for the assigned device or the requested
+// device of the given node.
+absl::string_view GetDeviceName(const Node* node);
+
+// Returns the ParsedName representation for the assigned device or the
+// requested device string of the given node. If the device string is invalid,
+// returns absl::nullopt.
+absl::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
+    const Node* node);
+
+// If the given two device assignments as compatible, returns the merge of the
+// two assignments. Otherwise, returns absl::nullopt.
+absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+    const DeviceNameUtils::ParsedName& a, const DeviceNameUtils::ParsedName& b);
+// Similar to the above, except that the second device assignment is represented
+// by a string_view.
+absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+    const DeviceNameUtils::ParsedName& a, absl::string_view b);
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 

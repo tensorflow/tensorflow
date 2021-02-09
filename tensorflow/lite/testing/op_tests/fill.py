@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_scalar_data
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -31,7 +31,7 @@ def make_fill_tests(options):
   test_parameters = [{
       "dims_dtype": [tf.int32, tf.int64],
       "dims_shape": [[], [1], [3], [3, 3]],
-      "value_dtype": [tf.int32, tf.int64, tf.float32],
+      "value_dtype": [tf.int32, tf.int64, tf.float32, tf.bool, tf.string],
   }]
 
   def build_graph(parameters):
@@ -57,4 +57,4 @@ def make_fill_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=12)
+      expected_tf_failures=20)

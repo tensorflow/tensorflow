@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TIMESPAN_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TIMESPAN_H_
 
+#include <algorithm>
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -44,6 +47,9 @@ class Timespan {
   // Returns true if the Timespan represents an instant in time (duration 0).
   bool Instant() const { return duration_ps() == 0; }
 
+  // Returns true if this is an empty timespan.
+  bool Empty() const { return begin_ps() == 0 && duration_ps() == 0; }
+
   // Note for Overlaps() and Includes(Timespan& other) below:
   //   We have a design choice whether the end-point comparison should be
   //   inclusive or exclusive. We decide to go for inclusive. The implication
@@ -71,6 +77,12 @@ class Timespan {
     if (!Overlaps(other)) return 0;
     return std::min(end_ps(), other.end_ps()) -
            std::max(begin_ps(), other.begin_ps());
+  }
+
+  // Expands the timespan to include other.
+  void ExpandToInclude(const Timespan& other) {
+    *this = FromEndPoints(std::min(begin_ps(), other.begin_ps()),
+                          std::max(end_ps(), other.end_ps()));
   }
 
   // Compares timespans by their begin time (ascending), duration (descending)

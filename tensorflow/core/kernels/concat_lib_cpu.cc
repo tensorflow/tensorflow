@@ -116,8 +116,6 @@ REGISTER(qint8)
 REGISTER(quint16)
 REGISTER(qint16)
 REGISTER(qint32)
-REGISTER(uint32)
-REGISTER(uint64)
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION) && \
     !defined(__ANDROID_TYPES_FULL__)
@@ -129,24 +127,4 @@ REGISTER(tstring);
         // !defined(SUPPORT_SELECTIVE_REGISTRATION) &&
         // !defined(__ANDROID_TYPES_FULL__)
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-void ConcatSYCL(
-    const Eigen::SyclDevice& d,
-    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
-        inputs,
-    typename TTypes<T, 2>::Matrix* output) {
-  ConcatSYCLImpl<T>(d, inputs, sizeof(T) /* cost_per_unit */, MemCpyCopier<T>(),
-                    output);
-}
-#define REGISTER_SYCL(T)                                                       \
-  template void ConcatSYCL<T>(                                                 \
-      const Eigen::SyclDevice&,                                                \
-      const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
-      typename TTypes<T, 2>::Matrix* output);
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL)
-
-#undef REGISTER_SYCL
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -56,13 +56,13 @@ class GPUProcessState {
 
   // Query whether any GPU device has been created so far.
   // Disable thread safety analysis since a race is benign here.
-  bool HasGPUDevice() const NO_THREAD_SAFETY_ANALYSIS {
+  bool HasGPUDevice() const TF_NO_THREAD_SAFETY_ANALYSIS {
     return gpu_device_enabled_;
   }
 
   // Set the flag to indicate a GPU device has been created.
   // Disable thread safety analysis since a race is benign here.
-  void EnableGPUDevice() NO_THREAD_SAFETY_ANALYSIS {
+  void EnableGPUDevice() TF_NO_THREAD_SAFETY_ANALYSIS {
     gpu_device_enabled_ = true;
   }
 
@@ -82,7 +82,8 @@ class GPUProcessState {
   // REQUIRES: tf_gpu_id must be a valid id for a BaseGPUDevice available in the
   // current system environment.  Otherwise returns nullptr.
   virtual Allocator* GetGPUAllocator(const GPUOptions& options,
-                                     TfGpuId tf_gpu_id, size_t total_bytes);
+                                     TfGpuId tf_gpu_id, size_t total_bytes,
+                                     const std::vector<TfGpuId>& peer_gpu_ids);
 
   int NumGPUAllocators() {
     mutex_lock l(mu_);
@@ -147,14 +148,15 @@ class GPUProcessState {
     SubAllocator* sub_allocator;  // owned by allocator
     std::unique_ptr<Allocator> recording_allocator;
   };
-  std::vector<AllocatorParts> gpu_allocators_ GUARDED_BY(mu_);
-  std::vector<std::vector<SubAllocator::Visitor>> gpu_visitors_ GUARDED_BY(mu_);
+  std::vector<AllocatorParts> gpu_allocators_ TF_GUARDED_BY(mu_);
+  std::vector<std::vector<SubAllocator::Visitor>> gpu_visitors_
+      TF_GUARDED_BY(mu_);
 
-  std::vector<AllocatorParts> gpu_host_allocators_ GUARDED_BY(mu_);
+  std::vector<AllocatorParts> gpu_host_allocators_ TF_GUARDED_BY(mu_);
   std::vector<std::vector<SubAllocator::Visitor>> gpu_host_alloc_visitors_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
   std::vector<std::vector<SubAllocator::Visitor>> gpu_host_free_visitors_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

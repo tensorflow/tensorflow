@@ -64,19 +64,35 @@ bool Spectrogram::Initialize(const std::vector<double>& window,
   output_frequency_channels_ = 1 + fft_length_ / 2;
 
   // Allocate 2 more than what rdft needs, so we can rationalize the layout.
-  fft_input_output_.assign(fft_length_ + 2, 0.0);
+  fft_input_output_.resize(fft_length_ + 2);
 
   int half_fft_length = fft_length_ / 2;
-  fft_double_working_area_.assign(half_fft_length, 0.0);
-  fft_integer_working_area_.assign(2 + static_cast<int>(sqrt(half_fft_length)),
-                                   0);
+  fft_double_working_area_.resize(half_fft_length);
+  fft_integer_working_area_.resize(2 + static_cast<int>(sqrt(half_fft_length)));
+  initialized_ = true;
+  if (!Reset()) {
+    LOG(ERROR) << "Failed to Reset()";
+    return false;
+  }
+  return true;
+}
+
+bool Spectrogram::Reset() {
+  if (!initialized_) {
+    LOG(ERROR) << "Initialize() has to be called, before Reset().";
+    return false;
+  }
+  std::fill(fft_double_working_area_.begin(), fft_double_working_area_.end(),
+            0.0);
+  std::fill(fft_integer_working_area_.begin(), fft_integer_working_area_.end(),
+            0);
+
   // Set flag element to ensure that the working areas are initialized
   // on the first call to cdft.  It's redundant given the assign above,
   // but keep it as a reminder.
   fft_integer_working_area_[0] = 0;
   input_queue_.clear();
   samples_to_next_step_ = window_length_;
-  initialized_ = true;
   return true;
 }
 
@@ -144,7 +160,7 @@ bool Spectrogram::ComputeSquaredMagnitudeSpectrogram(
     for (int i = 0; i < output_frequency_channels_; ++i) {
       // Similar to the Complex case, except storing the norm.
       // But the norm function is known to be a performance killer,
-      // so do it this way with explicit real and imagninary temps.
+      // so do it this way with explicit real and imaginary temps.
       const double re = fft_input_output_[2 * i];
       const double im = fft_input_output_[2 * i + 1];
       // Which finally converts double to float if it needs to.

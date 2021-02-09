@@ -33,22 +33,21 @@ The below table describes the performance on ImageNet 2012:
 |   NASNet-A (6 @ 4032)  |   82.7 %  |   96.2 %  |      23.8 B    |    88.9    |
 --------------------------------------------------------------------------------
 
-References:
-  - [Learning Transferable Architectures for Scalable Image Recognition]
-    (https://arxiv.org/abs/1707.07012) (CVPR 2018)
+Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
@@ -60,6 +59,8 @@ NASNET_MOBILE_WEIGHT_PATH_NO_TOP = BASE_WEIGHTS_PATH + 'NASNet-mobile-no-top.h5'
 NASNET_LARGE_WEIGHT_PATH = BASE_WEIGHTS_PATH + 'NASNet-large.h5'
 NASNET_LARGE_WEIGHT_PATH_NO_TOP = BASE_WEIGHTS_PATH + 'NASNet-large-no-top.h5'
 
+layers = VersionAwareLayers()
+
 
 def NASNet(input_shape=None,
            penultimate_filters=4032,
@@ -68,18 +69,23 @@ def NASNet(input_shape=None,
            skip_reduction=True,
            filter_multiplier=2,
            include_top=True,
-           weights=None,
+           weights='imagenet',
            input_tensor=None,
            pooling=None,
            classes=1000,
-           default_size=None):
+           default_size=None,
+           classifier_activation='softmax'):
   """Instantiates a NASNet model.
+
+  Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Args:
     input_shape: Optional shape tuple, the input shape
       is by default `(331, 331, 3)` for NASNetLarge and
       `(224, 224, 3)` for NASNetMobile.
@@ -127,15 +133,20 @@ def NASNet(input_shape=None,
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
     default_size: Specifies the default image size of the model
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
 
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: In case of invalid argument for `weights`,
-        invalid input shape or invalid `penultimate_filters` value.
+      invalid input shape or invalid `penultimate_filters` value.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -247,7 +258,9 @@ def NASNet(input_shape=None,
 
   if include_top:
     x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(classes, activation='softmax', name='predictions')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D()(x)
@@ -315,11 +328,19 @@ def NASNetMobile(input_shape=None,
                  classes=1000):
   """Instantiates a Mobile NASNet model in ImageNet mode.
 
+  Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
+
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For NASNet, call `tf.keras.applications.nasnet.preprocess_input` on your
+  inputs before passing them to the model.
+
+  Args:
       input_shape: Optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` for NASNetMobile
@@ -330,6 +351,7 @@ def NASNetMobile(input_shape=None,
           layer at the top of the network.
       weights: `None` (random initialization) or
           `imagenet` (ImageNet weights)
+          For loading `imagenet` weights, `input_shape` should be (224, 224, 3)
       input_tensor: Optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
@@ -383,11 +405,19 @@ def NASNetLarge(input_shape=None,
                 classes=1000):
   """Instantiates a NASNet model in ImageNet mode.
 
+  Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
+
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For NASNet, call `tf.keras.applications.nasnet.preprocess_input` on your
+  inputs before passing them to the model.
+
+  Args:
       input_shape: Optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(331, 331, 3)` for NASNetLarge.
@@ -398,6 +428,7 @@ def NASNetLarge(input_shape=None,
           layer at the top of the network.
       weights: `None` (random initialization) or
           `imagenet` (ImageNet weights)
+          For loading `imagenet` weights, `input_shape` should be (331, 331, 3)
       input_tensor: Optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
@@ -448,7 +479,7 @@ def _separable_conv_block(ip,
                           block_id=None):
   """Adds 2 blocks of [relu-separable conv-batchnorm].
 
-  Arguments:
+  Args:
       ip: Input tensor
       filters: Number of output filters per layer
       kernel_size: Kernel size of separable convolutions
@@ -507,7 +538,7 @@ def _adjust_block(p, ip, filters, block_id=None):
 
   Used in situations where the output number of filters needs to be changed.
 
-  Arguments:
+  Args:
       p: Input tensor which needs to be modified
       ip: Input tensor whose shape needs to be matched
       filters: Number of output filters to be matched
@@ -590,7 +621,7 @@ def _adjust_block(p, ip, filters, block_id=None):
 def _normal_a_cell(ip, p, filters, block_id=None):
   """Adds a Normal cell for NASNet-A (Fig. 4 in the paper).
 
-  Arguments:
+  Args:
       ip: Input tensor `x`
       p: Input tensor `p`
       filters: Number of output filters
@@ -669,7 +700,7 @@ def _normal_a_cell(ip, p, filters, block_id=None):
 def _reduction_a_cell(ip, p, filters, block_id=None):
   """Adds a Reduction cell for NASNet-A (Fig. 4 in the paper).
 
-  Arguments:
+  Args:
     ip: Input tensor `x`
     p: Input tensor `p`
     filters: Number of output filters
@@ -774,3 +805,10 @@ def preprocess_input(x, data_format=None):
 @keras_export('keras.applications.nasnet.decode_predictions')
 def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='',
+    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF,
+    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

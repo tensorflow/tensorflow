@@ -5,8 +5,9 @@ func @main(tensor<3x2xi32>) -> tensor<6xi32> {
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: RESHAPE,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 22,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: RESHAPE
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:   subgraphs: [ {
 // CHECK-NEXT:     tensors: [ {
@@ -51,7 +52,14 @@ func @main(tensor<3x2xi32>) -> tensor<6xi32> {
 // CHECK-NEXT:     data: [ 6, 0, 0, 0 ]
 // CHECK-NEXT:   }, {
 // CHECK-EMPTY:
+// CHECK-NEXT:   }, {
+// CHECK-NEXT:     data: [ 49, 46, 53, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:   } ],
+// CHECK-NEXT:   metadata: [ {
+// CHECK-NEXT:   name: "min_runtime_version",
+// CHECK-NEXT:   buffer: 4
 // CHECK-NEXT:   } ]
+// CHECK-NEXT:   signature_defs: [ ]
 // CHECK-NEXT: }
 
   %0 = "tfl.pseudo_const" () {value = dense<[6]> : tensor<1xi32>} : () -> tensor<1xi32> loc("Const")

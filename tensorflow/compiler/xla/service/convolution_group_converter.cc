@@ -225,10 +225,12 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
   const int64 kernel_output_feature_dimension =
       dim_numbers.kernel_output_feature_dimension();
 
+  const int64 input_batch =
+      activation->shape().dimensions(input_batch_dimension);
   const int64 output_feature =
       filter->shape().dimensions(kernel_output_feature_dimension);
 
-  if (output_feature != batch_group_count) {
+  if (output_feature != batch_group_count || input_batch != batch_group_count) {
     // Insert a spatial dimension to the activation before the input batch
     // dimension to represent the batch group.
     std::vector<int64> input_sizes(activation->shape().dimensions().begin(),
@@ -297,8 +299,11 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
     window_dim->set_window_reversal(false);
     window_dim->set_window_dilation(1);
     HloInstruction* new_convolution =
-        MakeConvolveHlo(activation, filter, convolution->feature_group_count(),
-                        window, dim_numbers, convolution->precision_config())
+        MakeConvolveHlo(
+            activation, filter, convolution->feature_group_count(),
+            /*batch_group_count=*/1, window, dim_numbers,
+            convolution->precision_config(),
+            /*preferred_element_type=*/convolution->shape().element_type())
             .ValueOrDie();
     convolution->SetupDerivedInstruction(new_convolution);
     TF_CHECK_OK(computation_->ReplaceInstruction(
@@ -647,8 +652,11 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   window_dim->set_window_reversal(false);
   window_dim->set_window_dilation(1);
   HloInstruction* new_convolution =
-      MakeConvolveHlo(activation, filter, 1, window, dim_numbers,
-                      convolution->precision_config())
+      MakeConvolveHlo(
+          activation, filter, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, window, dim_numbers,
+          convolution->precision_config(),
+          /*preferred_element_type=*/convolution->shape().element_type())
           .ValueOrDie();
   convolution->SetupDerivedInstruction(new_convolution);
   changed_ = true;

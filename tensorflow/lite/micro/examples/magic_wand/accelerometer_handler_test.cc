@@ -33,15 +33,13 @@ TF_LITE_MICRO_TEST(TestAccelerometer) {
   float input[384] = {0.0};
   tflite::MicroErrorReporter micro_error_reporter;
   // Test that the function returns false before insufficient data is available
-  bool inference_flag =
-      ReadAccelerometer(&micro_error_reporter, input, 384, false);
+  bool inference_flag = ReadAccelerometer(&micro_error_reporter, input, 384);
   TF_LITE_MICRO_EXPECT_EQ(inference_flag, false);
 
   // Test that the function returns true once sufficient data is available to
   // fill the model's input buffer (128 sets of values)
   for (int i = 1; i <= 128; i++) {
-    inference_flag =
-        ReadAccelerometer(&micro_error_reporter, input, 384, false);
+    inference_flag = ReadAccelerometer(&micro_error_reporter, input, 384);
   }
   TF_LITE_MICRO_EXPECT_EQ(inference_flag, true);
 }

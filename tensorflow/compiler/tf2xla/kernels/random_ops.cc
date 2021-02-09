@@ -18,6 +18,7 @@ limitations under the License.
 // TODO(misard,phawkins): add tests.
 
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -337,13 +338,20 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
            "reproducible behavior is desired.";
     xla::XlaOp uniform = xla::RngUniform(min_positive, one, xla_shape);
 
-    xla::XlaOp means = ctx->Input(1);
-    xla::XlaOp stddevs = ctx->Input(2);
-    xla::XlaOp minvals = ctx->Input(3);
-    xla::XlaOp maxvals = ctx->Input(4);
+    auto result = b->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
+      TF_ASSIGN_OR_RETURN(xla::XlaOp means,
+                          BroadcastTo(ctx->Input(1), shape.dim_sizes()));
+      TF_ASSIGN_OR_RETURN(xla::XlaOp stddevs,
+                          BroadcastTo(ctx->Input(2), shape.dim_sizes()));
+      TF_ASSIGN_OR_RETURN(xla::XlaOp minvals,
+                          BroadcastTo(ctx->Input(3), shape.dim_sizes()));
+      TF_ASSIGN_OR_RETURN(xla::XlaOp maxvals,
+                          BroadcastTo(ctx->Input(4), shape.dim_sizes()));
+      return ParameterizedTruncatedNormal(uniform, means, stddevs, minvals,
+                                          maxvals);
+    });
 
-    ctx->SetOutput(0, ParameterizedTruncatedNormal(uniform, means, stddevs,
-                                                   minvals, maxvals));
+    ctx->SetOutput(0, result);
   }
 };
 

@@ -17,13 +17,12 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
+Status TrtPrecisionModeToName(const TrtPrecisionMode mode, string* name) {
   switch (mode) {
     case TrtPrecisionMode::FP32:
       *name = "FP32";
@@ -35,6 +34,7 @@ Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
       *name = "INT8";
       break;
     default:
+      *name = "UNKNOWN";
       return errors::OutOfRange("Unknown precision mode");
   }
   return Status::OK();
@@ -54,8 +54,6 @@ Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
 }
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-using absl::StrAppend;
-using absl::StrCat;
 
 string DebugString(const nvinfer1::DimensionType type) {
   switch (type) {
@@ -86,6 +84,21 @@ string DebugString(const nvinfer1::Dims& dims) {
   return out;
 }
 
+string DebugString(const DataType tf_type) {
+  switch (tf_type) {
+    case DT_FLOAT:
+      return "DT_FLOAT";
+    case DT_HALF:
+      return "DT_HALF";
+    case DT_INT32:
+      return "DT_INT32";
+    case DT_INT8:
+      return "DT_INT8";
+    default:
+      return "Unknow TF DataType";
+  }
+}
+
 string DebugString(const nvinfer1::DataType trt_dtype) {
   switch (trt_dtype) {
     case nvinfer1::DataType::kFLOAT:
@@ -99,6 +112,12 @@ string DebugString(const nvinfer1::DataType trt_dtype) {
     default:
       return "Invalid TRT data type";
   }
+}
+
+string DebugString(const TrtPrecisionMode mode) {
+  string mode_str;
+  TF_CHECK_OK(TrtPrecisionModeToName(mode, &mode_str));
+  return StrCat("TrtPrecisionMode::", mode_str);
 }
 
 string DebugString(const nvinfer1::Permutation& permutation, int len) {
@@ -117,36 +136,167 @@ string DebugString(const nvinfer1::ITensor& tensor) {
                 ", dims=", DebugString(tensor.getDimensions()), ")");
 }
 
-#endif
-
-string GetLinkedTensorRTVersion() {
-  int major, minor, patch;
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  major = NV_TENSORRT_MAJOR;
-  minor = NV_TENSORRT_MINOR;
-  patch = NV_TENSORRT_PATCH;
-#else
-  major = 0;
-  minor = 0;
-  patch = 0;
-#endif
-  return absl::StrCat(major, ".", minor, ".", patch);
+string DebugString(const std::vector<nvinfer1::Dims>& dimvec) {
+  return absl::StrCat("[",
+                      absl::StrJoin(dimvec, ",",
+                                    [](std::string* out, nvinfer1::Dims in) {
+                                      out->append(DebugString(in));
+                                    }),
+                      "]");
 }
 
-string GetLoadedTensorRTVersion() {
-  int major, minor, patch;
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  int ver = getInferLibVersion();
-  major = ver / 1000;
-  ver = ver - major * 1000;
-  minor = ver / 100;
-  patch = ver - minor * 100;
+string DebugString(const std::vector<TensorShape>& shapes) {
+  return TensorShapeUtils::ShapeListString(shapes);
+}
+
+string DebugString(const std::vector<PartialTensorShape>& shapes) {
+  return PartialTensorShapeUtils::PartialShapeListString(shapes);
+}
+
+// Checks whether actual_shapes are compatible with cached_shapes. This should
+// only be used in implicit batch mode (in explicit batch mode one needs to
+// check the profile ranges). Therefore implicit batch mode is assumed.
+// It is also assumed that both actual_shapes and cached_shapes have been
+// verified by TRTEngineOp::VerifyInputShapes, which ensures that the batch size
+// for all tensors are the same.
+bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
+                         const std::vector<TensorShape>& cached_shapes) {
+  auto match_shape = [](const TensorShape& actual_shape,
+                        const TensorShape& cached_shape) {
+    // Match the rank.
+    if (actual_shape.dims() != cached_shape.dims()) return false;
+    // Match the batch size. In implicit batch mode cached_shape.dim_size(0) is
+    // the max batch size, which can be larger than the actual batch size.
+    if (actual_shape.dim_size(0) > cached_shape.dim_size(0)) return false;
+    // Match remaining dimensions.
+    for (int i = 1; i < actual_shape.dims(); ++i) {
+      if (actual_shape.dim_size(i) != cached_shape.dim_size(i)) return false;
+    }
+    return true;
+  };
+  for (int i = 0; i < actual_shapes.size(); ++i) {
+    if (!match_shape(actual_shapes[i], cached_shapes[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape) {
+  TF_RETURN_IF_ERROR(
+      TensorShapeUtils::MakeShape(trt_dims.data(), trt_dims.size(), &shape));
+  if (use_implicit_batch) {
+    shape.InsertDim(0, batch_size);
+  }
+  return Status::OK();
+}
+
+Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape) {
+  TF_RETURN_IF_ERROR(
+      TensorShapeUtils::MakeShape(trt_dims.d, trt_dims.nbDims, &shape));
+  if (use_implicit_batch) {
+    shape.InsertDim(0, batch_size);
+  }
+  return Status::OK();
+}
+
+Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
+  switch (tf_type) {
+    case DT_FLOAT:
+      *trt_type = nvinfer1::DataType::kFLOAT;
+      break;
+    case DT_HALF:
+      *trt_type = nvinfer1::DataType::kHALF;
+      break;
+    case DT_INT32:
+      *trt_type = nvinfer1::DataType::kINT32;
+      break;
+    default:
+      return errors::InvalidArgument("Unsupported tensorflow data type ",
+                                     DataTypeString(tf_type));
+  }
+  return Status::OK();
+}
+
+Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
+  switch (trt_type) {
+    case nvinfer1::DataType::kFLOAT:
+      *tf_type = DT_FLOAT;
+      break;
+    case nvinfer1::DataType::kHALF:
+      *tf_type = DT_HALF;
+      break;
+    case nvinfer1::DataType::kINT32:
+      *tf_type = DT_INT32;
+      break;
+    default:
+      return errors::InvalidArgument("Invalid TRT data type");
+  }
+  return Status::OK();
+}
+
+int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
+  int n_bindings = engine->getNbBindings();
+  int n_input = 0;
+  for (int i = 0; i < n_bindings; i++) {
+    if (engine->bindingIsInput(i)) n_input++;
+  }
+  // According to TensorRT 7 doc: "If the engine has been built for K profiles,
+  // the first getNbBindings() / K bindings are used by profile number 0, the
+  // following getNbBindings() / K bindings are used by profile number 1 etc."
+  // Therefore, to get the number of input tensors, we need to divide by the
+  // the number of profiles.
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  int n_profiles = engine->getNbOptimizationProfiles();
 #else
-  major = 0;
-  minor = 0;
-  patch = 0;
+  int n_profiles = 1;
 #endif
-  return absl::StrCat(major, ".", minor, ".", patch);
+  return n_input / n_profiles;
+}
+
+#endif
+
+absl::string_view GetDeviceName(const Node* node) {
+  if (node->has_assigned_device_name()) {
+    return node->assigned_device_name();
+  }
+  return node->requested_device();
+}
+
+absl::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
+    const Node* node) {
+  absl::string_view device_name = GetDeviceName(node);
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
+    return absl::nullopt;
+  }
+  return parsed_name;
+}
+
+absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+    const DeviceNameUtils::ParsedName& a,
+    const DeviceNameUtils::ParsedName& b) {
+  DeviceNameUtils::ParsedName merged_name = a;
+  if (!DeviceNameUtils::MergeDevNames(&merged_name, b,
+                                      /*allow_soft_placement=*/false)
+           .ok()) {
+    return absl::nullopt;
+  }
+  return merged_name;
+}
+
+absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+    const DeviceNameUtils::ParsedName& a, absl::string_view b) {
+  DeviceNameUtils::ParsedName b_parsed_name;
+  if (!DeviceNameUtils::ParseFullName(b, &b_parsed_name)) {
+    return absl::nullopt;
+  }
+
+  return MergeIfCompatible(a, b_parsed_name);
 }
 
 }  // namespace tensorrt

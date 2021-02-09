@@ -1,4 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -11,9 +12,11 @@ cc_library(
     name = "format_converter",
     srcs = ["format_converter.cc"],
     hdrs = ["format_converter.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//third_party/eigen3",
     ],
 )
 

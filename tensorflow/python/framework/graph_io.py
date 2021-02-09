@@ -71,5 +71,6 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
                                         text_format.MessageToString(
                                             graph_def, float_format=''))
   else:
-    file_io.atomic_write_string_to_file(path, graph_def.SerializeToString())
+    file_io.atomic_write_string_to_file(
+        path, graph_def.SerializeToString(deterministic=True))
   return path

@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
@@ -63,13 +64,16 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         self.assertAllClose(
             result, np_reduce_fn(test_input, axis=1), rtol=rtol, atol=atol)
 
-        with self.assertRaisesWithPredicateMatch(
-            errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
-          sess.run(out, {a: test_input, index: [-33]})
+        # MLIR bridge doesn't return the same error so it can't be matched
+        # directly.
+        if not test_util.is_mlir_bridge_enabled():
+          with self.assertRaisesWithPredicateMatch(
+              errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
+            sess.run(out, {a: test_input, index: [-33]})
 
-        with self.assertRaisesWithPredicateMatch(
-            errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
-          sess.run(out, {a: test_input, index: [2]})
+          with self.assertRaisesWithPredicateMatch(
+              errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
+            sess.run(out, {a: test_input, index: [2]})
 
   REAL_DATA = [
       np.zeros(shape=(2, 0)),
@@ -167,6 +171,18 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   def testReduceAny(self, index_dtype):
     self._testReduction(math_ops.reduce_any, np.any, np.bool, self.BOOL_DATA,
                         index_dtype)
+
+  @test_util.disable_mlir_bridge('Error messages differ')
+  def testReduceSumWithDuplicateAxes(self, index_dtype):
+    with self.session() as sess:
+      with self.test_scope():
+        a = array_ops.placeholder(np.float32)
+        index = array_ops.placeholder(np.int32)
+        out = math_ops.reduce_sum(a, index)
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError,
+          'Axes contains duplicate dimension'):
+        sess.run(out, {a: [10, 20, 30], index: [0, 0]})
 
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):

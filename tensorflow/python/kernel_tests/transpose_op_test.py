@@ -164,15 +164,18 @@ class TransposeTest(test.TestCase):
     datatypes = [np.int8, np.float16, np.float32, np.float64, np.complex128]
     for datatype in datatypes:
       for input_shape, perm in zip(large_shapes, perms):
-        total_size = np.prod(input_shape)
-        inp = np.arange(1, total_size + 1, dtype=datatype).reshape(input_shape)
-        np_ans = self._np_transpose(inp, perm)
-        with self.cached_session(use_gpu=True):
-          inx = ops.convert_to_tensor(inp)
-          y = array_ops.transpose(inx, perm)
-          tf_ans = self.evaluate(y)
-        self.assertAllEqual(np_ans, tf_ans)
-        self.assertShapeEqual(np_ans, y)
+        with self.subTest(
+            datatype=datatype, input_shape=input_shape, perm=perm):
+          total_size = np.prod(input_shape)
+          inp = np.arange(
+              1, total_size + 1, dtype=datatype).reshape(input_shape)
+          np_ans = self._np_transpose(inp, perm)
+          with self.cached_session(use_gpu=True):
+            inx = ops.convert_to_tensor(inp)
+            y = array_ops.transpose(inx, perm)
+            tf_ans = self.evaluate(y)
+          self.assertAllEqual(np_ans, tf_ans)
+          self.assertShapeEqual(np_ans, y)
 
   def test4DGPU(self):
     # If no GPU available, skip the test
@@ -185,15 +188,17 @@ class TransposeTest(test.TestCase):
     ]] * 3 + [[2, 3, 0, 1]] * 3
 
     for input_shape, perm in zip(large_shapes, perms):
-      total_size = np.prod(input_shape)
-      inp = np.arange(1, total_size + 1, dtype=np.float32).reshape(input_shape)
-      np_ans = self._np_transpose(inp, perm)
-      with self.cached_session(use_gpu=True):
-        inx = ops.convert_to_tensor(inp)
-        y = array_ops.transpose(inx, perm)
-        tf_ans = self.evaluate(y)
-      self.assertAllEqual(np_ans, tf_ans)
-      self.assertShapeEqual(np_ans, y)
+      with self.subTest(input_shape=input_shape, perm=perm):
+        total_size = np.prod(input_shape)
+        inp = np.arange(
+            1, total_size + 1, dtype=np.float32).reshape(input_shape)
+        np_ans = self._np_transpose(inp, perm)
+        with self.cached_session(use_gpu=True):
+          inx = ops.convert_to_tensor(inp)
+          y = array_ops.transpose(inx, perm)
+          tf_ans = self.evaluate(y)
+        self.assertAllEqual(np_ans, tf_ans)
+        self.assertShapeEqual(np_ans, y)
 
     # shapes related to Inception (taken from conv_ops_test.py)
     inception_shapes = [[4, 5, 5, 124], [4, 8, 8, 38], [4, 8, 8, 38], [
@@ -219,16 +224,18 @@ class TransposeTest(test.TestCase):
                         [4, 35, 35, 19], [4, 73, 73, 6], [4, 73, 73,
                                                           6], [4, 147, 147, 2]]
     for input_shape in inception_shapes:
-      perm = [0, 3, 1, 2]
-      total_size = np.prod(input_shape)
-      inp = np.arange(1, total_size + 1, dtype=np.float32).reshape(input_shape)
-      np_ans = self._np_transpose(inp, perm)
-      with self.cached_session(use_gpu=True):
-        inx = ops.convert_to_tensor(inp)
-        y = array_ops.transpose(inx, perm)
-        tf_ans = self.evaluate(y)
-      self.assertAllEqual(np_ans, tf_ans)
-      self.assertShapeEqual(np_ans, y)
+      with self.subTest(input_shape=input_shape):
+        perm = [0, 3, 1, 2]
+        total_size = np.prod(input_shape)
+        inp = np.arange(
+            1, total_size + 1, dtype=np.float32).reshape(input_shape)
+        np_ans = self._np_transpose(inp, perm)
+        with self.cached_session(use_gpu=True):
+          inx = ops.convert_to_tensor(inp)
+          y = array_ops.transpose(inx, perm)
+          tf_ans = self.evaluate(y)
+        self.assertAllEqual(np_ans, tf_ans)
+        self.assertShapeEqual(np_ans, y)
 
   def test3DGPU(self):
     # If no GPU available, skip the test
@@ -242,15 +249,18 @@ class TransposeTest(test.TestCase):
                                                                   ] * 3
     for datatype in datatypes:
       for input_shape, perm in zip(large_shapes, perms):
-        total_size = np.prod(input_shape)
-        inp = np.arange(1, total_size + 1, dtype=datatype).reshape(input_shape)
-        np_ans = self._np_transpose(inp, perm)
-        with self.cached_session(use_gpu=True):
-          inx = ops.convert_to_tensor(inp)
-          y = array_ops.transpose(inx, perm)
-          tf_ans = self.evaluate(y)
-        self.assertAllEqual(np_ans, tf_ans)
-        self.assertShapeEqual(np_ans, y)
+        with self.subTest(
+            datatype=datatype, input_shape=input_shape, perm=perm):
+          total_size = np.prod(input_shape)
+          inp = np.arange(
+              1, total_size + 1, dtype=datatype).reshape(input_shape)
+          np_ans = self._np_transpose(inp, perm)
+          with self.cached_session(use_gpu=True):
+            inx = ops.convert_to_tensor(inp)
+            y = array_ops.transpose(inx, perm)
+            tf_ans = self.evaluate(y)
+          self.assertAllEqual(np_ans, tf_ans)
+          self.assertShapeEqual(np_ans, y)
 
   def testLargeSizeGPU(self):
     # If no GPU available, skip the test
@@ -263,15 +273,17 @@ class TransposeTest(test.TestCase):
     perms = [[0, 2, 1]] * 9
 
     for input_shape, perm in zip(large_shapes, perms):
-      total_size = np.prod(input_shape)
-      inp = np.arange(1, total_size + 1, dtype=np.float32).reshape(input_shape)
-      np_ans = self._np_transpose(inp, perm)
-      with self.cached_session(use_gpu=True):
-        inx = ops.convert_to_tensor(inp)
-        y = array_ops.transpose(inx, perm)
-        tf_ans = self.evaluate(y)
-      self.assertAllEqual(np_ans, tf_ans)
-      self.assertShapeEqual(np_ans, y)
+      with self.subTest(input_shape=input_shape, perm=perm):
+        total_size = np.prod(input_shape)
+        inp = np.arange(
+            1, total_size + 1, dtype=np.float32).reshape(input_shape)
+        np_ans = self._np_transpose(inp, perm)
+        with self.cached_session(use_gpu=True):
+          inx = ops.convert_to_tensor(inp)
+          y = array_ops.transpose(inx, perm)
+          tf_ans = self.evaluate(y)
+        self.assertAllEqual(np_ans, tf_ans)
+        self.assertShapeEqual(np_ans, y)
 
   def testRandomizedSmallDimLargeSizeGPU(self):
     # If no GPU available, skip the test
@@ -316,15 +328,16 @@ class TransposeTest(test.TestCase):
 
     for input_shape, perm in zip(input_shapes, perms):
       # generate input data with random ints from 0 to 9.
-      inp = np.random.randint(10, size=input_shape)
-      np_ans = self._np_transpose(inp, perm)
-      with self.cached_session(use_gpu=True):
-        inx = ops.convert_to_tensor(inp)
-        y = array_ops.transpose(inx, perm)
-        tf_ans = self.evaluate(y)
-      self.assertAllEqual(np_ans, tf_ans)
-      self.assertShapeEqual(np_ans, y)
-      self._ClearCachedSession()
+      with self.subTest(input_shape=input_shape, perm=perm):
+        inp = np.random.randint(10, size=input_shape)
+        np_ans = self._np_transpose(inp, perm)
+        with self.cached_session(use_gpu=True):
+          inx = ops.convert_to_tensor(inp)
+          y = array_ops.transpose(inx, perm)
+          tf_ans = self.evaluate(y)
+        self.assertAllEqual(np_ans, tf_ans)
+        self.assertShapeEqual(np_ans, y)
+        self._ClearCachedSession()
 
   @test_util.run_v1_only("b/120545219")
   def testNop(self):
@@ -338,16 +351,17 @@ class TransposeTest(test.TestCase):
 
   def testPermType(self):
     for perm_dtype in [np.int64, np.int32]:
-      x = np.arange(0, 8).reshape([2, 4]).astype(np.float32)
-      p = np.array([1, 0]).astype(perm_dtype)
-      np_ans = np.copy(x).transpose(p)
-      with self.cached_session(use_gpu=True):
-        inx = ops.convert_to_tensor(x)
-        inp = constant_op.constant(p)
-        y = array_ops.transpose(inx, inp)
-        tf_ans = self.evaluate(y)
-        self.assertShapeEqual(np_ans, y)
-        self.assertAllEqual(np_ans, tf_ans)
+      with self.subTest(perm_dtype=perm_dtype):
+        x = np.arange(0, 8).reshape([2, 4]).astype(np.float32)
+        p = np.array([1, 0]).astype(perm_dtype)
+        np_ans = np.copy(x).transpose(p)
+        with self.cached_session(use_gpu=True):
+          inx = ops.convert_to_tensor(x)
+          inp = constant_op.constant(p)
+          y = array_ops.transpose(inx, inp)
+          tf_ans = self.evaluate(y)
+          self.assertShapeEqual(np_ans, y)
+          self.assertAllEqual(np_ans, tf_ans)
 
   def testHalf(self):
     self._compare(np.arange(0, 21).reshape([3, 7]).astype(np.float16))
@@ -423,9 +437,10 @@ class TransposeTest(test.TestCase):
   def testTranspose2DAuto(self):
     x_np = [[1, 2, 3], [4, 5, 6]]
     for use_gpu in [False, True]:
-      with self.cached_session(use_gpu=use_gpu):
-        x_tf = array_ops.transpose(x_np).eval()
-        self.assertAllEqual(x_tf, [[1, 4], [2, 5], [3, 6]])
+      with self.subTest(use_gpu=use_gpu):
+        with self.cached_session(use_gpu=use_gpu):
+          x_tf = array_ops.transpose(x_np).eval()
+          self.assertAllEqual(x_tf, [[1, 4], [2, 5], [3, 6]])
 
   @test_util.run_v1_only("b/120545219")
   def testSingletonDims(self):
@@ -439,8 +454,9 @@ class TransposeTest(test.TestCase):
     # copy here.
     for shape in [[2, 1, 2], [2, 1, 2, 1, 1, 2], [1, 2, 2, 1, 1, 1],
                   [1, 1, 1, 2, 2, 2], [2, 2, 1, 1, 1]]:
-      self._compare_cpu_gpu(
-          np.arange(np.prod(shape)).reshape(shape).astype(np.float32))
+      with self.subTest(shape=shape):
+        self._compare_cpu_gpu(
+            np.arange(np.prod(shape)).reshape(shape).astype(np.float32))
 
   @test_util.run_v1_only("b/120545219")
   def testTransposeShapes(self):

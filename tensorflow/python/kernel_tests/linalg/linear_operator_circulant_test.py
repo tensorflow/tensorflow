@@ -114,18 +114,18 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
     # real, the matrix will not be real.
     return [dtypes.complex64, dtypes.complex128]
 
-  def operator_and_matrix(
-      self, shape_info, dtype, use_placeholder,
-      ensure_self_adjoint_and_pd=False):
+  def operator_and_matrix(self,
+                          shape_info,
+                          dtype,
+                          use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     shape = shape_info.shape
     # For this test class, we are creating real spectrums.
     # We also want the spectrum to have eigenvalues bounded away from zero.
     #
     # spectrum is bounded away from zero.
     spectrum = linear_operator_test_util.random_sign_uniform(
-        shape=self._shape_to_spectrum_shape(shape),
-        minval=1.,
-        maxval=2.)
+        shape=self._shape_to_spectrum_shape(shape), minval=1., maxval=2.)
     if ensure_self_adjoint_and_pd:
       spectrum = math_ops.abs(spectrum)
     # If dtype is complex, cast spectrum to complex.  The imaginary part will be
@@ -176,9 +176,11 @@ class LinearOperatorCirculantTestHermitianSpectrum(
   zero imaginary part.
   """
 
-  def operator_and_matrix(
-      self, shape_info, dtype, use_placeholder,
-      ensure_self_adjoint_and_pd=False):
+  def operator_and_matrix(self,
+                          shape_info,
+                          dtype,
+                          use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     shape = shape_info.shape
     # For this test class, we are creating Hermitian spectrums.
     # We also want the spectrum to have eigenvalues bounded away from zero.
@@ -259,9 +261,11 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   def skip_these_tests():
     return ["cholesky", "eigvalsh"]
 
-  def operator_and_matrix(
-      self, shape_info, dtype, use_placeholder,
-      ensure_self_adjoint_and_pd=False):
+  def operator_and_matrix(self,
+                          shape_info,
+                          dtype,
+                          use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     del ensure_self_adjoint_and_pd
     shape = shape_info.shape
     # Will be well conditioned enough to get accurate solves.
@@ -278,6 +282,18 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
 
     operator = linalg.LinearOperatorCirculant(
         lin_op_spectrum, input_output_dtype=dtype)
+
+    self.assertEqual(
+        operator.parameters,
+        {
+            "input_output_dtype": dtype,
+            "is_non_singular": None,
+            "is_positive_definite": None,
+            "is_self_adjoint": None,
+            "is_square": True,
+            "name": "LinearOperatorCirculant",
+            "spectrum": lin_op_spectrum,
+        })
 
     mat = self._spectrum_to_circulant_1d(spectrum, shape, dtype=dtype)
 
@@ -357,11 +373,6 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
         self.evaluate(operator.assert_non_singular())
 
   def test_assert_non_singular_does_not_fail_for_non_singular_operator(self):
-
-    if test.is_built_with_rocm():
-      # ROCm does not yet support BLAS operations with complex types.
-      self.skipTest("ROCm does not support BLAS operations for complex types")
-
     spectrum = math_ops.cast([-3j, 4 + 0j, 2j + 2], dtypes.complex64)
     operator = linalg.LinearOperatorCirculant(spectrum)
     with self.cached_session():
@@ -382,7 +393,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
 
   def test_real_spectrum_and_not_self_adjoint_hint_raises(self):
     spectrum = [1., 2.]
-    with self.assertRaisesRegexp(ValueError, "real.*always.*self-adjoint"):
+    with self.assertRaisesRegex(ValueError, "real.*always.*self-adjoint"):
       linalg.LinearOperatorCirculant(spectrum, is_self_adjoint=False)
 
   def test_real_spectrum_auto_sets_is_self_adjoint_to_true(self):
@@ -486,9 +497,11 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
   def skip_these_tests():
     return ["cond"]
 
-  def operator_and_matrix(
-      self, shape_info, dtype, use_placeholder,
-      ensure_self_adjoint_and_pd=False):
+  def operator_and_matrix(self,
+                          shape_info,
+                          dtype,
+                          use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     shape = shape_info.shape
     # For this test class, we are creating Hermitian spectrums.
     # We also want the spectrum to have eigenvalues bounded away from zero.
@@ -525,6 +538,20 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
         is_self_adjoint=True if ensure_self_adjoint_and_pd else None,
         input_output_dtype=dtype)
 
+    self.assertEqual(
+        operator.parameters,
+        {
+            "input_output_dtype": dtype,
+            "is_non_singular": None,
+            "is_positive_definite": (
+                True if ensure_self_adjoint_and_pd else None),
+            "is_self_adjoint": (
+                True if ensure_self_adjoint_and_pd else None),
+            "is_square": True,
+            "name": "LinearOperatorCirculant2D",
+            "spectrum": lin_op_spectrum,
+        })
+
     mat = self._spectrum_to_circulant_2d(spectrum, shape, dtype=dtype)
 
     return operator, mat
@@ -547,9 +574,11 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
   def skip_these_tests():
     return ["cholesky", "eigvalsh"]
 
-  def operator_and_matrix(
-      self, shape_info, dtype, use_placeholder,
-      ensure_self_adjoint_and_pd=False):
+  def operator_and_matrix(self,
+                          shape_info,
+                          dtype,
+                          use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     del ensure_self_adjoint_and_pd
     shape = shape_info.shape
     # Will be well conditioned enough to get accurate solves.
@@ -566,6 +595,19 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 
     operator = linalg.LinearOperatorCirculant2D(
         lin_op_spectrum, input_output_dtype=dtype)
+
+    self.assertEqual(
+        operator.parameters,
+        {
+            "input_output_dtype": dtype,
+            "is_non_singular": None,
+            "is_positive_definite": None,
+            "is_self_adjoint": None,
+            "is_square": True,
+            "name": "LinearOperatorCirculant2D",
+            "spectrum": lin_op_spectrum,
+        }
+    )
 
     mat = self._spectrum_to_circulant_2d(spectrum, shape, dtype=dtype)
 
@@ -632,7 +674,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 
   def test_real_spectrum_and_not_self_adjoint_hint_raises(self):
     spectrum = [[1., 2.], [3., 4]]
-    with self.assertRaisesRegexp(ValueError, "real.*always.*self-adjoint"):
+    with self.assertRaisesRegex(ValueError, "real.*always.*self-adjoint"):
       linalg.LinearOperatorCirculant2D(spectrum, is_self_adjoint=False)
 
   def test_real_spectrum_auto_sets_is_self_adjoint_to_true(self):
@@ -642,7 +684,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 
   def test_invalid_rank_raises(self):
     spectrum = array_ops.constant(np.float32(rng.rand(2)))
-    with self.assertRaisesRegexp(ValueError, "must have at least 2 dimensions"):
+    with self.assertRaisesRegex(ValueError, "must have at least 2 dimensions"):
       linalg.LinearOperatorCirculant2D(spectrum)
 
   def test_tape_safe(self):
@@ -665,17 +707,24 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       yield sess
 
   def test_real_spectrum_gives_self_adjoint_operator(self):
-
-    if test.is_built_with_rocm():
-      # ROCm does not yet support BLAS operations with complext types
-      self.skipTest("ROCm does not support BLAS operations for complex types")
-
     with self.cached_session():
       # This is a real and hermitian spectrum.
       spectrum = linear_operator_test_util.random_normal(
           shape=(2, 2, 3, 5), dtype=dtypes.float32)
       operator = linalg.LinearOperatorCirculant3D(spectrum)
       self.assertAllEqual((2, 2 * 3 * 5, 2 * 3 * 5), operator.shape)
+
+      self.assertEqual(
+          operator.parameters,
+          {
+              "input_output_dtype": dtypes.complex64,
+              "is_non_singular": None,
+              "is_positive_definite": None,
+              "is_self_adjoint": None,
+              "is_square": True,
+              "name": "LinearOperatorCirculant3D",
+              "spectrum": spectrum,
+          })
 
       matrix_tensor = operator.to_dense()
       self.assertEqual(matrix_tensor.dtype, dtypes.complex64)
@@ -686,11 +735,6 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       self.assertAllClose(matrix, matrix_h)
 
   def test_defining_operator_using_real_convolution_kernel(self):
-
-    if test.is_built_with_rocm():
-      # ROCm does not yet support BLAS operations with complext types
-      self.skipTest("ROCm does not support BLAS operations for complex types")
-
     with self.cached_session():
       convolution_kernel = linear_operator_test_util.random_normal(
           shape=(2, 2, 3, 5), dtype=dtypes.float32)
@@ -709,11 +753,6 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       np.testing.assert_allclose(0, np.imag(matrix), atol=1e-5)
 
   def test_defining_spd_operator_by_taking_real_part(self):
-
-    if test.is_built_with_rocm():
-      # ROCm does not yet support BLAS operations with complext types
-      self.skipTest("ROCm does not support BLAS operations for complex types")
-
     with self.cached_session():  # Necessary for fft_kernel_label_map
       # S is real and positive.
       s = linear_operator_test_util.random_uniform(

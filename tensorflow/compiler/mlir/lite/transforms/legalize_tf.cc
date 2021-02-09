@@ -28,27 +28,37 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "llvm/Support/Threading.h"
+#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace mlir {
@@ -58,12 +68,32 @@ namespace TFL {
 // The actual LegalizeTF Pass.
 namespace {
 
-using xla::Status;
 using xla::StatusOr;
 
+constexpr char kUnidirectionalSequenceLstm[] = "tf.UnidirectionalSequenceLstm";
+constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
+constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
+
 // Legalize operations in functions.
-struct LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<quant::QuantizationDialect, TFL::TensorFlowLiteDialect>();
+  }
+
+ public:
+  LegalizeTF() = default;
+  LegalizeTF(const LegalizeTF&) {}
+  explicit LegalizeTF(bool run_tfl_runtime_verification) {
+    run_tfl_runtime_verification_ = run_tfl_runtime_verification;
+  }
+
+  /// Performs the lowering to TFLite dialect.
   void runOnFunction() override;
+
+ private:
+  Option<bool> run_tfl_runtime_verification_{
+      *this, "run-tfl-runtime-verification",
+      llvm::cl::desc("Allow tfl runtime verification."), llvm::cl::init(true)};
 };
 
 // Returns true if all tensor value in `values` has static shape and same shape.
@@ -88,55 +118,106 @@ bool HasSameStaticShapes(Operation* op) {
   return true;
 }
 
+// Util that casts 'val' to Int32 by adding a cast Op.
+Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
+  auto shape = val.getType().dyn_cast<RankedTensorType>().getShape();
+  IntegerType new_ele_type = rewriter.getIntegerType(32);
+  ShapedType new_type = RankedTensorType::get(shape, new_ele_type);
+  return rewriter.createOrFold<TF::CastOp>(loc, new_type, val,
+                                           rewriter.getBoolAttr(false));
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
 
-#define DECL_CONVERT_OP(tf_op)                                             \
-  struct ConvertTF##tf_op##Op : public RewritePattern {                    \
-    explicit ConvertTF##tf_op##Op(MLIRContext* context)                    \
-        : RewritePattern(TF::tf_op##Op::getOperationName(), 1, context) {} \
-    PatternMatchResult matchAndRewrite(                                    \
-        Operation* op, PatternRewriter& rewriter) const override;          \
+#define DECL_CONVERT_OP(tf_op)                                               \
+  struct ConvertTF##tf_op##Op : public RewritePattern {                      \
+    explicit ConvertTF##tf_op##Op(MLIRContext* context)                      \
+        : RewritePattern(TF::tf_op##Op::getOperationName(), 1, context) {}   \
+    LogicalResult matchAndRewrite(Operation* op,                             \
+                                  PatternRewriter& rewriter) const override; \
   }
 
 // TODO(antiagainst): Define this pattern in a table-driven manner once variadic
 // operands are properly supported in declarative rewrite rule specification.
 
 DECL_CONVERT_OP(Assert);
-DECL_CONVERT_OP(Concat);
 DECL_CONVERT_OP(ConcatV2);
 DECL_CONVERT_OP(MatMul);
 DECL_CONVERT_OP(MatrixDiagV2);
 DECL_CONVERT_OP(MatrixDiagV3);
 DECL_CONVERT_OP(Pack);
-DECL_CONVERT_OP(Reshape);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
-DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Unpack);
-DECL_CONVERT_OP(Reciprocal);
+DECL_CONVERT_OP(RandomUniform);
+DECL_CONVERT_OP(Conv3D);
 
 #undef DECL_CONVERT_OP
 
-PatternMatchResult ConvertTFConcatOp::matchAndRewrite(
+LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  auto tf_concat_op = cast<TF::ConcatOp>(op);
+  auto random_uniform_op = cast<TF::RandomUniformOp>(op);
+  if (random_uniform_op.seed() == 0 && random_uniform_op.seed2() == 0) {
+    return failure();
+  }
+  if (!random_uniform_op.dtype().isF32()) {
+    return failure();
+  }
+  typedef tensorflow::random::UniformDistribution<
+      tensorflow::random::PhiloxRandom, float>
+      Distribution;
 
-  auto values = tf_concat_op.values();
-  auto output_type = tf_concat_op.output().getType();
-  // Extract axis attribute from constant concat_dims tensor
-  ElementsAttr axis;
-  if (!matchPattern(tf_concat_op.concat_dim(), m_Constant(&axis)))
-    return matchFailure();
-
-  StringAttr fused_activation_function =
-      StringAttr::get("NONE", rewriter.getContext());
-  rewriter.replaceOpWithNewOp<TFL::ConcatenationOp>(
-      op, output_type, values, mlir::TFL::ExtractSingleElementAsInteger(axis),
-      fused_activation_function);
-  return matchSuccess();
+  tensorflow::random::PhiloxRandom generator(random_uniform_op.seed(),
+                                             random_uniform_op.seed2());
+  Distribution dist;
+  size_t num_elements = 0;
+  if (auto output_type =
+          random_uniform_op.output().getType().dyn_cast_or_null<ShapedType>()) {
+    if (auto ranked_output = output_type.dyn_cast_or_null<RankedTensorType>()) {
+      if (!ranked_output.hasRank() || ranked_output.getNumDynamicDims() != 0) {
+        return failure();
+      }
+      num_elements = output_type.getNumElements();
+      size_t offset = 0;
+      size_t num_samples = Distribution::kResultElementCount;
+      llvm::SmallVector<float, 32> data;
+      data.resize(num_elements);
+      while (offset < num_elements) {
+        const typename Distribution::ResultType samples = dist(&generator);
+        std::copy(&samples[0],
+                  &samples[0] + std::min(num_samples, data.size() - offset),
+                  &data[0] + offset);
+        offset += num_samples;
+      }
+      auto output_data = DenseFPElementsAttr::get(output_type, data);
+      rewriter.replaceOpWithNewOp<ConstantOp>(op, output_type, output_data);
+      return success();
+    }
+  }
+  return failure();
 }
 
-PatternMatchResult ConvertTFConcatV2Op::matchAndRewrite(
+// Converts any IntegerAttr to an IntegerAttr of an i32 type.
+// The value won't change in the new attribute, but if the value is out of
+// the bound of i32, the function returns a failure.
+LogicalResult ConvertToI32Attr(IntegerAttr attr, IntegerAttr* attr_i32) {
+  if (attr.getType().isInteger(/*width=*/32)) {
+    *attr_i32 = attr;
+    return success();
+  }
+
+  int64_t value = attr.getInt();
+  if (value > std::numeric_limits<int>::max() ||
+      value < std::numeric_limits<int>::min()) {
+    return failure();
+  }
+
+  *attr_i32 = IntegerAttr::get(
+      IntegerType::get(attr.getContext(), /*width=*/32), value);
+  return success();
+}
+
+LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_concat_op = cast<TF::ConcatV2Op>(op);
 
@@ -144,42 +225,66 @@ PatternMatchResult ConvertTFConcatV2Op::matchAndRewrite(
   auto output_type = tf_concat_op.output().getType();
   // Extract axis attribute from constant axis tensor
   ElementsAttr axis;
-  if (!matchPattern(tf_concat_op.axis(), m_Constant(&axis)))
-    return matchFailure();
+  if (!matchPattern(tf_concat_op.axis(), m_Constant(&axis))) return failure();
+  IntegerAttr axis_int = ExtractSingleElementAsInteger(axis);
+
+  // "axis" operand could be a i64 tensor. Resolve it here.
+  IntegerAttr axis_i32;
+  if (failed(ConvertToI32Attr(axis_int, &axis_i32))) return failure();
 
   StringAttr fused_activation_function =
-      StringAttr::get("NONE", rewriter.getContext());
+      StringAttr::get(rewriter.getContext(), "NONE");
   rewriter.replaceOpWithNewOp<ConcatenationOp>(
-      op, output_type, values, ExtractSingleElementAsInteger(axis),
-      fused_activation_function);
-  return matchSuccess();
+      op, output_type, values, axis_i32, fused_activation_function);
+  return success();
 }
 
-// The following is effectively:
-// def : Pat<
-//   (TF_MatMulOp $a, $b, ConstBoolAttrFalse:$transpose_a,
-//      ConstBoolAttrTrue:$transpose_b),
-//   (TFL_FullyConnectedOp:$__0 $a, $b,
-//     NoInput.pattern, TFL_AF_None, TFL_FCWO_Default, ConstBoolAttrFalse)>;
-PatternMatchResult ConvertTFMatMulOp::matchAndRewrite(
+LogicalResult ConvertTFMatMulOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_matmul_op = cast<TF::MatMulOp>(op);
-  if (tf_matmul_op.transpose_a()) return matchFailure();
-  if (!tf_matmul_op.transpose_b()) return matchFailure();
+  auto lhs = op->getOperand(0);
+  auto rhs = op->getOperand(1);
+  auto transpose = [&](Value input) -> std::pair<LogicalResult, Value> {
+    RankedTensorType type =
+        input.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!type || type.getRank() != 2) return {failure(), nullptr};
+
+    auto permute_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({2}, rewriter.getI32Type()), {1, 0});
+    auto permute = rewriter.create<ConstantOp>(
+        op->getLoc(), permute_attr.getType(), permute_attr);
+    llvm::SmallVector<int64_t, 2> new_shape{type.getShape()[1],
+                                            type.getShape()[0]};
+    auto output = rewriter.create<TFL::TransposeOp>(
+        op->getLoc(), RankedTensorType::get(new_shape, type.getElementType()),
+        input, permute);
+    return {success(), output};
+  };
+
+  // TODO(jpienaar): Remove once handled via dailect conversion.
+  if (tf_matmul_op.transpose_a()) {
+    LogicalResult result = success();
+    std::tie(result, lhs) = transpose(lhs);
+    if (failed(result)) return failure();
+  }
+  if (!tf_matmul_op.transpose_b()) {
+    LogicalResult result = success();
+    std::tie(result, rhs) = transpose(rhs);
+    if (failed(result)) return failure();
+  }
 
   Type output_type = tf_matmul_op.getResult().getType();
-  // TODO(jpienaar): Follow up post shuffle discussion.
   auto no_input = rewriter.create<ConstantOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
   auto fc_op = rewriter.create<FullyConnectedOp>(
-      op->getLoc(), ArrayRef<Type>{output_type}, op->getOperand(0),
-      op->getOperand(1), no_input, rewriter.getStringAttr("NONE"),
-      rewriter.getStringAttr("DEFAULT"), rewriter.getBoolAttr(false));
+      op->getLoc(), ArrayRef<Type>{output_type}, lhs, rhs, no_input,
+      rewriter.getStringAttr("NONE"), rewriter.getStringAttr("DEFAULT"),
+      rewriter.getBoolAttr(false));
   rewriter.replaceOp(op, {fc_op.getResult(0)});
-  return matchSuccess();
+  return success();
 }
 
-PatternMatchResult ConvertTFPackOp::matchAndRewrite(
+LogicalResult ConvertTFPackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_pack_op = cast<TF::PackOp>(op);
 
@@ -187,163 +292,91 @@ PatternMatchResult ConvertTFPackOp::matchAndRewrite(
   auto output_type = tf_pack_op.output().getType();
   auto values_count = rewriter.getI32IntegerAttr(tf_pack_op.N());
   // Axis can be negative.
-  auto axis = rewriter.getI32IntegerAttr(tf_pack_op.axis().getSExtValue());
+  auto axis = rewriter.getI32IntegerAttr(tf_pack_op.axis());
 
   rewriter.replaceOpWithNewOp<PackOp>(op, output_type, values, values_count,
                                       axis);
-  return matchSuccess();
+  return success();
 }
 
-PatternMatchResult ConvertTFReshapeOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_reshape_op = cast<TF::ReshapeOp>(op);
-
-  auto input = tf_reshape_op.tensor();
-  auto shape = tf_reshape_op.shape();
-
-  ShapedType shape_type = shape.getType().cast<ShapedType>();
-  // The tfl reshape's #2 operand needs to i32 tensor type, so we have to cast.
-  if (!shape_type.getElementType().isInteger(32)) {
-    auto new_shape = shape_type.getShape();
-    IntegerType new_ele_type = rewriter.getIntegerType(32);
-    ShapedType new_type = RankedTensorType::get(new_shape, new_ele_type);
-    // Uses TF::CastOp to be folded if the shape input is a constant.
-    shape = rewriter
-                .create<TF::CastOp>(op->getLoc(), new_type, shape,
-                                    rewriter.getBoolAttr(false))
-                .y();
-  }
-  rewriter.replaceOpWithNewOp<ReshapeOp>(op, tf_reshape_op.output().getType(),
-                                         input, shape);
-  return matchSuccess();
-}
-
-PatternMatchResult ConvertTFSplitOp::matchAndRewrite(
+LogicalResult ConvertTFSplitOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_split_op = cast<TF::SplitOp>(op);
 
-  auto output_types = functional::map([](Value v) { return v.getType(); },
-                                      tf_split_op.output());
   // Number of splits cannot be negative.
   auto num_split = rewriter.getI32IntegerAttr(tf_split_op.num_split());
 
-  rewriter.replaceOpWithNewOp<TFL::SplitOp>(op, output_types,
+  rewriter.replaceOpWithNewOp<TFL::SplitOp>(op, tf_split_op.output().getTypes(),
                                             tf_split_op.split_dim(),
                                             tf_split_op.value(), num_split);
-  return matchSuccess();
+  return success();
 }
 
-PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
+LogicalResult ConvertTFSplitVOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_splitv_op = cast<TF::SplitVOp>(op);
 
-  auto output_types = functional::map([](Value v) { return v.getType(); },
-                                      tf_splitv_op.output());
   // Number of splits cannot be negative.
   auto num_split = rewriter.getI32IntegerAttr(tf_splitv_op.num_split());
 
   rewriter.replaceOpWithNewOp<TFL::SplitVOp>(
-      op, output_types, tf_splitv_op.value(), tf_splitv_op.size_splits(),
-      tf_splitv_op.split_dim(), num_split);
-  return matchSuccess();
+      op, tf_splitv_op.output().getTypes(), tf_splitv_op.value(),
+      tf_splitv_op.size_splits(), tf_splitv_op.split_dim(), num_split);
+  return success();
 }
 
-Value PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
-                                    Value attribute,
-                                    ArrayRef<int32_t> padding_val, int* mask) {
-  DenseIntElementsAttr dense_elem_attr;
-  SmallVector<int32_t, 8> padded_val;
-
-  auto ranked_attr_type = attribute.getType().dyn_cast<RankedTensorType>();
-  if (!ranked_attr_type ||
-      !matchPattern(attribute, m_Constant(&dense_elem_attr))) {
-    // If the input attribute is neither ranked type nor constant, we
-    // can't do any padding. Instead we just return it.
-    return attribute;
-  }
-  for (auto idx : dense_elem_attr.getIntValues()) {
-    padded_val.push_back(idx.getSExtValue());
-  }
-  auto attr_dim_count = ranked_attr_type.getShape()[0];
-  int full_dim_count = padding_val.size();
-  for (int i = attr_dim_count; i < full_dim_count; ++i) {
-    padded_val.push_back(padding_val[i]);
-    if (mask) *mask |= 1 << i;
-  }
-  auto type =
-      RankedTensorType::get({full_dim_count}, rewriter.getIntegerType(32));
-  auto attr = DenseElementsAttr::get<int32_t>(type, padded_val);
-  return rewriter.create<ConstantOp>(op->getLoc(), type, attr);
-}
-
-PatternMatchResult ConvertTFStridedSliceOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_strided_slice_op = cast<TF::StridedSliceOp>(op);
-  auto ranked_input_type =
-      tf_strided_slice_op.input().getType().dyn_cast<RankedTensorType>();
-  if (!ranked_input_type) {
-    // If input is not a ranked tensor, we can't deduce the padding dimensions
-    // from it, so we just do a plain conversion here.
-    rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
-        op, tf_strided_slice_op.output().getType(), tf_strided_slice_op.input(),
-        tf_strided_slice_op.begin(), tf_strided_slice_op.end(),
-        tf_strided_slice_op.strides(),
-        rewriter.getI32IntegerAttr(
-            tf_strided_slice_op.begin_mask().getSExtValue()),
-        rewriter.getI32IntegerAttr(
-            tf_strided_slice_op.end_mask().getSExtValue()),
-        rewriter.getI32IntegerAttr(
-            tf_strided_slice_op.ellipsis_mask().getSExtValue()),
-        rewriter.getI32IntegerAttr(
-            tf_strided_slice_op.new_axis_mask().getSExtValue()),
-        rewriter.getI32IntegerAttr(
-            tf_strided_slice_op.shrink_axis_mask().getSExtValue()));
-    return matchSuccess();
-  }
-
-  int num_input_dims = ranked_input_type.getRank();
-  // Pad `begin` array with zero values and update the `begin_mask`.
-  SmallVector<int32_t, 8> begin_pad_val(num_input_dims, 0);
-  int begin_mask = tf_strided_slice_op.begin_mask().getSExtValue();
-  Value padded_begin = PadStridedSliceAttributeArray(
-      op, rewriter, tf_strided_slice_op.begin(), begin_pad_val, &begin_mask);
-  // Pad `end` array with `input_shape` and update the `end_mask`.
-  int end_mask = tf_strided_slice_op.end_mask().getSExtValue();
-  auto input_shape = ranked_input_type.getShape();
-  SmallVector<int32_t, 8> end_pad_val(input_shape.begin(), input_shape.end());
-  Value padded_end = PadStridedSliceAttributeArray(
-      op, rewriter, tf_strided_slice_op.end(), end_pad_val, &end_mask);
-  // Pad `strides` array with ones.
-  SmallVector<int32_t, 8> strides_pad_val(num_input_dims, 1);
-  Value padded_strides = PadStridedSliceAttributeArray(
-      op, rewriter, tf_strided_slice_op.strides(), strides_pad_val, nullptr);
-  rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
-      op, tf_strided_slice_op.output().getType(), tf_strided_slice_op.input(),
-      padded_begin, padded_end, padded_strides,
-      rewriter.getI32IntegerAttr(begin_mask),
-      rewriter.getI32IntegerAttr(end_mask),
-      rewriter.getI32IntegerAttr(
-          tf_strided_slice_op.ellipsis_mask().getSExtValue()),
-      rewriter.getI32IntegerAttr(
-          tf_strided_slice_op.new_axis_mask().getSExtValue()),
-      rewriter.getI32IntegerAttr(
-          tf_strided_slice_op.shrink_axis_mask().getSExtValue()));
-  return matchSuccess();
-}
-
-PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
+LogicalResult ConvertTFUnpackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_unpack_op = cast<TF::UnpackOp>(op);
 
   auto input = tf_unpack_op.value();
-  auto output_types = functional::map([](Value v) { return v.getType(); },
-                                      tf_unpack_op.output());
   auto num = rewriter.getI32IntegerAttr(tf_unpack_op.num());
   // Axis can be negative.
-  auto axis = rewriter.getI32IntegerAttr(tf_unpack_op.axis().getSExtValue());
+  auto axis = rewriter.getI32IntegerAttr(tf_unpack_op.axis());
 
-  rewriter.replaceOpWithNewOp<UnpackOp>(op, output_types, input, num, axis);
-  return matchSuccess();
+  rewriter.replaceOpWithNewOp<UnpackOp>(op, tf_unpack_op.output().getTypes(),
+                                        input, num, axis);
+  return success();
+}
+
+LogicalResult ConvertTFConv3DOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  if (!TFDataFormatIsNDHWC(op)) return failure();
+
+  auto tf_op = cast<TF::Conv3DOp>(op);
+
+  IntegerAttr stride_depth, stride_height, stride_width;
+  if (!TFIntListIs1XYZ1(op, "strides", &stride_depth, &stride_height,
+                        &stride_width))
+    return failure();
+
+  IntegerAttr dilation_depth_factor, dilation_height_factor,
+      dilation_width_factor;
+  if (!TFIntListIs1XYZ1(op, "dilations", &dilation_depth_factor,
+                        &dilation_height_factor, &dilation_width_factor)) {
+    // If the 'dilations' attribute is missing, we use the default value (1)
+    // for all dilation depth, height and width factor.
+    dilation_depth_factor = rewriter.getI32IntegerAttr(1);
+    dilation_height_factor = rewriter.getI32IntegerAttr(1);
+    dilation_width_factor = rewriter.getI32IntegerAttr(1);
+  }
+
+  StringAttr padding;
+  if (!TFPaddingIsSameOrValid(op, &padding)) return failure();
+
+  // TensorFlow Conv3D has no bias, optimization patterns will fuse Conv3D
+  // with other ops can fill the bias.
+  Value none = rewriter.create<mlir::ConstantOp>(
+      op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+
+  rewriter.replaceOpWithNewOp<TFL::Conv3DOp>(
+      op, tf_op.getType(), tf_op.input(), tf_op.filter(),
+      /*bias=*/none, dilation_depth_factor, dilation_height_factor,
+      dilation_width_factor,
+      /*fused_activation_function=*/rewriter.getStringAttr("NONE"), padding,
+      stride_depth, stride_height, stride_width);
+
+  return success();
 }
 
 // MatrixDiagV3 is MatrixDiagV2 with an alignment attribute. This attribute
@@ -387,7 +420,7 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
   if (!matchPattern(tf_matrix_diag_v2_or_v3_op.padding_value(),
                     m_Constant(&padding_value)))
     return false;
-  for (auto value : padding_value.getValues<APInt>()) {
+  for (const auto& value : padding_value.getValues<APInt>()) {
     if (value != 0) return false;
   }
 
@@ -395,145 +428,412 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
   return true;
 }
 
-PatternMatchResult ConvertTFMatrixDiagV2Op::matchAndRewrite(
+LogicalResult ConvertTFMatrixDiagV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   if (ConvertTFMatrixDiagV2orV3<TF::MatrixDiagV2Op>(op, &rewriter))
-    return matchSuccess();
-  return matchFailure();
+    return success();
+  return failure();
 }
 
-PatternMatchResult ConvertTFMatrixDiagV3Op::matchAndRewrite(
+LogicalResult ConvertTFMatrixDiagV3Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   if (ConvertTFMatrixDiagV2orV3<TF::MatrixDiagV3Op>(op, &rewriter))
-    return matchSuccess();
-  return matchFailure();
+    return success();
+  return failure();
 }
 
 // TF Lite doesn't support Assert, we just drop the assert from the graph.
-PatternMatchResult ConvertTFAssertOp::matchAndRewrite(
+LogicalResult ConvertTFAssertOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  op->dropAllReferences();
-  op->erase();
-  return matchSuccess();
+  rewriter.eraseOp(op);
+  return success();
 }
 
-StatusOr<ConstantOp> CreateConstOpWithSingleValue(PatternRewriter* rewriter,
-                                                  Location loc,
-                                                  ShapedType shaped_type,
-                                                  int value) {
-  Type element_type = shaped_type.getElementType();
-  ShapedType ranked_tensor_type = RankedTensorType::get({1}, element_type);
-  Type type = ranked_tensor_type;
-  Attribute attr;
-  switch (element_type.getKind()) {
-    case mlir::StandardTypes::F16: {
-      auto floatType = mlir::FloatType::getF16(element_type.getContext());
-      auto floatAttr =
-          mlir::FloatAttr::get(floatType, static_cast<float>(value));
-      std::vector<Attribute> floatValues({floatAttr});
-      attr = DenseElementsAttr::get(ranked_tensor_type, floatValues);
-      break;
-    }
-    case mlir::StandardTypes::F32: {
-      attr = DenseElementsAttr::get<float>(ranked_tensor_type,
-                                           static_cast<float>(value));
-      break;
-    }
-    case mlir::StandardTypes::Complex: {
-      auto etype = element_type.cast<mlir::ComplexType>().getElementType();
-      if (etype.isF32()) {
-        auto dialect = etype.getContext()->getRegisteredDialect("tf");
-        tensorflow::TensorProto repr;
-        repr.set_dtype(tensorflow::DT_COMPLEX64);
+// Legalize unidirectional sequence lstm.
+struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
+  explicit LegalizeUnidirectionalSequenceLstm(MLIRContext* context)
+      : RewritePattern(kUnidirectionalSequenceLstm, 1, context) {}
 
-        tensorflow::TensorShapeProto* shape = repr.mutable_tensor_shape();
-        shape->set_unknown_rank(false);
-        shape->add_dim()->set_size(int64_t{1});
-        std::string content;
-        auto complex_value =
-            std::complex<float>(static_cast<float>(value), 0.0f);
-        content.assign(reinterpret_cast<const char*>(&complex_value),
-                       sizeof(complex_value));
-        repr.set_tensor_content(content);
-        std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
+    auto tflite_indices_attr =
+        op->getAttrOfType<ArrayAttr>(kTfLiteInputIndices);
+    if (!tflite_indices_attr) return failure();
 
-        attr =
-            mlir::OpaqueElementsAttr::get(dialect, ranked_tensor_type, mangled);
-        break;
-      }
-      return Status(tensorflow::error::INVALID_ARGUMENT, "Unsupported type");
+    SmallVector<int64_t, 20> tflite_indices;
+    for (auto index_attr : tflite_indices_attr.getValue()) {
+      IntegerAttr index = index_attr.cast<IntegerAttr>();
+      tflite_indices.push_back(index.getInt());
     }
-    case mlir::StandardTypes::Integer: {
-      const auto& itype = element_type.cast<mlir::IntegerType>();
-      switch (itype.getWidth()) {
-        case 8:
-          attr = DenseElementsAttr::get<int8_t>(ranked_tensor_type,
-                                                static_cast<int8_t>(value));
-          break;
-        case 16:
-          attr = DenseElementsAttr::get<int16_t>(ranked_tensor_type,
-                                                 static_cast<int16_t>(value));
-          break;
-        case 32:
-          attr = DenseElementsAttr::get<int32_t>(ranked_tensor_type,
-                                                 static_cast<int32_t>(value));
-          break;
-        case 64:
-          attr = DenseElementsAttr::get<int64_t>(ranked_tensor_type,
-                                                 static_cast<int64_t>(value));
-          break;
-        default:
-          return Status(tensorflow::error::INVALID_ARGUMENT,
-                        "Unsupported type");
+
+    // Optional input placeholder.
+    Value none = rewriter.create<mlir::ConstantOp>(
+        op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+
+    // Populate inputs.
+    // UnidirectionalSequenceLstm is expected to have 24 inputs.
+    SmallVector<Value, 24> inputs;
+    int count = 0;
+    int total_ophint_converted_inputs = tflite_indices.size();
+    for (int i = 0; i < 24; ++i) {
+      if (count < total_ophint_converted_inputs && tflite_indices[count] == i) {
+        // specified input.
+        inputs.push_back(op->getOperand(i));
+        count++;
+      } else {
+        // Non specified input.
+        inputs.push_back(none);
       }
-      break;
     }
-    default:
-      return Status(tensorflow::error::INVALID_ARGUMENT, "Unsupported type");
+
+    // Populate outputs.
+    // UnidirectionalSequenceLstm should only have 1 output, and that is the
+    // original ophint converted node's 3rd output.
+    SmallVector<Type, 4> result_types;
+    result_types.push_back(op->getOpResult(2).getType());
+
+    // Populate attributes.
+    SmallVector<NamedAttribute, 4> attributes;
+    // Activation will always be tanh.
+    attributes.push_back(rewriter.getNamedAttr("fused_activation_function",
+                                               rewriter.getStringAttr("TANH")));
+    // cell_clip.
+    attributes.push_back(
+        rewriter.getNamedAttr("cell_clip", rewriter.getF32FloatAttr(0.0)));
+    // proj_clip.
+    attributes.push_back(
+        rewriter.getNamedAttr("proj_clip", rewriter.getF32FloatAttr(0.0)));
+    // will always be time_majored.
+    attributes.push_back(
+        rewriter.getNamedAttr("time_major", rewriter.getBoolAttr(true)));
+
+    Value lstm_result = rewriter.create<TFL::UnidirectionalSequenceLSTMOp>(
+        op->getLoc(), result_types, inputs, attributes);
+
+    // Rewire the output.
+    rewriter.replaceOp(op, {nullptr, nullptr, lstm_result});
+    return success();
   }
-  return rewriter->create<ConstantOp>(loc, type, attr);
+};
+
+// Legalize unidirectional seqeucen rnn.
+struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
+  explicit LegalizeUnidirectionalSequenceRnn(MLIRContext* context)
+      : RewritePattern(kUnidirectionalSequenceRnn, 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
+    auto tflite_indices_attr =
+        op->getAttrOfType<ArrayAttr>(kTfLiteInputIndices);
+    if (!tflite_indices_attr) return failure();
+
+    if (op->getNumOperands() != 5) {
+      op->emitError()
+          << "We're expecting 5 inputs for UnidirectionalSequenceRNN, only "
+          << op->getNumOperands() << " provided";
+      return failure();
+    }
+
+    if (op->getNumResults() != 2) {
+      op->emitError()
+          << "We're expecting 2 inputs for UnidirectionalSequenceRNN, only "
+          << op->getNumResults() << " found";
+      return failure();
+    }
+
+    // Populate inputs.
+    // UnidirectionalSequenceRnn is expected to have 5 inputs, and none of them
+    // are optional inputs.
+    SmallVector<Value, 5> inputs;
+    for (int i = 0; i < 5; ++i) {
+      inputs.push_back(op->getOperand(i));
+    }
+
+    // Populate outputs.
+    // UnidirectionalSequenceRnn should only have 1 output, and that is the
+    // original ophint converted node's 2nd output.
+    SmallVector<Type, 4> result_types;
+    result_types.push_back(op->getOpResult(1).getType());
+
+    // Populate attributes.
+    SmallVector<NamedAttribute, 2> attributes;
+    // Activation will always be tanh.
+    attributes.push_back(rewriter.getNamedAttr("fused_activation_function",
+                                               rewriter.getStringAttr("TANH")));
+
+    // will always be time_majored.
+    attributes.push_back(
+        rewriter.getNamedAttr("time_major", rewriter.getBoolAttr(true)));
+
+    Value rnn_result = rewriter.create<TFL::UnidirectionalSequenceRNNOp>(
+        op->getLoc(), result_types, inputs, attributes);
+
+    // Rewire the output.
+    rewriter.replaceOp(op, {nullptr, rnn_result});
+
+    return success();
+  }
+};
+
+// Put two TFL BroadcastTo ops in front of the given TF binary broadcast op to
+// to make binary broadcast-able op conversion always successful and does not
+// require flex delegate.
+template <typename SourceOp>
+class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
+ public:
+  using OpRewritePattern<SourceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SourceOp src_op,
+                                PatternRewriter& rewriter) const override {
+    Operation* op = static_cast<Operation*>(src_op);
+    auto lhs = op->getOperand(0);
+    auto rhs = op->getOperand(1);
+
+    // Should have static shapes to calculate the broadcasted shape.
+    if (!lhs.getType().cast<ShapedType>().hasStaticShape() ||
+        !rhs.getType().cast<ShapedType>().hasStaticShape()) {
+      return failure();
+    }
+
+    auto lhs_shape = lhs.getType().cast<ShapedType>().getShape();
+    auto rhs_shape = rhs.getType().cast<ShapedType>().getShape();
+
+    if (lhs_shape == rhs_shape) {
+      return failure();
+    }
+
+    // Calculate the broadcasted shape.
+    SmallVector<int64_t, 4> result_shape;
+    if (!OpTrait::util::getBroadcastedShape(lhs_shape, rhs_shape,
+                                            result_shape)) {
+      return failure();
+    }
+
+    RankedTensorType result_type = RankedTensorType::get(
+        result_shape, getElementTypeOrSelf(op->getResult(0).getType()));
+
+    // Create a const op, that stores the above broadcasted shape.
+    auto new_shape_attr = mlir::DenseIntElementsAttr::get(
+        RankedTensorType::get(result_shape.size(), rewriter.getIntegerType(64)),
+        result_shape);
+    auto new_shape = rewriter.create<TF::ConstOp>(op->getLoc(), new_shape_attr);
+
+    // Apply BroadcastTo ops to each input.
+    auto broadcast_type = RankedTensorType::get(
+        result_shape, getElementTypeOrSelf(lhs.getType()));
+
+    if (result_type.getShape() != lhs_shape) {
+      lhs = rewriter
+                .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
+                                           new_shape)
+                .output();
+    }
+    if (result_type.getShape() != rhs_shape) {
+      rhs = rewriter
+                .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
+                                           new_shape)
+                .output();
+    }
+
+    // Recreate an op with the above Broadcast op results.
+    rewriter.replaceOpWithNewOp<SourceOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+// This specialization is for TF SelectV2 op. SelectV2 op have three inputs and
+// they should have broadcastable shapes.
+template <>
+class ApplyExplicitBroadcasting<TF::SelectV2Op>
+    : public OpRewritePattern<TF::SelectV2Op> {
+ public:
+  using OpRewritePattern<TF::SelectV2Op>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::SelectV2Op src_op,
+                                PatternRewriter& rewriter) const override {
+    Operation* op = static_cast<Operation*>(src_op);
+    auto cond = op->getOperand(0);
+    auto lhs = op->getOperand(1);
+    auto rhs = op->getOperand(2);
+
+    // Should have static shapes to calculate the broadcasted shape.
+    if (!lhs.getType().cast<ShapedType>().hasStaticShape() ||
+        !rhs.getType().cast<ShapedType>().hasStaticShape() ||
+        !cond.getType().cast<ShapedType>().hasStaticShape()) {
+      return failure();
+    }
+
+    auto lhs_shape = lhs.getType().cast<ShapedType>().getShape();
+    auto rhs_shape = rhs.getType().cast<ShapedType>().getShape();
+    auto cond_shape = cond.getType().cast<ShapedType>().getShape();
+
+    if (lhs_shape == rhs_shape && cond_shape == lhs_shape) {
+      return failure();
+    }
+
+    // Calculate the broadcasted shape.
+    SmallVector<int64_t, 4> broadcasted_shape;
+    if (!OpTrait::util::getBroadcastedShape(lhs_shape, rhs_shape,
+                                            broadcasted_shape)) {
+      return failure();
+    }
+
+    SmallVector<int64_t, 4> result_shape;
+    if (!OpTrait::util::getBroadcastedShape(broadcasted_shape, cond_shape,
+                                            result_shape)) {
+      return failure();
+    }
+
+    // Create a const op, that stores the above broadcasted shape.
+    auto shape_type =
+        RankedTensorType::get(result_shape.size(), rewriter.getIntegerType(64));
+    auto new_shape_attr =
+        mlir::DenseIntElementsAttr::get(shape_type, result_shape);
+    auto new_shape = rewriter.create<TF::ConstOp>(op->getLoc(), new_shape_attr);
+
+    // Apply BroadcastTo ops to each input.
+    auto cond_result_type =
+        RankedTensorType::get(result_shape, rewriter.getIntegerType(1));
+    auto result_type = RankedTensorType::get(
+        result_shape, getElementTypeOrSelf(lhs.getType()));
+
+    if (result_shape != cond_shape) {
+      cond = rewriter
+                 .create<TF::BroadcastToOp>(op->getLoc(), cond_result_type,
+                                            cond, new_shape)
+                 .output();
+    }
+    if (result_shape != lhs_shape) {
+      lhs = rewriter
+                .create<TF::BroadcastToOp>(op->getLoc(), result_type, lhs,
+                                           new_shape)
+                .output();
+    }
+    if (result_shape != rhs_shape) {
+      rhs = rewriter
+                .create<TF::BroadcastToOp>(op->getLoc(), result_type, rhs,
+                                           new_shape)
+                .output();
+    }
+
+    // Recreate an op with the above Broadcast op results.
+    rewriter.replaceOpWithNewOp<TF::SelectV2Op>(op, result_type, cond, lhs,
+                                                rhs);
+    return success();
+  }
+};
+
+void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
+  // Add TF->TF lowering patterns.
+  TF::PopulateLoweringTFPatterns(context, &patterns);
+
+  // Add the generated patterns to the list.
+  populateWithGenerated(context, patterns);
+  patterns
+      .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
+              ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
+              ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFAssertOp,
+              ConvertTFRandomUniformOp, ConvertTFConv3DOp>(context);
+
+  // Ophint python converter converted tf node pattern.
+  patterns.insert<LegalizeUnidirectionalSequenceLstm,
+                  LegalizeUnidirectionalSequenceRnn>(context);
 }
 
-PatternMatchResult ConvertTFReciprocalOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_reciprocal_op = cast<TF::ReciprocalOp>(op);
-
-  auto status_or_const_op = CreateConstOpWithSingleValue(
-      &rewriter, op->getLoc(),
-      tf_reciprocal_op.x().getType().cast<ShapedType>(), 1);
-  if (!status_or_const_op.ok()) {
-    return matchFailure();
+void applyPatterns(FuncOp func, ConversionTarget& target,
+                   FrozenRewritePatternList& frozenPatterns) {
+  // Keep trying to convert.
+  // TODO(karimnosseir): This is similar to what apply greedy patterns does.
+  // Look if there is a function that tries until it converge.
+  // Currently unit-test doesn't do multiple tries, so we need this.
+  const int max_iterations = 15;
+  for (int i = 0; i < max_iterations; ++i) {
+    if (failed(applyPartialConversion(func, target, frozenPatterns))) {
+      return;
+    }
   }
-
-  StringAttr fused_activation_function =
-      StringAttr::get("NONE", rewriter.getContext());
-
-  rewriter.replaceOpWithNewOp<TFL::DivOp>(op, status_or_const_op.ValueOrDie(),
-                                          tf_reciprocal_op.x(),
-                                          fused_activation_function);
-  return matchSuccess();
 }
 
 void LegalizeTF::runOnFunction() {
-  OwningRewritePatternList patterns;
-  auto* ctx = &getContext();
+  auto* context = &getContext();
   auto func = getFunction();
 
-  // Add the generated patterns to the list.
-  populateWithGenerated(ctx, &patterns);
-  patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
-                  ConvertTFMatrixDiagV2Op, ConvertTFMatrixDiagV3Op,
-                  ConvertTFPackOp, ConvertTFReshapeOp, ConvertTFSplitOp,
-                  ConvertTFSplitVOp, ConvertTFStridedSliceOp, ConvertTFUnpackOp,
-                  ConvertTFAssertOp, ConvertTFReciprocalOp>(ctx);
-  applyPatternsGreedily(func, patterns);
+  ConversionTarget target(*context);
+  // It is legal to have TF ops in the graph still which can be
+  // used later or in the case of SELECT were we allow TF ops in the final
+  // graph.
+  target.addLegalOp<mlir::ConstantOp>();
+  target.addLegalOp<ConstOp>();
+  if (run_tfl_runtime_verification_) {
+    target.addDynamicallyLegalDialect<TensorFlowLiteDialect>(
+        Optional<ConversionTarget::DynamicLegalityCallbackFn>(
+            [](Operation* op) {
+              auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
+              if (!tfl_op) return false;
+              return succeeded(tfl_op.VerifyTflRuntimeConstraints(op));
+            }));
+  } else {
+    target.addLegalDialect<TensorFlowLiteDialect>();
+  }
+
+  // Ignore transient errors by registering an no-op handler.
+  // Applying legalization patterns will emit unwanted, transient errors when
+  // the replaced TFLite ops do not meet the sanity checks. In order to ignore
+  // the transient errors, the following lines override a diagnostic handler
+  // with an no-op handler only while this pass runs.
+  uint64_t current_thread_id = llvm::get_threadid();
+  ScopedDiagnosticHandler scoped_diag_handler(
+      context, [&current_thread_id](Diagnostic&) -> LogicalResult {
+        // Consume only errors that are coming from the same thread in order not
+        // to ignore errors from other passes that are running. Things running
+        // in the pass manager can be multi-threaded.
+        return success(current_thread_id == llvm::get_threadid());
+      });
+
+  OwningRewritePatternList stage1Patterns;
+
+  addPatterns(context, stage1Patterns);
+
+  FrozenRewritePatternList stage1FrozenPatterns(std::move(stage1Patterns));
+  applyPatterns(func, target, stage1FrozenPatterns);
+
+  // Explict BroadcastTo addition for left-over broadcast-able ops.
+  // The following pattern matchings should be done after the other legalization
+  // rules in order not to add unnecessary BroadcastTo ops.
+  OwningRewritePatternList stage2Patterns;
+
+  addPatterns(context, stage2Patterns);
+
+  stage2Patterns.insert<ApplyExplicitBroadcasting<TF::LessEqualOp>,
+                        ApplyExplicitBroadcasting<TF::GreaterEqualOp>,
+                        ApplyExplicitBroadcasting<TF::NotEqualOp>,
+                        ApplyExplicitBroadcasting<TF::GreaterOp>,
+                        ApplyExplicitBroadcasting<TF::LessOp>,
+                        ApplyExplicitBroadcasting<TF::EqualOp>,
+                        ApplyExplicitBroadcasting<TF::AddOp>,
+                        ApplyExplicitBroadcasting<TF::AddV2Op>,
+                        ApplyExplicitBroadcasting<TF::MulOp>,
+                        ApplyExplicitBroadcasting<TF::DivOp>,
+                        ApplyExplicitBroadcasting<TF::RealDivOp>,
+                        ApplyExplicitBroadcasting<TF::SubOp>,
+                        ApplyExplicitBroadcasting<TF::FloorDivOp>,
+                        ApplyExplicitBroadcasting<TF::FloorModOp>,
+                        ApplyExplicitBroadcasting<TF::PowOp>,
+                        ApplyExplicitBroadcasting<TF::MaximumOp>,
+                        ApplyExplicitBroadcasting<TF::MinimumOp>,
+                        ApplyExplicitBroadcasting<TF::SquaredDifferenceOp>,
+                        ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
+
+  FrozenRewritePatternList stage2FrozenPatterns(std::move(stage2Patterns));
+  applyPatterns(func, target, stage2FrozenPatterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFPass() {
-  return std::make_unique<LegalizeTF>();
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
+    bool run_tfl_runtime_verification) {
+  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification);
 }
 
 static PassRegistration<LegalizeTF> pass(

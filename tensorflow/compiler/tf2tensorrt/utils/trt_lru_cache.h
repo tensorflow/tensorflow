@@ -22,8 +22,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -114,21 +116,50 @@ class LRUCache {
   }
 };
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 struct EngineContext {
   EngineContext() {}  // Creates an empty context.
-  EngineContext(
-      TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-      TrtUniquePtrType<nvinfer1::IExecutionContext>&& input_execution_context)
+  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
+                ExecutionContext&& input_execution_context)
+      : cuda_engine(std::move(input_cuda_engine)) {
+    execution_context.push_back(std::move(input_execution_context));
+  }
+  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
+                std::vector<ExecutionContext>&& input_execution_context)
       : cuda_engine(std::move(input_cuda_engine)),
         execution_context(std::move(input_execution_context)) {}
 
   mutex mu;
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
-  TrtUniquePtrType<nvinfer1::IExecutionContext> execution_context
-      GUARDED_BY(mu);
+
+  Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+    if (idx >= execution_context.size()) {
+      return errors::Internal("Requested engine context with index ", idx,
+                              ", but only ", execution_context.size(),
+                              "contexts are present.");
+    }
+    *exec_ctx = execution_context[idx];
+    return Status::OK();
+  }
+
+  // In explicit batch mode, we maintain a vector of contexts for each engine,
+  // where each context is created for a specific profile. This is because it is
+  // either not possible or non-trivial to change the profile of a context for
+  // the following reasons:
+  // - In TRT 6 it is not possible to switch a profile after it is set
+  //   https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-601/tensorrt-api/c_api/classnvinfer1_1_1_i_execution_context.html#aba0731b9fbc926c477010df818650b0a
+  // - To switch profiles (from TRT 7), one must first ensure that all inference
+  //   calls in that context are finished. This would require an additional
+  //   synchronization before we call setOptimizationProfile. To avoid this
+  //   extra sync call, we mantain separate execution context for each profile.
+  // IExecutionContext object is not thread safe: only one thread should use it
+  // for inference at a time therefore we need a mutex. More details at
+  // https://docs.nvidia.com/deeplearning/sdk/tensorrt-best-practices/index.html#thread-safety
+  // Additional discussion about execution context management and thread safety
+  // at https://github.com/tensorflow/tensorflow/issues/36959
+  std::vector<ExecutionContext> execution_context TF_GUARDED_BY(mu);
 };
 
 // Contains the context required to build the calibration data.
@@ -150,8 +181,8 @@ class CalibrationContext {
 
  private:
   mutex mu_;
-  bool terminated_ GUARDED_BY(mu_) = false;
-  std::string calibration_table_ GUARDED_BY(mu_);
+  bool terminated_ TF_GUARDED_BY(mu_) = false;
+  std::string calibration_table_ TF_GUARDED_BY(mu_);
 };
 
 ABSL_CONST_INIT extern const absl::string_view kTfTrtContainerName;
@@ -171,6 +202,16 @@ class TRTEngineCacheResource : public ResourceBase {
 
   string DebugString() const override;
 
+  // Returns the EngineContext that is compatible with input_shapes.
+  // Returns nullptr if no compatible EngineContexts is found in cache.
+  EngineContext* GetEngineContext(const std::vector<TensorShape>& input_shapes);
+
+  // Returns the EngineContext that is compatible with profile_id.
+  // This function should be only called in explicit batch mode where
+  // cache size is expected to be at most one.
+  // Returns nullptr if no compatible EngineContexts is found in cache.
+  EngineContext* GetEngineContext(const int profile_id);
+
   // Keep device allocator for TRT.
   std::unique_ptr<TRTBaseAllocator> allocator_;
 
@@ -182,10 +223,14 @@ class TRTEngineCacheResource : public ResourceBase {
   // TODO(hinsu): Use different calibration context for the available shapes and
   // attach it to each item of the cache.
   std::unique_ptr<CalibrationContext> calib_ctx_;
+
+  // This object maintains all the optimization profiles during profile
+  // generation and engine build. During runtime the list of profiles is used to
+  // look up a matching profile for the input data.
+  TrtShapeOptimizationProfile profiles_;
 };
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 }  // namespace tensorrt
 }  // namespace tensorflow

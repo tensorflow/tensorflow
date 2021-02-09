@@ -79,7 +79,7 @@ class PartialRunMgr {
   mutex mu_;
 
   std::unordered_map<int, std::unique_ptr<PartialRunState>>
-      step_id_to_partial_run_ GUARDED_BY(mu_);
+      step_id_to_partial_run_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

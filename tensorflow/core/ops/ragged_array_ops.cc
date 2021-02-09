@@ -41,6 +41,79 @@ REGISTER_OP("RaggedGather")
     .Attr("OUTPUT_RAGGED_RANK: int >= 0")
     .SetShapeFn(RaggedGatherShapeFn);
 
+REGISTER_OP("RaggedCross")
+    .Input("ragged_values: ragged_values_types")
+    .Input("ragged_row_splits: ragged_splits_types")
+    .Input("sparse_indices: Nsparse * int64")
+    .Input("sparse_values: sparse_values_types")
+    .Input("sparse_shape: Nsparse * int64")
+    .Input("dense_inputs: dense_types")
+    .Output("output_values: out_values_type")
+    .Output("output_row_splits: out_row_splits_type")
+    .Attr("Nsparse: int >= 0")
+    .Attr("input_order: string")
+    .Attr("hashed_output: bool")
+    .Attr("num_buckets: int >= 0")
+    .Attr("hash_key: int")
+    .Attr("ragged_values_types: list({int64, string}) >= 0")
+    .Attr("ragged_splits_types: list({int32, int64}) >= 0")
+    .Attr("sparse_values_types: list({int64, string}) >= 0")
+    .Attr("dense_types: list({int64, string}) >= 0")
+    .Attr("out_values_type: {int64, string}")
+    .Attr("out_row_splits_type: {int32, int64}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<DataType> ragged_values_types;
+      std::vector<DataType> ragged_splits_types;
+      std::vector<DataType> dense_types;
+
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("ragged_values_types", &ragged_values_types));
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("ragged_splits_types", &ragged_splits_types));
+      TF_RETURN_IF_ERROR(c->GetAttr("dense_types", &dense_types));
+
+      int num_ragged = ragged_values_types.size();
+      if (num_ragged != ragged_splits_types.size()) {
+        return errors::InvalidArgument(
+            "Parameters `values` and `row_splits` must be the same length");
+      }
+
+      int num_sparse;
+      TF_RETURN_IF_ERROR(c->GetAttr("Nsparse", &num_sparse));
+
+      ShapeHandle out_values = c->UnknownShapeOfRank(1);
+      ShapeHandle out_splits = c->UnknownShapeOfRank(1);
+
+      // Merge the shapes of row_splits from ragged inputs.  (This is one plus
+      // the batch size.)
+      int ragged_splits_start = num_ragged;
+      for (int i = 0; i < ragged_splits_types.size(); ++i) {
+        ShapeHandle row_splits = c->input(i + ragged_splits_start);
+        if (!c->Merge(out_splits, row_splits, &out_splits).ok()) {
+          return errors::InvalidArgument(
+              "inputs must all have the same batch dimension size.");
+        }
+      }
+
+      // Merge the batch size of each dense input into out_splits.
+      int dense_start = num_ragged * 2 + num_sparse * 3;
+      for (int i = 0; i < dense_types.size(); ++i) {
+        ShapeHandle dense_input = c->input(i + dense_start);
+        int64 batch_size = c->Value(c->Dim(dense_input, 0));
+        if (batch_size != InferenceContext::kUnknownDim) {
+          ShapeHandle row_splits = c->Vector(batch_size + 1);
+          if (!c->Merge(out_splits, row_splits, &out_splits).ok()) {
+            return errors::InvalidArgument(
+                "inputs must all have the same batch dimension size.");
+          }
+        }
+      }
+
+      c->set_output(0, out_values);
+      c->set_output(1, out_splits);
+      return Status::OK();
+    });
+
 //==============================================================================
 // Shape Functions
 //==============================================================================

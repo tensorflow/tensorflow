@@ -6,7 +6,14 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "genrule")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -52,15 +59,25 @@ cc_library(
     name = "test_macros_header",
     testonly = True,
     hdrs = ["test_macros.h"],
-    deps = [
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 # Generate a test_macros_${BACKEND} library per backend with the proper copts.
 generate_backend_test_macros()
+
+cc_library(
+    name = "manifest_checking_test",
+    testonly = True,
+    srcs = ["manifest_checking_test.cc"],
+    hdrs = ["manifest_checking_test.h"],
+    deps = [
+        ":test_macros_header",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:regexp",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
 
 cc_library(
     name = "test_utils",
@@ -136,6 +153,7 @@ cc_library(
     hdrs = ["hlo_test_base.h"],
     deps = [
         ":literal_test_util",
+        ":manifest_checking_test",
         ":test_utils",
         ":verified_hlo_module",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -153,8 +171,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:interpreter_plugin",  # reference backend
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
@@ -175,7 +193,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -193,6 +211,7 @@ cc_library(
     srcs = ["client_library_test_base.cc"],
     hdrs = ["client_library_test_base.h"],
     deps = [
+        ":manifest_checking_test",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
@@ -214,8 +233,8 @@ cc_library(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -262,6 +281,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -272,6 +292,7 @@ cc_library(
     hdrs = ["local_client_test_base.h"],
     deps = [
         ":client_library_test_base",
+        ":manifest_checking_test",
         ":verified_hlo_module",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -291,7 +312,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
@@ -325,6 +346,7 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
+        ":verified_hlo_module",
         ":xla_internal_test_main",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:status_macros",
@@ -365,12 +387,7 @@ xla_test(
     name = "conv_depthwise_backprop_filter_test",
     timeout = "long",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
-    # these backends do not natively handle batch group counts.
-    blacklisted_backends = [
-        "gpu",
-        "cpu",
-    ],
-    shard_count = 6,
+    shard_count = 40,
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:execution_options_util",
@@ -390,22 +407,24 @@ xla_test(
     name = "grouped_convolution_test",
     timeout = "long",
     srcs = ["grouped_convolution_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # disabled because it times out.
         "cpu",
     ],
     shard_count = 50,
     deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
         ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:despecializer",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -452,7 +471,10 @@ xla_test(
     name = "while_test",
     srcs = ["while_test.cc"],
     deps = [
+        ":client_library_test_base",
+        ":literal_test_util",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -464,9 +486,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
@@ -475,12 +494,14 @@ xla_test(
 xla_test(
     name = "xla_hlo_profile_test",
     srcs = ["xla_hlo_profile_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # Hlo profiles are not supported on the interpreter backend.
         "interpreter",
     ],
     deps = [
+        ":client_library_test_base",
         ":test_macros_header",
+        ":test_utils",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -489,11 +510,9 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:stream_pool",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -538,8 +557,8 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
 )
 
@@ -607,7 +626,6 @@ xla_test(
     name = "conditional_test",
     srcs = ["conditional_test.cc"],
     shard_count = 2,
-    tags = ["no_rocm"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -646,7 +664,6 @@ xla_test(
     name = "scalar_computations_test",
     srcs = ["scalar_computations_test.cc"],
     shard_count = 32,
-    tags = ["no_rocm"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",
@@ -740,9 +757,8 @@ cc_library(
     name = "exhaustive_op_test_utils",
     testonly = True,
     srcs = ["exhaustive_op_test_utils.cc"],
-    hdrs = [
-        "exhaustive_op_test_utils.h",
-    ],
+    hdrs = ["exhaustive_op_test_utils.h"],
+    tags = ["no_pip"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -752,6 +768,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -777,14 +794,14 @@ cc_library(
 
 xla_test(
     name = "exhaustive_unary_test_f32_or_smaller",
-    srcs = ["exhaustive_unary_test.cc"],
-    copts = ["-DUNARY_TEST_TARGET_F32_OR_SMALLER"],
+    srcs = ["exhaustive_unary_test_f32_or_smaller.cc"],
     real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
     ],
     deps = [
         ":client_library_test_base",
@@ -795,18 +812,19 @@ xla_test(
 
 xla_test(
     name = "exhaustive_unary_test_f64",
-    srcs = ["exhaustive_unary_test.cc"],
+    srcs = ["exhaustive_unary_test_f64.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DUNARY_TEST_TARGET_F64"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
+        # TODO(b/151340488): Timed out on 2020-03-18.
+        "nozapfhahn",
     ],
     deps = [
         ":client_library_test_base",
@@ -817,18 +835,17 @@ xla_test(
 
 xla_test(
     name = "exhaustive_unary_test_complex",
-    srcs = ["exhaustive_unary_test.cc"],
+    srcs = ["exhaustive_unary_test_complex.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DUNARY_TEST_TARGET_COMPLEX"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
     ],
     deps = [
         ":client_library_test_base",
@@ -838,19 +855,18 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_binary_test_f16",
-    srcs = ["exhaustive_binary_test.cc"],
+    name = "exhaustive_binary_16_bit_test",
+    srcs = ["exhaustive_binary_16_bit_test.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DBINARY_TEST_TARGET_F16"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
     ],
     deps = [
         ":exhaustive_op_test_utils",
@@ -858,59 +874,18 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_binary_test_bf16",
-    srcs = ["exhaustive_binary_test.cc"],
+    name = "exhaustive_binary_test_f32_f64",
+    srcs = ["exhaustive_binary_test_f32_f64.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DBINARY_TEST_TARGET_BF16"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_test_f32",
-    srcs = ["exhaustive_binary_test.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    copts = ["-DBINARY_TEST_TARGET_F32"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_test_f64",
-    srcs = ["exhaustive_binary_test.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    copts = ["-DBINARY_TEST_TARGET_F64"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
+        "no_pip",
     ],
     deps = [
         ":exhaustive_op_test_utils",
@@ -946,11 +921,15 @@ xla_test(
     srcs = ["dot_operation_test.cc"],
     shard_count = 20,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
         ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:reference_util",
@@ -959,11 +938,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -980,11 +954,17 @@ xla_test(
     backends = ["gpu"],
     shard_count = 20,
     tags = [
-        "no_rocm",
         "optonly",
+        # TODO(b/151340488): Timed out on 2020-03-12.
+        "nozapfhahn",
     ],
     deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
         ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:reference_util",
@@ -993,11 +973,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -1012,11 +987,12 @@ xla_test(
         ":client_library_test_base",
         ":hlo_test_base",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -1044,11 +1020,15 @@ xla_test(
     },
     shard_count = 20,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
         ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:reference_util",
@@ -1057,11 +1037,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -1139,9 +1114,51 @@ xla_test(
     name = "convolution_test",
     timeout = "long",
     srcs = ["convolution_test.cc"],
-    shard_count = 40,
+    shard_count = 50,
+    tags = [
+        "optonly",
+        # Timed out on 2020-07-18
+        "nozapfhahn",
+    ],
+    deps = CONVOLUTION_TEST_DEPS + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "convolution_test_1d",
+    timeout = "long",
+    srcs = ["convolution_test_1d.cc"],
+    # Turn on logging so that VLOG statements don't appear uncovered to zapfhahn.
+    args = ["--vmodule=convolution_emitter=7"],
+    # In the open source build, convolution_test_1d_gpu fails because it doesn't
+    # recognize --vmodule.
+    disabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    shard_count = 50,
     tags = [
         "no_rocm",
+        "optonly",
+    ],
+    deps = CONVOLUTION_TEST_DEPS + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "convolution_test_1d_no_vmodule",
+    timeout = "long",
+    srcs = ["convolution_test_1d.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    shard_count = 50,
+    tags = [
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1171,13 +1188,42 @@ xla_test(
 )
 
 xla_test(
+    name = "convolution_test_1d_autotune_disabled",
+    timeout = "long",
+    srcs = ["convolution_test_1d.cc"],
+    args = ["--xla_gpu_autotune_level=0"],
+    backends = ["gpu"],
+    shard_count = 40,
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
+    deps = CONVOLUTION_TEST_DEPS + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
     name = "convolution_test_gpu_alternative_layout",
     timeout = "long",
     srcs = ["convolution_test.cc"],
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-    tags = ["no_rocm"],
+    deps = CONVOLUTION_TEST_DEPS + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "convolution_test_1d_gpu_alternative_layout",
+    timeout = "long",
+    srcs = ["convolution_test_1d.cc"],
+    backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
+    backends = ["gpu"],
+    shard_count = 25,
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1241,7 +1287,7 @@ xla_test(
 xla_test(
     name = "batch_normalization_test",
     srcs = ["batch_normalization_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # BatchNorm HLOs are not handled by the interpreter backend, and the
         # BatchNorm expander is not run on the interpreter.
         "interpreter",
@@ -1340,6 +1386,7 @@ xla_test(
 
 xla_test(
     name = "slice_test",
+    timeout = "long",
     srcs = ["slice_test.cc"],
     shard_count = 40,
     deps = [
@@ -1383,7 +1430,11 @@ xla_test(
     timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
     deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:test_helpers",
@@ -1395,12 +1446,9 @@ xla_test(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
@@ -1453,7 +1501,6 @@ xla_test(
     srcs = ["reduce_test.cc"],
     shard_count = 31,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -1533,7 +1580,7 @@ xla_test(
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
     tags = [
-        "no_rocm",
+        "nozapfhahn",
         "optonly",
     ],
     deps = [
@@ -1855,8 +1902,8 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
 )
 
@@ -1864,9 +1911,14 @@ xla_test(
     name = "concat_test",
     srcs = ["concat_test.cc"],
     deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
@@ -1874,9 +1926,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
 )
@@ -1894,8 +1943,8 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
     ],
@@ -1904,7 +1953,7 @@ xla_test(
 xla_test(
     name = "all_reduce_test",
     srcs = ["all_reduce_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # All reduce is not supported on the interpreter backend.
         "interpreter",
     ],
@@ -1924,8 +1973,8 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
 )
 
@@ -1933,19 +1982,21 @@ xla_test(
     name = "collective_ops_test",
     srcs = ["collective_ops_test.cc"],
     args = ["--xla_force_host_platform_device_count=4"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    tags = [
+    backend_tags = {
         # This test is tagged "manual" because it requires multiple GPUs, and
         # Forge only supports single-GPU tests.  Guitar skips "manual" tests
         # unless they're also tagged "guitar".
-        "guitar",
-        "manual",
-        "multi_gpu",
-        "no_oss",
-        "notap",
+        "gpu": [
+            "guitar",
+            "manual",
+            "multi_gpu",
+            "no_oss",
+            "notap",
+        ],
+    },
+    backends = [
+        "gpu",
+        "cpu",
     ],
     deps = [
         ":client_library_test_base",
@@ -1962,7 +2013,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_runner",
-        "//tensorflow/compiler/xla/service/gpu:nccl_all_reduce_thunk",
+        "//tensorflow/compiler/xla/service/gpu:nccl_test_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
@@ -1985,8 +2036,8 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
 )
 
@@ -2027,6 +2078,32 @@ xla_test(
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
+    name = "dynamism_inference_test",
+    srcs = ["dynamism_inference_test.cc"],
+    deps = [
+        ":literal_test_util",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:prng",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2080,7 +2157,7 @@ xla_test(
 xla_test(
     name = "execution_profile_test",
     srcs = ["execution_profile_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # Execution profiles are not supported on the interpreter backend.
         "interpreter",
     ],
@@ -2099,7 +2176,7 @@ xla_test(
     name = "execution_profile_test_with_xla_hlo_profile",
     srcs = ["execution_profile_test.cc"],
     args = ["--xla_hlo_profile"],
-    blacklisted_backends = [
+    disabled_backends = [
         # Hlo profiles are not supported on the interpreter backend.
         "interpreter",
     ],
@@ -2170,12 +2247,12 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -2205,7 +2282,11 @@ xla_test(
     name = "cpu_gpu_fusion_test",
     srcs = ["cpu_gpu_fusion_test.cc"],
     deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -2214,10 +2295,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -2295,7 +2372,11 @@ xla_test(
     shard_count = 30,
     tags = ["optonly"],
     deps = [
+        ":literal_test_util",
+        ":local_client_test_base",
         ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -2304,19 +2385,15 @@ xla_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:local_client_test_base",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
@@ -2324,7 +2401,7 @@ xla_test(
 xla_test(
     name = "outfeed_in_nested_computation_test",
     srcs = ["outfeed_in_nested_computation_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # Outfeed ops are not supported on the interpreter backend.
         "interpreter",
     ],
@@ -2438,8 +2515,8 @@ xla_test(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
@@ -2473,15 +2550,16 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:cpu_plugin",  # reference backend
         "//tensorflow/compiler/xla/service:gpu_plugin",  # test backend
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -2515,9 +2593,12 @@ xla_test(
     ],
     deps = [
         ":client_library_test_base",
+        ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2526,13 +2607,13 @@ tf_cc_test(
     srcs = ["multiple_devices_on_host_test.cc"],
     args = ["--xla_force_host_platform_device_count=4"],
     deps = [
+        ":xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "@com_google_absl//absl/synchronization",
@@ -2556,14 +2637,30 @@ xla_test(
 )
 
 xla_test(
+    name = "get_dimension_size_test",
+    srcs = ["get_dimension_size_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:test",
+    ],
+)
+
+xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
     tags = [
         "enable_for_xla_interpreter",
         "noasan",  # sometimes times out, http://b/78650012
+        "nomsan",  # sometimes times out, http://b/78650012
+        "notsan",  # sometimes times out, http://b/78650012
+        "optonly",
     ],
     deps = [
         ":test_macros_header",
+        "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:statusor",
@@ -2576,12 +2673,14 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
 xla_test(
     name = "cholesky_test",
     srcs = ["cholesky_test.cc"],
+    real_hardware_only = True,
     tags = [
         "no_rocm",
         "optonly",
@@ -2600,5 +2699,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:tensor_float_32_utils",
     ],
 )

@@ -29,10 +29,9 @@ namespace tensorflow {
 Status CreateXlaArgs(const Graph& graph,
                      std::vector<XlaCompiler::Argument>* xla_args);
 
-// Populate xla_args and xla_aliases for the given XLA config.
-void PopulateXlaArgsAndXlaAlias(
-    const tf2xla::Config& config, std::vector<XlaCompiler::Argument>* xla_args,
-    std::vector<xla::XlaBuilder::InputOutputAlias>* xla_aliases);
+// Populate xla_args for the given XLA config.
+void PopulateXlaArgs(const tf2xla::Config& config,
+                     std::vector<XlaCompiler::Argument>* xla_args);
 
 // InitGraph creates a graph based on the graph_def, that may then be converted
 // to an xla::XlaComputation via ConvertGraphToXla.

@@ -35,43 +35,9 @@ Status CreateHandle(OpKernelContext* ctx, T* resource,
   TF_RETURN_IF_ERROR(mgr->Create<T>(container_name, unique_name, resource));
 
   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
-                               MakeTypeIndex<T>());
+                               TypeIndex::Make<T>());
   return Status::OK();
 }
-
-// A wrapper class that manages the lifetime of a resource handle from its
-// creation to its deletion from the resource manager.
-class OwnedResourceHandle {
- public:
-  template <typename T>
-  static Status Create(OpKernelContext* ctx, T* resource, const string& name,
-                       std::unique_ptr<OwnedResourceHandle>* result) {
-    ResourceHandle handle;
-    TF_RETURN_IF_ERROR(CreateHandle<T>(ctx, resource, name, &handle));
-    // We need to increase the refcount to match the decrease that occurs when
-    // the resource associate.
-    resource->Ref();
-    *result = absl::make_unique<OwnedResourceHandle>(ctx, std::move(handle));
-    return Status::OK();
-  }
-
-  OwnedResourceHandle(OpKernelContext* ctx, ResourceHandle&& handle)
-      : mgr_(ctx->resource_manager()), handle_(handle) {}
-
-  ~OwnedResourceHandle() {
-    Status s = mgr_->Delete(handle_);
-    if (!s.ok()) {
-      VLOG(2) << s.ToString();
-    }
-  }
-
-  // Returns the wrapped `ResourceHandle` object.
-  const ResourceHandle& handle() const { return handle_; }
-
- private:
-  ResourceMgr* mgr_;  // not owned
-  const ResourceHandle handle_;
-};
 
 template <typename T>
 class AnonymousResourceOp : public OpKernel {
@@ -97,7 +63,10 @@ class AnonymousResourceOp : public OpKernel {
 
     if (create_deleter_) {
       Tensor* deleter_t;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t));
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t, attr));
       deleter_t->scalar<Variant>()() =
           ResourceDeleter(handle, ctx->resource_manager());
     }
@@ -114,53 +83,81 @@ class AnonymousResourceOp : public OpKernel {
   bool create_deleter_ = true;
 };
 
-// Registers the given cancellation callback, returning a function that can be
-// used to deregister the callback.
-Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
-                                    std::function<void()> register_fn,
-                                    std::function<void()>* deregister_fn);
-
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
 Status VerifyTypesMatch(const DataTypeVector& expected,
                         const DataTypeVector& received);
+
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const std::vector<Tensor>& received);
 
 // Returns Status::OK() if `expected` and `received` shapes are compatible,
 // errors::InvalidArgument otherwise.
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
 
-// Returns a stable hash of the given attribute key-value pair.
-//
-// NOTE: There is currently no guarantee that the hash of a function will stay
-// the same between TensorFlow builds.
-Status HashAttr(const FunctionDefLibrary& library, const std::string& attr_key,
-                const AttrValue& attr_value, uint64* hash);
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<Tensor>& received);
 
-// Returns a stable hash of the given function.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashFunction(const FunctionDefLibrary& library, const FunctionDef& func,
-                    uint64* hash);
+// Writes dataset elements to the checkpoint writer using the given key prefix.
+// The elements can be read back by passing the same key prefix to
+// ReadElementsFromCheckpoint. Only one list of elements can be written under
+// the same key_prefix.
+Status WriteElementsToCheckpoint(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements);
 
-// Returns a stable hash of the subgraph rooted at the given node.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
+// Reads dataset elements from the checkpoint reader using the given key prefix.
+Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
+                                  StringPiece key_prefix,
+                                  std::vector<std::vector<Tensor>>* elements);
 
-// Returns a stable hash of the given tensor.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashTensor(const Tensor& tensor, uint64* hash);
+// Dataset op level determinism policy.
+class DeterminismPolicy {
+ public:
+  enum class Type : int {
+    // The op must produce elements deterministically.
+    kDeterministic,
+    // The op may relax determinism to improve performance.
+    kNondeterministic,
+    // The determinism policy is not specified at the op level. In this case we
+    // use the experimental_deterministic dataset option to determine the
+    // determinism policy.
+    kDefault,
+  };
+  static constexpr const char* const kDeterministic = "true";
+  static constexpr const char* const kNondeterministic = "false";
+  static constexpr const char* const kDefault = "default";
 
-// Returns a stable hash of the given graph.
+  DeterminismPolicy() : determinism_(Type::kDefault) {}
+  explicit DeterminismPolicy(Type determinism) : determinism_(determinism) {}
+  // Creates a DeterminismPolicy with Type kDeterministic or
+  // kNondeterministic, depending on the values of `is_deterministic`.
+  explicit DeterminismPolicy(bool is_deterministic);
+
+  static Status FromString(const std::string& s, DeterminismPolicy* out);
+
+  // Returns the string representing the determinism policy. This will be one of
+  // the string constants defined above.
+  std::string String() const;
+
+  /// Convenience methods for checking the DeterminismPolicy::Type.
+  bool IsDeterministic() const { return determinism_ == Type::kDeterministic; }
+  bool IsNondeterministic() const {
+    return determinism_ == Type::kNondeterministic;
+  }
+  bool IsDefault() const { return determinism_ == Type::kDefault; }
+
+ private:
+  Type determinism_;
+};
+
+// Resolves non-deterministic seeds if necessary, returning either the original
+// seeds or the resolved seeds.
 //
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashGraph(const GraphDef& graph, uint64* hash);
+// By TensorFlow convention, if both seeds are 0, they should be replaced with
+// non-deterministically chosen seeds.
+std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds);
 
 // Helper class for reading data from a vector of VariantTensorData objects.
 class VariantTensorDataReader : public IteratorStateReader {
@@ -168,24 +165,28 @@ class VariantTensorDataReader : public IteratorStateReader {
   explicit VariantTensorDataReader(
       const std::vector<const VariantTensorData*>& data);
 
-  Status ReadScalar(StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece key, tstring* val) override;
-  Status ReadTensor(StringPiece key, Tensor* val) override;
-  bool Contains(StringPiece key) override;
+  Status ReadScalar(StringPiece key, int64* val) const override;
+  Status ReadScalar(StringPiece key, tstring* val) const override;
+  Status ReadTensor(StringPiece key, Tensor* val) const override;
+  bool Contains(StringPiece key) const override;
 
-  Status ReadScalar(StringPiece name, StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece name, StringPiece key, tstring* val) override;
-  Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) override;
-  bool Contains(StringPiece name, StringPiece key) override;
+  Status ReadScalar(StringPiece name, StringPiece key,
+                    int64* val) const override;
+  Status ReadScalar(StringPiece name, StringPiece key,
+                    tstring* val) const override;
+  Status ReadTensor(StringPiece name, StringPiece key,
+                    Tensor* val) const override;
+  bool Contains(StringPiece name, StringPiece key) const override;
 
  private:
   template <typename T>
-  Status ReadScalarInternal(StringPiece key, T* val);
-  Status ReadTensorInternal(StringPiece key, Tensor* val);
+  Status ReadScalarInternal(StringPiece key, T* val) const;
+  Status ReadTensorInternal(StringPiece key, Tensor* val) const;
 
   template <typename T>
-  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val);
-  Status ReadTensorInternal(StringPiece name, StringPiece key, Tensor* val);
+  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val) const;
+  Status ReadTensorInternal(StringPiece name, StringPiece key,
+                            Tensor* val) const;
 
   std::map<string, std::map<string, size_t>> map_;
   std::map<string, const VariantTensorData*> data_;  // Not owned.
@@ -250,6 +251,84 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
 // Creates a runner that runs functions with limited parallelism.
 std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
     std::function<void(std::function<void()>)> runner, int max_parallelism);
+
+// Op for creating a typed dummy resource.
+//
+// This op is used to provide a resource "placeholder" for ops such as
+// `CacheDatasetV2` or `ShuffleDatasetV2` that expects a resource input.
+// Originally, the lifetime of the resources passed into these ops was managed
+// externally. After the implementation changed to manage the lifetime of the
+// resources (including creation) by the ops themselves, the resource input is
+// only needed to pass a resource handle through graph rewrites. When they are
+// invoked from user code, the implementation passes in a dummy resource.
+template <typename ResourceType>
+class DummyResourceOp : public OpKernel {
+ public:
+  explicit DummyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* tensor;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &tensor));
+    tensor->scalar<ResourceHandle>()() = MakeResourceHandle<ResourceType>(
+        ctx, /*container=*/"", /*name=*/"dummy_resource");
+  }
+};
+
+// Given an op prefix and an op to match, returns whether the op to match
+// is a match for any version of the op prefix. For example,
+// MatchesAnyVersion("BatchDataset", "BatchDataset") == true
+// MatchesAnyVersion("BatchDataset", "BatchDatasetV2") == true
+// MatchesAnyVersion("BatchDataset", "BatchDatasetV3") == true
+// MatchesAnyVersion("PaddedBatchDataset", "BatchDataset") == false
+bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
+
+// Based on `job_name`, `optimizations_enabled`, `optimizations_disabled` and
+// `optimizations_default`, returns the list of optimizations that will be
+// applied.
+std::vector<tstring> SelectOptimizations(
+    const string& job_name,
+    const absl::flat_hash_map<string, uint64>& live_experiments,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    std::function<uint64(const string&)> hash_func);
+
+// Removes device placements from the ops of all functions in `library`.
+void StripDevicePlacement(FunctionDefLibrary* library);
+
+// Copies partial of the batch output.
+Status CopyPartialBatch(int64 num_elements, const Tensor& value,
+                        Tensor* output);
+
+// Reads a batch when restoring the iterator.
+Status ReadBatch(int64 batch_size, const string& iterator_prefix,
+                 const string& batch_prefix, IteratorContext* ctx,
+                 IteratorStateReader* reader, std::vector<Tensor>* batch);
+
+// Writes a batch when saving the iterator.
+Status WriteBatch(int64 batch_size, int64 num_elements,
+                  const string& iterator_prefix, const string& batch_prefix,
+                  IteratorStateWriter* writer, std::vector<Tensor>* batch);
+
+// Reads a status when restoring the iterator.
+Status ReadStatus(const string& iterator_prefix, const string& prefix,
+                  IteratorStateReader* reader, Status* status);
+
+// Writes a status when saving the iterator.
+Status WriteStatus(const string& iterator_prefix, const string& prefix,
+                   const Status& status, IteratorStateWriter* writer);
+
+// Processes a batch to output. In the case a partial batch is encountered, copy
+// only partial of the batch.
+Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
+                    const Status& status, IteratorContext* ctx,
+                    std::vector<Tensor>* output, bool* end_of_sequence,
+                    std::vector<Tensor>* batch);
+
+// Copies the input elements to a batch.
+Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
+                 std::vector<Tensor>* out_tensors,
+                 std::vector<std::vector<Tensor>>* batch_elements);
 
 }  // namespace data
 }  // namespace tensorflow

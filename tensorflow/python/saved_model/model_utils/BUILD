@@ -15,7 +15,12 @@
 
 # Description:
 #   Keras saving and loading libraries.
-load("//tensorflow:tensorflow.bzl", "py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "py_strict_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
@@ -24,10 +29,10 @@ package(
 
 exports_files(["LICENSE"])
 
-py_library(
+py_strict_library(
     name = "model_utils",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":export_output",
         ":export_utils",
@@ -35,23 +40,25 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "export_output",
     srcs = ["export_output.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python/saved_model:signature_def_utils",
+        "@six_archive//:six",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "export_output_test",
     srcs = ["export_output_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":export_output",
         "//tensorflow/core:protos_all_py",
@@ -61,16 +68,18 @@ py_test(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:metrics",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/keras",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/saved_model:signature_constants",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "export_utils",
     srcs = ["export_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":export_output",
         ":mode_keys",
@@ -79,41 +88,42 @@ py_library(
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
+        "@six_archive//:six",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "export_test",
     srcs = ["export_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
+        ":export_output",
         ":export_utils",
+        ":mode_keys",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/keras",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "mode_keys",
     srcs = ["mode_keys.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
+    deps = ["//tensorflow/python:util"],
 )
 
-py_test(
+py_strict_test(
     name = "mode_keys_test",
     srcs = ["mode_keys_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":mode_keys",
         "//tensorflow/python:client_testlib",

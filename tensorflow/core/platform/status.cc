@@ -61,7 +61,7 @@ class StatusLogSink : public TFLogSink {
     });
   }
 
-  void GetMessages(std::vector<std::string>* logs) LOCKS_EXCLUDED(mu_) {
+  void GetMessages(std::vector<std::string>* logs) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
 
     for (auto& msg : messages_) {
@@ -69,12 +69,14 @@ class StatusLogSink : public TFLogSink {
     }
   }
 
-  void Send(const TFLogEntry& entry) override LOCKS_EXCLUDED(mu_) {
+  void Send(const TFLogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
     if (entry.log_severity() < absl::LogSeverity::kWarning) return;
 
     mutex_lock lock(mu_);
     messages_.emplace_back(entry.ToString());
-    if (messages_.size() > num_messages_) messages_.pop_front();
+    if (messages_.size() > static_cast<size_t>(num_messages_)) {
+      messages_.pop_front();
+    }
   }
 
  private:
@@ -82,16 +84,18 @@ class StatusLogSink : public TFLogSink {
   // for allowing repeated/concurrent calls to enable()
   absl::once_flag flag_;
   int num_messages_ = 0;
-  std::deque<std::string> messages_ GUARDED_BY(mu_);
+  std::deque<std::string> messages_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace
 
-Status::Status(tensorflow::error::Code code, StringPiece msg) {
+Status::Status(tensorflow::error::Code code, tensorflow::StringPiece msg,
+               std::vector<StackFrame>&& stack_trace) {
   assert(code != tensorflow::error::OK);
   state_ = std::unique_ptr<State>(new State);
   state_->code = code;
   state_->msg = string(msg);
+  state_->stack_trace = std::move(stack_trace);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
           << CurrentStackTrace();
 }
@@ -112,6 +116,11 @@ void Status::SlowCopyFrom(const State* src) {
 
 const string& Status::empty_string() {
   static string* empty = new string;
+  return *empty;
+}
+
+const std::vector<StackFrame>& Status::empty_stack_trace() {
+  static std::vector<StackFrame>* empty = new std::vector<StackFrame>();
   return *empty;
 }
 
@@ -189,6 +198,28 @@ string Status::ToString() const {
 
 void Status::IgnoreError() const {
   // no-op
+}
+
+void Status::SetPayload(tensorflow::StringPiece type_url,
+                        tensorflow::StringPiece payload) {
+  if (ok()) return;
+  state_->payloads[std::string(type_url)] = std::string(payload);
+}
+
+tensorflow::StringPiece Status::GetPayload(
+    tensorflow::StringPiece type_url) const {
+  if (ok()) return tensorflow::StringPiece();
+  auto payload_iter = state_->payloads.find(std::string(type_url));
+  if (payload_iter == state_->payloads.end()) return tensorflow::StringPiece();
+  return tensorflow::StringPiece(payload_iter->second);
+}
+
+bool Status::ErasePayload(tensorflow::StringPiece type_url) {
+  if (ok()) return false;
+  auto payload_iter = state_->payloads.find(std::string(type_url));
+  if (payload_iter == state_->payloads.end()) return false;
+  state_->payloads.erase(payload_iter);
+  return true;
 }
 
 std::ostream& operator<<(std::ostream& os, const Status& x) {

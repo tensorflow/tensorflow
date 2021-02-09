@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -138,10 +139,13 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/core:error_codes_proto_impl",
+        "//tensorflow/core/protobuf:error_codes_proto_impl",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
-    exports = ["//tensorflow/core:error_codes_proto_impl"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/core/protobuf:__subpackages__",
+    ],
+    exports = ["//tensorflow/core/protobuf:error_codes_proto_impl"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
@@ -240,15 +244,11 @@ filegroup(
     srcs = [
         "stringpiece.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_lib_core_threadpool_options_header",
-    srcs = [
-        "threadpool_options.h",
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
@@ -275,6 +275,7 @@ filegroup(
         "stringpiece.h",
         "threadpool.h",
         "threadpool_interface.h",
+        "threadpool_options.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

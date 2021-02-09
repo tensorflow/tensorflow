@@ -125,7 +125,11 @@ StatusOr<std::unique_ptr<LocalExecutable>> CompileExecutable(
   }
   ExecutableBuildOptions exec_build_options;
   *exec_build_options.mutable_debug_options() = GetDebugOptionsFromFlags();
-  return client->Compile(computation, argument_layout_ptrs, exec_build_options);
+  TF_ASSIGN_OR_RETURN(
+      auto executables,
+      client->Compile(computation, argument_layout_ptrs, exec_build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  return std::move(executables[0]);
 }
 
 absl::optional<Shape> GetXfeedShape(bool is_infeed,
@@ -229,8 +233,15 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   if (opts.use_fake_data) {
     // Run fake computations with debug options ignoring XLA_FLAGS.  Users very
     // likely want XLA_FLAGS only to apply to the "real" computation being run,
-    // not to the fake computations we use for generating arguments.
+    // not to the fake computations we use for generating arguments. There is
+    // an exception. ptxas can be called during the generation of fake
+    // data. As it is cached in the process memory, the flag affecting this call
+    // should not be ignored.
+    auto debug_opts_flags = GetDebugOptionsFromFlags();
     auto debug_opts = DefaultDebugOptionsIgnoringFlags();
+    debug_opts.set_xla_gpu_asm_extra_flags(
+        debug_opts_flags.xla_gpu_asm_extra_flags());
+
     global_data_arguments =
         MakeFakeArgumentsOrDie(computation, client, &debug_opts);
     for (const auto& data : global_data_arguments) {
@@ -271,9 +282,9 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     outfeed_thread_pool.emplace(tensorflow::Env::Default(), "infeed",
                                 /*num_threads=*/1);
     auto consume_outfeed = [client, outfeed_shape] {
+      Literal outfeed(*outfeed_shape);
       TF_CHECK_OK(
-          client->TransferFromOutfeedLocal(*outfeed_shape, /*device_ordinal=*/0)
-              .status());
+          client->TransferFromOutfeedLocal(/*device_ordinal=*/0, &outfeed));
       VLOG(1) << "Received outfeed data of shape "
               << ShapeUtil::HumanStringWithLayout(*outfeed_shape);
     };

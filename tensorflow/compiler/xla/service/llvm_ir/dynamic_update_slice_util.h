@@ -18,8 +18,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
 // Utilities related to emitting LLVM IR for various HLO ops.
@@ -71,18 +72,16 @@ Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
 // array-to-be-updated and output share the same buffer slice, emits
 // (sequential) code for a fusion node that does the dynamic-update-slice in
 // place.
-Status EmitFusedDynamicUpdateSliceInPlace(
-    HloInstruction* fusion,
-    GeneratorForOperandIrArrays operand_arrays_generator,
-    const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
-    llvm::IRBuilder<>* b);
+Status EmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
+                                          const IrArray& fusion_output_array,
+                                          FusedIrEmitter* fused_emitter,
+                                          llvm::IRBuilder<>* b);
 
 // Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
 // the given launch dimensions.
 Status EmitParallelFusedDynamicUpdateSliceInPlace(
-    HloInstruction* fusion,
-    GeneratorForOperandIrArrays operand_arrays_generator,
-    const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
+    const HloComputation* fusion, const IrArray& fusion_output_array,
+    FusedIrEmitter* fused_emitter,
     const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b);
 
 }  // namespace llvm_ir

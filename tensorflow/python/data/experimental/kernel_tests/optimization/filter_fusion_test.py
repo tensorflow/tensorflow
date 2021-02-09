@@ -92,6 +92,25 @@ class FilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
         expected_output.append(r)
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testCapturedInputs(self):
+    a = constant_op.constant(3, dtype=dtypes.int64)
+    b = constant_op.constant(4, dtype=dtypes.int64)
+    some_tensor = math_ops.mul(a, b)
+
+    def predicate(y):
+      return math_ops.less(math_ops.cast(y, dtypes.int64), some_tensor)
+
+    # We currently do not support functions with captured inputs.
+    dataset = dataset_ops.Dataset.range(10).apply(
+        testing.assert_next(["Filter", "Filter"
+                            ])).filter(predicate).filter(lambda x: True)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.filter_fusion = True
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(dataset, expected_output=range(10))
+
 
 if __name__ == "__main__":
   test.main()

@@ -57,8 +57,8 @@ constexpr int kProjectionBiasTensor = 17;  // Optional
 
 // These state tensors are defined as variable tensors, and will be modified by
 // this op.
-constexpr int kInputActivationStateTensor = 18;
-constexpr int kInputCellStateTensor = 19;
+constexpr int kOutputStateTensor = 18;
+constexpr int kCellStateTensor = 19;
 
 // Layer norm coefficient tensors of size {n_cell}, representing a diagonal
 // matrix.

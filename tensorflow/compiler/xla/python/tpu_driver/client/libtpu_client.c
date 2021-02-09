@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Before you start, make sure libtpu.so, libtpu.h and and libtpu_client.c are
-// in the same working directory.
+// Before you start, make sure libtpu.so, libtpu.h and libtpu_client.c are in
+// the same working directory.
 //
 // To compile: gcc -o libtpu_client libtpu_client.c -ldl
 // To run: sudo ./libtpu_client
@@ -36,7 +36,7 @@ void* LoadAndInitializeDriver(const char* shared_lib,
 
   PrototypeTpuDriver_Initialize* initialize_fn;
   *(void**)(&initialize_fn) = dlsym(handle, "TpuDriver_Initialize");
-  initialize_fn(driver_fn);
+  initialize_fn(driver_fn, true);
 
   return handle;
 }

@@ -50,7 +50,7 @@ string MangleTensor(const TensorProto& tensor);
 // Demangle a string mangled with MangleTensor.
 Status DemangleTensor(absl::string_view str, TensorProto* proto);
 
-// Return a DataType mangled as as string.
+// Return a DataType mangled as a string.
 string MangleDataType(const DataType& dtype);
 // Demangle a string mangled with MangleDataType.
 Status DemangleDataType(absl::string_view str, DataType* proto);

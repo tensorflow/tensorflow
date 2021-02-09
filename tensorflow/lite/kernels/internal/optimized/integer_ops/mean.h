@@ -89,8 +89,8 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
         }
       }
 
-      temp_sum = optimized_ops::MultiplyByQuantizedMultiplier4Rows(
-          temp_sum, multiplier, shift);
+      temp_sum =
+          MultiplyByQuantizedMultiplier4Rows(temp_sum, multiplier, shift);
 
       temp_sum.val[0] = vaddq_s32(temp_sum.val[0], bias_dup);
       temp_sum.val[1] = vaddq_s32(temp_sum.val[1], bias_dup);
@@ -222,7 +222,7 @@ inline void Mean(const tflite::MeanParams& op_params,
     MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
              output_shape, output_data, 0, output_depth);
   } else {
-    // Instead parrallel for batch, we loop for the output_depth since batch
+    // Instead parallel for batch, we loop for the output_depth since batch
     // is typical 1.
     std::vector<MeanWorkerTask> tasks;
     // TODO(b/131746020) don't create new heap allocations every time.

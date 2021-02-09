@@ -40,8 +40,7 @@ def mean(*values):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
-                          parameterized.TestCase):
+class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       #=========================================================================
@@ -51,92 +50,212 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
       #    [9,     ],
       #    [2, 6   ]]
       #=========================================================================
+      # keepdims=True
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=0,
+          keepdims=False,
           expected=[15, 12, 4]  # = [3+1+9+2, 1+5+6, 4]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=-2,
+          keepdims=False,
           expected=[15, 12, 4]  # = [3+1+9+2, 1+5+6, 4]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=1,
+          keepdims=False,
           expected=[8, 6, 9, 8]  # = [3+1+4, 1+5, 9, 2+6]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=-1,
+          keepdims=False,
           expected=[8, 6, 9, 8]  # = [3+1+4, 1+5, 9, 2+6]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_prod,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=0,
+          keepdims=False,
           expected=[54, 30, 4]  # = [3*1*9*2, 1*5*6, 4]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_prod,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=1,
+          keepdims=False,
           expected=[12, 5, 9, 12]  # = [3*1*4, 1*5, 9, 2*6]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_min,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=0,
+          keepdims=False,
           expected=[1, 1, 4]  # = [min(3, 1, 9, 2), min(1, 5, 6), 4]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_min,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=1,
+          keepdims=False,
           expected=[1, 1, 9, 2]  # = [min(3, 1, 4), min(1, 5), 9, min(2, 6)]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_max,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=0,
+          keepdims=False,
           expected=[9, 6, 4]  # = [max(3, 1, 9, 2), max(1, 5, 6), 4]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_max,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=1,
+          keepdims=False,
           expected=[4, 5, 9, 6]  # = [max(3, 1, 4), max(1, 5), 9, max(2, 6)]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_mean,
           rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
           axis=0,
+          keepdims=False,
           expected=[3.75, 4, 4]  # = [mean(3, 1, 9, 2), mean(1, 5, 6), 4]
       ),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_any,
           rt_input=[[True, True], [True, True, False, True], [False, True]],
           axis=0,
+          keepdims=False,
           expected=[True, True, False, True]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_any,
           rt_input=[[True, True], [True, True, False, True], [False, True]],
           axis=1,
+          keepdims=False,
           expected=[True, True, True]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_all,
           rt_input=[[True, True], [True, True, False, True], [False, True]],
           axis=0,
+          keepdims=False,
           expected=[False, True, False, True]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_all,
           rt_input=[[True, True], [True, True, False, True], [False, True]],
           axis=1,
+          keepdims=False,
           expected=[True, False, False]),
+      # keepdims=True
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=0,
+          keepdims=True,
+          expected=[[15, 12, 4]]  # = [[3+1+9+2, 1+5+6, 4]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=-2,
+          keepdims=True,
+          expected=[[15, 12, 4]]  # = [[3+1+9+2, 1+5+6, 4]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=1,
+          keepdims=True,
+          expected=[[8], [6], [9], [8]]  # = [[3+1+4], [1+5], [9], [2+6]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=-1,
+          keepdims=True,
+          expected=[[8], [6], [9], [8]]  # = [[3+1+4], [1+5], [9], [2+6]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_prod,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=0,
+          keepdims=True,
+          expected=[[54, 30, 4]]  # = [[3*1*9*2, 1*5*6, 4]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_prod,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=1,
+          keepdims=True,
+          expected=[[12], [5], [9], [12]]  # = [[3*1*4], [1*5], [9], [2*6]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_min,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=0,
+          keepdims=True,
+          expected=[[1, 1, 4]]  # = [[min(3, 1, 9, 2), min(1, 5, 6), 4]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_min,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=1,
+          keepdims=True,
+          expected=[[1], [1], [9],
+                    [2]]  # = [[min(3, 1, 4)], [min(1, 5)], [9], [min(2, 6)]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_max,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=0,
+          keepdims=True,
+          expected=[[9, 6, 4]]  # = [[max(3, 1, 9, 2), max(1, 5, 6), 4]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_max,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=1,
+          keepdims=True,
+          expected=[[4], [5], [9],
+                    [6]]  # = [[max(3, 1, 4)], [max(1, 5)], [9], [max(2, 6)]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_mean,
+          rt_input=[[3, 1, 4], [1, 5], [9], [2, 6]],
+          axis=0,
+          keepdims=True,
+          expected=[[3.75, 4, 4]]  # = [[mean(3, 1, 9, 2), mean(1, 5, 6), 4]]
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_any,
+          rt_input=[[True, True], [True, True, False, True], [False, True]],
+          axis=0,
+          keepdims=True,
+          expected=[[True, True, False, True]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_any,
+          rt_input=[[True, True], [True, True, False, True], [False, True]],
+          axis=1,
+          keepdims=True,
+          expected=[[True], [True], [True]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_all,
+          rt_input=[[True, True], [True, True, False, True], [False, True]],
+          axis=0,
+          keepdims=True,
+          expected=[[False, True, False, True]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_all,
+          rt_input=[[True, True], [True, True, False, True], [False, True]],
+          axis=1,
+          keepdims=True,
+          expected=[[True], [False], [False]]),
 
       #=========================================================================
       # Examples with the following RaggedTensor (ragged_rank=1):
@@ -153,52 +272,62 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=None,
+          keepdims=False,
           expected=0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_prod,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=None,
+          keepdims=False,
           expected=0 * 1 * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_min,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=None,
+          keepdims=False,
           expected=min(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_max,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=None,
+          keepdims=False,
           expected=max(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_mean,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=None,
+          keepdims=False,
           expected=mean(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
       # axis=0
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=0,
+          keepdims=False,
           expected=[0 + 4 + 5 + 7 + 8, 1 + 6 + 9, 2, 3]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_prod,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=0,
+          keepdims=False,
           expected=[0 * 4 * 5 * 7 * 8, 1 * 6 * 9, 2, 3]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_min,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=0,
+          keepdims=False,
           expected=[min(0, 4, 5, 7, 8), min(1, 6, 9), 2, 3]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_max,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=0,
+          keepdims=False,
           expected=[max(0, 4, 5, 7, 8), max(1, 6, 9), 2, 3]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_mean,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=0,
+          keepdims=False,
           expected=[mean(0, 4, 5, 7, 8),
                     mean(1, 6, 9), 2, 3]),
       # axis=1
@@ -208,16 +337,19 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=1,
+          keepdims=False,
           expected=[0 + 1 + 2 + 3, 4, 0, 5 + 6, 7, 8 + 9]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_prod,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=1,
+          keepdims=False,
           expected=[0 * 1 * 2 * 3, 4, 1, 5 * 6, 7, 8 * 9]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_min,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=1,
+          keepdims=False,
           expected=[min(0, 1, 2, 3), 4, _MAX_INT32,
                     min(5, 6), 7,
                     min(8, 9)]),
@@ -225,6 +357,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
           ragged_reduce_op=ragged_math_ops.reduce_max,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=1,
+          keepdims=False,
           expected=[max(0, 1, 2, 3), 4, _MIN_INT32,
                     max(5, 6), 7,
                     max(8, 9)]),
@@ -236,51 +369,117 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
       #  [                      ],
       #  [[9   ]                ]]
       #=========================================================================
+      # keepdims=False
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=[],
+          keepdims=False,
           expected=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=None,
+          keepdims=False,
           expected=sum([1, 2, 3, 4, 5, 6, 7, 8, 9])),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=0,
+          keepdims=False,
           expected=[[1 + 6 + 9, 2 + 7], [], [3 + 8, 4, 5]]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=1,
+          keepdims=False,
           expected=[[1 + 3, 2 + 4, 5], [6 + 8, 7], [], [9]]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=2,
+          keepdims=False,
           expected=[[1 + 2, 0, 3 + 4 + 5], [6 + 7, 0, 8], [], [9]]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=[0, 1],
+          keepdims=False,
           expected=[1 + 3 + 6 + 8 + 9, 2 + 4 + 7, 5]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=[0, 2],
+          keepdims=False,
           expected=[1 + 6 + 9 + 2 + 7, 0, 3 + 8 + 4 + 5]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=[1, 2],
+          keepdims=False,
           expected=[1 + 2 + 3 + 4 + 5, 6 + 7 + 8, 0, 9]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=[0, 1, 2],
+          keepdims=False,
           expected=sum([1, 2, 3, 4, 5, 6, 7, 8, 9])),
+      # keepdims=True
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=[],
+          keepdims=True,
+          expected=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=None,
+          keepdims=True,
+          expected=[[[sum([1, 2, 3, 4, 5, 6, 7, 8, 9])]]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=0,
+          keepdims=True,
+          expected=[[[1 + 6 + 9, 2 + 7], [], [3 + 8, 4, 5]]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=1,
+          keepdims=True,
+          expected=[[[1 + 3, 2 + 4, 5]], [[6 + 8, 7]], [[]], [[9]]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=2,
+          keepdims=True,
+          expected=[[[1 + 2], [0], [3 + 4 + 5]], [[6 + 7], [0], [8]], [],
+                    [[9]]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=[0, 1],
+          keepdims=True,
+          expected=[[[1 + 3 + 6 + 8 + 9, 2 + 4 + 7, 5]]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=[0, 2],
+          keepdims=True,
+          expected=[[[1 + 6 + 9 + 2 + 7], [0], [3 + 8 + 4 + 5]]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=[1, 2],
+          keepdims=True,
+          expected=[[[1 + 2 + 3 + 4 + 5]], [[6 + 7 + 8]], [[0]], [[9]]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=[0, 1, 2],
+          keepdims=True,
+          expected=[[[sum([1, 2, 3, 4, 5, 6, 7, 8, 9])]]]),
 
       #=========================================================================
       # Examples for ragged_reduce_mean ragged_rank=2:
@@ -292,16 +491,19 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
           ragged_reduce_op=ragged_math_ops.reduce_mean,
           rt_input=[[[1, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
           axis=0,
+          keepdims=False,
           expected=[[mean(1, 6, 9), mean(2, 7)], [mean(3, 8), 4, 5]]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_mean,
           rt_input=[[[1, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
           axis=1,
+          keepdims=False,
           expected=[[mean(1, 3), mean(2, 4), 5], [mean(6, 8), 7], [9]]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_mean,
           rt_input=[[[1, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
           axis=2,
+          keepdims=False,
           expected=[[mean(1, 2), mean(3, 4, 5)], [mean(6, 7), 8], [9]]),
 
       # Test case for GitHub issue 27497, multiple negative axes.
@@ -309,16 +511,18 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=[-2, -1],
+          keepdims=False,
           expected=[1 + 2 + 3 + 4 + 5, 6 + 7 + 8, 0, 9]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
           rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
           axis=[-3, -2, -1],
+          keepdims=False,
           expected=sum([1, 2, 3, 4, 5, 6, 7, 8, 9])),
   )
-  def testReduce(self, ragged_reduce_op, rt_input, axis, expected):
+  def testReduce(self, ragged_reduce_op, rt_input, axis, keepdims, expected):
     rt_input = ragged_factory_ops.constant(rt_input)
-    reduced = ragged_reduce_op(rt_input, axis)
+    reduced = ragged_reduce_op(rt_input, axis, keepdims=keepdims)
     self.assertAllEqual(reduced, expected)
 
   def testReduceKeepsInnerDimensionShape(self):
@@ -336,8 +540,8 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
   def testMeanNan(self):
     rt_as_list = [[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]]
     expected = (
-        np.array([0 + 1 + 2 + 3, 4, 0, 5 + 6, 7, 8 + 9]) / np.array(
-            [4, 1, 0, 2, 1, 2]))
+        np.array([0 + 1 + 2 + 3, 4, 0, 5 + 6, 7, 8 + 9]) /
+        np.array([4, 1, 0, 2, 1, 2]))
     rt_input = ragged_factory_ops.constant(rt_as_list)
     reduced = ragged_math_ops.reduce_mean(rt_input, axis=1)
     self.assertEqualWithNan(self.evaluate(reduced), expected)
@@ -353,11 +557,11 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
     axis = array_ops.placeholder_with_default(constant_op.constant([0]), None)
 
     if not context.executing_eagerly():
-      self.assertRaisesRegexp(
-          ValueError, r'axis must be known at graph construction time.',
-          ragged_math_ops.reduce_sum, rt_input, axis)
-    self.assertRaisesRegexp(TypeError, r'axis must be an int; got str.*',
-                            ragged_math_ops.reduce_sum, rt_input, ['x'])
+      self.assertRaisesRegex(ValueError,
+                             r'axis must be known at graph construction time.',
+                             ragged_math_ops.reduce_sum, rt_input, axis)
+    self.assertRaisesRegex(TypeError, r'axis must be an int; got str.*',
+                           ragged_math_ops.reduce_sum, rt_input, ['x'])
 
 
 if __name__ == '__main__':

@@ -101,27 +101,27 @@ class SubProcess {
                           string* stderr_output);
 
  private:
-  static const int kNFds = 3;
+  static constexpr int kNFds = 3;
   static bool chan_valid(int chan) { return ((chan >= 0) && (chan < kNFds)); }
   static bool retry(int e) {
     return ((e == EINTR) || (e == EAGAIN) || (e == EWOULDBLOCK));
   }
-  void FreeArgs() EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
-  void ClosePipes() EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
+  void FreeArgs() TF_EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
+  void ClosePipes() TF_EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
   bool WaitInternal(int* status);
 
   // The separation between proc_mu_ and data_mu_ mutexes allows Kill() to be
   // called by a thread while another thread is inside Wait() or Communicate().
   mutable mutex proc_mu_;
-  bool running_ GUARDED_BY(proc_mu_);
-  pid_t pid_ GUARDED_BY(proc_mu_);
+  bool running_ TF_GUARDED_BY(proc_mu_);
+  pid_t pid_ TF_GUARDED_BY(proc_mu_);
 
-  mutable mutex data_mu_ ACQUIRED_AFTER(proc_mu_);
-  char* exec_path_ GUARDED_BY(data_mu_);
-  char** exec_argv_ GUARDED_BY(data_mu_);
-  ChannelAction action_[kNFds] GUARDED_BY(data_mu_);
-  int parent_pipe_[kNFds] GUARDED_BY(data_mu_);
-  int child_pipe_[kNFds] GUARDED_BY(data_mu_);
+  mutable mutex data_mu_ TF_ACQUIRED_AFTER(proc_mu_);
+  char* exec_path_ TF_GUARDED_BY(data_mu_);
+  char** exec_argv_ TF_GUARDED_BY(data_mu_);
+  ChannelAction action_[kNFds] TF_GUARDED_BY(data_mu_);
+  int parent_pipe_[kNFds] TF_GUARDED_BY(data_mu_);
+  int child_pipe_[kNFds] TF_GUARDED_BY(data_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SubProcess);
 };

@@ -24,26 +24,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/compiler_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-enum class CompilerOptions {
-  // ADRENO_FULL_SIMD_LINE:
-  //   Adreno can have 2 sizes for SIMD size.
-  //   On Adreno 4xx/5xx it is 32/64, on Adreno6xx it is 64/128.
-  //   Some our algorithms actually rely on exact size, for example on full
-  //   SIMD size, so we need this define.
-  //   This define is actually -qcom-accelerate-16-bit, but it controls SIMD
-  //   size.
-  ADRENO_FULL_SIMD_LINE,
-  POWERVR_FP16,
-  CL_OPT_DISABLE
-};
-
 std::string CompilerOptionsToString(
-    const CLDevice& device,
+    const GpuInfo& gpu_info,
     const std::vector<CompilerOptions>& compiler_options);
 
 class CLProgram {
@@ -63,11 +51,11 @@ class CLProgram {
 
   // Return the cl_device_id associated with the program object.
   // This can be the device associated with context on which the program object
-  // has been created or can be device that was specified when a progam object
+  // has been created or can be device that was specified when a program object
   // was created using clCreateProgramWithBinary.
   cl_device_id GetDeviceId() const { return device_id_; }
 
-  Status GetBinary(std::vector<uint8_t>* result) const;
+  absl::Status GetBinary(std::vector<uint8_t>* result) const;
 
  private:
   void Release();
@@ -78,15 +66,15 @@ class CLProgram {
   cl_device_id device_id_ = nullptr;
 };
 
-Status CreateCLProgram(const std::string& code,
-                       const std::string& compiler_options,
-                       const CLContext& context, const CLDevice& device,
-                       CLProgram* result);
+absl::Status CreateCLProgram(const std::string& code,
+                             const std::string& compiler_options,
+                             const CLContext& context, const CLDevice& device,
+                             CLProgram* result);
 
-Status CreateCLProgramFromBinary(const CLContext& context,
-                                 const CLDevice& device,
-                                 absl::Span<const uint8_t> binary,
-                                 CLProgram* result);
+absl::Status CreateCLProgramFromBinary(const CLContext& context,
+                                       const CLDevice& device,
+                                       absl::Span<const uint8_t> binary,
+                                       CLProgram* result);
 
 }  // namespace cl
 }  // namespace gpu

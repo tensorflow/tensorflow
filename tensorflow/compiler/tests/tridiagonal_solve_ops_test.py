@@ -24,6 +24,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import math_ops
@@ -211,6 +212,7 @@ class TridiagonalSolveOpsTest(xla_test.XLATestCase):
 
   # test2x2NotInvertible is skipped as runtime error not raised for now.
 
+  @test_util.disable_mlir_bridge("Error messages differ")
   def testPartialPivotingRaises(self):
     np.random.seed(0)
     batch_size = 8
@@ -223,9 +225,9 @@ class TridiagonalSolveOpsTest(xla_test.XLATestCase):
                                     num_rhs)).astype(np.float32)
 
     with self.session() as sess, self.test_scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.UnimplementedError,
-          "Pivoting is not yet supported in XLA tridiagonal solver."):
+          "Current implementation does not yet support pivoting."):
         diags = array_ops.placeholder(
             shape=(batch_size, 3, num_dims), dtype=dtypes.float32)
         rhs = array_ops.placeholder(

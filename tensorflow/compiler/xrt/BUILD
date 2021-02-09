@@ -1,15 +1,15 @@
 # Description: Operations defined for XRT
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_py_library",
-    "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
-    "tf_proto_library_py",
+    "tf_proto_library",
 )
 
 package(
@@ -20,7 +20,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "xrt_proto",
     srcs = ["xrt.proto"],
     cc_api_version = 2,
@@ -33,10 +33,23 @@ tf_proto_library_cc(
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_py(
-    name = "xrt_proto",  # bzl adds a _py suffix
-    srcs = ["xrt.proto"],
+cc_library(
+    name = "xrt_tpu_utils",
+    srcs = [
+        "xrt_tpu_device.cc",
+    ],
+    hdrs = [
+        "xrt_tpu_device.h",
+    ],
     visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+    ],
 )
 
 cc_library(
@@ -45,6 +58,7 @@ cc_library(
         "xrt_compilation_cache.cc",
         "xrt_device.cc",
         "xrt_memory_manager.cc",
+        "xrt_metrics.cc",
         "xrt_state.cc",
         "xrt_util.cc",
     ],
@@ -52,10 +66,12 @@ cc_library(
         "xrt_compilation_cache.h",
         "xrt_device.h",
         "xrt_memory_manager.h",
+        "xrt_metrics.h",
         "xrt_refptr.h",
         "xrt_state.h",
         "xrt_util.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":xrt_proto_cc",
         "//tensorflow/compiler/jit:xla_device",
@@ -70,15 +86,18 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:backend",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -90,6 +109,7 @@ tf_gen_op_libs(
         "xrt_execute_op",
     ],
     deps = [
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:lib",
     ],
 )
@@ -123,3 +143,12 @@ cc_library(
         "//tensorflow/compiler/xrt/kernels:xrt_ops",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xrt_proto_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":xrt_proto"],
+# )
+# copybara:uncomment_end

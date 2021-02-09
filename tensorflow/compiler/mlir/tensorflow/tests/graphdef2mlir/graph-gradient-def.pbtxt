@@ -1,10 +1,10 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
 
 # In GraphDef custom gradient functions are modeled using GradientDef which
 # links the function and its gradient. In MLIR a TF ops gradient function is
 # added to its list of function attributes.
 
-# CHECK: func @foo0(
+# CHECK: func private @foo0(
 # CHECK:   tf.gradient = @foo_grad
 
 node {

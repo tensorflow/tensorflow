@@ -26,14 +26,23 @@ namespace mlir {
 namespace lite {
 
 // Quantize the `input_model` and write the result to a flatbuffer `builder`.
-// The `input_type` and `output_type` can be float32/qint8/int8.
-// Return partially quantized model if `allow_float` is true.
+// The `input_type`, `output_type` and `inference_type` can be
+// float32/qint8/int8/int16.
+// Return partially quantized model if `fully_quantize` is false.
+// When `verify_numeric` is true, the model will have it's original float ops
+// and NumericVerify ops to compare output values from the quantized and float
+// ops. When `legacy_float_scale` is true, the quantizer will use float scale
+// instead of double, and call TOCO's quantization routines to maintain
+// bit-exactness of the values with the TOCO quantizer.
 TfLiteStatus QuantizeModel(
     const tflite::ModelT& input_model, const tflite::TensorType& input_type,
     const tflite::TensorType& output_type,
-    const std::unordered_set<std::string>& operator_names, bool allow_float,
+    const tflite::TensorType& inference_type,
+    const std::unordered_set<std::string>& operator_names,
+    bool disable_per_channel, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
-    tflite::ErrorReporter* error_reporter);
+    tflite::ErrorReporter* error_reporter, bool verify_numeric = false,
+    bool legacy_float_scale = true);
 }  // namespace lite
 }  // namespace mlir
 

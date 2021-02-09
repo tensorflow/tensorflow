@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <random>
 #include <string>
 #include <thread>  // NOLINT
 #include <unordered_map>
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -1385,6 +1387,66 @@ TEST(DirectSessionTest, SessionSyncRun) {
             static_cast<int64>(outputs[0].scalar<int64>()()));
 }
 
+REGISTER_OP("ExpensiveNoop").SetIsStateful();
+
+class ExpensiveNoopOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+  bool IsExpensive() override { return true; }
+  void Compute(OpKernelContext* ctx) override {
+    const string& stack_trace = tensorflow::CurrentStackTrace();
+    const string process_method = "ExecutorState::Process()";
+    size_t pos = 0;
+    int frame_count = 0;
+    while ((pos = stack_trace.find("ExecutorState::Process()", pos)) !=
+           string::npos) {
+      ++frame_count;
+      ++pos;
+    }
+    OP_REQUIRES(ctx, frame_count <= 1,
+                errors::Internal(
+                    "Recursive call to ExecutorState::Process() detected."));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("ExpensiveNoop").Device(DEVICE_CPU),
+                        ExpensiveNoopOp);
+
+TEST(DirectSessionTest, SessionSyncRun_DeepGraph) {
+  Graph g(OpRegistry::Global());
+
+  std::vector<Node*> nodes;
+  nodes.reserve(1024);
+
+  auto make_expensive_noop = [&g](gtl::ArraySlice<Node*> control_deps) {
+    Node* ret;
+    auto builder = NodeBuilder(g.NewName("N"), "ExpensiveNoop");
+    for (Node* control_dep : control_deps) {
+      builder = builder.ControlInput(control_dep);
+    }
+    TF_CHECK_OK(builder.Finalize(&g, &ret));
+    return ret;
+  };
+
+  Node* base = make_expensive_noop({});
+
+  Node* child_1 = make_expensive_noop({base});
+  Node* child_2 = make_expensive_noop({base});
+
+  GraphDef def;
+  g.ToGraphDef(&def);
+
+  auto sess = CreateSession();
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+
+  EXPECT_TRUE(sess->Run(run_opts, {}, {}, {child_1->name(), child_2->name()},
+                        &outputs, nullptr)
+                  .ok());
+}
+
 TEST(DirectSessionTest, SyncSession) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
@@ -1903,7 +1965,6 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
       ->set_constant_folding(RewriterConfig::OFF);
   (*options.config.mutable_device_count())["CPU"] = 2;
   (*options.config.mutable_device_count())["GPU"] = 0;
-  (*options.config.mutable_device_count())["SYCL"] = 0;
 
   auto* p = options.config.add_session_inter_op_thread_pool();
   if (use_global_pools) p->set_global_name("large pool");
@@ -2526,11 +2587,9 @@ TEST(DirectSessionTest,
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
-                              int inter_op_threads,
+void FeedFetchBenchmarkHelper(::testing::benchmark::State& state, int num_feeds,
+                              bool use_make_callable, int inter_op_threads,
                               bool use_single_threaded_executor) {
-  testing::StopTiming();
-
   Tensor value(DT_FLOAT, TensorShape());
   value.flat<float>()(0) = 37.0;
 
@@ -2582,13 +2641,11 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
     }
     TF_CHECK_OK(session->MakeCallable(callable_options, &handle));
 
-    testing::StartTiming();
-    for (int i = 0; i < iters; ++i) {
+    for (auto s : state) {
       std::vector<Tensor> output_values;
       TF_CHECK_OK(
           session->RunCallable(handle, input_tensors, &output_values, nullptr));
     }
-    testing::StopTiming();
   } else {
     {
       // NOTE(mrry): Ignore the first run, which will incur the graph
@@ -2600,32 +2657,40 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
       std::vector<Tensor> output_values;
       TF_CHECK_OK(session->Run(inputs, outputs, {}, &output_values));
     }
-    testing::StartTiming();
-    for (int i = 0; i < iters; ++i) {
+
+    for (auto s : state) {
       std::vector<Tensor> output_values;
       TF_CHECK_OK(session->Run(inputs, outputs, {}, &output_values));
     }
-    testing::StopTiming();
   }
 }
 
-void BM_FeedFetch(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false,
+void BM_FeedFetch(::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ false,
                            /* inter_op_threads */ 0,
                            /* use_single_threaded_executor */ false);
 }
-void BM_FeedFetchCallable(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+void BM_FeedFetchCallable(::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ true,
                            /* inter_op_threads */ 0,
                            /* use_single_threaded_executor */ false);
 }
-void BM_FeedFetchCallableSingleThread(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+void BM_FeedFetchCallableSingleThread(::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ true,
                            /* inter_op_threads */ -1,
                            /* use_single_threaded_executor */ false);
 }
-void BM_FeedFetchCallableSingleThreadExecutor(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+void BM_FeedFetchCallableSingleThreadExecutor(
+    ::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ true,
                            /* inter_op_threads */ -1,
                            /* use_single_threaded_executor */ true);
 }
@@ -2749,6 +2814,68 @@ TEST_F(DirectSessionCollectiveTest,
   int64 key2;
   TF_ASSERT_OK(RunGraphWithCollectiveFunctions(true, &key2));
   ASSERT_EQ(key1, key2);
+}
+
+// Accesses the cancellation manager for the step after the step has been
+// cancelled.
+class StatefulOutputRequiredOp : public OpKernel {
+ public:
+  explicit StatefulOutputRequiredOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    // The op counts the number of outputs required in the current subgraph,
+    // and emits that number on each of its required outputs.
+    Tensor count_outputs_required_t(int64{0});
+    int64& count_outputs_required = count_outputs_required_t.scalar<int64>()();
+    for (int i = 0; i < num_outputs(); ++i) {
+      if (ctx->output_required(i)) ++count_outputs_required;
+    }
+    for (int i = 0; i < num_outputs(); ++i) {
+      if (ctx->output_required(i)) ctx->set_output(i, count_outputs_required_t);
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("StatefulOutputRequired").Device(DEVICE_CPU),
+                        StatefulOutputRequiredOp);
+REGISTER_OP("StatefulOutputRequired")
+    .Output("results : num_outs * int64")
+    .Attr("num_outs : int = 5")
+    .SetIsStateful();
+
+TEST(DirectSessionTest, TestStatefulOutputRequiredOp) {
+  GraphDef graph;
+  // Creates a graph with a StatefulOutputRequired op with 5 outputs.
+  protobuf::TextFormat::ParseFromString(
+      R"proto(
+        node { name: 'n' op: 'StatefulOutputRequired' device: '/device:CPU:0' }
+        versions { producer: 9 }
+      )proto",
+      &graph);
+
+  std::unique_ptr<Session> session(NewSession(SessionOptions()));
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(std::move(graph)));
+
+  // As a stateful op, a single StatefulOutputRequired kernel will be created
+  // and shared across multiple subgraphs. We create 5 different subgraphs,
+  // fetching different prefixes of the output of the op.
+  for (int num_outputs_required = 1; num_outputs_required <= 5;
+       ++num_outputs_required) {
+    std::vector<string> fetch_tensor_names;
+    fetch_tensor_names.reserve(num_outputs_required);
+    for (int output_idx = 0; output_idx < num_outputs_required; ++output_idx) {
+      fetch_tensor_names.push_back(strings::StrCat("n:", output_idx));
+    }
+    std::vector<Tensor> fetch_tensors;
+    TF_ASSERT_OK(session->Run({}, fetch_tensor_names, {}, &fetch_tensors));
+    ASSERT_EQ(num_outputs_required, fetch_tensors.size());
+    for (const Tensor& t : fetch_tensors) {
+      ASSERT_EQ(num_outputs_required, t.scalar<int64>()());
+    }
+  }
+
+  TF_ASSERT_OK(session->Close());
 }
 
 }  // namespace tensorflow

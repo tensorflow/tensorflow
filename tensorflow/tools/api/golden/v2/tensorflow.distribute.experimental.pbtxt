@@ -9,8 +9,20 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
-    name: "MultiWorkerMirroredStrategy"
+    name: "CollectiveHints"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CommunicationImplementation"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "CommunicationOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MultiWorkerMirroredStrategy"
+    mtype: "<class \'tensorflow.python.distribute.collective_all_reduce_strategy._CollectiveAllReduceStrategyExperimentalMeta\'>"
   }
   member {
     name: "ParameterServerStrategy"
@@ -19,5 +31,17 @@ tf_module {
   member {
     name: "TPUStrategy"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ValueContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "coordinator"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "partitioners"
+    mtype: "<type \'module\'>"
   }
 }

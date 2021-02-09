@@ -15,6 +15,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/rng_alg.h"
+#include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/random_op_cpu.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
@@ -22,13 +25,19 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace functor {
+
 template <typename Distribution>
 struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const CPUDevice& device,
-                  Distribution dist, int64 output_size, int64 alg_tag_skip,
-                  ScopedUnlockUnrefVar* state_var_guard, Tensor* state_tensor,
+                  Distribution dist, UpdateVariableAndFill_Philox_Arg* arg,
                   typename Distribution::ResultElementType* output_data)
-      UNLOCK_FUNCTION() {
+      TF_UNLOCK_FUNCTION() {
+    int64 output_size = arg->output_size;
+    int64 alg_tag_skip = arg->alg_tag_skip;
+    ScopedUnlockUnrefVar* state_var_guard = arg->not_used;
+    Tensor* state_tensor = arg->state_tensor;
+
     auto state_tensor_flat = state_tensor->flat<StateElementType>();
     auto state_data = state_tensor_flat.data();
     // Delegates to PhiloxRandom to do the actual increasing.
@@ -37,9 +46,12 @@ struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
     // No longer needs the lock.
     state_var_guard->Release();
     functor::FillPhiloxRandom<CPUDevice, Distribution>()(
-        ctx, device, philox, output_data, output_size, dist);
+        ctx, device, /*key=*/nullptr, /*counter=*/nullptr, philox, output_data,
+        output_size, dist);
   }
 };
+
+}  // end namespace functor
 
 Status CheckState(const Tensor& state) {
   if (state.dtype() != STATE_ELEMENT_DTYPE) {
@@ -59,11 +71,12 @@ Status CheckPhiloxState(const Tensor& state, int64 alg_tag_skip = 0) {
                 "StateElementType must be int64");
   static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
                 "PhiloxRandom::ResultElementType must be uint32");
-  if (state.NumElements() < alg_tag_skip + PHILOX_MIN_STATE_SIZE) {
+  auto min_size = alg_tag_skip + PHILOX_MIN_STATE_SIZE;
+  if (state.NumElements() < min_size) {
     return errors::InvalidArgument(
         "For the Philox algorithm, the size of state"
         " must be at least ",
-        alg_tag_skip + PHILOX_MIN_STATE_SIZE, "; got ", state.NumElements());
+        min_size, "; got ", state.NumElements());
   }
   return Status::OK();
 }
@@ -90,22 +103,27 @@ Status UpdateVariableAndFill(
     if (var_tensor_flat.size() < 1) {
       return errors::InvalidArgument("Size of tensor must be at least 1");
     }
-    alg = var_tensor_flat(0);
+    alg = Algorithm(var_tensor_flat(0));
   }
   if (alg == RNG_ALG_PHILOX) {
     TF_RETURN_IF_ERROR(CheckPhiloxState(*var_tensor, alg_tag_skip));
     TF_RETURN_IF_ERROR(PrepareToUpdateVariable<Device, StateElementType>(
         ctx, var_tensor, var->copy_on_read_mode.load()));
-    UpdateVariableAndFill_Philox<Device, Distribution>()(
-        ctx, ctx->eigen_device<Device>(), dist, output_size, alg_tag_skip,
-        &state_var_guard, var_tensor, output_data);
+
+    UpdateVariableAndFill_Philox_Arg arg;
+    arg.output_size = output_size;
+    arg.alg_tag_skip = alg_tag_skip;
+    arg.not_used = &state_var_guard;
+    arg.state_tensor = var_tensor;
+    functor::UpdateVariableAndFill_Philox<Device, Distribution>()(
+        ctx, ctx->eigen_device<Device>(), dist, &arg, output_data);
     return Status::OK();
   } else {
     return errors::InvalidArgument("Unsupported algorithm id: ", alg);
   }
 }
 
-// Preconditon: input(0) is an existing resource.
+// Precondition: input(0) is an existing resource.
 template <typename Device, class Distribution>
 void StatefulRandomCompute(OpKernelContext* ctx, Distribution dist,
                            int state_input_idx, int shape_input_idx,
@@ -113,7 +131,7 @@ void StatefulRandomCompute(OpKernelContext* ctx, Distribution dist,
   using T = typename Distribution::ResultElementType;
   const Tensor& shape_t = ctx->input(shape_input_idx);
   TensorShape shape;
-  OP_REQUIRES_OK(ctx, ctx->op_kernel().MakeShape(shape_t, &shape));
+  OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &shape));
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
   auto output_flat = output->flat<T>();
@@ -128,7 +146,8 @@ class StatefulRandomOp : public OpKernel {
   explicit StatefulRandomOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    StatefulRandomCompute<Device>(ctx, Distribution(), 0, 1, true, 0);
+    StatefulRandomCompute<Device>(ctx, Distribution(), 0, 1, true,
+                                  RNG_ALG_PHILOX /*dummy*/);
   }
 };
 
@@ -149,6 +168,14 @@ Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
   return Status::OK();
 }
 
+template <typename AlgEnumType>
+Status GetAlg(OpKernelContext* ctx, int input_idx, Algorithm* alg) {
+  AlgEnumType alg_id;
+  TF_RETURN_IF_ERROR(GetScalar(ctx->input(input_idx), input_idx, &alg_id));
+  *alg = Algorithm(alg_id);
+  return Status::OK();
+}
+
 template <typename Device, class Distribution>
 class StatefulRandomOpV2 : public OpKernel {
  public:
@@ -156,7 +183,7 @@ class StatefulRandomOpV2 : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Algorithm alg;
-    OP_REQUIRES_OK(ctx, GetScalar(ctx->input(1), 1, &alg));
+    OP_REQUIRES_OK(ctx, GetAlg<int64>(ctx, 1, &alg));
     StatefulRandomCompute<Device>(ctx, Distribution(), /*state_input_idx=*/0,
                                   /*shape_input_idx=*/2,
                                   /*read_alg_from_state=*/false, alg);
@@ -170,7 +197,7 @@ class StatefulUniformIntOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Algorithm alg;
-    OP_REQUIRES_OK(ctx, GetScalar(ctx->input(1), 1, &alg));
+    OP_REQUIRES_OK(ctx, GetAlg<int64>(ctx, 1, &alg));
     const Tensor& minval = ctx->input(3);
     const Tensor& maxval = ctx->input(4);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval.shape()),
@@ -207,7 +234,7 @@ class StatefulUniformFullIntOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Algorithm alg;
-    OP_REQUIRES_OK(ctx, GetScalar(ctx->input(1), 1, &alg));
+    OP_REQUIRES_OK(ctx, GetAlg<int64>(ctx, 1, &alg));
     StatefulRandomCompute<Device>(
         ctx,
         random::UniformFullIntDistribution<random::PhiloxRandom, IntType>(),
@@ -216,38 +243,66 @@ class StatefulUniformFullIntOp : public OpKernel {
   }
 };
 
+namespace functor {
+
 template <>
 struct RngSkip_Philox<CPUDevice> {
-  void operator()(const CPUDevice& device, int64 delta, Tensor* state_tensor) {
-    auto state_data = state_tensor->flat<StateElementType>().data();
+  void operator()(const CPUDevice& device, const StateElementType* in_data,
+                  uint64 delta, StateElementType* out_data) {
     // Delegates to PhiloxRandom to do the actual increasing.
-    auto philox = GetPhiloxRandomFromMem(state_data);
-    UpdateMemWithPhiloxRandom(philox, delta, state_data);
+    auto counter = GetCounterFromMem(reinterpret_cast<const uint64*>(in_data));
+    UpdateCounterMemWithPhiloxRandom(counter, delta, out_data);
   }
 };
 
-template <typename Device>
+}  // end namespace functor
+
+template <typename Device, typename AlgEnumType = int64,
+          typename DeltaType = int64, bool read_old_value = false>
 class RngSkipOp : public OpKernel {
  public:
   explicit RngSkipOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     auto state_input_idx = 0;
+    auto alg_input_idx = 1;
+    auto delta_input_idx = 2;
     Algorithm alg;
-    OP_REQUIRES_OK(ctx, GetScalar(ctx->input(1), 1, &alg));
-    int64 delta;
-    OP_REQUIRES_OK(ctx, GetScalar(ctx->input(2), 2, &delta));
+    OP_REQUIRES_OK(ctx, GetAlg<AlgEnumType>(ctx, alg_input_idx, &alg));
+    DeltaType delta_;
+    OP_REQUIRES_OK(
+        ctx, GetScalar(ctx->input(delta_input_idx), delta_input_idx, &delta_));
+    uint64 delta = static_cast<uint64>(delta_);
     Var* var = nullptr;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, state_input_idx), &var));
     ScopedUnlockUnrefVar state_var_guard(var);
     Tensor* var_tensor = var->tensor();
     OP_REQUIRES_OK(ctx, CheckState(*var_tensor));
+    using T = StateElementType;
+    OP_REQUIRES_OK(ctx, PrepareToUpdateVariable<Device, T>(
+                            ctx, var_tensor, var->copy_on_read_mode.load()));
+    if (read_old_value) {
+      Tensor* output;
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_output(0, {RNG_MAX_COUNTER_SIZE + RNG_KEY_SIZE},
+                                    &output));
+      auto output_flat = output->flat<T>();
+      if (RNG_MAX_COUNTER_SIZE > GetCounterSize(alg)) {
+        functor::SetZeroFunctor<Device, T>()(ctx->eigen_device<Device>(),
+                                             output_flat);
+      }
+      functor::DenseUpdate<Device, T, ASSIGN>()(
+          ctx->eigen_device<Device>(), output_flat,
+          const_cast<const Tensor*>(var_tensor)->flat<T>());
+    }
     if (alg == RNG_ALG_PHILOX) {
       OP_REQUIRES_OK(ctx, CheckPhiloxState(*var_tensor));
-      OP_REQUIRES_OK(ctx, PrepareToUpdateVariable<Device, StateElementType>(
-                              ctx, var_tensor, var->copy_on_read_mode.load()));
-      RngSkip_Philox<Device>()(ctx->eigen_device<Device>(), delta, var_tensor);
+      // var_tensor layout is counter+key, so var_tensor data is also counter
+      // data.
+      auto counter_data = var_tensor->flat<T>().data();
+      functor::RngSkip_Philox<Device>()(ctx->eigen_device<Device>(),
+                                        counter_data, delta, counter_data);
     } else {
       OP_REQUIRES(ctx, false,
                   errors::InvalidArgument("Unsupported algorithm id: ", alg));
@@ -265,7 +320,7 @@ class NonDeterministicIntsOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& shape_t = ctx->input(0);
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->op_kernel().MakeShape(shape_t, &shape));
+    OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &shape));
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
     if (shape.num_elements() == 0) return;
@@ -383,17 +438,24 @@ TF_CALL_int64(REGISTER_StatefulUniformFullInt_CPU);
 TF_CALL_uint32(REGISTER_StatefulUniformFullInt_CPU);
 TF_CALL_uint64(REGISTER_StatefulUniformFullInt_CPU);
 
+// TODO(wangpeng): Remove `HostMemory("delta")` for RngReadAndSkip
 #define REGISTER_RngSkip(DEVICE)                       \
   REGISTER_KERNEL_BUILDER(Name("RngSkip")              \
                               .Device(DEVICE_##DEVICE) \
                               .HostMemory("resource")  \
                               .HostMemory("algorithm") \
                               .HostMemory("delta"),    \
-                          RngSkipOp<DEVICE##Device>);
+                          RngSkipOp<DEVICE##Device>);  \
+  REGISTER_KERNEL_BUILDER(Name("RngReadAndSkip")       \
+                              .Device(DEVICE_##DEVICE) \
+                              .HostMemory("resource")  \
+                              .HostMemory("alg")       \
+                              .HostMemory("delta"),    \
+                          RngSkipOp<DEVICE##Device, int32, uint64, true>);
 
 REGISTER_RngSkip(CPU);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_half(REGISTER_FloatOps_GPU);
 TF_CALL_float(REGISTER_FloatOps_GPU);

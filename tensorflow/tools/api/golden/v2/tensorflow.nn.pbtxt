@@ -169,8 +169,16 @@ tf_module {
     argspec: "args=[\'value\', \'pooling_ratio\', \'pseudo_random\', \'overlapping\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'0\', \'None\'], "
   }
   member_method {
+    name: "gelu"
+    argspec: "args=[\'features\', \'approximate\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "in_top_k"
     argspec: "args=[\'targets\', \'predictions\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "isotonic_regression"
+    argspec: "args=[\'inputs\', \'decreasing\', \'axis\'], varargs=None, keywords=None, defaults=[\'True\', \'-1\'], "
   }
   member_method {
     name: "l2_loss"
@@ -275,6 +283,10 @@ tf_module {
   member_method {
     name: "sigmoid_cross_entropy_with_logits"
     argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "silu"
+    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "softmax"

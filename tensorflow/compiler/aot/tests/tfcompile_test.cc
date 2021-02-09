@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfcond_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tffunction_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfgather_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_mlir_bridge.h"
@@ -429,8 +430,6 @@ TEST(TFCompileTest, MatMulAndAdd1) {
   }
 }
 
-// TODO(bixia): the following tests failed with MLIR bridge.
-#if !defined(ENABLE_MLIR_BRIDGE_TEST)
 TEST(TFCompileTest, Function) {
   // The function is equivalent to an addition
   FunctionComp add_fn;
@@ -445,7 +444,6 @@ TEST(TFCompileTest, Function) {
   EXPECT_EQ(add_fn.result0_data()[0], 3);
   EXPECT_EQ(add_fn.result0_data(), add_fn.results()[0]);
 }
-#endif
 
 TEST(TFCompileTest, Splits) {
   Eigen::ThreadPool tp(1);

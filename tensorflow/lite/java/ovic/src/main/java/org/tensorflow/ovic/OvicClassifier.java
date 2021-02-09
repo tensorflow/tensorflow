@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 package org.tensorflow.ovic;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -44,7 +45,7 @@ public class OvicClassifier {
   private Interpreter tflite;
 
   /** Labels corresponding to the output of the vision model. */
-  private List<String> labelList;
+  private final List<String> labelList;
 
   /** An array to hold inference results, to be feed into Tensorflow Lite as outputs. */
   private byte[][] inferenceOutputArray = null;
@@ -56,19 +57,18 @@ public class OvicClassifier {
   /** Whether the model runs as float or quantized. */
   private Boolean outputIsFloat = null;
 
-  private PriorityQueue<Map.Entry<Integer, Float>> sortedLabels =
+  private final PriorityQueue<Map.Entry<Integer, Float>> sortedLabels =
       new PriorityQueue<>(
           RESULTS_TO_SHOW,
           new Comparator<Map.Entry<Integer, Float>>() {
             @Override
             public int compare(Map.Entry<Integer, Float> o1, Map.Entry<Integer, Float> o2) {
-              return (o1.getValue()).compareTo(o2.getValue());
+              return o1.getValue().compareTo(o2.getValue());
             }
           });
 
   /** Initializes an {@code OvicClassifier}. */
-  public OvicClassifier(InputStream labelInputStream, MappedByteBuffer model)
-      throws IOException, RuntimeException {
+  public OvicClassifier(InputStream labelInputStream, MappedByteBuffer model) throws IOException {
     if (model == null) {
       throw new RuntimeException("Input model is empty.");
     }
@@ -80,12 +80,12 @@ public class OvicClassifier {
       throw new RuntimeException("The model's input dimensions must be 4 (BWHC).");
     }
     if (inputDims[0] != 1) {
-      throw new RuntimeException("The model must have a batch size of 1, got "
-          + inputDims[0] + " instead.");
+      throw new IllegalStateException(
+          "The model must have a batch size of 1, got " + inputDims[0] + " instead.");
     }
     if (inputDims[3] != 3) {
-      throw new RuntimeException("The model must have three color channels, got "
-          + inputDims[3] + " instead.");
+      throw new IllegalStateException(
+          "The model must have three color channels, got " + inputDims[3] + " instead.");
     }
     int minSide = Math.min(inputDims[1], inputDims[2]);
     int maxSide = Math.max(inputDims[1], inputDims[2]);
@@ -93,12 +93,15 @@ public class OvicClassifier {
       throw new RuntimeException("The model's resolution must be between (0, 1000].");
     }
     String outputDataType = TestHelper.getOutputDataType(tflite, 0);
-    if (outputDataType.equals("float")) {
-      outputIsFloat = true;
-    } else if (outputDataType.equals("byte")) {
-      outputIsFloat = false;
-    } else {
-      throw new RuntimeException("Cannot process output type: " + outputDataType);
+    switch (outputDataType) {
+      case "float":
+        outputIsFloat = true;
+        break;
+      case "byte":
+        outputIsFloat = false;
+        break;
+      default:
+        throw new IllegalStateException("Cannot process output type: " + outputDataType);
     }
     inferenceOutputArray = new byte[1][labelList.size()];
     labelProbArray = new float[1][labelList.size()];
@@ -123,7 +126,8 @@ public class OvicClassifier {
       }
     }
     OvicClassificationResult iterResult = computeTopKLabels();
-    iterResult.latency = getLastNativeInferenceLatencyMilliseconds();
+    iterResult.latencyMilli = getLastNativeInferenceLatencyMilliseconds();
+    iterResult.latencyNano = getLastNativeInferenceLatencyNanoseconds();
     return iterResult;
   }
 
@@ -154,6 +158,18 @@ public class OvicClassifier {
     return (latency == null) ? null : (Long) (latency / 1000000);
   }
 
+  /*
+   * Get native inference latency of last image classification run.
+   *  @throws RuntimeException if model is uninitialized.
+   */
+  public Long getLastNativeInferenceLatencyNanoseconds() {
+    if (tflite == null) {
+      throw new IllegalStateException(
+          TAG + ": ImageNet classifier has not been initialized; Failed.");
+    }
+    return tflite.getLastNativeInferenceDurationNanoseconds();
+  }
+
   /** Closes tflite to release resources. */
   public void close() {
     tflite.close();
@@ -162,9 +178,9 @@ public class OvicClassifier {
 
   /** Reads label list from Assets. */
   private static List<String> loadLabelList(InputStream labelInputStream) throws IOException {
-    List<String> labelList = new ArrayList<String>();
+    List<String> labelList = new ArrayList<>();
     try (BufferedReader reader =
-        new BufferedReader(new InputStreamReader(labelInputStream, StandardCharsets.UTF_8))) {
+        new BufferedReader(new InputStreamReader(labelInputStream, UTF_8))) {
       String line;
       while ((line = reader.readLine()) != null) {
         labelList.add(line);

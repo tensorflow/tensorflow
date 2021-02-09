@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,7 +36,7 @@ from tensorflow.python.platform import test as test_lib
 class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    strategy_combinations.set_virtual_cpus_to_at_least(3)
+    test_util.set_logical_devices_to_at_least("CPU", 3)
     super(LossUtilitiesTest, self).setUp()
 
   def testComputeAverageLossGlobalBatchSize(self):
@@ -57,7 +58,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
     # With strategy - num replicas = 2
     with distribution.scope():
-      per_replica_losses = distribution.experimental_run_v2(
+      per_replica_losses = distribution.run(
           nn_impl.compute_average_loss, args=(per_example_loss,))
       loss = distribution.reduce("SUM", per_replica_losses, axis=None)
       self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.) / 3)
@@ -71,7 +72,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
   def testComputeAverageLossSampleWeights(self, distribution):
     with distribution.scope():
       # Scalar sample weight
-      per_replica_losses = distribution.experimental_run_v2(
+      per_replica_losses = distribution.run(
           nn_impl.compute_average_loss,
           args=([2., 4., 6.],),
           kwargs={"sample_weight": 2})
@@ -79,7 +80,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(loss), (2. + 4. + 6.) * 2. / 3)
 
       # Per example sample weight
-      per_replica_losses = distribution.experimental_run_v2(
+      per_replica_losses = distribution.run(
           nn_impl.compute_average_loss,
           args=([2., 4., 6.],),
           kwargs={"sample_weight": [0.3, 0.5, 0.2]})
@@ -88,7 +89,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
           self.evaluate(loss), (2. * 0.3 + 4. * 0.5 + 6. * 0.2) / 3)
 
       # Time-step sample weight
-      per_replica_losses = distribution.experimental_run_v2(
+      per_replica_losses = distribution.run(
           nn_impl.compute_average_loss,
           args=([[2., 0.5], [4., 1.]],),
           kwargs={"sample_weight": [[0.3, 0.7], [0.2, 0.8]]})
@@ -97,9 +98,9 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
           self.evaluate(loss), (2. * 0.3 + 0.5 * 0.7 + 4. * 0.2 + 1. * 0.8) / 2)
 
   def testComputeAverageLossInvalidSampleWeights(self):
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 (r"Incompatible shapes: \[3\] vs. \[2\]|"
-                                  "Dimensions must be equal")):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                (r"Incompatible shapes: \[3\] vs. \[2\]|"
+                                 "Dimensions must be equal")):
       nn_impl.compute_average_loss([2.5, 6.2, 5.],
                                    sample_weight=[0.2, 0.8],
                                    global_batch_size=10)
@@ -114,7 +115,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
     with distribution.scope():
       per_example_loss = constant_op.constant([2., 4., 6.],
                                               dtype=dtypes.float64)
-      per_replica_losses = distribution.experimental_run_v2(
+      per_replica_losses = distribution.run(
           nn_impl.compute_average_loss,
           args=(per_example_loss,),
           kwargs={"sample_weight": 2})
@@ -169,7 +170,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
     # With strategy - num replicas = 2
     with distribution.scope():
-      per_replica_losses = distribution.experimental_run_v2(
+      per_replica_losses = distribution.run(
           nn_impl.scale_regularization_loss, args=(reg_losses,))
       loss = distribution.reduce("SUM", per_replica_losses, axis=None)
       self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.))

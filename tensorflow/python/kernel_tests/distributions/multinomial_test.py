@@ -40,7 +40,7 @@ class MultinomialTest(test.TestCase):
       p = [.1, .3, .6]
       dist = multinomial.Multinomial(total_count=1., probs=p)
       self.assertEqual(3, dist.event_shape_tensor().eval())
-      self.assertAllEqual([], dist.batch_shape_tensor().eval())
+      self.assertAllEqual([], dist.batch_shape_tensor())
       self.assertEqual(tensor_shape.TensorShape([3]), dist.event_shape)
       self.assertEqual(tensor_shape.TensorShape([]), dist.batch_shape)
 
@@ -51,7 +51,7 @@ class MultinomialTest(test.TestCase):
       n = [[3., 2], [4, 5], [6, 7]]
       dist = multinomial.Multinomial(total_count=n, probs=p)
       self.assertEqual(2, dist.event_shape_tensor().eval())
-      self.assertAllEqual([3, 2], dist.batch_shape_tensor().eval())
+      self.assertAllEqual([3, 2], dist.batch_shape_tensor())
       self.assertEqual(tensor_shape.TensorShape([2]), dist.event_shape)
       self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.batch_shape)
 
@@ -62,7 +62,7 @@ class MultinomialTest(test.TestCase):
     with self.cached_session():
       dist = multinomial.Multinomial(total_count=n, probs=p)
       self.assertEqual((2, 1), dist.total_count.get_shape())
-      self.assertAllClose(n, dist.total_count.eval())
+      self.assertAllClose(n, dist.total_count)
 
   @test_util.run_v1_only("b/120545219")
   def testP(self):
@@ -71,7 +71,7 @@ class MultinomialTest(test.TestCase):
       dist = multinomial.Multinomial(total_count=3., probs=p)
       self.assertEqual((1, 3), dist.probs.get_shape())
       self.assertEqual((1, 3), dist.logits.get_shape())
-      self.assertAllClose(p, dist.probs.eval())
+      self.assertAllClose(p, dist.probs)
 
   @test_util.run_v1_only("b/120545219")
   def testLogits(self):
@@ -81,8 +81,8 @@ class MultinomialTest(test.TestCase):
       multinom = multinomial.Multinomial(total_count=3., logits=logits)
       self.assertEqual((1, 3), multinom.probs.get_shape())
       self.assertEqual((1, 3), multinom.logits.get_shape())
-      self.assertAllClose(p, multinom.probs.eval())
-      self.assertAllClose(logits, multinom.logits.eval())
+      self.assertAllClose(p, multinom.probs)
+      self.assertAllClose(logits, multinom.logits)
 
   @test_util.run_v1_only("b/120545219")
   def testPmfUnderflow(self):
@@ -172,7 +172,7 @@ class MultinomialTest(test.TestCase):
       p = [[0.1, 0.9], [0.7, 0.3]]
       counts = [[1., 0]]
       pmf = multinomial.Multinomial(total_count=1., probs=p).prob(counts)
-      self.assertAllClose(pmf.eval(), [0.1, 0.7])
+      self.assertAllClose(pmf, [0.1, 0.7])
       self.assertEqual((2), pmf.get_shape())
 
   @test_util.run_v1_only("b/120545219")
@@ -181,7 +181,7 @@ class MultinomialTest(test.TestCase):
       p = [[0.1, 0.9], [0.7, 0.3]]
       counts = [1., 0]
       pmf = multinomial.Multinomial(total_count=1., probs=p).prob(counts)
-      self.assertAllClose(pmf.eval(), [0.1, 0.7])
+      self.assertAllClose(pmf, [0.1, 0.7])
       self.assertEqual(pmf.get_shape(), (2))
 
   def testPmfShapeCountsStretchedN(self):
@@ -213,7 +213,7 @@ class MultinomialTest(test.TestCase):
       dist = multinomial.Multinomial(total_count=n, probs=p)
       expected_means = 5 * np.array(p, dtype=np.float32)
       self.assertEqual((3,), dist.mean().get_shape())
-      self.assertAllClose(expected_means, dist.mean().eval())
+      self.assertAllClose(expected_means, dist.mean())
 
   @test_util.run_v1_only("b/120545219")
   def testMultinomialCovariance(self):
@@ -225,7 +225,7 @@ class MultinomialTest(test.TestCase):
                               [-1 / 10, 4 / 5, -7 / 10],
                               [-7 / 20, -7 / 10, 21 / 20]]
       self.assertEqual((3, 3), dist.covariance().get_shape())
-      self.assertAllClose(expected_covariances, dist.covariance().eval())
+      self.assertAllClose(expected_covariances, dist.covariance())
 
   @test_util.run_v1_only("b/120545219")
   def testMultinomialCovarianceBatch(self):
@@ -240,7 +240,7 @@ class MultinomialTest(test.TestCase):
       # Shape [4, 2, 2, 2]
       expected_covariances = [[inner_var, inner_var]] * 4
       self.assertEqual((4, 2, 2, 2), dist.covariance().get_shape())
-      self.assertAllClose(expected_covariances, dist.covariance().eval())
+      self.assertAllClose(expected_covariances, dist.covariance())
 
   def testCovarianceMultidimensional(self):
     # Shape [3, 5, 4]

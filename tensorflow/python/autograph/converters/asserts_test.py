@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.converters import asserts
-from tensorflow.python.autograph.converters import function_scopes
+from tensorflow.python.autograph.converters import functions
+from tensorflow.python.autograph.converters import return_statements
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
@@ -31,16 +31,15 @@ class AssertsTest(converter_testing.TestCase):
 
   def test_basic(self):
 
-    def test_fn(a):
+    def f(a):
       assert a, 'testmsg'
       return a
 
-    with ops.Graph().as_default():
-      with self.converted(test_fn, (function_scopes, asserts), {}) as result:
-        op = result.test_fn(constant_op.constant(False))
+    tr = self.transform(f, (functions, asserts, return_statements))
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, 'testmsg'):
-        self.evaluate(op)
+    op = tr(constant_op.constant(False))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, 'testmsg'):
+      self.evaluate(op)
 
 
 if __name__ == '__main__':

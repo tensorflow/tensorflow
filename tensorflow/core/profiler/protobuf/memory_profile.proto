@@ -1,0 +1,126 @@
+// This proto is used for analysis of TensorFlow runtime memory profile.
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+// The memory activity that causes change of memory state.
+enum MemoryActivity {
+  UNKNOWN_ACTIVITY = 0;
+  // Memory allocation in heap.
+  ALLOCATION = 1;
+  // Memory deallocation in heap.
+  DEALLOCATION = 2;
+  // Memory reservation for stack.
+  RESERVATION = 3;
+  // Expansion of existing memory allocation.
+  EXPANSION = 4;
+}
+
+// The aggregated memory stats including heap, stack, free memory and
+// fragmentation at a specific time.
+message MemoryAggregationStats {
+  // Memory usage by stack reservation, in bytes.
+  int64 stack_reserved_bytes = 1;
+  // Memory usage by heap allocation, in bytes.
+  int64 heap_allocated_bytes = 2;
+  // Free memory available for allocation or reservation, in bytes.
+  int64 free_memory_bytes = 3;
+  // Fragmentation value within [0, 1].
+  double fragmentation = 4;
+  // The peak memory usage over the entire program (lifetime of memory
+  // allocator). It monotonically increases with upper limit as memory capacity.
+  int64 peak_bytes_in_use = 5;
+}
+
+// The metadata associated with each memory allocation/deallocation. It can
+// also be interpreted as the metadata for the delta of memory state.
+// Next ID: 10
+message MemoryActivityMetadata {
+  // The activity associated with the MemoryProfileSnapshot.
+  MemoryActivity memory_activity = 1;
+  // The requested memory size in bytes from the caller of memory allocation.
+  // Should be a positive number.
+  int64 requested_bytes = 2;
+  // The allocated (block/chunk) size for the memory allocation.
+  // Should be a positive number.
+  int64 allocation_bytes = 3;
+  // Starting address of the allocated memory chunk/block.
+  uint64 address = 4;
+  // TensorFlow Op name for the memory activity.
+  string tf_op_name = 5;
+  // Step Id at which the memory activity occurred.
+  int64 step_id = 6;
+  // Tensor memory region type including "output", "temp", "persist", and
+  // "dynamic".
+  string region_type = 7;
+  // From enum DataType defined in tensorflow/core/framework/types.proto.
+  string data_type = 8;
+  // Tensor shape printed in string, e.g. "[3, 3, 512, 512]".
+  string tensor_shape = 9;
+}
+
+// Profile snapshot of the TensorFlow memory at runtime, including
+// MemoryAggregationStats (memory usage breakdown etc.), and
+// MemoryActivityMetadata (allocation or deallocation, TF Op name etc.).
+message MemoryProfileSnapshot {
+  // Memory activity timestamp.
+  int64 time_offset_ps = 1;
+  // The memory aggregation stats at the snapshot time.
+  MemoryAggregationStats aggregation_stats = 2;
+  // The metadata for the memory activity at the snapshot time.
+  MemoryActivityMetadata activity_metadata = 3;
+}
+
+// The summary of memory profile within the profiling window duration.
+message MemoryProfileSummary {
+  // The peak memory usage over the entire program (lifetime of memory
+  // allocator).
+  int64 peak_bytes_usage_lifetime = 1;
+  // The peak memory usage stats within the profiling window.
+  MemoryAggregationStats peak_stats = 2;
+  // The timestamp for peak memory usage within the profiling window.
+  int64 peak_stats_time_ps = 3;
+  // The memory capacity of the allocator.
+  int64 memory_capacity = 4;
+}
+
+// The active memory allocations at the peak memory usage.
+message ActiveAllocation {
+  // The index of a snapshot in the time-sorted list, used to fetch the
+  // MemoryActivityMetadata at front end from the memory_profile_snapshots list.
+  int64 snapshot_index = 1;
+  // The index of MemoryActivityMetadata in the special_allocations list.
+  int64 special_index = 2;
+  // Number of occurrences for identical memory allocations.
+  int64 num_occurrences = 3;
+}
+
+// Memory profile snapshots per memory allocator.
+message PerAllocatorMemoryProfile {
+  // A list of MemoryProfileSnapshots sorted by time_offset_ps.
+  repeated MemoryProfileSnapshot memory_profile_snapshots = 1;
+  // The summary of memory profile (e.g. the peak memory usage).
+  MemoryProfileSummary profile_summary = 2;
+  // The rows in the table of active allocations at peak memory usage within
+  // profiling window.
+  repeated ActiveAllocation active_allocations = 3;
+  // The special allocations (e.g. pre-allocated heap memory, stack reservation)
+  // that are not captured in the MemoryActivityMetadata of
+  // memory_profile_snapshots. Need to handle separately.
+  repeated MemoryActivityMetadata special_allocations = 4;
+}
+
+// Data for memory usage analysis in one host.
+message MemoryProfile {
+  // A map from memory allocator's id to PerAllocatorMemoryProfile for memory
+  // usage analysis on this host.
+  map<string /*memory_id*/, PerAllocatorMemoryProfile>
+      memory_profile_per_allocator = 1;
+  // Number of hosts profiled, used to populate host selection list at front
+  // end.
+  int32 num_hosts = 2;
+  // Ids for profiled memory allocators, used to populate memory selection list
+  // at front end.
+  repeated string memory_ids = 3;
+  reserved 4;
+}

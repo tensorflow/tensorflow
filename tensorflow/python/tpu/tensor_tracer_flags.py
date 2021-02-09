@@ -27,57 +27,61 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 
-TRACE_MODE_NAN_INF = 'nan-inf'
 TRACE_MODE_PART_TENSOR = 'part-tensor'
 TRACE_MODE_FULL_TENSOR = 'full-tensor'
-TRACE_MODE_FULL_IF_NAN = 'trace-back-if-nan'
+TRACE_MODE_FULL_TENSOR_SUMMARY = 'full_tensor_summary'
+
+TRACE_MODE_NAN_INF = 'nan-inf'
 TRACE_MODE_NORM = 'norm'
 TRACE_MODE_MAX_ABS = 'max-abs'
 TRACE_MODE_SUMMARY = 'summary'
 # summary mode to collects a finite set of signatures for each traced tensor,
 # (such as norm, max, min, mean) and dumps it using tb summaries.
-TRACE_MODE_FULL_TENSOR_SUMMARY = 'full_tensor_summary'
+
 # Full tensor mode dumps the whole tensor values for the traced tensors without
 # any processing on them; using tb summaries.
-_FLAG_NAME_TRACE_STACK_SIZE = 'trace_stack_size'
+
 _SUBMODE_BRIEF = 'brief'
 _SUBMODE_DETAILED = 'detailed'
-_FLAGS_ENV_VAR = 'TENSOR_TRACER_FLAGS'
+
 _FLAG_SINGLE_QUOTE_PAT = re.compile(r"\s*--([^=]+)='([^']*)'")
 _FLAG_DOUBLE_QUOTE_PAT = re.compile(r'\s*--([^=]+)="([^"]*)"')
 _FLAG_NO_QUOTE_PAT = re.compile(r'\s*--([^=]+)=(\S*)')
 _FLAG_NO_EQUAL_PAT = re.compile(r'\s*--([^=]+)\s*')
-_FLAG_NAME_ENABLE = 'enable'
-_FLAG_NAME_TRACE_MODE = 'trace_mode'
-_FLAG_NAME_USE_COMPACT_TRACE = 'compact_trace'
-_FLAG_NAME_TRACE_SCALAR_OPS = 'trace_scalar'
-_FLAG_NAME_TRACE_BEFORE_OPS = 'trace_before_included_ops'
-_FLAG_NAME_TRACE_AFTER_OPS = 'trace_after_included_ops'
-_FLAG_NAME_SUBMODE = 'submode'
-_FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS = 'include_less_interesting_ops'
-_FLAG_NAME_EXCLUDED_OPNAMES = 'excluded_opnames'
-_FLAG_NAME_EXCLUDED_OPTYPES = 'excluded_optypes'
-_FLAG_NAME_INCLUDED_OPNAMES = 'included_opnames'
-_FLAG_NAME_INCLUDED_OPTYPES = 'included_optypes'
-_FLAG_NAME_INCLUDED_CORES = 'included_cores'
-_FLAG_NAME_TRACE_LEVEL = 'trace_level'
-_FLAG_NAME_TRACE_DIR = 'trace_dir'
-_FLAG_NAME_REPORT_FILE = 'report_file'
-_FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR = 'use_test_undeclared_outputs_dir'
-_FLAG_NAME_OP_RANGE = 'op_range'
+
+FLAGS_ENV_VAR = 'TENSOR_TRACER_FLAGS'
+FLAG_NAME_ENABLE = 'enable'
+FLAG_NAME_TRACE_MODE = 'trace_mode'
+FLAG_NAME_TRACE_SCALAR_OPS = 'trace_scalar'
+FLAG_NAME_SUBMODE = 'submode'
+FLAG_NAME_EXCLUDED_OPNAMES = 'excluded_opnames'
+FLAG_NAME_EXCLUDED_OPTYPES = 'excluded_optypes'
+FLAG_NAME_INCLUDED_OPNAMES = 'included_opnames'
+FLAG_NAME_INCLUDED_OPTYPES = 'included_optypes'
+FLAG_NAME_TRACE_LEVEL = 'trace_level'
+FLAG_NAME_TRACE_DIR = 'trace_dir'
+FLAG_NAME_REPORT_FILE = 'report_file'
+FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR = 'use_test_undeclared_outputs_dir'
+FLAG_NAME_OP_RANGE = 'op_range'
 # Folder to dump the pre (before tensor tracer updates) and post graphs (after
 # tensor tracer updates).
-_FLAG_DUMP_BEFORE_AFTER_GRAPHS = 'dump_graphs'
+FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS = 'dump_graphs'
+FLAG_NAME_SUMMARY_SIGNATURES = 'signatures'
+FLAG_NAME_SUMMARY_PER_CORE = 'collect_summary_per_core'
+FLAG_NAME_TEMP_CACHE_VAR = 'use_temp_cache'
+FLAG_NAME_INSPECT_TRACE = 'inspect_trace'
+FLAG_NAME_FINGERPRINT_DIR = 'use_fingerprint_subdirectory'
+FLAG_FLUSH_SUMMARY = 'flush_summaries'
+
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
-_FLAG_SUMMARY_SIGNATURES = 'signatures'
-_FLAG_NAME_SUMMARY_PER_CORE = 'collect_summary_per_core'
 
 _TT_DEFAULT_TRACE_LEVEL = 3
 _TT_PREFIX = 'tensor_tracer'
 
 _TT_NORM = 'norm'
 _TT_MAX = 'max'
+_TT_MAX_ABS = 'max-abs'
 _TT_MIN = 'min'
 _TT_MEAN = 'mean'
 _TT_VAR = 'var'
@@ -85,15 +89,15 @@ _TT_SIZE = 'size'
 
 TT_SUMMARY_NORM = '%s_%s' % (_TT_PREFIX, _TT_NORM)
 TT_SUMMARY_MAX = '%s_%s' % (_TT_PREFIX, _TT_MAX)
+TT_SUMMARY_MAX_ABS = '%s_%s' % (_TT_PREFIX, _TT_MAX_ABS)
 TT_SUMMARY_MIN = '%s_%s' % (_TT_PREFIX, _TT_MIN)
 TT_SUMMARY_MEAN = '%s_%s' % (_TT_PREFIX, _TT_MEAN)
 TT_SUMMARY_VAR = '%s_%s' % (_TT_PREFIX, _TT_VAR)
 TT_SUMMARY_SIZE = '%s_%s' % (_TT_PREFIX, _TT_SIZE)
 
 TT_SUMMARY_SIGNATURES = (TT_SUMMARY_NORM, TT_SUMMARY_MAX, TT_SUMMARY_MIN,
-                         TT_SUMMARY_MEAN, TT_SUMMARY_VAR, TT_SUMMARY_SIZE)
-
-_TT_DEFAULT_TRACE_LEVEL = 3
+                         TT_SUMMARY_MEAN, TT_SUMMARY_VAR, TT_SUMMARY_SIZE,
+                         TT_SUMMARY_MAX_ABS)
 
 
 class TTParameters(object):
@@ -111,54 +115,44 @@ class TTParameters(object):
     self.report_file_path = self._get_report_filepath()
     self.op_range = self._get_op_range()
     self.excluded_opname_re_list = self._flag_value_to_re_list(
-        _FLAG_NAME_EXCLUDED_OPNAMES)
+        FLAG_NAME_EXCLUDED_OPNAMES)
     self.excluded_optype_re_list = self._flag_value_to_re_list(
-        _FLAG_NAME_EXCLUDED_OPTYPES)
+        FLAG_NAME_EXCLUDED_OPTYPES)
 
     self.included_opname_re_list = self._flag_value_to_re_list(
-        _FLAG_NAME_INCLUDED_OPNAMES)
+        FLAG_NAME_INCLUDED_OPNAMES)
     self.included_optype_re_list = self._flag_value_to_re_list(
-        _FLAG_NAME_INCLUDED_OPTYPES)
+        FLAG_NAME_INCLUDED_OPTYPES)
 
-    self.is_conditional_trace = self._is_conditional_trace_mode()
-    self.trace_scalar_ops = self.is_flag_on(_FLAG_NAME_TRACE_SCALAR_OPS)
-    self.use_compact_trace = self.is_flag_on(_FLAG_NAME_USE_COMPACT_TRACE)
+    self.trace_scalar_ops = self.is_flag_on(FLAG_NAME_TRACE_SCALAR_OPS)
+    self.use_compact_trace = self.trace_mode in (TRACE_MODE_NAN_INF,
+                                                 TRACE_MODE_NORM,
+                                                 TRACE_MODE_MAX_ABS,
+                                                 TRACE_MODE_SUMMARY)
+    self.use_temp_cache_var = self.is_flag_on(FLAG_NAME_TEMP_CACHE_VAR)
+    self.inspect_trace = self.is_flag_on(FLAG_NAME_INSPECT_TRACE)
+    self.use_fingerprint_subdir = self.is_flag_on(FLAG_NAME_FINGERPRINT_DIR)
 
-    # _trace_ops_before_included and _trace_ops_after_included denotes to depth
-    # of tracing relative to the ops given in --included_opnames or
-    # --included_optypes
-    # For example, in the below graph
-    #                op1 --> op2 --> op3 --> op4 --> op5
-    # If --included_opnames=op3 then only op3 will be traced.
-    # If also --trace_before_included_ops=2 (_trace_ops_before_included), then
-    # op1 and op2 will be traced as they are at most 2 hops apart from an
-    # included op. Similarly, if --trace_after_included_ops=2, then op4 and op5
-    # will also be traced.
-    self.trace_ops_before_included = self._get_flag_int_value(
-        _FLAG_NAME_TRACE_BEFORE_OPS, 0)
-    self.trace_ops_after_included = self._get_flag_int_value(
-        _FLAG_NAME_TRACE_AFTER_OPS, 0)
-    self.trace_stack_size = self._get_flag_int_value(
-        _FLAG_NAME_TRACE_STACK_SIZE, 1)
     _, self.graph_dump_path = self.get_flag_value(
-        _FLAG_DUMP_BEFORE_AFTER_GRAPHS)
-    self.included_cores = self._flag_value_as_int_list(
-        _FLAG_NAME_INCLUDED_CORES)
-    self.include_less_interesting_ops = self.is_flag_on(
-        _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS)
-    self.trace_level = self._get_flag_int_value(
-        _FLAG_NAME_TRACE_LEVEL, _TT_DEFAULT_TRACE_LEVEL)
+        FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS)
+    self.trace_level = self._get_flag_int_value(FLAG_NAME_TRACE_LEVEL,
+                                                _TT_DEFAULT_TRACE_LEVEL)
     self.summary_signatures = self._get_summary_signatures()
-    self.collect_summary_per_core = self.is_flag_on(_FLAG_NAME_SUMMARY_PER_CORE)
+    self.collect_summary_per_core = self.is_flag_on(FLAG_NAME_SUMMARY_PER_CORE)
+    self.flush_summaries_with_outside_compile = self.is_flag_on(
+        FLAG_FLUSH_SUMMARY)
+    self._check_flag_errors()
 
-  def _is_conditional_trace_mode(self):
-    return self.trace_mode == TRACE_MODE_FULL_IF_NAN
+  def _check_flag_errors(self):
+    if self.trace_mode in (TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY):
+      if not self.trace_dir:
+        raise ValueError('trace_dir must be explicitly provided in '
+                         'TENSOR_TRACER_FLAGS when summary mode is used.')
 
   def _get_report_filepath(self):
     """Sets the path of the output report file."""
 
-    found, report_file_path = self.get_flag_value(
-        _FLAG_NAME_REPORT_FILE)
+    found, report_file_path = self.get_flag_value(FLAG_NAME_REPORT_FILE)
     if found and report_file_path \
        and self.use_test_undeclared_outputs_dir():
       if os.path.isabs(report_file_path):
@@ -171,7 +165,7 @@ class TTParameters(object):
 
   def _get_op_range(self):
     """Sets the index range of the Ops that we will consider tracing."""
-    found, op_range = self.get_flag_value(_FLAG_NAME_OP_RANGE)
+    found, op_range = self.get_flag_value(FLAG_NAME_OP_RANGE)
     if not found or not op_range:
       op_range = (-1, -1)  # this means including all ops.
       return op_range
@@ -183,12 +177,12 @@ class TTParameters(object):
     return op_range
 
   def _get_trace_dir(self):
-    found, trace_dir = self.get_flag_value(_FLAG_NAME_TRACE_DIR)
+    found, trace_dir = self.get_flag_value(FLAG_NAME_TRACE_DIR)
     if found and trace_dir \
        and self.use_test_undeclared_outputs_dir():
-      raise ValueError('Cannot not use --%s and --%s at the same time'
-                       %(_FLAG_NAME_TRACE_DIR,
-                         _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR))
+      raise ValueError(
+          'Cannot not use --%s and --%s at the same time' %
+          (FLAG_NAME_TRACE_DIR, FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR))
     if self.use_test_undeclared_outputs_dir():
       trace_dir = self._env.get(_TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR)
     return trace_dir
@@ -196,12 +190,12 @@ class TTParameters(object):
   def _get_trace_mode(self):
     """Checks if the given trace mode is valid."""
 
-    found, trace_mode = self.get_flag_value(_FLAG_NAME_TRACE_MODE)
+    found, trace_mode = self.get_flag_value(FLAG_NAME_TRACE_MODE)
     if not found or not trace_mode:
       trace_mode = TRACE_MODE_NORM
     valid_trace_modes = [
         TRACE_MODE_NAN_INF, TRACE_MODE_PART_TENSOR, TRACE_MODE_FULL_TENSOR,
-        TRACE_MODE_NORM, TRACE_MODE_MAX_ABS, TRACE_MODE_FULL_IF_NAN,
+        TRACE_MODE_NORM, TRACE_MODE_MAX_ABS,
         TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY
     ]
     if trace_mode not in valid_trace_modes:
@@ -216,7 +210,7 @@ class TTParameters(object):
   def _get_submode(self):
     """Checks if the given submode is valid."""
 
-    found, submode = self.get_flag_value(_FLAG_NAME_SUBMODE)
+    found, submode = self.get_flag_value(FLAG_NAME_SUBMODE)
     if not found or not submode:
       submode = _SUBMODE_DETAILED
     if not submode:
@@ -261,19 +255,20 @@ class TTParameters(object):
   def _validate_flag_names(self):
     """Validates if the TensorTrace flags passed are valid."""
     valid_flag_names = [
-        _FLAG_NAME_ENABLE, _FLAG_NAME_TRACE_MODE, _FLAG_NAME_USE_COMPACT_TRACE,
-        _FLAG_NAME_TRACE_SCALAR_OPS, _FLAG_NAME_TRACE_BEFORE_OPS,
-        _FLAG_NAME_TRACE_AFTER_OPS, _FLAG_NAME_TRACE_STACK_SIZE,
-        _FLAG_NAME_SUBMODE, _FLAG_NAME_EXCLUDED_OPNAMES,
-        _FLAG_NAME_EXCLUDED_OPTYPES, _FLAG_NAME_INCLUDED_OPNAMES,
-        _FLAG_NAME_INCLUDED_OPTYPES, _FLAG_NAME_TRACE_DIR,
-        _FLAG_NAME_INCLUDED_CORES, _FLAG_NAME_REPORT_FILE,
-        _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
-        _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS, _FLAG_NAME_OP_RANGE,
-        _FLAG_DUMP_BEFORE_AFTER_GRAPHS, _FLAG_NAME_TRACE_LEVEL,
-        _FLAG_SUMMARY_SIGNATURES, _FLAG_NAME_SUMMARY_PER_CORE
+        FLAG_NAME_ENABLE, FLAG_NAME_TRACE_MODE,
+        FLAG_NAME_TRACE_SCALAR_OPS,
+        FLAG_NAME_SUBMODE, FLAG_NAME_EXCLUDED_OPNAMES,
+        FLAG_NAME_EXCLUDED_OPTYPES, FLAG_NAME_INCLUDED_OPNAMES,
+        FLAG_NAME_INCLUDED_OPTYPES, FLAG_NAME_TRACE_DIR,
+        FLAG_NAME_REPORT_FILE,
+        FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
+        FLAG_NAME_OP_RANGE,
+        FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS, FLAG_NAME_TRACE_LEVEL,
+        FLAG_NAME_SUMMARY_SIGNATURES, FLAG_NAME_SUMMARY_PER_CORE,
+        FLAG_NAME_TEMP_CACHE_VAR, FLAG_NAME_FINGERPRINT_DIR,
+        FLAG_NAME_INSPECT_TRACE, FLAG_FLUSH_SUMMARY
     ]
-    tensor_tracer_flags = self._env.get(_FLAGS_ENV_VAR)
+    tensor_tracer_flags = self._env.get(FLAGS_ENV_VAR)
     if not tensor_tracer_flags:
       return
     pos = 0
@@ -286,7 +281,7 @@ class TTParameters(object):
         raise ValueError(
             'The flag name "%s" passed via the environment variable "%s" '
             'is invalid. Valid flag names are:'
-            '\n%s'%(flag_name, _FLAGS_ENV_VAR, valid_flag_names))
+            '\n%s' % (flag_name, FLAGS_ENV_VAR, valid_flag_names))
       pos = match.end()
 
   def _get_summary_signatures(self):
@@ -296,7 +291,7 @@ class TTParameters(object):
       A dictionary of the signature identifiers {signature: index} that will be
       computed when trace_mode is summary.
     """
-    signatures = self._flag_value_as_list(_FLAG_SUMMARY_SIGNATURES)
+    signatures = self._flag_value_as_list(FLAG_NAME_SUMMARY_SIGNATURES)
 
     tt_signatures = []
     for signature in signatures:
@@ -310,14 +305,20 @@ class TTParameters(object):
             signature, TT_SUMMARY_SIGNATURES))
     if not tt_signatures:
       # Default case collects norm and max only.
-      return {TT_SUMMARY_MAX: 0, TT_SUMMARY_NORM: 1}
+      return {TT_SUMMARY_MAX_ABS: 0, TT_SUMMARY_NORM: 1}
     else:
       return {signature: idx for idx, signature in enumerate(tt_signatures)}
 
   def get_signature_to_agg_fn_map(self):
-    """Returns a map that contains the aggragate function for each signature."""
-    return {TT_SUMMARY_NORM: linalg_ops.norm,
+    """Returns a map that contains the aggregate function for each signature."""
+    return {TRACE_MODE_NORM: linalg_ops.norm,
+            TRACE_MODE_MAX_ABS: math_ops.reduce_max,
+            TRACE_MODE_NAN_INF: math_ops.reduce_max,
+            TT_SUMMARY_NORM: linalg_ops.norm,
             TT_SUMMARY_MAX: math_ops.reduce_max,
+            TT_SUMMARY_MAX_ABS:
+                lambda t, axis=0: math_ops.reduce_max(math_ops.abs(t),  # pylint: disable=g-long-lambda
+                                                      axis=axis),
             TT_SUMMARY_MIN: math_ops.reduce_min,
             TT_SUMMARY_MEAN: math_ops.reduce_mean,
             TT_SUMMARY_VAR: math_ops.reduce_max,  # Simply reduce max variance.
@@ -353,7 +354,7 @@ class TTParameters(object):
     int_list = []
     found, flag_value = self.get_flag_value(wanted_flag_name)
 
-    if found:
+    if found and flag_value:
       try:
         integer_values = flag_value.split(',')
         int_list = [int(int_val) for int_val in integer_values]
@@ -398,7 +399,7 @@ class TTParameters(object):
       RuntimeError: If supposedly deadcode is reached.
     """
 
-    tensor_tracer_flags = self._env.get(_FLAGS_ENV_VAR)
+    tensor_tracer_flags = self._env.get(FLAGS_ENV_VAR)
     if not tensor_tracer_flags:
       return False, None
     pos = 0
@@ -446,9 +447,9 @@ class TTParameters(object):
   def is_enabled(self):
     """Returns True if TensorTracer is enabled."""
 
-    if self.is_flag_on(_FLAG_NAME_ENABLE):
+    if self.is_flag_on(FLAG_NAME_ENABLE):
       logging.info('Tensor Tracer is enabled with flags %s.' %
-                   self._env.get(_FLAGS_ENV_VAR))
+                   self._env.get(FLAGS_ENV_VAR))
       return True
     else:
       return False
@@ -465,4 +466,4 @@ class TTParameters(object):
        env variable.
     """
 
-    return self.is_flag_on(_FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR)
+    return self.is_flag_on(FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR)

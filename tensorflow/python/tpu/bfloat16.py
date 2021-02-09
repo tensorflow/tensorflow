@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from typing import Generator, Optional, Text
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -70,11 +72,21 @@ def _get_custom_getter():
 
 @tf_export(v1=['tpu.bfloat16_scope'])
 @tf_contextlib.contextmanager
-def bfloat16_scope():
+def bfloat16_scope(
+    name: Optional[Text] = None
+) -> Generator[variable_scope.variable_scope, None, None]:
   """Scope class for bfloat16 variables so that the model uses custom getter.
 
   This enables variables to be read as bfloat16 type when using get_variable.
+
+  Arguments:
+    name: Name to use for scope.
+
+  Yields:
+    a variable scope.
   """
+  if name is None:
+    name = ''
   with variable_scope.variable_scope(
-      '', custom_getter=_get_custom_getter()) as varscope:
+      name, custom_getter=_get_custom_getter()) as varscope:
     yield varscope

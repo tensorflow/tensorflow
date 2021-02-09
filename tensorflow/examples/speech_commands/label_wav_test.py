@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 class LabelWavTest(test.TestCase):
 
   def _getWavData(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       sample_data = tf.zeros([1000, 2])
       wav_encoder = tf.audio.encode_wav(sample_data, 16000)
       wav_data = self.evaluate(wav_encoder)

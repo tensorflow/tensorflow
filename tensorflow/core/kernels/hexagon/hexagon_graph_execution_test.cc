@@ -414,7 +414,7 @@ TEST(GraphTransferer,
 
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
-  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  profile_utils::CpuUtils::EnableClockCycleProfiling();
   ClockCycleProfiler prof;
   prof.Start();
   Status status = gt.LoadGraphFromProtoFile(
@@ -447,7 +447,7 @@ TEST(GraphTransferer,
 
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
-  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  profile_utils::CpuUtils::EnableClockCycleProfiling();
   ClockCycleProfiler prof;
   prof.Start();
   Status status = gt.LoadGraphFromProtoFile(
@@ -481,7 +481,7 @@ TEST(GraphTransferer,
 
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
-  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  profile_utils::CpuUtils::EnableClockCycleProfiling();
   ClockCycleProfiler prof;
   prof.Start();
   Status status = gt.LoadGraphFromProtoFile(
@@ -540,7 +540,7 @@ TEST(GraphTransferer, DISABLED_RunInceptionV3OnHexagonExampleWithFusedGraph) {
 
 TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   CheckHexagonControllerVersion();
-  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  profile_utils::CpuUtils::EnableClockCycleProfiling();
 
   const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();

@@ -10,68 +10,52 @@ just a few minutes. All you need is a TensorFlow model [converted to TensorFlow
 Lite](../convert/). (If you don't have a model converted yet, you can experiment
 using the model provided with the example linked below.)
 
-## Install just the TensorFlow Lite interpreter
+## About the TensorFlow Lite runtime package
 
 To quickly start executing TensorFlow Lite models with Python, you can install
-just the TensorFlow Lite interpreter, instead of all TensorFlow packages.
+just the TensorFlow Lite interpreter, instead of all TensorFlow packages. We
+call this simplified Python package `tflite_runtime`.
 
-This interpreter-only package is a fraction the size of the full TensorFlow
+The `tflite_runtime` package is a fraction the size of the full `tensorflow`
 package and includes the bare minimum code required to run inferences with
-TensorFlow Lite—it includes only the [`tf.lite.Interpreter`](
-https://www.tensorflow.org/api_docs/python/tf/lite/Interpreter) Python class.
-This small package is ideal when all you want to do is execute `.tflite` models
-and avoid wasting disk space with the large TensorFlow library.
+TensorFlow Lite—primarily the
+[`Interpreter`](https://www.tensorflow.org/api_docs/python/tf/lite/Interpreter)
+Python class. This small package is ideal when all you want to do is execute
+`.tflite` models and avoid wasting disk space with the large TensorFlow library.
 
-Note: If you need access to other Python APIs, such as the [TensorFlow Lite
-Converter](../convert/python_api.md), you must install the [full TensorFlow
-package](https://www.tensorflow.org/install/).
+Note: If you need access to other Python APIs, such as the
+[TensorFlow Lite Converter](../convert/), you must install the
+[full TensorFlow package](https://www.tensorflow.org/install/).
 
-To install just the interpreter, download the appropriate Python wheel for your
-system from the following table, and then install it with the `pip install`
-command.
+## Install TensorFlow Lite for Python
 
-For example, if you're setting up a Raspberry Pi (using Raspbian Buster, which
-has Python 3.7), install the Python wheel as follows (after you click to
-download the `.whl` file below):
+To install the TensorFlow Lite runtime package, run this command:
 
 <pre class="devsite-terminal devsite-click-to-copy">
-pip3 install tflite_runtime-1.14.0-cp37-cp37m-linux_armv7l.whl
+pip3 install --extra-index-url https://google-coral.github.io/py-repo/ tflite_runtime
 </pre>
 
-<table>
-<tr><th></th><th>ARM 32</th><th>ARM 64</th><th>x86-64</th></tr>
-<tr><th style="white-space:nowrap">Python 3.5</th>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp35-cp35m-linux_armv7l.whl"
-    >tflite_runtime-1.14.0-cp35-cp35m-linux_armv7l.whl</a></td>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp35-cp35m-linux_aarch64.whl"
-    >tflite_runtime-1.14.0-cp35-cp35m-linux_aarch64.whl</a></td>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp35-cp35m-linux_x86_64.whl"
-    >tflite_runtime-1.14.0-cp35-cp35m-linux_x86_64.whl</a></td>
-</tr>
-<tr><th>Python 3.6</th>
-  <td>N/A</td>
-  <td>N/A</td>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp36-cp36m-linux_x86_64.whl"
-    >tflite_runtime-1.14.0-cp36-cp36m-linux_x86_64.whl</a></td>
-</tr>
-<tr><th>Python 3.7</th>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp37-cp37m-linux_armv7l.whl"
-    >tflite_runtime-1.14.0-cp37-cp37m-linux_armv7l.whl</a></td>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp37-cp37m-linux_aarch64.whl"
-    >tflite_runtime-1.14.0-cp37-cp37m-linux_aarch64.whl</a></td>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp37-cp37m-linux_x86_64.whl"
-    >tflite_runtime-1.14.0-cp37-cp37m-linux_x86_64.whl</a></td>
-</tr>
-</table>
+If you're on a Raspberry Pi, this command might fail due to a known issue with
+the `extra-index-url` option
+([#4011](https://github.com/raspberrypi/linux/issues/4011)). So we suggest you
+specify one of the
+[`tflite_runtime` wheels](https://github.com/google-coral/pycoral/releases/)
+that matches your system. For example, if you're running Raspberry Pi OS 10
+(which has Python 3.7), instead use this command:
 
+<pre class="devsite-terminal devsite-click-to-copy">
+pip3 install https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_armv7l.whl
+</pre>
+
+Note: If you're on Debian Linux and using TensorFlow Lite with a Coral ML
+accelerator, using pip to install `tflite_runtime` may not be compatible with
+other Coral libraries. To ensure all your libraries are compatible, instead
+install `tflite_runtime` as a
+[Debian package from Coral](https://coral.ai/software/#debian-packages).
 
 ## Run an inference using tflite_runtime
 
-To distinguish this interpreter-only package from the full TensorFlow package
-(allowing both to be installed, if you choose), the Python module provided in
-the above wheel is named `tflite_runtime`.
-
-So instead of importing `Interpreter` from the `tensorflow` module, you need to
+Instead of importing `Interpreter` from the `tensorflow` module, you now need to
 import it from `tflite_runtime`.
 
 For example, after you install the package above, copy and run the
@@ -107,12 +91,15 @@ models.
 
 ## Learn more
 
+For more details about the `Interpreter` API, read
+[Load and run a model in Python](inference.md#load-and-run-a-model-in-python).
+
 If you have a Raspberry Pi, try the
 [classify_picamera.py example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/raspberry_pi)
 to perform image classification with the Pi Camera and TensorFlow Lite.
 
-For more details about the `Interpreter` API, read [Load and run a model
-in Python](inference.md#load-and-run-a-model-in-python).
+If you're using a Coral ML accelerator, check out the
+[Coral examples on GitHub](https://github.com/google-coral/tflite/tree/master/python/examples).
 
 To convert other TensorFlow models to TensorFlow Lite, read about the
 the [TensorFlow Lite Converter](../convert/).

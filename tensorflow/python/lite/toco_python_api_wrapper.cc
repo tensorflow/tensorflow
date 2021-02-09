@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -26,7 +26,7 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
          py::object toco_flags_proto_txt_raw, py::object input_contents_txt_raw,
          bool extended_return, py::object debug_info_txt_raw,
          bool enable_mlir_converter) {
-        return tensorflow::pyo_or_throw(toco::TocoConvert(
+        return tensorflow::PyoOrThrow(toco::TocoConvert(
             model_flags_proto_txt_raw.ptr(), toco_flags_proto_txt_raw.ptr(),
             input_contents_txt_raw.ptr(), extended_return,
             debug_info_txt_raw.ptr(), enable_mlir_converter));
@@ -49,9 +49,43 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
   m.def(
       "TocoGetPotentiallySupportedOps",
       []() {
-        return tensorflow::pyo_or_throw(toco::TocoGetPotentiallySupportedOps());
+        return tensorflow::PyoOrThrow(toco::TocoGetPotentiallySupportedOps());
       },
       R"pbdoc(
       Returns a list of names of all ops potentially supported by tflite.
+    )pbdoc");
+  m.def(
+      "ExperimentalMlirQuantizeModel",
+      [](py::object input_contents_txt_raw, bool disable_per_channel,
+         bool fully_quantize, int inference_type, bool enable_numeric_verify) {
+        return tensorflow::PyoOrThrow(toco::MlirQuantizeModel(
+            input_contents_txt_raw.ptr(), disable_per_channel, fully_quantize,
+            inference_type, enable_numeric_verify));
+      },
+      py::arg("input_contents_txt_raw"), py::arg("disable_per_channel") = false,
+      py::arg("fully_quantize") = true, py::arg("inference_type") = 9,
+      py::arg("enable_numeric_verify") = false,
+      R"pbdoc(
+      Returns a quantized model.
+    )pbdoc");
+  m.def(
+      "ExperimentalMlirSparsifyModel",
+      [](py::object input_contents_txt_raw) {
+        return tensorflow::PyoOrThrow(
+            toco::MlirSparsifyModel(input_contents_txt_raw.ptr()));
+      },
+      py::arg("input_contents_txt_raw"),
+      R"pbdoc(
+      Returns a sparsified model.
+    )pbdoc");
+  m.def(
+      "RegisterCustomOpdefs",
+      [](py::object custom_opdefs_txt_raw) {
+        return tensorflow::PyoOrThrow(
+            toco::RegisterCustomOpdefs(custom_opdefs_txt_raw.ptr()));
+      },
+      py::arg("custom_opdefs_txt_raw"),
+      R"pbdoc(
+      Registers the given custom opdefs to the TensorFlow global op registry.
     )pbdoc");
 }

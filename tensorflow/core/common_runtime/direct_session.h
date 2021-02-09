@@ -198,7 +198,7 @@ class DirectSession : public Session {
   // 'status' is the current status of the execution.
   struct RunState {
     mutex mu;
-    Status status GUARDED_BY(mu);
+    Status status TF_GUARDED_BY(mu);
     std::unique_ptr<CollectiveExecutor::Handle> collective_executor;
     std::unique_ptr<StepStatsCollector> collector;
     TensorStore tensor_store;
@@ -275,7 +275,7 @@ class DirectSession : public Session {
   bool ShouldUseRunHandlerPool(const RunOptions& run_options) const;
 
   ::tensorflow::Status ExtendLocked(GraphDef graph)
-      EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   ::tensorflow::Status ResourceHandleToInputTensor(
       const Tensor& resource_tensor, Tensor* retrieved_tensor);
@@ -343,8 +343,8 @@ class DirectSession : public Session {
   // Unique session identifier.
   string session_handle_;
   mutex graph_state_lock_;
-  bool graph_created_ GUARDED_BY(graph_state_lock_) = false;
-  bool finalized_ GUARDED_BY(graph_state_lock_) = false;
+  bool graph_created_ TF_GUARDED_BY(graph_state_lock_) = false;
+  bool finalized_ TF_GUARDED_BY(graph_state_lock_) = false;
 
   // The thread-pools to use for running ops, with a bool indicating if the pool
   // is owned.
@@ -356,7 +356,7 @@ class DirectSession : public Session {
   bool sync_on_finish_ = true;
 
   std::vector<std::unique_ptr<FunctionInfo>> functions_
-      GUARDED_BY(executor_lock_);
+      TF_GUARDED_BY(executor_lock_);
 
   mutex executor_lock_;  // protects executors_
   // Holds mappings from signature to the executors that process
@@ -365,7 +365,7 @@ class DirectSession : public Session {
   // The map value is a shared_ptr since multiple map keys can point to the
   // same ExecutorsAndKey object.
   std::unordered_map<string, std::shared_ptr<ExecutorsAndKeys>> executors_
-      GUARDED_BY(executor_lock_);
+      TF_GUARDED_BY(executor_lock_);
 
   class RunCallableCallFrame;
   struct Callable {
@@ -374,12 +374,12 @@ class DirectSession : public Session {
     ~Callable();
   };
   mutex callables_lock_;
-  int64 next_callable_handle_ GUARDED_BY(callables_lock_) = 0;
-  std::unordered_map<int64, Callable> callables_ GUARDED_BY(callables_lock_);
+  int64 next_callable_handle_ TF_GUARDED_BY(callables_lock_) = 0;
+  std::unordered_map<int64, Callable> callables_ TF_GUARDED_BY(callables_lock_);
 
   // Holds mappings from handle to partial run state.
   std::unordered_map<string, std::unique_ptr<PartialRunState>> partial_runs_
-      GUARDED_BY(executor_lock_);
+      TF_GUARDED_BY(executor_lock_);
 
   // This holds all the tensors that are currently alive in the session.
   SessionState session_state_;
@@ -393,11 +393,11 @@ class DirectSession : public Session {
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
   std::unordered_map<string, string> stateful_placements_
-      GUARDED_BY(graph_state_lock_);
+      TF_GUARDED_BY(graph_state_lock_);
 
   // Execution_state; used when placing the entire graph.
   std::unique_ptr<GraphExecutionState> execution_state_
-      GUARDED_BY(graph_state_lock_);
+      TF_GUARDED_BY(graph_state_lock_);
 
   // The function library, before any rewrites or optimizations have been
   // performed. In particular, CreateGraphs() may need to modify the function
@@ -406,7 +406,7 @@ class DirectSession : public Session {
 
   // true if the Session has been Closed.
   mutex closed_lock_;
-  bool closed_ GUARDED_BY(closed_lock_) = false;
+  bool closed_ TF_GUARDED_BY(closed_lock_) = false;
 
   // For generating unique names for this session instance.
   std::atomic<int64> edge_name_counter_ = {0};
@@ -423,7 +423,7 @@ class DirectSession : public Session {
 
   // For testing collective graph key generation.
   mutex collective_graph_key_lock_;
-  int64 collective_graph_key_ GUARDED_BY(collective_graph_key_lock_) = -1;
+  int64 collective_graph_key_ TF_GUARDED_BY(collective_graph_key_lock_) = -1;
 
   // Run in caller's thread if RunOptions.inter_op_thread_pool is negative or
   // all of following conditions are met:

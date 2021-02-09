@@ -81,7 +81,7 @@ class Mutex : public ResourceBase {
     CancellationToken token{};
     bool* cancelled = nullptr;
     if (cm) {
-      cancelled = new bool(false);  // GUARDED_BY(mu_);
+      cancelled = new bool(false);  // TF_GUARDED_BY(mu_);
       token = cm->get_cancellation_token();
       const bool already_cancelled =
           !cm->RegisterCallback(token, [this, cancelled]() {
@@ -125,8 +125,8 @@ class Mutex : public ResourceBase {
 
  private:
   mutex mu_;
-  condition_variable cv_ GUARDED_BY(mu_);
-  bool locked_ GUARDED_BY(mu_);
+  condition_variable cv_ TF_GUARDED_BY(mu_);
+  bool locked_ TF_GUARDED_BY(mu_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   string name_;
 };

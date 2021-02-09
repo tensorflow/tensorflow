@@ -69,18 +69,13 @@ def guess_is_tensorflow_py_library(py_file_path):
     py_file_path: full path of the Python source file in question.
 
   Returns:
-    (`bool`) Whether the file is a part of the tensorflow library.
-
-  Raises:
-    ValueError: if the extension name of py_file_path does not indicate a Python
-      source file (compiled or uncomplied).
+    (`bool`) Whether the file is inferred to be a part of the tensorflow
+      library.
   """
   if (not is_extension_uncompiled_python_source(py_file_path) and
       not is_extension_compiled_python_source(py_file_path)):
-    raise ValueError(
-        "Input file path (%s) is not a Python source file." % py_file_path)
+    return False
   py_file_path = _norm_abs_path(py_file_path)
-
   return ((py_file_path.startswith(_TENSORFLOW_BASEDIR) or
            py_file_path.startswith(_ABSL_BASEDIR)) and
           not py_file_path.endswith("_test.py") and
@@ -142,19 +137,20 @@ def _try_load_par_source(source_file_path):
     If successful, lines of the source file as a `list` of `str`s.
     Else, `None`.
   """
-  path_items = [item for item in source_file_path.split(os.path.sep) if item]
-  prefix_path = os.path.sep
-  for i, path_item in enumerate(path_items):
-    prefix_path = os.path.join(prefix_path, path_item)
-    if (prefix_path.endswith(".par") and os.path.isfile(prefix_path)
-        and i < len(path_items) - 1):
-      suffix_path = os.path.sep.join(path_items[i + 1:])
+  prefix_path = source_file_path
+  while True:
+    prefix_path, basename = os.path.split(prefix_path)
+    if not basename:
+      break
+    suffix_path = os.path.normpath(
+        os.path.relpath(source_file_path, start=prefix_path))
+    if prefix_path.endswith(".par") and os.path.isfile(prefix_path):
       with zipfile.ZipFile(prefix_path) as z:
-        if suffix_path not in z.namelist():
-          return None
-        with z.open(suffix_path) as zf:
-          source_text = zf.read().decode("utf-8")
-          return source_text.split("\n")
+        norm_names = [os.path.normpath(name) for name in z.namelist()]
+        if suffix_path in norm_names:
+          with z.open(z.namelist()[norm_names.index(suffix_path)]) as zf:
+            source_text = zf.read().decode("utf-8")
+            return source_text.split("\n")
 
 
 def annotate_source(dump,
@@ -225,15 +221,15 @@ def annotate_source(dump,
 
 
 def list_source_files_against_dump(dump,
-                                   path_regex_whitelist=None,
-                                   node_name_regex_whitelist=None):
+                                   path_regex_allowlist=None,
+                                   node_name_regex_allowlist=None):
   """Generate a list of source files with information regarding ops and tensors.
 
   Args:
     dump: (`DebugDumpDir`) A `DebugDumpDir` object of which the Python graph
       has been loaded.
-    path_regex_whitelist: A regular-expression filter for source file path.
-    node_name_regex_whitelist: A regular-expression filter for node names.
+    path_regex_allowlist: A regular-expression filter for source file path.
+    node_name_regex_allowlist: A regular-expression filter for node names.
 
   Returns:
     A list of tuples regarding the Python source files involved in constructing
@@ -268,10 +264,11 @@ def list_source_files_against_dump(dump,
   path_to_first_line = {}
   tensor_name_to_num_dumps = {}
 
-  path_regex = (re.compile(path_regex_whitelist)
-                if path_regex_whitelist else None)
-  node_name_regex = (re.compile(node_name_regex_whitelist)
-                     if node_name_regex_whitelist else None)
+  path_regex = (
+      re.compile(path_regex_allowlist) if path_regex_allowlist else None)
+  node_name_regex = (
+      re.compile(node_name_regex_allowlist)
+      if node_name_regex_allowlist else None)
 
   to_skip_file_paths = set()
   for op in py_graph.get_operations():

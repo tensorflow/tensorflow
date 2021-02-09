@@ -58,7 +58,8 @@ class TopKOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("TopKV2").CompileTimeConstantInput("k").TypeConstraint(
-                    "T", {DT_UINT32, DT_INT32, DT_FLOAT, DT_BFLOAT16}),
+                    "T", {DT_UINT32, DT_INT32, DT_FLOAT, DT_HALF, DT_DOUBLE,
+                          DT_BFLOAT16}),
                 TopKOp);
 
 }  // namespace

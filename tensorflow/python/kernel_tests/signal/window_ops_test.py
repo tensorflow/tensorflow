@@ -156,15 +156,14 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
       self.assertLen(rewritten_graph.node, 1)
 
   @parameterized.parameters(
-      # Due to control flow, only MLIR is supported.
       # Only float32 is supported.
-      (window_ops.hann_window, 10, False, dtypes.float32, True),
-      (window_ops.hann_window, 10, True, dtypes.float32, True),
-      (window_ops.hamming_window, 10, False, dtypes.float32, True),
-      (window_ops.hamming_window, 10, True, dtypes.float32, True),
-      (window_ops.vorbis_window, 12, None, dtypes.float32, True))
-  def test_tflite_convert(self, window_fn, window_length, periodic, dtype,
-                          use_mlir):
+      (window_ops.hann_window, 10, False, dtypes.float32),
+      (window_ops.hann_window, 10, True, dtypes.float32),
+      (window_ops.hamming_window, 10, False, dtypes.float32),
+      (window_ops.hamming_window, 10, True, dtypes.float32),
+      (window_ops.vorbis_window, 12, None, dtypes.float32))
+  def test_tflite_convert(self, window_fn, window_length, periodic, dtype):
+
     def fn(window_length):
       try:
         return window_fn(window_length, periodic=periodic, dtype=dtype)
@@ -172,7 +171,7 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
         return window_fn(window_length, dtype=dtype)
 
     tflite_model = test_util.tflite_convert(
-        fn, [tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)], use_mlir)
+        fn, [tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)])
     window_length = np.array(window_length).astype(np.int32)
     actual_output, = test_util.evaluate_tflite_model(
         tflite_model, [window_length])

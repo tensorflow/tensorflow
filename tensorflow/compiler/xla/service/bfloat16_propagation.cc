@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -203,6 +205,33 @@ void BFloat16Propagation::DetermineWhileComputationsPrecision(
   computations_visited_in_backward_pass_.insert(condition);
 }
 
+void BFloat16Propagation::DetermineConditionalComputationsPrecision(
+    HloInstruction* cond) {
+  CHECK_EQ(cond->opcode(), HloOpcode::kConditional);
+  for (int64 i = 0; i < cond->branch_count(); ++i) {
+    auto branch = cond->branch_computation(i);
+    auto root = branch->root_instruction();
+    ShapeUtil::ForEachSubshape(
+        root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.element_type() != F32) {
+            return;
+          }
+          if (OutputTypeAfterChange(cond, index) == BF16) {
+            AddToOrRemoveFromBF16ChangeSet(root, index, BF16);
+            VLOG(2) << "Conditional branch " << i << " root "
+                    << root->ToString() << " at shape index " << index
+                    << " changed to BF16 precision for conditional "
+                    << cond->ToString();
+          }
+        });
+    auto insts = branch->MakeInstructionPostOrder();
+    for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
+      DetermineInstructionPrecision(*inst_it, /*skip_parameters=*/false);
+    }
+    computations_visited_in_backward_pass_.insert(branch);
+  }
+}
+
 bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
                                               const ShapeIndex& index) const {
   // If the subshape isn't floating point then none of the users will be BF16.
@@ -265,6 +294,14 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
           return false;
         }
         continue;
+      } else if (use.instruction->opcode() == HloOpcode::kConditional) {
+        auto* cond_parameter =
+            use.instruction->branch_computation(use.operand_number - 1)
+                ->parameter_instruction(0);
+        if (OutputTypeAfterChange(cond_parameter, use.operand_index) != BF16) {
+          return false;
+        }
+        continue;
       }
       if (bfloat16_support_->EffectiveOperandPrecisionIsBF16(
               *use.instruction, use.operand_number)) {
@@ -323,7 +360,6 @@ bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst) {
   // assumptions for them.
   return inst->opcode() == HloOpcode::kCustomCall ||      //
          inst->opcode() == HloOpcode::kCall ||            //
-         inst->opcode() == HloOpcode::kConditional ||     //
          inst->opcode() == HloOpcode::kBitcastConvert ||  //
          inst->HasSideEffectNoRecurse();
 }
@@ -332,9 +368,10 @@ bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst) {
 
 void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
                                                         bool skip_parameters) {
-  // We handle any fusion computation or while body/condition after the
-  // instruction is handled, because we need to know the output shape of a
-  // fusion or while before propagating inside its  computations.
+  // We handle any fusion computation, while body/condition or conditional
+  // branches after the instruction is handled, because we need to know the
+  // output shape of a fusion or while before propagating inside its
+  // computations.
   bool postpone_processing_called_computations = false;
   auto cleaner = tensorflow::gtl::MakeCleanup(
       [this, hlo, &postpone_processing_called_computations] {
@@ -343,6 +380,8 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
             DetermineFusionComputationPrecision(hlo);
           } else if (hlo->opcode() == HloOpcode::kWhile) {
             DetermineWhileComputationsPrecision(hlo);
+          } else if (hlo->opcode() == HloOpcode::kConditional) {
+            DetermineConditionalComputationsPrecision(hlo);
           }
         }
         instructions_visited_in_backward_pass_.insert(hlo);
@@ -351,6 +390,14 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
   if (hlo->opcode() == HloOpcode::kWhile &&
       (caller_counts_[hlo->while_condition()] > 1 ||
        caller_counts_[hlo->while_body()] > 1)) {
+    postpone_processing_called_computations = true;
+    return;
+  }
+
+  if (hlo->opcode() == HloOpcode::kConditional &&
+      absl::c_any_of(hlo->branch_computations(), [&](const HloComputation* c) {
+        return caller_counts_[c] > 1;
+      })) {
     postpone_processing_called_computations = true;
     return;
   }
@@ -459,6 +506,12 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
       adjust_computation(hlo->while_condition(), hlo->operands());
       adjust_computation(hlo->while_body(), hlo->operands());
       break;
+    case HloOpcode::kConditional:
+      for (int64 i = 0; i < hlo->branch_count(); ++i) {
+        adjust_computation(hlo->branch_computation(i),
+                           {hlo->mutable_operand(i + 1)});
+      }
+      break;
     default:
       break;
   }
@@ -509,6 +562,11 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
     case HloOpcode::kWhile:
       adjust_computation(hlo->while_body(), hlo);
       break;
+    case HloOpcode::kConditional:
+      for (auto* branch : hlo->branch_computations()) {
+        adjust_computation(branch, hlo);
+      }
+      break;
     default:
       break;
   }
@@ -521,75 +579,119 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
   auto insts = computation->MakeInstructionPostOrder();
   // Do the adjustment on each instruction in the computation in reverse
   // topological order.
-  for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
-    auto hlo = *inst_it;
-    auto adjust_hlo_output = [this, hlo, &parameter_changed](
-                                 const Shape& /* subshape */,
-                                 const ShapeIndex& index) {
-      auto output_type = OutputTypeAfterChange(hlo, index);
-      if (output_type != F32 && output_type != BF16) {
-        return;
-      }
-      PrimitiveType type = BF16;
-      for (const auto* value : dataflow_->GetValueSet(hlo, index).values()) {
-        auto value_type = ValueTypeAfterChange(value);
-        if (value_type == BF16) {
-          continue;
+  while (true) {
+    bool any_change = false;
+    for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
+      auto hlo = *inst_it;
+      auto adjust_hlo_output = [&](const Shape& /* subshape */,
+                                   const ShapeIndex& index) {
+        auto output_type = OutputTypeAfterChange(hlo, index);
+        VLOG(2) << "output_type is " << ((output_type == BF16) ? "BF16" : "F32")
+                << " for :" << hlo->ToString() << "\n";
+        if (output_type != F32 && output_type != BF16) {
+          return;
         }
-        CHECK_EQ(value_type, F32);
-        type = F32;
-        break;
-      }
-      // It's possible that a user has been changed from BF16 to F32
-      // during this final adjustment pass, so we need to check
-      // AllUsersConsumeBF16() again.
-      if (type == BF16 && !AllUsersConsumeBF16(*hlo, index)) {
-        type = F32;
-      }
-      if (type == F32) {
+        PrimitiveType type = BF16;
         for (const auto* value : dataflow_->GetValueSet(hlo, index).values()) {
-          // We rely on the fact that this adjustment works in reverse
-          // topological order. Adding the value to
-          // values_that_must_be_kept_as_f32_ will ensure the correctness
-          // of the adjustment for HLOs that will be processed later.
-          values_that_must_be_kept_as_f32_.insert(value);
+          auto value_type = ValueTypeAfterChange(value);
+          if (value_type == BF16) {
+            continue;
+          }
+          VLOG(2) << "Adjust to F32 due to aliased dataflow value: "
+                  << value->ToString() << "\n";
+          CHECK_EQ(value_type, F32);
+          type = F32;
+          break;
+        }
+        // In order to find aliases due to in-place operations, use
+        // GetInPlaceInputOutputPairs. Ideally, we'd use HloAliasAnalysis here,
+        // but this code works with HloModules that aren't ready yet to use
+        // HloAliasAnalysis (e.g., their computation graphs may not have been
+        // flattened yet).
+        for (const auto& operand_and_output_index :
+             HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo)) {
+          if (operand_and_output_index.second == index) {
+            const HloUse& operand = operand_and_output_index.first;
+            for (const auto* value :
+                 dataflow_
+                     ->GetValueSet(hlo->operand(operand.operand_number),
+                                   operand.operand_index)
+                     .values()) {
+              auto value_type = ValueTypeAfterChange(value);
+              if (value_type == BF16) {
+                continue;
+              }
+              VLOG(2) << "Adjust to F32 due to InputOutPair: "
+                      << value->ToString() << "\n";
+              CHECK_EQ(value_type, F32);
+              type = F32;
+              break;
+            }
+          }
+        }
+
+        // It's possible that a user has been changed from BF16 to F32
+        // during this final adjustment pass, so we need to check
+        // AllUsersConsumeBF16() again.
+        if (type == BF16 && !AllUsersConsumeBF16(*hlo, index)) {
+          VLOG(2) << "Adjust to F32 due to All user consumeBF16 fail\n";
+          type = F32;
+        }
+        if (type == F32) {
+          for (const auto* value :
+               dataflow_->GetValueSet(hlo, index).values()) {
+            // We rely on the fact that this adjustment works in reverse
+            // topological order. Adding the value to
+            // values_that_must_be_kept_as_f32_ will ensure the correctness
+            // of the adjustment for HLOs that will be processed later.
+            values_that_must_be_kept_as_f32_.insert(value);
+          }
+        }
+        if (type != output_type) {
+          any_change = true;
+          AddToOrRemoveFromBF16ChangeSet(hlo, index, type);
+          VLOG(2) << "HloInstruction output at shape index " << index
+                  << " adjusted to " << (type == BF16 ? "BF16" : "F32") << ": "
+                  << hlo->ToString();
+          if (hlo->opcode() == HloOpcode::kParameter) {
+            parameter_changed = true;
+          }
+        }
+      };
+      ShapeUtil::ForEachSubshape(hlo->shape(), adjust_hlo_output);
+      AdjustCalledComputationRoot(hlo);
+      if (hlo->opcode() == HloOpcode::kWhile) {
+        // We need to run on the while body and condition repeatedly until a
+        // fixed point is reached, i.e., the parameters do not change any more.
+        // We may need more than one iteration because the while input and
+        // output alias each other, so changing one input parameter requires
+        // changing the corresponding output element and thus may transitively
+        // require changing another input parameter. A fixed point will be
+        // reached because the parameters can only be changed from BF16 to F32,
+        // not the other way around.
+        absl::flat_hash_set<const HloComputation*> visited_in_while;
+        while (ResolveInconsistencyOfAliasingBuffersHelper(
+                   hlo->while_condition(), &visited_in_while) ||
+               ResolveInconsistencyOfAliasingBuffersHelper(hlo->while_body(),
+                                                           &visited_in_while)) {
+          visited_in_while.clear();
+          ShapeUtil::ForEachSubshape(hlo->shape(), adjust_hlo_output);
+          AdjustCalledComputationRoot(hlo);
+        }
+        visited_computations->insert(visited_in_while.begin(),
+                                     visited_in_while.end());
+      } else if (hlo->opcode() == HloOpcode::kFusion) {
+        ResolveInconsistencyOfAliasingBuffersHelper(
+            hlo->fused_instructions_computation(), visited_computations);
+      } else if (hlo->opcode() == HloOpcode::kConditional) {
+        for (auto* branch : hlo->branch_computations()) {
+          ResolveInconsistencyOfAliasingBuffersHelper(branch,
+                                                      visited_computations);
         }
       }
-      if (type != output_type) {
-        AddToOrRemoveFromBF16ChangeSet(hlo, index, type);
-        VLOG(2) << "HloInstruction output at shape index " << index
-                << " adjusted to " << (type == BF16 ? "BF16" : "F32") << ": "
-                << hlo->ToString();
-        if (hlo->opcode() == HloOpcode::kParameter) {
-          parameter_changed = true;
-        }
-      }
-    };
-    ShapeUtil::ForEachSubshape(hlo->shape(), adjust_hlo_output);
-    AdjustCalledComputationRoot(hlo);
-    if (hlo->opcode() == HloOpcode::kWhile) {
-      // We need to run on the while body and condition repeatedly until a fixed
-      // point is reached, i.e., the parameters do not change any more. We may
-      // need more than one iteration because the while input and output alias
-      // each other, so changing one input parameter requires changing the
-      // corresponding output element and thus may transitively require changing
-      // another input parameter. A fixed point will be reached because the
-      // parameters can only be changed from BF16 to F32, not the other way
-      // around.
-      absl::flat_hash_set<const HloComputation*> visited_in_while;
-      while (ResolveInconsistencyOfAliasingBuffersHelper(hlo->while_condition(),
-                                                         &visited_in_while) ||
-             ResolveInconsistencyOfAliasingBuffersHelper(hlo->while_body(),
-                                                         &visited_in_while)) {
-        visited_in_while.clear();
-        ShapeUtil::ForEachSubshape(hlo->shape(), adjust_hlo_output);
-        AdjustCalledComputationRoot(hlo);
-      }
-      visited_computations->insert(visited_in_while.begin(),
-                                   visited_in_while.end());
-    } else if (hlo->opcode() == HloOpcode::kFusion) {
-      ResolveInconsistencyOfAliasingBuffersHelper(
-          hlo->fused_instructions_computation(), visited_computations);
+    }
+    if (!any_change) {
+      break;
     }
   }
   // Now adjust parameters of called computations.

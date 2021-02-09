@@ -55,6 +55,30 @@ class TFConfigClusterResolver(ClusterResolver):
   This is an implementation of cluster resolvers when using TF_CONFIG to set
   information about the cluster. The cluster spec returned will be
   initialized from the TF_CONFIG environment variable.
+
+  An example to set TF_CONFIG is:
+
+    ```Python
+    os.environ['TF_CONFIG'] = json.dumps({
+      'cluster': {
+          'worker': ["localhost:12345", "localhost:23456"]
+      },
+      'task': {'type': 'worker', 'index': 0}
+    })
+    ```
+
+  However, sometimes the container orchestration framework will set TF_CONFIG
+  for you. In this case, you can just create an instance without passing in any
+  arguments. You can find an example here to let Kuburnetes set TF_CONFIG for
+  you: https://github.com/tensorflow/ecosystem/tree/master/kubernetes. Then you
+  can use it with `tf.distribute.Strategy` as:
+
+    ```Python
+    # `TFConfigClusterResolver` is already the default one in the following
+    # strategy.
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=TFConfigClusterResolver())
+    ```
   """
 
   def __init__(self,
@@ -88,7 +112,7 @@ class TFConfigClusterResolver(ClusterResolver):
 
   @property
   def task_id(self):
-    if self._task_type is None:
+    if self._task_id is None:
       task_info = _get_value_in_tfconfig(_TASK_KEY, {})
       return int(task_info['index']) if 'index' in task_info else None
     else:
@@ -139,6 +163,8 @@ class TFConfigClusterResolver(ClusterResolver):
 
   def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Returns the master address to use when creating a TensorFlow session.
+
+    Note: this is only useful for TensorFlow 1.x.
 
     Args:
       task_type: (String, optional) Overrides and sets the task_type of the

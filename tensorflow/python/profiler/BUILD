@@ -9,7 +9,7 @@ package(
 py_library(
     name = "profiler",
     srcs = ["profiler.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":model_analyzer",
@@ -21,9 +21,60 @@ py_library(
 )
 
 py_library(
+    name = "profiler_client",
+    srcs = ["profiler_client.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:c_api_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+    ],
+)
+
+cuda_py_test(
+    name = "profiler_client_test",
+    srcs = ["profiler_client_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":profiler_client",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "profiler_v2",
+    srcs = ["profiler_v2.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+    ],
+)
+
+cuda_py_test(
+    name = "profiler_v2_test",
+    srcs = ["profiler_v2_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_rocm",
+    ],
+    deps = [
+        ":profiler_v2",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/profiler:trace",
+    ],
+)
+
+py_library(
     name = "option_builder",
     srcs = ["option_builder.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":tfprof_logger",
     ],
@@ -32,13 +83,13 @@ py_library(
 py_library(
     name = "model_analyzer",
     srcs = ["model_analyzer.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":option_builder",
         ":tfprof_logger",
         "//tensorflow/core/profiler:protos_all_py",
-        "//tensorflow/python:_pywrap_tfprof",
         "//tensorflow/python:errors",
+        "//tensorflow/python/util:_pywrap_tfprof",
         "@six_archive//:six",
     ],
 )
@@ -86,7 +137,7 @@ cuda_py_test(
 py_library(
     name = "tfprof_logger",
     srcs = ["tfprof_logger.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -116,7 +167,7 @@ tf_py_test(
 py_library(
     name = "profile_context",
     srcs = ["profile_context.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":model_analyzer",
         ":tfprof_logger",
@@ -146,7 +197,7 @@ cuda_py_test(
 py_library(
     name = "pprof_profiler",
     srcs = ["pprof_profiler.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["@com_google_pprof//:pprof_proto_py"],
 )
 
@@ -156,7 +207,7 @@ py_test(
     srcs = ["pprof_profiler_test.py"],
     main = "pprof_profiler_test.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_pip"],  # TODO(annarev): get it working with pip.
     deps = [
         ":pprof_profiler",
@@ -170,21 +221,24 @@ py_test(
 )
 
 py_library(
-    name = "traceme",
-    srcs = ["traceme.py"],
-    srcs_version = "PY2AND3",
+    name = "trace",
+    srcs = ["trace.py"],
+    srcs_version = "PY3",
+    visibility = [
+        "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/python/profiler/internal:_pywrap_traceme",
-        "@six_archive//:six",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
 py_library(
-    name = "scoped_annotation",
-    srcs = ["scoped_annotation.py"],
-    srcs_version = "PY2AND3",
+    name = "traceme",
+    srcs = ["traceme.py"],
+    srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/profiler/internal:_pywrap_scoped_annotation",
-        "@six_archive//:six",
+        ":trace",
     ],
 )

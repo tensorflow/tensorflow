@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 
+#include <stdint.h>
+
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 
@@ -112,6 +117,10 @@ Axis GetAxis(Layout layout, int32_t index) {
 
 int GetAxisIndex(Layout layout, Axis axis) {
   return DispatchByLayout(layout, GetIndexByAxisFunc{axis});
+}
+
+bool HasAxis(Layout layout, Axis axis) {
+  return GetAxisIndex(layout, axis) >= 0;
 }
 
 int Size(Layout layout) { return DispatchByLayout(layout, NumAxisFunc()); }

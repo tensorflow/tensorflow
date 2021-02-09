@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorBlockLowerTriangular"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorCirculant"
     mtype: "<type \'type\'>"
   }
@@ -91,6 +95,10 @@ tf_module {
   member_method {
     name: "band_part"
     argspec: "args=[\'input\', \'num_lower\', \'num_upper\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "banded_triangular_solve"
+    argspec: "args=[\'bands\', \'rhs\', \'lower\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
   }
   member_method {
     name: "cholesky"

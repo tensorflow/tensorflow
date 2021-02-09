@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -50,19 +50,55 @@ def make_strided_slice_np_style_tests(options):
           "shape": [[21, 15, 7]],
           "spec": [[slice(3, 7, 2), slice(None), 2]],
       },
-      # Ellipsis.
+      # Ellipsis 3d.
       {
           "dtype": [tf.float32],
           "shape": [[21, 15, 7]],
-          "spec": [[slice(3, 7, 2), Ellipsis]],
+          "spec": [[slice(3, 7, 2), Ellipsis], [Ellipsis,
+                                                slice(3, 7, 2)],
+                   [slice(1, 11, 3), Ellipsis,
+                    slice(3, 7, 2)]],
       },
-      # All combinations.
+      # Ellipsis 4d.
       {
           "dtype": [tf.float32],
-          "shape": [[21, 15, 7]],
-          "spec": [[tf.newaxis,
+          "shape": [[21, 15, 7, 9]],
+          "spec": [[slice(3, 7, 2), Ellipsis], [Ellipsis,
+                                                slice(3, 7, 2)],
+                   [slice(1, 11, 3), Ellipsis,
+                    slice(3, 7, 2)]],
+      },
+      # Ellipsis 5d.
+      {
+          "dtype": [tf.float32],
+          "shape": [[11, 21, 15, 7, 9]],
+          "spec": [[
+              slice(3, 7, 2),
+              slice(None),
+              slice(None),
+              slice(None),
+              slice(None)
+          ], [Ellipsis, slice(3, 7, 2)]],
+      },
+      # Ellipsis + Shrink Mask
+      {
+          "dtype": [tf.float32],
+          "shape": [[22, 15, 7]],
+          "spec": [[2,  # shrink before ellipsis
+                    Ellipsis],
+                   [Ellipsis,  # shrink after ellipsis
+                    2]],
+      },
+      # Ellipsis + New Axis Mask
+      {
+          "dtype": [tf.float32],
+          "shape": [[23, 15, 7]],
+          "spec": [[tf.newaxis,  # new_axis before ellipsis
                     slice(3, 7, 2),
-                    slice(None), Ellipsis]],
+                    slice(None), Ellipsis],
+                   [tf.newaxis,  # new_axis after (and before) ellipsis
+                    slice(3, 7, 2),
+                    slice(None), Ellipsis, tf.newaxis]],
       },
   ]
 

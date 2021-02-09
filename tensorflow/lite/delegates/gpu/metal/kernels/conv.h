@@ -18,75 +18,84 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> Convolution(
-    int id, ValueId input_id, ValueId output_id,
-    const Convolution2DAttributes& params,
-    const metal::RuntimeOptions& options);
+class ConvolutionGeneric : public GPUOperation {
+ public:
+  enum class WeightsUploadType {
+    PRIVATE_MEM_SIMD8_BROADCAST,
+    PRIVATE_MEM_SIMD16_BROADCAST,
+    PRIVATE_MEM_SIMD32_BROADCAST,
+    LOCAL_MEM_BY_THREADS,
+    GLOBAL_MEM,
+    CONSTANT_MEM,
+  };
 
-// Convolution for kernel 1x1
-// require:
-//   kernel_size = 1x1;
-//   padding prepended and appended = 0x0
-//   dilation = 1x1;
-//   stride = 1x1;
-// Works very good on A12 (IPhoneXS, etc).
-// Works good on A9/A10/A11 (IPhone6S, IPhone7, IPhoneX, etc).
-// Works bad on A7/A8 (IPhone5S, IPhone6, etc).
-std::vector<ComputeTaskDescriptorPtr> Convolution1x1(
-    int id, ValueId input_id, ValueId output_id,
-    const Convolution2DAttributes& params, const RuntimeOptions& options);
+  enum class WeightsInnerBlockLayout {
+    O4I4,
+    I4O4,
+  };
 
-// TODO(impjdi): Move it inside module.
-bool CheckConvolution1x1Support(const Convolution2DAttributes& attr);
+  struct ConvParams {
+    int3 block_size;
+    int3 work_group_size;
+    int3 work_group_launch_order;
+    int src_depth_loop_size;
+    bool need_src_loop = true;
+    bool need_dst_loop = true;
+    bool linear_wh;
+    bool linear_whs;
+    WeightsUploadType weights_upload_type;
+    WeightsInnerBlockLayout weight_layout;
+    bool different_weights_for_height = false;
+    bool x_kernel_is_1;
+    bool y_kernel_is_1;
+  };
 
-// This convolution pass all conv parameters (beside output_channels)
-// as dynamic arguments (uniform buffer) to kernel.
-// Depending on output_channels can be generated different kernels
-// Kernel can proceed 4/8/12/16 output channels per one thread.
-// 16 channels output is the fastest but the least flexible.
-std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
-    int id, ValueId input_id, ValueId output_id,
-    const Convolution2DAttributes& params, const RuntimeOptions& options);
+  ConvolutionGeneric() = default;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
+  }
+  int3 GetGridSize() const override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
 
-// This convolution makes more precise mapping of threads on elements.
-// For example, if we have output tensor 12x7 and work group = 8x4,
-// then we need 4 workgroups to cover this tensor in usual case.
-// But in general we have only 84 elements(12*7), and we can cover it with 3
-// workgroups of size 32. So this version of convolution use this precise
-// mapping.
-// But this convolution, due to some hardware limitations, doesn't work better
-// always. In general it works good on A12.
-// Each thread process 2 pixels in XY dimension and variable amount of pixels
-// in Z dimension(depends on dst_channels).
-std::vector<ComputeTaskDescriptorPtr> ConvolutionPrecise(
-    int id, ValueId input_id, ValueId output_id,
-    const Convolution2DAttributes& params, const RuntimeOptions& options);
+  // Move only
+  ConvolutionGeneric(ConvolutionGeneric&& kernel) = default;
+  ConvolutionGeneric& operator=(ConvolutionGeneric&& kernel) = default;
+  ConvolutionGeneric(const ConvolutionGeneric&) = delete;
+  ConvolutionGeneric& operator=(const ConvolutionGeneric&) = delete;
 
-// As previous, but specific for 1x1 and each thread process 1 pixel in XY
-// dimension.
-// This convolution for PowerVR in FP16 mode with FP32 accumulator
-// It will work in other modes also, but not with good performance
-std::vector<ComputeTaskDescriptorPtr> ConvolutionPrecise1x1PowerVR(
-    int id, ValueId input_id, ValueId output_id,
-    const Convolution2DAttributes& params, const RuntimeOptions& options);
+ private:
+  explicit ConvolutionGeneric(const OperationDef& definition)
+      : GPUOperation(definition) {}
+  friend ConvolutionGeneric CreateConvolutionGeneric(
+      const OperationDef& definition, const BHWC& dst_shape,
+      const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
 
-// TODO(impjdi): Move it inside module.
-bool CheckConvolutionPrecise1x1Support(const Convolution2DAttributes& attr);
+  friend ConvolutionGeneric CreateConvolutionWino4x4To6x6(
+      const OperationDef& definition, const BHWC& dst_shape,
+      const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
 
-// This function calculates amount of threads that should be launched for
-// ConvolutionGeneric or Convolution1x1 (threads_count1) and amount of threads
-// that should be launched for ConvolutionPrecise (threads_count2) and returns
-// threads_count1 / threads_count2.
-float GetThreadsRatioUsualToPreciseConvolution(const BHWC& dst_shape);
+  ConvParams params_;
+};
+
+ConvolutionGeneric CreateConvolutionGeneric(const OperationDef& definition,
+                                            const BHWC& dst_shape,
+                                            const Convolution2DAttributes& attr,
+                                            const GpuInfo& gpu_info);
+
+ConvolutionGeneric CreateConvolutionWino4x4To6x6(
+    const OperationDef& definition, const BHWC& dst_shape,
+    const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
 
 }  // namespace metal
 }  // namespace gpu

@@ -645,24 +645,29 @@ REGISTER_OP("BoostedTreesUpdateEnsembleV2")
       shape_inference::ShapeHandle shape_handle;
       for (int i = 0; i < num_groups; ++i) {
         int offset = i + 1;
+
         // Feature ids
         TF_RETURN_IF_ERROR(c->WithRank(c->input(offset), 1, &shape_handle));
+        // TODO(nponomareva): replace this with input("name",vector of shapes).
+        auto shape_rank_1 = c->MakeShape({c->Dim(shape_handle, 0)});
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(offset), shape_rank_1, &shape_handle));
 
         // Dimension ids.
         TF_RETURN_IF_ERROR(
             c->WithRank(c->input(offset + num_features), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(offset), shape_rank_1, &shape_handle));
 
         // Node ids.
         TF_RETURN_IF_ERROR(
             c->WithRank(c->input(offset + num_features * 2), 1, &shape_handle));
-        auto shape_rank_1 = c->MakeShape({c->Dim(shape_handle, 0)});
-        auto shape_rank_2 =
-            c->MakeShape({c->Dim(shape_handle, 0), logits_dimension});
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(offset), shape_rank_1, &shape_handle));
 
         // Gains.
         TF_RETURN_IF_ERROR(
             c->WithRank(c->input(offset + num_features * 3), 1, &shape_handle));
-        // TODO(nponomareva): replace this with input("name",vector of shapes).
         TF_RETURN_IF_ERROR(c->Merge(c->input(offset + num_features * 3),
                                     shape_rank_1, &shape_handle));
 
@@ -673,6 +678,8 @@ REGISTER_OP("BoostedTreesUpdateEnsembleV2")
                                     shape_rank_1, &shape_handle));
 
         // Left and right node contribs.
+        auto shape_rank_2 =
+            c->MakeShape({c->Dim(shape_handle, 0), logits_dimension});
         TF_RETURN_IF_ERROR(
             c->WithRank(c->input(offset + num_features * 5), 2, &shape_handle));
         TF_RETURN_IF_ERROR(c->Merge(c->input(offset + num_features * 5),

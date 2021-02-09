@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/base64.h"
+#include "tensorflow/core/platform/strcat.h"
 
 using tensorflow::errors::InvalidArgument;
 
@@ -51,10 +51,10 @@ Status ProcessInputs(
     const TF_Graph* fn_body, const char* fn_name, int ninputs,
     const TF_Output* inputs, std::vector<OutputTensor>* input_tensors,
     std::unordered_map<const Node*, std::vector<int>>* input_nodes)
-    EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   input_tensors->reserve(ninputs);
   for (int i = 0; i < ninputs; ++i) {
-    Node* node = &inputs[i].oper->node;
+    Node* node = inputs[i].oper ? &inputs[i].oper->node : nullptr;
     int idx = inputs[i].index;
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -87,10 +87,10 @@ Status ProcessInputs(
 Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
                       int noutputs, const TF_Output* outputs,
                       std::vector<OutputTensor>* output_tensors)
-    EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   output_tensors->reserve(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    Node* node = &outputs[i].oper->node;
+    Node* node = outputs[i].oper ? &outputs[i].oper->node : nullptr;
     int idx = outputs[i].index;
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         fn_body->graph.IsValidOutputTensor(node, idx),
@@ -111,7 +111,7 @@ Status ComputeBodyNodes(
     const TF_Operation* const* opers,
     const std::unordered_map<const Node*, std::vector<int>>& input_nodes,
     std::vector<const Node*>* body_nodes)
-    EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   if (num_opers == -1) {
     for (const Node* node : fn_body->graph.op_nodes()) {
       const auto& iter = input_nodes.find(node);
@@ -155,7 +155,7 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
     int ncontrol_outputs, const TF_Operation* const* control_outputs,
     const char* const* control_output_names, const TF_FunctionOptions* opts,
     const char* description, TF_Status* status) {
-  tensorflow::mutex_lock l(*const_cast<tensorflow::mutex*>(&fn_body->mu));
+  tensorflow::mutex_lock l(fn_body->mu);
 
   // Process inputs.
   std::vector<tensorflow::OutputTensor> input_tensors;
@@ -213,6 +213,11 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
     TF_DeleteFunction(tf_function);
     return nullptr;
   }
+
+  for (const Node* n : fn_body->graph.nodes()) {
+    tf_function->stack_traces[n->name()] = n->GetStackTrace();
+  }
+
   return tf_function;
 }
 

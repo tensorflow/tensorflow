@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""smart_cond and related utilties."""
+"""smart_cond and related utilities."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
@@ -30,7 +30,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
   If `pred` is a bool or has a constant value, we return either `true_fn()`
   or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
 
-  Arguments:
+  Args:
     pred: A scalar determining whether to return the result of `true_fn` or
       `false_fn`.
     true_fn: The callable to be performed if pred is true.
@@ -62,7 +62,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
 def smart_constant_value(pred):
   """Return the bool value for `pred`, or None if `pred` had a dynamic value.
 
-  Arguments:
+  Args:
     pred: A scalar, either a Python bool or tensor.
 
   Returns:

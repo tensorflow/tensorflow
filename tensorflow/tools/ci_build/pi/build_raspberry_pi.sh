@@ -38,9 +38,11 @@ export TF_ENABLE_XLA=0
 
 yes '' | ./configure
 
-# Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
-sudo sed -i 's/define CURL_SIZEOF_LONG 8/define CURL_SIZEOF_LONG 4/g' /usr/include/curl/curlbuild.h
-sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g' /usr/include/curl/curlbuild.h
+if [[ $1 != "AARCH64" ]]; then
+  # Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
+  sudo sed -i 's/define CURL_SIZEOF_LONG 8/define CURL_SIZEOF_LONG 4/g' /usr/include/curl/curlbuild.h
+  sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g' /usr/include/curl/curlbuild.h
+fi
 
 # The system-installed OpenSSL headers get pulled in by the latest BoringSSL
 # release on this configuration, so move them before we build:
@@ -50,35 +52,36 @@ fi
 
 WORKSPACE_PATH=`pwd`
 
-# Build the OpenBLAS library, which is faster than Eigen on the Pi Zero/One.
-# TODO(petewarden) - It would be nicer to move this into the main Bazel build
-# process if we can maintain a build file for this.
-TOOLCHAIN_INSTALL_PATH=/tmp/toolchain_install/
-sudo rm -rf ${TOOLCHAIN_INSTALL_PATH}
-mkdir ${TOOLCHAIN_INSTALL_PATH}
-cd ${TOOLCHAIN_INSTALL_PATH}
-curl -L https://github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz -o toolchain.tar.gz
-tar xzf toolchain.tar.gz
-mv rpi-newer-crosstools-eb68350c5c8ec1663b7fe52c742ac4271e3217c5 tools
-
-CROSSTOOL_CC=${TOOLCHAIN_INSTALL_PATH}/tools/x64-gcc-6.5.0/arm-rpi-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-gcc
-
-OPENBLAS_SRC_PATH=/tmp/openblas_src/
-sudo rm -rf ${OPENBLAS_SRC_PATH}
-git clone https://github.com/xianyi/OpenBLAS ${OPENBLAS_SRC_PATH}
-cd ${OPENBLAS_SRC_PATH}
-# The commit after this introduced Fortran compile issues. In theory they should
-# be solvable using NOFORTRAN=1 on the make command, but my initial tries didn't
-# work, so pinning to the last know good version.
-git checkout 5a6a2bed9aff0ba8a18651d5514d029c8cae336a
-# If this path is changed, you'll also need to update
-# cxx_builtin_include_directory in third_party/toolchains/cpus/arm/CROSSTOOL.tpl
-OPENBLAS_INSTALL_PATH=/tmp/openblas_install/
-make CC=${CROSSTOOL_CC} FC=${CROSSTOOL_CC} HOSTCC=gcc TARGET=ARMV6
-make PREFIX=${OPENBLAS_INSTALL_PATH} install
-
 if [[ $1 == "PI_ONE" ]]; then
+  # Build the OpenBLAS library, which is faster than Eigen on the Pi Zero/One.
+  # TODO(petewarden) - It would be nicer to move this into the main Bazel build
+  # process if we can maintain a build file for this.
+  TOOLCHAIN_INSTALL_PATH=/tmp/toolchain_install/
+  sudo rm -rf ${TOOLCHAIN_INSTALL_PATH}
+  mkdir ${TOOLCHAIN_INSTALL_PATH}
+  cd ${TOOLCHAIN_INSTALL_PATH}
+  curl -L https://github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz -o toolchain.tar.gz
+  tar xzf toolchain.tar.gz
+  mv rpi-newer-crosstools-eb68350c5c8ec1663b7fe52c742ac4271e3217c5 tools
+
+  CROSSTOOL_CC=${TOOLCHAIN_INSTALL_PATH}/tools/x64-gcc-6.5.0/arm-rpi-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-gcc
+
+  OPENBLAS_SRC_PATH=/tmp/openblas_src/
+  sudo rm -rf ${OPENBLAS_SRC_PATH}
+  git clone https://github.com/xianyi/OpenBLAS ${OPENBLAS_SRC_PATH}
+  cd ${OPENBLAS_SRC_PATH}
+  # The commit after this introduced Fortran compile issues. In theory they should
+  # be solvable using NOFORTRAN=1 on the make command, but my initial tries didn't
+  # work, so pinning to the last know good version.
+  git checkout 5a6a2bed9aff0ba8a18651d5514d029c8cae336a
+  # If this path is changed, you'll also need to update
+  # cxx_builtin_include_directory in third_party/toolchains/cpus/arm/CROSSTOOL.tpl
+  OPENBLAS_INSTALL_PATH=/tmp/openblas_install/
+  make CC=${CROSSTOOL_CC} FC=${CROSSTOOL_CC} HOSTCC=gcc TARGET=ARMV6
+  make PREFIX=${OPENBLAS_INSTALL_PATH} install
+
   PI_COPTS="--copt=-march=armv6 --copt=-mfpu=vfp
+  --cpu=armeabi --crosstool_top=@local_config_arm_compiler//:toolchain
   --copt=-DUSE_GEMM_FOR_CONV --copt=-DUSE_OPENBLAS
   --copt=-isystem --copt=${OPENBLAS_INSTALL_PATH}/include/
   --copt=-std=gnu11 --copt=-DS_IREAD=S_IRUSR --copt=-DS_IWRITE=S_IWUSR
@@ -87,8 +90,15 @@ if [[ $1 == "PI_ONE" ]]; then
   --linkopt=-l:libopenblas.a"
   echo "Building for the Pi One/Zero, with no NEON support"
   WHEEL_ARCH=linux_armv6l
+elif [[ $1 == "AARCH64" ]]; then
+  PI_COPTS="--config=elinux_aarch64
+  --copt=-std=gnu11
+  --copt=-O3"
+  WHEEL_ARCH=linux_aarch64
+  echo "Building for the aarch64"
 else
   PI_COPTS="--copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
+  --cpu=armeabi --crosstool_top=@local_config_arm_compiler//:toolchain
   --copt=-std=gnu11 --copt=-DS_IREAD=S_IRUSR --copt=-DS_IWRITE=S_IWUSR
   --copt=-O3 --copt=-fno-tree-pre --copt=-fpermissive
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
@@ -107,8 +117,7 @@ cd ${WORKSPACE_PATH}
 bazel build -c opt ${PI_COPTS} \
   --config=monolithic \
   --copt=-funsafe-math-optimizations --copt=-ftree-vectorize \
-  --copt=-fomit-frame-pointer --cpu=armeabi \
-  --crosstool_top=@local_config_arm_compiler//:toolchain \
+  --copt=-fomit-frame-pointer \
   --define tensorflow_mkldnn_contraction_kernel=0 \
   --verbose_failures \
   //tensorflow:libtensorflow.so \

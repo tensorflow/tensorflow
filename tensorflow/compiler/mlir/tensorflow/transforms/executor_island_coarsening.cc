@@ -27,12 +27,12 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/platform/logging.h"
@@ -43,7 +43,7 @@ namespace tf_executor {
 namespace {
 
 // IslandType is an enum representing if an island is the island (parent)
-// merging another island or is the island (child) being being merged.
+// merging another island or is the island (child) being merged.
 enum IslandType { kParentIsland, kChildIsland };
 
 // IslandResult is a helper struct holding an islands result and associated
@@ -57,7 +57,7 @@ struct IslandResult {
 };
 
 struct ExecutorIslandCoarsening
-    : public FunctionPass<ExecutorIslandCoarsening> {
+    : public PassWrapper<ExecutorIslandCoarsening, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -66,7 +66,7 @@ struct ExecutorIslandCoarsening
 // that is closest to the island in the graph. If no candidate can be found or
 // the op found is not an island, an empty optional is returned.
 llvm::Optional<IslandOp> GetOperandCandidateToMergeWith(IslandOp island) {
-  Operation* graph_op = island.getParentOp();
+  Operation* graph_op = island->getParentOp();
   Operation* candidate = nullptr;
 
   // Check island control operands.
@@ -95,7 +95,7 @@ llvm::Optional<IslandOp> GetOperandCandidateToMergeWith(IslandOp island) {
 // an op, that is closest to the island in the graph. If no candidate can be
 // found or the op found is not an island, an empty optional is returned.
 llvm::Optional<IslandOp> GetResultCandidateToMergeWith(IslandOp island) {
-  Operation* graph_op = island.getParentOp();
+  Operation* graph_op = island->getParentOp();
   Operation* candidate = nullptr;
 
   // Check island control results.
@@ -185,8 +185,8 @@ IslandOp CreateNewIsland(IslandOp parent, IslandOp child,
 
   Operation* old_island = insert_position == kParentIsland ? parent : child;
   OpBuilder builder(old_island);
-  auto new_island = builder.create<IslandOp>(
-      old_island->getLoc(), result_types, operands, ArrayRef<NamedAttribute>{});
+  auto new_island =
+      builder.create<IslandOp>(old_island->getLoc(), result_types, operands);
   new_island.body().push_back(new Block);
   return new_island;
 }
@@ -303,7 +303,8 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
       /*control=*/ControlType::get(fetch.getContext()),
       /*controlInputs=*/control_fetches);
   island.body().push_back(new Block);
-  OpBuilder(&island.GetBody()).create<YieldOp>(fetch.getLoc(), data_fetches);
+  OpBuilder::atBlockEnd(&island.GetBody())
+      .create<YieldOp>(fetch.getLoc(), data_fetches);
   const int fetch_control_idx = data_fetches.size();
   for (int i = 0, e = fetch.getNumOperands(); i < e; i++) {
     // The fetch could have multiple control operands (all at the end of its
@@ -345,7 +346,7 @@ void ExecutorIslandCoarsening::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorIslandCoarseningPass() {
   return std::make_unique<ExecutorIslandCoarsening>();
 }
 

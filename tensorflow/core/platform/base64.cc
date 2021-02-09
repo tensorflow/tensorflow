@@ -199,11 +199,9 @@ template Status Base64Encode<string>(StringPiece source, string* encoded);
 template Status Base64Encode<string>(StringPiece source, bool with_padding,
                                      string* encoded);
 
-#ifdef USE_TSTRING
 template Status Base64Decode<tstring>(StringPiece data, tstring* decoded);
 template Status Base64Encode<tstring>(StringPiece source, tstring* encoded);
 template Status Base64Encode<tstring>(StringPiece source, bool with_padding,
                                       tstring* encoded);
-#endif  // USE_TSTRING
 
 }  // namespace tensorflow

@@ -270,7 +270,7 @@ TEST(CommandLineFlagsTest, UsageString) {
   bool some_switch = false;
   string some_name = "something";
   // Don't test float in this case, because precision is hard to predict and
-  // match against, and we don't want a flakey test.
+  // match against, and we don't want a franky test.
   const string tool_name = "some_tool_name";
   string usage = Flags::Usage(tool_name + "<flags>",
                               {Flag("some_int", &some_int, "some int"),

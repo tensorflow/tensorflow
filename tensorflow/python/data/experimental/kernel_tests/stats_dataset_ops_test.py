@@ -421,7 +421,7 @@ class FeatureStatsDatasetTest(
       num_output = total_records // batch_size + 1
 
     self.parallelCallsStats(
-        dataset_fn, {"ParseExampleDataset"},
+        dataset_fn, {"ParseExampleDatasetV2"},
         num_output,
         check_elements=False)
 
@@ -439,19 +439,19 @@ class FeatureStatsDatasetTest(
     handle = self.getHandle(aggregator)
     self.assertStatisticsHasCount(
         handle,
-        self.regexForNodeName("record_stats::ParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDatasetV2",
                               "features_count"), total_records)
     self.assertStatisticsHasCount(
         handle,
-        self.regexForNodeName("record_stats::ParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDatasetV2",
                               "feature_values_count"), total_records)
     self.assertStatisticsHasSum(
         handle,
-        self.regexForNodeName("record_stats::ParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDatasetV2",
                               "features_count"), total_records * 4)
     self.assertStatisticsHasSum(
         handle,
-        self.regexForNodeName("record_stats::ParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDatasetV2",
                               "feature_values_count"),
         self._sum_keywords(1) * num_epochs + 3 * total_records)
 

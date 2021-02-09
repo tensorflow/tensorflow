@@ -296,7 +296,7 @@ class DebugTensorDatum(object):
         directory is `/tmp/tfdbg_1` and the dump file is at
         `/tmp/tfdbg_1/<device_path>/>ns_1/node_a_0_DebugIdentity_123456789`,
         then the value of the debug_dump_rel_path should be
-        `<device_path>/ns_1/node_a_0_DebugIdenity_1234456789`.
+        `<device_path>/ns_1/node_a_0_DebugIdentity_1234456789`.
 
     Raises:
       ValueError: If the base file name of the dump file does not conform to

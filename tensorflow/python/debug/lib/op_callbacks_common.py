@@ -35,6 +35,10 @@ OP_CALLBACK_SKIP_OPS = (
     b"StatefulPartitionedCall",
     b"Switch",
     b"While",
+    # NOTE(b/154097452): On TPUs, debugger ops are colocated with RemoteCall
+    # ops. This exclusion prevents an error due to no OpKernel for those
+    # debugger ops.
+    b"RemoteCall",
     # TPU-specific ops begin.
     b"TPUReplicatedInput",
     b"TPUReplicateMetadata",

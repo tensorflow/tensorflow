@@ -43,7 +43,7 @@ class HingeLossUpdater : public DualLossUpdater {
                             const double example_weight,
                             const double current_dual, const double wx,
                             const double weighted_example_norm) const final {
-    // Intutitvely there are 3 cases:
+    // Intuitively there are 3 cases:
     // a. new optimal value of the dual variable falls within the admissible
     // range [0, 1]. In this case we set new dual to this value.
     // b. new optimal value is < 0. Then, because of convexity, the optimal

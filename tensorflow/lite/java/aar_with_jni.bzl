@@ -43,6 +43,7 @@ EOF
         manifest = name + "_generated_AndroidManifest.xml",
         custom_package = "dummy.package.for.so",
         deps = [android_library],
+        multidex = "native",
         # In some platforms we don't have an Android SDK/NDK and this target
         # can't be built. We need to prevent the build system from trying to
         # use the target in that case.
@@ -52,7 +53,11 @@ EOF
         ],
     )
 
-    srcs = [android_library + ".aar", name + "_dummy_app_for_so_unsigned.apk"]
+    srcs = [
+        android_library + ".aar",
+        name + "_dummy_app_for_so_unsigned.apk",
+        "//:LICENSE",
+    ]
 
     cmd = """
 cp $(location {0}.aar) $(location :{1}.aar)
@@ -62,6 +67,8 @@ cd $$(mktemp -d)
 unzip $$origdir/$(location :{1}_dummy_app_for_so_unsigned.apk) "lib/*"
 cp -r lib jni
 zip -r $$origdir/$(location :{1}.aar) jni/*/*.so
+cp $$origdir/$(location //:LICENSE) ./
+zip $$origdir/$(location :{1}.aar) LICENSE
 """.format(android_library, name)
 
     if headers:

@@ -45,8 +45,8 @@ class HloRematerialization : public HloModulePass {
   // Helper struct that communicates the before / after sizes for the
   // rematerialization process.
   struct RematerializationSizes {
-    int64 before_bytes;
-    int64 after_bytes;
+    int64 before_bytes = -1;
+    int64 after_bytes = -1;
   };
 
   // Mode in which the rematerialization algorithm should be run.
@@ -54,6 +54,13 @@ class HloRematerialization : public HloModulePass {
     kRecomputeOnly,        // Only consider the kCompress RematStrategy.
     kCompressOnly,         // Only consider the kRecompute RematStrategy.
     kRecomputeAndCompress  // Consider both kRecompute and kRemat.
+  };
+
+  // Enum to specify whether this rematerialization pass occurs before or after
+  // multi-output fusion.
+  enum class RematerializationPass {
+    kPreFusion,  // Rematerialization pass before multi-output fusion.
+    kPostFusion  // Rematerialization pass after multi-output fusion.
   };
 
   static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
@@ -75,16 +82,21 @@ class HloRematerialization : public HloModulePass {
   //   shape. If nullptr is provided, an default identity function is used.
   explicit HloRematerialization(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
-      RematerializationSizes* sizes,
+      RematerializationSizes* sizes, RematerializationPass pass_location,
+      int block_size_limit,
       CompactShapeFunction compact_shape_function = nullptr,
-      RematerializationMode mode = RematerializationMode::kRecomputeAndCompress)
+      RematerializationMode mode = RematerializationMode::kRecomputeAndCompress,
+      int64 min_remat_size = 0)
       : size_function_(size_function),
         memory_limit_bytes_(memory_limit_bytes),
         sizes_(sizes),
+        pass_location_(pass_location),
+        block_size_limit_(block_size_limit),
         compact_shape_function_(compact_shape_function == nullptr
                                     ? DefaultCompactShapeFunction
                                     : std::move(compact_shape_function)),
-        mode_(mode) {}
+        mode_(mode),
+        min_remat_size_(min_remat_size) {}
   ~HloRematerialization() override = default;
 
   absl::string_view name() const override { return "rematerialization"; }
@@ -104,7 +116,8 @@ class HloRematerialization : public HloModulePass {
   // and inserted into 'order'.
   virtual StatusOr<bool> RematerializeComputation(HloComputation* computation,
                                                   HloSchedule* schedule,
-                                                  int64 memory_limit_bytes);
+                                                  int64 memory_limit_bytes,
+                                                  int64 min_remat_size);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at
@@ -131,6 +144,14 @@ class HloRematerialization : public HloModulePass {
   // Pointer to data structure which records the peak memory usage of the HLO
   // module before/after rematerialization
   RematerializationSizes* sizes_;
+
+  // Specifies whether this rematerialization pass occurs before or after
+  // multi-output fusion.
+  RematerializationPass pass_location_;
+
+  // Maximum number of consecutive instructions to consider for
+  // rematerialization.
+  int block_size_limit_;
 
   // Converts a shape into compact form, returns the same shape if a shape is
   // already considered compact.
@@ -162,7 +183,13 @@ class HloRematerialization : public HloModulePass {
   // dead. Hence, no net instructions were added.
   int64 net_instructions_added_ = 0;
 
+  // Size of the largest block that has been rematerialized. This is actually an
+  // upper bound (within a factor of 2) on the block size.
+  int max_rematerialized_block_size_ = 0;
+
   RematerializationMode mode_;
+
+  int64 min_remat_size_;
 };
 
 }  // namespace xla

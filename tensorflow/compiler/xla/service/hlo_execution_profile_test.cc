@@ -64,11 +64,14 @@ TEST_F(HloExecutionProfileTest, Basic) {
   execution_profile.SetCyclesTakenBy(add_instruction, add_cycles);
   execution_profile.SetCyclesTakenBy(dot_instruction, dot_cycles);
 
-  EXPECT_THAT(execution_profile.ToString(
-                  backend().default_stream_executor()->GetDeviceDescription()),
-              AllOf(ContainsRegex(StrCat(dot_cycles, R"(\b.*%)",
+  float clock_rate_ghz = backend()
+                             .default_stream_executor()
+                             ->GetDeviceDescription()
+                             .clock_rate_ghz();
+  EXPECT_THAT(execution_profile.ToString(clock_rate_ghz),
+              AllOf(ContainsRegex(StrCat(dot_cycles, " cycles.*%",
                                          dot_instruction->name())),
-                    ContainsRegex(StrCat(add_cycles, R"(\b.*%)",
+                    ContainsRegex(StrCat(add_cycles, " cycles.*%",
                                          add_instruction->name()))));
 }
 }  // namespace

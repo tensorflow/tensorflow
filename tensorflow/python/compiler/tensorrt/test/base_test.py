@@ -117,18 +117,11 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
         "TRTEngineOp_1": ["c2", "conv", "div", "weights"]
     }
 
-  def GetConversionParams(self, run_params):
-    """Return a ConversionParams for test."""
-    conversion_params = super(SimpleMultiEnginesTest,
-                              self).GetConversionParams(run_params)
-    rewrite_config_with_trt = self.GetTrtRewriterConfig(
-        run_params=run_params,
-        conversion_params=conversion_params,
-        # Disable layout optimizer, since it will convert BiasAdd with NHWC
-        # format to NCHW format under four dimentional input.
-        disable_non_trt_optimizers=True)
-    return conversion_params._replace(
-        rewriter_config_template=rewrite_config_with_trt)
+  def setUp(self):
+    super(trt_test.TfTrtIntegrationTestBase, self).setUp()
+    # Disable layout optimizer, since it will convert BiasAdd with NHWC
+    # format to NCHW format under four dimentional input.
+    self.DisableNonTrtOptimizers()
 
 
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
@@ -166,9 +159,10 @@ class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
     """Whether to run the test."""
     # Disable the test in fp16 mode since multiple matmul and add ops together
     # can cause overflow.
-    return ((run_params.precision_mode != "FP16") and
-            not (trt_test.IsQuantizationMode(run_params.precision_mode) and
-                 not run_params.use_calibration))
+    return (
+        (run_params.precision_mode != "FP16") and
+        not (trt_test.IsQuantizationMode(run_params.precision_mode) and
+             not run_params.use_calibration)), "test FP32 and non-calibration"
 
 
 class ConstInputTest(trt_test.TfTrtIntegrationTestBase):

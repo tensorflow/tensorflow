@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 import numpy as np
 import opt_einsum
 import six
@@ -179,36 +181,462 @@ class LBetaTest(test.TestCase):
         self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
 
 
-class BesselTest(test.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class DawsnTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
-  def test_bessel_i0(self):
-    x_single = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
-    x_double = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
+  def test_dawsn_boundary(self):
+    self.assertAllClose(0., special_math_ops.dawsn(0.))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.dawsn(np.nan))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_dawsn_odd(self, dtype):
+    x = np.random.uniform(-100., 100., size=int(1e4)).astype(dtype)
+    self.assertAllClose(
+        self.evaluate(special_math_ops.dawsn(x)),
+        self.evaluate(-special_math_ops.dawsn(-x)))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_dawsn_small(self, dtype):
+    x = np.random.uniform(-1., 1., size=int(1e4)).astype(dtype)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
-      self.assertAllClose(special.i0(x_single),
-                          self.evaluate(special_math_ops.bessel_i0(x_single)))
-      self.assertAllClose(special.i0(x_double),
-                          self.evaluate(special_math_ops.bessel_i0(x_double)))
+      self.assertAllClose(
+          special.dawsn(x), self.evaluate(special_math_ops.dawsn(x)))
     except ImportError as e:
       tf_logging.warn('Cannot test special functions: %s' % str(e))
 
-  @test_util.run_in_graph_and_eager_modes
-  def test_bessel_i1(self):
-    x_single = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
-    x_double = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
+  @parameterized.parameters(np.float32, np.float64)
+  def test_dawsn_larger(self, dtype):
+    x = np.random.uniform(1., 100., size=int(1e4)).astype(dtype)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
-      self.assertAllClose(special.i1(x_single),
-                          self.evaluate(special_math_ops.bessel_i1(x_single)))
-      self.assertAllClose(special.i1(x_double),
-                          self.evaluate(special_math_ops.bessel_i1(x_double)))
+      self.assertAllClose(
+          special.dawsn(x), self.evaluate(special_math_ops.dawsn(x)))
     except ImportError as e:
       tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_dawsn_gradient(self):
+    inputs = [np.random.uniform(-50., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.dawsn, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class ExpintTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_expint_boundary(self):
+    self.assertAllClose(-np.inf, special_math_ops.expint(0.))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.expint(np.nan))))
+    # Check that the domain of definition is [0, inf)
+    self.assertTrue(
+        np.all(
+            np.isnan(
+                self.evaluate(
+                    special_math_ops.expint(
+                        np.random.uniform(-20., -1., size=int(1e3)))))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_expint_small(self, dtype):
+    x = np.random.uniform(0., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.expi(x), self.evaluate(special_math_ops.expint(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_expint_larger(self, dtype):
+    x = np.random.uniform(1., 50., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.expi(x), self.evaluate(special_math_ops.expint(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_expint_gradient(self):
+    inputs = [np.random.uniform(1., 10., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.expint, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 5e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class FresnelCosTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_fresnel_cos_boundary(self):
+    self.assertAllClose(0., special_math_ops.fresnel_cos(0.))
+    self.assertTrue(
+        np.isnan(self.evaluate(special_math_ops.fresnel_cos(np.nan))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_cos_odd(self, dtype):
+    x = np.random.uniform(-100., 100., size=int(1e4)).astype(dtype)
+    self.assertAllClose(
+        self.evaluate(special_math_ops.fresnel_cos(x)),
+        self.evaluate(-special_math_ops.fresnel_cos(-x)))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_cos_small(self, dtype):
+    x = np.random.uniform(0., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.fresnel(x)[1], self.evaluate(special_math_ops.fresnel_cos(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_cos_larger(self, dtype):
+    x = np.random.uniform(1., 100., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.fresnel(x)[1],
+          self.evaluate(special_math_ops.fresnel_cos(x)),
+          rtol=1e-5)
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_fresnel_cos_gradient(self):
+    inputs = [np.random.uniform(1., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.fresnel_cos, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 5e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class FresnelSinTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_fresnel_sin_boundary(self):
+    self.assertAllClose(0., special_math_ops.fresnel_sin(0.))
+    self.assertTrue(
+        np.isnan(self.evaluate(special_math_ops.fresnel_sin(np.nan))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_sin_odd(self, dtype):
+    x = np.random.uniform(-100., 100., size=int(1e4)).astype(dtype)
+    self.assertAllClose(
+        self.evaluate(special_math_ops.fresnel_sin(x)),
+        self.evaluate(-special_math_ops.fresnel_sin(-x)))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_sin_small(self, dtype):
+    x = np.random.uniform(0., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.fresnel(x)[0], self.evaluate(special_math_ops.fresnel_sin(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_sin_larger(self, dtype):
+    x = np.random.uniform(1., 100., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.fresnel(x)[0],
+          self.evaluate(special_math_ops.fresnel_sin(x)),
+          rtol=1e-5)
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_fresnel_sin_gradient(self):
+    inputs = [np.random.uniform(1., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.fresnel_sin, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 5e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class SpenceTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_spence_boundary(self):
+    self.assertAllClose(np.pi**2 / 6., special_math_ops.spence(0.))
+    self.assertAllClose(0., special_math_ops.spence(1.))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.spence(np.nan))))
+    # Check that the domain of definition is [0, inf)
+    self.assertTrue(
+        np.all(
+            np.isnan(
+                self.evaluate(
+                    special_math_ops.spence(
+                        np.random.uniform(-20., -1., size=int(1e3)))))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_spence_small(self, dtype):
+    x = np.random.uniform(0., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.spence(x), self.evaluate(special_math_ops.spence(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_spence_larger(self, dtype):
+    x = np.random.uniform(1., 100., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.spence(x), self.evaluate(special_math_ops.spence(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_spence_gradient(self):
+    inputs = [np.random.uniform(1., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.spence, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+  def test_spence_gradient_at_one(self):
+    analytical, _ = gradient_checker_v2.compute_gradient(
+        special_math_ops.spence, [1.])
+    self.assertAllClose([[[-1.]]], analytical)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class BesselTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_besseli_boundary(self):
+    self.assertAllClose(1., special_math_ops.bessel_i0(0.))
+    self.assertAllClose(1., special_math_ops.bessel_i0e(0.))
+    self.assertAllClose(0., special_math_ops.bessel_i1(0.))
+    self.assertAllClose(0., special_math_ops.bessel_i1e(0.))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.bessel_i0(np.nan))))
+    self.assertTrue(
+        np.isnan(self.evaluate(special_math_ops.bessel_i0e(np.nan))))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.bessel_i1(np.nan))))
+    self.assertTrue(
+        np.isnan(self.evaluate(special_math_ops.bessel_i1e(np.nan))))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_besselj_boundary(self):
+    self.assertAllClose(1., special_math_ops.bessel_j0(0.))
+    self.assertAllClose(0., special_math_ops.bessel_j1(0.))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.bessel_j0(np.nan))))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.bessel_j1(np.nan))))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_besselk_boundary(self):
+    self.assertTrue(np.isinf(self.evaluate(special_math_ops.bessel_k0(0.))))
+    self.assertTrue(np.isinf(self.evaluate(special_math_ops.bessel_k0e(0.))))
+    self.assertTrue(np.isinf(self.evaluate(special_math_ops.bessel_k1(0.))))
+    self.assertTrue(np.isinf(self.evaluate(special_math_ops.bessel_k1e(0.))))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.bessel_k0(np.nan))))
+    self.assertTrue(
+        np.isnan(self.evaluate(special_math_ops.bessel_k0e(np.nan))))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.bessel_k1(np.nan))))
+    self.assertTrue(
+        np.isnan(self.evaluate(special_math_ops.bessel_k1e(np.nan))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_i0j0_even(self, dtype):
+    x = np.random.uniform(-100., 100., size=int(1e4)).astype(dtype)
+    self.assertAllClose(
+        self.evaluate(special_math_ops.bessel_i0(x)),
+        self.evaluate(special_math_ops.bessel_i0(-x)))
+
+    self.assertAllClose(
+        self.evaluate(special_math_ops.bessel_i0e(x)),
+        self.evaluate(special_math_ops.bessel_i0e(-x)))
+
+    self.assertAllClose(
+        self.evaluate(special_math_ops.bessel_j0(x)),
+        self.evaluate(special_math_ops.bessel_j0(-x)))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_i1j1_odd(self, dtype):
+    x = np.random.uniform(-100., 100., size=int(1e4)).astype(dtype)
+    self.assertAllClose(
+        self.evaluate(special_math_ops.bessel_i1(x)),
+        self.evaluate(-special_math_ops.bessel_i1(-x)))
+
+    self.assertAllClose(
+        self.evaluate(special_math_ops.bessel_i1e(x)),
+        self.evaluate(-special_math_ops.bessel_i1e(-x)))
+
+    self.assertAllClose(
+        self.evaluate(special_math_ops.bessel_j1(x)),
+        self.evaluate(-special_math_ops.bessel_j1(-x)))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_besseli_small(self, dtype):
+    x = np.random.uniform(-1., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.i0(x), self.evaluate(special_math_ops.bessel_i0(x)))
+      self.assertAllClose(
+          special.i1(x), self.evaluate(special_math_ops.bessel_i1(x)))
+      self.assertAllClose(
+          special.i0e(x), self.evaluate(special_math_ops.bessel_i0e(x)))
+      self.assertAllClose(
+          special.i1e(x), self.evaluate(special_math_ops.bessel_i1e(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_besselj_small(self, dtype):
+    x = np.random.uniform(-1., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.j0(x), self.evaluate(special_math_ops.bessel_j0(x)))
+      self.assertAllClose(
+          special.j1(x), self.evaluate(special_math_ops.bessel_j1(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_besselk_small(self, dtype):
+    x = np.random.uniform(np.finfo(dtype).eps, 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.k0(x), self.evaluate(special_math_ops.bessel_k0(x)))
+      self.assertAllClose(
+          special.k0e(x), self.evaluate(special_math_ops.bessel_k0e(x)))
+      self.assertAllClose(
+          special.k1(x), self.evaluate(special_math_ops.bessel_k1(x)))
+      self.assertAllClose(
+          special.k1e(x), self.evaluate(special_math_ops.bessel_k1e(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_bessely_small(self, dtype):
+    x = np.random.uniform(np.finfo(dtype).eps, 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.y0(x), self.evaluate(special_math_ops.bessel_y0(x)))
+      self.assertAllClose(
+          special.y1(x), self.evaluate(special_math_ops.bessel_y1(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_besseli_larger(self, dtype):
+    x = np.random.uniform(1., 20., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.i0e(x), self.evaluate(special_math_ops.bessel_i0e(x)))
+      self.assertAllClose(
+          special.i1e(x), self.evaluate(special_math_ops.bessel_i1e(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_besselj_larger(self, dtype):
+    x = np.random.uniform(1., 30., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.j0(x), self.evaluate(special_math_ops.bessel_j0(x)))
+      self.assertAllClose(
+          special.j1(x), self.evaluate(special_math_ops.bessel_j1(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_besselk_larger(self, dtype):
+    x = np.random.uniform(1., 30., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.k0(x), self.evaluate(special_math_ops.bessel_k0(x)))
+      self.assertAllClose(
+          special.k0e(x), self.evaluate(special_math_ops.bessel_k0e(x)))
+      self.assertAllClose(
+          special.k1(x), self.evaluate(special_math_ops.bessel_k1(x)))
+      self.assertAllClose(
+          special.k1e(x), self.evaluate(special_math_ops.bessel_k1e(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_bessely_larger(self, dtype):
+    x = np.random.uniform(1., 30., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.y0(x), self.evaluate(special_math_ops.bessel_y0(x)))
+      self.assertAllClose(
+          special.y1(x), self.evaluate(special_math_ops.bessel_y1(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_besseli_gradient(self):
+    inputs = [np.random.uniform(-10., 10., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_i0, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-3)
+
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_i0e, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_i1, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-3)
+
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_i1e, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+  def test_besselj_gradient(self):
+    inputs = [np.random.uniform(-50., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_j0, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_j1, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+  def test_besselk_gradient(self):
+    inputs = [np.random.uniform(1., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_k0, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_k0e, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_k1, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_k1e, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+  def test_bessely_gradient(self):
+    inputs = [np.random.uniform(1., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_y0, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_y1, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+@test_util.run_all_without_tensor_float_32(
+    'Tests einsum, which sometimes does a matmul with cuBLAS')
 class EinsumTest(test.TestCase):
 
   def _check(self, s, *input_shapes, **kwargs):
@@ -338,13 +766,7 @@ class EinsumTest(test.TestCase):
     self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
 
   def test_dtypes(self):
-    dtypes = []
-    if test.is_built_with_rocm():
-      # This test triggers the BLAS op calls on the GPU
-      # ROCm does not support BLAS operations for complex types
-      dtypes = [np.float64, np.float32]
-    else:
-      dtypes = [np.float64, np.float32, np.complex64, np.complex128]
+    dtypes = [np.float64, np.float32, np.complex64, np.complex128]
     for dtype in dtypes:
       self._check('ij,jk->ik', (2, 2), (2, 2), dtype=dtype)
       self._check('ji,jk->ik', (2, 2), (2, 2), dtype=dtype)
@@ -521,7 +943,7 @@ class EinsumTest(test.TestCase):
       output = self.evaluate(special_math_ops.einsum(equation, *input_tensors))
       self.assertAllClose(output, np.zeros(output_shape), atol=1e-4, rtol=1e-4)
 
-    # Contractions along zero-sized dimensons.
+    # Contractions along zero-sized dimensions.
     check('ab,bc->ac', [(0, 10), (10, 10)], (0, 10))
     # From transformer xl.
     check('ibnd,ijbn->jnd', [(1, 0, 5, 10), (1, 1, 0, 5)], (1, 5, 10))
@@ -695,7 +1117,7 @@ class EinsumBenchmark(test.Benchmark):
           input_shape = (dim,) * len(subscript)
           input_vars.append(
               variables.Variable(np.array(r.randn(*input_shape), np.float32)))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         if len(input_vars) <= 2:
           self.run_op_benchmark(

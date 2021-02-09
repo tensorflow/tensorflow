@@ -28,6 +28,7 @@ from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
+from tensorflow.python.util.tf_export import tf_export
 
 
 UnliftableError = op_selector.UnliftableError
@@ -202,6 +203,7 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures,
   op_map[s.op] = copied_placeholder.op
 
 
+@tf_export("__internal__.lift_to_graph", v1=[])
 def lift_to_graph(tensors,
                   graph,
                   sources=None,
@@ -276,7 +278,7 @@ def lift_to_graph(tensors,
       for inp in op_selector.graph_inputs(op):
         # Don't lift the TPUReplicateMetadata nodes out of the function, because
         # it has no registered kernels.
-        if inp.name == "TPUReplicateMetadata":
+        if inp.type == "TPUReplicateMetadata":
           continue
         unvisited_ops.add(inp)
         if (all(x in marked_ops for x in op_outputs[inp]) and
@@ -351,7 +353,7 @@ def lift_to_graph(tensors,
       for mutation in control_mutations:
         # Don't lift the TPUReplicateMetadata nodes out of the function, because
         # it has no registered kernels.
-        if mutation.old_graph_op.name == "TPUReplicateMetadata":
+        if mutation.old_graph_op.type == "TPUReplicateMetadata":
           continue
         mutation.copied_op._add_control_input(op_map[mutation.old_graph_op])
     # pylint: enable=protected-access

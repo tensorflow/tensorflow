@@ -29,7 +29,8 @@ class CancellableCall {
  public:
   CancellableCall(CancellationManager* cancel_mgr, const string& remote_worker,
                   WorkerCacheInterface* wc)
-      : cancel_mgr_(cancel_mgr),
+      : is_cancelled_(false),
+        cancel_mgr_(cancel_mgr),
         remote_worker_(remote_worker),
         wc_(wc),
         wi_(wc_->GetOrCreateWorker(remote_worker_)) {}
@@ -38,22 +39,17 @@ class CancellableCall {
 
   virtual void IssueCall(const StatusCallback& done) = 0;
 
-  void Start(const StatusCallback& done) {
-    CancellationToken token = cancel_mgr_->get_cancellation_token();
-    const bool not_yet_cancelled =
-        cancel_mgr_->RegisterCallback(token, [this]() { opts_.StartCancel(); });
-    if (not_yet_cancelled) {
-      IssueCall([this, token, done](const Status& s) {
-        cancel_mgr_->DeregisterCallback(token);
-        done(s);
-      });
-    } else {
-      done(errors::Cancelled("RPC Request was cancelled"));
-    }
-  }
+  void Start(const StatusCallback& done);
+
+  // Cancels the RPC if it's not cancelled yet. This must be called after
+  // Start(). This is normally used if there's a needed to cancel the RPC from a
+  // sideband. If appliable, pass a cancellation manager to the constructor
+  // instead of using this method.
+  void Cancel() TF_LOCKS_EXCLUDED(mu_);
 
  protected:
-  mutable mutex mu_;
+  mutex mu_;
+  bool is_cancelled_;
   CancellationManager* const cancel_mgr_;  // Not owned
   const string remote_worker_;
   WorkerCacheInterface* const wc_;  // Not owned

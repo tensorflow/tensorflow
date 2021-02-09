@@ -675,20 +675,6 @@ void Tensor::CheckIsAlignedAndSingleElement() const {
 
 Tensor::~Tensor() { UnrefIfNonNull(buf_); }
 
-void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
-  CHECK_EQ(shape.num_elements(), other.NumElements());
-  // Data type will be overwritten if this == &other, since dtype is part of
-  // shape.
-  DataType other_dtype = other.dtype();
-  shape_ = shape;
-  set_dtype(other_dtype);
-  if (buf_ != other.buf_) {
-    UnrefIfNonNull(buf_);
-    buf_ = other.buf_;
-    RefIfNonNull(buf_);
-  }
-}
-
 Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
                            const TensorShape& shape) {
   int in_size = DataTypeSize(other.dtype());
@@ -765,8 +751,9 @@ bool Tensor::RefCountIsOne() const {
   }
 
 #define CASES(TYPE_ENUM, STMTS)                                      \
-  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, LOG(FATAL) << "Type not set"; \
-                     , LOG(FATAL) << "Unexpected type: " << TYPE_ENUM;)
+  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS,                               \
+                     LOG(FATAL) << "Unexpected type: " << TYPE_ENUM; \
+                     , LOG(FATAL) << "Type not set";)
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {
@@ -1006,13 +993,17 @@ inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a,
 }
 inline string PrintOneElement(const tstring& a, bool print_v2) {
   if (print_v2) {
-    return "\"" + absl::CEscape(a) + "\"";
+    return "\"" + absl::Utf8SafeCEscape(a) + "\"";
   } else {
-    return absl::CEscape(a);
+    return absl::Utf8SafeCEscape(a);
   }
 }
 inline float PrintOneElement(const Eigen::half& h, bool print_v2) {
   return static_cast<float>(h);
+}
+
+inline float PrintOneElement(bfloat16 f, bool print_v2) {
+  return static_cast<float>(f);
 }
 
 // Print from left dim to right dim recursively.
@@ -1156,6 +1147,9 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
   }
   const char* data = limit > 0 ? tensor_data().data() : nullptr;
   switch (dtype()) {
+    case DT_BFLOAT16:
+      return SummarizeArray<bfloat16>(limit, num_elts, shape_, data, print_v2);
+      break;
     case DT_HALF:
       return SummarizeArray<Eigen::half>(limit, num_elts, shape_, data,
                                          print_v2);
@@ -1235,6 +1229,11 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
 StringPiece Tensor::tensor_data() const {
   if (buf_ == nullptr) return StringPiece();  // Don't die for empty tensors
   return StringPiece(static_cast<char*>(buf_->data()), TotalBytes());
+}
+
+void* Tensor::data() const {
+  if (buf_ == nullptr) return nullptr;  // Don't die for empty tensors
+  return static_cast<void*>(buf_->data());
 }
 
 bool Tensor::SharesBufferWith(const Tensor& b) const {

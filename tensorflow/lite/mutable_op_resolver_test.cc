@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/mutable_op_resolver.h"
 
+#include <stddef.h>
+
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -79,6 +83,25 @@ TEST(MutableOpResolverTest, FindMissingOp) {
   const TfLiteRegistration* found_registration =
       resolver.FindOp(BuiltinOperator_CONV_2D, 1);
   EXPECT_EQ(found_registration, nullptr);
+}
+
+TEST(MutableOpResolverTest, RegisterOpWithSingleVersion) {
+  MutableOpResolver resolver;
+  // The kernel supports version 2 only
+  resolver.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration(), 2);
+
+  const TfLiteRegistration* found_registration;
+
+  found_registration = resolver.FindOp(BuiltinOperator_ADD, 1);
+  ASSERT_EQ(found_registration, nullptr);
+
+  found_registration = resolver.FindOp(BuiltinOperator_ADD, 2);
+  ASSERT_NE(found_registration, nullptr);
+  EXPECT_TRUE(found_registration->invoke == DummyInvoke);
+  EXPECT_EQ(found_registration->version, 2);
+
+  found_registration = resolver.FindOp(BuiltinOperator_ADD, 3);
+  ASSERT_EQ(found_registration, nullptr);
 }
 
 TEST(MutableOpResolverTest, RegisterOpWithMultipleVersions) {

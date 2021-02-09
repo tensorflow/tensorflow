@@ -58,7 +58,7 @@ class UnboundedWorkQueueTest : public ::testing::Test {
 
  private:
   mutex mu_;
-  int closure_count_ GUARDED_BY(mu_) = 0;
+  int closure_count_ TF_GUARDED_BY(mu_) = 0;
   condition_variable cond_var_;
   std::unique_ptr<UnboundedWorkQueue> work_queue_;
 };

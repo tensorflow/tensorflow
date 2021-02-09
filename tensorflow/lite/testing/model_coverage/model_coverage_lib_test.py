@@ -22,10 +22,10 @@ import os
 import tempfile
 
 import numpy as np
+from tensorflow import keras
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.testing.model_coverage import model_coverage_lib as model_coverage
-from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -155,6 +155,39 @@ class EvaluateSavedModel(test.TestCase):
         saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
     model_coverage.test_saved_model(saved_model_dir)
 
+  def testPostTrainingQuantize16x8(self):
+    """Test for post-training quantization mode: activations/weights - int16/int8."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_savedmodel')
+
+    input_size = [5, 5, 3]
+    kernel_size = [3, 3, 1]
+    layer_name = 'test_conv2d'
+    input_0 = keras.layers.Input(shape=input_size)
+    layer_0 = keras.layers.Conv2D(
+        filters=kernel_size[-1],
+        kernel_size=kernel_size[0:2],
+        use_bias=False,
+        name=layer_name)(
+            input_0)
+    model = keras.models.Model(inputs=[input_0], outputs=[layer_0])
+    keras_layer = [layer for layer in model.layers if layer.name == layer_name
+                  ][0]
+    keras_layer.set_weights([
+        np.random.rand(
+            input_size[-1],
+            kernel_size[0],
+            kernel_size[1],
+            kernel_size[2],
+        ).astype(np.float32)
+    ])
+
+    saved_model.save(model, saved_model_dir)
+
+    model_coverage.test_saved_model(
+        saved_model_dir,
+        post_training_quantize_16x8=True,
+        model_input_size=input_size)
+
 
 class EvaluateKerasModel(test.TestCase):
 
@@ -162,8 +195,8 @@ class EvaluateKerasModel(test.TestCase):
     """Returns single input Sequential tf.keras model."""
     keras.backend.clear_session()
 
-    xs = [-1, 0, 1, 2, 3, 4]
-    ys = [-3, -1, 1, 3, 5, 7]
+    xs = np.array([-1, 0, 1, 2, 3, 4])
+    ys = np.array([-3, -1, 1, 3, 5, 7])
 
     model = keras.Sequential([keras.layers.Dense(units=1, input_shape=[1])])
     model.compile(optimizer='sgd', loss='mean_squared_error')
@@ -173,7 +206,7 @@ class EvaluateKerasModel(test.TestCase):
   def _saveKerasModel(self, model):
     try:
       fd, keras_file = tempfile.mkstemp('.h5')
-      keras.models.save_model(model, keras_file)
+      model.save(keras_file)
     finally:
       os.close(fd)
     return keras_file

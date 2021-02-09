@@ -1,0 +1,24 @@
+op {
+  name: "CreateSummaryDbWriter"
+  input_arg {
+    name: "writer"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "db_uri"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "experiment_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "run_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "user_name"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

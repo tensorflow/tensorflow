@@ -485,8 +485,8 @@ class SliceAssignTest(xla_test.XLATestCase):
       checker2[None] = [6]  # new axis
 
   def testUninitialized(self):
-    with self.assertRaisesRegexp(errors.FailedPreconditionError,
-                                 "uninitialized variable"):
+    with self.assertRaisesRegex(errors.FailedPreconditionError,
+                                "uninitialized"):
       with self.session() as sess, self.test_scope():
         v = resource_variable_ops.ResourceVariable([1, 2])
         sess.run(v[:].assign([1, 2]))

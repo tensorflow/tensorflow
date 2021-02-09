@@ -321,4 +321,7 @@ if __name__ == '__main__':
   )
   global FLAGS  # pylint:disable=global-at-module-level
   FLAGS, unparsed = parser.parse_known_args()
+  # This test is using Tensorflow sessions which are not compatible with eager
+  # mode.
+  ops.disable_eager_execution()
   test.main(argv=[sys.argv[0]] + unparsed)

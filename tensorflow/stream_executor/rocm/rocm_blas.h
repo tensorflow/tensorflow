@@ -21,9 +21,9 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
@@ -43,6 +43,16 @@ struct RocBlasTypeConversionHelper {
 template <>
 struct RocBlasTypeConversionHelper<Eigen::half> {
   using mapped_type = rocblas_half;
+};
+
+template <>
+struct RocBlasTypeConversionHelper<std::complex<float>> {
+  using mapped_type = rocblas_float_complex;
+};
+
+template <>
+struct RocBlasTypeConversionHelper<std::complex<double>> {
+  using mapped_type = rocblas_double_complex;
 };
 
 // Opaque and unique identifier for the rocBLAS plugin.
@@ -78,7 +88,7 @@ class ROCMBlas : public blas::BlasSupport {
   // rocBLAS is stateful, and only be associated with one stream (in order to
   // enqueue dispatch) at a given time. As a result, this generally must be
   // invoked before calling into rocBLAS.
-  bool SetStream(Stream *stream) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool SetStream(Stream *stream) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // A helper function that calls the real rocBLAS function together with error
   // handling.
@@ -121,7 +131,8 @@ class ROCMBlas : public blas::BlasSupport {
       std::unique_ptr<TemporaryDeviceMemory<
           typename RocBlasTypeConversionHelper<T>::mapped_type>> *temp_memory,
       DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>
-          *device_memory);
+          *device_memory,
+      bool copy_data, bool &reallocated);
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
@@ -188,7 +199,7 @@ class ROCMBlas : public blas::BlasSupport {
   GpuExecutor *parent_;
 
   // rocBLAS library handle on the device.
-  rocblas_handle blas_ GUARDED_BY(mu_);
+  rocblas_handle blas_ TF_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(ROCMBlas);
 };

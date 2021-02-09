@@ -20,8 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
@@ -59,7 +58,7 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
   VLOG(1) << "Set Batch Waiting finished";
 
   // Sets the batch.
-  for (const auto it : data) {
+  for (const auto& it : data) {
     auto devptr = dev_buffers_.find(it.first);
     if (devptr == dev_buffers_.end()) {
       LOG(FATAL) << "FATAL " << engine_name_ << " input name '" << it.first
@@ -147,5 +146,4 @@ TRTInt8Calibrator::~TRTInt8Calibrator() {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif
-#endif
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

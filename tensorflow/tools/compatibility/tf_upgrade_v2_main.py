@@ -101,7 +101,15 @@ Simple usage:
   parser.add_argument(
       "--no_import_rename",
       dest="no_import_rename",
-      help=("Not to rename import to compact.v2 explicitly."),
+      help=("Not to rename import to compat.v2 explicitly."),
+      action="store_true")
+  parser.add_argument(
+      "--no_upgrade_compat_v1_import",
+      dest="no_upgrade_compat_v1_import",
+      help=("If specified, don't upgrade explicit imports of "
+            "`tensorflow.compat.v1 as tf` to the v2 APIs. Otherwise, "
+            "explicit imports of  the form `tensorflow.compat.v1 as tf` will "
+            "be upgraded."),
       action="store_true")
   parser.add_argument(
       "--reportfile",
@@ -132,10 +140,13 @@ Simple usage:
     change_spec = tf_upgrade_v2_safety.TFAPIChangeSpec()
   else:
     if args.no_import_rename:
-      change_spec = tf_upgrade_v2.TFAPIChangeSpec(import_rename=False)
+      change_spec = tf_upgrade_v2.TFAPIChangeSpec(
+          import_rename=False,
+          upgrade_compat_v1_import=not args.no_upgrade_compat_v1_import)
     else:
       change_spec = tf_upgrade_v2.TFAPIChangeSpec(
-          import_rename=_IMPORT_RENAME_DEFAULT)
+          import_rename=_IMPORT_RENAME_DEFAULT,
+          upgrade_compat_v1_import=not args.no_upgrade_compat_v1_import)
   upgrade = ast_edits.ASTCodeUpgrader(change_spec)
 
   report_text = None
@@ -147,8 +158,7 @@ Simple usage:
           "--outfile=<output file> argument is required when converting a "
           "single file.")
     if args.in_place and args.output_file:
-      raise ValueError(
-          "--outfile argument is invalid when when converting in place")
+      raise ValueError("--outfile argument is invalid when converting in place")
     output_file = args.input_file if args.in_place else args.output_file
     files_processed, report_text, errors = process_file(
         args.input_file, output_file, upgrade)
@@ -160,8 +170,7 @@ Simple usage:
           "--outtree=<output directory> argument is required when converting a "
           "file tree.")
     if args.in_place and args.output_tree:
-      raise ValueError(
-          "--outtree argument is invalid when when converting in place")
+      raise ValueError("--outtree argument is invalid when converting in place")
     output_tree = args.input_tree if args.in_place else args.output_tree
     files_processed, report_text, errors = upgrade.process_tree(
         args.input_tree, output_tree, args.copy_other_files)

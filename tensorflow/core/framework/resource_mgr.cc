@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/demangle.h"
+#include "tensorflow/core/platform/stacktrace.h"
 
 namespace tensorflow {
 
@@ -35,10 +36,12 @@ static std::atomic<int64> current_id_;
 ResourceHandle MakeResourceHandle(
     const string& container, const string& name, const DeviceBase& device,
     const TypeIndex& type_index,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes) {
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes,
+    const absl::optional<ManagedStackTrace>& definition_stack_trace) {
   ResourceHandle result;
   result.set_device(device.name());
   result.set_container(container);
+  result.set_definition_stack_trace(definition_stack_trace);
   if (name == ResourceHandle::ANONYMOUS_NAME) {
     result.set_name(strings::StrCat("_AnonymousVar", current_id_.fetch_add(1)));
   } else {
@@ -326,15 +329,6 @@ Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
   return ctx->resource_manager()->Delete(p);
-}
-
-Status ResourceHandlesShape(shape_inference::InferenceContext* c) {
-  int n;
-  TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
-  for (int i = 0; i < n; ++i) {
-    c->set_output(i, c->Scalar());
-  }
-  return Status::OK();
 }
 
 }  //  end namespace tensorflow

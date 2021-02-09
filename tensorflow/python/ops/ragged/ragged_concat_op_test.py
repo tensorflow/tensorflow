@@ -220,7 +220,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase,
           axis=0,
           expected=[1, 2, 3, 4, 5, 6]),
       dict(
-          descr='One input (so ragged_conat is a noop)',
+          descr='One input (so ragged_concat is a noop)',
           rt_inputs=([['a00', 'a01'], [], ['a20', 'a21']],),
           axis=0,
           expected=[[b'a00', b'a01'], [], [b'a20', b'a21']]),
@@ -275,8 +275,8 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase,
                       message=None,
                       ragged_ranks=None):
     rt_inputs = self._rt_inputs_to_tensors(rt_inputs, ragged_ranks)
-    self.assertRaisesRegexp(error, message, ragged_concat_ops.concat, rt_inputs,
-                            axis)
+    self.assertRaisesRegex(error, message, ragged_concat_ops.concat, rt_inputs,
+                           axis)
 
   @parameterized.parameters([
       dict(
@@ -294,7 +294,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase,
         array_ops.placeholder_with_default(rt, shape=None) for rt in rt_inputs
     ]
     concatenated = ragged_concat_ops.concat(rt_inputs, axis)
-    with self.assertRaisesRegexp(error, message):
+    with self.assertRaisesRegex(error, message):
       self.evaluate(concatenated)
 
   def testNegativeAxisWithUnknownRankError(self):
@@ -304,7 +304,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase,
         array_ops.placeholder(dtypes.int64),
         array_ops.placeholder(dtypes.int64)
     ]
-    self.assertRaisesRegexp(
+    self.assertRaisesRegex(
         ValueError, r'axis may only be negative if ndims is statically known.',
         ragged_concat_ops.concat, rt_inputs, -1)
 

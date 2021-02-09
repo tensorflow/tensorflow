@@ -124,6 +124,11 @@ class SobolSampleOpTest(test_util.TensorFlowTestCase):
     s = math_ops.sobol_sample(10, 100, dtype=dtypes.float32)
     self.assertAllEqual([100, 10], self.evaluate(s).shape)
 
+  def test_default_dtype(self):
+    # Create an op without specifying the dtype. Dtype should be float32 in
+    # this case.
+    s = math_ops.sobol_sample(10, 100)
+    self.assertEqual(dtypes.float32, s.dtype)
 
 if __name__ == '__main__':
   googletest.main()

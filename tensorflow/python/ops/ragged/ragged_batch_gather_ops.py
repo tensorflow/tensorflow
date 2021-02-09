@@ -18,13 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
-from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_util
 
 
 #===============================================================================
@@ -61,64 +55,4 @@ def batch_gather(params, indices, name=None):
   >>> tf.compat.v1.batch_gather(params, indices)
   <tf.RaggedTensor [[b'b', b'c', b'a'], [], [], [b'e', b'e']]>
   """
-  if not (ragged_tensor.is_ragged(params) or ragged_tensor.is_ragged(indices)):
-    return array_ops.batch_gather(params, indices, name)
-
-  with ops.name_scope(name, 'RaggedBatchGather', [params, indices]):
-    params = ragged_tensor.convert_to_tensor_or_ragged_tensor(
-        params, name='params')
-    indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
-        indices, name='indices')
-    params, indices = ragged_tensor.match_row_splits_dtypes(params, indices)
-    indices_ndims = indices.shape.ndims
-    if indices_ndims is None:
-      raise ValueError(
-          'batch_gather does not allow indices with unknown shape.')
-    if indices_ndims == 0:
-      raise ValueError('indices.rank must be at least 1.')
-
-    if ragged_tensor.is_ragged(indices):
-      # If the outermost ragged dimension is a batch dimension, recurse.
-      if indices_ndims > 2:
-        if not ragged_tensor.is_ragged(params):
-          raise ValueError('batch shape from indices does '
-                           'not match params shape')
-        checks = [check_ops.assert_equal(params.row_splits, indices.row_splits)]
-        with ops.control_dependencies(checks):
-          return ragged_tensor.RaggedTensor.from_row_splits(
-              batch_gather(params.values, indices.values), indices.row_splits,
-              validate=False)
-
-      # Otherwise, indices is a 2D ragged tensor with 1 ragged dimension.
-      else:
-        # Ensure that `params` is ragged and has at least 2 dimensions.
-        if not ragged_tensor.is_ragged(params):
-          if params.shape.ndims is not None and params.shape.ndims < 2:
-            raise ValueError('batch shape from indices does '
-                             'not match params shape')
-          params = ragged_tensor.RaggedTensor.from_tensor(
-              params, ragged_rank=1,
-              row_splits_dtype=indices.row_splits.dtype)
-
-        # Adjust indices from within-batch to global (in params.values), and
-        # then use ragged.gather to gather them.
-        num_indices = indices.row_lengths()
-        params_starts = params.row_starts()
-        adjustments = ragged_util.repeat(params_starts, num_indices, axis=0)
-        adjusted_index_values = (
-            math_ops.cast(indices.values, adjustments.dtype) + adjustments)
-        return ragged_tensor.RaggedTensor.from_row_splits(
-            ragged_gather_ops.gather(params.values, adjusted_index_values),
-            indices.row_splits, validate=False)
-
-    else:  # params is a RaggedTensor and indices is a Tensor.
-      if indices_ndims == 1:
-        return ragged_gather_ops.gather(params, indices)
-      elif indices_ndims == 2:
-        # Adjust indices from batch-local to global (in params.values)
-        adjustments = array_ops.expand_dims(params.row_starts(), 1)
-        adjusted_indices = (
-            math_ops.cast(indices, adjustments.dtype) + adjustments)
-        return ragged_gather_ops.gather(params.values, adjusted_indices)
-      else:
-        raise ValueError('batch shape from indices does not match params shape')
+  return ragged_gather_ops.gather(params, indices, batch_dims=-1, name=name)

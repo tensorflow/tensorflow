@@ -37,6 +37,7 @@ class ReductionDegenerateDimRemoverTest : public GpuCodegenTest {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("reduction-layout-normalizer");
     debug_options.add_xla_disable_hlo_passes("reduction-dimension-grouper");
+    debug_options.add_xla_disable_hlo_passes("reduction-splitter");
     debug_options.add_xla_disable_hlo_passes("gpu-tree-reduction-rewriter");
     return debug_options;
   }
@@ -65,6 +66,38 @@ ENTRY main {
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
 // CHECK: f32[] reduce(f32[3,4,5]{2,1,0} {{.+}}, f32[] {{.+}}), dimensions={0,1,2}, to_apply=%add
+      )");
+}
+
+TEST_F(ReductionDegenerateDimRemoverTest, DegenerateWithEmptyDimension) {
+  const char* hlo_text = R"(
+HloModule ReduceWithDegenerateDimensions
+
+add {
+  accum = f32[] parameter(0)
+  op = f32[] parameter(1)
+  ROOT out = f32[] add(accum, op)
+}
+
+ENTRY main {
+  input = f32[1,3,1,4,1,5,1] parameter(0)
+  zero = f32[] constant(0)
+
+  ROOT out = f32[3,4,5,1] reduce(input, zero), dimensions={0,2,4}, to_apply=add
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  // Copy instruction is added after bitcast because of copy-insertion pass,
+  // so we check the entire hlo module to verify there is no reduce instruction
+  // in this case.
+  MatchOptimizedHloWithShapes(hlo_text,
+                              R"(
+// CHECK: ENTRY %main (input: f32[1,3,1,4,1,5,1]) -> f32[3,4,5,1] {
+// CHECK:   %input = f32[1,3,1,4,1,5,1]{6,5,4,3,2,1,0} parameter(0)
+// CHECK:   %bitcast{{.+}} = f32[3,4,5,1]{3,2,1,0} bitcast(f32[1,3,1,4,1,5,1]{6,5,4,3,2,1,0} %input)
+// CHECK:   ROOT %copy{{.+}} = f32[3,4,5,1]{3,2,1,0} copy(f32[3,4,5,1]{3,2,1,0} %bitcast{{.+}})
       )");
 }
 

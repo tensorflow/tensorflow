@@ -57,7 +57,7 @@ class MemoryPlanner {
                                  int size, int first_time_used,
                                  int last_time_used) = 0;
 
-  // The largest contguous block of memory that's needed to hold the layout.
+  // The largest contiguous block of memory that's needed to hold the layout.
   virtual size_t GetMaximumMemorySize() = 0;
   // How many buffers have been added to the planner.
   virtual int GetBufferCount() = 0;

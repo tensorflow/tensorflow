@@ -25,7 +25,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 
 
@@ -66,7 +65,10 @@ def squeeze(input, axis=None, name=None):  # pylint: disable=redefined-builtin
     dense_dims = []
     ragged_dims = []
     # Normalize all the dims in axis to be positive
-    axis = [ragged_util.get_positive_axis(d, input.shape.ndims) for d in axis]
+    axis = [
+        array_ops.get_positive_axis(d, input.shape.ndims, 'axis[%d]' % i,
+                                    'rank(input)') for i, d in enumerate(axis)
+    ]
     for dim in axis:
       if dim > input.ragged_rank:
         dense_dims.append(dim - input.ragged_rank)

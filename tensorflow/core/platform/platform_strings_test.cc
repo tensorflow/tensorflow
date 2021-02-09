@@ -41,7 +41,7 @@ typedef std::vector<std::string> string_vec;
 // magic prefix, and return true; or return false on error.
 
 // Print the platform strings embedded in the binary file_name and return 0,
-// on on error return 2.
+// or on error return 2.
 static int PrintStrings(const std::string file_name) {
   int rc = 0;
   string_vec str;
@@ -56,7 +56,7 @@ static int PrintStrings(const std::string file_name) {
   return rc;
 }
 
-// Return whether str[] conatins a string with prefix "macro_name="; if so,
+// Return whether str[] contains a string with prefix "macro_name="; if so,
 // set *pvalue to the suffix.
 static bool GetValue(const string_vec &str, const std::string &macro_name,
                      std::string *pvalue) {

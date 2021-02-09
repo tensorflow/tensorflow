@@ -109,26 +109,36 @@ TEST(UtilTest, CopyShapeAndType) {
 TEST(UtilTest, TypeConversionsFromTFLite) {
   EXPECT_EQ(TF_FLOAT, GetTensorFlowDataType(kTfLiteNoType));
   EXPECT_EQ(TF_FLOAT, GetTensorFlowDataType(kTfLiteFloat32));
+  EXPECT_EQ(TF_HALF, GetTensorFlowDataType(kTfLiteFloat16));
+  EXPECT_EQ(TF_DOUBLE, GetTensorFlowDataType(kTfLiteFloat64));
   EXPECT_EQ(TF_INT16, GetTensorFlowDataType(kTfLiteInt16));
   EXPECT_EQ(TF_INT32, GetTensorFlowDataType(kTfLiteInt32));
   EXPECT_EQ(TF_UINT8, GetTensorFlowDataType(kTfLiteUInt8));
   EXPECT_EQ(TF_INT64, GetTensorFlowDataType(kTfLiteInt64));
+  EXPECT_EQ(TF_UINT64, GetTensorFlowDataType(kTfLiteUInt64));
   EXPECT_EQ(TF_COMPLEX64, GetTensorFlowDataType(kTfLiteComplex64));
+  EXPECT_EQ(TF_COMPLEX128, GetTensorFlowDataType(kTfLiteComplex128));
   EXPECT_EQ(TF_STRING, GetTensorFlowDataType(kTfLiteString));
   EXPECT_EQ(TF_BOOL, GetTensorFlowDataType(kTfLiteBool));
+  EXPECT_EQ(TF_RESOURCE, GetTensorFlowDataType(kTfLiteResource));
+  EXPECT_EQ(TF_VARIANT, GetTensorFlowDataType(kTfLiteVariant));
 }
 
 TEST(UtilTest, TypeConversionsFromTensorFlow) {
+  EXPECT_EQ(kTfLiteFloat16, GetTensorFlowLiteType(TF_HALF));
   EXPECT_EQ(kTfLiteFloat32, GetTensorFlowLiteType(TF_FLOAT));
+  EXPECT_EQ(kTfLiteFloat64, GetTensorFlowLiteType(TF_DOUBLE));
   EXPECT_EQ(kTfLiteInt16, GetTensorFlowLiteType(TF_INT16));
   EXPECT_EQ(kTfLiteInt32, GetTensorFlowLiteType(TF_INT32));
   EXPECT_EQ(kTfLiteUInt8, GetTensorFlowLiteType(TF_UINT8));
   EXPECT_EQ(kTfLiteInt64, GetTensorFlowLiteType(TF_INT64));
+  EXPECT_EQ(kTfLiteUInt64, GetTensorFlowLiteType(TF_UINT64));
   EXPECT_EQ(kTfLiteComplex64, GetTensorFlowLiteType(TF_COMPLEX64));
+  EXPECT_EQ(kTfLiteComplex128, GetTensorFlowLiteType(TF_COMPLEX128));
   EXPECT_EQ(kTfLiteString, GetTensorFlowLiteType(TF_STRING));
   EXPECT_EQ(kTfLiteBool, GetTensorFlowLiteType(TF_BOOL));
-  EXPECT_EQ(kTfLiteNoType, GetTensorFlowLiteType(TF_RESOURCE));
-  EXPECT_EQ(kTfLiteNoType, GetTensorFlowLiteType(TF_VARIANT));
+  EXPECT_EQ(kTfLiteResource, GetTensorFlowLiteType(TF_RESOURCE));
+  EXPECT_EQ(kTfLiteVariant, GetTensorFlowLiteType(TF_VARIANT));
 }
 
 }  // namespace

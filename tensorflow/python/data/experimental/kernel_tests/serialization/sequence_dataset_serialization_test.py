@@ -53,8 +53,8 @@ class SkipDatasetSerializationTest(
 
   @combinations.generate(test_base.default_test_combinations())
   def testInvalidSkip(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'Shape must be rank 0 but is rank 1'):
       self.run_core_tests(lambda: self._build_skip_dataset([1, 2]), 0)
 
 
@@ -83,8 +83,8 @@ class TakeDatasetSerializationTest(
     self.run_core_tests(lambda: self._build_take_dataset(0), 0)
 
   def testInvalidTake(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'Shape must be rank 0 but is rank 1'):
       self.run_core_tests(lambda: self._build_take_dataset([1, 2]), 0)
 
 
@@ -120,8 +120,8 @@ class RepeatDatasetSerializationTest(
 
   @combinations.generate(test_base.default_test_combinations())
   def testInvalidRepeat(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'Shape must be rank 0 but is rank 1'):
       self.run_core_tests(lambda: self._build_repeat_dataset([1, 2], 0), 0)
 
 

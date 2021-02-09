@@ -17,26 +17,21 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include <numeric>
-
 #include "tensorflow/core/kernels/aggregate_ops.h"
-#include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 
-#include "tensorflow/core/framework/numeric_op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class AddNOp : public OpKernel {
@@ -76,7 +71,7 @@ class AddNOp : public OpKernel {
     }
     auto To = output->flat<T>();
 
-#define I(IDX) ctx->input(input_indices[IDX]).flat<T>()
+#define I(IDX) ctx->input(input_indices[IDX]).template flat<T>()
 
 #if defined(__ANDROID_TYPES_SLIM__)
     // On Android by default,we only support additions of two arguments, so we
@@ -179,23 +174,76 @@ class AddNOp<Device, Variant> : public OpKernel {
               i, " has shape: ", ctx->input(i).shape().DebugString(), "."));
     }
 
-    // Step 2: attempt to add using
+    // Step 2: Sum input variants in a tree-like structure using
     //   BinaryOpVariants(ADD_VARIANT_BINARY_OP, ...)
     //   For the output create a default-constructed variant object.
-    // TODO(ebrevdo): Perform summation in a tree-structure.
-    Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
-    Variant* v_out = &(out.scalar<Variant>()());
-    OP_REQUIRES_OK(
-        ctx, BinaryOpVariants<Device>(
-                 ctx, ADD_VARIANT_BINARY_OP, ctx->input(0).scalar<Variant>()(),
-                 ctx->input(1).scalar<Variant>()(), v_out));
-    for (int i = 2; i < num; ++i) {
-      const Variant tmp = std::move(*v_out);
-      const Variant& inp = ctx->input(i).scalar<Variant>()();
-      OP_REQUIRES_OK(ctx, BinaryOpVariants<Device>(ctx, ADD_VARIANT_BINARY_OP,
-                                                   inp, tmp, v_out));
+    //
+    // Pairwise summation provides better numerical precision by
+    // reducing round-off error:
+    //
+    //   https://en.wikipedia.org/wiki/Pairwise_summation
+    //
+    // These two vectors are used to store and mark intermediate sums.
+    gtl::InlinedVector<bool, 4> temp_filled(num, false);
+    gtl::InlinedVector<Variant, 4> temp(num);
+
+    // Tree-based summation.
+    int skip = 1;
+    int n = num;
+    while (skip < n) {
+      int i = skip;
+      while (i < n) {
+        // TODO(ebrevdo, rmlarsen): Parallelize the pairwise summations in the
+        // inner loop if the variants are "large".
+
+        // x[i - skip] += x[i]
+        OP_REQUIRES_OK(ctx,
+                       AddVariantTo(ctx, i - skip, i, &temp, &temp_filled));
+        // We won't use this index again, recover its memory.
+        temp[i].clear();
+        i += 2 * skip;
+      }
+      if (i == n) {
+        // x[0] += x[i - skip]
+        OP_REQUIRES_OK(ctx,
+                       AddVariantTo(ctx, 0, i - skip, &temp, &temp_filled));
+        // We won't use this index again, recover its memory.
+        temp[i - skip].clear();
+        n -= skip;
+      }
+      skip *= 2;
     }
+
+    Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
+    out.scalar<Variant>()() = std::move(temp[0]);
     ctx->set_output(0, out);
+  }
+
+ private:
+  // AddVariantTo efficiently performs:
+  //    temp[lhs_ix] <- array(lhs_ix) + array(rhs_ix)
+  // where array(ix) := (temp_filled[ix]
+  //                     ? temp[ix]
+  //                     : ctx->input(ix).scalar<Variant>()())
+  // This reduces (possibly expensive) copying of Variants from
+  // the inputs into temp at the lowest levels of the summation tree.
+  static inline Status AddVariantTo(OpKernelContext* ctx, const int lhs_ix,
+                                    const int rhs_ix,
+                                    gtl::InlinedVector<Variant, 4>* temp,
+                                    gtl::InlinedVector<bool, 4>* temp_filled) {
+    Variant tmp;
+    if (temp_filled->at(lhs_ix)) tmp = std::move(temp->at(lhs_ix));
+    const Variant& a = temp_filled->at(lhs_ix)
+                           ? tmp
+                           : ctx->input(lhs_ix).template scalar<Variant>()();
+    const Variant& b = temp_filled->at(rhs_ix)
+                           ? temp->at(rhs_ix)
+                           : ctx->input(rhs_ix).template scalar<Variant>()();
+    Variant* c = &temp->at(lhs_ix);
+    TF_RETURN_IF_ERROR(
+        BinaryOpVariants<Device>(ctx, ADD_VARIANT_BINARY_OP, a, b, c));
+    temp_filled->at(lhs_ix) = true;
+    return Status::OK();
   }
 };
 
@@ -214,11 +262,10 @@ REGISTER_ADDN_CPU(Variant);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define REGISTER_ADDN_GPU(type) REGISTER_ADDN(type, GPU)
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_ADDN_GPU);
 TF_CALL_int64(REGISTER_ADDN_GPU);
-TF_CALL_complex64(REGISTER_ADDN_GPU);
-TF_CALL_complex128(REGISTER_ADDN_GPU);
 TF_CALL_variant(REGISTER_ADDN_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_ADDN_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_ADDN_GPU);
 #undef REGISTER_ADDN_GPU
 
 // A special GPU kernel for int32.
@@ -232,21 +279,6 @@ REGISTER_KERNEL_BUILDER(Name("AddN")
                         AddNOp<CPUDevice, int32>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_ADDN(float, SYCL);
-REGISTER_ADDN(double, SYCL);
-
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("AddN")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("inputs")
-                            .HostMemory("sum"),
-                        AddNOp<CPUDevice, int32>);
-#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_ADDN
 

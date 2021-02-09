@@ -158,11 +158,11 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   ExecutableBuildOptions build_options;
   build_options.mutable_debug_options()->set_xla_hlo_profile(true);
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<LocalExecutable> local_executable,
+      auto local_executables,
       client->Compile(computation, {&lhs_arg_shape, &rhs_arg_shape},
                       build_options));
 
-  Executable* executable = local_executable->executable();
+  Executable* executable = local_executables[0]->executable();
   HloExecutionProfile hlo_execution_profile(
       &executable->hlo_profile_printer_data(),
       &executable->hlo_profile_index_map());
@@ -181,8 +181,8 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   TF_ASSERT_OK(stream_ptr->BlockHostUntilDone());
   (void)execution_result;
 
-  *profile_output =
-      hlo_execution_profile.ToString(executor->GetDeviceDescription());
+  *profile_output = hlo_execution_profile.ToString(
+      executor->GetDeviceDescription().clock_rate_ghz());
 
   XLA_VLOG_LINES(4, *profile_output);
 }

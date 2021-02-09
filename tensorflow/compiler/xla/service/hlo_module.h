@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -70,6 +71,12 @@ class HloModule {
   // Adds an entry computation to the module. A module can only have one entry
   // computation. Returns a pointer to the newly added computation.
   HloComputation* AddEntryComputation(
+      std::unique_ptr<HloComputation> computation);
+
+  // Same as the AddEntryComputation function above but the module's
+  // entry_computation_layout is updated to match the layout of the new entry
+  // computation.
+  HloComputation* AddEntryComputationWithLayouts(
       std::unique_ptr<HloComputation> computation);
 
   // Replaces the current entry computation with another computation.
@@ -184,10 +191,26 @@ class HloModule {
   // Gets the number of instructions in this module.
   int64 instruction_count() const;
 
+  // Deallocate removed instructions in each computation.
+  void Cleanup() {
+    for (auto& comp : computations_) {
+      comp->Cleanup();
+    }
+  }
+
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
   std::vector<HloComputation*> MakeComputationPostOrder() const;
+
+  // Same as MakeComputationPostOrder() but only returns the computations
+  // that are also found in the passed in allowList
+  std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<HloComputation*>& allow_list) const;
+
+  // Same as MakeComputationPostOrder() but sorting the computations by their
+  // contents. The order is longer post order.
+  std::vector<HloComputation*> MakeComputationSorted() const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
@@ -200,7 +223,7 @@ class HloModule {
   // MakeNonfusionComputations().
   std::vector<HloComputation*> MakeNonfusionComputations() const;
 
-  // Same as MakeNonfusionComputations() but sorting the computations by names.
+  // Same as MakeNonfusionComputations() but sorting computations by content.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
   const HloModuleConfig& config() const { return config_; }
@@ -297,7 +320,8 @@ class HloModule {
       instruction->ClearUniqueIdInternal();
     }
     return AddComputationInternal(std::move(computation), is_entry,
-                                  /*uniquify_identifiers=*/true);
+                                  /*uniquify_identifiers=*/true,
+                                  /*preserve_entry_layouts=*/true);
   }
 
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
@@ -334,14 +358,31 @@ class HloModule {
     spmd_output_sharding_ = sharding;
   }
 
+  // Add a program argument to be prefetched across programs.
+  void AddCrossProgramPrefetch(int64 parameter, const ShapeIndex& index) {
+    cross_program_prefetches_.emplace_back(parameter, index);
+  }
+
+  // Get the list of program arguments to be prefetch across programs.
+  const absl::Span<const std::pair<int64, ShapeIndex>> CrossProgramPrefetches()
+      const {
+    return cross_program_prefetches_;
+  }
+
+  const HloModuleMetadata& metadata() const { return metadata_; }
+  HloModuleMetadata* metadata() { return &metadata_; }
+
+  // Moves (not copies) metadata from this HloModule to `module`. To be used
+  // in cases like HloModuleGroup::ReplaceModule when metadata should be
+  // transferred out of a module before it's destroyed.
+  void MoveMetadataToModule(HloModule* module) {
+    module->metadata_ = std::move(metadata_);
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
-      bool uniquify_identifiers);
-
-  // Same as MakeComputationPostOrder() but sorting the computations by their
-  // contents.
-  std::vector<HloComputation*> MakeComputationSortedByContent() const;
+      bool uniquify_identifiers, bool preserve_entry_layouts);
 
   string name_;
   HloModuleConfig config_;
@@ -385,6 +426,12 @@ class HloModule {
   // The HLO sharding of the entry computation's output (root) for
   // SPMD-partitioned programs.
   absl::optional<HloSharding> spmd_output_sharding_;
+
+  // Arguments to be prefetched across programs.
+  std::vector<std::pair<int64, ShapeIndex>> cross_program_prefetches_;
+
+  // Metadata for this module, such as its canonical id and the HLO passes run.
+  HloModuleMetadata metadata_;
 };
 
 }  // namespace xla

@@ -98,7 +98,7 @@ enum class HexagonOpsDefinitions::SupportedOpType {
   ADD_F,
   MUL_F,
   MINIMUM_F,
-  MAXIMAM_F,
+  MAXIMUM_F,
 
   REQUANTIZE_32_TO_8,
   REQUANTIZE_32_TO_8_REF,
@@ -234,7 +234,7 @@ enum class HexagonOpsDefinitions::SupportedOpType {
   ADD_F,
   MUL_F,
   MINIMUM_F,
-  MAXIMAM_F,
+  MAXIMUM_F,
 
   REQUANTIZE_32_TO_8,
   REQUANTIZE_32_TO_8_REF,

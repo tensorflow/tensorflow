@@ -39,9 +39,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -216,20 +213,6 @@ class BiasOp : public BinaryOp<T> {
 TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_KERNEL(type)                                          \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("BiasAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
-      BiasOp<SYCLDevice, type>);                                       \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("BiasAddV1").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      BiasOp<SYCLDevice, type>);
-
-TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
-#undef REGISTER_KERNEL
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class BiasGradOp : public OpKernel {
@@ -308,17 +291,6 @@ class BiasGradOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_KERNEL(type)                                            \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("BiasAddGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      BiasGradOp<SYCLDevice, type>);
-
-TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
-#undef REGISTER_KERNEL
-#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>

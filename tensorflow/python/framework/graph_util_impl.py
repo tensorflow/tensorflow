@@ -23,15 +23,19 @@ import re
 
 import six
 
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.python import _proto_comparators
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
+
+# A normal import here would generate circular dependencies.
+convert_to_constants = lazy_loader.LazyLoader(
+    "convert_to_constants", globals(),
+    "tensorflow.python.framework.convert_to_constants")
 
 _VARIABLE_OPS = {
     "Assign",
@@ -124,7 +128,7 @@ def _node_name(n):
 
 
 def _get_colocated_node_name(colocated_node_name):
-  """Decodes colocated node name and returns it without loc:@ preprended."""
+  """Decodes colocated node name and returns it without loc:@ prepended."""
   colocated_node_decoded = colocated_node_name.decode("utf-8")
   if colocated_node_decoded.startswith("loc:@"):
     return colocated_node_decoded[5:]
@@ -237,57 +241,6 @@ def tensor_shape_from_node_def_name(graph, input_name):
   return shape
 
 
-def _update_resource_identities(resource_identities, output_graph_def):
-  """Updates the type of DT_RESOURCE Identity ops.
-
-  Updates the type of the `resource_identities` to the type of the node that
-  feed into it if the node is not an input to any other node. Valid nodes are
-  generally colocated nodes.
-
-  Args:
-    resource_identities: List of NodeDef protos that are Identity ops with the
-      type DT_RESOURCE.
-    output_graph_def: GraphDef proto.
-  """
-  # Identify the nodes in the graph and the nodes consuming each node.
-  map_name_to_node = {}
-  map_name_to_inputs = {}
-  for node in output_graph_def.node:
-    map_name_to_node[node.name] = node
-    for unparsed_input_name in node.input:
-      if not unparsed_input_name.startswith("^"):
-        parsed_input_name = _node_name(unparsed_input_name)
-        if parsed_input_name not in map_name_to_inputs:
-          map_name_to_inputs[parsed_input_name] = []
-        map_name_to_inputs[parsed_input_name].append(node.name)
-
-  for node in resource_identities:
-    # Validate the node is not an input to other nodes.
-    if node.name in map_name_to_inputs:
-      continue
-
-    # Get the type of the Identity node by tracing back through the nodes until
-    # we come to a non-Identity or non-control flow node or the type of the node
-    # is not DT_RESOURCE.
-    input_node = map_name_to_node[_node_name(node.input[0])]
-    while (input_node.op in _CONTROL_FLOW_OP_NAMES_OR_IDENTITY and
-           input_node.attr["T"].type == dtypes.resource):
-      input_node = map_name_to_node[_node_name(input_node.input[0])]
-
-    # Update the type of the Identity node if an Identity, control flow, or
-    # VarHandleOp node with a type that is not DT_RESOURCE is found.
-    debugging_message = str.encode(
-        "This Identity's type was changed from DT_RESOURCE during graph "
-        "freezing.")
-    if input_node.attr["T"].type != dtypes.resource:
-      if input_node.op in _CONTROL_FLOW_OP_NAMES_OR_IDENTITY:
-        node.attr["T"].CopyFrom(input_node.attr["T"])
-        node.attr["_debugging"].s = debugging_message
-      elif input_node.op == "VarHandleOp":
-        node.attr["T"].CopyFrom(input_node.attr["dtype"])
-        node.attr["_debugging"].s = debugging_message
-
-
 @deprecation.deprecated(
     date=None,
     instructions="Use `tf.compat.v1.graph_util.convert_variables_to_constants`")
@@ -315,151 +268,21 @@ def convert_variables_to_constants(sess,
 
   Returns:
     GraphDef containing a simplified version of the original.
+
+  Raises:
+    RuntimeError: if a DT_RESOURCE op is found whose ancestor Variables are both
+      denylisted AND whitelisted for freezing.
   """
-
-  get_input_name = lambda node, index=0: node.input[index].split(":")[0]
-
-  def create_const_op(node_name, dtype, data, data_shape=None):
-    """Creates a Const op."""
-    output_node = node_def_pb2.NodeDef()
-    output_node.op = "Const"
-    output_node.name = node_name
-    output_node.attr["dtype"].CopyFrom(dtype)
-    output_node.attr["value"].CopyFrom(
-        attr_value_pb2.AttrValue(
-            tensor=tensor_util.make_tensor_proto(
-                data, dtype=dtype.type, shape=data_shape)))
-    return output_node
-
-  # This graph only includes the nodes needed to evaluate the output nodes, and
-  # removes unneeded nodes like those involved in saving and assignment.
-  inference_graph = extract_sub_graph(input_graph_def, output_node_names)
-
-  # Identify the ops in the graph.
-  map_name_to_node = {
-      node.name: node for node in inference_graph.node
-  }
-
-  # Get list of variables.
-  variable_names = []
-  variable_dict_names = []
-  resource_op_types = {}
-  for node in inference_graph.node:
-    if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
-      variable_name = node.name
-      if ((variable_names_whitelist is not None and
-           variable_name not in variable_names_whitelist) or
-          (variable_names_blacklist is not None and
-           variable_name in variable_names_blacklist)):
-        continue
-      variable_dict_names.append(variable_name)
-      if node.op == "VarHandleOp":
-        variable_names.append(variable_name + "/Read/ReadVariableOp:0")
-      else:
-        variable_names.append(variable_name + ":0")
-    elif node.op in ["ReadVariableOp", "ResourceGather"]:
-      # There can be one or more Identity or control flow ops in between the
-      # ReadVariableOp and VarHandleOp. Store the ops with the associated
-      # dtypes.
-      source_op_names = [get_input_name(node)]
-      while (source_op_names and map_name_to_node[source_op_names[0]].op in
-             _CONTROL_FLOW_OP_NAMES_OR_IDENTITY):
-        source_op_name = source_op_names.pop()
-        current_node = map_name_to_node[source_op_name]
-
-        if source_op_name not in resource_op_types:
-          resource_op_types[source_op_name] = node.attr["dtype"]
-          source_op_names.append(get_input_name(current_node))
-
-        if current_node == "Merge":
-          merge_resource_name = get_input_name(current_node, index=1)
-          if merge_resource_name not in resource_op_types:
-            resource_op_types[merge_resource_name] = node.attr["dtype"]
-            source_op_names.append(
-                get_input_name(map_name_to_node[merge_resource_name]))
-
-      for source_node in source_op_names:
-        if map_name_to_node[source_node].op != "VarHandleOp":
-          raise ValueError("Cannot find the variable that is an input "
-                           "to the ReadVariableOp.")
-
-  # Gets map of variables and the associated data.
-  if variable_names:
-    returned_variables = sess.run(variable_names)
-  else:
-    returned_variables = []
-  variables_data_map = dict(zip(variable_dict_names, returned_variables))
-  logging.info("Froze %d variables.", len(returned_variables))
-
-  # Reconstruct the graph with constants in place of variables.
-  output_graph_def = graph_pb2.GraphDef()
-  how_many_converted = 0
-  for input_node in inference_graph.node:
-    output_node = node_def_pb2.NodeDef()
-    if input_node.name in variables_data_map:
-      data = variables_data_map[input_node.name]
-      output_node = create_const_op(input_node.name, input_node.attr["dtype"],
-                                    data, data.shape)
-      how_many_converted += 1
-    elif input_node.name in resource_op_types:
-      # Converts the type of the ops between the ReadVariableOp and VarHandleOp
-      # from RESOURCE_DT to the appropriate type based on the input they are
-      # referencing. Do not copy shapes due to incorrect shape info.
-      output_node.op = input_node.op
-      output_node.name = input_node.name
-      for in_node in input_node.input:
-        output_node.input.append(in_node)
-      for attr_name in input_node.attr:
-        if str(attr_name) != "_output_shapes":
-          output_node.attr[attr_name].CopyFrom(input_node.attr[attr_name])
-      output_node.attr["T"].CopyFrom(resource_op_types[input_node.name])
-    elif input_node.op == "ReadVariableOp":
-      # The first branch converts all VarHandleOps of ResourceVariables to
-      # constants, so we need to convert the associated ReadVariableOps to
-      # Identity ops.
-      output_node.op = "Identity"
-      output_node.name = input_node.name
-      output_node.input.extend([input_node.input[0]])
-      output_node.attr["T"].CopyFrom(input_node.attr["dtype"])
-      if "_class" in input_node.attr:
-        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
-    elif input_node.op == "ResourceGather":
-      # The first branch converts all VarHandleOps of ResourceGather to
-      # constants, so we need to convert the associated ResourceGather to Gather
-      # ops with a Const axis feeding into it.
-      if input_node.attr["batch_dims"].i != 0:
-        raise ValueError("batch_dims != 0 is not supported by freeze_graph.")
-      axis_data = input_node.attr["batch_dims"].i
-      axis_node_name = input_node.name + "/axis"
-      axis_dtype = input_node.attr["Tindices"]
-      output_axis_node = create_const_op(axis_node_name, axis_dtype, axis_data)
-      output_graph_def.node.extend([output_axis_node])
-
-      output_node.op = "GatherV2"
-      output_node.name = input_node.name
-      output_node.input.extend(
-          [input_node.input[0], input_node.input[1], axis_node_name])
-      output_node.attr["Tparams"].CopyFrom(input_node.attr["dtype"])
-      output_node.attr["Tindices"].CopyFrom(input_node.attr["Tindices"])
-      output_node.attr["Taxis"].CopyFrom(axis_dtype)
-      if "_class" in input_node.attr:
-        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
-    else:
-      output_node.CopyFrom(input_node)
-    output_graph_def.node.extend([output_node])
-
-  # Update the types of the DT_RESOURCE Identity nodes that do not have an
-  # associated ReadVariableOp.
-  resource_identities = []
-  for node in output_graph_def.node:
-    if node.op == "Identity" and node.attr["T"].type == dtypes.resource:
-      resource_identities.append(node)
-  if resource_identities:
-    _update_resource_identities(resource_identities, output_graph_def)
-
-  output_graph_def.library.CopyFrom(inference_graph.library)
-  logging.info("Converted %d variables to const ops.", how_many_converted)
-  return output_graph_def
+  ret = convert_to_constants.convert_variables_to_constants_from_session_graph(
+      session=sess,
+      graph_def=input_graph_def,
+      output_node_names=output_node_names,
+      variable_names_allowlist=variable_names_whitelist,
+      variable_names_denylist=variable_names_blacklist)
+  # The previous code logic generated an empty versions field, we clear it here
+  # to maintain backwards compatibility.
+  ret.versions.Clear()
+  return ret
 
 
 @deprecation.deprecated(
@@ -552,3 +375,37 @@ def remove_training_nodes(input_graph, protected_nodes=None):
   output_graph = graph_pb2.GraphDef()
   output_graph.node.extend(nodes_after_splicing)
   return output_graph
+
+
+def graph_defs_equal(graph_def_1: graph_pb2.GraphDef,
+                     graph_def_2: graph_pb2.GraphDef,
+                     treat_nan_as_equal: bool = False) -> bool:
+  """Returns True iff the graph def arguments are structurally equivalent.
+
+  The notion of equivalence encoded here checks that the set of NodeDefs in
+  the GraphDef's function library and main graph body are identical.
+  Additionally, it checks that the functions in the function library are equal
+  as sets.
+
+  Args:
+    graph_def_1: Instance of `graph_pb2.GraphDef` to compare.
+    graph_def_2: Instance of `graph_pb2.GraphDef` to compare.
+    treat_nan_as_equal: Boolean indicating whether or not to treat nan
+      floating-point values as equal. This is crucial for any equivalence
+      relation defined over GraphDefs, to ensure symmetry.
+
+  Returns:
+    Boolean indicating structural equivalence as described above.
+
+  Raises:
+    TypeError: If either of the GraphDefs are not instances of
+      `graph_pb2.GraphDef`.
+  """
+  if not isinstance(graph_def_1, graph_pb2.GraphDef):
+    raise TypeError("graph_def_1 must be a graph_pb2.GraphDef proto.")
+  if not isinstance(graph_def_2, graph_pb2.GraphDef):
+    raise TypeError("graph_def_2 must be a graph_pb2.GraphDef proto.")
+  options = _proto_comparators.ProtoComparisonOptions(treat_nan_as_equal)
+  return _proto_comparators.EqualsGraphDef(graph_def_1.SerializeToString(),
+                                           graph_def_2.SerializeToString(),
+                                           options)

@@ -73,7 +73,7 @@ class ReshapeTest(trt_test.TfTrtIntegrationTestBase):
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
     return (not trt_test.IsQuantizationMode(run_params.precision_mode) and
-            not run_params.dynamic_engine)
+            not run_params.dynamic_engine), "test static engine and non-INT8"
 
 
 class TransposeTest(trt_test.TfTrtIntegrationTestBase):
@@ -102,7 +102,7 @@ class TransposeTest(trt_test.TfTrtIntegrationTestBase):
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
     return (not trt_test.IsQuantizationMode(run_params.precision_mode) and
-            not run_params.dynamic_engine)
+            not run_params.dynamic_engine), "test static engine and non-INT8"
 
 
 class IncompatibleTransposeTest(TransposeTest):

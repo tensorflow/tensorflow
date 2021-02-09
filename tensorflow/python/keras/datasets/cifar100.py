@@ -37,7 +37,7 @@ def load_data(label_mode='fine'):
   grouped into 20 coarse-grained classes. See more info at the
   [CIFAR homepage](https://www.cs.toronto.edu/~kriz/cifar.html).
 
-  Arguments:
+  Args:
       label_mode: one of "fine", "coarse". If it is "fine" the category labels
       are the fine-grained labels, if it is "coarse" the output labels are the
       coarse-grained superclasses.
@@ -45,11 +45,12 @@ def load_data(label_mode='fine'):
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
 
-      x_train, x_test: uint8 arrays of RGB image data with shape
-        (num_samples, 3, 32, 32) if the `tf.keras.backend.image_data_format` is
-        'channels_first', or (num_samples, 32, 32, 3) if the data format
-        is 'channels_last'.
-      y_train, y_test: uint8 arrays of category labels with shape
+      **x_train, x_test**: uint8 arrays of RGB image data with shape
+        `(num_samples, 3, 32, 32)` if `tf.keras.backend.image_data_format()` is
+        `'channels_first'`, or `(num_samples, 32, 32, 3)` if the data format
+        is `'channels_last'`.
+
+      **y_train, y_test**: uint8 arrays of category labels with shape
         (num_samples, 1).
 
   Raises:

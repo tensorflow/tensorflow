@@ -18,9 +18,9 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 

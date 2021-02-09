@@ -30,9 +30,9 @@ def rocm_copts(opts = []):
         ]),
     }) + if_rocm_is_configured(opts)
 
-def rocm_is_configured():
-    """Returns true if ROCm was enabled during the configure process."""
-    return %{rocm_is_configured}
+def rocm_gpu_architectures():
+    """Returns a list of supported GPU architectures."""
+    return %{rocm_gpu_architectures}
 
 def if_rocm_is_configured(x):
     """Tests if the ROCm was enabled during the configure process.
@@ -40,6 +40,10 @@ def if_rocm_is_configured(x):
     Unlike if_rocm(), this does not require that we are building with
     --config=rocm. Used to allow non-ROCm code to depend on ROCm libraries.
     """
-    if rocm_is_configured():
-      return x
-    return []
+    if %{rocm_is_configured}:
+      return select({"//conditions:default": x})
+    return select({"//conditions:default": []})
+
+def rocm_library(copts = [], **kwargs):
+    """Wrapper over cc_library which adds default ROCm options."""
+    native.cc_library(copts = rocm_default_copts() + copts, **kwargs)

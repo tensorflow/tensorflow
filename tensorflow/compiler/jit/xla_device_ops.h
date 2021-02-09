@@ -117,6 +117,18 @@ class XlaAssignVariableOp : public OpKernel {
                               .TypeConstraint<int64>("out_type")               \
                               .TypeConstraint("T", TYPES),                     \
                           ShapeNOp<int64>);                                    \
+  REGISTER_KERNEL_BUILDER(Name("VariableShape")                                \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<int32>("out_type")               \
+                              .HostMemory("output")                            \
+                              .HostMemory("input"),                            \
+                          VariableShapeOp<int32>);                             \
+  REGISTER_KERNEL_BUILDER(Name("VariableShape")                                \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<int64>("out_type")               \
+                              .HostMemory("output")                            \
+                              .HostMemory("input"),                            \
+                          VariableShapeOp<int64>);                             \
   REGISTER_KERNEL_BUILDER(Name("Size")                                         \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
@@ -180,12 +192,10 @@ class XlaAssignVariableOp : public OpKernel {
       data::MakeIteratorOp);                                                   \
   REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE),            \
                           data::AnonymousIteratorHandleOp);                    \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("AnonymousIteratorV2").Device(DEVICE).HostMemory("deleter"),        \
-      data::AnonymousIteratorHandleOp);                                        \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("DeleteIterator").Device(DEVICE).HostMemory("deleter"),             \
-      data::DeleteIteratorOp);                                                 \
+  REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV2").Device(DEVICE),          \
+                          data::AnonymousIteratorHandleOp);                    \
+  REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE),               \
+                          data::DeleteIteratorOp);                             \
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE),              \
                           data::IteratorGetNextOp);                            \
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNextAsOptional").Device(DEVICE),    \

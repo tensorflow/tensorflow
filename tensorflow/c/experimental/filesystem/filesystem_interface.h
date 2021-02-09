@@ -78,6 +78,31 @@ typedef struct TF_Filesystem {
   void* plugin_filesystem;
 } TF_Filesystem;
 
+typedef struct TF_TransactionToken {
+  void* token;
+  TF_Filesystem* owner;
+} TF_TransactionToken;
+
+typedef struct TF_Filesystem_Option_Value {
+  int type_tag;
+  int num_values;
+  union {
+    int64_t inv_val;
+    double real_val;
+    struct {
+      char* buf;
+      int buf_length;
+    } buffer_val;
+  } * values;  // owned
+} TF_Filesystem_Option_Value;
+
+typedef struct TF_Filesystem_Option {
+  char* name;                         // null terminated, owned
+  char* description;                  // null terminated, owned
+  int per_file;                       // bool actually, but bool is not a C type
+  TF_Filesystem_Option_Value* value;  // owned
+} TF_Filesystem_Option;
+
 /// SECTION 2. Function tables for functionality provided by plugins
 /// ----------------------------------------------------------------------------
 ///
@@ -679,6 +704,212 @@ typedef struct TF_FilesystemOps {
   ///
   /// DEFAULT IMPLEMENTATION: No op.
   void (*flush_caches)(const TF_Filesystem* filesystem);
+
+  /// Starts a new transaction.
+  ///
+  /// An opaque transaction token is returned in `token`. Ownership of the token
+  /// is in filesystem. Token will be freed in `end_transaction` call and any
+  /// access to token after that is invalid.
+  ///
+  /// In case of error, plugins must set `status` to a value different than
+  /// `TF_OK`, free memory allocated for `token` and return -1.
+  ///
+  /// The allocation and freeing of memory must happen via the functions sent to
+  /// core TensorFlow upon registration (see the `TF_FilesystemPluginInfo`
+  /// structure in Section 4).
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` if transaction successfuly started.
+  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if multiple transactions
+  ///     are not supported
+  ///   * Might use any other error value for `status` to signal other errors.
+  int (*start_transaction)(const TF_Filesystem* filesystem,
+                           TF_TransactionToken** token, TF_Status* status);
+
+  /// Ends transaction and free the `token`. Any access to token after
+  /// that will be invalid.
+  ///
+  /// In case of error, plugins must set `status` to a value different than
+  /// `TF_OK`, free memory allocated for `token` and return -1.
+  ///
+  /// The allocation and freeing of memory must happen via the functions sent to
+  /// core TensorFlow upon registration (see the `TF_FilesystemPluginInfo`
+  /// structure in Section 4).
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` if transaction successfuly finalized.
+  ///   * Must set `status` to `TF_NOT_FOUND` if token is invalid/not found
+  ///   * Might use any other error value for `status` to signal other errors.
+  int (*end_transaction)(const TF_Filesystem* filesystem,
+                         TF_TransactionToken* token, TF_Status* status);
+
+  /// Adds file/directory in the `path` to transaction in `token`. It is a valid
+  /// operation to add a path that doesn't exist yet to a transaction.
+  ///
+  /// In case of error, plugins must set `status` to a value different than
+  /// `TF_OK`, free memory allocated for `token` and return -1.
+  ///
+  /// The allocation and freeing of memory must happen via the functions sent to
+  /// core TensorFlow upon registration (see the `TF_FilesystemPluginInfo`
+  /// structure in Section 4).
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` if path added to transaction successful.
+  ///   * Must set `status` to `TF_NOT_FOUND` if `token` is invalid.
+  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if file/directory is in
+  ///     another transaction and multiple transactions are not supported
+  ///   * Might use any other error value for `status` to signal other errors.
+  int (*add_to_transaction)(const TF_Filesystem* filesystem, const char* path,
+                            TF_TransactionToken* token, TF_Status* status);
+
+  /// Returns transaction token for file/directory in the `path`. Note that path
+  /// may not exist yet but still might be part of a transaction.
+  ///
+  /// Transaction token is returned in `token`. Ownership of the token is in
+  /// filesystem. Token will be freed in `end_transaction` call and any access
+  /// to token after that is invalid.
+  ///
+  /// In case of error, plugins must set `status` to a value different than
+  /// `TF_OK`, free memory allocated for `token` and return -1.
+  ///
+  /// The allocation and freeing of memory must happen via the functions sent to
+  /// core TensorFlow upon registration (see the `TF_FilesystemPluginInfo`
+  /// structure in Section 4).
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` if a transaction for path is found
+  ///   * Must set `status` to `TF_NOT_FOUND` if `path` is not part of any
+  ///     transaction
+  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if `path`  is
+  ///     not in this filesystem.
+  ///   * Might use any other error value for `status` to signal other errors.
+  int (*get_transaction_for_path)(const TF_Filesystem* filesystem,
+                                  const char* path, TF_TransactionToken** token,
+                                  TF_Status* status);
+
+  /// Returns transaction token for `path` if it is part of a transaction else
+  /// starts a new transaction and adds `path` to that transaction
+  ///
+  /// Transaction token is returned in `token`. Ownership of the token is in
+  /// filesystem. Token will be freed in `end_transaction` call and any access
+  /// to token after that is invalid.
+  ///
+  /// In case of error, plugins must set `status` to a value different than
+  /// `TF_OK`, free memory allocated for `token` and return -1.
+  ///
+  /// The allocation and freeing of memory must happen via the functions sent to
+  /// core TensorFlow upon registration (see the `TF_FilesystemPluginInfo`
+  /// structure in Section 4).
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` if transaction found or successfuly
+  ///     started.
+  ///   * Must set `status` to `TF_NOT_FOUND` if `path` doesn't point to this
+  ///     filesystem
+  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if file/directory is
+  ///     not in any transaction and multiple transactions are not supported.
+  ///   * Might use any other error value for `status` to signal other errors.
+  int (*get_or_start_transaction_for_path)(const TF_Filesystem* filesystem,
+                                           const char* path,
+                                           TF_TransactionToken** token,
+                                           TF_Status* status);
+
+  /// Decodes transaction token in `token` to human readable format for
+  /// debugging.
+  ///
+  /// A new `char*` buffer must be allocated by this method. Core TensorFlow
+  /// manages the lifetime of the buffer after the call. Thus, all callers of
+  /// this method must take ownership of the returned pointer.
+  ///
+  /// Plugins must not return `nullptr`. Returning empty strings is allowed.
+  ///
+  /// The allocation and freeing of memory must happen via the functions sent to
+  /// core TensorFlow upon registration (see the `TF_FilesystemPluginInfo`
+  /// structure in Section 4).
+  ///
+  /// DEFAULT IMPLEMENTATION: Dump token and owner address.
+  char* (*decode_transaction_token)(const TF_Filesystem* filesystem,
+                                    const TF_TransactionToken* token);
+
+  /// Returns pointer to an array of available configuration options and their
+  /// current/default values in `options` and number of options in array in
+  /// `num_options`. Ownership of the array is transferred to caller and the
+  /// caller is responsible of freeing the buffers using respective file systems
+  /// allocation API.
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` if `options` and `num_options` set.
+  ///     If there is no configurable option, `num_options` should be 0.
+  ///   * Might use any other error value for `status` to signal other errors.
+  ///
+  /// DEFAULT IMPLEMENTATION: return 0 options and `TF_OK`.
+  void (*get_filesystem_configuration)(const TF_Filesystem* filesystem,
+                                       TF_Filesystem_Option** options,
+                                       int* num_options, TF_Status* status);
+
+  /// Updates filesystem configuration with options passed in `options`. It can
+  /// contain full set of options supported by the filesystem or just a subset
+  /// of them. Ownership of options and buffers therein belongs to the caller
+  /// and any buffers need to be allocated through filesystem allocation API.
+  /// Filesystems may choose to ignore configuration errors but should at least
+  /// display a warning or error message to warn the users.
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` if options are updated.
+  ///   * Might use any other error value for `status` to signal other errors.
+  ///
+  /// DEFAULT IMPLEMENTATION: return `TF_NOT_FOUND`.
+  void (*set_filesystem_configuration)(const TF_Filesystem* filesystem,
+                                       const TF_Filesystem_Option** options,
+                                       int num_options, TF_Status* status);
+
+  /// Returns the value of the filesystem option given in `key` in `option`.
+  /// Valid values of the `key` are returned by
+  /// `get_file_system_configuration_keys` call. Ownership of the
+  /// `option` is transferred to caller. Buffers therein should be allocated and
+  /// freed by the relevant filesystems allocation API.
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` if `option` is set
+  ///   * Must set `status` to `TF_NOT_FOUND` if the key is invalid
+  ///   * Might use any other error value for `status` to signal other errors.
+  ///
+  /// DEFAULT IMPLEMENTATION: return `TF_NOT_FOUND`.
+  void (*get_filesystem_configuration_option)(const TF_Filesystem* filesystem,
+                                              const char* key,
+                                              TF_Filesystem_Option** option,
+                                              TF_Status* status);
+
+  /// Sets the value of the filesystem option given in `key` to value in
+  /// `option`. Valid values of the `key` are returned by
+  /// `get_file_system_configuration_keys` call. Ownership of the `option` and
+  /// the `key` belogs to the caller. Buffers therein should be allocated and
+  /// freed by the filesystems allocation API.
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` if `option` is set/updated
+  ///   * Must set `status` to `TF_NOT_FOUND` if the key is invalid
+  ///   * Might use any other error value for `status` to signal other errors.
+  ///
+  /// DEFAULT IMPLEMENTATION: return `TF_NOT_FOUND`.
+  void (*set_filesystem_configuration_option)(
+      const TF_Filesystem* filesystem, const TF_Filesystem_Option* option,
+      TF_Status* status);
+
+  /// Returns a list of valid configuration keys in `keys` array and number of
+  /// keys in `num_keys`. Ownership of the buffers in `keys` are transferred to
+  /// caller and needs to be freed using relevant filesystem allocation API.
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` on success. If there are no configurable
+  ///     keys, `num_keys` should be set to 0
+  ///   * Might use any other error value for `status` to signal other errors.
+  ///
+  /// DEFAULT IMPLEMENTATION: return `TF_OK` and `num_keys`=0.
+  void (*get_filesystem_configuration_keys)(const TF_Filesystem* filesystem,
+                                            char** keys, int* num_keys,
+                                            TF_Status* status);
+
 } TF_FilesystemOps;
 // LINT.ThenChange(:filesystem_ops_version)
 

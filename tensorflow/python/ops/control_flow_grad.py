@@ -210,6 +210,8 @@ def _EnterGrad(op, grad):
   # pylint: disable=protected-access
   grad_ctxt = graph._get_control_flow_context()
   # pylint: enable=protected-access
+  if grad_ctxt is None:
+    return grad
   if not grad_ctxt.back_prop:
     # Skip gradient computation, if the attribute `back_prop` is false.
     return grad

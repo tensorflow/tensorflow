@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 
 #include <cmath>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -134,47 +135,130 @@ XlaOp Uint32sToUint64(std::array<XlaOp, 2> u32s) {
                    ConstantR0WithType(builder, U64, 32));
 }
 
-// Given the initial state and the request number of random numbers to be
+// Given the initial state and the request shape of random numbers to be
 // generated, returns the input for the random number generator and a new state.
 std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
-    XlaOp initial_state, const int64 size) {
+    XlaOp initial_state, const Shape& shape) {
   XlaBuilder* builder = initial_state.builder();
-  XlaOp input_u64 = Iota(builder, U64, size);
-  input_u64 = input_u64 + initial_state;
-  XlaOp new_state = initial_state + ConstantR0<uint64>(builder, size);
+  auto u64_shape = ShapeUtil::MakeShape(U64, shape.dimensions());
+  // initial_state is an R1, so reshape it to a scalar.
+  auto input_u64 = Broadcast(Reshape(initial_state, {}), shape.dimensions());
+  int64 trailing_dims_product = 1;
+  for (int64 i = shape.rank() - 1; i >= 0; --i) {
+    if (shape.dimensions(i) < 2) {
+      continue;
+    }
+    input_u64 =
+        input_u64 + (Iota(builder, u64_shape, i) *
+                     ConstantR0<uint64>(builder, trailing_dims_product));
+    trailing_dims_product *= shape.dimensions(i);
+  }
+  XlaOp new_state =
+      initial_state + ConstantR0<uint64>(builder, ShapeUtil::ElementsIn(shape));
   return std::make_pair(Uint64ToUint32s(input_u64), new_state);
+}
+
+// Result for SplitShapeIntoHalves().
+struct SplitShapePair {
+  Shape half_shape;
+  Shape concat_shape;
+  int64 split_dim;
+  int64 new_concat_dim;
+};
+
+// Split the shape on a dimension > 1 into two halves.
+SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
+  SplitShapePair pair;
+  if (shape.rank() == 0) {
+    pair.half_shape = ShapeUtil::MakeShape(shape.element_type(), {1});
+    pair.concat_shape = ShapeUtil::MakeShape(shape.element_type(), {2});
+    pair.split_dim = 0;
+    pair.new_concat_dim = 0;
+    return pair;
+  }
+  pair.split_dim = -1;
+  for (int64 i = 0; i < shape.rank(); ++i) {
+    if (shape.dimensions(i) % 2 == 0) {
+      pair.split_dim = i;
+      break;
+    }
+  }
+  if (pair.split_dim == -1) {
+    // No even dims. Find a dimension with maximum size.
+    for (int64 i = 0; i < shape.rank(); ++i) {
+      if (pair.split_dim == -1 ||
+          shape.dimensions(i) > shape.dimensions(pair.split_dim)) {
+        pair.split_dim = i;
+      }
+    }
+  }
+  CHECK_GE(pair.split_dim, 0);
+  std::vector<int64> half_shape_dims;
+  std::vector<int64> concat_shape_dims;
+  for (int64 i = 0; i < shape.rank(); ++i) {
+    if (i == pair.split_dim) {
+      // Create a new trivial dim for the later concat, which is more friendly
+      // to sharding propagation.
+      half_shape_dims.push_back(CeilOfRatio<int64>(shape.dimensions(i), 2));
+      half_shape_dims.push_back(1);
+      concat_shape_dims.push_back(half_shape_dims[i]);
+      concat_shape_dims.push_back(2);
+    } else {
+      half_shape_dims.push_back(shape.dimensions(i));
+      concat_shape_dims.push_back(shape.dimensions(i));
+    }
+  }
+  pair.new_concat_dim = pair.split_dim + 1;
+  pair.half_shape = ShapeUtil::MakeShape(shape.element_type(), half_shape_dims);
+  pair.concat_shape =
+      ShapeUtil::MakeShape(shape.element_type(), concat_shape_dims);
+  return pair;
+}
+
+// Combines a pair of split shapes. It works with scalar and non-scalar shapes.
+XlaOp CombineShapePair(absl::Span<const XlaOp> pair,
+                       const SplitShapePair& shape_pair,
+                       const Shape& original_shape) {
+  if (original_shape.rank() == 0) {
+    return Reshape(pair[0], {});
+  }
+  XlaBuilder* builder = pair[0].builder();
+  XlaOp result = ConcatInDim(builder, pair, shape_pair.new_concat_dim);
+  const int64 pre_split_size = original_shape.dimensions(shape_pair.split_dim);
+  std::vector<int64> reshape_dims(original_shape.dimensions().begin(),
+                                  original_shape.dimensions().end());
+  reshape_dims[shape_pair.split_dim] =
+      RoundUpToNearest<int64>(pre_split_size, 2);
+  result = Reshape(result, reshape_dims);
+  if (reshape_dims[shape_pair.split_dim] != pre_split_size) {
+    result = Slice(result, std::vector<int64>(original_shape.rank(), 0),
+                   original_shape.dimensions(),
+                   std::vector<int64>(original_shape.rank(), 1));
+  }
+  return result;
 }
 
 // Generates random 32bits with the given shape using the Three Fry
 // implementation. Returns the random bits and the new state.
 RngOutput ThreeFryRngBit32(XlaOp key, XlaOp initial_state, const Shape& shape) {
-  XlaBuilder* builder = key.builder();
-  const int64 size = ShapeUtil::ElementsIn(shape);
-  const int64 half_size = CeilOfRatio<int64>(size, 2);
-  const bool size_is_odd = (half_size * 2 != size);
+  auto shape_pair = SplitShapeIntoHalves(shape);
   std::pair<ThreeFry2x32State, XlaOp> inputs_state =
-      GetThreeFryInputsAndUpdatedState(initial_state, half_size);
+      GetThreeFryInputsAndUpdatedState(initial_state, shape_pair.half_shape);
   ThreeFry2x32State inputs = inputs_state.first;
   ThreeFry2x32State outputs = ThreeFry2x32(inputs, Uint64ToUint32s(key));
-  if (size_is_odd) {
-    outputs[1] = Slice(outputs[1], {0}, {half_size - 1}, {1});
-  }
-  XlaOp result = ConcatInDim(builder, outputs, 0);
-  return {Reshape(result, AsInt64Slice(shape.dimensions())),
-          inputs_state.second};
+  XlaOp result = CombineShapePair(outputs, shape_pair, shape);
+  return {result, inputs_state.second};
 }
 
 // Generates random 64bits with the given shape using the Three Fry
 // implementation. Returns the random bits and the new state.
 RngOutput ThreeFryRngBit64(XlaOp key, XlaOp initial_state, const Shape& shape) {
-  const int64 size = ShapeUtil::ElementsIn(shape);
   std::pair<ThreeFry2x32State, XlaOp> inputs_state =
-      GetThreeFryInputsAndUpdatedState(initial_state, size);
+      GetThreeFryInputsAndUpdatedState(initial_state, shape);
   ThreeFry2x32State inputs = inputs_state.first;
   ThreeFry2x32State outputs = ThreeFry2x32(inputs, Uint64ToUint32s(key));
   XlaOp result = Uint32sToUint64(outputs);
-  return {Reshape(result, AsInt64Slice(shape.dimensions())),
-          inputs_state.second};
+  return {result, inputs_state.second};
 }
 
 // The key of the Philox random number generator.
@@ -305,17 +389,9 @@ std::pair<Philox4x32State, XlaOp> GetPhiloxInputsAndUpdatedState(
 // numbers are generated in the unit of 128bits.
 std::pair<Philox4x32State, XlaOp> GeneratePhiloxBits(int64 num_elems,
                                                      XlaOp initial_state,
-                                                     Philox4x32Key key,
-                                                     bool scramble) {
+                                                     Philox4x32Key key) {
   Philox4x32State state;
-  if (scramble) {
-    // When `scramble` is true, `initial_state` is not used. This is because
-    // scramble is true only when this function is called by stateless random
-    // ops, for which `initial_state` is always zero.
-    std::tie(state, key) = ScramblePhiloxKey(key);
-  } else {
-    state = Uint128ToUint32s(Uint128FromOp(initial_state));
-  }
+  state = Uint128ToUint32s(Uint128FromOp(initial_state));
   const int64 num_vector4 = CeilOfRatio<int64>(num_elems, 4);
   Philox4x32State inputs;
   XlaOp new_state;
@@ -328,16 +404,15 @@ std::pair<Philox4x32State, XlaOp> GeneratePhiloxBits(int64 num_elems,
 // Generates an array of primitive type U32 with the given shape containing
 // random bits generated by the Philox algorithm. Returns the array and the new
 // state of the random number generator.
-RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state, const Shape& shape,
-                         bool scramble) {
+RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state,
+                         const Shape& shape) {
   XlaBuilder* builder = op_key.builder();
   const int64 num_elems = ShapeUtil::ElementsIn(shape);
 
   Philox4x32Key key = Uint64ToUint32s(op_key);
   Philox4x32State bits;
   XlaOp new_state;
-  std::tie(bits, new_state) =
-      GeneratePhiloxBits(num_elems, initial_state, key, scramble);
+  std::tie(bits, new_state) = GeneratePhiloxBits(num_elems, initial_state, key);
   // Combining bits[i] in a round-robin fashion, to align with non-XLA
   // implementations
   int64 bits_len = (num_elems + 3) / 4;
@@ -356,8 +431,8 @@ RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state, const Shape& shape,
 // Generates an array of primitive type U64 with the given shape containing
 // random bits generated by the Philox algorithm. Returns the array and the new
 // state of the random number generator.
-RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state, const Shape& shape,
-                         bool scramble) {
+RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state,
+                         const Shape& shape) {
   XlaBuilder* builder = op_key.builder();
   const int64 num_elems = ShapeUtil::ElementsIn(shape);
 
@@ -365,7 +440,7 @@ RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state, const Shape& shape,
   Philox4x32State bits32;
   XlaOp new_state;
   std::tie(bits32, new_state) =
-      GeneratePhiloxBits(num_elems * 2, initial_state, key, scramble);
+      GeneratePhiloxBits(num_elems * 2, initial_state, key);
 
   std::array<XlaOp, 2> bits64;
   bits64[0] = Uint32sToUint64({bits32[0], bits32[1]});
@@ -389,28 +464,36 @@ RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state, const Shape& shape,
 XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,
                                               XlaOp maxval) {
   XlaBuilder* builder = bits.builder();
-  PrimitiveType value_type =
-      builder->GetShape(minval).ConsumeValueOrDie().element_type();
-  PrimitiveType bit_type =
-      builder->GetShape(bits).ConsumeValueOrDie().element_type();
-  CHECK((value_type == F32 && bit_type == U32) ||
-        (value_type == F64 && bit_type == U64));
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* minval_shape,
+                        builder->GetShapePtr(minval));
+    TF_ASSIGN_OR_RETURN(const Shape* bits_shape, builder->GetShapePtr(bits));
+    PrimitiveType value_type = minval_shape->element_type();
+    PrimitiveType bit_type = bits_shape->element_type();
+    CHECK((value_type == F32 && bit_type == U32) ||
+          (value_type == F64 && bit_type == U64));
 
-  // Form random mantissa bits for float/double, with a leading 1 bit.
-  int float_bits = primitive_util::BitWidth(value_type);
-  // Subtract one as SignificandWidth includes the leading 1 bit.
-  int mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
+    // Form random mantissa bits for float/double, with a leading 1 bit.
+    int num_float_bits = primitive_util::BitWidth(value_type);
+    // Subtract one as SignificandWidth includes the leading 1 bit.
+    int num_mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
 
-  bits = ShiftRightLogical(bits, ScalarLike(bits, float_bits - mantissa_bits)) |
-         BitcastConvertType(ScalarLike(minval, 1.0), bit_type);
-  XlaOp values = BitcastConvertType(bits, value_type);
+    // Ignore the exponent bits and convert the mantissa bits to the floating
+    // point type.
+    bits = ShiftRightLogical(
+        bits, ScalarLike(bits, num_float_bits - num_mantissa_bits));
 
-  // We have a floating point number in the range [1.0, 2.0).
-  // Subtract 1.0f to shift to the range [0.0, 1.0)
-  values = values - ScalarLike(values, 1.0);
+    // We have an integer-valued floating point number in the range
+    // [0, 2**{num_mantissa_bits}).
+    XlaOp values = ConvertElementType(bits, value_type);
 
-  // Multiply and add to shift to the range [minval, maxval).
-  return values * (maxval - minval) + minval;
+    // Divide by 2**{-num_mantissa_bits} to get a number in the range
+    // [0.0, 1.0).
+    values = values * ScalarLike(values, std::ldexp(1., -num_mantissa_bits));
+
+    // Multiply and add to shift to the range [minval, maxval).
+    return values * (maxval - minval) + minval;
+  });
 }
 
 XlaOp ConvertRandomBitsToUniformInt(XlaOp bits, XlaOp minval, XlaOp maxval,
@@ -442,6 +525,10 @@ std::pair<XlaOp, XlaOp> BoxMullerTransform(XlaOp x0, XlaOp x1) {
 
 }  // namespace
 
+XlaOp PhiloxIncreaseCounter(XlaOp counter, XlaOp delta) {
+  return Uint128ToOp(Uint128AddUint64(Uint128FromOp(counter), delta));
+}
+
 RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
                                const Shape& shape) {
   PrimitiveType type = shape.element_type();
@@ -463,18 +550,18 @@ RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
   }
 }
 
-RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state, const Shape& shape,
-                             bool scramble) {
+RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state,
+                             const Shape& shape) {
   PrimitiveType type = shape.element_type();
   switch (type) {
     case F32:
     case U32:
     case S32:
-      return PhiloxRngBit32(key, initial_state, shape, scramble);
+      return PhiloxRngBit32(key, initial_state, shape);
     case F64:
     case U64:
     case S64:
-      return PhiloxRngBit64(key, initial_state, shape, scramble);
+      return PhiloxRngBit64(key, initial_state, shape);
     default:
       return {key.builder()->ReportError(Unimplemented(
                   "Types other than F32, F64, U32, S32, U64 and S64 "
@@ -482,6 +569,13 @@ RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state, const Shape& shape,
                   primitive_util::LowercasePrimitiveTypeName(type))),
               initial_state};
   }
+}
+
+std::pair<XlaOp, XlaOp> ScramblePhiloxKey(XlaOp key) {
+  Philox4x32Key pkey = Uint64ToUint32s(key);
+  auto state_key = ScramblePhiloxKey(pkey);
+  return std::make_pair(Uint128ToOp(Uint32sToUint128(state_key.first)),
+                        Uint32sToUint64(state_key.second));
 }
 
 RngOutput UniformFloatingPointDistribution(XlaOp key, XlaOp initial_state,
@@ -521,27 +615,27 @@ RngOutput NormalFloatingPointDistribution(XlaOp key, XlaOp initial_state,
   DCHECK(primitive_type == F32 || primitive_type == F64);
 
   XlaBuilder* builder = key.builder();
-  const int64 num_elems = ShapeUtil::ElementsIn(shape);
-  const int64 num_pairs = CeilOfRatio<int64>(num_elems, 2);
+  auto shape_pair = SplitShapeIntoHalves(shape);
   RngOutput bits_state = UniformFloatingPointDistribution(
       key, initial_state, bit_generator,
       xla::ConstantR0WithType(builder, primitive_type, 0.0),
       xla::ConstantR0WithType(builder, primitive_type, 1.0),
-      ShapeUtil::MakeShape(primitive_type, {num_pairs * 2}));
+      shape_pair.concat_shape);
 
   // Separate the bits into two groups to perform the Box-Muller transform.
-  XlaOp bits_0 = Slice(bits_state.value, {0}, {num_pairs}, {1});
-  XlaOp bits_1 = Slice(bits_state.value, {num_pairs}, {2 * num_pairs}, {1});
+  XlaOp bits_0 = Slice(bits_state.value,
+                       std::vector<int64>(shape_pair.half_shape.rank(), 0),
+                       shape_pair.half_shape.dimensions(),
+                       std::vector<int64>(shape_pair.half_shape.rank(), 1));
+  std::vector<int64> bits_1_starts(shape_pair.half_shape.rank(), 0);
+  bits_1_starts[shape_pair.new_concat_dim] = 1;
+  XlaOp bits_1 = Slice(bits_state.value, bits_1_starts,
+                       shape_pair.concat_shape.dimensions(),
+                       std::vector<int64>(shape_pair.half_shape.rank(), 1));
   std::tie(bits_0, bits_1) = BoxMullerTransform(bits_0, bits_1);
 
   // Put the numbers in the two groups back to form the requested shape.
-  XlaOp normal = ConcatInDim(builder, {bits_0, bits_1}, /*dimension=*/0);
-  if (num_elems != num_pairs * 2) {
-    normal = Slice(normal, /*start_indices=*/{0}, /*limit_indices=*/{num_elems},
-                   /*strides=*/{1});
-  }
-  normal = Reshape(normal, shape.dimensions());
-
+  XlaOp normal = CombineShapePair({bits_0, bits_1}, shape_pair, shape);
   return {normal, bits_state.state};
 }
 

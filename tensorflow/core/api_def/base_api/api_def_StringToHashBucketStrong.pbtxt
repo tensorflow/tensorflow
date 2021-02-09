@@ -40,5 +40,10 @@ seeded by a high-entropy (random) "key" unknown to the adversary.
 
 The additional robustness comes at a cost of roughly 4x higher compute
 time than `tf.string_to_hash_bucket_fast`.
+
+Examples:
+
+>>> tf.strings.to_hash_bucket_strong(["Hello", "TF"], 3, [1, 2]).numpy()
+array([2, 0])
 END
 }

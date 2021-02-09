@@ -28,11 +28,18 @@ void RemoteMgr::AddOperationOutputs(
     const gtl::ArraySlice<tensorflow::TensorHandle*> handles,
     int64 operation_id) {
   mutex_lock l(remote_tensor_handle_mu_);
-  for (int i = 0; i < handles.size(); i++) {
+  for (int i = 0, end = handles.size(); i < end; i++) {
     // TODO(nareshmodi): Correctly handle operation_id not being unique.
     remote_tensor_handle_map_.emplace(
         RemoteTensorHandleInternal(operation_id, i), handles[i]);
   }
+}
+
+void RemoteMgr::AddOperationOutput(tensorflow::TensorHandle* handle,
+                                   int64 operation_id, int32 output_num) {
+  mutex_lock l(remote_tensor_handle_mu_);
+  remote_tensor_handle_map_.emplace(
+      RemoteTensorHandleInternal(operation_id, output_num), handle);
 }
 
 Status RemoteMgr::GetTensorHandleImpl(
@@ -74,9 +81,10 @@ Status RemoteMgr::GetMirroredResourceShape(
 }
 
 Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
+                                        const bool wait_until_ready,
                                         int64* op_id, int32* output_num) {
-  TF_RETURN_IF_ERROR(
-      handle->RemoteAddress(handle->device(), op_id, output_num));
+  TF_RETURN_IF_ERROR(handle->RemoteAddress(handle->device(), wait_until_ready,
+                                           op_id, output_num));
   tensorflow::TensorHandle* h;
   TF_RETURN_IF_ERROR(
       GetTensorHandleImpl(RemoteTensorHandleInternal(*op_id, *output_num), &h));
@@ -113,13 +121,15 @@ Status RemoteMgr::DeleteTensorHandle(
 }
 
 Status RemoteMgr::SerializeRemoteTensorHandle(
-    TensorHandle* in, RemoteTensorHandle* out, Device* device,
-    const string& device_name, const bool serialize_resource_dtype_and_shape) {
+    TensorHandle* in, const bool wait_until_ready, RemoteTensorHandle* out,
+    Device* device, const string& device_name,
+    const bool serialize_resource_dtype_and_shape) {
   int64 op_id;
   int32 output_num;
-  if (!in->RemoteAddress(device, &op_id, &output_num).ok()) {
+  if (!in->RemoteAddress(device, wait_until_ready, &op_id, &output_num).ok()) {
     tf_shared_lock l(remote_tensor_handle_mu_);
-    TF_RETURN_IF_ERROR(GetRemoteTensorHandle(in, &op_id, &output_num));
+    TF_RETURN_IF_ERROR(
+        GetRemoteTensorHandle(in, wait_until_ready, &op_id, &output_num));
   }
   out->Clear();
   out->set_op_id(op_id);
@@ -150,22 +160,14 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
     (*out)->Ref();
   } else {
     // Create a remote TensorHandle for remote tensors which have not been
-    // copied to the local worker yet.
+    // copied to the local worker yet (e.g. remote function inputs).
     const string& device_name =
         in.op_device().empty() ? in.device() : in.op_device();
     TF_RETURN_IF_ERROR(
         parent_->FindDeviceFromName(device_name.c_str(), &device));
-    string remote_task;
-    if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
-      return errors::InvalidArgument(
-          "Unable to find remote task corresponding to device ", device_name);
-    }
-    auto remote_handle_data = absl::make_unique<UnshapedRemoteTensorHandleData>(
-        in.op_id(), in.output_num(), remote_task, parent_->GetContextId(),
-        parent_);
-    remote_handle_data->ReleaseRemoteTensorHandle();
-    TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
-        std::move(remote_handle_data), in.dtype(), device, parent_, out));
+    *out = TensorHandle::CreateLazyRemoteHandle(in.op_id(), in.output_num(),
+                                                in.dtype(), device,
+                                                /*is_ready=*/true, parent_);
     std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
     if (!GetMirroredResourceShape(RemoteTensorHandleInternal(in),
                                   &dtypes_and_shapes)

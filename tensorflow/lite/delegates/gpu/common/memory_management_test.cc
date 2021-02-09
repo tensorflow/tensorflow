@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 
+#include <cstddef>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {

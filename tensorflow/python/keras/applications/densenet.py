@@ -15,48 +15,49 @@
 # pylint: disable=invalid-name
 """DenseNet models for Keras.
 
-Reference paper:
-  - [Densely Connected Convolutional Networks]
-    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
+Reference:
+  - [Densely Connected Convolutional Networks](
+      https://arxiv.org/abs/1608.06993) (CVPR 2017)
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
 
-BASE_WEIGTHS_PATH = ('https://storage.googleapis.com/tensorflow/'
+BASE_WEIGHTS_PATH = ('https://storage.googleapis.com/tensorflow/'
                      'keras-applications/densenet/')
 DENSENET121_WEIGHT_PATH = (
-    BASE_WEIGTHS_PATH + 'densenet121_weights_tf_dim_ordering_tf_kernels.h5')
+    BASE_WEIGHTS_PATH + 'densenet121_weights_tf_dim_ordering_tf_kernels.h5')
 DENSENET121_WEIGHT_PATH_NO_TOP = (
-    BASE_WEIGTHS_PATH +
+    BASE_WEIGHTS_PATH +
     'densenet121_weights_tf_dim_ordering_tf_kernels_notop.h5')
 DENSENET169_WEIGHT_PATH = (
-    BASE_WEIGTHS_PATH + 'densenet169_weights_tf_dim_ordering_tf_kernels.h5')
+    BASE_WEIGHTS_PATH + 'densenet169_weights_tf_dim_ordering_tf_kernels.h5')
 DENSENET169_WEIGHT_PATH_NO_TOP = (
-    BASE_WEIGTHS_PATH +
+    BASE_WEIGHTS_PATH +
     'densenet169_weights_tf_dim_ordering_tf_kernels_notop.h5')
 DENSENET201_WEIGHT_PATH = (
-    BASE_WEIGTHS_PATH + 'densenet201_weights_tf_dim_ordering_tf_kernels.h5')
+    BASE_WEIGHTS_PATH + 'densenet201_weights_tf_dim_ordering_tf_kernels.h5')
 DENSENET201_WEIGHT_PATH_NO_TOP = (
-    BASE_WEIGTHS_PATH +
+    BASE_WEIGHTS_PATH +
     'densenet201_weights_tf_dim_ordering_tf_kernels_notop.h5')
+
+layers = VersionAwareLayers()
 
 
 def dense_block(x, blocks, name):
   """A dense block.
 
-  Arguments:
+  Args:
     x: input tensor.
     blocks: integer, the number of building blocks.
     name: string, block label.
@@ -72,7 +73,7 @@ def dense_block(x, blocks, name):
 def transition_block(x, reduction, name):
   """A transition block.
 
-  Arguments:
+  Args:
     x: input tensor.
     reduction: float, compression rate at transition layers.
     name: string, block label.
@@ -98,7 +99,7 @@ def transition_block(x, reduction, name):
 def conv_block(x, growth_rate, name):
   """A building block for a dense block.
 
-  Arguments:
+  Args:
     x: input tensor.
     growth_rate: float, growth rate at dense layers.
     name: string, block label.
@@ -125,20 +126,30 @@ def conv_block(x, growth_rate, name):
   return x
 
 
-def DenseNet(blocks,
-             include_top=True,
-             weights='imagenet',
-             input_tensor=None,
-             input_shape=None,
-             pooling=None,
-             classes=1000):
+def DenseNet(
+    blocks,
+    include_top=True,
+    weights='imagenet',
+    input_tensor=None,
+    input_shape=None,
+    pooling=None,
+    classes=1000,
+    classifier_activation='softmax'):
   """Instantiates the DenseNet architecture.
+
+  Reference:
+  - [Densely Connected Convolutional Networks](
+      https://arxiv.org/abs/1608.06993) (CVPR 2017)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For DenseNet, call `tf.keras.applications.densenet.preprocess_input` on your
+  inputs before passing them to the model.
+
+  Args:
     blocks: numbers of building blocks for the four dense layers.
     include_top: whether to include the fully-connected
       layer at the top of the network.
@@ -169,15 +180,20 @@ def DenseNet(blocks,
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
 
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -228,7 +244,10 @@ def DenseNet(blocks,
 
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-    x = layers.Dense(classes, activation='softmax', name='fc1000')(x)
+
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
@@ -349,13 +368,27 @@ def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='',
+    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TORCH,
+    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
+
 DOC = """
+
+  Reference:
+  - [Densely Connected Convolutional Networks](
+      https://arxiv.org/abs/1608.06993) (CVPR 2017)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
-  Arguments:
+
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For DenseNet, call `tf.keras.applications.densenet.preprocess_input` on your
+  inputs before passing them to the model.
+
+  Args:
     include_top: whether to include the fully-connected
       layer at the top of the network.
     weights: one of `None` (random initialization),

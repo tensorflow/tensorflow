@@ -19,12 +19,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "numpy/arrayobject.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
-#include "include/pybind11/numpy.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/numpy.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
+#include "tensorflow/compiler/xla/python/absl_casters.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -34,9 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
-
-// Initializes the NumPy API for the use of the types module.
-bool InitializeNumpyAPIForTypes();
 
 // Helper that converts a failing StatusOr to an exception.
 // For use only inside pybind11 code.
@@ -53,6 +50,15 @@ StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
 
 // Converts a PrimitiveType to a Numpy dtype.
 StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
+
+// Returns a numpy-style format descriptor string for `type`.
+StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type);
+
+// Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
+StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
+
+// Returns the strides for `shape`.
+std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share
@@ -75,10 +81,11 @@ struct PythonBufferTree {
 StatusOr<PythonBufferTree> GetPythonBufferTree(
     const pybind11::object& argument);
 
-// Converts a sequence of int64s to a Python tuple of ints.
-// Pybind11 by default converts a std::vector<int64> to a Python list; for
-// shapes we frequently want a tuple instead.
+// Converts a sequence of C++ ints to a Python tuple of ints.
+// Pybind11 by default converts a std::vector<int64> to a Python list;
+// we frequently want a tuple instead e.g. for shapes.
 pybind11::tuple IntSpanToTuple(absl::Span<int64 const> xs);
+pybind11::tuple IntSpanToTuple(absl::Span<int const> xs);
 
 // Converts a Python sequence of integers to a std::vector<int64>
 std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
@@ -87,7 +94,7 @@ std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
 // xla::BorrowingLiteral. Converts a Python array-like object into a buffer
 // pointer and shape.
 struct CastToArrayResult {
-  pybind11::array array;  // Holds a reference to the array to keep it alive.
+  pybind11::object array;  // Holds a reference to the array to keep it alive.
   const char* buf_ptr;
   xla::Shape shape;
 };
@@ -101,48 +108,6 @@ absl::optional<CastToArrayResult> CastToArray(pybind11::handle h);
 // the exceptions are local to the binding code.
 namespace pybind11 {
 namespace detail {
-
-// When absl::optional is an alias for std::optional, the type_caster
-// specializations are provided by pybind11.
-#ifndef ABSL_HAVE_STD_OPTIONAL
-// absl::optional
-template <typename T>
-struct type_caster<absl::optional<T>> : optional_caster<absl::optional<T>> {};
-
-template <>
-struct type_caster<absl::nullopt_t> : public void_caster<absl::nullopt_t> {};
-#endif
-
-// absl::Span
-template <typename T>
-struct type_caster<absl::Span<const T>> {
-  using value_conv = make_caster<T>;
-
-  PYBIND11_TYPE_CASTER(absl::Span<const T>,
-                       _("Span[") + value_conv::name + _("]"));
-
-  // absl::Span doesn't hold ownership. We therefore need a temporary array.
-  // Pybind appears to keep type_casters alive until the callee has run.
-  std::vector<T> storage_;
-
-  bool load(handle src, bool convert) {
-    if (!isinstance<sequence>(src)) {
-      return false;
-    }
-    auto seq = reinterpret_borrow<sequence>(src);
-    storage_.clear();
-    storage_.reserve(seq.size());
-    for (auto it : seq) {
-      value_conv conv;
-      if (!conv.load(it, convert)) {
-        return false;
-      }
-      storage_.push_back(cast_op<T&&>(std::move(conv)));
-    }
-    value = absl::Span<const T>(storage_);
-    return true;
-  }
-};
 
 // Status, StatusOr. Failing statuses become Python exceptions; Status::OK()
 // becomes None.
@@ -405,7 +370,7 @@ struct type_caster<xla::PaddingConfig> {
     sequence dimensions =
         reinterpret_borrow<sequence>(getattr(handle, "dimensions"));
 
-    for (auto dimension : dimensions) {
+    for (const auto& dimension : dimensions) {
       xla::PaddingConfig::PaddingConfigDimension* config_dim =
           value.add_dimensions();
       config_dim->set_edge_padding_low(
@@ -460,7 +425,7 @@ struct type_caster<xla::PrecisionConfig> {
     sequence operand_precisions =
         reinterpret_borrow<sequence>(getattr(handle, "operand_precision"));
 
-    for (auto operand_precision : operand_precisions) {
+    for (const auto& operand_precision : operand_precisions) {
       value.add_operand_precision(
           operand_precision.cast<xla::PrecisionConfig::Precision>());
     }
@@ -505,7 +470,7 @@ struct type_caster<xla::OpSharding> {
     sequence tuple_shardings =
         reinterpret_borrow<sequence>(getattr(handle_obj, "tuple_shardings"));
 
-    for (auto tuple_sharding : tuple_shardings) {
+    for (const auto& tuple_sharding : tuple_shardings) {
       xla::OpSharding* sharding = value.add_tuple_shardings();
 
       handle sharding_type = getattr(tuple_sharding, "type");
@@ -525,7 +490,14 @@ struct type_caster<xla::OpSharding> {
       std::copy(devices.begin(), devices.end(),
                 tensorflow::protobuf::RepeatedFieldBackInserter(
                     sharding->mutable_tile_assignment_devices()));
+
+      sharding->set_replicate_on_last_tile_dim(
+          getattr(tuple_sharding, "replicate_on_last_tile_dim").cast<bool>());
     }
+
+    // Sets `replicate_on_last_tile_dim` field.
+    value.set_replicate_on_last_tile_dim(
+        getattr(handle_obj, "replicate_on_last_tile_dim").cast<bool>());
 
     return true;
   }

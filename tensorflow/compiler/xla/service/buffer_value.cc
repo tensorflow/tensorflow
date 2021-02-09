@@ -59,7 +59,7 @@ LogicalBufferProto BufferValue::ToProto(const SizeFunction& size_fn) const {
       ToLocationProto(*instruction(), index());
   proto.mutable_defined_at()->Swap(&proto_location);
   if (has_color()) {
-    proto.set_color(color().value());
+    proto.set_color(color());
   }
   return proto;
 }

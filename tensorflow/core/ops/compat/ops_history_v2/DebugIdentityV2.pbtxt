@@ -1,0 +1,177 @@
+op {
+  name: "DebugIdentityV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tfdbg_context_id"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "op_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "output_slot"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "tensor_debug_mode"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "DebugIdentityV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tfdbg_context_id"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "op_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "output_slot"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "tensor_debug_mode"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "circular_buffer_size"
+    type: "int"
+    default_value {
+      i: 1000
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "DebugIdentityV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tfdbg_context_id"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "op_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "output_slot"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "tensor_debug_mode"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "circular_buffer_size"
+    type: "int"
+    default_value {
+      i: 1000
+    }
+  }
+  attr {
+    name: "tfdbg_run_id"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}

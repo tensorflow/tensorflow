@@ -67,7 +67,7 @@ class ConditionalAccumulator
   functor::SetZeroFunctor<Device, T> set_zero_functor_;
 
   Status ValidateShape(const Tensor* tensor)
-      EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     // Must be compatible with accumulated gradient if available
     if (counter_ > 0) {
       if (!accum_grad_->shape().IsSameSize(tensor->shape())) {
@@ -102,7 +102,7 @@ class ConditionalAccumulator
   }
 
   void DivideAccumGradByCounter(OpKernelContext* ctx) override
-      EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     Tensor c(DataTypeToEnum<T>::value, {});
     c.scalar<T>()() = TypeConverter<T, int>::ConvertUToT(this->counter_);
     this->accum_grad_->template flat<T>().device(
@@ -117,7 +117,7 @@ class ConditionalAccumulator
 
   bool GetAndValidateTensorInputForApplyGrad(OpKernelContext* ctx,
                                              const Tensor** tensor) override
-      EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     // Get input gradient tensor
     const Tensor* grad_tensor;
     OP_REQUIRES_OK_BOOLEAN(ctx, ctx->input("gradient", &grad_tensor));

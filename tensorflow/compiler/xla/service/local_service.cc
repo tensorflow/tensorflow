@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -94,32 +95,10 @@ absl::optional<const OpMetadata*> ParameterMetadata(
   return absl::nullopt;
 }
 
-ExecutionOptions CreateExecutionOptions(
-    const ExecutableBuildOptions& build_options,
-    const ProgramShape* program_shape) {
-  ExecutionOptions execution_options = CreateDefaultExecutionOptions();
-  if (build_options.has_debug_options()) {
-    *execution_options.mutable_debug_options() = build_options.debug_options();
-  }
-  if (build_options.result_layout() != nullptr) {
-    *execution_options.mutable_shape_with_output_layout() =
-        build_options.result_layout()->ToProto();
-  } else {
-    Shape result_shape(program_shape->result());
-    LayoutUtil::SetToDefaultLayout(&result_shape);
-    *execution_options.mutable_shape_with_output_layout() =
-        result_shape.ToProto();
-  }
-  execution_options.set_num_replicas(build_options.num_replicas());
-  execution_options.set_num_partitions(build_options.num_partitions());
-  execution_options.set_alias_passthrough_params(
-      build_options.alias_passthrough_params());
-  return execution_options;
-}
-
 }  // namespace
 
-StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
+StatusOr<std::vector<std::unique_ptr<Executable>>>
+LocalService::CompileExecutables(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
@@ -178,9 +157,34 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
       se::StreamExecutor * executor,
       execute_backend_->stream_executor(build_options.device_ordinal()));
 
-  return BuildExecutable(proto, std::move(module_config),
-                         execute_backend_.get(), executor,
-                         build_options.device_allocator());
+  // TODO(cjfj): Investigate why there are a couple of test failures when the
+  // single partition computations are built using `BuildExecutables`, fix it,
+  // and remove this special case (provided the performance if similar).
+  if (build_options.num_partitions() == 1) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                        BuildExecutable(proto, std::move(module_config),
+                                        execute_backend_.get(), executor,
+                                        {build_options.device_allocator(),
+                                         build_options.compile_thread_pool()},
+                                        build_options.run_backend_only()));
+    std::vector<std::unique_ptr<Executable>> executables;
+    executables.push_back(std::move(executable));
+    return executables;
+  } else {
+    std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
+    module_configs.push_back(std::move(module_config));
+    // BuildExecutables uses the executors length to determine the number of
+    // cores per module, but otherwise only uses the first executor.
+    std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
+                                               executor);
+
+    return BuildExecutables(
+        /*module_protos=*/{&proto}, std::move(module_configs),
+        execute_backend_.get(), {executors},
+        Compiler::CompileOptions{build_options.device_allocator(),
+                                 build_options.compile_thread_pool()},
+        build_options.run_backend_only());
+  }
 }
 
 StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {

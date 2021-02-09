@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/reshapex4.h"
-
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -22,9 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-
-using ::testing::FloatNear;
-using ::testing::Pointwise;
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshape_test_util.h"
 
 namespace tflite {
 namespace gpu {
@@ -32,28 +28,8 @@ namespace cl {
 namespace {
 
 TEST_F(OpenCLOperationTest, Reshapex4) {
-  TensorFloat32 src_tensor;
-  src_tensor.shape = BHWC(1, 1, 1, 8);
-  src_tensor.data = {half(0.5f), half(-1.1f), half(-2.2f), half(3.1f),
-                     half(1.2f), half(2.9f),  half(4.2f),  half(-1.9f)};
-
-  for (auto storage : env_.GetSupportedStorages()) {
-    for (auto precision : env_.GetSupportedPrecisions()) {
-      OperationDef op_def;
-      op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
-      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
-      TensorFloat32 dst_tensor;
-      Reshapex4 operation = CreateReshapex4(op_def);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 1, 2, 4), &dst_tensor));
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(0.0f),
-                            {half(0.5f), half(-1.1f), half(-2.2f), half(3.1f),
-                             half(1.2f), half(2.9f), half(4.2f), half(-1.9f)}));
-    }
-  }
+  auto status = Reshapex4Test(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
 }  // namespace

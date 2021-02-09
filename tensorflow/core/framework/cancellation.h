@@ -167,20 +167,27 @@ class CancellationManager {
 
   // If this CancellationManager is associated with a parent, this member will
   // be set to `true` after this is removed from the parent's list of children.
-  bool is_removed_from_parent_ GUARDED_BY(parent_->mu_) = false;
+  bool is_removed_from_parent_ TF_GUARDED_BY(parent_->mu_) = false;
 
   // If this CancellationManager is associated with a parent, these members form
   // a doubly-linked list of that parent's children.
   //
   // These fields are valid only when `this->is_removed_from_parent_` is false.
-  CancellationManager* prev_sibling_ GUARDED_BY(parent_->mu_) =
+  CancellationManager* prev_sibling_ TF_GUARDED_BY(parent_->mu_) =
       nullptr;  // Not owned.
-  CancellationManager* next_sibling_ GUARDED_BY(parent_->mu_) =
+  CancellationManager* next_sibling_ TF_GUARDED_BY(parent_->mu_) =
       nullptr;  // Not owned.
 
   mutex mu_;
-  std::unique_ptr<State> state_ GUARDED_BY(mu_);
+  std::unique_ptr<State> state_ TF_GUARDED_BY(mu_);
 };
+
+// Registers the given cancellation callback, returning a function that can be
+// used to deregister the callback. If `cancellation_manager` is NULL, no
+// registration occurs and `deregister_fn` will be a no-op.
+Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
+                                    std::function<void()> callback,
+                                    std::function<void()>* deregister_fn);
 
 }  // namespace tensorflow
 

@@ -127,10 +127,10 @@ class QuantizedConcatOp : public OpKernel {
     // Prod_i(yi) and x = ((n > 0) ? Prod_i(xi) : 1).
     inputs_flat->reserve(N);
     *output_concat_dim = 0;
-    const bool input_is_scalar = IsLegacyScalar(input_shape);
+    const bool input_is_scalar = TensorShapeUtils::IsScalar(input_shape);
     for (int i = 0; i < N; ++i) {
       const auto in = values[i];
-      const bool in_is_scalar = IsLegacyScalar(in.shape());
+      const bool in_is_scalar = TensorShapeUtils::IsScalar(in.shape());
       OP_REQUIRES(
           context, in.dims() == input_dims || (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
@@ -161,7 +161,7 @@ class QuantizedConcatOp : public OpKernel {
     const Tensor* concat_dim_tensor = nullptr;
     OP_REQUIRES_OK(context, context->input("concat_dim", &concat_dim_tensor));
     OP_REQUIRES(
-        context, IsLegacyScalar(concat_dim_tensor->shape()),
+        context, TensorShapeUtils::IsScalar(concat_dim_tensor->shape()),
         errors::InvalidArgument(
             "Concat dim tensor should be a scalar integer, but got shape ",
             concat_dim_tensor->shape().DebugString()));
@@ -184,9 +184,7 @@ class QuantizedConcatOp : public OpKernel {
     const int input_dims = values[0].dims();
     const TensorShape& input_shape = values[0].shape();
     OP_REQUIRES(
-        context,
-        (0 <= concat_dim && concat_dim < input_dims) ||
-            (allow_legacy_scalars() && concat_dim == 0),
+        context, (0 <= concat_dim && concat_dim < input_dims),
         errors::InvalidArgument(
             "ConcatOp : Expected concatenating dimensions in the range [", 0,
             ", ", input_dims, "), but got ", concat_dim));

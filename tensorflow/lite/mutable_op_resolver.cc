@@ -15,6 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/mutable_op_resolver.h"
 
+#include <string>
+#include <unordered_map>
+#include <utility>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
 
 const TfLiteRegistration* MutableOpResolver::FindOp(tflite::BuiltinOperator op,
@@ -31,27 +38,39 @@ const TfLiteRegistration* MutableOpResolver::FindOp(const char* op,
 
 void MutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
                                    const TfLiteRegistration* registration,
+                                   int version) {
+  TfLiteRegistration new_registration = *registration;
+  new_registration.custom_name = nullptr;
+  new_registration.builtin_code = op;
+  new_registration.version = version;
+  auto op_key = std::make_pair(op, version);
+  builtins_[op_key] = new_registration;
+}
+
+void MutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
+                                   const TfLiteRegistration* registration,
                                    int min_version, int max_version) {
   for (int version = min_version; version <= max_version; ++version) {
-    TfLiteRegistration new_registration = *registration;
-    new_registration.custom_name = nullptr;
-    new_registration.builtin_code = op;
-    new_registration.version = version;
-    auto op_key = std::make_pair(op, version);
-    builtins_[op_key] = new_registration;
+    AddBuiltin(op, registration, version);
   }
+}
+
+void MutableOpResolver::AddCustom(const char* name,
+                                  const TfLiteRegistration* registration,
+                                  int version) {
+  TfLiteRegistration new_registration = *registration;
+  new_registration.builtin_code = BuiltinOperator_CUSTOM;
+  new_registration.custom_name = name;
+  new_registration.version = version;
+  auto op_key = std::make_pair(name, version);
+  custom_ops_[op_key] = new_registration;
 }
 
 void MutableOpResolver::AddCustom(const char* name,
                                   const TfLiteRegistration* registration,
                                   int min_version, int max_version) {
   for (int version = min_version; version <= max_version; ++version) {
-    TfLiteRegistration new_registration = *registration;
-    new_registration.builtin_code = BuiltinOperator_CUSTOM;
-    new_registration.custom_name = name;
-    new_registration.version = version;
-    auto op_key = std::make_pair(name, version);
-    custom_ops_[op_key] = new_registration;
+    AddCustom(name, registration, version);
   }
 }
 

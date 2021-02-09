@@ -2,7 +2,7 @@
 
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "lit_test")
 
-def tf_saved_model_test(name, data):
+def tf_saved_model_test(name, data, tags = None):
     """Create a SavedModel test."""
     native.py_binary(
         name = name,
@@ -24,4 +24,5 @@ def tf_saved_model_test(name, data):
         name = name + ".py",
         data = [name] + data,
         driver = "@llvm-project//mlir:run_lit.sh",
+        tags = tags + ["no_rocm"],
     )

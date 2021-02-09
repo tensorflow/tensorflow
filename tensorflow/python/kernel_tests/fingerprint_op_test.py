@@ -37,6 +37,11 @@ class FingerprintTest(test.TestCase):
     self.assertTupleEqual(fingerprint0.shape, fingerprint1.shape)
     self.assertTrue(np.any(fingerprint0 != fingerprint1))
 
+  def test_empty(self):
+    f0 = self.evaluate(array_ops.fingerprint([]))
+    self.assertEqual(f0.ndim, 2)
+    self.assertEqual(f0.shape, (0, 8))
+
 
 if __name__ == "__main__":
   test.main()

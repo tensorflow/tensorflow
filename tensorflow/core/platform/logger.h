@@ -31,7 +31,7 @@ class Logger {
   //   SetSingletonFactory.
   // * At some point in the program execution, Singleton() is called for the
   //   first time, initializing the logger.
-  // * Succeeding calls to Singleton() return the initiailized logger.
+  // * Succeeding calls to Singleton() return the initialized logger.
   using FactoryFunc = Logger* (*)();
 
   static void SetSingletonFactory(FactoryFunc factory) {

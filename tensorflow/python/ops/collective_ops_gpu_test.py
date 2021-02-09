@@ -19,8 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import threading
+import time
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
@@ -31,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
 
 
 class CollectiveOpGPUTest(test.TestCase):
@@ -43,231 +43,217 @@ class CollectiveOpGPUTest(test.TestCase):
     # Group size is the number of devices in a group communicating collectively.
     # This will be passed into the collective ops in the tests below.
     cls._group_size = 2
+    cls._devices = ['/device:GPU:{}'.format(i) for i in range(2)]
     os.environ['NCCL_DEBUG'] = 'INFO'
     os.environ['NCCL_LAUNCH_MODE'] = 'PARALLEL'
 
-  def _configure(self, set_config_proto_nccl=True):
-    """Return `ConfigProto` for NCCL execution."""
-    experimental = config_pb2.ConfigProto.Experimental()
-    if set_config_proto_nccl:
-      experimental.collective_nccl = True
-    return config_pb2.ConfigProto(experimental=experimental)
-
-  def _ensure_context_initialized(self):
+  def _setup_context(self, num_gpus=2):
+    context._reset_context()
     gpus = config.list_physical_devices('GPU')
-    if len(gpus) < 2:
-      self.skipTest('Expected at least 2 GPUs but found {} GPUs'.format(
-          len(gpus)))
+    if len(gpus) < num_gpus:
+      self.skipTest('Expected at least {} GPUs but found {} GPUs'.format(
+          num_gpus, len(gpus)))
     context.ensure_initialized()
 
-  @test_util.run_deprecated_v1
   def testBasicNcclAllReduce(self):
+    self._setup_context()
+
     inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
     expected = [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2]
     group_key = 1
     instance_key = 1
-    devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
-      if not test_util.is_gpu_available(cuda_only=True):
-        self.skipTest('No GPU available')
+    @def_function.function
+    def run_basic_all_reduce():
       collectives = []
       for i in range(self._group_size):
-        with ops.device(devices[i]):
+        with ops.device(self._devices[i]):
           t = constant_op.constant(inputs[i])
           collectives.append(collective_ops.all_reduce(
               t, self._group_size, group_key, instance_key, 'Add', 'Div'))
-      results = sess.run(collectives)
-    for result in results:
+      return collectives
+
+    for result in run_basic_all_reduce():
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testInt32Error(self):
+    self._setup_context()
+
     inputs = [[0, 1], [2, 3]]
     group_key = 1
     instance_key = 50
-    devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
-      if not test_util.is_gpu_available(cuda_only=True):
-        self.skipTest('No GPU available')
-      collectives = []
+    @def_function.function
+    def run_int32_error():
       for i in range(self._group_size):
-        with ops.device(devices[i]):
+        with ops.device(self._devices[i]):
           t = constant_op.constant(inputs[i], dtype=dtypes.int32)
-          collectives.append(collective_ops.all_reduce(
-              t, self._group_size, group_key, instance_key, 'Add', 'Div'))
-      with self.assertRaisesRegexp(
-          errors.InternalError,
-          'does not support datatype DT_INT32 on DEVICE_GPU'):
-        sess.run(collectives)
+          collective_ops.all_reduce(
+              t, self._group_size, group_key, instance_key, 'Add', 'Div')
 
-  @test_util.run_deprecated_v1
+    with self.assertRaisesRegex(
+        errors.InternalError,
+        'does not support datatype DT_INT32 on DEVICE_GPU'):
+      run_int32_error()
+
   def testFp16Reduce(self):
+    self._setup_context()
+
     inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
     expected = [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2]
     group_key = 1
     instance_key = 100
-    devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
-      if not test_util.is_gpu_available(cuda_only=True):
-        self.skipTest('No GPU available')
+    @def_function.function
+    def run_fp16_reduce():
       collectives = []
       for i in range(self._group_size):
-        with ops.device(devices[i]):
+        with ops.device(self._devices[i]):
           t = constant_op.constant(inputs[i], dtype=dtypes.float16)
           collectives.append(collective_ops.all_reduce(
               t, self._group_size, group_key, instance_key, 'Add', 'Div'))
-      results = sess.run(collectives)
-    for result in results:
-      logging.info('i {} result {} expected {}'.format(i, results[i], expected))
+      return collectives
+
+    for result in run_fp16_reduce():
       self.assertAllClose(result, expected, rtol=1e-3, atol=1e-3)
 
-  @test_util.run_deprecated_v1
   def testNcclHintAllReduce(self):
+    self._setup_context()
+
     inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
     expected = [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2]
     group_key = 1
     instance_key = 1
-    devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(
-        config=self._configure(set_config_proto_nccl=False)) as sess:
-      if not test_util.is_gpu_available(cuda_only=True):
-        self.skipTest('No GPU available')
+    @def_function.function
+    def run_nccl_hint_all_reduce():
       collectives = []
       for i in range(self._group_size):
-        with ops.device(devices[i]):
+        with ops.device(self._devices[i]):
           t = constant_op.constant(inputs[i])
           collectives.append(collective_ops.all_reduce(
               t, self._group_size, group_key, instance_key, 'Add', 'Div',
               communication_hint='nccl'))
-      results = sess.run(collectives)
-    for result in results:
+      return collectives
+
+    for result in run_nccl_hint_all_reduce():
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testBasicNcclBroadcast(self):
+    self._setup_context()
+
     tensor_value = [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1]
     group_key = 1
     instance_key = 1
-    devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
-      if not test_util.is_gpu_available(cuda_only=True):
-        self.skipTest('No GPU available')
+    @def_function.function
+    def run_basic_nccl_broadcast():
       collectives = []
-      with ops.device(devices[0]):
+      with ops.device(self._devices[0]):
         t = constant_op.constant(tensor_value)
         collectives.append(collective_ops.broadcast_send(
             t, t.shape, t.dtype, self._group_size, group_key, instance_key))
-      with ops.device(devices[1]):
+      with ops.device(self._devices[1]):
         t = constant_op.constant(tensor_value)
         collectives.append(collective_ops.broadcast_recv(
             t.shape, t.dtype, self._group_size, group_key, instance_key))
-      results = sess.run(collectives)
-    for result in results:
+      return collectives
+
+    for result in run_basic_nccl_broadcast():
       self.assertAllClose(result, tensor_value, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testNcclBroadcastDoubleRecv(self):
+    self._setup_context()
+
     tensor_value = [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1]
     group_key = 1
     instance_key = 1
-    devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
-      if not test_util.is_gpu_available(cuda_only=True):
-        self.skipTest('No GPU available')
-      collectives = []
-      for device in devices:
+    @def_function.function
+    def run_nccl_broadcast_double_recv():
+      for device in self._devices:
         with ops.device(device):
           t = constant_op.constant(tensor_value)
-          collectives.append(collective_ops.broadcast_recv(
-              t.shape, t.dtype, self._group_size, group_key, instance_key))
-      with self.assertRaisesRegexp(errors.InternalError, 'found no source'):
-        sess.run(collectives)
+          collective_ops.broadcast_recv(
+              t.shape, t.dtype, self._group_size, group_key, instance_key)
 
-  @test_util.run_deprecated_v1
+    with self.assertRaisesRegex(errors.InternalError, 'found no source'):
+      run_nccl_broadcast_double_recv()
+
   def testNcclBroadcastDoubleSend(self):
+    self._setup_context()
+
     tensor_value = [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1]
     group_key = 1
     instance_key = 1
-    devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
-      if not test_util.is_gpu_available(cuda_only=True):
-        self.skipTest('No GPU available')
-      collectives = []
-      for device in devices:
+    @def_function.function
+    def run_nccl_broadcast_double_send():
+      for device in self._devices:
         with ops.device(device):
           t = constant_op.constant(tensor_value)
-          collectives.append(collective_ops.broadcast_send(
-              t, t.shape, t.dtype, self._group_size, group_key, instance_key))
-      with self.assertRaisesRegexp(errors.InternalError, 'already has source'):
-        sess.run(collectives)
+          collective_ops.broadcast_send(
+              t, t.shape, t.dtype, self._group_size, group_key, instance_key)
 
-  @test_util.run_deprecated_v1
+    with self.assertRaisesRegex(errors.InternalError, 'already has source'):
+      run_nccl_broadcast_double_send()
+
   def testBasicNcclAllGather(self):
+    self._setup_context()
+
     inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
     expected = [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1,
                 0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]
     group_key = 1
     instance_key = 1
-    devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
-      if not test_util.is_gpu_available(cuda_only=True):
-        self.skipTest('No GPU available')
+    @def_function.function
+    def run_basic_nccl_all_gather():
       collectives = []
       for i in range(self._group_size):
-        with ops.device(devices[i]):
+        with ops.device(self._devices[i]):
           t = constant_op.constant(inputs[i])
           collectives.append(collective_ops.all_gather(t, self._group_size,
                                                        group_key, instance_key))
-      results = sess.run(collectives)
-    for result in results:
+      return collectives
+
+    for result in run_basic_nccl_all_gather():
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testCollectiveDeviceMismatch(self):
+    self._setup_context()
+
     group_key = 10
     instance_key = 20
     t0 = [1, 2, 3, 4]
     t1 = [5, 6, 7, 8]
-    with self.session(
-        config=self._configure(set_config_proto_nccl=False)) as sess:
-      if not test_util.is_gpu_available(cuda_only=True):
-        self.skipTest('No GPU available')
+
+    @def_function.function
+    def run_collective_device_mismatch():
       with ops.device('/CPU:0'):
         in0 = constant_op.constant(t0)
-        c0 = collective_ops.all_reduce(in0, self._group_size, group_key,
-                                       instance_key, 'Add', 'Id')
+        collective_ops.all_reduce(in0, self._group_size, group_key,
+                                  instance_key, 'Add', 'Id')
       with ops.device('/GPU:0'):
         in1 = constant_op.constant(t1)
-        c1 = collective_ops.all_reduce(in1, self._group_size, group_key,
-                                       instance_key, 'Add', 'Id')
-      run_options = config_pb2.RunOptions()
-      run_options.experimental.collective_graph_key = 100
-      with self.assertRaisesRegexp(errors.InternalError,
-                                   'but that group has type'):
-        sess.run([c0, c1], options=run_options)
+        collective_ops.all_reduce(in1, self._group_size, group_key,
+                                  instance_key, 'Add', 'Id')
 
-  @test_util.run_v2_only
+    with self.assertRaisesRegex(errors.InternalError,
+                                'but that group has type'):
+      run_collective_device_mismatch()
+
   def testCollectiveReduceMinMax(self):
-    self._ensure_context_initialized()
+    self._setup_context()
 
     @def_function.function
     def run_all_reduce(group_key, instance_key, merge_op):
       t0 = [1., 20., 3., 40., 5.]
       t1 = [10., 2., 30., 4., 50.]
-      os.environ['NCCL_DEBUG'] = 'INFO'
-      os.environ['NCCL_LAUNCH_MODE'] = 'PARALLEL'
       with ops.device('/GPU:0'):
         in0 = constant_op.constant(t0)
         c0 = collective_ops.all_reduce(
@@ -288,26 +274,74 @@ class CollectiveOpGPUTest(test.TestCase):
       for result in results:
         self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_v2_only
-  def testCollectiveGroupSizeOne(self):
-    self._ensure_context_initialized()
+  def testNcclStress(self):
+    self._setup_context(num_gpus=1)
 
-    group_size = 1
+    num_iters = 1000
+    for _ in range(num_iters):
+      with ops.device('/device:GPU:0'):
+        collective_ops.all_reduce(
+            [1.], group_size=1, group_key=0, instance_key=0, merge_op='Add',
+            final_op='Id', communication_hint='NCCL')
+
+  @test_util.run_v2_only
+  def testAbortNccl(self):
+    self._setup_context(num_gpus=2)
+
+    group_size = 2
     group_key = 100
     instance_key = 100
-    in_value = [1., 2., 3., 4.]
-    in_tensor = constant_op.constant(in_value)
+    in_tensor = constant_op.constant(1.)
 
-    with ops.device('/GPU:0'):
-      reduced_tensor = collective_ops.all_reduce(
-          in_tensor, group_size, group_key, instance_key, 'Add', 'Id',
+    # First perform a normal collective to finish resolution.
+    def collective_fn():
+      for device in ['GPU:0', 'GPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              'Add',
+              'Id',
+              communication_hint='nccl')
+
+    def_function.function(collective_fn)()
+
+    # Launch a collective that hangs, and abort the collective executor after
+    # the launch.
+    def abort_fn():
+      time.sleep(2)
+      context.context().abort_collective_ops(errors.UNAVAILABLE, 'peer down')
+
+    t = threading.Thread(target=abort_fn)
+    t.start()
+
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key,
+          'Add',
+          'Id',
           communication_hint='nccl')
-    self.assertAllEqual(in_value, reduced_tensor.numpy())
 
-    with ops.device('/GPU:0'):
-      gathered_tensor = collective_ops.all_gather(
-          in_tensor, group_size, group_key, instance_key)
-    self.assertAllEqual(in_value, gathered_tensor.numpy())
+    # After abortion, subsequent collectives should fail immediately.
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key,
+          'Add',
+          'Id',
+          communication_hint='nccl')
+
+    t.join()
+    # Reset the context in order to reset the collective executor.
+    context._reset_context()  # pylint: disable=protected-access
+    def_function.function(collective_fn)()
 
 
 if __name__ == '__main__':

@@ -20,6 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#if defined(_MSC_VER)
+#include <intrin.h>  // for _ReadWriteBarrier
+#endif
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
@@ -32,8 +36,17 @@ limitations under the License.
 #define TF_BENCHMARK_CONCAT(a, b, c) TF_BENCHMARK_CONCAT2(a, b, c)
 #define TF_BENCHMARK_CONCAT2(a, b, c) a##b##c
 
+namespace testing {
+namespace benchmark {
+class State;
+}
+}  // namespace testing
+
 namespace tensorflow {
 namespace testing {
+namespace internal {
+void UseCharPointer(char const volatile*);
+}
 
 // The DoNotOptimize(...) function can be used to prevent a value or
 // expression from being optimized away by the compiler. This function is
@@ -65,11 +78,9 @@ namespace testing {
 // compiler from optimizing away 'c' as dead code.
 template <class T>
 void DoNotOptimize(const T& var) {
-#ifdef PLATFORM_WINDOWS
-  LOG(FATAL)
-      << "tensorflow::testing::DoNotOptimize is not implemented on windows. "
-      << "If needed, call an external no-op routine with the pointer to foil "
-      << "optimization.";
+#if defined(_MSC_VER)
+  internal::UseCharPointer(reinterpret_cast<char const volatile*>(&var));
+  _ReadWriteBarrier();
 #else
   asm volatile("" : "+m"(const_cast<T&>(var)));
 #endif
@@ -77,26 +88,41 @@ void DoNotOptimize(const T& var) {
 
 class Benchmark {
  public:
-  Benchmark(const char* name, void (*fn)(int));
-  Benchmark(const char* name, void (*fn)(int, int));
-  Benchmark(const char* name, void (*fn)(int, int, int));
+  [[deprecated("use `benchmark::State&` instead.")]] Benchmark(const char* name,
+                                                               void (*fn)(int));
+
+  [[deprecated("use `benchmark::State&` instead.")]] Benchmark(const char* name,
+                                                               void (*fn)(int,
+                                                                          int));
+
+  [[deprecated("use `benchmark::State&` instead.")]] Benchmark(
+      const char* name, void (*fn)(int, int, int));
+
+  Benchmark(const char* name, void (*fn)(::testing::benchmark::State&));
 
   Benchmark* Arg(int x);
   Benchmark* ArgPair(int x, int y);
   Benchmark* Range(int lo, int hi);
   Benchmark* RangePair(int lo1, int hi1, int lo2, int hi2);
+
+  Benchmark* UseRealTime();
+
   static void Run(const char* pattern);
 
  private:
   string name_;
   int num_args_;
+  int instantiated_num_args_ = -1;
   std::vector<std::pair<int, int> > args_;
   void (*fn0_)(int) = nullptr;
   void (*fn1_)(int, int) = nullptr;
   void (*fn2_)(int, int, int) = nullptr;
+  void (*fn_state_)(::testing::benchmark::State&) = nullptr;
 
   void Register();
   void Run(int arg1, int arg2, int* run_count, double* run_seconds);
+
+  void CheckArgCount(int expected);
 };
 
 void RunBenchmarks();
@@ -109,5 +135,150 @@ void UseRealTime();
 
 }  // namespace testing
 }  // namespace tensorflow
+
+// Support `void BM_Func(benchmark::State&)` interface so that the it is
+// compatible with the internal version.
+namespace testing {
+namespace benchmark {
+// State is passed as an argument to a benchmark function.
+// Each thread in threaded benchmarks receives own object.
+class State {
+ public:
+  // Incomplete iterator-like type with dummy value type so that
+  // benchmark::State can support iteration with a range-based for loop.
+  //
+  // The only supported usage:
+  //
+  //   static void BM_Foo(benchmark::State& state) {
+  //     for (auto s : state) {
+  //       // perform single iteration
+  //     }
+  //   }
+  //
+  // This is meant to replace the deprecated API :
+  //
+  //   static void BM_Foo(int iters) {
+  //     while (iters-- > 0) {
+  //       // perform single iteration
+  //     }
+  //   }
+  //
+  // See go/benchmark#old-benchmark-interface for more details.
+  class Iterator {
+   public:
+    struct Value {
+      // Non-trivial destructor to avoid warning for unused dummy variable in
+      // the range-based for loop.
+      ~Value() {}
+    };
+
+    explicit Iterator(State* parent);
+
+    Iterator& operator++();
+
+    bool operator!=(const Iterator& other);
+
+    Value operator*();
+
+   private:
+    State* const parent_;
+  };
+
+  Iterator begin();
+  Iterator end();
+
+  void PauseTiming();
+  void ResumeTiming();
+
+  // Set the number of bytes processed by the current benchmark
+  // execution.  This routine is typically called once at the end of a
+  // throughput oriented benchmark.  If this routine is called with a
+  // value > 0, then bytes processed per second is also reported.
+  void SetBytesProcessed(::tensorflow::int64 bytes);
+
+  // If this routine is called with items > 0, then an items/s
+  // label is printed on the benchmark report line for the currently
+  // executing benchmark. It is typically called at the end of a processing
+  // benchmark where a processing items/second output is desired.
+  void SetItemsProcessed(::tensorflow::int64 items);
+
+  // If this method is called, the specified label is printed at the
+  // end of the benchmark report line for the currently executing
+  // benchmark.  Example:
+  //  static void BM_Compress(benchmark::State& state) {
+  //    ...
+  //    double compression = input_size / output_size;
+  //    state.SetLabel(StringPrintf("compress:%.1f%%", 100.0*compression));
+  //  }
+  // Produces output that looks like:
+  //  BM_Compress   50         50   14115038  compress:27.3%
+  //
+  // REQUIRES: a benchmark is currently executing
+  void SetLabel(absl::string_view label);
+
+  // For parameterized benchmarks, range(i) returns the value of the ith
+  // parameter. Simple benchmarks are not parameterized and do not need to call
+  // range().
+  int range(size_t i) const;
+
+  // Total number of iterations processed so far.
+  size_t iterations() const;
+
+  const size_t
+      max_iterations;  // NOLINT: for compatibility with OSS benchmark library
+
+  // Disallow copy and assign.
+  State(const State&) = delete;
+  State& operator=(const State&) = delete;
+
+ protected:
+  friend class tensorflow::testing::Benchmark;
+  State(size_t max_iterations, int formal_arg_count, std::vector<int> args);
+
+ private:
+  size_t completed_iterations_;
+  const int formal_arg_count_;
+  const std::vector<int> args_;
+};
+
+inline State::Iterator::Iterator(State* parent) : parent_(parent) {}
+
+inline size_t State::iterations() const { return completed_iterations_; }
+
+inline bool State::Iterator::operator!=(const Iterator& other) {
+  DCHECK_EQ(other.parent_, nullptr);
+  DCHECK_NE(parent_, nullptr);
+
+  if (parent_->completed_iterations_ < parent_->max_iterations) {
+    return true;
+  }
+
+  ++parent_->completed_iterations_;
+  // If this is the last iteration, stop the timer.
+  parent_->PauseTiming();
+  return false;
+}
+
+inline State::Iterator& State::Iterator::operator++() {
+  DCHECK_LT(parent_->completed_iterations_, parent_->max_iterations);
+  ++parent_->completed_iterations_;
+  return *this;
+}
+
+inline State::Iterator::Value State::Iterator::operator*() { return Value(); }
+
+inline State::Iterator State::begin() {
+  // Starts the timer here because if the code uses this API, it expects
+  // the timer to starts at the beginning of this loop.
+  ResumeTiming();
+  return Iterator(this);
+}
+
+inline State::Iterator State::end() { return Iterator(nullptr); }
+
+void RunSpecifiedBenchmarks();
+
+}  // namespace benchmark
+}  // namespace testing
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_TEST_BENCHMARK_H_

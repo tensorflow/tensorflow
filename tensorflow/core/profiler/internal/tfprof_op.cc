@@ -146,7 +146,7 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
   int64 depth = 0;
   std::vector<OpNode*> show_nodes;
   int64 start = SearchRoot(account_nodes, opts.start_name_regexes);
-  for (int64 i = start; i < account_nodes.size(); ++i, ++depth) {
+  for (int64 i = start, end = account_nodes.size(); i < end; ++i, ++depth) {
     OpNode* n = account_nodes[i];
     if (ShouldTrim(n, opts.trim_name_regexes) || depth > opts.max_depth) {
       break;
@@ -195,7 +195,8 @@ int64 TFOp::SearchRoot(const std::vector<OpNode*> nodes,
     return 0;
   }
   int64 i = 0;
-  for (; i < nodes.size(); ++i) {
+  const int64 nodes_size = nodes.size();
+  for (; i < nodes_size; ++i) {
     for (const string& regex : regexes) {
       if (RE2::FullMatch(nodes[i]->name(), regex)) {
         return i;

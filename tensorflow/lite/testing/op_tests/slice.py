@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -38,6 +38,16 @@ def make_slice_tests(options):
           "input_shape": [[12, 2, 2, 5]],
           "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
           "size": [[8, 2, 2, 3], [11, 2, 1, 5]],
+          "constant_indices": [False],
+          "fully_quantize": [False],
+      },
+      # 5-D
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[6, 2, 2, 2, 5]],
+          "begin": [[0, 0, 0, 0, 0], [0, 1, 0, 1, 0]],
+          "size": [[4, 2, 2, 2, 3], [5, 2, 1, 1, 5]],
           "constant_indices": [False],
           "fully_quantize": [False],
       },
@@ -156,9 +166,12 @@ def make_slice_tests(options):
       values = [input_values, begin_values, size_values]
       return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
+  # Note: Not all [begin x size] permutations are compatible for each grouping
+  # of test_parameters, but for brevity we ignore the failures rather than
+  # separating out each compatible set into separate test_parameters entries.
   make_zip_of_tests(
       options,
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=27)
+      expected_tf_failures=29)

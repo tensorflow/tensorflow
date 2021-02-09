@@ -18,16 +18,17 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import threading
 import types
 
 from tensorflow.python.eager import context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 
 # pylint:disable=g-inconsistent-quotes
@@ -69,7 +70,7 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     inputs = args[inputs_arg_index]
     args = args[inputs_arg_index + 1:]
     outputs, losses = fn(inputs, *args, **kwargs)
-    layer.add_loss(losses, inputs)
+    layer.add_loss(losses, inputs=inputs)
 
     # TODO(kathywu): This is a temporary hack. When a network of layers is
     # revived from SavedModel, only the top-level layer will have losses. This
@@ -79,7 +80,7 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     # child layers. This causes `.losses` to only return eager losses.
     # pylint: disable=protected-access
     if context.executing_eagerly():
-      for i in layer._gather_unique_layers():
+      for i in layer._flatten_layers():
         if i is not layer:
           i._eager_losses = [base_layer_utils.REVIVED_LOSS_PLACEHOLDER]
     # pylint: enable=protected-access
@@ -115,10 +116,11 @@ def layer_uses_training_bool(layer):
 
 def list_all_layers(obj):
   if isinstance(obj, training_lib.Model):
+    # Handle special case of Sequential, which doesn't return
+    # the `Input` layer.
     return obj.layers
   else:
-    return list(
-        trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
+    return list(obj._flatten_layers(include_self=False, recursive=False))  # pylint: disable=protected-access
 
 
 def list_all_layers_and_sublayers(obj):
@@ -164,9 +166,8 @@ def maybe_add_training_arg(
       set_training_arg(training, training_arg_index, args, kwargs)
       return wrapped_call(*args, **kwargs)
 
-    return tf_utils.smart_cond(
-        training,
-        lambda: replace_training_and_call(True),
+    return control_flow_util.smart_cond(
+        training, lambda: replace_training_and_call(True),
         lambda: replace_training_and_call(False))
 
   # Create arg spec for decorated function. If 'training' is not defined in the
@@ -246,3 +247,27 @@ def remove_training_arg(index, args, kwargs):
     args.pop(index)
   else:
     kwargs.pop('training', None)
+
+
+class SaveOptionsContext(threading.local):
+
+  def __init__(self):
+    super(SaveOptionsContext, self).__init__()
+    self.save_traces = True
+
+
+_save_options_context = SaveOptionsContext()
+
+
+@tf_contextlib.contextmanager
+def keras_option_scope(save_traces):
+  previous_value = _save_options_context.save_traces
+  try:
+    _save_options_context.save_traces = save_traces
+    yield
+  finally:
+    _save_options_context.save_traces = previous_value
+
+
+def should_save_traces():
+  return _save_options_context.save_traces

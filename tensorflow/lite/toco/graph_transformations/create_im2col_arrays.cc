@@ -49,7 +49,7 @@ bool ProcessConvOperator(Model* model, ConvOperator* op) {
 
   // Create the im2col array.
   CHECK_EQ(op->outputs.size(), 1);
-  const string& im2col_array_name =
+  const std::string& im2col_array_name =
       AvailableArrayName(*model, op->inputs[0] + "_im2col");
   model->GetOrCreateArray(im2col_array_name);
   op->outputs.push_back(im2col_array_name);
@@ -65,7 +65,7 @@ bool ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
 
   // Always create an im2col array for transpose_conv.
   CHECK_EQ(op->outputs.size(), 1);
-  const string& im2col_array_name = AvailableArrayName(
+  const std::string& im2col_array_name = AvailableArrayName(
       *model, op->inputs[TransposeConvOperator::DATA_INPUT] + "_im2col");
   model->GetOrCreateArray(im2col_array_name);
   op->outputs.push_back(im2col_array_name);

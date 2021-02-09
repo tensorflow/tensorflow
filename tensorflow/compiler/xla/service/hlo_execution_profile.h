@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile_data.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -106,17 +105,22 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
 // down how much time each HLO took.
 class HloExecutionProfile {
  public:
-  using DeviceDescription = se::DeviceDescription;
-
   HloExecutionProfile(const HloProfilePrinterData* hlo_profile_printer_data,
                       const HloProfileIndexMap* hlo_profile_index_map);
 
   // Record how many cycles this HLO took to execute.
   void SetCyclesTakenBy(const HloInstruction* hlo, uint64 cycles_taken);
 
+  // Record how many cycles this HLO took to execute.
+  void SetCyclesTakenBy(size_t index, uint64 cycles_taken);
+
   // Returns how many cycles this HLO took to execute.  Profiling information
   // may not be available for some instructions in which case zero is returned.
   uint64 GetCyclesTakenBy(const HloInstruction& hlo) const;
+
+  // Returns how many cycles this HLO took to execute.  Profiling information
+  // may not be available for some instructions in which case zero is returned.
+  uint64 GetCyclesTakenBy(size_t index) const;
 
   // Return the number of cycles this computation took to execute.
   uint64 total_cycles_executed(const HloComputation& computation) const {
@@ -142,9 +146,9 @@ class HloExecutionProfile {
   // frequency, and the effective throughput given the provided cost_analysis
   // for the operations in a given computation. Returns an empty string if it
   // wasn't possible to generate a printable version.
-  string ToString(const DeviceDescription& device_description) const {
+  string ToString(float clock_rate_ghz) const {
     return PrintHloProfile(hlo_profile_printer_data_, profile_counters_.data(),
-                           device_description.clock_rate_ghz());
+                           clock_rate_ghz);
   }
 
   std::vector<int64>* mutable_profile_counters() { return &profile_counters_; }

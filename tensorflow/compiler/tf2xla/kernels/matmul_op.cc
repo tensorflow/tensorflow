@@ -18,14 +18,17 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 6> kMatmulTypes = {
-    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128}};
+constexpr std::array<DataType, 10> kMatmulTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128,
+     DT_INT32, DT_INT64, DT_INT16, DT_INT8}};
 
 class MatMulOp : public XlaOpKernel {
  public:
@@ -81,9 +84,7 @@ class MatMulOp : public XlaOpKernel {
         b = xla::ConvertElementType(b, xla::F32);
       }
     }
-    auto lhs = (transpose_a_) ? xla::Transpose(a, {1, 0}) : a;
-    auto rhs = (transpose_b_) ? xla::Transpose(b, {1, 0}) : b;
-    ctx->SetOutput(0, xla::Dot(lhs, rhs));
+    ctx->SetOutput(0, xla::BatchDot(a, transpose_a_, b, transpose_b_));
   }
 
  private:

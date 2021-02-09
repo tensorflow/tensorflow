@@ -1,12 +1,14 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/tensor_description.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "LogMemoryProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/tensor_description.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/log_memory_go_proto";
 
 message MemoryLogStep {
   // Process-unique step id.
@@ -14,7 +16,7 @@ message MemoryLogStep {
 
   // Handle describing the feeds and fetches of the step.
   string handle = 2;
-};
+}
 
 message MemoryLogTensorAllocation {
   // Process-unique step id.
@@ -26,7 +28,7 @@ message MemoryLogTensorAllocation {
 
   // Allocated tensor details.
   TensorDescription tensor = 3;
-};
+}
 
 message MemoryLogTensorDeallocation {
   // Id of the tensor buffer being deallocated, used to match to a
@@ -35,7 +37,7 @@ message MemoryLogTensorDeallocation {
 
   // Name of the allocator used.
   string allocator_name = 2;
-};
+}
 
 message MemoryLogTensorOutput {
   // Process-unique step id.
@@ -71,7 +73,7 @@ message MemoryLogRawAllocation {
 
   // Name of the allocator used.
   string allocator_name = 6;
-};
+}
 
 message MemoryLogRawDeallocation {
   // Process-unique step id.
@@ -90,4 +92,4 @@ message MemoryLogRawDeallocation {
   // True if the deallocation is queued and will be performed later,
   // e.g. for GPU lazy freeing of buffers.
   bool deferred = 5;
-};
+}

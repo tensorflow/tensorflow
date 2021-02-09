@@ -31,13 +31,20 @@ from tensorflow.python.util.tf_export import tf_export
 class _ParseExampleDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that parses `example` dataset into a `dict` dataset."""
 
-  def __init__(self, input_dataset, features, num_parallel_calls):
+  def __init__(self, input_dataset, features, num_parallel_calls,
+               deterministic):
     self._input_dataset = input_dataset
     if not structure.are_compatible(
         input_dataset.element_spec,
         tensor_spec.TensorSpec([None], dtypes.string)):
       raise TypeError("Input dataset should be a dataset of vectors of strings")
     self._num_parallel_calls = num_parallel_calls
+    if deterministic is None:
+      self._deterministic = "default"
+    elif deterministic:
+      self._deterministic = "true"
+    else:
+      self._deterministic = "false"
     # pylint: disable=protected-access
     self._features = parsing_ops._prepend_none_dimension(features)
     # TODO(b/112859642): Pass sparse_index and sparse_values for SparseFeature
@@ -78,7 +85,7 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
           input_dataset_shape.concatenate([None]), value_type, 1, splits_type)
 
     variant_tensor = (
-        gen_experimental_dataset_ops.parse_example_dataset(
+        gen_experimental_dataset_ops.parse_example_dataset_v2(
             self._input_dataset._variant_tensor,  # pylint: disable=protected-access
             self._num_parallel_calls,
             self._dense_defaults,
@@ -86,6 +93,7 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
             self._dense_keys,
             self._sparse_types,
             self._dense_shapes,
+            deterministic=self._deterministic,
             ragged_keys=self._ragged_keys,
             ragged_value_types=self._ragged_value_types,
             ragged_split_types=self._ragged_split_types,
@@ -99,7 +107,7 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
 
 # TODO(b/111553342): add arguments names and example names as well.
 @tf_export("data.experimental.parse_example_dataset")
-def parse_example_dataset(features, num_parallel_calls=1):
+def parse_example_dataset(features, num_parallel_calls=1, deterministic=None):
   """A transformation that parses `Example` protos into a `dict` of tensors.
 
   Parses a number of serialized `Example` protos given in `serialized`. We refer
@@ -119,6 +127,13 @@ def parse_example_dataset(features, num_parallel_calls=1):
      `VarLenFeature`, `RaggedFeature`, and `SparseFeature` values.
    num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
       representing the number of parsing processes to call in parallel.
+   deterministic: (Optional.) A boolean controlling whether determinism
+      should be traded for performance by allowing elements to be produced out
+      of order if some parsing calls complete faster than others. If
+      `deterministic` is `None`, the
+      `tf.data.Options.experimental_deterministic` dataset option (`True` by
+      default) is used to decide whether to produce elements
+      deterministically.
 
   Returns:
     A dataset transformation function, which can be passed to
@@ -132,7 +147,8 @@ def parse_example_dataset(features, num_parallel_calls=1):
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    out_dataset = _ParseExampleDataset(dataset, features, num_parallel_calls)
+    out_dataset = _ParseExampleDataset(dataset, features, num_parallel_calls,
+                                       deterministic)
     if any(
         isinstance(feature, parsing_ops.SparseFeature) or
         (isinstance(feature, parsing_ops.RaggedFeature) and feature.partitions)

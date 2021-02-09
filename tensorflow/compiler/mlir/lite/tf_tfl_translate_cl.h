@@ -35,8 +35,14 @@ extern llvm::cl::opt<std::string> output_file_name;
 extern llvm::cl::opt<bool> use_splatted_constant;
 extern llvm::cl::opt<bool> input_mlir;
 extern llvm::cl::opt<bool> output_mlir;
-extern llvm::cl::opt<bool> inline_functions;
 extern llvm::cl::list<std::string> custom_opdefs;
 extern llvm::cl::opt<bool> emit_quant_adaptor_ops;
 extern llvm::cl::opt<std::string> quant_stats_file_name;
+extern llvm::cl::opt<bool> convert_tf_while_to_tfl_while;
+
+// Import saved model.
+extern llvm::cl::opt<bool> import_saved_model_object_graph;
+extern llvm::cl::opt<bool> import_saved_model_signature_defs;
+extern llvm::cl::opt<std::string> saved_model_tags;
+extern llvm::cl::opt<std::string> saved_model_exported_names;
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_TRANSLATE_CL_H_

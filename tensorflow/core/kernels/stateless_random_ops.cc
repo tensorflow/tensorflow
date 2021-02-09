@@ -18,7 +18,9 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/random_op.h"
+#include "tensorflow/core/kernels/random_poisson_op.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -74,7 +76,7 @@ class StatelessRandomOpBase : public OpKernel {
     const Tensor& shape_t = context->input(0);
     const Tensor& seed_t = context->input(1);
     TensorShape shape;
-    OP_REQUIRES_OK(context, MakeShape(shape_t, &shape));
+    OP_REQUIRES_OK(context, tensor::MakeShape(shape_t, &shape));
     OP_REQUIRES(context, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
                 errors::InvalidArgument("seed must have shape [2], not ",
                                         seed_t.shape().DebugString()));
@@ -108,8 +110,8 @@ class StatelessRandomOp : public StatelessRandomOpBase {
     auto flat = output->flat<T>();
     // Reuse the compute kernels from the stateful random ops
     functor::FillPhiloxRandom<Device, Distribution>()(
-        context, context->eigen_device<Device>(), random, flat.data(),
-        flat.size(), Distribution());
+        context, context->eigen_device<Device>(), /*key=*/nullptr,
+        /*counter=*/nullptr, random, flat.data(), flat.size(), Distribution());
   }
 };
 
@@ -145,9 +147,58 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
     auto flat = output->flat<IntType>();
     // Reuse the compute kernels from the stateful random ops
     functor::FillPhiloxRandom<Device, Distribution>()(
-        context, context->eigen_device<Device>(), random, flat.data(),
-        flat.size(), dist);
+        context, context->eigen_device<Device>(), /*key=*/nullptr,
+        /*counter=*/nullptr, random, flat.data(), flat.size(), dist);
   }
+};
+
+template <typename Device, typename IntType>
+class StatelessRandomUniformFullIntOp : public StatelessRandomOpBase {
+ public:
+  using StatelessRandomOpBase::StatelessRandomOpBase;
+
+  void Fill(OpKernelContext* context, random::PhiloxRandom random,
+            Tensor* output) override {
+    // Build distribution
+    typedef random::UniformFullIntDistribution<random::PhiloxRandom, IntType>
+        Distribution;
+    Distribution dist;
+
+    auto flat = output->flat<IntType>();
+    // Reuse the compute kernels from the stateful random ops
+    functor::FillPhiloxRandom<Device, Distribution>()(
+        context, context->eigen_device<Device>(), /*key=*/nullptr,
+        /*counter=*/nullptr, random, flat.data(), flat.size(), dist);
+  }
+};
+
+// Samples from one or more Poisson distributions.
+template <typename T, typename U>
+class StatelessRandomPoissonOp : public StatelessRandomOpBase {
+ public:
+  using StatelessRandomOpBase::StatelessRandomOpBase;
+
+  void Fill(OpKernelContext* ctx, random::PhiloxRandom random,
+            Tensor* output) override {
+    const Tensor& rate_t = ctx->input(2);
+
+    TensorShape samples_shape = output->shape();
+    OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(samples_shape, rate_t.shape()),
+                errors::InvalidArgument(
+                    "Shape passed in must end with broadcasted shape."));
+
+    const int64 num_rate = rate_t.NumElements();
+    const int64 samples_per_rate = samples_shape.num_elements() / num_rate;
+    const auto rate_flat = rate_t.flat<T>().data();
+    auto samples_flat = output->flat<U>().data();
+
+    functor::PoissonFunctor<CPUDevice, T, U>()(
+        ctx, ctx->eigen_device<CPUDevice>(), rate_flat, num_rate,
+        samples_per_rate, random, samples_flat);
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomPoissonOp);
 };
 
 #define REGISTER(DEVICE, TYPE)                                              \
@@ -176,9 +227,19 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
       StatelessRandomOp<                                                    \
           DEVICE##Device,                                                   \
           random::TruncatedNormalDistribution<                              \
-              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >);
+              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >)
+
+#define REGISTER_FULL_INT(DEVICE, TYPE)     \
+  REGISTER_KERNEL_BUILDER(                  \
+      Name("StatelessRandomUniformFullInt") \
+          .Device(DEVICE_##DEVICE)          \
+          .HostMemory("shape")              \
+          .HostMemory("seed")               \
+          .TypeConstraint<TYPE>("dtype"),   \
+      StatelessRandomUniformFullIntOp<DEVICE##Device, TYPE>)
 
 #define REGISTER_INT(DEVICE, TYPE)                            \
+  REGISTER_FULL_INT(DEVICE, TYPE);                            \
   REGISTER_KERNEL_BUILDER(Name("StatelessRandomUniformInt")   \
                               .Device(DEVICE_##DEVICE)        \
                               .HostMemory("shape")            \
@@ -186,12 +247,14 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
                               .HostMemory("minval")           \
                               .HostMemory("maxval")           \
                               .TypeConstraint<TYPE>("dtype"), \
-                          StatelessRandomUniformIntOp<DEVICE##Device, TYPE>);
+                          StatelessRandomUniformIntOp<DEVICE##Device, TYPE>)
 
 #define REGISTER_CPU(TYPE) REGISTER(CPU, TYPE)
 #define REGISTER_GPU(TYPE) REGISTER(GPU, TYPE)
 #define REGISTER_INT_CPU(TYPE) REGISTER_INT(CPU, TYPE)
 #define REGISTER_INT_GPU(TYPE) REGISTER_INT(GPU, TYPE)
+#define REGISTER_FULL_INT_CPU(TYPE) REGISTER_FULL_INT(CPU, TYPE)
+#define REGISTER_FULL_INT_GPU(TYPE) REGISTER_FULL_INT(GPU, TYPE)
 
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
@@ -199,6 +262,34 @@ TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_int32(REGISTER_INT_CPU);
 TF_CALL_int64(REGISTER_INT_CPU);
+TF_CALL_uint32(REGISTER_FULL_INT_CPU);
+TF_CALL_uint64(REGISTER_FULL_INT_CPU);
+
+#define REGISTER_POISSON(RATE_TYPE, OUT_TYPE)                     \
+  REGISTER_KERNEL_BUILDER(Name("StatelessRandomPoisson")          \
+                              .Device(DEVICE_CPU)                 \
+                              .HostMemory("shape")                \
+                              .HostMemory("seed")                 \
+                              .HostMemory("lam")                  \
+                              .TypeConstraint<RATE_TYPE>("Rtype") \
+                              .TypeConstraint<OUT_TYPE>("dtype"), \
+                          StatelessRandomPoissonOp<RATE_TYPE, OUT_TYPE>)
+
+#define REGISTER_ALL_POISSON(RATE_TYPE)     \
+  REGISTER_POISSON(RATE_TYPE, Eigen::half); \
+  REGISTER_POISSON(RATE_TYPE, float);       \
+  REGISTER_POISSON(RATE_TYPE, double);      \
+  REGISTER_POISSON(RATE_TYPE, int32);       \
+  REGISTER_POISSON(RATE_TYPE, int64)
+
+TF_CALL_half(REGISTER_ALL_POISSON);
+TF_CALL_float(REGISTER_ALL_POISSON);
+TF_CALL_double(REGISTER_ALL_POISSON);
+TF_CALL_int32(REGISTER_ALL_POISSON);
+TF_CALL_int64(REGISTER_ALL_POISSON);
+
+#undef REGISTER_ALL_POISSON
+#undef REGISTER_POISSON
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -207,6 +298,8 @@ TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_int32(REGISTER_INT_GPU);
 TF_CALL_int64(REGISTER_INT_GPU);
+TF_CALL_uint32(REGISTER_FULL_INT_GPU);
+TF_CALL_uint64(REGISTER_FULL_INT_GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -216,6 +309,8 @@ TF_CALL_int64(REGISTER_INT_GPU);
 #undef REGISTER_GPU
 #undef REGISTER_INT_CPU
 #undef REGISTER_INT_GPU
+#undef REGISTER_FULL_INT_CPU
+#undef REGISTER_FULL_INT_GPU
 
 }  // namespace
 

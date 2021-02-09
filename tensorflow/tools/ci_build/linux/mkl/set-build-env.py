@@ -173,11 +173,51 @@ class CascadelakePlatform(IntelPlatform):
     if IntelPlatform.use_old_arch_names(self, 9, 1):
       ret_val = self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
         CASCADELAKE_ARCH_OLD + " "
-      return ret_val + self.BAZEL_PREFIX_ + slef.FLAG_PREFIX_ + \
+      return ret_val + self.BAZEL_PREFIX_ + self.FLAG_PREFIX_ + \
              VNNI_FLAG + " "
     else:
       return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
              CASCADELAKE_ARCH_NEW + " "
+
+
+class IcelakeClientPlatform(IntelPlatform):
+
+  def __init__(self):
+    IntelPlatform.__init__(self, 8, 4)
+
+  def get_bazel_gcc_flags(self):
+    ICELAKE_ARCH_OLD = "skylake-avx512"
+    ICELAKE_ARCH_NEW = "icelake-client"
+    AVX512_FLAGS = ["avx512f", "avx512cd"]
+    if IntelPlatform.use_old_arch_names(self, 8, 4):
+      ret_val = self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
+        ICELAKE_ARCH_OLD + " "
+      for flag in AVX512_FLAGS:
+        ret_val += self.BAZEL_PREFIX_ + self.FLAG_PREFIX_ + flag + " "
+      return ret_val
+    else:
+      return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
+             ICELAKE_ARCH_NEW + " "
+
+
+class IcelakeServerPlatform(IntelPlatform):
+
+  def __init__(self):
+    IntelPlatform.__init__(self, 8, 4)
+
+  def get_bazel_gcc_flags(self):
+    ICELAKE_ARCH_OLD = "skylake-avx512"
+    ICELAKE_ARCH_NEW = "icelake-server"
+    AVX512_FLAGS = ["avx512f", "avx512cd"]
+    if IntelPlatform.use_old_arch_names(self, 8, 4):
+      ret_val = self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
+        ICELAKE_ARCH_OLD + " "
+      for flag in AVX512_FLAGS:
+        ret_val += self.BAZEL_PREFIX_ + self.FLAG_PREFIX_ + flag + " "
+      return ret_val
+    else:
+      return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
+             ICELAKE_ARCH_NEW + " "
 
 
 class BuildEnvSetter(object):
@@ -189,7 +229,9 @@ class BuildEnvSetter(object):
       "sandybridge": SandyBridgePlatform(),
       "haswell": HaswellPlatform(),
       "skylake": SkylakePlatform(),
-      "cascadelake": CascadelakePlatform()
+      "cascadelake": CascadelakePlatform(),
+      "icelake-client": IcelakeClientPlatform(),
+      "icelake-server": IcelakeServerPlatform(),
   }
 
   def __init__(self):
@@ -244,13 +286,19 @@ class BuildEnvSetter(object):
     arg_parser.add_argument(
         "--disable-v2",
         dest="disable_v2",
-        help="Don't build TensorFlow v2. By default the "
+        help="Build TensorFlow v1 rather than v2. By default the "
         " compiler flag --config=v2 is enabled.",
         action="store_true")
     arg_parser.add_argument(
         "--enable-bfloat16",
         dest="enable_bfloat16",
         help="Enable bfloat16 build. By default it is "
+        " disabled if no parameter is passed.",
+        action="store_true")
+    arg_parser.add_argument(
+        "--enable-dnnl1",
+        dest="enable_dnnl1",
+        help="Enable dnnl1 build. By default it is "
         " disabled if no parameter is passed.",
         action="store_true")
     arg_parser.add_argument(
@@ -307,8 +355,10 @@ class BuildEnvSetter(object):
         self.bazel_flags_ += "{} ".format(flag)
     if not self.args.disable_mkl:
       self.bazel_flags_ += "--config=mkl "
-    if not self.args.disable_v2:
-      self.bazel_flags_ += "--config=v2 "
+    if self.args.disable_v2:
+      self.bazel_flags_ += "--config=v1 "
+    if self.args.enable_dnnl1:
+      self.bazel_flags_ += "--define build_with_mkl_dnn_v1_only=true "
     if self.args.enable_bfloat16:
       self.bazel_flags_ += "--copt=-DENABLE_INTEL_MKL_BFLOAT16 "
 

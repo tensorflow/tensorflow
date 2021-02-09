@@ -378,9 +378,9 @@ Status DebugIO::PublishDebugMetadata(
       // Determine the path (if any) in the grpc:// URL, and add it as a field
       // of the JSON string.
       const string address = url.substr(strlen(DebugIO::kFileURLScheme));
-      const string path = address.find("/") == string::npos
+      const string path = address.find('/') == string::npos
                               ? ""
-                              : address.substr(address.find("/"));
+                              : address.substr(address.find('/'));
       grpc_event.set_wall_time(event.wall_time());
       LogMessage* log_message_grpc = grpc_event.mutable_log_message();
       log_message_grpc->set_message(
@@ -395,11 +395,12 @@ Status DebugIO::PublishDebugMetadata(
     } else if (absl::StartsWith(absl::AsciiStrToLower(url), kFileURLScheme)) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
       const string core_metadata_path = AppendTimestampToFilePath(
-          io::JoinPath(
-              dump_root_dir,
-              strings::StrCat(DebugNodeKey::kMetadataFilePrefix,
-                              DebugIO::kCoreMetadataTag, "sessionrun",
-                              strings::Printf("%.14lld", session_run_index))),
+          io::JoinPath(dump_root_dir,
+                       strings::StrCat(
+                           DebugNodeKey::kMetadataFilePrefix,
+                           DebugIO::kCoreMetadataTag, "sessionrun",
+                           strings::Printf("%.14lld", static_cast<long long>(
+                                                          session_run_index)))),
           Env::Default()->NowMicros());
       status.Update(DebugFileIO::DumpEventProtoToFile(
           event, string(io::Dirname(core_metadata_path)),

@@ -83,7 +83,7 @@ this UI, to see the logs for a failed build:
 
 *   Submit special pull request (PR) comment to trigger CI: **bot:mlx:test**
 *   Test session is run automatically.
-*   Test results and artefacts (log files) are reported via PR comments
+*   Test results and artifacts (log files) are reported via PR comments
 
 ##### CI Steps
 

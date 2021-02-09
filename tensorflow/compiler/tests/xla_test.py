@@ -34,6 +34,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
@@ -82,6 +83,10 @@ class XLATestCase(test.TestCase):
 
   def __init__(self, method_name='runTest'):
     super(XLATestCase, self).__init__(method_name)
+    if 'XLA' in FLAGS.test_device:
+      context.context().enable_xla_devices()
+    context.context().enable_mlir_bridge = test_util.is_mlir_bridge_enabled()
+
     self.device = FLAGS.test_device
     self.has_custom_call = (self.device == 'XLA_CPU')
     self._all_tf_types = set([
@@ -232,16 +237,23 @@ class XLATestCase(test.TestCase):
         'test_session not supported on XLATestCase, please use session')
 
   @contextlib.contextmanager
-  def test_scope(self):
-    """Test scope that runs tests on a Tensorflow/XLA device.
-
-    Uses a compilation_scope() to mark operators to compile.
+  def device_scope(self):
+    """Scope that runs tests on `self.device`.
 
     Yields:
       A scope to apply to the operators under test.
     """
     with ops.device('device:{}:0'.format(self.device)):
       yield
+
+  def test_scope(self):
+    """Deprecated alias of `device_scope`.
+
+    This should be avoided as the name starts with `test`, so test runners
+    treat it as a test. This interferes with class decorators that operate on
+    each test method.
+    """
+    return self.device_scope()
 
 
 def Benchmark(tf_bench,

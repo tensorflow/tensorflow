@@ -21,11 +21,11 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
+#include "tensorflow/core/common_runtime/gradients.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -395,7 +395,7 @@ void RunBenchmarkResizeBilinearTwoDims() {
 }  // namespace tensorflow
 
 #define RUN_TEST(t) \
-  TEST(QuantizationResizeBilenarTest, t) { tensorflow::t(); }
+  TEST(QuantizationResizeBilinearTest, t) { tensorflow::t(); }
 
 RUN_TEST(TestResizeBilinearOneDim);
 RUN_TEST(TestResizeBilinearTwoDims);
@@ -407,7 +407,7 @@ RUN_TEST(RunBenchmarkResizeBilinearTwoDims);
 #endif  // __ANDROID__
 
 int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
+  // On Linux, add: absl::SetFlag(&FLAGS_logtostderr, true);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

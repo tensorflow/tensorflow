@@ -592,6 +592,20 @@ TEST(SparseTensorTest, Concat) {
   EXPECT_EQ(conc_ooo.num_entries(), 4 * N);
 }
 
+TEST(SparseTensorTest, ConcatEmptyN) {
+  constexpr int N = 0;
+  constexpr int NDIM = 2;
+  Tensor ix(DT_INT64, TensorShape({N, NDIM}));
+  Tensor vals(DT_STRING, TensorShape({N}));
+  TensorShape shape({10, 10});
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, {0, 1}, &st));
+
+  SparseTensor concatted = SparseTensor::Concat<tstring>({st, st, st});
+
+  EXPECT_EQ(concatted.num_entries(), 0);
+}
+
 // TODO(ebrevdo): ReduceToDense(R={dim1,dim2,...}, reduce_fn, &output)
 // reduce_fn sees slices of resorted values based on generator (dim: DDIMS), and
 // slices of resorted indices on generator.
@@ -690,6 +704,29 @@ TEST(SparseTensorTest, Slice) {
   EXPECT_EQ(slice.indices().matrix<int64>()(1, 1), 1);
   EXPECT_EQ(slice.indices().matrix<int64>()(2, 0), 1);
   EXPECT_EQ(slice.indices().matrix<int64>()(2, 1), 2);
+}
+
+TEST(SparseTensorTest, SliceReducesOutputDimension) {
+  const int num_rows = 2;
+  const int num_columns = 2;
+
+  Tensor ids(DT_INT64, TensorShape({num_rows, num_columns}));
+  ids.matrix<int64>()(0, 0) = 0;
+  ids.matrix<int64>()(0, 1) = 0;
+  ids.matrix<int64>()(1, 0) = 1;
+  ids.matrix<int64>()(1, 1) = 1;
+
+  Tensor vals(DT_INT64, TensorShape({2}));
+  vals.vec<int64>()(0) = 1;
+  vals.vec<int64>()(1) = 2;
+
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ids, vals,
+                                    TensorShape({num_rows, num_columns}), &st));
+
+  SparseTensor slice =
+      SparseTensor::Slice<int64>(st, {num_rows + 1, 1}, {1, num_columns});
+  EXPECT_EQ(TensorShape(slice.shape()), TensorShape({0, 1}));
 }
 
 TEST(SparseTensorTest, Dim0SparseTensorToDenseTensor) {

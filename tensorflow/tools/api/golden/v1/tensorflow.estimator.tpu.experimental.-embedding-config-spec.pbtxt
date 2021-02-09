@@ -32,7 +32,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "profile_data_directory"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "table_to_config_dict"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "tensor_core_feature_columns"
     mtype: "<type \'property\'>"
   }
   member_method {

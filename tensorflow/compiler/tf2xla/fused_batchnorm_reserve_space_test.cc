@@ -13,18 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
+#include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace {
@@ -126,5 +140,11 @@ TEST(FusedBatchnormReserveSpaceTest, Test) {
   test::ExpectClose(results[0], results[1], /*atol=*/1e-4);
   test::ExpectClose(results[2], results[3], /*atol=*/1e-4);
 }
+
+static bool Initialized = [] {
+  tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
+  return true;
+}();
+
 }  // namespace
 }  // namespace tensorflow

@@ -52,7 +52,7 @@ Status GenericTransferManager::WriteSingleTupleIndexTable(
   TF_RETURN_IF_ERROR(TransferBufferToDevice(
       stream, GetByteSizeRequirement(shape), element_pointers->data(), region));
   // Ensure the buffer is transferred before we destroy element_pointers.
-  stream->ThenRunAfterNextBlockHostUntilDone([element_pointers]() {
+  stream->ThenDoHostCallback([element_pointers{std::move(element_pointers)}]() {
     /* holds reference to element_pointers in closure */
   });
   return Status::OK();
@@ -69,13 +69,8 @@ void GenericTransferManager::TransferLiteralFromDevice(
     TF_RET_CHECK(stream->parent()->device_ordinal() ==
                  device_buffer.device_ordinal());
 
-    // The on-host and on-device shape should always be the same for the generic
-    // transfer manager.
-    TF_RET_CHECK(ShapeUtil::Equal(device_buffer.on_device_shape(),
-                                  device_buffer.on_host_shape()));
-
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-        device_buffer.on_host_shape(),
+        device_buffer.on_device_shape(),
         [&](const Shape& subshape, const ShapeIndex& index) -> Status {
           if (subshape.IsArray()) {
             stream->ThenMemcpy(
@@ -103,20 +98,15 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
           << ShapeUtil::HumanString(shape)
           << "; device buffer: " << device_buffer;
 
-  // The on-host and on-device shape should always be the same for the generic
-  // transfer manager.
-  TF_RET_CHECK(ShapeUtil::Equal(device_buffer.on_device_shape(),
-                                device_buffer.on_host_shape()));
-
   TF_RET_CHECK(
-      ShapeUtil::Compatible(literal.shape(), device_buffer.on_host_shape()));
+      ShapeUtil::Compatible(literal.shape(), device_buffer.on_device_shape()));
   TF_RET_CHECK(stream->parent()->device_ordinal() ==
                device_buffer.device_ordinal());
 
   TF_RETURN_IF_ERROR(WriteTupleIndexTablesAsync(stream, device_buffer));
 
   return ShapeUtil::ForEachSubshapeWithStatus(
-      device_buffer.on_host_shape(),
+      device_buffer.on_device_shape(),
       [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
         se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
         if (device_subshape.IsArray()) {
@@ -155,8 +145,7 @@ Status GenericTransferManager::TransferLiteralToInfeed(
 }
 
 Status GenericTransferManager::TransferLiteralFromOutfeed(
-    se::StreamExecutor* executor, const Shape& literal_shape,
-    MutableBorrowingLiteral literal) {
+    se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   return Unimplemented("Generic transfer from Outfeed");
 }
 

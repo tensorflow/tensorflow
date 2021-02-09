@@ -89,7 +89,8 @@ class SyncReplicasOptimizerTest(test.TestCase):
   def _run(self, train_op, sess):
     sess.run(train_op)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "This exercises tensor lookup via names which is not supported in V2.")
   def test2Workers(self):
     num_workers = 2
     replicas_to_aggregate = 2
@@ -180,7 +181,8 @@ class SyncReplicasOptimizerTest(test.TestCase):
                         sessions[1].run(var_1_g_1))
 
   # 3 workers and one of them is backup.
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "This exercises tensor lookup via names which is not supported in V2.")
   def test3Workers1Backup(self):
     num_workers = 3
     replicas_to_aggregate = 2
@@ -197,7 +199,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
     local_step_1 = graphs[1].get_tensor_by_name("sync_rep_local_step:0")
     global_step = graphs[1].get_tensor_by_name("global_step:0")
 
-    # The steps should also be initilized.
+    # The steps should also be initialized.
     self.assertAllEqual(0, sessions[1].run(global_step))
     self.assertAllEqual(0, sessions[1].run(local_step_1))
 
@@ -265,11 +267,12 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
         replicas_to_aggregate=1,
         total_num_replicas=1)
     hook = opt.make_session_run_hook(True)
-    with self.assertRaisesRegexp(ValueError,
-                                 "apply_gradient should be called"):
+    with self.assertRaisesRegex(ValueError, "apply_gradient should be called"):
       hook.begin()
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "train.SyncReplicasOptimizer and train.GradientDescentOptimizer "
+      "are V1 only APIs.")
   def testCanCreatedBeforeMinimizeCalled(self):
     """This behavior is required to be integrated with Estimators."""
     opt = training.SyncReplicasOptimizer(
@@ -282,7 +285,8 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
     opt.minimize(v, global_step=global_step)
     hook.begin()
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "train.SyncReplicasOptimizer and train.AdamOptimizer are V1 only APIs.")
   def testFetchVariableList(self):
     opt = training.SyncReplicasOptimizer(
         opt=adam.AdamOptimizer(0.01),

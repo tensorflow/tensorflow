@@ -1,0 +1,13 @@
+// RUN: tf-mlir-translate -hlo-text-to-lhlo %s | FileCheck %s
+
+HloModule TestModule
+
+// CHECK: #[[MAP:.*]] = affine_map<(d0, d1) -> (d0 + d1 * 3)>
+
+// CHECK: func @TestComputation
+ENTRY TestComputation {
+  x = f32[3, 2]{1,0} parameter(0)
+
+  // CHECK: "lmhlo.copy"(%{{.*}}, %{{.*}}) : (memref<3x2xf32>, memref<3x2xf32, #[[MAP]]>) -> ()
+  ROOT x.copy = f32[3, 2]{0,1} copy(x)
+}

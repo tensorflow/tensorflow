@@ -16,17 +16,9 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
-
-Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                   Padding* value) {
-  string str_value;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_name, &str_value));
-  return GetPaddingFromString(str_value, value);
-}
 
 Status GetPaddingFromString(StringPiece str_value, Padding* value) {
   if (str_value == "SAME") {
@@ -45,7 +37,8 @@ Status CheckValidPadding(Padding padding_type,
                          const std::vector<int64>& explicit_paddings,
                          int num_dims, TensorFormat data_format) {
   if (padding_type == Padding::EXPLICIT) {
-    if (explicit_paddings.size() != 2 * num_dims) {
+    const int num_paddings = explicit_paddings.size();
+    if (num_paddings != 2 * num_dims) {
       return errors::InvalidArgument(
           "explicit_paddings attribute must contain ", 2 * num_dims,
           " values, but got: ", explicit_paddings.size());

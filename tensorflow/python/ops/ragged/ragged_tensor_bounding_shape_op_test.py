@@ -18,45 +18,119 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedTensorBoundingShapeOp(test_util.TensorFlowTestCase):
+class RaggedTensorBoundingShapeOp(test_util.TensorFlowTestCase,
+                                  parameterized.TestCase):
 
-  def testDocStringExample(self):
-    # This is the example from ragged.bounding_shape.__doc__.
-    rt = ragged_factory_ops.constant([[1, 2, 3, 4], [5], [], [6, 7, 8, 9],
-                                      [10]])
-    self.assertAllEqual(rt.bounding_shape(), [5, 4])
+  @parameterized.named_parameters([
+      # rank = 2
+      dict(testcase_name='docstring_example',
+           rt=[[1, 2, 3, 4], [5], [], [6, 7, 8, 9], [10]],
+           expected=[5, 4]),
+      dict(testcase_name='shape_5_3',
+           rt=[['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']],
+           expected=[5, 3]),
+      dict(testcase_name='shape_1_7',
+           rt=[['a', 'b', 'c', 'd', 'e', 'f', 'g']],
+           expected=[1, 7]),
+      dict(testcase_name='shape_3_7',
+           rt=[[], ['a', 'b', 'c', 'd', 'e', 'f', 'g'], []],
+           expected=[3, 7]),
+      dict(testcase_name='shape_5_3_row_splits_int32',
+           rt=[['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']],
+           rt_row_splits_dtype=dtypes.int32,
+           expected=[5, 3]),
+      dict(testcase_name='shape_0_0',
+           rt=[],
+           rt_ragged_rank=1,
+           expected=[0, 0]),
+      dict(testcase_name='shape_3_0',
+           rt=[[], [], []],
+           expected=[3, 0]),
+      # rank = 3
+      dict(testcase_name='shape_5_3_2',
+           rt=[[[0, 1], [2]], [[3, 4], [], [5, 6]], [[7]], [], [[8, 9]]],
+           expected=[5, 3, 2]),
+      dict(testcase_name='shape_1_7_2',
+           rt=[[[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13]]],
+           expected=[1, 7, 2]),
+      dict(testcase_name='shape_3_7_4',
+           rt=[[], [[0, 1], [2], [], [3], [4], [5, 6, 7, 8], [9]], []],
+           expected=[3, 7, 4]),
+      dict(testcase_name='shape_1_7_2_ragged_rank_1',
+           rt=[[[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13]]],
+           rt_ragged_rank=1,
+           expected=[1, 7, 2]),
+      # axis != None
+      dict(testcase_name='shape_5_3_axis_0',
+           rt=[['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']],
+           axis=0,
+           expected=5),
+      dict(testcase_name='shape_5_3_axis_1',
+           rt=[['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']],
+           axis=1,
+           expected=3),
+      dict(testcase_name='shape_5_3_axis_1_0',
+           rt=[['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']],
+           axis=[1, 0],
+           expected=[3, 5]),
+      # out_type != None
+      dict(testcase_name='shape_5_3_row_splits_int64_out_type_int64',
+           rt=[['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']],
+           rt_row_splits_dtype=dtypes.int64,
+           out_type=dtypes.int64,
+           expected=[5, 3]),
+      dict(testcase_name='shape_5_3_row_splits_int32_out_type_int32',
+           rt=[['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']],
+           rt_row_splits_dtype=dtypes.int32,
+           out_type=dtypes.int32,
+           expected=[5, 3]),
+      dict(testcase_name='shape_5_3_row_splits_int64_out_type_int32',
+           rt=[['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']],
+           rt_row_splits_dtype=dtypes.int64,
+           out_type=dtypes.int32,
+           expected=[5, 3]),
+      dict(testcase_name='shape_5_3_row_splits_int32_out_type_int64',
+           rt=[['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']],
+           rt_row_splits_dtype=dtypes.int32,
+           out_type=dtypes.int64,
+           expected=[5, 3]),
+  ])  # pyformat: disable
+  def testBoundingShape(self,
+                        rt,
+                        expected,
+                        axis=None,
+                        out_type=None,
+                        rt_row_splits_dtype=dtypes.int64,
+                        rt_ragged_rank=None):
+    rt = ragged_factory_ops.constant(
+        rt, ragged_rank=rt_ragged_rank, row_splits_dtype=rt_row_splits_dtype)
+    bounding_shape = rt.bounding_shape(axis=axis, out_type=out_type)
+    self.assertAllEqual(bounding_shape, expected)
+    if out_type is not None:
+      self.assertEqual(bounding_shape.dtype, out_type)
+    else:
+      self.assertEqual(bounding_shape.dtype, rt_row_splits_dtype)
 
-  def test2DRaggedTensorWithOneRaggedDimension(self):
-    values = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
-    rt1 = ragged_tensor.RaggedTensor.from_row_splits(values, [0, 2, 5, 6, 6, 7])
-    rt2 = ragged_tensor.RaggedTensor.from_row_splits(values, [0, 7])
-    rt3 = ragged_tensor.RaggedTensor.from_row_splits(values, [0, 0, 7, 7])
-    self.assertAllEqual(rt1.bounding_shape(), [5, 3])
-    self.assertAllEqual(rt2.bounding_shape(), [1, 7])
-    self.assertAllEqual(rt3.bounding_shape(), [3, 7])
-
-  def test3DRaggedTensorWithOneRaggedDimension(self):
-    values = [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13]]
-    rt1 = ragged_tensor.RaggedTensor.from_row_splits(values, [0, 2, 5, 6, 6, 7])
-    rt2 = ragged_tensor.RaggedTensor.from_row_splits(values, [0, 7])
-    rt3 = ragged_tensor.RaggedTensor.from_row_splits(values, [0, 0, 7, 7])
-    self.assertAllEqual(rt1.bounding_shape(), [5, 3, 2])
-    self.assertAllEqual(rt2.bounding_shape(), [1, 7, 2])
-    self.assertAllEqual(rt3.bounding_shape(), [3, 7, 2])
-
-  def testExplicitAxisOptimizations(self):
-    rt = ragged_tensor.RaggedTensor.from_row_splits(b'a b c d e f g'.split(),
-                                                    [0, 2, 5, 6, 6, 7])
-    self.assertAllEqual(rt.bounding_shape(0), 5)
-    self.assertAllEqual(rt.bounding_shape(1), 3)
-    self.assertAllEqual(rt.bounding_shape([1, 0]), [3, 5])
+    # If we're testing a configuration that uses `axis`, then make sure
+    # that it also works if `axis` is a tensor.
+    if axis is not None:
+      bounding_shape = rt.bounding_shape(
+          axis=constant_op.constant(axis), out_type=out_type)
+      self.assertAllEqual(bounding_shape, expected)
+      if out_type is not None:
+        self.assertEqual(bounding_shape.dtype, out_type)
+      else:
+        self.assertEqual(bounding_shape.dtype, rt_row_splits_dtype)
 
 
 if __name__ == '__main__':

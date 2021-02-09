@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -56,8 +54,7 @@ class TrainingTest(keras_parameterized.TestCase):
     model = DynamicModel()
     model.compile(
         'rmsprop', 'mae',
-        run_eagerly=True,
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=True)
     hist = model.fit(np.zeros((1, 1)), np.zeros((1, 1)))
     self.assertEqual(hist.history['loss'][-1], 1)
     self.assertEqual(len(model.trainable_weights), 2)
@@ -93,7 +90,6 @@ class TrainingTest(keras_parameterized.TestCase):
         metrics=metrics,
         loss_weights=loss_weights,
         run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function(),
         sample_weight_mode=None)
 
     input_a = array_ops.zeros(shape=(10, 3))
@@ -163,8 +159,7 @@ class TrainingTest(keras_parameterized.TestCase):
         optimizer,
         loss,
         metrics=metrics,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = array_ops.zeros(shape=(10, 3))
     targets = array_ops.zeros(shape=(10, 4))
@@ -194,12 +189,10 @@ class TrainingTest(keras_parameterized.TestCase):
     model.fit(dataset, epochs=1, verbose=0)
 
     # Step argument is required for infinite datasets.
-    with self.assertRaisesRegexp(ValueError,
-                                 'specify the `validation_steps` argument.'):
+    with self.assertRaises(ValueError):
       model.fit(dataset, steps_per_epoch=2, epochs=1, verbose=0,
                 validation_data=validation_dataset)
-    with self.assertRaisesRegexp(ValueError,
-                                 'specify the `validation_steps` argument.'):
+    with self.assertRaises(ValueError):
       model.fit(dataset, steps_per_epoch=2, epochs=1, verbose=0,
                 validation_data=validation_dataset)
 
@@ -237,7 +230,12 @@ class CorrectnessTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
-  def test_loss_correctness(self):
+  @parameterized.named_parameters([
+      ('', dict()),
+      ('_clipvalue_inf', {'clipvalue': 999999}),
+      ('_clipnorm_inf', {'clipnorm': 999999}),
+  ])
+  def test_loss_correctness(self, optimizer_kwargs):
     # Test that training loss is the same in eager and graph
     # (by comparing it to a reference value in a deterministic case)
     layers = [
@@ -247,14 +245,36 @@ class CorrectnessTest(keras_parameterized.TestCase):
     model = testing_utils.get_model_from_layers(layers, input_shape=(4,))
     model.compile(
         loss='sparse_categorical_crossentropy',
-        optimizer=rmsprop.RMSprop(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        optimizer=rmsprop.RMSprop(learning_rate=0.001, **optimizer_kwargs),
+        run_eagerly=testing_utils.should_run_eagerly())
     x = np.ones((100, 4))
     np.random.seed(123)
     y = np.random.randint(0, 1, size=(100, 1))
     history = model.fit(x, y, epochs=1, batch_size=10)
     self.assertAlmostEqual(history.history['loss'][-1], 0.5836, 4)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_loss_correctness_clipvalue_zero(self):
+    # Test that training loss is the same in eager and graph
+    # (by comparing it to a reference value in a deterministic case)
+    # And confirm that setting clipvalue to zero stops all training
+    layers = [
+        keras.layers.Dense(3, activation='relu',
+                           kernel_initializer='ones'),
+        keras.layers.Dense(2, activation='softmax', kernel_initializer='ones')]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(4,))
+    model.compile(
+        loss='sparse_categorical_crossentropy',
+        optimizer=rmsprop.RMSprop(learning_rate=0.001, clipvalue=0.0),
+        run_eagerly=testing_utils.should_run_eagerly())
+    x = np.ones((100, 4))
+    np.random.seed(123)
+    y = np.random.randint(0, 1, size=(100, 1))
+    history = model.fit(x, y, epochs=3, batch_size=10)
+    self.assertAlmostEqual(history.history['loss'][-3], 0.6931, 4)
+    self.assertAlmostEqual(history.history['loss'][-2], 0.6931, 4)
+    self.assertAlmostEqual(history.history['loss'][-1], 0.6931, 4)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
@@ -269,8 +289,7 @@ class CorrectnessTest(keras_parameterized.TestCase):
     model.compile(
         loss='sparse_categorical_crossentropy',
         optimizer=rmsprop.RMSprop(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     x = np.ones((100, 4), dtype=np.float32)
     np.random.seed(123)
     y = np.random.randint(0, 1, size=(100, 1))
@@ -281,11 +300,11 @@ class CorrectnessTest(keras_parameterized.TestCase):
     self.assertAlmostEqual(history.history['loss'][-1], 0.5836, 4)
 
   @parameterized.named_parameters([
-      ('_None', contextlib.contextmanager(lambda: iter([None])), 0., 4.),
-      ('_0', lambda: keras.backend.learning_phase_scope(0), 4., 4.),
-      ('_1', lambda: keras.backend.learning_phase_scope(1), 0., 0.),
+      ('_None', None, 0., 4.),
+      ('_False', False, 4., 4.),
+      ('_True', True, 0., 0.),
   ])
-  def test_nested_model_learning_phase(self, nested_scope_fn,
+  def test_nested_model_learning_phase(self, training,
                                        expected_training_loss,
                                        expected_validation_loss):
     """Tests that learning phase is correctly set in an intermediate layer."""
@@ -305,18 +324,17 @@ class CorrectnessTest(keras_parameterized.TestCase):
       return keras.Model(inputs, outputs)
 
     def _regularize_model(unregularized_model):
-      inputs = keras.Input(unregularized_model.inputs[0].shape[1:])
-      with nested_scope_fn():
-        logits = unregularized_model(inputs)
-      outputs = keras.activations.softmax(logits)
-      model = keras.Model(inputs, outputs)
       # Regularize the most recent activations of a post-dropout layer.
       sample_activations = unregularized_model.get_layer(
           index=-2).get_output_at(-1)
       regularization_loss = keras.backend.mean(sample_activations)
-      model.add_loss(regularization_loss)
-      model.add_metric(
+      unregularized_model.add_loss(regularization_loss)
+      unregularized_model.add_metric(
           regularization_loss, aggregation='mean', name='regularization_loss')
+      inputs = keras.Input(unregularized_model.inputs[0].shape[1:])
+      logits = unregularized_model(inputs, training=training)
+      outputs = keras.activations.softmax(logits)
+      model = keras.Model(inputs, outputs)
       return model
 
     # Make and compile models.
@@ -326,7 +344,8 @@ class CorrectnessTest(keras_parameterized.TestCase):
     x = np.ones((20, 4)).astype(np.float32)
     y = np.random.randint(0, 3, size=(20,)).astype(np.int64)
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(2)
-    evaluation_results = dict(zip(model.metrics_names, model.evaluate(dataset)))
+    results = model.evaluate(dataset)
+    evaluation_results = dict(zip(model.metrics_names, results))
     # Rate of dropout depends on the learning phase.
     self.assertEqual(evaluation_results['regularization_loss'],
                      expected_validation_loss)

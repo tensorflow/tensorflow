@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/c/env.h"
 
-#include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/types.h"
 
 struct TF_StringStream {
@@ -146,6 +148,10 @@ TF_StringStream* TF_GetLocalTempDirectories() {
   return list;
 }
 
+char* TF_GetTempFileName(const char* extension) {
+  return strdup(::tensorflow::io::GetTempFilename(extension).c_str());
+}
+
 TF_CAPI_EXPORT extern uint64_t TF_NowNanos(void) {
   return ::tensorflow::Env::Default()->NowNanos();
 }
@@ -180,4 +186,23 @@ TF_Thread* TF_StartThread(const TF_ThreadOptions* options,
 void TF_JoinThread(TF_Thread* thread) {
   // ::tensorflow::Thread joins on destruction
   delete reinterpret_cast<::tensorflow::Thread*>(thread);
+}
+
+void* TF_LoadSharedLibrary(const char* library_filename, TF_Status* status) {
+  void* handle = nullptr;
+  TF_SetStatus(status, TF_OK, "");
+  ::tensorflow::Set_TF_Status_from_Status(
+      status, ::tensorflow::Env::Default()->LoadDynamicLibrary(library_filename,
+                                                               &handle));
+  return handle;
+}
+
+void* TF_GetSymbolFromLibrary(void* handle, const char* symbol_name,
+                              TF_Status* status) {
+  void* symbol = nullptr;
+  TF_SetStatus(status, TF_OK, "");
+  ::tensorflow::Set_TF_Status_from_Status(
+      status, ::tensorflow::Env::Default()->GetSymbolFromLibrary(
+                  handle, symbol_name, &symbol));
+  return symbol;
 }

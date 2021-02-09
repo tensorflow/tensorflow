@@ -55,7 +55,7 @@ class ShardedFilenameOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     static const char* input_names[3] = {"basename", "shard", "num_shards"};
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      OP_REQUIRES(ctx, IsLegacyScalar(ctx->input(i).shape()),
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(i).shape()),
                   errors::InvalidArgument(input_names[i],
                                           " must be a scalar, got shape ",
                                           ctx->input(i).shape().DebugString()));
@@ -78,7 +78,7 @@ class ShardedFilespecOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     static const char* input_names[2] = {"basename", "num_shards"};
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      OP_REQUIRES(ctx, IsLegacyScalar(ctx->input(i).shape()),
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(i).shape()),
                   errors::InvalidArgument(input_names[i],
                                           " must be a scalar, got shape ",
                                           ctx->input(i).shape().DebugString()));

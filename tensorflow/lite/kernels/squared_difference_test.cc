@@ -12,11 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -58,6 +62,22 @@ class IntegerSquaredDifferenceOpModel : public BaseSquaredDifferenceOpModel {
   using BaseSquaredDifferenceOpModel::BaseSquaredDifferenceOpModel;
 
   std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
+};
+
+float GetTolerance(int min, int max) {
+  float kQuantizedStep = (max - min) / 255.0;
+  return kQuantizedStep;
+}
+
+class QuantizedSquaredDifferenceOpModel : public BaseSquaredDifferenceOpModel {
+ public:
+  using BaseSquaredDifferenceOpModel::BaseSquaredDifferenceOpModel;
+
+  template <typename integer_dtype>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<int8_t>(ExtractVector<int8_t>(output_), GetScale(output_),
+                              GetZeroPoint(output_));
+  }
 };
 
 TEST(FloatSquaredDifferenceOpTest, FloatType_SameShape) {
@@ -143,6 +163,58 @@ TEST(IntegerSquaredDifferenceOpTest, IntegerType_WithBroadcast) {
     m.PopulateTensor<int32_t>(m.input2(), {3});
     m.Invoke();
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({529, 49, 16, 0, 4, 100}))
+        << "With shape number " << i;
+  }
+}
+
+TEST(QuantizedSquaredDifferenceOpTest, Quantized_SameShape) {
+  float kQuantizedTolerance = GetTolerance(0, 1);
+  QuantizedSquaredDifferenceOpModel m(
+      {TensorType_INT8, {1, 2, 2, 1}, -1.2, 0.8},
+      {TensorType_INT8, {1, 2, 2, 1}, -1.5, 0.5},
+      {TensorType_INT8, {}, 0.0, 0.5});
+  m.QuantizeAndPopulate<int8_t>(m.input1(), {-0.2, 0.2, -1.2, 0.8});
+  m.QuantizeAndPopulate<int8_t>(m.input2(), {0.5, 0.2, -1.5, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({0.49, 0.0, 0.09, 0.09},
+                                              kQuantizedTolerance)));
+}
+
+TEST(QuantizedSquaredDifferenceOpTest, Quantized_VariousInputShapes) {
+  float kQuantizedTolerance = GetTolerance(0, 9);
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    QuantizedSquaredDifferenceOpModel m(
+        {TensorType_INT8, test_shapes[i], -2.0, 1.7},
+        {TensorType_INT8, test_shapes[i], -1.0, 1.0},
+        {TensorType_INT8, {}, 0.0, 9.0});
+    m.QuantizeAndPopulate<int8_t>(m.input1(), {-2.0, 0.2, 0.3, 0.8, 1.1, -2.0});
+    m.QuantizeAndPopulate<int8_t>(m.input2(), {1.0, 0.2, 0.6, 0.4, -1.0, -0.0});
+    m.Invoke();
+    EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+                ElementsAreArray(ArrayFloatNear(
+                    {9.0, 0.0, 0.09, 0.16, 4.41, 4.0}, kQuantizedTolerance)))
+        << "With shape number " << i;
+  }
+}
+
+TEST(QuantizedSquaredDifferenceOpTest, Quantized_WithBroadcast) {
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  float kQuantizedTolerance = GetTolerance(0, 1);
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    QuantizedSquaredDifferenceOpModel m(
+        {TensorType_INT8, test_shapes[i], -0.2, 1.1},
+        {TensorType_INT8, {}, 0.0, 0.1}, {TensorType_INT8, {}, 0.0, 1.0});
+    m.QuantizeAndPopulate<int8_t>(m.input1(), {-0.2, 0.2, 0.5, 0.8, 0.11, 1.1});
+    m.QuantizeAndPopulate<int8_t>(m.input2(), {0.1});
+    m.Invoke();
+    EXPECT_THAT(
+        m.GetDequantizedOutput<int8_t>(),
+        ElementsAreArray(ArrayFloatNear({0.09, 0.01, 0.16, 0.49, 0.0001, 1.0},
+                                        kQuantizedTolerance)))
         << "With shape number " << i;
   }
 }

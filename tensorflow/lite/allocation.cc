@@ -15,17 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 
+#include <stddef.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <cassert>
-#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
-#include <utility>
+#include <memory>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 
 namespace tflite {
@@ -34,15 +31,12 @@ namespace tflite {
 FileCopyAllocation::FileCopyAllocation(const char* filename,
                                        ErrorReporter* error_reporter)
     : Allocation(error_reporter, Allocation::Type::kFileCopy) {
-  // Obtain the file size, using an alternative method that is does not
-  // require fstat for more compatibility.
+  // Obtain the file size using fstat, or report an error if that fails.
   std::unique_ptr<FILE, decltype(&fclose)> file(fopen(filename, "rb"), fclose);
   if (!file) {
     error_reporter_->Report("Could not open '%s'.", filename);
     return;
   }
-  // TODO(ahentz): Why did you think using fseek here was better for finding
-  // the size?
   struct stat sb;
 
 // support usage of msvc's posix-like fileno symbol
@@ -98,7 +92,8 @@ MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
     //
     // Note that 64-bit ARM may also suffer a performance impact, but no crash -
     // that case is not checked.
-    error_reporter->Report("The supplied buffer is not 4-bytes aligned");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "The supplied buffer is not 4-bytes aligned");
     buffer_ = nullptr;
     buffer_size_bytes_ = 0;
     return;

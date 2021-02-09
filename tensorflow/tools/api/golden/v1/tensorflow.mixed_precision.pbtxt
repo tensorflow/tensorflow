@@ -1,7 +1,31 @@
 path: "tensorflow.mixed_precision"
 tf_module {
   member {
+    name: "DynamicLossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FixedLossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MixedPrecisionLossScaleOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "experimental"
     mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "disable_mixed_precision_graph_rewrite"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_mixed_precision_graph_rewrite"
+    argspec: "args=[\'opt\', \'loss_scale\'], varargs=None, keywords=None, defaults=[\'dynamic\'], "
   }
 }

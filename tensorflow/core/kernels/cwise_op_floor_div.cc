@@ -18,14 +18,17 @@ limitations under the License.
 namespace tensorflow {
 REGISTER6(BinaryOp, CPU, "FloorDiv", functor::safe_floor_div, uint8, uint16,
           int8, int16, int32, int64);
-REGISTER3(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
-          Eigen::half, double);
+REGISTER4(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
+          Eigen::half, bfloat16, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER4(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int16,
           int64);
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER3(BinaryOp, GPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, double);
+#endif
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -41,13 +44,4 @@ REGISTER_KERNEL_BUILDER(Name("FloorDiv")
                         BinaryOp<CPUDevice, functor::safe_floor_div<int32>>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("FloorDiv")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_floor_div<int32>>);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

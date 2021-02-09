@@ -92,7 +92,7 @@ class LinearOperatorDiagTest(
       self.evaluate(linalg.LinearOperatorDiag(diag).assert_positive_definite())
 
   def test_assert_non_singular_raises_if_zero_eigenvalue(self):
-    # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
+    # Singular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.cached_session():
       diag = [1.0, 0.0]
       operator = linalg.LinearOperatorDiag(diag, is_self_adjoint=True)
@@ -126,7 +126,7 @@ class LinearOperatorDiagTest(
       self.evaluate(operator.assert_self_adjoint())
 
   def test_scalar_diag_raises(self):
-    with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
+    with self.assertRaisesRegex(ValueError, "must have at least 1 dimension"):
       linalg.LinearOperatorDiag(1.)
 
   def test_broadcast_matmul_and_solve(self):

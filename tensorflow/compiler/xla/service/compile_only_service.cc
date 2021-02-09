@@ -91,6 +91,10 @@ CompileOnlyService::CompileAheadOfTime(
     TF_RETURN_IF_ERROR(options.static_device_assignment().Serialize(
         execution_options.mutable_device_assignment()));
   }
+  execution_options.set_use_spmd_partitioning(options.use_spmd_partitioning());
+  execution_options.set_deduplicate_hlo(options.deduplicate_hlo());
+  execution_options.set_broadcast_replicated_parameters_via_collectives(
+      options.broadcast_replicated_params());
   for (const AotXlaComputationInstance& instance : computations) {
     TF_RET_CHECK(instance.computation.has_host_program_shape());
     *execution_options.mutable_shape_with_output_layout() =

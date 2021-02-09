@@ -24,17 +24,19 @@ import numpy as np
 import six
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
+from tensorflow.python.keras.distribute.strategy_combinations import multi_worker_mirrored_strategies
+from tensorflow.python.keras.distribute.strategy_combinations import strategies_minus_tpu
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.preprocessing import sequence
+from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 _RANDOM_SEED = 1337
@@ -43,15 +45,6 @@ _GLOBAL_BATCH_SIZE = 64
 
 # Note: Please make sure the tests in this file are also covered in
 # keras_backward_compat_test for features that are supported with both APIs.
-
-all_strategies = [
-    strategy_combinations.default_strategy,
-    strategy_combinations.one_device_strategy,
-    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-    strategy_combinations.mirrored_strategy_with_two_gpus,
-    strategy_combinations.tpu_strategy,  # steps_per_run=2
-    strategy_combinations.tpu_strategy_one_step,
-]
 
 
 def eager_mode_test_configuration():
@@ -66,16 +59,19 @@ def graph_mode_test_configuration():
 
 def all_strategy_and_input_config_combinations():
   return (combinations.times(
-      combinations.combine(
-          distribution=all_strategies,
-          experimental_run_tf_function=[True, False]),
+      combinations.combine(distribution=all_strategies),
       eager_mode_test_configuration() + graph_mode_test_configuration()))
+
+
+def all_strategy_and_input_config_combinations_eager():
+  return (combinations.times(
+      combinations.combine(distribution=all_strategies),
+      eager_mode_test_configuration()))
 
 
 def strategy_minus_tpu_and_input_config_combinations_eager():
   return (combinations.times(
-      combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu),
+      combinations.combine(distribution=strategies_minus_tpu),
       eager_mode_test_configuration()))
 
 
@@ -100,24 +96,33 @@ def test_combinations_for_embedding_model():
 
   return (combinations.times(
       combinations.combine(
-          distribution=strategies_for_embedding_models(),
-          experimental_run_tf_function=[True, False]),
+          distribution=strategies_for_embedding_models()),
       (graph_mode_test_configuration())) + combinations.times(
           combinations.combine(
-              distribution=eager_mode_strategies,
-              experimental_run_tf_function=[False]),
+              distribution=eager_mode_strategies),
           (eager_mode_test_configuration())))
 
 
-def test_combinations_with_tpu_strategies():
+def test_combinations_with_tpu_strategies_graph():
   tpu_strategies = [
       strategy_combinations.tpu_strategy,
-      strategy_combinations.tpu_strategy_one_step
   ]
 
   return (combinations.times(
       combinations.combine(distribution=tpu_strategies),
       graph_mode_test_configuration()))
+
+
+def multi_worker_mirrored_eager():
+  return combinations.times(
+      combinations.combine(distribution=multi_worker_mirrored_strategies),
+      eager_mode_test_configuration())
+
+
+def multi_worker_mirrored_eager_and_graph():
+  return combinations.times(
+      combinations.combine(distribution=multi_worker_mirrored_strategies),
+      eager_mode_test_configuration() + graph_mode_test_configuration())
 
 
 class MaybeDistributionScope(object):
@@ -249,13 +254,11 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
 def fit_eval_and_predict(initial_weights,
                          input_fn,
                          model_fn,
-                         experimental_run_tf_function=None,
                          distribution=None,
                          is_stateful_model=False):
   """Generates results for fit/predict/evaluate for given model."""
   training_inputs, eval_inputs, predict_inputs = input_fn()
   model = model_fn(
-      experimental_run_tf_function=experimental_run_tf_function,
       initial_weights=initial_weights,
       distribution=distribution,
       input_shapes=get_shapes(training_inputs['x']))
@@ -301,7 +304,7 @@ def compare_results(results_with_ds,
     default_tolerance = 1e-2
     relaxed_tolerance = 1e-2
   elif partial_last_batch == 'train_and_eval':
-    # We relax the tolerence a lot in the partial last batch case as
+    # We relax the tolerance a lot in the partial last batch case as
     #   1. the examples in uneven batches may have different weights when
     #      applying the gradients in the distributed case.
     #   2. TF Keras and TF Keras DS have different ways to handle the case when
@@ -313,16 +316,14 @@ def compare_results(results_with_ds,
     default_tolerance = 1e-3
     relaxed_tolerance = 1e-3
   else:
-    default_tolerance = 1e-5
+    default_tolerance = 4e-5
     relaxed_tolerance = 1e-4
 
   def _get_compare_result_tolerance(key):
     """Returns tolerance to compare results."""
-    # TODO(b/119257215): For MirroredStrategy, weights are not exactly the same,
-    # so use larger tolerance for now. Predict should be related to weights.
-    if (isinstance(distribution,
-                   (mirrored_strategy.MirroredStrategy,
-                    distribute_lib._DefaultDistributionStrategy)) and  # pylint: disable=protected-access
+    # See b/119257215 for more details. DS test run on GPU could have larger
+    # variance then test on CPU.
+    if (test_util.is_gpu_available() and
         key.startswith(('weights_1', 'weights_2', 'predict_result'))):
       return relaxed_tolerance
 
@@ -386,7 +387,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
   def set_up_test_config(self,
                          use_numpy=False,
                          use_validation_data=False,
-                         with_batch_norm=False):
+                         with_batch_norm=None):
     self.use_numpy = use_numpy
     self.use_validation_data = use_validation_data
     self.with_batch_norm = with_batch_norm
@@ -414,11 +415,11 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     We only provide a default implementation of this method here. If you need
     more customized way of providing input to your model, overwrite this method.
 
-    Arguments:
+    Args:
       **kwargs: key word arguments about how to create the input dictionaries
 
     Returns:
-      Three dictionaries representing the input for fit(), evalutate() and
+      Three dictionaries representing the input for fit(), evaluate() and
       predict()
     """
 
@@ -426,7 +427,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
 
   def get_model(self,
                 distribution=None,
-                experimental_run_tf_function=None,
                 input_shapes=None):
     raise NotImplementedError
 
@@ -434,8 +434,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                            distribution,
                            use_numpy,
                            use_validation_data,
-                           experimental_run_tf_function=None,
-                           with_batch_norm=False,
+                           with_batch_norm=None,
                            is_stateful_model=False,
                            partial_last_batch=None,
                            training_epochs=2):
@@ -457,7 +456,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
       # This is used to initialize the model for both the distribution and
       # non-distribution run.
       model = self.get_model(
-          experimental_run_tf_function=experimental_run_tf_function,
           input_shapes=get_shapes(x_train))
       initial_weights = model.get_weights()
 
@@ -489,21 +487,20 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           initial_weights,
           input_fn=ds_input_fn,
           model_fn=self.get_model,
-          experimental_run_tf_function=experimental_run_tf_function,
           distribution=distribution,
           is_stateful_model=is_stateful_model)
       results_without_ds = fit_eval_and_predict(
           initial_weights,
           input_fn=nods_input_fn,
           model_fn=self.get_model,
-          experimental_run_tf_function=experimental_run_tf_function,
           distribution=None,
           is_stateful_model=is_stateful_model)
 
       # First, special case, for multi-replica distributed training, batch
       # norm is not aggregated globally. So it is expected to have different
       # weights.
-      if (self.with_batch_norm and distribution.num_replicas_in_sync > 1):
+      if (self.with_batch_norm == 'regular' and
+          distribution.num_replicas_in_sync > 1):
         with self.assertRaises(AssertionError):
           compare_results(
               results_with_ds,
@@ -525,11 +522,11 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     We only provide a default implementation of this method here. If you need
     more customized way of providing input to your model, overwrite this method.
 
-    Arguments:
+    Args:
       **kwargs: key word arguments about how to create the input dictionaries
 
     Returns:
-      Three dictionaries representing the input for fit(), evalutate() and
+      Three dictionaries representing the input for fit(), evaluate() and
       predict()
     """
 
@@ -537,14 +534,12 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     return training_input, None, None
 
   def run_dynamic_lr_test(self,
-                          distribution,
-                          experimental_run_tf_function=None):
+                          distribution):
     with self.cached_session():
       self.set_up_test_config()
 
       x_train, y_train, _ = self.get_data()
       model = self.get_model(
-          experimental_run_tf_function=experimental_run_tf_function,
           input_shapes=get_shapes(x_train))
       initial_weights = model.get_weights()
       update_freq = None
@@ -586,13 +581,11 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           initial_weights,
           input_fn=ds_input_fn,
           model_fn=self.get_model,
-          experimental_run_tf_function=experimental_run_tf_function,
           distribution=distribution)
       results_without_ds = fit_eval_and_predict(
           initial_weights,
           input_fn=nods_input_fn,
           model_fn=self.get_model,
-          experimental_run_tf_function=experimental_run_tf_function,
           distribution=None)
       compare_results(
           results_with_ds, results_without_ds, distribution, testcase=self)

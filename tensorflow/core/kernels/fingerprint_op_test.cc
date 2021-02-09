@@ -61,6 +61,15 @@ class FingerprintOpTest : public OpsTestBase {
   Tensor method_;
 };
 
+TEST_F(FingerprintOpTest, Empty) {
+  Tensor tensor(DT_UINT8, {0});
+
+  TF_ASSERT_OK(MakeFingerprintOp(&tensor));
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_EQ(GetOutput(0)->shape(), (TensorShape{0, 8}));
+  EXPECT_EQ(GetOutput(0)->tensor_data(), "");
+}
+
 // This test detects changes in fingerprint method.
 TEST_F(FingerprintOpTest, GoldenValue) {
   Tensor tensor(DT_UINT8, {1, 3, 4, 5, 6, 7});

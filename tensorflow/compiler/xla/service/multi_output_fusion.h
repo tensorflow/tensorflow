@@ -136,9 +136,34 @@ class MultiOutputFusion : public HloModulePass {
     HloInstruction* instr1;
     HloInstruction* instr2;
     int64 score;
-    ToBeFused(HloInstruction* instr1, HloInstruction* instr2, int64 score)
-        : instr1(instr1), instr2(instr2), score(score) {}
-    bool operator<(const ToBeFused& rhs) const { return score < rhs.score; }
+    int64 timestamp;
+    ToBeFused(HloInstruction* instr1, HloInstruction* instr2, int64 score,
+              int64 timestamp)
+        : instr1(instr1), instr2(instr2), score(score), timestamp(timestamp) {}
+    bool operator<(const ToBeFused& rhs) const {
+      return std::pair<int64, int64>(score, timestamp) <
+             std::pair<int64, int64>(rhs.score, rhs.timestamp);
+    }
+  };
+
+  // Stable priority queue where each insertion has a timestamp for
+  // deterministic popping.
+  class WorkList {
+   public:
+    bool empty() { return worklist_.empty(); }
+    ToBeFused pop() {
+      ToBeFused tmp = worklist_.top();
+      worklist_.pop();
+      return tmp;
+    }
+    template <class... Args>
+    void emplace(Args&&... args) {
+      worklist_.emplace(std::forward<Args>(args)..., timestamp_++);
+    }
+
+   private:
+    std::priority_queue<ToBeFused> worklist_;
+    int64 timestamp_ = 0;
   };
 
   // Update the internal data structures before instr1 and instr2 are fused into
@@ -169,7 +194,7 @@ class MultiOutputFusion : public HloModulePass {
   }
 
   std::vector<FusionCandidate> candidates_;
-  std::priority_queue<ToBeFused> worklist_;
+  WorkList worklist_;
 
   // A map that maps an instruction to the index_.
   absl::flat_hash_map<HloInstruction*, int> candidates_index_;

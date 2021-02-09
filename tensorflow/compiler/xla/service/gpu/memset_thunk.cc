@@ -25,7 +25,7 @@ Status MemzeroThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   params.stream->ThenMemZero(&dest_data, dest_data.size());
   return Status::OK();
 }
@@ -34,7 +34,7 @@ Status Memset32BitValueThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   params.stream->ThenMemset32(&dest_data, value_, dest_data.size());
   return Status::OK();
 }

@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "IsotonicRegression"
+  visibility: HIDDEN
+  in_arg {
+    name: "input"
+    description: <<END
+A (batch_size, dim)-tensor holding a batch of inputs.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A (batch_size, dim)-tensor holding the per-batch element solutions.
+END
+  }
+    out_arg {
+    name: "segments"
+    description: <<END
+An int32 (batch_size, dim)-tensor with the segments.
+END
+  }
+  attr { name: "output_dtype"  description: "Dtype of output." }
+  summary: "Solves a batch of isotonic regression problems."
+}

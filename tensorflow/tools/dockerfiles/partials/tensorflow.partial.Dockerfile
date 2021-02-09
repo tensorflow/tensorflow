@@ -7,4 +7,4 @@
 # Installs the latest version by default.
 ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
-RUN ${PIP} install ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
+RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}

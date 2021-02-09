@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -68,9 +68,9 @@ bool SingleOpModel::PopulateTensor(int index, std::vector<float>&& data) {
   return true;
 }
 
-Status SingleOpModel::Invoke(const CompilationOptions& compile_options,
-                             const RuntimeOptions& runtime_options,
-                             const NodeShader& shader) {
+absl::Status SingleOpModel::Invoke(const CompilationOptions& compile_options,
+                                   const RuntimeOptions& runtime_options,
+                                   const NodeShader& shader) {
   std::unique_ptr<EglEnvironment> env;
   RETURN_IF_ERROR(EglEnvironment::NewEglEnvironment(&env));
 
@@ -78,7 +78,7 @@ Status SingleOpModel::Invoke(const CompilationOptions& compile_options,
 
   // Create buffers for input tensors.
   {
-    std::unordered_map<int, uint32_t> tensor_to_id;
+    absl::flat_hash_map<int, uint32_t> tensor_to_id;
     for (const auto* input : graph_.inputs()) {
       tensor_to_id[input->tensor.ref] = input->id;
     }
@@ -101,9 +101,9 @@ Status SingleOpModel::Invoke(const CompilationOptions& compile_options,
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
   std::unique_ptr<CompiledModel> compiled_model;
-  RETURN_IF_ERROR(Compile(
-      compile_options, graph_, /*tflite_graph_io=*/std::unordered_set<int>(),
-      shader, *NewDefaultWorkgroupsCalculator(gpu_info), &compiled_model));
+  RETURN_IF_ERROR(Compile(compile_options, graph_, /*tflite_graph_io=*/{},
+                          shader, *NewDefaultWorkgroupsCalculator(gpu_info),
+                          &compiled_model));
 
   // Get inference context.
   auto command_queue = NewCommandQueue(gpu_info);
@@ -125,10 +125,10 @@ Status SingleOpModel::Invoke(const CompilationOptions& compile_options,
         CopyFromPHWC4Buffer(*objects.FindBuffer(output->id), &tensor));
     outputs_.push_back(std::move(tensor));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SingleOpModel::Invoke(const NodeShader& shader) {
+absl::Status SingleOpModel::Invoke(const NodeShader& shader) {
   return Invoke(CompilationOptions(), RuntimeOptions(), shader);
 }
 

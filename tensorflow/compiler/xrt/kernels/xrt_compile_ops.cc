@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
+#include "tensorflow/compiler/xrt/xrt_metrics.h"
 #include "tensorflow/compiler/xrt/xrt_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/monitoring/timed.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/types.h"
@@ -48,6 +50,46 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+Status GenerateXlaDeviceAssignment(
+    const xrt::DeviceAssignment& xrt_device_assignment, int num_replicas,
+    int num_cores_per_replica, xla::DeviceAssignment* device_assignment) {
+  if (num_cores_per_replica !=
+      xrt_device_assignment.computation_devices_size()) {
+    return errors::InvalidArgument(
+        "Device assignment does not have the correct number of "
+        "computation_devices: num_cores_per_replica=",
+        num_cores_per_replica, " computation_devices=",
+        xrt_device_assignment.computation_devices_size());
+  }
+  for (int64 c = 0; c < xrt_device_assignment.computation_devices_size(); ++c) {
+    const auto& computation_devices =
+        xrt_device_assignment.computation_devices(c);
+    if (num_replicas != computation_devices.replica_devices_size()) {
+      return errors::InvalidArgument(
+          "Device assignment does not have the correct number of "
+          "replica_device_ids: num_replicas=",
+          num_replicas,
+          " replica_devices=", computation_devices.replica_devices_size());
+    }
+    for (int64 r = 0; r < computation_devices.replica_devices_size(); ++r) {
+      const auto& coords = computation_devices.replica_devices(r);
+      if (coords.value_size() != 4) {
+        return errors::InvalidArgument(
+            "Device assignment mesh coordinates must have 4 entries, got ",
+            coords.value_size());
+      }
+      for (int n = 0; n < 3; ++n) {
+        if (coords.value(n) != 0) {
+          return errors::InvalidArgument("Mesh coordinate at index ", n,
+                                         " must be 0, got ", coords.value(n));
+        }
+      }
+      (*device_assignment)(r, c) = coords.value(3);
+    }
+  }
+  return Status::OK();
+}
 
 class XRTCompileOp : public OpKernel {
  public:
@@ -81,14 +123,13 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
                              const xrt::XLAComputation& computation_proto,
                              std::unique_ptr<xla::LocalExecutable>* program) {
   const xrt::XLAComputationConfig& config = computation_proto.config();
+  // Sanity checks for options not yet supported.
+  int num_cores_per_replica = std::max<int>(config.num_cores_per_replica(), 1);
+  TF_RET_CHECK(num_cores_per_replica == 1);
+  TF_RET_CHECK(config.per_core_program_shape_size() == 0);
 
   // The default config value is 0; treat it as 1 for convenience.
   int num_replicas = config.num_replicas() ? config.num_replicas() : 1;
-  TF_RET_CHECK(num_replicas == 1);
-  int num_cores_per_replica =
-      config.num_cores_per_replica() ? config.num_cores_per_replica() : 1;
-  TF_RET_CHECK(num_cores_per_replica == 1);
-  TF_RET_CHECK(config.per_core_program_shape_size() == 0);
 
   // We are guaranteed that the underlying device object won't be deleted out
   // from under us, while the ScopedRef is live.
@@ -117,26 +158,35 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
     argument_layout_ptrs[i] = &argument_layouts[i];
   }
   xla::ExecutableBuildOptions build_options;
-  build_options.set_device_ordinal(client->default_device_ordinal());
+  build_options.set_device_ordinal(device_ref.device_ordinal());
+  build_options.set_num_replicas(num_replicas);
   build_options.set_result_layout(xla::Shape(config.program_shape().result()));
   build_options.set_device_allocator(device_ref.backend()->memory_allocator());
   if (config.has_debug_options()) {
     *build_options.mutable_debug_options() =
         BuildXlaDebugOptions(config.debug_options());
   }
+  if (config.has_device_assignment()) {
+    xla::DeviceAssignment device_assignment(num_replicas,
+                                            num_cores_per_replica);
+    TF_RETURN_IF_ERROR(
+        GenerateXlaDeviceAssignment(config.device_assignment(), num_replicas,
+                                    num_cores_per_replica, &device_assignment));
+    build_options.set_device_assignment(device_assignment);
+  }
 
   VLOG(1) << "Building executable";
-  auto compile_result =
-      client->Compile(computation, argument_layout_ptrs, build_options);
-  if (!compile_result.ok()) {
-    return compile_result.status();
-  }
-  *program = std::move(compile_result.ValueOrDie());
+  TF_ASSIGN_OR_RETURN(
+      auto executables,
+      client->Compile(computation, argument_layout_ptrs, build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  *program = std::move(executables[0]);
   return Status::OK();
 }
 
 void XRTCompileOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XRTCompileOp::Compute";
+  auto timed = monitoring::MakeTimed(xrt_metrics::GetCompileCell());
 
   ResourceMgr* rm;
   OP_REQUIRES_OK(ctx, XRTGenericDeviceAccessor::GetResourceManager(ctx, &rm));
@@ -146,17 +196,18 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
               errors::Internal("computation input should be a string scalar"));
 
   xrt::XLAComputation computation_proto;
-  OP_REQUIRES(
-      ctx,
-      computation_proto.ParseFromString(computation_input.scalar<tstring>()()),
-      errors::InvalidArgument(
-          "Unable to parse computation input to XLAComputation"));
+  OP_REQUIRES(ctx,
+              ParseFromTString(computation_input.scalar<tstring>()(),
+                               &computation_proto),
+              errors::InvalidArgument(
+                  "Unable to parse computation input to XLAComputation"));
 
   string key;
   OP_REQUIRES_OK(ctx, CompilationCacheKey(computation_proto, &key));
 
   // Process-wide cache of XLA executables.
-  auto cache_or = GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0);
+  auto cache_or = XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
+      ctx, /*max_number_of_entries=*/0);
   OP_REQUIRES_OK(ctx, cache_or.status());
   auto cache = cache_or.ConsumeValueOrDie();
 
@@ -207,16 +258,13 @@ XRTReleaseCompilationRefOp::~XRTReleaseCompilationRefOp() = default;
 
 void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XRTReleaseCompilationRefOp::Compute";
-
-  ResourceMgr* rm;
-  OP_REQUIRES_OK(ctx, XRTGenericDeviceAccessor::GetResourceManager(ctx, &rm));
+  auto timed = monitoring::MakeTimed(xrt_metrics::GetReleaseCompilationCell());
 
   // Process-wide cache of XLA executables.
-  XRTCompilationCache* cache;
-  OP_REQUIRES_OK(ctx, rm->Lookup<XRTCompilationCache>(
-                          rm->default_container(),
-                          kXRTCompilationCacheResourceName, &cache));
-  core::ScopedUnref cache_unref(cache);
+  auto cache_or = XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
+      ctx, /*max_number_of_entries=*/0);
+  OP_REQUIRES_OK(ctx, cache_or.status());
+  auto cache = cache_or.ConsumeValueOrDie();
 
   const Tensor& keys_tensor = ctx->input(0);
   auto flat_keys = keys_tensor.flat<int64>();

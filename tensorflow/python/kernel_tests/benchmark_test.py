@@ -96,7 +96,8 @@ class BenchmarkTest(test.TestCase):
     self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
 
     # Run other benchmarks, but this wont run the one we care about
-    benchmark._run_benchmarks("unrelated")
+    with self.assertRaises(ValueError):
+      benchmark._run_benchmarks("unrelated")
 
     # Validate that SomeBenchmark has not run yet
     self.assertFalse(_ran_somebenchmark_1[0])
@@ -184,7 +185,7 @@ class BenchmarkTest(test.TestCase):
       def read_benchmark_entry(f):
         s = gfile.GFile(f, "rb").read()
         entries = test_log_pb2.BenchmarkEntries.FromString(s)
-        self.assertEquals(1, len(entries.entry))
+        self.assertEqual(1, len(entries.entry))
         return entries.entry[0]
 
       read_benchmark_1 = read_benchmark_entry(expected_output_file)
@@ -194,8 +195,8 @@ class BenchmarkTest(test.TestCase):
       self.assertProtoEquals(expected_2, read_benchmark_2)
 
       read_benchmark_3 = read_benchmark_entry(expected_output_file_3)
-      self.assertEquals(expected_3.name, read_benchmark_3.name)
-      self.assertEquals(expected_3.iters, read_benchmark_3.iters)
+      self.assertEqual(expected_3.name, read_benchmark_3.name)
+      self.assertEqual(expected_3.iters, read_benchmark_3.iters)
       self.assertGreater(read_benchmark_3.wall_time, 0)
 
       # Trace is not stored in benchmark entry. Instead we get it from

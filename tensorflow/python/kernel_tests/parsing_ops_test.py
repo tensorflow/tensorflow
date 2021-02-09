@@ -2278,13 +2278,13 @@ class ParseSequenceExampleTest(test.TestCase):
             serialized=ops.convert_to_tensor(original.SerializeToString()),
             sequence_features=sequence_features),
         expected_err=(
-            (errors_impl.OpError, ValueError),
+            (errors_impl.InvalidArgumentError, ValueError),
             # Message for batch=true:
             "Feature b: values and partitions are not aligned"
             # Message for batch=false in graph mode:
             "|.* do not form a valid RaggedTensor"
             # Message for batch=false in eager mode:
-            "|Dimensions 2 and 1 are not compatible"))
+            "|Incompatible shapes"))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -2437,8 +2437,8 @@ class DecodeJSONExampleTest(test.TestCase):
   def testInvalidSyntax(self):
     json_tensor = constant_op.constant(["{]"])
     if context.executing_eagerly():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Error while parsing JSON"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Error while parsing JSON"):
         parsing_ops.decode_json_example(json_tensor)
     else:
       binary_tensor = parsing_ops.decode_json_example(json_tensor)

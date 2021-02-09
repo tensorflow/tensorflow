@@ -19,10 +19,12 @@ limitations under the License.
 
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/test.h"
@@ -76,7 +78,7 @@ static const char kTestFlagString[] =
 // Test that the environment variable is parsed correctly.
 TEST(ParseFlagsFromEnv, Basic) {
   // Prepare environment.
-  setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
+  tensorflow::setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in environment variable)");
 }
 
@@ -103,7 +105,7 @@ TEST(ParseFlagsFromEnv, File) {
   CHECK_EQ(ferror(fp), 0) << "writes failed to " << tmp_file;
   fclose(fp);
   // Prepare environment.
-  setenv("TF_XLA_FLAGS", tmp_file.c_str(), true /*overwrite*/);
+  tensorflow::setenv("TF_XLA_FLAGS", tmp_file.c_str(), true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in file)");
   unlink(tmp_file.c_str());
 }
@@ -125,8 +127,11 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
       {"--int_flag=3", "--int_flag=2", "2\n"},  // flag beats environment
   };
   for (int i = 0; i != TF_ARRAYSIZE(test); i++) {
-    if (test[i].env != nullptr) {
-      setenv("TF_XLA_FLAGS", test[i].env, true /*overwrite*/);
+    if (test[i].env == nullptr) {
+      // Might be set from previous tests.
+      tensorflow::unsetenv("TF_XLA_FLAGS");
+    } else {
+      tensorflow::setenv("TF_XLA_FLAGS", test[i].env, /*overwrite=*/true);
     }
     tensorflow::SubProcess child;
     std::vector<string> argv;
@@ -137,10 +142,17 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
     }
     child.SetProgram(binary_name, argv);
     child.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
+    child.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
     CHECK(child.Start()) << "test " << i;
     string stdout_str;
-    int child_status = child.Communicate(nullptr, &stdout_str, nullptr);
-    CHECK_EQ(child_status, 0) << "test " << i;
+    string stderr_str;
+    int child_status = child.Communicate(nullptr, &stdout_str, &stderr_str);
+    CHECK_EQ(child_status, 0) << "test " << i << "\nstdout\n"
+                              << stdout_str << "\nstderr\n"
+                              << stderr_str;
+    // On windows, we get CR characters. Remove them.
+    stdout_str.erase(std::remove(stdout_str.begin(), stdout_str.end(), '\r'),
+                     stdout_str.end());
     CHECK_EQ(stdout_str, test[i].expected_value) << "test " << i;
   }
 }

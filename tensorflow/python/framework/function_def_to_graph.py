@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Utlity to convert FunctionDef to GraphDef and Graph."""
+"""Utility to convert FunctionDef to GraphDef and Graph."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import itertools
+
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
@@ -24,10 +27,12 @@ from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import versions
 from tensorflow.python.framework.func_graph import FuncGraph
+from tensorflow.python.ops import resource_variable_ops
 
 
 def function_def_to_graph(fdef, input_shapes=None):
@@ -84,6 +89,9 @@ def function_def_to_graph(fdef, input_shapes=None):
         func_graph.get_operation_by_name(fdef.control_ret[ret_name])
         for ret_name in fdef.signature.control_output
     ]
+
+    _set_handle_data(func_graph, fdef)
+
     for node in graph_def.node:
       output_shapes = node.attr.get("_output_shapes", None)
       if output_shapes is not None:
@@ -175,7 +183,9 @@ def function_def_to_graph_def(fdef, input_shapes=None):
     for k in arg_attrs:
       # Only copy internal attributes. Normal attributes for nodes cannot be
       # applied to these Placeholder nodes.
-      if k.startswith("_"):
+      if k == "_output_shapes":
+        node_def.attr["shape"].shape.CopyFrom(arg_attrs[k].list.shape[0])
+      elif k.startswith("_"):
         node_def.attr[k].CopyFrom(arg_attrs[k])
 
   # 2. Copy all body NodeDefs to the GraphDef.
@@ -262,3 +272,19 @@ def _get_num_args(arg_def, node_def):
     return 1
   else:
     raise ValueError("Invalid arg_def:\n\n{}".format(str(arg_def)))
+
+
+def _set_handle_data(func_graph, fdef):
+  """Adds handle data for resource type inputs and outputs."""
+  for tensor, arg_def in itertools.chain(
+      zip(func_graph.inputs, fdef.signature.input_arg),
+      zip(func_graph.outputs, fdef.signature.output_arg)):
+    if arg_def.handle_data:
+      shape_and_dtype = arg_def.handle_data[0]
+      handle_data = cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData()
+      handle_data.is_set = True
+      handle_data.shape_and_type.append(
+          cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
+              shape=shape_and_dtype.shape, dtype=shape_and_dtype.dtype))
+      resource_variable_ops._set_handle_shapes_and_types(  # pylint: disable=protected-access
+          tensor, handle_data, True)

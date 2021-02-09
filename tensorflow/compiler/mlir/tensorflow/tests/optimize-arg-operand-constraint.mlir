@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-optimize %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -tf-optimize %s | FileCheck %s
 
 // Check passing an argument into DefinedByConv2D constraint does not crash.
 

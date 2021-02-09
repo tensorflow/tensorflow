@@ -30,6 +30,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu
+from tensorflow.python.util.tf_export import tf_export
 
 _PINGING_MASTER_TIMEOUT_IN_MS = 5 * 60 * 1000  # 10 min
 _RETRY_TIMES = 12 * 24  # 1 day
@@ -39,15 +40,33 @@ _DEFAULT_JOB_NAME = 'tpu_worker'
 _DEFAULT_COORDINATOR_JOB_NAME = 'coordinator'
 _LOCAL_MASTERS = ('', 'local')
 
-# _TPUSystemMetadata is used by TPUEstimator to hold TPU configuration,
-# including num_cores and num_hosts.
-_TPUSystemMetadata = collections.namedtuple('_TPUSystemMetadata', [
-    'num_cores',
-    'num_hosts',
-    'num_of_cores_per_host',
-    'topology',
-    'devices',
-])
+
+@tf_export('tpu.experimental.TPUSystemMetadata')
+class TPUSystemMetadata(
+    collections.namedtuple('TPUSystemMetadata', [
+        'num_cores',
+        'num_hosts',
+        'num_of_cores_per_host',
+        'topology',
+        'devices',
+    ])):
+  """Describes some metadata about the TPU system.
+
+  Attributes:
+    num_cores: interger. Total number of TPU cores in the TPU system.
+    num_hosts: interger. Total number of hosts (TPU workers) in the TPU system.
+    num_of_cores_per_host: interger. Number of TPU cores per host (TPU worker).
+    topology: an instance of `tf.tpu.experimental.Topology`, which describes the
+      physical topology of TPU system.
+    devices: a tuple of strings, which describes all the TPU devices in the
+      system.
+  """
+
+  def __new__(cls, num_cores, num_hosts, num_of_cores_per_host, topology,
+              devices):
+    return super(TPUSystemMetadata,
+                 cls).__new__(cls, num_cores, num_hosts, num_of_cores_per_host,
+                              topology, devices)
 
 
 def _query_tpu_system_metadata(master_address, cluster_def=None,
@@ -129,7 +148,7 @@ def _query_tpu_system_metadata(master_address, cluster_def=None,
             spec.device_index)
   devices = tuple(sorted(devices, key=_sort_key))
 
-  metadata = _TPUSystemMetadata(
+  metadata = TPUSystemMetadata(
       num_cores=tpu_core_count,
       num_hosts=len(device_dict),
       num_of_cores_per_host=num_of_cores_per_host,
@@ -177,12 +196,11 @@ def get_session_config_with_timeout(timeout_in_secs, cluster_def):
 
 
 def master_job(master, cluster_def):
-  """Returns the canonnical job name to use to place TPU computations on.
+  """Returns the canonical job name to use to place TPU computations on.
 
   Args:
     master: A `string` representing the TensorFlow master to use.
     cluster_def: A ClusterDef object describing the TPU cluster.
-
 
   Returns:
     A string containing the job name, or None if no job should be specified.

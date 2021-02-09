@@ -82,6 +82,11 @@ TEST(PadTest, PrependC) {
                  /*expected=*/{0, 1});
 }
 
+TEST(PadTest, PrependCx4) {
+  TestPrepending(/*prepend=*/HWC(0, 0, 4), /*output_shape=*/BHWC(1, 1, 1, 5),
+                 /*expected=*/{0, 0, 0, 0, 1});
+}
+
 TEST(PadTest, PrependHWC) {
   TestPrepending(/*prepend=*/HWC(1, 1, 1), /*output_shape=*/BHWC(1, 2, 2, 2),
                  /*expected=*/{0, 0, 0, 0, 0, 0, 0, 1});
@@ -114,7 +119,7 @@ TEST(PadTest, PrependHWCAppendHWC) {
                                  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
 }
 
-TEST(MirrorPadTest, Smoke) {
+TEST(MirrorPadWidthTest, Smoke) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -128,6 +133,29 @@ TEST(MirrorPadTest, Smoke) {
   PadAttributes attr;
   attr.prepended = BHWC(0, 0, 2, 0);
   attr.appended = BHWC(0, 0, 2, 0);
+  attr.type = PaddingContentType::REFLECT;
+
+  SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});
+  ASSERT_TRUE(model.PopulateTensor(0, {1.0, 2.0, 3.0}));
+  ASSERT_OK(model.Invoke(*NewPadNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {3.0, 2.0, 1.0, 2.0, 3.0, 2.0, 1.0}));
+}
+
+TEST(MirrorPadChannelsTest, Smoke) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 1, 3);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 1, 1, 7);
+
+  PadAttributes attr;
+  attr.prepended = BHWC(0, 0, 0, 2);
+  attr.appended = BHWC(0, 0, 0, 2);
   attr.type = PaddingContentType::REFLECT;
 
   SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});

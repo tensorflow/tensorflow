@@ -86,7 +86,7 @@ namespace toco {
   // Get original weight tensor and decompose 1 tensor to 8 sub tensors.
   Array& kernel =
       model->GetArray(curr_op->inputs[LstmCellOperator::WEIGHTS_INPUT]);
-  const string base_name(FindLongestCommonPrefix(
+  const std::string base_name(FindLongestCommonPrefix(
       curr_op->outputs[LstmCellOperator::ACTIV_OUTPUT],
       curr_op->outputs[LstmCellOperator::STATE_OUTPUT]));
 

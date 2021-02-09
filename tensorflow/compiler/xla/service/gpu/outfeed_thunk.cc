@@ -14,86 +14,89 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
+
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
 
-OutfeedThunk::OutfeedThunk(ShapeTree<BufferAllocation::Slice> outfeed_slices,
-                           const HloInstruction* hlo_instruction)
-    : Thunk(Kind::kOutfeed, hlo_instruction),
-      outfeed_slices_(std::move(outfeed_slices)) {}
+OutfeedThunk::OutfeedThunk(ThunkInfo thunk_info,
+                           std::vector<ShapedSlice> source_slices)
+    : Thunk(Kind::kOutfeed, thunk_info),
+      source_slices_(std::move(source_slices)) {}
 
 Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
   auto& buffer_allocations = *params.buffer_allocations;
 
-  VLOG(2) << "Outfeeding from GPU: " << hlo_instruction()->ToString();
+  VLOG(2) << "Outfeeding from GPU";
 
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager();
-  ShapeTree<std::unique_ptr<OutfeedBuffer>>* outfeed_buffers =
+  ShapeTree<std::unique_ptr<OutfeedBuffer>>* output_buffers =
       outfeed_manager->BlockingGetNextDestination();
 
-  // Nothing to be done for empty tuples.
-  if (ShapeUtil::IsEmptyTuple(hlo_instruction()->operand(0)->shape())) {
+  // Nothing to be done for an outfeed with no inputs.
+  // Note: Cannot do this before `BlockingGetNextDestination` above to dequeue
+  // an entry from the outfeed manager.
+  if (source_slices_.empty()) {
     return Status::OK();
   }
-  CHECK(ShapeUtil::Compatible(hlo_instruction()->operand(0)->shape(),
-                              outfeed_buffers->shape()));
 
-  TF_RETURN_IF_ERROR(outfeed_buffers->ForEachMutableElementWithStatus(
-      [&](const ShapeIndex& index, std::unique_ptr<OutfeedBuffer>* buffer) {
-        if (!*buffer) {  // Tuple pointers.
-          return Status::OK();
-        }
+  const int64 leaf_count = output_buffers->leaf_count();
+  TF_RET_CHECK(source_slices_.size() == leaf_count)
+      << "Mismatch between number of outfeed inputs (" << source_slices_.size()
+      << ") and outputs (" << leaf_count << ")";
 
-        BufferAllocation::Slice slice = outfeed_slices_.element(index);
-        se::DeviceMemoryBase data_address;
-        if (slice.allocation()) {
-          // If we have a static allocation, read it from there. This avoids
-          // synchronizing the host and device just to read a pointer.
-          data_address = buffer_allocations.GetDeviceAddress(slice);
-        } else {
-          // Otherwise we have to read the tuple pointer first.
-          CHECK(!index.empty());
-          // Copy the parent buffer to the host.
-          BufferAllocation::Slice tuple_slice =
-              outfeed_slices_.element(ShapeIndexView(index).ConsumeFront());
-          if (!tuple_slice.allocation()) {
-            return Unimplemented(
-                "Nested dynamic tuples are not supported on GPU");
-          }
-          se::DeviceMemoryBase tuple_address =
-              buffer_allocations.GetDeviceAddress(tuple_slice);
-          CHECK(tuple_slice.size() % sizeof(void*) == 0)
-              << "Tuple size must be a multiple of pointer size";
-          std::vector<void*> tuple_element_buffer_addresses(tuple_slice.size() /
-                                                            sizeof(void*));
-          stream.ThenMemcpy(tuple_element_buffer_addresses.data(),
-                            tuple_address, tuple_slice.size());
-          TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
-          // The data address is specified by the element of the tuple pointer
-          // buffer.
-          data_address =
-              se::DeviceMemoryBase(tuple_element_buffer_addresses[index.back()],
-                                   (*buffer)->length());
-        }
+  auto output_leaf_it = output_buffers->leaf_begin();
+  for (int64 index = 0; index < leaf_count; ++index) {
+    // Assert that the shapes are compatible.
+    const ShapeIndex& shape_index = output_leaf_it->first;
+    std::unique_ptr<OutfeedBuffer>& buffer = output_leaf_it->second;
 
-        // TODO(b/111309141): Run this on a separate stream so it doesn't block
-        // the GPU from doing work during the transfer. This could be handled by
-        // making StreamAssignment do something intelligent with outfeed thunks.
-        stream
-            .ThenMemcpy((*buffer)->destination()->untyped_data(), data_address,
-                        (*buffer)->length())
-            .ThenDoHostCallback([buffer]() { (*buffer)->Done(); });
-        return Status::OK();
-      }));
+    // NOTE: This code needs deal with the `output_buffers` object getting
+    // deleted when its executing. Specifically, objects in the outfeed queue
+    // are pointers to instance of stack allocated objects in
+    // `GpuTransferManager::TransferLiteralFromOutfeed`. When all leaf node
+    // buffers are notified via "buffer->Done()" below in the stream host
+    // callback, `TransferLiteralFromOutfeed` deletes this stack allocated
+    // object when it returns. This means that its possible that during the last
+    // iteration, after the call to "buffer->Done()" is scheduled onto the
+    // stream, the `output_buffers` object might get deleted, so we should avoid
+    // accessing the object after that.
+    //
+    // To achieve that, increment the leaf iterator here before the last "Done"
+    // is enqueued, instead of in the loop increment, which would be after the
+    // "Done" is scheduled.
+    ++output_leaf_it;
+    const Shape& output_shape =
+        ShapeUtil::GetSubshape(output_buffers->shape(), shape_index);
+    TF_RET_CHECK(ShapeUtil::Equal(source_slices_[index].shape, output_shape))
+        << "Mismatch between outfeed output buffer shape "
+        << ShapeUtil::HumanStringWithLayout(output_shape)
+        << " and outfeed source buffer shape "
+        << ShapeUtil::HumanStringWithLayout(source_slices_[index].shape);
+
+    BufferAllocation::Slice source_slice = source_slices_[index].slice;
+    if (!source_slice.allocation())
+      return InternalError("outfeed source missing buffer allocation");
+    se::DeviceMemoryBase data_address =
+        buffer_allocations.GetDeviceAddress(source_slice);
+
+    // TODO(b/111309141): Run this on a separate stream so it doesn't block
+    // the GPU from doing work during the transfer. This could be handled by
+    // making StreamAssignment do something intelligent with outfeed thunks.
+    stream
+        .ThenMemcpy(buffer->destination()->untyped_data(), data_address,
+                    buffer->length())
+        .ThenDoHostCallback([&buffer]() { buffer->Done(); });
+  }
 
   Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {

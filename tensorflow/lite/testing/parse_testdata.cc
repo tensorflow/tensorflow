@@ -63,7 +63,7 @@ std::vector<std::string> ParseLine(const std::string& line) {
 
 }  // namespace
 
-// Given a `filename`, produce a vector of Examples corresopnding
+// Given a `filename`, produce a vector of Examples corresponding
 // to test cases that can be applied to a tflite model.
 TfLiteStatus ParseExamples(const char* filename,
                            std::vector<Example>* examples) {

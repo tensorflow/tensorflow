@@ -48,20 +48,20 @@ class Condition;
 // constructor interface.  This type is as fast as mutex, but is also a shared
 // lock, and provides conditional critical sections (via Await()), as an
 // alternative to condition variables.
-class LOCKABLE mutex {
+class TF_LOCKABLE mutex {
  public:
   mutex();
   // The default implementation of the underlying mutex is safe to use after
   // the linker initialization to zero.
   explicit mutex(LinkerInitialized x);
 
-  void lock() EXCLUSIVE_LOCK_FUNCTION();
-  bool try_lock() EXCLUSIVE_TRYLOCK_FUNCTION(true);
-  void unlock() UNLOCK_FUNCTION();
+  void lock() TF_EXCLUSIVE_LOCK_FUNCTION();
+  bool try_lock() TF_EXCLUSIVE_TRYLOCK_FUNCTION(true);
+  void unlock() TF_UNLOCK_FUNCTION();
 
-  void lock_shared() SHARED_LOCK_FUNCTION();
-  bool try_lock_shared() SHARED_TRYLOCK_FUNCTION(true);
-  void unlock_shared() UNLOCK_FUNCTION();
+  void lock_shared() TF_SHARED_LOCK_FUNCTION();
+  bool try_lock_shared() TF_SHARED_TRYLOCK_FUNCTION(true);
+  void unlock_shared() TF_UNLOCK_FUNCTION();
 
   // -------
   // Conditional critical sections.
@@ -142,15 +142,16 @@ class Condition {
 };
 
 // Mimic a subset of the std::unique_lock<tensorflow::mutex> functionality.
-class SCOPED_LOCKABLE mutex_lock {
+class TF_SCOPED_LOCKABLE mutex_lock {
  public:
   typedef ::tensorflow::mutex mutex_type;
 
-  explicit mutex_lock(mutex_type& mu) EXCLUSIVE_LOCK_FUNCTION(mu) : mu_(&mu) {
+  explicit mutex_lock(mutex_type& mu) TF_EXCLUSIVE_LOCK_FUNCTION(mu)
+      : mu_(&mu) {
     mu_->lock();
   }
 
-  mutex_lock(mutex_type& mu, std::try_to_lock_t) EXCLUSIVE_LOCK_FUNCTION(mu)
+  mutex_lock(mutex_type& mu, std::try_to_lock_t) TF_EXCLUSIVE_LOCK_FUNCTION(mu)
       : mu_(&mu) {
     if (!mu.try_lock()) {
       mu_ = nullptr;
@@ -159,11 +160,11 @@ class SCOPED_LOCKABLE mutex_lock {
 
   // Manually nulls out the source to prevent double-free.
   // (std::move does not null the source pointer by default.)
-  mutex_lock(mutex_lock&& ml) noexcept EXCLUSIVE_LOCK_FUNCTION(ml.mu_)
+  mutex_lock(mutex_lock&& ml) noexcept TF_EXCLUSIVE_LOCK_FUNCTION(ml.mu_)
       : mu_(ml.mu_) {
     ml.mu_ = nullptr;
   }
-  ~mutex_lock() UNLOCK_FUNCTION() {
+  ~mutex_lock() TF_UNLOCK_FUNCTION() {
     if (mu_ != nullptr) {
       mu_->unlock();
     }
@@ -180,16 +181,17 @@ class SCOPED_LOCKABLE mutex_lock {
 #define mutex_lock(x) static_assert(0, "mutex_lock_decl_missing_var_name");
 
 // Mimic a subset of the std::shared_lock<tensorflow::mutex> functionality.
-// Name chosen to minimise conflicts with the tf_shared_lock macro, below.
-class SCOPED_LOCKABLE tf_shared_lock {
+// Name chosen to minimize conflicts with the tf_shared_lock macro, below.
+class TF_SCOPED_LOCKABLE tf_shared_lock {
  public:
   typedef ::tensorflow::mutex mutex_type;
 
-  explicit tf_shared_lock(mutex_type& mu) SHARED_LOCK_FUNCTION(mu) : mu_(&mu) {
+  explicit tf_shared_lock(mutex_type& mu) TF_SHARED_LOCK_FUNCTION(mu)
+      : mu_(&mu) {
     mu_->lock_shared();
   }
 
-  tf_shared_lock(mutex_type& mu, std::try_to_lock_t) SHARED_LOCK_FUNCTION(mu)
+  tf_shared_lock(mutex_type& mu, std::try_to_lock_t) TF_SHARED_LOCK_FUNCTION(mu)
       : mu_(&mu) {
     if (!mu.try_lock_shared()) {
       mu_ = nullptr;
@@ -198,11 +200,11 @@ class SCOPED_LOCKABLE tf_shared_lock {
 
   // Manually nulls out the source to prevent double-free.
   // (std::move does not null the source pointer by default.)
-  tf_shared_lock(tf_shared_lock&& ml) noexcept SHARED_LOCK_FUNCTION(ml.mu_)
+  tf_shared_lock(tf_shared_lock&& ml) noexcept TF_SHARED_LOCK_FUNCTION(ml.mu_)
       : mu_(ml.mu_) {
     ml.mu_ = nullptr;
   }
-  ~tf_shared_lock() UNLOCK_FUNCTION() {
+  ~tf_shared_lock() TF_UNLOCK_FUNCTION() {
     if (mu_ != nullptr) {
       mu_->unlock_shared();
     }

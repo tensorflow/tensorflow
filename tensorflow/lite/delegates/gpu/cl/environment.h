@@ -19,12 +19,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -55,9 +55,13 @@ class Environment {
   std::vector<CalculationsPrecision> GetSupportedPrecisions() const;
   bool IsSupported(CalculationsPrecision precision) const;
   std::vector<TensorStorageType> GetSupportedStorages() const;
+  // returns storage types that support zero clamping when reading OOB in HW
+  // (Height/Width) dimensions.
+  std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
+      const;
   bool IsSupported(TensorStorageType storage_type) const;
 
-  Status Init();
+  absl::Status Init();
 
   void SetHighPerformance() const;
   void SetDefaultPerformance() const;
@@ -71,9 +75,11 @@ class Environment {
   ProgramCache program_cache_;
 };
 
-TensorStorageType GetFastestStorageType(const CLDevice& gpu);
+TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info);
+TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
+    const GpuInfo& gpu_info);
 
-Status CreateEnvironment(Environment* result);
+absl::Status CreateEnvironment(Environment* result);
 
 }  // namespace cl
 }  // namespace gpu

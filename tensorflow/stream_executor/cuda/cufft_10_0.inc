@@ -1,6 +1,7 @@
 // Auto-generated, do not edit.
 
 extern "C" {
+
 cufftResult CUFFTAPI cufftPlan1d(cufftHandle *plan, int nx, cufftType type,
                                  int batch) {
   using FuncPtr = cufftResult(CUFFTAPI *)(cufftHandle *, int, cufftType, int);

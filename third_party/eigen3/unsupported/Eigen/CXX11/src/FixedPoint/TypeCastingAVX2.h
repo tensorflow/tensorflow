@@ -13,7 +13,7 @@ struct type_casting_traits<QInt32, float> {
 
 template <>
 EIGEN_STRONG_INLINE Packet8f pcast<Packet8q32i>(const Packet8q32i& a) {
-  return _mm256_cvtepi32_ps(a.val);
+  return _mm256_cvtepi32_ps(a.m_val);
 }
 
 template <>
@@ -35,8 +35,8 @@ template <>
 EIGEN_STRONG_INLINE Packet32q8i
 pcast<Packet8q32i, Packet32q8i>(const Packet8q32i& a, const Packet8q32i& b,
                                 const Packet8q32i& c, const Packet8q32i& d) {
-  __m256i converted = _mm256_packs_epi16(_mm256_packs_epi32(a.val, b.val),
-                                         _mm256_packs_epi32(c.val, d.val));
+  __m256i converted = _mm256_packs_epi16(_mm256_packs_epi32(a.m_val, b.m_val),
+                                         _mm256_packs_epi32(c.m_val, d.m_val));
   // Since packs does not cross 128 bit lane boundaries,
   // we have to permute to properly order the final result.
   const __m256i permute_mask = _mm256_set_epi32(7, 3, 6, 2, 5, 1, 4, 0);
@@ -51,7 +51,7 @@ struct type_casting_traits<float, QInt8> {
 template <>
 EIGEN_STRONG_INLINE Packet32q8i
 pcast<Packet8f, Packet32q8i>(const Packet8f& a, const Packet8f& b,
-                                const Packet8f& c, const Packet8f& d) {
+                             const Packet8f& c, const Packet8f& d) {
   const __m256i a_conv = _mm256_cvtps_epi32(a);
   const __m256i b_conv = _mm256_cvtps_epi32(b);
   const __m256i c_conv = _mm256_cvtps_epi32(c);

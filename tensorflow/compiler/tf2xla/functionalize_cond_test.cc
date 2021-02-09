@@ -40,8 +40,8 @@ class FunctionalizeCondTest : public ::testing::Test {
     graph_.reset(new Graph(OpRegistry::Global()));
     flib_def_.reset(
         new FunctionLibraryDefinition(OpRegistry::Global(), fdef_lib_));
-    fc_.reset(new functionalize_cond::FunctionalizeCond(graph_.get(),
-                                                        flib_def_.get()));
+    fc_.reset(new functionalize_cond::FunctionalizeCond(
+        graph_.get(), flib_def_.get(), NodeFilter{}));
   }
 
   StateMap::CondId GetUniqueId(const StateMap::StateMap::CondState& state) {

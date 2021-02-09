@@ -131,8 +131,8 @@ SpatialMaxPooling(const Input& input, DenseIndex patchRows,
       .extract_image_patches(
           patchRows, patchCols, strideRows, strideCols, in_strideRows,
           in_strideCols, padding_type,
-          -Eigen::NumTraits<typename internal::remove_const<
-              typename internal::traits<Input>::Scalar>::type>::highest())
+          Eigen::NumTraits<typename internal::remove_const<
+              typename internal::traits<Input>::Scalar>::type>::lowest())
       .maximum(reduction_dims)
       .reshape(post_reduce_dims);
 }
@@ -277,11 +277,11 @@ struct AvgPoolMeanReducer {
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__) && \
     !defined(__HIPCC__)
   // We only support packet access for floats.
-  static const bool PacketAccess = internal::is_same<T, float>::value;
+  static constexpr bool PacketAccess = internal::is_same<T, float>::value;
 #else
   static const bool PacketAccess = false;
 #endif
-  static const bool IsStateful = true;
+  static constexpr bool IsStateful = true;
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE AvgPoolMeanReducer() : scalarCount_(0) {
     typedef typename packet_traits<T>::type Packet;

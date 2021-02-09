@@ -152,7 +152,7 @@ namespace toco {
       return ::tensorflow::Status::OK();
   }
 
-  const string& name = op.inputs[weights_index];
+  const std::string& name = op.inputs[weights_index];
   auto& array = model->GetArray(name);
   if (!array.buffer) {
     return ::tensorflow::Status::OK();
@@ -166,7 +166,7 @@ namespace toco {
   int index_of_previous_bad_value = 0;
   bool changed = false;
 
-  for (int i = 0; i < buffer_data.size(); i++) {
+  for (int i = 0, end = buffer_data.size(); i < end; i++) {
     if (buffer_data[i] == 0) {
       count_bad++;
       if (count_bad > 1) {

@@ -62,11 +62,13 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleDomain(HloInstruction* domain) override;
   Status HandleCopy(HloInstruction* copy) override;
+  Status HandleCopyStart(HloInstruction* copy_start) override;
   Status HandleCopyDone(HloInstruction* copy_done) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
+  Status HandleCustomCall(HloInstruction* custom_call) override;
 
   // A map from the buffer ID to the logical buffer
   std::vector<std::unique_ptr<LogicalBuffer>> logical_buffers_;

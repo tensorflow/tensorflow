@@ -21,9 +21,11 @@ or that should be permanently associated with the training session.
 
 You can use this just like the logging module:
 
->>> tensorboard_logging.set_summary_writer(summary_writer)
->>> tensorboard_logging.info("my %s", "message")
->>> tensorboard_logging.log(tensorboard_logging.WARN, "something")
+```
+tensorboard_logging.set_summary_writer(summary_writer)
+tensorboard_logging.info("my %s", "message")
+tensorboard_logging.log(tensorboard_logging.WARN, "something")
+```
 """
 
 from __future__ import absolute_import

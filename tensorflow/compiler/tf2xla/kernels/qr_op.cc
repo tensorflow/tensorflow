@@ -41,7 +41,7 @@ class QROp : public XlaOpKernel {
   bool full_matrices_;
 };
 
-REGISTER_XLA_OP(Name("Qr").TypeConstraint("T", kFloatTypes), QROp);
+REGISTER_XLA_OP(Name("Qr"), QROp);
 
 }  // namespace
 }  // namespace tensorflow

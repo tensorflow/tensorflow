@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-
+#include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -25,11 +24,12 @@ namespace {
 // The EventMgr has 1 thread for the polling loop and one to execute
 // event callback functions. Issues for reconsideration:
 //  - Is this the right number of threads?
-//  - Should EventMgrs be shared between GPUDevices on a multi-GPU machine?
+//  - Should EventMgrs be shared between devices on a machine with multiple
+//  devices of the same type?
 static const int kNumThreads = 2;
 }  // namespace
 
-namespace gpu_event_mgr {
+namespace device_event_mgr {
 class ThreadLabel {
  public:
   static const char* GetValue() { return value_; }
@@ -45,7 +45,7 @@ thread_local const char* ThreadLabel::value_ = "";
 
 void WarnIfInCallback(std::function<void()> f) {
   const char* label = ThreadLabel::GetValue();
-  if (label && !strcmp(label, "gpu_event_mgr")) {
+  if (label && !strcmp(label, "device_event_mgr")) {
     if (f) {
       f();
     } else {
@@ -56,7 +56,7 @@ void WarnIfInCallback(std::function<void()> f) {
 }
 
 void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
-  static const char* label = "gpu_event_mgr";
+  static const char* label = "device_event_mgr";
   mutex mu;
   int init_count = 0;
   condition_variable all_initialized;
@@ -66,7 +66,7 @@ void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
   for (int i = 0; i < num_threads; ++i) {
     threadpool->Schedule([num_threads, &mu, &init_count, &all_initialized,
                           &exit_count, &ready_to_exit]() {
-      gpu_event_mgr::ThreadLabel::SetValue(label);
+      device_event_mgr::ThreadLabel::SetValue(label);
       mutex_lock l(mu);
       ++init_count;
       if (init_count == num_threads) {
@@ -87,21 +87,15 @@ void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
     }
   }
 }
-}  // namespace gpu_event_mgr
+}  // namespace device_event_mgr
 
 EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
     : exec_(se),
-      deferred_bytes_threshold_(gpu_options.deferred_deletion_bytes()
-                                    ? gpu_options.deferred_deletion_bytes()
-                                    : 8 * 1048576),
       polling_active_delay_usecs_(gpu_options.polling_active_delay_usecs()
                                       ? gpu_options.polling_active_delay_usecs()
                                       : 10),
-      accumulated_stream_(nullptr),
-      accumulated_tensors_(new TensorReferenceVector),
-      accumulated_tensor_bytes_(0),
-      threadpool_(Env::Default(), "GPU_Event_Manager", kNumThreads) {
-  gpu_event_mgr::InitThreadpoolLabels(&threadpool_);
+      threadpool_(Env::Default(), "Device_Event_Manager", kNumThreads) {
+  device_event_mgr::InitThreadpoolLabels(&threadpool_);
   StartPollingLoop();
 }
 
@@ -112,27 +106,9 @@ EventMgr::~EventMgr() {
   for (auto& e : free_events_) {
     delete e;
   }
-  for (auto& t : *(accumulated_tensors_)) {
-    t.Unref();
-  }
-  delete accumulated_tensors_;
   while (!used_events_.empty()) {
     InUse* ue = &used_events_[0];
     delete ue->event;
-    if (ue->mem != nullptr) {
-      for (auto& t : *(ue->mem)) {
-        t.Unref();
-      }
-      delete ue->mem;
-    }
-    if (ue->bufrec.buf) {
-      if (LogMemory::IsEnabled()) {
-        LogMemory::RecordRawDeallocation(ue->bufrec.operation,
-                                         ue->bufrec.step_id, ue->bufrec.buf,
-                                         ue->bufrec.alloc, false);
-      }
-      ue->bufrec.alloc->DeallocateRaw(ue->bufrec.buf);
-    }
     if (ue->func != nullptr) threadpool_.Schedule(ue->func);
     used_events_.pop_front();
   }
@@ -160,36 +136,7 @@ void EventMgr::StopPollingLoop() {
   }
 }
 
-void EventMgr::ThenDeleteTensors(se::Stream* stream,
-                                 const TensorReferenceVector& tensors) {
-  mutex_lock l(mu_);
-  // TODO(jeff): We currently keep one accumulated_tensors_ object.
-  // If we start to use multiple streams heavily, we might want to keep
-  // separate vectors/byte counters per stream
-  if (!accumulated_tensors_->empty() && stream != accumulated_stream_) {
-    FlushAccumulatedTensors();
-  }
-  accumulated_stream_ = stream;
-  for (const auto& t : tensors) {
-    // accumulated_tensors_ takes over ownership of the reference to "t"
-    accumulated_tensors_->push_back(t);
-    accumulated_tensor_bytes_ += t.TotalBytes();
-  }
-  if (accumulated_tensor_bytes_ >= deferred_bytes_threshold_) {
-    FlushAccumulatedTensors();
-  }
-}
-
-void EventMgr::FlushAccumulatedTensors() {
-  DCHECK(!accumulated_tensors_->empty());
-  DCHECK(accumulated_stream_ != nullptr);
-  QueueTensors(accumulated_stream_, accumulated_tensors_);
-  accumulated_tensors_ = new TensorReferenceVector;
-  accumulated_tensor_bytes_ = 0;
-  accumulated_stream_ = nullptr;
-}
-
-// A polling loop to detect completion of GPU events.
+// A polling loop to detect completion of device events.
 //
 // While one or more events is outstanding, poll for completed events.  When no
 // events are outstanding, we sleep until one is enqueued.
@@ -218,7 +165,7 @@ void EventMgr::PollLoop() {
   polling_stopped_->Notify();
 }
 
-void EventMgr::QueueInUse(se::Stream* stream, InUse iu) {
+void EventMgr::QueueInUse(se::Stream* stream, InUse in_use) {
   VLOG(2) << "QueueInUse  free_events_ " << free_events_.size()
           << " used_events_ " << used_events_.size();
   // Events are created on demand, and repeatedly reused.  There is no
@@ -230,9 +177,9 @@ void EventMgr::QueueInUse(se::Stream* stream, InUse iu) {
   se::Event* e = free_events_.back();
   free_events_.pop_back();
   stream->ThenRecordEvent(e);
-  iu.event = e;
+  in_use.event = e;
   bool was_empty = used_events_.empty();
-  used_events_.push_back(iu);
+  used_events_.push_back(in_use);
   // Maybe wake up the polling thread
   if (was_empty) events_pending_.notify_all();
 }

@@ -16,14 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_DECODE_CONSTANT_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_DECODE_CONSTANT_H_
 
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
 // Creates a pass to decode and reset opaque values in constant ops into
 // readable values.
 // Note that this pass assumes RaiseTFControlFlow pass has already been run.
-std::unique_ptr<OpPassBase<FuncOp>> CreateDecodeConstantPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateDecodeConstantPass();
 }  // namespace TF
 }  // namespace mlir
 

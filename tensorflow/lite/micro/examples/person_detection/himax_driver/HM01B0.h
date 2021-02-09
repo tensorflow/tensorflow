@@ -16,12 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_HIMAX_DRIVER_HM01B0_H_
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_HIMAX_DRIVER_HM01B0_H_
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#ifndef ARDUINO_EXCLUDE_CODE
 #include "am_bsp.h"         // NOLINT
 #include "am_mcu_apollo.h"  // NOLINT
 #include "am_util.h"        // NOLINT
+#endif                      // ARDUINO_EXCLUDE_CODE
+
+#if defined(ARDUINO)
+#include "tensorflow/lite/micro/examples/person_detection/arduino/HM01B0_platform.h"
+#endif  // defined(ARDUINO)
 
 #define HM01B0_DRV_VERSION (0)
 #define HM01B0_DRV_SUBVERSION (3)
@@ -88,7 +99,7 @@ typedef struct {
   am_hal_iom_mode_e eIOMMode;
   uint32_t ui32IOMModule;
   am_hal_iom_config_t sIOMCfg;
-  void *pIOMHandle;
+  void* pIOMHandle;
 
   uint32_t ui32CTimerModule;
   uint32_t ui32CTimerSegment;
@@ -127,8 +138,8 @@ typedef struct {
 //! @return Error code.
 //
 //*****************************************************************************
-static uint32_t hm01b0_write_reg(hm01b0_cfg_t *psCfg, uint16_t ui16Reg,
-                                 uint8_t *pui8Value, uint32_t ui32NumBytes);
+static uint32_t hm01b0_write_reg(hm01b0_cfg_t* psCfg, uint16_t ui16Reg,
+                                 uint8_t* pui8Value, uint32_t ui32NumBytes);
 
 //*****************************************************************************
 //
@@ -145,8 +156,8 @@ static uint32_t hm01b0_write_reg(hm01b0_cfg_t *psCfg, uint16_t ui16Reg,
 //! @return Error code.
 //
 //*****************************************************************************
-static uint32_t hm01b0_read_reg(hm01b0_cfg_t *psCfg, uint16_t ui16Reg,
-                                uint8_t *pui8Value, uint32_t ui32NumBytes);
+static uint32_t hm01b0_read_reg(hm01b0_cfg_t* psCfg, uint16_t ui16Reg,
+                                uint8_t* pui8Value, uint32_t ui32NumBytes);
 
 //*****************************************************************************
 //
@@ -161,7 +172,7 @@ static uint32_t hm01b0_read_reg(hm01b0_cfg_t *psCfg, uint16_t ui16Reg,
 //! @return Error code.
 //
 //*****************************************************************************
-static uint32_t hm01b0_load_script(hm01b0_cfg_t *psCfg, hm_script_t *psScript,
+static uint32_t hm01b0_load_script(hm01b0_cfg_t* psCfg, hm_script_t* psScript,
                                    uint32_t ui32ScriptCmdNum);
 
 //*****************************************************************************
@@ -175,7 +186,7 @@ static uint32_t hm01b0_load_script(hm01b0_cfg_t *psCfg, hm_script_t *psScript,
 //! @return none.
 //
 //*****************************************************************************
-void hm01b0_power_up(hm01b0_cfg_t *psCfg);
+void hm01b0_power_up(hm01b0_cfg_t* psCfg);
 
 //*****************************************************************************
 //
@@ -188,7 +199,7 @@ void hm01b0_power_up(hm01b0_cfg_t *psCfg);
 //! @return none.
 //
 //*****************************************************************************
-void hm01b0_power_down(hm01b0_cfg_t *psCfg);
+void hm01b0_power_down(hm01b0_cfg_t* psCfg);
 
 //*****************************************************************************
 //
@@ -201,7 +212,7 @@ void hm01b0_power_down(hm01b0_cfg_t *psCfg);
 //! @return none.
 //
 //*****************************************************************************
-void hm01b0_mclk_enable(hm01b0_cfg_t *psCfg);
+void hm01b0_mclk_enable(hm01b0_cfg_t* psCfg);
 
 //*****************************************************************************
 //
@@ -214,7 +225,7 @@ void hm01b0_mclk_enable(hm01b0_cfg_t *psCfg);
 //! @return none.
 //
 //*****************************************************************************
-void hm01b0_mclk_disable(hm01b0_cfg_t *psCfg);
+void hm01b0_mclk_disable(hm01b0_cfg_t* psCfg);
 
 //*****************************************************************************
 //
@@ -227,7 +238,7 @@ void hm01b0_mclk_disable(hm01b0_cfg_t *psCfg);
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_init_if(hm01b0_cfg_t *psCfg);
+uint32_t hm01b0_init_if(hm01b0_cfg_t* psCfg);
 
 //*****************************************************************************
 //
@@ -240,7 +251,7 @@ uint32_t hm01b0_init_if(hm01b0_cfg_t *psCfg);
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_deinit_if(hm01b0_cfg_t *psCfg);
+uint32_t hm01b0_deinit_if(hm01b0_cfg_t* psCfg);
 
 //*****************************************************************************
 //
@@ -254,7 +265,7 @@ uint32_t hm01b0_deinit_if(hm01b0_cfg_t *psCfg);
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_get_modelid(hm01b0_cfg_t *psCfg, uint16_t *pui16MID);
+uint32_t hm01b0_get_modelid(hm01b0_cfg_t* psCfg, uint16_t* pui16MID);
 
 //*****************************************************************************
 //
@@ -265,12 +276,12 @@ uint32_t hm01b0_get_modelid(hm01b0_cfg_t *psCfg, uint16_t *pui16MID);
 //! @param ui32ScriptCmdNum     - No. of commands in HM01B0 initialization
 //! script.
 //!
-//! This function initilizes HM01B0 with a given script.
+//! This function initializes HM01B0 with a given script.
 //!
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_init_system(hm01b0_cfg_t *psCfg, hm_script_t *psScript,
+uint32_t hm01b0_init_system(hm01b0_cfg_t* psCfg, hm_script_t* psScript,
                             uint32_t ui32ScriptCmdNum);
 
 //*****************************************************************************
@@ -284,24 +295,7 @@ uint32_t hm01b0_init_system(hm01b0_cfg_t *psCfg, hm_script_t *psScript,
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_test_walking1s(hm01b0_cfg_t *psCfg);
-
-//*****************************************************************************
-//
-//! @brief Check the data read from HM01B0 in the walking 1s test mode
-//!
-//! @param pui8Buffer       - Pointer to data buffer.
-//! @param ui32BufferLen    - Buffer length
-//! @param ui32PrintCnt     - Number of mismatched data to be printed out
-//!
-//! This function sets HM01B0 in the walking 1s test mode.
-//!
-//! @return Error code.
-//
-//*****************************************************************************
-void hm01b0_test_walking1s_check_data_sanity(uint8_t *pui8Buffer,
-                                             uint32_t ui32BufferLen,
-                                             uint32_t ui32PrintCnt);
+uint32_t hm01b0_test_walking1s(hm01b0_cfg_t* psCfg);
 
 //*****************************************************************************
 //
@@ -314,7 +308,7 @@ void hm01b0_test_walking1s_check_data_sanity(uint8_t *pui8Buffer,
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_reset_sw(hm01b0_cfg_t *psCfg);
+uint32_t hm01b0_reset_sw(hm01b0_cfg_t* psCfg);
 
 //*****************************************************************************
 //
@@ -329,7 +323,7 @@ uint32_t hm01b0_reset_sw(hm01b0_cfg_t *psCfg);
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_get_mode(hm01b0_cfg_t *psCfg, uint8_t *pui8Mode);
+uint32_t hm01b0_get_mode(hm01b0_cfg_t* psCfg, uint8_t* pui8Mode);
 
 //*****************************************************************************
 //
@@ -350,7 +344,7 @@ uint32_t hm01b0_get_mode(hm01b0_cfg_t *psCfg, uint8_t *pui8Mode);
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_set_mode(hm01b0_cfg_t *psCfg, uint8_t ui8Mode,
+uint32_t hm01b0_set_mode(hm01b0_cfg_t* psCfg, uint8_t ui8Mode,
                          uint8_t framecnt);
 
 //*****************************************************************************
@@ -366,7 +360,7 @@ uint32_t hm01b0_set_mode(hm01b0_cfg_t *psCfg, uint8_t ui8Mode,
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_hardware_trigger_streaming(hm01b0_cfg_t *psCfg, bool bTrigger);
+uint32_t hm01b0_hardware_trigger_streaming(hm01b0_cfg_t* psCfg, bool bTrigger);
 
 //*****************************************************************************
 //
@@ -381,7 +375,7 @@ uint32_t hm01b0_hardware_trigger_streaming(hm01b0_cfg_t *psCfg, bool bTrigger);
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_set_mirror(hm01b0_cfg_t *psCfg, bool bHmirror, bool bVmirror);
+uint32_t hm01b0_set_mirror(hm01b0_cfg_t* psCfg, bool bHmirror, bool bVmirror);
 
 //*****************************************************************************
 //
@@ -396,7 +390,7 @@ uint32_t hm01b0_set_mirror(hm01b0_cfg_t *psCfg, bool bHmirror, bool bVmirror);
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_blocking_read_oneframe(hm01b0_cfg_t *psCfg, uint8_t *pui8Buffer,
+uint32_t hm01b0_blocking_read_oneframe(hm01b0_cfg_t* psCfg, uint8_t* pui8Buffer,
                                        uint32_t ui32BufferLen);
 
 //*****************************************************************************
@@ -410,7 +404,7 @@ uint32_t hm01b0_blocking_read_oneframe(hm01b0_cfg_t *psCfg, uint8_t *pui8Buffer,
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_single_frame_capture(hm01b0_cfg_t *psCfg);
+uint32_t hm01b0_single_frame_capture(hm01b0_cfg_t* psCfg);
 
 #ifdef __cplusplus
 }

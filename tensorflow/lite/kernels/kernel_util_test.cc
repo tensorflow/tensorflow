@@ -14,14 +14,39 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/kernel_util.h"
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <initializer_list>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
 
-void ReportError(TfLiteContext* context, const char* format, ...) {}
+struct TestContext : public TfLiteContext {
+  string error;
+};
+
+void ReportError(TfLiteContext* context, const char* format, ...) {
+  TestContext* c = static_cast<TestContext*>(context);
+  const size_t kBufferSize = 1024;
+  char temp_buffer[kBufferSize];
+
+  va_list args;
+  va_start(args, format);
+  vsnprintf(temp_buffer, kBufferSize, format, args);
+  va_end(args);
+
+  c->error = temp_buffer;
+}
 
 class KernelUtilTest : public ::testing::Test {
  public:
@@ -63,7 +88,7 @@ class KernelUtilTest : public ::testing::Test {
   }
 
  protected:
-  TfLiteContext context_;
+  TestContext context_;
   TfLiteTensor tensor1_;
   TfLiteTensor tensor2_;
   TfLiteTensor tensor3_;
@@ -98,6 +123,8 @@ TEST_F(KernelUtilTest, BroadcastShapeIncompatibleDim) {
   EXPECT_NE(kTfLiteOk, CalculateShapeForBroadcast(&context_, &tensor1_,
                                                   &tensor2_, &output));
   EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(context_.error,
+            "Given shapes, [1, 2] and [1, 3], are not broadcastable.");
 }
 
 TEST_F(KernelUtilTest, BroadcastShapeOnes) {
@@ -158,6 +185,8 @@ TEST_F(KernelUtilTest, BroadcastShapeIncompatibleDimOnThreeTensors) {
             CalculateShapeForBroadcast(&context_, &tensor1_, &tensor2_,
                                        &tensor3_, &output));
   EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(context_.error,
+            "Given shapes, [1, 2], [1, 3] and [1, 4], are not broadcastable.");
 }
 
 TEST_F(KernelUtilTest, BroadcastShapeOnesOnThreeTensors) {

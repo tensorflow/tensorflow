@@ -26,10 +26,19 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
+namespace testing {
+namespace benchmark {
+class State;
+}  // namespace benchmark
+}  // namespace testing
+
 namespace tensorflow {
 
 class Device;
+class FunctionLibraryRuntime;
+class ProcessFunctionLibraryRuntime;
 struct SessionOptions;
+class StaticDeviceMgr;
 
 namespace test {
 
@@ -37,28 +46,56 @@ class Benchmark {
  public:
   // "device" must be either "cpu" or "gpu".  Takes ownership of "g",
   // "init", and one reference on "rendez" (if not null).
+  //
+  // old_benchmark_api: If true, the benchmark is running with older API
+  //   * In the old API, the timer needs to be stopped/restarted
+  //     by users.
+  //   * In the new API, the timer starts automatically at the first
+  //     iteration of the loop and stops after the last iteration.
+  // TODO(vyng) Remove this once we have migrated all code to newer API.
   Benchmark(const string& device, Graph* g,
             const SessionOptions* options = nullptr, Graph* init = nullptr,
-            Rendezvous* rendez = nullptr, const char* executor_type = "");
+            Rendezvous* rendez = nullptr, const char* executor_type = "",
+            bool old_benchmark_api = true);
+
+  Benchmark(const string& device, Graph* g, bool old_benchmark_api);
+
   ~Benchmark();
 
   // Executes the graph for "iters" times.
-  void Run(int iters);
+  // This function is deprecated. Use the overload that takes
+  // `benchmark::State&`
+  // instead.
+  [[deprecated("use `Run(benchmark::State&)` instead.")]] void Run(int iters);
+
+  void Run(::testing::benchmark::State& state);
 
   // If "g" contains send/recv nodes, before each execution, we send
   // inputs to the corresponding recv keys in the graph, after each
   // execution, we recv outputs from the corresponding send keys in
   // the graph. In the benchmark, we throw away values returned by the
   // graph.
+  // This function is deprecated. Use the overload that takes
+  // `benchmark::State&` instead.
+  [[deprecated(
+      "use `RunWithRendezvousArgs(...,benchmark::State&)` instead.")]] void
+  RunWithRendezvousArgs(const std::vector<std::pair<string, Tensor>>& inputs,
+                        const std::vector<string>& outputs, int iters);
+
   void RunWithRendezvousArgs(
       const std::vector<std::pair<string, Tensor>>& inputs,
-      const std::vector<string>& outputs, int iters);
+      const std::vector<string>& outputs, ::testing::benchmark::State& state);
 
  private:
-  thread::ThreadPool* pool_ = nullptr;
-  std::unique_ptr<Device> device_ = nullptr;
+  thread::ThreadPool* pool_ = nullptr;  // Not owned.
+  Device* device_ = nullptr;            // Not owned.
   Rendezvous* rendez_ = nullptr;
+  std::unique_ptr<StaticDeviceMgr> device_mgr_;
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  FunctionLibraryRuntime* flr_;  // Not owned.
   std::unique_ptr<Executor> exec_;
+  bool old_benchmark_api_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Benchmark);
 };

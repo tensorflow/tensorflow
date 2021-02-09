@@ -16,38 +16,98 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_MULTI_OUTPUT_FUSION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_MULTI_OUTPUT_FUSION_H_
 
-#include "tensorflow/compiler/xla/service/multi_output_fusion.h"
+#include <queue>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 // Multi-output fusion of sibling and producer-consumer instructions for the
-// GPU backend.
-class GpuMultiOutputFusion : public MultiOutputFusion {
+// GPU backend to reduce memory bandwidth requirements.
+//
+//   0) Before multi-    1) Sibling multi-    2) Producer-consumer
+//      output fusion       output fusion        multi-output fusion
+//
+//          p                    p                    p
+//          |                    |                    |
+//          v                    v                    v
+//          A                    A               +-fusion--+
+//        /   \                  |               |    A    |
+//       |     |            +-fusion--+          |   / \   |
+//       v     v            |   / \   |          |  B   |  |
+//       B     C            |  B   C  |          |  |   |  |
+//        \   /             |  |   |  |          |  v   v  |
+//         v v              |  v   v  |          |  tuple  |
+//        ROOT              |  tuple  |          +---------+
+//                          +---------+            /    \
+//                            /    \            gte_b  gte_a
+//                         gte_b  gte_c           |      |
+//                           |      |             |      v
+//                            \    /              |      C
+//                             v  v                \    /
+//                             ROOT                 v  v
+//                                                  ROOT
+//
+// Multi-output fusion ops have a tuple op at their root containing multiple
+// elements as outputs. GetTupleElement ops (depicted as gte_* above) are
+// inserted to extract tuple elements for consumers.
+//
+// The two different flavors of multi-output fusion this pass performs are
+// depicted above.
+// 1) Fusion of sibling ops reduces memory bandwidth requirements, because
+//    common input parameters have to be read only once.
+// 2) Fusion of producer-consumer ops reduces memory bandwidth requirements by
+//    saving one read from memory. In the example above, B does not need to read
+//    the output of A from memory, while C still does (using gte_a).
+// Note that sibling (1) and producer-consumer (2) multi-output fusion can be
+// combined.
+//
+// The GpuMultiOutputFusion pass modifies the HLO in reverse post-order (defs
+// before uses). First, it attempts to fuse the consumer ops of the current op,
+// which are siblings (1). Hereafter, it attempts to fuse the current op with
+// one of its consumers (2). This order avoids a phase ordering issue (described
+// in go/fusionfusion). It ensures that all GetTupleElement ops inserted as a
+// by-product of multi-output fusion will occur before the current op in the
+// order of traversal, and hence, not get into the way of subsequent fusion
+// attempts.
+//
+// The GpuMultiOutputFusion pass ensures several conditions are met for fusion.
+// Some of them are relevant for correctness. In particular, no cycles must be
+// introduced into the HLO module. Moreover, the code emitters for multi-output
+// fusion must support the combination of ops and their shapes. Other
+// restrictions are rather arbitrary and lifting them could be beneficial.
+// * Sibling fusion (1) requires at least one op to be a kFusion.
+// * Sibling fusion (1) does not fuse kInput fusions with kLoop fusions, i.e.
+//   the fusion kinds must match.
+
+class GpuMultiOutputFusion : public HloModulePass {
  public:
-  GpuMultiOutputFusion();
+  GpuMultiOutputFusion() = default;
 
- protected:
-  // Test if instr1 and instr2 have the compatible shapes that can be legally
-  // fused.
-  bool ShapesCompatibleForFusion(HloInstruction* instr1,
-                                 HloInstruction* instr2) override;
+  absl::string_view name() const override { return "multi_output_fusion"; }
 
-  // We currently only consider reduce and reduce fusion nodes as candidates.
-  bool IsFusible(HloInstruction* instr) override;
+  StatusOr<bool> Run(HloModule* module) override;
 
-  // This function estimates the amount of memory reads saved by merging
-  // instr1 and instr2 into one multi-output fusion instruction. For a fusion
-  // instruction, all the operands need to be loaded from memory. If we merge
-  // instr1 and instr2, common operands will not be loaded twice. The profit is
-  // estimated as the size of the common operands b/w instr1 and instr2.
-  int64 GetProfit(HloInstruction* instr1, HloInstruction* instr2) override;
+ private:
+  bool FuseSiblings(HloInstruction* parent);
 
-  // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
-  bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2) override;
+  StatusOr<bool> DoMultiOutputFusion();
 
-  // Fuse loop fusions into reduce fusions.
-  bool DoProducerConsumerMultiOutputFusion() override;
+  // Recompute reachability for the current computation.
+  void RecomputeReachability();
+
+  // Computation for the pass.
+  HloComputation* computation_;
+
+  // The reachability map of current computation.
+  std::unique_ptr<HloReachabilityMap> reachability_;
 };
 
 }  // namespace gpu

@@ -164,7 +164,7 @@ after if
 #### Python values modified in TensorFlow control flow become Tensors
 
 If a symbol is modified in a TensorFlow control flow statement, then it becomes
-a `tf.Tensor`, even if it started off as a Python promitive value.
+a `tf.Tensor`, even if it started off as a Python primitive value.
 
 For example, the conditional below will run as a `tf.cond` (its condition is a
 `tf.Tensor`), which in turn will cause `i` to become a `tf.Tensor`.
@@ -264,9 +264,10 @@ for i in tf.stack(l):
 ```
 
 <!-- TODO(mdan): List this under limitations -->
-Caution: A loop in which the type of the condition condition changes across
-iterations, in a way that would influence the way the loop is executed, is not
-allowed in AutoGraph.
+
+Caution: A loop in which the type of the condition changes across iterations, in
+a way that would influence the way the loop is executed, is not allowed in
+AutoGraph.
 
 For example, the loop below will generate an error. After the first iteration,
 `i` becomes a tf.Tensor, because
@@ -418,6 +419,21 @@ def extra_test(break_):
   return ag__.not_(break_)
 # break_ becomes a loop variable.
 break_, = ag__.for_stmt(range(10), extra_test, ..., (break_,))
+```
+
+Mixing Tensor-dependent `break` and Python-dependent loops is disallowed:
+
+```
+@tf.function
+def buggy_while_py_true_tf_break(x):
+  while True:   # python conditional
+    if tf.equal(x, 0): # tensor break
+      break
+    x -= 1
+  return x
+
+# Raises OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool` is not allowed
+# buggy_while_true_tf_break(5)
 ```
 
 ### `continue` statements

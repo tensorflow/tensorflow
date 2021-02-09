@@ -116,7 +116,7 @@ REGISTER_OP("AsString")
     .Output("output: string")
     .Attr(
         "T: {int8, int16, int32, int64, complex64, complex128, float, double, "
-        "bool}")
+        "bool, variant}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")

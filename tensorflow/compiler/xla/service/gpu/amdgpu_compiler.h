@@ -37,15 +37,12 @@ class AMDGPUCompiler : public GpuCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
-  Status OptimizeHloPostLayoutAssignment(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
-
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
-      const HloModule* hlo_module, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec) override;
+      const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
+      const HloModule* debug_module) override;
 
  private:
   // The parent directory of ROCm-Device-Libs IR libraries.

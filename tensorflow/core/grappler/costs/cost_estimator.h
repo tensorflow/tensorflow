@@ -74,7 +74,7 @@ struct Costs {
   inline Costs();
 
   // Builds a Costs structure with all zero values, rather than unknowns.
-  static inline Costs ZeroCosts();
+  static inline Costs ZeroCosts(bool inaccurate = false);
 
   struct MilliSeconds : std::chrono::milliseconds {
     MilliSeconds() : std::chrono::milliseconds(0) {}
@@ -190,7 +190,7 @@ Costs::Costs() {
   max_per_op_streaming = kMemoryUnknown;
 }
 
-Costs Costs::ZeroCosts() {
+Costs Costs::ZeroCosts(bool inaccurate) {
   Costs costs;
   costs.execution_time = Duration::zero();
   costs.compute_time = Duration::zero();
@@ -201,6 +201,7 @@ Costs Costs::ZeroCosts() {
   costs.temporary_memory = kZeroMemory;
   costs.max_per_op_buffers = kZeroMemory;
   costs.max_per_op_streaming = kZeroMemory;
+  costs.inaccurate = inaccurate;
   return costs;
 }
 

@@ -27,7 +27,7 @@ limitations under the License.
 // human-readable graphical format.
 //
 // Fundamentally all graphs are rendered using the DOT language, but they can be
-// packaged three different ways:
+// packaged four different ways:
 //
 //  - as a raw DOT file, which can be rendered using `graphviz`.
 //
@@ -36,7 +36,9 @@ limitations under the License.
 //
 //  - as a URL hosted somewhere which somehow embeds the DOT file.
 //
-// This last option is not implemented by default, but you can add a plugin to
+//  - as an HTML page showing the fusion progress.
+//
+// Two last options are not implemented by default, but you can add a plugin to
 // implement it via RegisterGraphToURLRenderer.
 //
 // TODO(jlebar): Rename this file to hlo_graph_renderer.
@@ -48,6 +50,15 @@ enum class RenderedGraphFormat {
   kDot,
   kHtml,
   kUrl,
+  kFusionVisualization,
+};
+
+struct HloRenderOptions {
+  // Include the backend config string in the rendered graph.
+  bool show_backend_config = false;
+
+  // Include the fusion subcomputations in the rendered graph.
+  bool show_fusion_subcomputations = true;
 };
 
 // Renders an HLO module as a human-readable visual graph.
@@ -61,7 +72,7 @@ StatusOr<string> RenderGraph(
     const HloComputation& computation, absl::string_view label,
     const DebugOptions& debug_options, RenderedGraphFormat format,
     const HloExecutionProfile* hlo_execution_profile = nullptr,
-    bool show_backend_config = false);
+    HloRenderOptions hlo_render_options = {});
 
 // Like RenderGraph, but renders only nodes "near" the given node in the graph.
 //
@@ -73,7 +84,7 @@ StatusOr<string> RenderGraph(
 // will be omitted even if they are within the radius.
 StatusOr<string> RenderNeighborhoodAround(
     const HloInstruction& node, int radius, RenderedGraphFormat format,
-    bool show_backend_config = false,
+    HloRenderOptions hlo_render_options = {},
     const absl::flat_hash_set<const HloInstruction*>& boundary = {});
 
 // Renders nodes on any of the paths from `from` to `to`.  If there are more
@@ -82,7 +93,12 @@ StatusOr<string> RenderNeighborhoodAround(
 StatusOr<string> RenderAllPathsFromTo(const HloInstruction& from,
                                       const HloInstruction& to, int64 max_nodes,
                                       RenderedGraphFormat format,
-                                      bool show_backend_config = false);
+                                      HloRenderOptions hlo_render_options = {});
+
+// Registers the fusion state of the graph for future visualization using
+// the kFusionVisulization render format.
+Status RegisterFusionState(const HloComputation& computation,
+                           absl::string_view label);
 
 // Registers a function which implements RenderedGraphFormat::kUrl.
 //

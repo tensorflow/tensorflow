@@ -29,11 +29,13 @@ class XlaKernelCreator : public CustomKernelCreator {
   // Given a NodeDef 'node_def' and the function library runtime 'flr', returns
   // true if 'node_def' is a call to a compilable function defined in 'flr',
   // with the kXlaCompileAttr set.
-  bool CanCreateKernel(const FunctionLibraryRuntime& flr,
-                       const NodeDef& node_def) const override;
+  bool CanCreateKernel(
+      const FunctionLibraryRuntime& flr,
+      const std::shared_ptr<const NodeProperties>& props) const override;
 
   // Given a supported NodeDef, returns a XlaLaunchOp that computes the node.
-  Status CreateKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
+  Status CreateKernel(FunctionLibraryRuntime* flr,
+                      const std::shared_ptr<const NodeProperties>& props,
                       std::unique_ptr<OpKernel>* kernel) const override;
 };
 

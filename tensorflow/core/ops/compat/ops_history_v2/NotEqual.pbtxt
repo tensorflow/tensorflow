@@ -1,0 +1,243 @@
+op {
+  name: "NotEqual"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_QUINT8
+        type: DT_QINT8
+        type: DT_QINT32
+        type: DT_STRING
+        type: DT_BOOL
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  is_commutative: true
+}
+op {
+  name: "NotEqual"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_QUINT8
+        type: DT_QINT8
+        type: DT_QINT32
+        type: DT_STRING
+        type: DT_BOOL
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  is_commutative: true
+}
+op {
+  name: "NotEqual"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_QUINT8
+        type: DT_QINT8
+        type: DT_QINT32
+        type: DT_STRING
+        type: DT_BOOL
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  is_commutative: true
+}
+op {
+  name: "NotEqual"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_QUINT8
+        type: DT_QINT8
+        type: DT_QINT32
+        type: DT_STRING
+        type: DT_BOOL
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "incompatible_shape_error"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_commutative: true
+}
+op {
+  name: "NotEqual"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
+        type: DT_COMPLEX64
+        type: DT_QUINT8
+        type: DT_QINT8
+        type: DT_QINT32
+        type: DT_STRING
+        type: DT_BOOL
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "incompatible_shape_error"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_commutative: true
+}
+op {
+  name: "NotEqual"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "incompatible_shape_error"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_commutative: true
+}

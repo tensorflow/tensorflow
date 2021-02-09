@@ -17,10 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 
 #include "llvm/IR/Module.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
+#include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
@@ -30,15 +36,20 @@ namespace gpu {
 // assignment and the name uniquer.
 class IrEmitterContext {
  public:
-  IrEmitterContext(const HloModule* hlo_module,
-                   const BufferAssignment* buffer_assignment,
-                   const se::Platform* platform,
-                   const se::DeviceDescription* device_desc,
-                   llvm::Module* llvm_module)
+  // cuda_compute_capability is nullopt if we're not compiling for NVIDIA GPUs.
+  IrEmitterContext(
+      const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
+      std::string platform_name, GpuDeviceInfo gpu_device_info,
+      absl::optional<CudaComputeCapability> cuda_compute_capability,
+      const HloProfileIndexMap* profile_index_map,
+      mlir::MLIRContext* mlir_context, llvm::Module* llvm_module)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
-        platform_(platform),
-        device_desc_(device_desc),
+        platform_name_(std::move(platform_name)),
+        gpu_device_info_(gpu_device_info),
+        cuda_compute_capability_(cuda_compute_capability),
+        profile_index_map_(profile_index_map),
+        mlir_context_(mlir_context),
         llvm_module_(llvm_module) {}
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
@@ -49,20 +60,42 @@ class IrEmitterContext {
   const BufferAssignment& buffer_assignment() const {
     return *buffer_assignment_;
   }
-  const se::Platform* platform() const { return platform_; }
-  const se::DeviceDescription& device_description() const {
-    return *device_desc_;
+  absl::string_view platform_name() const { return platform_name_; }
+  GpuDeviceInfo gpu_device_info() const { return gpu_device_info_; }
+  absl::optional<CudaComputeCapability> cuda_compute_capability() const {
+    return cuda_compute_capability_;
   }
+  const HloProfileIndexMap* profile_index_map() { return profile_index_map_; }
+  mlir::MLIRContext* mlir_context() { return mlir_context_; }
   llvm::Module* llvm_module() { return llvm_module_; }
   NameUniquer* name_uniquer() { return &name_uniquer_; }
+
+  std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
+
+  absl::Span<const BufferAllocation> allocations() const {
+    if (buffer_assignment_) {
+      return buffer_assignment_->Allocations();
+    }
+    return allocations_;
+  }
+
+  void set_allocations(absl::Span<const BufferAllocation> allocations) {
+    CHECK_EQ(nullptr, buffer_assignment_);
+    allocations_ = allocations;
+  }
 
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
-  const se::Platform* platform_;
-  const se::DeviceDescription* device_desc_;
+  absl::Span<const BufferAllocation> allocations_;
+  std::string platform_name_;
+  GpuDeviceInfo gpu_device_info_;
+  absl::optional<CudaComputeCapability> cuda_compute_capability_;
+  const HloProfileIndexMap* profile_index_map_;
+  mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;
+  std::vector<GpuExecutable::ConstantInfo> constants_;
 };
 
 }  // namespace gpu

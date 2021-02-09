@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 
 namespace tensorflow {
 
@@ -63,6 +63,9 @@ class OpOrArgNameMapper {
   const llvm::DenseMap<OpOrVal, absl::string_view>& GetMap() const {
     return op_or_val_to_name_;
   }
+
+  // Returns the separator used before uniqueing suffix.
+  virtual llvm::StringRef GetSuffixSeparator() { return ""; }
 
  private:
   // Returns name from the location of the operation or value.

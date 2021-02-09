@@ -1,0 +1,75 @@
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+#
+# Difference with common EMSDP LCF file (to reduce data access time): 
+# - move data and ro_data in data from external PSRAM to DCCM (includes model)
+# - move text from SRAM to ICCM
+# - move BSS from PSRAM to XCCM (includes tensor arena)
+# - move stack to YCCM (as exclusive bank not shared with other data)
+#
+# CCMWRAP memory regions indicate unusable portions of the address space
+#   due to CCM memory wrapping into upper addresses beyond its size
+
+MEMORY {
+    PSRAM   : ORIGIN = 0x10000400, LENGTH = (0x01000000 >> 1) - 0x400
+    SRAM    : ORIGIN = 0x20000000, LENGTH = 0x00040000
+    IVT     : ORIGIN = 0x60000000, LENGTH = 0x400
+    ICCM0   : ORIGIN = 0x60000400, LENGTH = (0x00020000 - 0x400)
+#   CCMWRAP0: ORIGIN = 0x60020000, LENGTH = 0x0ffe0000
+    DCCM    : ORIGIN = 0x80000000, LENGTH = 0x00020000
+#   CCMWRAP1: ORIGIN = 0x80020000, LENGTH = 0x0ffe0000
+    XCCM    : ORIGIN = 0x90000000, LENGTH = 0x00004000
+#   CCMWRAP2: ORIGIN = 0x90004000, LENGTH = 0x0fffc000
+    YCCM    : ORIGIN = 0xa0000000, LENGTH = 0x00004000
+#   CCMWRAP3: ORIGIN = 0xa0004000, LENGTH = 0x0fffc000
+    }
+
+SECTIONS {
+
+    GROUP BLOCK(4) : {
+        .vectors (TEXT) SIZE(DEFINED _IVTSIZE?_IVTSIZE:756): {} = FILL(0xa5a5a5a5,4)
+    } > IVT
+
+    GROUP BLOCK(4): {
+        .text? : { *('.text$crt*') }
+        * (TEXT): {}
+        * (LIT): {}
+    } > ICCM0
+
+    GROUP BLOCK(4): {
+        .debug_log? : {}
+    } > SRAM
+
+    GROUP BLOCK(4): {
+    /* _SDA_BASE_ computed implicitly */
+        .sdata?: {}
+        .sbss?: {}
+        * (DATA): {}
+       .Zdata? : {}
+       .heap? ALIGN(4) SIZE(DEFINED _HEAPSIZE?_HEAPSIZE:8K): {}
+    } > DCCM
+
+    GROUP BLOCK(4): {
+        * (BSS): {}
+        .Xdata? : {}
+    } > XCCM
+
+    GROUP BLOCK(4): {
+       .stack ALIGN(4) SIZE(DEFINED _STACKSIZE?_STACKSIZE:8K): {}
+        .Ydata? : {}
+    } > YCCM
+}
+
+

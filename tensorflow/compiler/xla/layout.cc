@@ -78,7 +78,7 @@ LayoutProto Layout::ToProto() const {
 string Layout::ToString() const {
   if (format() == DENSE) {
     string colon_string = tiles().empty() ? "" : "T";
-    for (Tile tile : tiles()) {
+    for (const Tile& tile : tiles()) {
       absl::StrAppend(&colon_string, tile.ToString());
     }
     if (element_size_in_bits() != 0) {
