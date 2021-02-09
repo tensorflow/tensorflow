@@ -54,9 +54,9 @@ class MapDefunBenchmark(benchmark_base.DatasetBenchmarkBase):
     def fn(x):
       return array_ops.identity(x)
 
-    base = math_ops.range(100)
+    base = math_ops.range(10000)
     for input_size in [10, 100, 1000, 10000]:
-      num_iters = 100000 // input_size
+      num_iters = 10000 // input_size
       map_defun_op = map_defun.map_defun(defun, [base], [dtypes.int32], [()])
       map_fn_op = map_fn.map_fn(fn, base)
 
