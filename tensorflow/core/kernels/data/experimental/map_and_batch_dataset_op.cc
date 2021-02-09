@@ -318,6 +318,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       int64 batch_results_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBatchResultsSize),
                                             &batch_results_size));
+      DCHECK(batch_results_.empty());
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
       }
@@ -622,6 +623,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ReadStatus(prefix(),
                                     strings::StrCat(batch_prefix, "_", kStatus),
                                     reader, &result->status));
+      RecordBufferEnqueue(ctx, result->output);
       return Status::OK();
     }
 

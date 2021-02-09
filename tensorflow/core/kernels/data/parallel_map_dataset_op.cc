@@ -331,7 +331,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
                              kSize, &invocation_results_size));
-      if (!invocation_results_.empty()) invocation_results_.clear();
+      DCHECK(invocation_results_.empty());
       for (size_t i = 0; i < invocation_results_size; i++) {
         invocation_results_.push_back(std::make_shared<InvocationResult>());
         auto& result = *invocation_results_.back();
@@ -358,6 +358,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
               &result.return_values.back()));
         }
         result.end_of_input = reader->Contains(element_prefix, kEndOfInput);
+        RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
       }
       return Status::OK();
