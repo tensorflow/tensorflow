@@ -88,12 +88,12 @@ class StackTrace final {
   }
 
   // Returns a structured representation of the captured stack trace.
-  // `mapper` provides a custom mapping for translating stack frames, `filter`
-  // returns `true` for the stack frames which should be omitted.
+  // `source_map` provides a custom mapping for translating stack frames,
+  // `filter` returns `true` for the stack frames which should be omitted.
   //
   // `reverse_traversal` changes the traversal order of the stack trace, and
   // `limit` bounds the number of returned frames (after filtering).
-  std::vector<StackFrame> ToStackFrames(const StackTraceMap& mapper = {},
+  std::vector<StackFrame> ToStackFrames(const SourceMap& source_map = {},
                                         const StackTraceFilter& filtered = {},
                                         bool reverse_traversal = false,
                                         int limit = -1) const;
@@ -149,11 +149,11 @@ extern StackTraceManager* const stack_trace_manager;
 // Converts the ManagedStackTrace (identified by ID) to a vector of stack
 // frames.
 inline std::vector<StackFrame> ManagedStackTraceToStackFrames(
-    int id, const StackTraceMap& mapper, const StackTraceFilter& filtered,
+    int id, const SourceMap& source_map, const StackTraceFilter& filtered,
     bool reverse_traversal, int limit) {
   PyGILState_STATE gstate = PyGILState_Ensure();
   std::vector<StackFrame> result = stack_trace_manager->Get(id)->ToStackFrames(
-      mapper, filtered, reverse_traversal, limit);
+      source_map, filtered, reverse_traversal, limit);
   PyGILState_Release(gstate);
   return result;
 }

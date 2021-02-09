@@ -54,10 +54,6 @@ namespace {
 
 namespace py = pybind11;
 
-using SourceLoc = std::tuple<std::string, int>;
-
-using SourceMap = absl::flat_hash_map<SourceLoc, StackFrame>;
-
 using StringSet = absl::flat_hash_set<std::string>;
 
 // Python wrapper for a SourceMap.
@@ -149,8 +145,7 @@ class StackTraceWrapper : public AbstractStackTrace {
     PyGILState_STATE state = PyGILState_Ensure();
 
     stack_frames_cache_ = captured_.ToStackFrames(
-        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); },
-        [&](const char* f) { return StackTraceFiltering(f); });
+        *source_map_, [&](const char* f) { return StackTraceFiltering(f); });
     stack_frames_cache_->pop_back();  // Drop last stack frame.
     PyGILState_Release(state);
     return *stack_frames_cache_;
@@ -163,7 +158,7 @@ class StackTraceWrapper : public AbstractStackTrace {
 
     PyGILState_STATE state = PyGILState_Ensure();
     std::vector<StackFrame> last_frame = captured_.ToStackFrames(
-        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); },
+        *source_map_,
         [&](const char* file_name) {
           return StackTraceFiltering(file_name) ||
                  IsInternalFrameForFilename(file_name);
@@ -224,14 +219,6 @@ class StackTraceWrapper : public AbstractStackTrace {
           absl::StrAppend(out,
                           StackFrameToString(frame, opts, shared_prefix_size));
         });
-  }
-
-  absl::optional<StackFrame> StackTraceMapping(SourceLoc loc) const {
-    if (source_map_->contains(loc)) {
-      return source_map_->at(loc);
-    }
-
-    return absl::nullopt;
   }
 
   bool StackTraceFiltering(const char* file_name) const {
