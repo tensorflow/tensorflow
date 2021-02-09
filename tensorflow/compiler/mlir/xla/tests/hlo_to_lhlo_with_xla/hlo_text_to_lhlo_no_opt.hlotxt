@@ -1,5 +1,4 @@
-// RUN: tf-mlir-translate -split-input-file -hlo-text-to-lhlo -optimize-xla-hlo=false %s 
-/// | FileCheck %s
+// RUN: tf-mlir-translate -split-input-file -hlo-text-to-lhlo -optimize-xla-hlo=false %s | FileCheck %s
 
 HloModule TestModule
 
