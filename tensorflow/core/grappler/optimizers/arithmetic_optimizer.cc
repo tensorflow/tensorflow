@@ -2141,6 +2141,93 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
   }
 };
 
+// Reorder redundant reshapes around a single unary element-wise op, i.e.,
+//
+//    input -> reshape A -> unary -> reshape B -> output
+//
+// becomes
+//
+//    input -> unary -> reshape A -> reshape B -> output
+//
+// We conservatively consider reshapes to be redundant only if:
+//  1) The input shape of A is equal to the output shape of B.
+//  2) Both A and unary have a single output.
+//
+// A later pass (RemoveRedundantReshapeOrBroadcastTo) will remove both reshapes
+//
+class ReorderRedundantReshapeAroundUnary : public ArithmeticOptimizerStage {
+ public:
+  explicit ReorderRedundantReshapeAroundUnary(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("ReorderRedundantReshapeAroundUnary", ctx,
+                                 ctx_ext) {}
+
+  ~ReorderRedundantReshapeAroundUnary() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsReshape(*node) && !IsInPreserveSet(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    // Check that we have a chain of (reshape -> unary -> reshape), with no
+    // additional outputs on either the first reshape or unary op
+    NodeDef* head = node;
+    if (!IsReshape(*head) || IsInPreserveSet(*head)) {
+      return Status::OK();
+    }
+
+    NodeDef* unary;
+    TF_RETURN_IF_ERROR(GetInputNode(head->input(0), &unary));
+    if (!IsUnaryElementWise(*unary) ||
+        NumNonControlOutputs(*unary, *ctx().node_map) != 1) {
+      return Status::OK();
+    }
+
+    NodeDef* tail;
+    TF_RETURN_IF_ERROR(GetInputNode(unary->input(0), &tail));
+    if (!IsReshape(*tail) || IsInPreserveSet(*tail) ||
+        NumNonControlOutputs(*tail, *ctx().node_map) != 1) {
+      return Status::OK();
+    }
+
+    // The reshapes are a no-op if the input and output shapes match
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &input));
+    if (!InputMatchesOutputShape(*input, *head)) {
+      VLOG(3) << "Input and output shapes are unequal: input=" << input->name()
+              << ", output=" << head->name();
+      return Status::OK();
+    }
+
+    // Swap `unary` and `tail` reshape
+    unary->set_input(0, input->name());
+    ctx().node_map->UpdateInput(unary->name(), tail->name(), input->name());
+    tail->set_input(0, unary->name());
+    ctx().node_map->UpdateInput(tail->name(), input->name(), unary->name());
+    head->set_input(0, tail->name());
+    ctx().node_map->UpdateInput(head->name(), unary->name(), tail->name());
+
+    *simplified_node_name = node->name();
+    AddToOptimizationQueue(node);
+    return Status::OK();
+  }
+
+ private:
+  // Returns whether the input shape of the first op matches the output shape of
+  // the second op.
+  bool InputMatchesOutputShape(const NodeDef& input, const NodeDef& output) {
+    const OpInfo::TensorProperties* input_props;
+    const OpInfo::TensorProperties* output_props;
+    if (!GetTensorProperties(input.name(), &input_props).ok() ||
+        !GetTensorProperties(output.name(), &output_props).ok()) {
+      return false;
+    }
+
+    return ShapesSymbolicallyEqual(input_props->shape(), output_props->shape());
+  }
+};
+
 // Fold a multiply of a scalar into the following convolution. This folding
 // can jump across nodes that merely reorders data (such as reshape and
 // transpose). For example, we can optimize
@@ -3708,6 +3795,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
   if (options_.reorder_cast_like_and_value_preserving)
     pipeline.AddStage<ReorderCastLikeAndValuePreserving>(ctx, ctx_ext);
+  if (options_.reorder_redundant_reshape_around_unary)
+    pipeline.AddStage<ReorderRedundantReshapeAroundUnary>(ctx, ctx_ext);
   if (options_.simplify_aggregation)
     pipeline.AddStage<SimplifyAggregation>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)
