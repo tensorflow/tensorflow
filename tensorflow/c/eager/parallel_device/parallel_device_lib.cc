@@ -265,55 +265,6 @@ std::unique_ptr<ParallelTensor> ParallelDevice::CopyToParallelDevice(
                                            status);
 }
 
-std::unique_ptr<ParallelTensor> ParallelDevice::Vector(
-    TFE_Context* context, TF_Status* status,
-    absl::Span<const int32_t> values) const {
-  // TODO(allenl): We could cache DeviceIDs (keyed by context).
-  std::vector<TensorHandlePtr> components;
-  components.reserve(underlying_devices_.size());
-
-  if (values.size() != num_underlying_devices()) {
-    TF_SetStatus(
-        status, TF_INVALID_ARGUMENT,
-        "Number of values did not match number of underlying devices.");
-    return nullptr;
-  }
-
-  for (int device_index = 0; device_index < num_underlying_devices();
-       ++device_index) {
-    int32_t* device_value = new int32_t;
-    *device_value = values[device_index];
-    std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tensor(
-        TF_NewTensor(
-            TF_INT32, /*dims=*/nullptr, /*num_dims=*/0, device_value,
-            sizeof(int32_t),
-            [](void* data, size_t, void* arg) {
-              delete reinterpret_cast<int32_t*>(data);
-            },
-            nullptr),
-        TF_DeleteTensor);
-    // TODO(allenl): Here and when executing regular operations, we could hold
-    // on to one TFE_Op per device and just call TFE_ResetOp to avoid parsing
-    // device names repeatedly.
-    OpPtr const_op(TFE_NewOp(context, "Const", status));
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-    TFE_OpSetDevice(const_op.get(), underlying_devices_[device_index].c_str(),
-                    status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-    TFE_OpSetAttrTensor(const_op.get(), "value", tensor.get(), status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-    TFE_OpSetAttrType(const_op.get(), "dtype", TF_INT32);
-    TFE_TensorHandle* device_handle;
-    int num_outputs = 1;
-    TFE_Execute(const_op.get(), &device_handle, &num_outputs, status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-    components.emplace_back(device_handle);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-  }
-  return ParallelTensor::FromTensorHandles(*this, std::move(components),
-                                           status);
-}
-
 std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
     TFE_Context* context, TF_Status* status) const {
   std::vector<int32_t> ids;
@@ -321,7 +272,7 @@ std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
   for (int i = 0; i < num_underlying_devices(); ++i) {
     ids.push_back(i);
   }
-  return Vector(context, status, ids);
+  return ScalarsFromSequence<int32_t>(ids, context, status);
 }
 
 absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
