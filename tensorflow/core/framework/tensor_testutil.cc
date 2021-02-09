@@ -48,16 +48,23 @@ static ::testing::AssertionResult EqualFailure(const T& x, const T& y) {
          << " not equal to " << y;
 }
 static ::testing::AssertionResult IsEqual(float x, float y) {
-  if (::testing::internal::CmpHelperFloatingPointEQ<float>("", "", x, y))
+  // We consider NaNs equal for testing.
+  if ((isnan(x) && isnan(y)) ||
+      ::testing::internal::CmpHelperFloatingPointEQ<float>("", "", x, y))
     return ::testing::AssertionSuccess();
   return EqualFailure(x, y);
 }
 static ::testing::AssertionResult IsEqual(double x, double y) {
-  if (::testing::internal::CmpHelperFloatingPointEQ<double>("", "", x, y))
+  // We consider NaNs equal for testing.
+  if ((isnan(x) && isnan(y)) ||
+      ::testing::internal::CmpHelperFloatingPointEQ<double>("", "", x, y))
     return ::testing::AssertionSuccess();
   return EqualFailure(x, y);
 }
 static ::testing::AssertionResult IsEqual(Eigen::half x, Eigen::half y) {
+  // We consider NaNs equal for testing.
+  if (isnan(x) && isnan(y)) return ::testing::AssertionSuccess();
+
   // Below is a reimplementation of CmpHelperFloatingPointEQ<Eigen::half>, which
   // we cannot use because Eigen::half is not default-constructible.
 
@@ -107,6 +114,8 @@ static void ExpectEqual(const Tensor& x, const Tensor& y) {
 template <typename T>
 static ::testing::AssertionResult IsClose(const T& x, const T& y, const T& atol,
                                           const T& rtol) {
+  // We consider NaNs equal for testing.
+  if (isnan(x) && isnan(y)) return ::testing::AssertionSuccess();
   if (x == y) return ::testing::AssertionSuccess();  // Handle infinity.
   auto tolerance = atol + rtol * Eigen::numext::abs(x);
   if (Eigen::numext::abs(x - y) <= tolerance)
