@@ -23,10 +23,7 @@ limitations under the License.
 #endif  // __GXX_RTTI
 
 #include "tensorflow/core/platform/types.h"
-
-#if defined(MACOS) || defined(TARGET_OS_MAC) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/hash.h"
-#endif  // defined(MACOS) || defined(TARGET_OS_MAC) || defined(PLATFORM_WINDOWS)
 
 namespace tensorflow {
 
@@ -62,15 +59,9 @@ class TypeIndex {
 
 #if defined(__GXX_RTTI) || defined(_CPPRTTI)
 
-#if defined(MACOS) || defined(TARGET_OS_MAC) || defined(PLATFORM_WINDOWS)
     // Use a hash based on the type name to avoid issues due to RTLD_LOCAL on
     // MacOS (b/156979412).
     return TypeIndex(Hash64(typeid(T).name()), typeid(T).name());
-#else
-    // Use the real type name if we have RTTI.
-    return TypeIndex(static_cast<uint64>(reinterpret_cast<intptr_t>(hash_bit)),
-                     typeid(T).name());
-#endif  // defined(MACOS) || defined(TARGET_OS_MAC) || defined(PLATFORM_WINDOWS)
 
 #else
 #if TARGET_OS_OSX
