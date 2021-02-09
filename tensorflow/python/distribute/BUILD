@@ -51,10 +51,9 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:executor",
+        "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )
