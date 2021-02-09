@@ -38,11 +38,13 @@ class MapDefunBenchmark(benchmark_base.DatasetBenchmarkBase):
         iters=num_iters,
         warmup=True
     )
+    zero_division_delta = 1e-100
+    wall_time = wall_time + zero_division_delta
     self.report_benchmark(
         name=name,
         iters=num_iters,
         wall_time=wall_time,
-        extras={"examples_per_sec": float(1 / wall_time)})
+        extras={"examples_per_sec": 1 / float(wall_time)})
 
   def benchmark_defun_vs_map_fn(self):
     """Benchmarks to compare the performance of MapDefun vs tf.map_fn."""
