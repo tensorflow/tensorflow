@@ -19,13 +19,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_TESTING_SYSTEM_SETUP_H_
 #define TENSORFLOW_LITE_MICRO_TESTING_SYSTEM_SETUP_H_
 
-namespace system_setup {
+namespace tflite {
 
 // This is called during initialization of testing framework. It can be
 // implemented by each target platform. For more information, see
 // tensorflow/lite/micro/system_setup.cc.
-void Initialize();
+void InitializeTarget();
 
-}  // namespace system_setup
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_TESTING_SYSTEM_SETUP_H_

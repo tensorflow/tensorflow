@@ -76,7 +76,7 @@ extern bool did_test_fail;
   int main(int argc, char** argv) { \
     micro_test::tests_passed = 0;   \
     micro_test::tests_failed = 0;   \
-    system_setup::Initialize();
+    ::tflite::InitializeTarget();
 
 #define TF_LITE_MICRO_TESTS_END                                       \
   MicroPrintf("%d/%d tests passed", micro_test::tests_passed,         \

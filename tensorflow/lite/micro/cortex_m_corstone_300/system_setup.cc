@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/system_setup.h"
 
-namespace system_setup {
+namespace tflite {
 
 extern "C" {
 void uart_init(void);
 }
 
-void Initialize() { uart_init(); }
+void InitializeTarget() { uart_init(); }
 
-};  // namespace system_setup
+}  // namespace tflite

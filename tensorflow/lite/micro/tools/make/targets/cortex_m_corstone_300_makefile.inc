@@ -147,6 +147,8 @@ INCLUDES += \
 
 MICRO_LITE_BENCHMARKS := $(filter-out tensorflow/lite/micro/benchmarks/Makefile.inc, $(MICRO_LITE_BENCHMARKS))
 
+# TODO: Figure out why pooling test fails and enable.
+# TODO: Examine why some tests fail here.
 EXCLUDED_TESTS := \
   tensorflow/lite/micro/micro_interpreter_test.cc \
   tensorflow/lite/micro/micro_allocator_test.cc \
@@ -159,6 +161,7 @@ EXCLUDED_TESTS := \
   tensorflow/lite/micro/kernels/pooling_test.cc
 MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
 
+# TODO: Examine why some tests fail here.
 EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
   tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
