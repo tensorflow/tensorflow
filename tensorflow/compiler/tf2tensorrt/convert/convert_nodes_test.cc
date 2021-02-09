@@ -738,7 +738,8 @@ class ConverterTest : public ::testing::Test {
     converter_ =
         std::move(Converter::Create(TrtPrecisionMode::FP32,
                                     /*use_calibration=*/false, &logger_,
-                                    /*use_implicit_batch=*/true)
+                                    /*use_implicit_batch=*/true,
+                                    /*engine_name=*/"TRTEngineOp_0_0")
                       .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
   }
@@ -928,7 +929,8 @@ TEST_F(ConverterTest, TransposeTensor) {
   TF_EXPECT_OK(converter_->TransposeTensor(
       input_tensor, {0, 3, 1, 2}, &output_tensor, dummy_node_def, "sub3"));
   ExpectTrtDimsEqualsArray({5, 2, 3}, output_tensor->getDimensions());
-  ExpectTrtLayerNames({"dummy_op-sub3:SHUFFLE"}, converter_->network());
+  ExpectTrtLayerNames({"TRTEngineOp_0_0/dummy_op-sub3:SHUFFLE"},
+                      converter_->network());
 }
 
 void TestPrepareTensorForShape(
@@ -1093,7 +1095,8 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   Logger logger;
   auto int8_converter = Converter::Create(TrtPrecisionMode::INT8,
                                           /*use_calibration=*/true, &logger,
-                                          /*use_implicit_batch=*/true)
+                                          /*use_implicit_batch=*/true,
+                                          /*engine_name=*/"")
                             .ValueOrDie();
   int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
   int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
@@ -1287,7 +1290,8 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
         /*use_calibration=*/false, /*use_implicit_batch=*/true,
-        /*convert_successfully=*/nullptr, /*profiles=*/nullptr);
+        /*convert_successfully=*/nullptr, /*profiles=*/nullptr,
+        "TRTEngineOp_0_0");
   }
 
  protected:
@@ -1373,7 +1377,8 @@ class OpConverterTest : public ::testing::Test {
         std::move(Converter::Create(precision_mode_to_test,
                                     /*use_calibration=*/false, &logger_,
                                     /*use_implicit_batch=*/trt_mode ==
-                                        TrtTestMode::kImplicitBatch)
+                                        TrtTestMode::kImplicitBatch,
+                                    /*engine_name=*/"")
                       .ValueOrDie());
 
     // Reset other related artifacts.
