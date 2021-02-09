@@ -77,6 +77,10 @@ class AvgPoolingOp : public UnaryOp<T> {
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
+      
+    for (int i=0; i < 4; ++i){
+        OP_REQUIRES(context, ksize_[i] != 0, errors::InvalidArgument("ksize cannot be zero"));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
