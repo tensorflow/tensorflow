@@ -1728,6 +1728,24 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
   return K.mean(
       K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
 
+@dispatch.dispatch_for_types(
+    binary_crossentropy, ragged_tensor.RaggedTensor)
+def _ragged_tensor_binary_crossentropy(y_true, y_pred,
+                                       from_logits=False, label_smoothing=0):
+  """ Implements support for handling RaggedTensors.
+
+      Expected shape: (batch, sequence_len) with sequence_len being variable
+      per batch.
+      Return shape: (batch,); returns the per batch mean of the loss values.
+
+      When used by BinaryCrossentropy() with the default reduction
+      (SUM_OVER_BATCH_SIZE), the reduction averages the per batch losses over
+      the number of batches.
+  """
+  fn = functools.partial(binary_crossentropy, from_logits=from_logits,
+                         label_smoothing=label_smoothing)
+  return _ragged_tensor_apply_loss(fn, y_true, y_pred)
+
 
 @keras_export('keras.metrics.kl_divergence',
               'keras.metrics.kullback_leibler_divergence', 'keras.metrics.kld',
