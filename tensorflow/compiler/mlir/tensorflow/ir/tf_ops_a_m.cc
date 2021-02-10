@@ -1537,43 +1537,47 @@ static LogicalResult inferConvReturnTypes(
     return failure();
   }
 
-  // For operands having dynamic shape.
+  // Output always have `num_dims` rank. All dimensions are initialized to
+  // dynamic size and can be partially inferred.
   SmallVector<int64_t, 4> return_shape(num_dims, ShapedType::kDynamicSize);
-  if (!input_ty.hasStaticShape() || !filter_ty.hasStaticShape()) {
-    inferredReturnTypes.assign(
-        {RankedTensorType::get(return_shape, input_ty.getElementType())});
-    return success();
-  }
-
-  // Checks the size of each of the output dimension.
-  for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
-    const int64_t dim = GetTensorSpatialDimIndex(num_dims, format, i);
-    int64_t stride = get_int(strides[dim]);
-    tensorflow::int64 expected_output_size;
-    tensorflow::int64 pad_low;
-    tensorflow::int64 pad_high;
-    // Retrieve padding, if defined explicitly.
-    if (padding == tensorflow::Padding::EXPLICIT) {
-      pad_low = get_int(explicit_padding[2 * dim]);
-      pad_high = get_int(explicit_padding[2 * dim + 1]);
-    }
-    // Calculate the expected_output_size.
-    tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
-        input_ty.getDimSize(dim), filter_ty.getDimSize(i),
-        get_int(dilations[dim]), stride, padding, &expected_output_size,
-        &pad_low, &pad_high);
-    // Return failure if expected_output_size could not be calculated.
-    if (!status.ok()) return failure();
-    return_shape[dim] = expected_output_size;
-  }
-
-  // The remaining dimensions can be obtained using utilities from
+  // Output batch and channel dimension can be obtained using utilities from
   // tensorflow/core/util/tensor_format.h.
-  return_shape[GetTensorBatchDimIndex(num_dims, format)] =
-      input_ty.getShape()[GetTensorBatchDimIndex(num_dims, format)];
-  return_shape[GetTensorFeatureDimIndex(num_dims, format)] =
-      filter_ty.getShape()[GetFilterTensorOutputChannelsDimIndex(
-          num_dims, tensorflow::FORMAT_HWIO)];
+  if (input_ty.hasRank()) {
+    return_shape[GetTensorBatchDimIndex(num_dims, format)] =
+        input_ty.getDimSize(GetTensorBatchDimIndex(num_dims, format));
+  }
+  if (filter_ty.hasRank()) {
+    return_shape[GetTensorFeatureDimIndex(num_dims, format)] =
+        filter_ty.getDimSize(GetFilterTensorOutputChannelsDimIndex(
+            num_dims, tensorflow::FORMAT_HWIO));
+  }
+  // Spatial dimensions can be inferred only when both input and filter are
+  // ranked because we need to get their spatial dimensions.
+  if (input_ty.hasRank() && filter_ty.hasRank()) {
+    // Checks the size of each of the output spatial dimensions.
+    for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
+      const int64_t dim = GetTensorSpatialDimIndex(num_dims, format, i);
+      int64_t stride = get_int(strides[dim]);
+      tensorflow::int64 expected_output_size;
+      tensorflow::int64 pad_low;
+      tensorflow::int64 pad_high;
+      // Retrieve padding, if defined explicitly.
+      if (padding == tensorflow::Padding::EXPLICIT) {
+        pad_low = get_int(explicit_padding[2 * dim]);
+        pad_high = get_int(explicit_padding[2 * dim + 1]);
+      }
+      // Skip if input or filter size is dynamic.
+      if (input_ty.isDynamicDim(dim) || filter_ty.isDynamicDim(i)) continue;
+      // Calculate the expected_output_size.
+      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+          input_ty.getDimSize(dim), filter_ty.getDimSize(i),
+          get_int(dilations[dim]), stride, padding, &expected_output_size,
+          &pad_low, &pad_high);
+      // Return failure if expected_output_size could not be calculated.
+      if (!status.ok()) return failure();
+      return_shape[dim] = expected_output_size;
+    }
+  }
 
   inferredReturnTypes.assign(
       {RankedTensorType::get(return_shape, input_ty.getElementType())});
