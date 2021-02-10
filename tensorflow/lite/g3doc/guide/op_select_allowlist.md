@@ -387,6 +387,8 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.RequantizationRange`
 *   `raw_ops.Requantize`
 *   `raw_ops.Reshape`
+*   `raw_ops.ResizeBicubic`
+*   `raw_ops.ResizeBicubicGrad`
 *   `raw_ops.ResizeBilinear`
 *   `raw_ops.ResizeBilinearGrad`
 *   `raw_ops.ResizeNearestNeighbor`

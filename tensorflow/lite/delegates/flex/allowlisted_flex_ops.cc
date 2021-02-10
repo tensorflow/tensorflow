@@ -410,6 +410,8 @@ const std::set<std::string>& GetFlexAllowlist() {
           "RequantizationRange",
           "Requantize",
           "Reshape",
+          "ResizeBicubic",
+          "ResizeBicubicGrad",
           "ResizeBilinear",
           "ResizeBilinearGrad",
           "ResizeNearestNeighbor",

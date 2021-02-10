@@ -6285,6 +6285,7 @@ filegroup(
         "//tensorflow/core/kernels/image:mirror_pad_op_cpu_impl_3.cc",
         "//tensorflow/core/kernels/image:mirror_pad_op_cpu_impl_4.cc",
         "//tensorflow/core/kernels/image:mirror_pad_op_cpu_impl_5.cc",
+        "//tensorflow/core/kernels/image:resize_bicubic_op.cc",
         "//tensorflow/core/kernels/image:resize_bilinear_op.cc",
         "//tensorflow/core/kernels/image:resize_nearest_neighbor_op.cc",
         "//tensorflow/core/kernels/image:sample_distorted_bounding_box_op.cc",
