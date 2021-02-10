@@ -576,10 +576,14 @@ tf_cc_test_mkl(
     ],
     deps = [
         ":core",
+        ":eager_op_rewrite_registry",
         ":mkl_eager_op_rewrite",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:device_mgr",
     ],
 )
 

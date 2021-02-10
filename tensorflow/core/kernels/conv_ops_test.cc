@@ -1201,11 +1201,9 @@ using FusedBiasAddDataTypes = ::testing::Types<float, double>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBiasOpTest,
                                FusedBiasAddDataTypes);
 
-#ifndef INTEL_MKL
 using FusedBatchNormDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBatchNormOpTest,
                                FusedBatchNormDataTypes);
-#endif
 
 #endif  // TENSORFLOW_USE_ROCM
 }  // namespace tensorflow
