@@ -1378,7 +1378,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
     bool lhs_matching, PartitionedHlo matching, PartitionedHlo other,
     int64 matching_contracting_partitions, int64 other_contracting_partitions,
     absl::Span<const DotConvDimsMapping::DimsMapping>
-        partitioned_non_contractin_dims,
+        partitioned_non_contracting_dims,
     int64 other_non_contracting_partitions,
     int64 output_other_non_contracting_partitions,
     const Shape& output_base_shape, const HloSharding& output_sharding,
@@ -1406,7 +1406,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
   int64 group_count = 1;
   // Make sure the partitioning on matching's non-contracting dimensions
   // defines the same device groups for both matching and output.
-  for (const auto& dim : partitioned_non_contractin_dims) {
+  for (const auto& dim : partitioned_non_contracting_dims) {
     int64 md = lhs_matching ? dim.lhs : dim.rhs;
     matching_sharding_dims[md] =
         output_sharding.tile_assignment().dim(dim.output);
