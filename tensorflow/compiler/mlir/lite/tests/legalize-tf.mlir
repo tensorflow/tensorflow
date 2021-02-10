@@ -1996,3 +1996,49 @@ func @rfft2d_invalid(%arg0: tensor<10x20x10x30xf64>, %arg1: tensor<2xi32>) -> te
   // CHECK-LABEL: rfft2d_invalid
   // CHECK-NOT: "tfl.RFFT2D"
 }
+
+
+func @conv3d_valid(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32> {
+  %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0: tensor<?x?x?x?x?xf32>
+
+  // CHECK-LABEL: conv3d_valid
+  // CHECK:  %cst = constant unit
+  // CHECK:  [[BCT:%.*]] = "tfl.conv_3d"(%arg0, %arg1, %cst) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>, none) -> tensor<?x?x?x?x?xf32>
+  // CHECK:  return [[BCT]] : tensor<?x?x?x?x?xf32>
+}
+
+func @conv3d_invalid_strides(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32> {
+  %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [2, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0: tensor<?x?x?x?x?xf32>
+  // CHECK-LABEL: conv3d_invalid_strides
+  // CHECK:  [[BCT:%.*]] = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [2, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
+  // CHECK:  return [[BCT]] : tensor<?x?x?x?x?xf32>
+}
+
+func @complex_abs(%arg0: tensor<1 x complex<f32>>) -> tensor<1xf32> {
+  %0 = "tf.ComplexAbs"(%arg0) : (tensor<1 x complex<f32>>) -> tensor<1xf32>
+  return %0: tensor<1xf32>
+
+// CHECK-LABEL: complex_abs
+// CHECK:  "tfl.complex_abs"(%arg0) : (tensor<1xcomplex<f32>>) -> tensor<1xf32>
+// CHECK:  return
+}
+
+func @real(%arg0: tensor<1 x complex<f64>>) -> tensor<1xf64> {
+  %0 = "tf.Real"(%arg0) : (tensor<1 x complex<f64>>) -> tensor<1xf64>
+  return %0: tensor<1xf64>
+
+// CHECK-LABEL: real
+// CHECK:  "tfl.real"(%arg0) : (tensor<1xcomplex<f64>>) -> tensor<1xf64>
+// CHECK:  return
+}
+
+func @imag(%arg0: tensor<1 x complex<f64>>) -> tensor<1xf64> {
+  %0 = "tf.Imag"(%arg0) : (tensor<1 x complex<f64>>) -> tensor<1xf64>
+  return %0: tensor<1xf64>
+
+// CHECK-LABEL: imag
+// CHECK:  "tfl.imag"(%arg0) : (tensor<1xcomplex<f64>>) -> tensor<1xf64>
+// CHECK:  return
+}

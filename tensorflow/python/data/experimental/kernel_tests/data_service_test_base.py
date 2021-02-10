@@ -32,6 +32,10 @@ TMP_WORK_DIR = "tmp_work_dir_placeholder"
 NO_WORK_DIR = ""
 # We use a faster than normal heartbeat interval so that tests run faster.
 TEST_HEARTBEAT_INTERVAL_MS = 100
+# Some clusters may take a long time to shut down due to blocked outstanding
+# RPCs. We store the clusters here so that they are destroyed at end of process
+# instead of slowing down unit tests.
+GLOBAL_CLUSTERS = set()
 
 
 def all_cluster_configurations():

@@ -438,8 +438,8 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
         [](py::handle h, bool jax_enable_x64) -> xla::StatusOr<ArgSignature> {
       xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(h);
       bool weak_type = py::cast<py::bool_>(h.attr("aval").attr("weak_type"));
-      return ArgSignature(buffer->buffer()->on_host_shape().element_type(),
-                          buffer->buffer()->on_host_shape().dimensions(),
+      return ArgSignature(buffer->buffer()->on_device_shape().element_type(),
+                          buffer->buffer()->on_device_shape().dimensions(),
                           weak_type);
     };
     (*p)[py::type::handle_of<xla::DeviceArrayBase>().ptr()] = buffer_handler;
@@ -855,7 +855,7 @@ class CompiledFunction {
   py::object Call(py::args args, py::kwargs kwargs);
 
   // This allows `inspect.signature(cpp_jitted_f)` from Python.
-  py::object __signature__() {
+  py::object PythonSignature() {
     static const auto* inspect = new py::module(py::module::import("inspect"));
     return inspect->attr("signature")(fun_);
   }
@@ -1015,8 +1015,9 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
       keep_alive.emplace_back(std::move(on_device.owned_buffer));
     }
 
-    ArgSignature sig(buffer->on_host_shape().element_type(),
-                     buffer->on_host_shape().dimensions(), on_device.weak_type);
+    ArgSignature sig(buffer->on_device_shape().element_type(),
+                     buffer->on_device_shape().dimensions(),
+                     on_device.weak_type);
     arguments.signature.dynamic_args_signatures.push_back(std::move(sig));
   }
   return xla::Status::OK();
@@ -1211,7 +1212,8 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   py::class_<CompiledFunction, std::unique_ptr<CompiledFunction>> cfun(
       jitlib, "CompiledFunction");
   cfun.def("__call__", &CompiledFunction::Call);
-  cfun.def_property_readonly("__signature__", &CompiledFunction::__signature__);
+  cfun.def_property_readonly("__signature__",
+                             &CompiledFunction::PythonSignature);
 
   jitlib.def("set_disable_jit", &SetDisableJit);
   jitlib.def("get_disable_jit", &GetDisableJit);

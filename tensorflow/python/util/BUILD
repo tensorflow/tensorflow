@@ -341,9 +341,10 @@ cc_library(
     srcs = ["stack_trace.cc"],
     hdrs = ["stack_trace.h"],
     deps = [
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -659,3 +660,13 @@ filegroup(
     name = "compare_test_proto_src",
     srcs = ["protobuf/compare_test.proto"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "compare_test_py_pb2",
+#     testonly = 1,
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [":compare_test_proto"],
+# )
+# copybara:uncomment_end

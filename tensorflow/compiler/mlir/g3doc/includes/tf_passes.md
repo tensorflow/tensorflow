@@ -108,6 +108,9 @@ op. The order of ops will be preserved. Functions named `main` with no
 have been imported from a V1 TensorFlow graph, where feeds/fetches/targets are
 not provided at certain stages of IR transformation (e.g. pre-placement).
 
+Option `ops-to-preserve` allows to specify ops that should not be pruned,
+regardless of their reachability.
+
 For example, the following:
 
 ```mlir
@@ -138,6 +141,11 @@ func @graph(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
   }
   return %graph : tensor<i32>
 }
+```
+
+#### Options
+```
+-ops-to-preserve : Comma separated list of ops that should not be pruned regardless of reachability
 ```
 ### `-tf-executor-to-functional-conversion`: Lifts tf_executor.island inner ops from a tf_executor.graph
 This pass converts tf_executor.graphs consisting of only tf_executor.islands and

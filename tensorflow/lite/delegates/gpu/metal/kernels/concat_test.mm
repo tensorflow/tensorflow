@@ -15,9 +15,6 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
-#include <vector>
-
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
@@ -27,10 +24,6 @@ limitations under the License.
 
 @implementation ConcatTest {
   tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
-}
-
-- (void)setUp {
-  [super setUp];
 }
 
 - (void)testConcatWidth {

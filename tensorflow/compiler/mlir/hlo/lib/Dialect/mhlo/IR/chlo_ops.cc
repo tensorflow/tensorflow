@@ -39,6 +39,20 @@ Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val) {
       b, loc, llvm::APFloat::getLargest(ty.getFloatSemantics()), val);
 }
 
+Value getConstantLikeInfValue(OpBuilder& b, Location loc, Value val,
+                              bool negative) {
+  auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
+  return getConstantLike(
+      b, loc, llvm::APFloat::getInf(ty.getFloatSemantics(), negative), val);
+}
+
+Value getConstantLikeSmallestFiniteValue(OpBuilder& b, Location loc,
+                                         Value val) {
+  auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
+  return getConstantLike(
+      b, loc, llvm::APFloat::getSmallest(ty.getFloatSemantics()), val);
+}
+
 Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
                       Value val) {
   Type ty = getElementTypeOrSelf(val.getType());
@@ -220,10 +234,50 @@ LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
                                                     attributes, element_type,
                                                     inferedReturnShapes);
 }
+
 LogicalResult BroadcastCompareOp::reifyReturnTypeShapes(
     OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
   return ReifyBroadcastBinaryOpReturnTypeShapes(builder, getOperation(),
                                                 reifiedReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// IsInfOp
+//===----------------------------------------------------------------------===//
+
+static Type getIsInfLikeReturnType(Value operand) {
+  Builder b(operand.getContext());
+  return mhlo::getSameShapeTensorType(operand.getType().cast<TensorType>(),
+                                      b.getI1Type());
+}
+
+LogicalResult IsInfOp::inferReturnTypes(
+    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// IsNegInfOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult IsNegInfOp::inferReturnTypes(
+    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// IsPosInfOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult IsPosInfOp::inferReturnTypes(
+    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -271,6 +325,7 @@ BROADCAST_BINARY_OP_DEFS(BroadcastShiftRightArithmeticOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastShiftRightLogicalOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastSubOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastXorOp);
+BROADCAST_BINARY_OP_DEFS(BroadcastZetaOp);
 
 #undef BROADCAST_INFER_SHAPE_TYPE_OP_DEFS
 #undef BROADCAST_BINARY_OP_DEFS

@@ -45,6 +45,8 @@ enum TensorType : byte {
   FLOAT64 = 10,
   COMPLEX128 = 11,
   UINT64 = 12,
+  RESOURCE = 13,
+  VARIANT = 14,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -217,7 +219,7 @@ table Tensor {
 // ones, but not by much. Moreover, while custom operators accept an opaque
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.
-
+// LINT.IfChange
 enum BuiltinOperator : int32 {
   ADD = 0,
   AVERAGE_POOL_2D = 1,
@@ -358,8 +360,11 @@ enum BuiltinOperator : int32 {
   BROADCAST_TO = 130,
   RFFT2D = 131,
   CONV_3D = 132,
+  IMAG=133,
+  REAL=134,
+  COMPLEX_ABS=135,
 }
-
+// LINT.ThenChange(nnapi_linter/linter.proto)
 
 // Options for the builtin operators.
 union BuiltinOptions {

@@ -87,7 +87,13 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<lmhlo::ReducePrecisionOp> EmitReducePrecisionOp(
       const xla::HloInstruction* instr);
 
+  xla::StatusOr<lmhlo::AllToAllOp> EmitAllToAllOp(
+      const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::AllGatherOp> EmitAllGatherOp(
+      const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
+      const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::CollectivePermuteOp> EmitCollectivePermuteOp(
       const xla::HloInstruction* instr);
 
   xla::StatusOr<lmhlo::BroadcastInDimOp> EmitBroadcastOp(
@@ -117,6 +123,11 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloInstruction* instr);
 
   xla::StatusOr<lmhlo::DotOp> EmitDotOp(const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::RngGetAndUpdateStateOp> EmitRngGetAndUpdateStateOp(
+      const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::FftOp> EmitFftOp(const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::TriangularSolveOp> EmitTriangularSolveOp(
+      const xla::HloInstruction* instr);
 
   // Create LHLO operation operands given an XLA HLO instruction. By default,
   // all XLA HLO operands and results are converted to MLIR and appended to
@@ -163,6 +174,9 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
     }
     return GetI64DenseElementsAttr(elements);
   }
+
+  static mlir::DenseIntElementsAttr GetLayoutAttribute(
+      const xla::Layout& layout, Builder* builder);
 
   tensorflow::Status DefaultAction(const xla::HloInstruction* instr) final;
 

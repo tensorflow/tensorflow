@@ -33,6 +33,8 @@ std::string ComparisonDirectionToString(Comparison::Direction direction) {
       return "LE";
     case Comparison::Direction::kLt:
       return "LT";
+    default:
+      LOG(FATAL) << "Attempted to print uninitialized comparison direction";
   }
 }
 
@@ -79,6 +81,8 @@ std::string ComparisonTypeToString(Comparison::Type type) {
       return "SIGNED";
     case Comparison::Type::kUnsigned:
       return "UNSIGNED";
+    default:
+      LOG(FATAL) << "Attempted to print incomplete comparison type";
   }
 }
 

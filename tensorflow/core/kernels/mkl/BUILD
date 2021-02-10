@@ -221,7 +221,7 @@ tf_cc_test_mkl(
     size = "small",
     srcs = ["mkl_relu_op_test.cc"],
     linkstatic = 1,  # Fixes dyld error on MacOS.
-    deps = MKL_TEST_DEPS,
+    deps = ["@com_google_absl//absl/strings"] + MKL_TEST_DEPS,
 )
 
 tf_mkl_kernel_library(
@@ -330,6 +330,7 @@ tf_cc_test_mkl(
         ":mkl_conv_op",
         ":mkl_fused_batch_norm_op",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
     ] + MKL_TEST_DEPS,
 )
@@ -420,6 +421,7 @@ tf_cc_test_mkl(
         ":mkl_tfconv_op",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core/kernels:bias_op",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:depthwise_conv_op",

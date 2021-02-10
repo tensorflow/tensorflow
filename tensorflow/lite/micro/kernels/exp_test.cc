@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -42,19 +43,17 @@ void TestExp(const int* input_dims_data, const float* input_data,
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration = ops::micro::Register_EXP();
+  const TfLiteRegistration registration = Register_EXP();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
-
   for (int i = 0; i < output_dims_count; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i], 1e-5f);
   }
 }
-
 }  // namespace
 }  // namespace testing
 }  // namespace tflite
@@ -62,15 +61,16 @@ void TestExp(const int* input_dims_data, const float* input_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(SingleDim) {
-  float output_data[7];
-  const int input_dims[] = {1, 1, 7};
-  const float input_values[] = {0.0f,    1.0f,  -1.0f, 100.0f,
-                                -100.0f, 0.01f, -0.01f};
+  constexpr int kInputSize = 7;
+  float output_data[kInputSize];
+  const int input_dims[] = {2, 1, kInputSize};
+  const float input_values[kInputSize] = {0.0f,    1.0f,  -1.0f, 100.0f,
+                                          -100.0f, 0.01f, -0.01f};
+  float golden[kInputSize];
+  for (int i = 0; i < kInputSize; ++i) {
+    golden[i] = std::exp(input_values[i]);
+  }
 
-  // (1.17549e-038 ~ 3.40282e+038), so the golden is set to float32's upper
-  // limit.
-  const float golden[] = {1.0f,         2.71823f, 0.36788f, 3.40282e+038f,
-                          1.17549e-38f, 1.01005f, 0.99005f};
   tflite::testing::TestExp(input_dims, input_values, golden, output_data);
 }
 

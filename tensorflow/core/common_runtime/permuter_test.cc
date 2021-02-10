@@ -107,12 +107,14 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
 
 class PermuterTest : public ::testing::Test {
  protected:
-  PermuterTest() : device_type_(DEVICE_CPU) {}
+  PermuterTest()
+      : device_type_(DEVICE_CPU), col_exec_(nullptr), col_params_(nullptr) {}
 
   ~PermuterTest() override {
     stop_ = true;
     for (auto i : instances_) delete i;
     if (col_exec_) col_exec_->Unref();
+    if (col_params_) col_params_->Unref();
   }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -170,12 +172,13 @@ class PermuterTest : public ::testing::Test {
     col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
                                            dev_mgr_.get(),
                                            gpu_ring_order_.get(), work_queue_);
-    col_params_.name = "test_collective";
-    col_params_.instance.data_type = dtype;
+    col_params_ = new CollectiveParams();
+    col_params_->name = "test_collective";
+    col_params_->instance.data_type = dtype;
     static const int kInstanceKey = 18;
-    col_params_.instance.instance_key = kInstanceKey;
-    col_params_.group.device_type = device_type;
-    col_params_.instance.type = PERMUTE_COLLECTIVE;
+    col_params_->instance.instance_key = kInstanceKey;
+    col_params_->group.device_type = device_type;
+    col_params_->instance.type = PERMUTE_COLLECTIVE;
 
     // Set up all the fake device contexts.
     for (int wi = 0; wi < num_workers; wi++) {
@@ -187,12 +190,12 @@ class PermuterTest : public ::testing::Test {
         } else {
           dev_name = strings::StrCat(task_name, "/device:CPU:", di);
         }
-        col_params_.group.device_names.push_back(dev_name);
-        col_params_.instance.devices.push_back(dev_name);
+        col_params_->group.device_names.push_back(dev_name);
+        col_params_->instance.devices.push_back(dev_name);
         int default_rank = wi * num_devices_per_worker + di;
         permutation_.push_back(default_rank);
-        col_params_.group.task_names.push_back(task_name);
-        col_params_.task.is_local.push_back(true);
+        col_params_->group.task_names.push_back(task_name);
+        col_params_->task.is_local.push_back(true);
       }
     }
 
@@ -210,13 +213,13 @@ class PermuterTest : public ::testing::Test {
       std::next_permutation(permutation_.begin() + i,
                             permutation_.begin() + i + 2);
     }
-    col_params_.instance.permutation = permutation_;
+    col_params_->instance.permutation = permutation_;
 
     for (int wi = 0; wi < num_workers; wi++) {
       for (int di = 0; di < num_devices_per_worker; di++) {
         int default_rank = wi * num_devices_per_worker + di;
         instances_.push_back(new DeviceInstance(
-            default_rank, col_params_.group.device_names[default_rank],
+            default_rank, col_params_->group.device_names[default_rank],
             device_type, this));
       }
     }
@@ -320,24 +323,29 @@ class PermuterTest : public ::testing::Test {
         : parent_(parent),
           dev_name_(dev_name),
           device_type_(device_type),
-          rank_(rank) {
+          rank_(rank),
+          col_params_(new CollectiveParams()) {
       TF_CHECK_OK(parent_->dev_mgr_->LookupDevice(dev_name, &device_));
-      col_params_.name = parent_->col_params_.name;
-      col_params_.instance.data_type = parent_->col_params_.instance.data_type;
-      col_params_.instance.instance_key =
-          parent_->col_params_.instance.instance_key;
-      col_params_.group.device_type = parent_->col_params_.group.device_type;
-      col_params_.group.device_names = parent_->col_params_.group.device_names;
-      col_params_.instance.devices = parent_->col_params_.instance.devices;
-      col_params_.instance.permutation =
-          parent->col_params_.instance.permutation;
-      col_params_.group.task_names = parent_->col_params_.group.task_names;
-      col_params_.task.is_local = parent_->col_params_.task.is_local;
-      CHECK_EQ(col_params_.instance.devices.size(),
-               col_params_.group.device_names.size());
+      col_params_->name = parent_->col_params_->name;
+      col_params_->instance.data_type =
+          parent_->col_params_->instance.data_type;
+      col_params_->instance.instance_key =
+          parent_->col_params_->instance.instance_key;
+      col_params_->group.device_type = parent_->col_params_->group.device_type;
+      col_params_->group.device_names =
+          parent_->col_params_->group.device_names;
+      col_params_->instance.devices = parent_->col_params_->instance.devices;
+      col_params_->instance.permutation =
+          parent->col_params_->instance.permutation;
+      col_params_->group.task_names = parent_->col_params_->group.task_names;
+      col_params_->task.is_local = parent_->col_params_->task.is_local;
+      CHECK_EQ(col_params_->instance.devices.size(),
+               col_params_->group.device_names.size());
       // Default rank is order in device_names.
-      col_params_.default_rank = rank;
+      col_params_->default_rank = rank;
     }
+
+    ~DeviceInstance() { col_params_->Unref(); }
 
     void InitTensor(DataType dtype, const TensorShape& shape,
                     const InitFunc& f) {
@@ -387,7 +395,7 @@ class PermuterTest : public ::testing::Test {
 
       // Prepare a Permuter instance.
       string exec_key =
-          strings::StrCat(col_params_.instance.instance_key, ":0:0");
+          strings::StrCat(col_params_->instance.instance_key, ":0:0");
       Permuter* permuter = new Permuter;
       core::ScopedUnref unref(permuter);
       auto col_ctx = std::make_shared<CollectiveContext>(
@@ -412,7 +420,7 @@ class PermuterTest : public ::testing::Test {
     Tensor tensor_input_;
     Tensor tensor_output_;
     Device* device_;
-    CollectiveParams col_params_;
+    CollectiveParams* col_params_;
     Status status_;
   };  // class DeviceInstance
 
@@ -425,7 +433,7 @@ class PermuterTest : public ::testing::Test {
   std::unique_ptr<DeviceResolverLocal> dev_resolver_;
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::vector<DeviceInstance*> instances_;
-  CollectiveParams col_params_;
+  CollectiveParams* col_params_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpu_devices_;
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;

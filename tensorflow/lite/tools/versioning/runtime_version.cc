@@ -333,6 +333,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_HARD_SWISH, 1}, "1.15.0"},
               {{BuiltinOperator_FILL, 1}, "1.13.0"},
               {{BuiltinOperator_FILL, 2}, "2.3.0"},
+              {{BuiltinOperator_FILL, 3}, kPendingReleaseVersion},
               {{BuiltinOperator_REVERSE_V2, 1}, "1.14.0"},
               {{BuiltinOperator_REVERSE_V2, 2}, "2.2.0"},
               {{BuiltinOperator_REVERSE_V2, 3}, kPendingReleaseVersion},
@@ -342,6 +343,9 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_CALL_ONCE, 1}, kPendingReleaseVersion},
               {{BuiltinOperator_RFFT2D, 1}, kPendingReleaseVersion},
               {{BuiltinOperator_CONV_3D, 1}, kPendingReleaseVersion},
+              {{BuiltinOperator_IMAG, 1}, kPendingReleaseVersion},
+              {{BuiltinOperator_REAL, 1}, kPendingReleaseVersion},
+              {{BuiltinOperator_COMPLEX_ABS, 1}, kPendingReleaseVersion},
           });
 
   std::pair<BuiltinOperator, int> version_key = {op_code, op_version};

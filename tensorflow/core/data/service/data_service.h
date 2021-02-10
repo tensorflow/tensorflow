@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -116,11 +117,10 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // read from the job.
   Status ReleaseJobClient(int64 job_client_id);
 
-  // Queries the dispatcher for the tasks associated with the specified job.
-  // The tasks will be stored in `tasks`, and whether the job is finished will
-  // be stored in `job_finished`.
-  Status GetTasks(int64 job_client_id, std::vector<TaskInfo>& tasks,
-                  bool& job_finished);
+  // Heartbeats to the dispatcher, getting back the tasks that should be
+  // running, and whether the job is finished.
+  Status ClientHeartbeat(ClientHeartbeatRequest& req,
+                         ClientHeartbeatResponse& resp);
 
   // Queries the dispatcher for its registered workers. The worker info will be
   // stored in `workers`.
@@ -145,14 +145,8 @@ class DataServiceWorkerClient : public DataServiceClientBase {
       : DataServiceClientBase(address, protocol),
         transfer_protocol_(transfer_protocol) {}
 
-  // Fetches the next element for the specified task_id. The optional
-  // `consumer_index` and `round_index` must be specified for tasks which use
-  // round-robin ordering. The element's compressed tensors will be stored in
-  // `element`. If no element is available, `end_of_sequence` will be `true`,
-  // and `element` will be left unchanged.
-  Status GetElement(int64 task_id, absl::optional<int64> consumer_index,
-                    absl::optional<int64> round_index,
-                    CompressedElement& element, bool& end_of_sequence);
+  // Fetches an element from the worker.
+  Status GetElement(const GetElementRequest& req, GetElementResponse& resp);
 
   // Makes a best effort to cancel all outstanding calls in progress for the
   // client, and causes further calls to return Cancelled status.

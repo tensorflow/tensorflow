@@ -62,8 +62,8 @@ public class HexagonDelegate implements Delegate, Closeable {
 ```
 dependencies {
   ...
-  implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-  implementation 'org.tensorflow:tensorflow-lite-hexagon:0.0.0-nightly'
+  implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
+  implementation 'org.tensorflow:tensorflow-lite-hexagon:0.0.0-nightly-SNAPSHOT'
 }
 ```
 
@@ -169,8 +169,8 @@ Void TfLiteHexagonTearDown();
 ```
 dependencies {
   ...
-  implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-  implementation 'org.tensorflow:tensorflow-lite-hexagon:0.0.0-nightly'
+  implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
+  implementation 'org.tensorflow:tensorflow-lite-hexagon:0.0.0-nightly-SNAPSHOT'
 }
 ```
 

@@ -33,6 +33,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import losses
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 ALL_LOSSES = [
@@ -344,6 +345,20 @@ class MeanSquaredErrorTest(test.TestCase):
     loss = mse_obj(y_true, y_pred, sample_weight=sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), 767.8 / 6, 3)
 
+  def test_ragged_tensors(self):
+    mse_obj = losses.MeanSquaredError()
+
+    y_true = ragged_factory_ops.constant([[1., 1., 9.], [2., 5.]])
+    y_pred = ragged_factory_ops.constant([[4., 1., 8.], [12., 3.]])
+    sample_weight = constant_op.constant([1.2, 0.5])
+    loss = mse_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # mse = [((4 - 1)^2 + (8 - 9)^2) / 3, ((12 - 2)^2 + (3 - 5)^2) / 2]
+    # mse = [3.(3), 52]
+    # weighted_mse = [3.(3) * 1.2, 52 * 0.5] = [4, 26]
+    # reduced_weighted_mse = (4 + 26) / 2 =
+    self.assertAllClose(self.evaluate(loss), 15, 1e-2)
+
   def test_timestep_weighted(self):
     mse_obj = losses.MeanSquaredError()
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
@@ -483,6 +498,17 @@ class MeanAbsoluteErrorTest(test.TestCase):
                                   dtype=dtypes.float32)
     loss = mae_obj(y_true, y_pred, sample_weight=2.3)
     self.assertAlmostEqual(self.evaluate(loss), 25.29999, 3)
+
+  def test_ragged_tensor(self):
+    mae_obj = losses.MeanAbsoluteError()
+    y_true = ragged_factory_ops.constant([[1, 9, 2], [-5, -2]],
+                                         dtype=dtypes.float32)
+    y_pred = ragged_factory_ops.constant([[4, 8, 12], [8, 1]],
+                                         dtype=dtypes.float32)
+    # loss = [14/3, 16/2]
+    sample_weight = constant_op.constant([1.2, 1.0], shape=(2, 1))
+    loss = mae_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 6.8, 5)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))

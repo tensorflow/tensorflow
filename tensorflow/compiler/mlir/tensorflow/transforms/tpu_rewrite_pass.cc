@@ -394,7 +394,7 @@ Operation* BuildCompileOp(
   auto compilation_status_type =
       RankedTensorType::get({}, builder->getType<TF::StringType>());
   auto program_type =
-      RankedTensorType::get({2}, builder->getType<TF::StringType>());
+      RankedTensorType::get({3}, builder->getType<TF::StringType>());
 
   auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
       cluster_func.getLoc(),

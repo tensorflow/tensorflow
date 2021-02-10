@@ -104,6 +104,29 @@ def _get_end_to_end_test_cases():
       },
       {
           "testcase_name":
+              "test_strings_with_special_tokens",
+          # Mask and oov values in the vocab data should be dropped, and mapped
+          # to 0 and 1 respectively when calling the layer.
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        [""], [""], [""], ["[OOV]"], ["[OOV]"], ["[OOV]"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([["earth"], [""], ["wind"], ["[OOV]"], ["and"], [""],
+                        ["fire"], ["and"], ["[OOV]"], ["michigan"]]),
+          "kwargs": {
+              "max_tokens": None,
+              "num_oov_indices": 1,
+              "mask_token": "",
+              "oov_token": "[OOV]",
+              "dtype": dtypes.string,
+          },
+          "expected_output": [[2], [0], [3], [1], [4], [0], [5], [4], [1], [1]],
+          "input_dtype":
+              dtypes.string
+      },
+      {
+          "testcase_name":
               "test_ints_soft_vocab_cap",
           # Create an array where 1138 is the most frequent term, followed by
           # 1729, then 725, then 42. This ensures that the vocab accumulator
@@ -123,6 +146,30 @@ def _get_end_to_end_test_cases():
               "dtype": dtypes.int64,
           },
           "expected_output": [[2], [3], [4], [5], [5], [4], [2], [1]],
+          "input_dtype":
+              dtypes.int64
+      },
+      {
+          "testcase_name":
+              "test_ints_with_special_tokens",
+          # Mask and oov values in the vocab data should be dropped, and mapped
+          # to 0 and 1 respectively when calling the layer.
+          "vocab_data":
+              np.array([[42], [1138], [1138], [1138], [1138], [0], [0], [0],
+                        [-1], [-1], [-1], [1729], [1729], [1729], [725], [725]],
+                       dtype=np.int64),
+          "input_data":
+              np.array([[1138], [0], [1729], [-1], [725], [0], [42], [725],
+                        [-1], [4]],
+                       dtype=np.int64),
+          "kwargs": {
+              "max_tokens": None,
+              "num_oov_indices": 1,
+              "mask_token": 0,
+              "oov_token": -1,
+              "dtype": dtypes.int64,
+          },
+          "expected_output": [[2], [0], [3], [1], [4], [0], [5], [4], [1], [1]],
           "input_dtype":
               dtypes.int64
       },
@@ -198,6 +245,61 @@ def _get_end_to_end_test_cases():
           "input_dtype":
               dtypes.int64
       },
+      {
+          "testcase_name":
+              "test_ints_tf_idf_output",
+          "vocab_data":
+              np.array([[42], [1138], [1138], [1138], [1138], [1729], [1729],
+                        [1729], [725], [725]]),
+          "input_data":
+              np.array([[1138], [1729], [725], [42], [42], [725], [1138], [4]]),
+          "kwargs": {
+              "max_tokens": 6,
+              "num_oov_indices": 1,
+              "mask_token": 0,
+              "oov_token": -1,
+              "output_mode": index_lookup.TFIDF,
+              "dtype": dtypes.int64,
+          },
+          "expected_output": [[0, 0, 1.098612, 0, 0, 0],
+                              [0, 0, 0, 1.252763, 0, 0],
+                              [0, 0, 0, 0, 1.466337, 0],
+                              [0, 0, 0, 0, 0, 1.7917595],
+                              [0, 0, 0, 0, 0, 1.7917595],
+                              [0, 0, 0, 0, 1.4663371, 0],
+                              [0, 0, 1.098612, 0, 0, 0],
+                              [0, 1.402368, 0, 0, 0, 0]],
+          "input_dtype":
+              dtypes.int64
+      },
+      {
+          "testcase_name":
+              "test_strings_tf_idf_output",
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([["earth"], ["wind"], ["and"], ["fire"], ["fire"],
+                        ["and"], ["earth"], ["michigan"]]),
+          "kwargs": {
+              "max_tokens": 6,
+              "num_oov_indices": 1,
+              "mask_token": "",
+              "oov_token": "[OOV]",
+              "output_mode": index_lookup.TFIDF,
+              "dtype": dtypes.string,
+          },
+          "expected_output": [[0, 0, 1.098612, 0, 0, 0],
+                              [0, 0, 0, 1.252763, 0, 0],
+                              [0, 0, 0, 0, 1.466337, 0],
+                              [0, 0, 0, 0, 0, 1.7917595],
+                              [0, 0, 0, 0, 0, 1.7917595],
+                              [0, 0, 0, 0, 1.4663371, 0],
+                              [0, 0, 1.098612, 0, 0, 0],
+                              [0, 1.402368, 0, 0, 0, 0]],
+          "input_dtype":
+              dtypes.string
+      },
   )
 
   crossed_test_cases = []
@@ -224,6 +326,8 @@ class IndexLookupLayerTest(keras_parameterized.TestCase,
     cls = get_layer_class()
     if "invert" in kwargs and kwargs["invert"]:
       expected_output_dtype = kwargs["dtype"]
+    elif "output_mode" in kwargs and kwargs["output_mode"] != index_lookup.INT:
+      expected_output_dtype = dtypes.float32
     else:
       expected_output_dtype = dtypes.int64
 
@@ -618,8 +722,8 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
-  def test_output_shape(self):
-    input_data = keras.Input(shape=(4,), dtype=dtypes.string)
+  def test_int_output_shape(self):
+    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.string)
     layer = get_layer_class()(
         max_tokens=2,
         num_oov_indices=1,
@@ -627,7 +731,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
         oov_token="[OOV]",
         dtype=dtypes.string)
     int_data = layer(input_data)
-    self.assertAllEqual(int_data.shape[1:], input_data.shape[1:])
+    self.assertAllEqual(int_data.shape.as_list(), [16, 4])
 
   def test_int_output_no_reserved_zero(self):
     vocab_data = ["earth", "wind", "and", "fire"]
@@ -667,6 +771,193 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_binary_output_hard_maximum(self):
+    """Check binary output when pad_to_max_tokens=True."""
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire", ""],
+                            ["fire", "fire", "and", "earth", "michigan"]])
+    expected_output = [
+        [1, 0, 1, 1, 1, 1, 0],
+        [0, 1, 1, 0, 1, 1, 0],
+    ]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=7,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.BINARY,
+        pad_to_max_tokens=True,
+        dtype=dtypes.string)
+    layer.set_vocabulary(vocab_data)
+    binary_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=binary_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_binary_output_soft_maximum(self):
+    """Check binary output when pad_to_max_tokens=False."""
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [
+        [0, 0, 1, 1, 1, 1],
+        [0, 1, 1, 0, 1, 1],
+    ]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.BINARY,
+        dtype=dtypes.string)
+    layer.set_vocabulary(vocab_data)
+    binary_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=binary_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_binary_output_shape(self):
+    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=2,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.BINARY,
+        dtype=dtypes.string)
+    binary_data = layer(input_data)
+    self.assertAllEqual(binary_data.shape.as_list(), [16, 2])
+
+  def test_count_output_hard_maxiumum(self):
+    """Check count output when pad_to_max_tokens=True."""
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "wind"],
+                            ["fire", "fire", "fire", "michigan"]])
+    expected_output = [
+        [0, 0, 1, 2, 1, 0, 0],
+        [0, 1, 0, 0, 0, 3, 0],
+    ]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=7,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.COUNT,
+        pad_to_max_tokens=True,
+        dtype=dtypes.string)
+    layer.set_vocabulary(vocab_data)
+    count_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=count_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_count_output_soft_maximum(self):
+    """Check count output when pad_to_max_tokens=False."""
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "wind"],
+                            ["fire", "fire", "fire", "michigan"]])
+    expected_output = [
+        [0, 0, 1, 2, 1, 0],
+        [0, 1, 0, 0, 0, 3],
+    ]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.COUNT,
+        dtype=dtypes.string)
+    layer.set_vocabulary(vocab_data)
+    count_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=count_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_count_output_shape(self):
+    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=2,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.COUNT,
+        dtype=dtypes.string)
+    count_data = layer(input_data)
+    self.assertAllEqual(count_data.shape.as_list(), [16, 2])
+
+  def test_ifidf_output_hard_maximum(self):
+    """Check tf-idf output when pad_to_max_tokens=True."""
+    vocab_data = ["earth", "wind", "and", "fire"]
+    # OOV idf weight (bucket 0) should 0.5, the average of passed weights.
+    idf_weights = [.4, .25, .75, .6]
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "fire", "earth", "michigan"]])
+    expected_output = [
+        [0.00, 0.00, 0.80, 0.25, 0.75, 0.00, 0.00],
+        [0.00, 1.00, 0.40, 0.00, 0.00, 0.60, 0.00],
+    ]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=7,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.TFIDF,
+        pad_to_max_tokens=True,
+        dtype=dtypes.string)
+    layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
+    layer_output = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=layer_output)
+    output_dataset = model.predict(input_array)
+    self.assertAllClose(expected_output, output_dataset)
+
+  def test_ifidf_output_soft_maximum(self):
+    """Check tf-idf output when pad_to_max_tokens=False."""
+    vocab_data = ["earth", "wind", "and", "fire"]
+    # OOV idf weight (bucket 0) should 0.5, the average of passed weights.
+    idf_weights = [.4, .25, .75, .6]
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "fire", "earth", "michigan"]])
+    expected_output = [
+        [0.00, 0.00, 0.80, 0.25, 0.75, 0.00],
+        [0.00, 1.00, 0.40, 0.00, 0.00, 0.60],
+    ]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.TFIDF,
+        dtype=dtypes.string)
+    layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
+    layer_output = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=layer_output)
+    output_dataset = model.predict(input_array)
+    self.assertAllClose(expected_output, output_dataset)
+
+  def test_ifidf_output_shape(self):
+    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=2,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.COUNT,
+        dtype=dtypes.string)
+    layer_output = layer(input_data)
+    self.assertAllEqual(layer_output.shape.as_list(), [16, 2])
+
 
 @keras_parameterized.run_all_keras_modes
 class IndexLookupVocabularyTest(keras_parameterized.TestCase,
@@ -675,6 +966,25 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
 
   def test_int_output_explicit_vocab(self):
     vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        vocabulary=vocab_data,
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        dtype=dtypes.string)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_int_output_explicit_vocab_with_special_tokens(self):
+    vocab_data = ["", "[OOV]", "earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
     expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
@@ -791,6 +1101,63 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
         oov_token="[OOV]",
         dtype=dtypes.string)
     with self.assertRaisesRegex(ValueError, ".*Reserved mask.*"):
+      layer.set_vocabulary(vocab_data)
+
+  def test_vocab_set_after_call_pad_to_max_false_fails(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        pad_to_max_tokens=False,
+        output_mode=index_lookup.BINARY,
+        dtype=dtypes.string)
+    layer.set_vocabulary(vocab_data)
+    # Calling the layer should lock the vocabulary.
+    _ = layer([["earth"]])
+    with self.assertRaisesRegex(RuntimeError, "vocabulary cannot be changed"):
+      layer.set_vocabulary(vocab_data)
+
+  def test_vocab_with_idf_weights_non_tfidf_output_fails(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    weight_data = [1, 1, 1, 1, 1]
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.BINARY,
+        dtype=dtypes.string)
+    with self.assertRaisesRegex(ValueError,
+                                ".*idf_weights should only be set if.*"):
+      layer.set_vocabulary(vocab_data, idf_weights=weight_data)
+
+  def test_vocab_with_idf_weights_length_mismatch_fails(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    weight_data = [1, 1, 1, 1, 1]  # too long
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.TFIDF,
+        dtype=dtypes.string)
+    with self.assertRaisesRegex(
+        ValueError, "idf_weights must be the same length as vocab.*"):
+      layer.set_vocabulary(vocab_data, idf_weights=weight_data)
+
+  def test_vocab_without_idf_weights_tfidf_output_fails(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    layer = get_layer_class()(
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.TFIDF,
+        dtype=dtypes.string)
+    with self.assertRaisesRegex(
+        ValueError, "idf_weights must be set if output_mode is TFIDF"):
       layer.set_vocabulary(vocab_data)
 
   def test_non_unique_int_vocab_fails(self):
@@ -1125,6 +1492,7 @@ class IndexLookupStringCombinerTest(
     }
     expected_extract_output = {
         "vocab": np.array(["wind", "earth", "and", "michigan", "fire"]),
+        "idf_weights": None,
     }
     expected_accumulator = combiner._create_accumulator()
     expected_accumulator = self.update_accumulator(expected_accumulator,
@@ -1151,6 +1519,7 @@ class IndexLookupStringCombinerTest(
           },
           "expected_extract_output": {
               "vocab": np.array(["wind", "fire", "earth"]),
+              "idf_weights": None,
           },
       },
       {
@@ -1167,6 +1536,7 @@ class IndexLookupStringCombinerTest(
           },
           "expected_extract_output": {
               "vocab": np.array(["wind", "fire", "earth", "and"]),
+              "idf_weights": None,
           },
       },
       {
@@ -1183,6 +1553,7 @@ class IndexLookupStringCombinerTest(
           },
           "expected_extract_output": {
               "vocab": np.array(["wind", "fire", "earth", "and"]),
+              "idf_weights": None,
           },
       },
       {
@@ -1195,6 +1566,7 @@ class IndexLookupStringCombinerTest(
           },
           "expected_extract_output": {
               "vocab": np.array(["wind", "fire", "earth"]),
+              "idf_weights": None,
           },
       },
       # Which tokens are retained are based on global frequency, and thus are
@@ -1215,6 +1587,7 @@ class IndexLookupStringCombinerTest(
           },
           "expected_extract_output": {
               "vocab": np.array(["wind", "fire", "earth"]),
+              "idf_weights": None,
           },
       })
   def test_combiner_computation(self, data, vocab_size,
@@ -1255,6 +1628,7 @@ class IndexLookupIntCombinerTest(keras_parameterized.TestCase,
     }
     expected_extract_output = {
         "vocab": np.array([1138, 725, 42, 1729, 203]),
+        "idf_weights": None,
     }
     expected_accumulator = combiner._create_accumulator()
     expected_accumulator = self.update_accumulator(expected_accumulator,
@@ -1277,6 +1651,7 @@ class IndexLookupIntCombinerTest(keras_parameterized.TestCase,
           },
           "expected_extract_output": {
               "vocab": np.array([1138, 1729, 725]),
+              "idf_weights": None,
           },
       },
       {
@@ -1289,6 +1664,7 @@ class IndexLookupIntCombinerTest(keras_parameterized.TestCase,
           },
           "expected_extract_output": {
               "vocab": np.array([1138, 1729, 725, 42]),
+              "idf_weights": None,
           },
       },
       {
@@ -1301,6 +1677,7 @@ class IndexLookupIntCombinerTest(keras_parameterized.TestCase,
           },
           "expected_extract_output": {
               "vocab": np.array([1138, 1729, 725, 42]),
+              "idf_weights": None,
           },
       },
       {
@@ -1313,6 +1690,7 @@ class IndexLookupIntCombinerTest(keras_parameterized.TestCase,
           },
           "expected_extract_output": {
               "vocab": np.array([1138, 1729, 725]),
+              "idf_weights": None,
           },
       },
       # Which tokens are retained are based on global frequency, and thus are
@@ -1333,6 +1711,7 @@ class IndexLookupIntCombinerTest(keras_parameterized.TestCase,
           },
           "expected_extract_output": {
               "vocab": np.array([1138, 1729, 42]),
+              "idf_weights": None,
           },
       })
   def test_combiner_computation(self, data, vocab_size,

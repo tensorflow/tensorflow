@@ -62,6 +62,7 @@ std::size_t MallocExtension_GetAllocatedSize(const void* p);
 struct MemoryInfo {
   int64 total = 0;
   int64 free = 0;
+  int64 bw_used = 0;  // memory bandwidth used across all CPU (in MBs/second)
 };
 
 // Retrieves the host memory information. If any of the fields in the returned

@@ -23,6 +23,7 @@ namespace tflite {
 namespace flex {
 
 const std::set<std::string>& GetFlexAllowlist() {
+  // LINT.IfChange
   static const std::set<std::string>* allowlisted_flex_ops =
       new std::set<std::string>({
           // go/keep-sorted start
@@ -36,6 +37,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "AdjustHue",
           "AdjustSaturation",
           "All",
+          "Angle",
           "Any",
           "ApplyAdaMax",
           "ApplyAdadelta",
@@ -59,7 +61,10 @@ const std::set<std::string>& GetFlexAllowlist() {
           "Assert",
           "Assign",
           "AssignAdd",
+          "AssignAddVariableOp",
           "AssignSub",
+          "AssignSubVariableOp",
+          "AssignVariableOp",
           "Atan",
           "Atan2",
           "AudioSpectrogram",
@@ -70,6 +75,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "BatchCholesky",
           "BatchMatMul",
           "BatchMatMulV2",
+          "BatchMatrixDeterminant",
           "BatchMatrixDiag",
           "BatchMatrixDiagPart",
           "BatchMatrixInverse",
@@ -153,7 +159,10 @@ const std::set<std::string>& GetFlexAllowlist() {
           "DenseToSparseSetOperation",
           "DepthToSpace",
           "DepthwiseConv2dNative",
+          "DepthwiseConv2dNativeBackpropFilter",
+          "DepthwiseConv2dNativeBackpropInput",
           "Dequantize",
+          "DestroyResourceOp",
           "DestroyTemporaryVariable",
           "Diag",
           "DiagPart",
@@ -251,12 +260,14 @@ const std::set<std::string>& GetFlexAllowlist() {
           "LinSpace",
           "ListDiff",
           "Log",
+          "LogMatrixDeterminant",
           "LogSoftmax",
           "LogicalAnd",
           "LogicalNot",
           "LogicalOr",
           "LoopCond",
           "MatMul",
+          "MatrixDeterminant",
           "MatrixDiag",
           "MatrixDiagPart",
           "MatrixDiagPartV2",
@@ -375,6 +386,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "RandomUniformInt",
           "Range",
           "Rank",
+          "ReadVariableOp",
           "Real",
           "RealDiv",
           "Reciprocal",
@@ -398,6 +410,8 @@ const std::set<std::string>& GetFlexAllowlist() {
           "RequantizationRange",
           "Requantize",
           "Reshape",
+          "ResizeBicubic",
+          "ResizeBicubicGrad",
           "ResizeBilinear",
           "ResizeBilinearGrad",
           "ResizeNearestNeighbor",
@@ -420,11 +434,20 @@ const std::set<std::string>& GetFlexAllowlist() {
           "ResourceApplyProximalAdagrad",
           "ResourceApplyProximalGradientDescent",
           "ResourceApplyRMSProp",
+          "ResourceGather",
+          "ResourceGatherNd",
+          "ResourceScatterAdd",
+          "ResourceScatterDiv",
+          "ResourceScatterMax",
+          "ResourceScatterMin",
+          "ResourceScatterMul",
           "ResourceScatterNdAdd",
           "ResourceScatterNdMax",
           "ResourceScatterNdMin",
           "ResourceScatterNdSub",
           "ResourceScatterNdUpdate",
+          "ResourceScatterSub",
+          "ResourceScatterUpdate",
           "ResourceSparseApplyAdadelta",
           "ResourceSparseApplyAdagrad",
           "ResourceSparseApplyAdagradDA",
@@ -565,6 +588,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "StringToHashBucket",
           "StringToHashBucketFast",
           "StringToHashBucketStrong",
+          "StringToNumber",
           "Sub",
           "Substr",
           "Sum",
@@ -660,7 +684,10 @@ const std::set<std::string>& GetFlexAllowlist() {
           "UnsortedSegmentProd",
           "UnsortedSegmentSum",
           "UnwrapDatasetVariant",
+          "VarHandleOp",
+          "VarIsInitializedOp",
           "Variable",
+          "VariableShape",
           "VariableV2",
           "Where",
           "WrapDatasetVariant",
@@ -679,20 +706,24 @@ const std::set<std::string>& GetFlexAllowlist() {
           "_ListToArray",
           "_ParallelConcatStart",
           "_ParallelConcatUpdate",
+          "_ReadVariablesOp",
           "_Recv",
           "_Retval",
           "_Send",
           "_SwitchN",
+          "_VarHandlesOp",
           // go/keep-sorted end
       });
+  // LINT.ThenChange(//tensorflow/lite/g3doc/guide/op_select_allowlist.md)
+
   return *allowlisted_flex_ops;
   // Prevent lint error about this function being too long. This function
   // is a set of ops, and making it shorter won't help readbility.
   // NOLINTNEXTLINE
 }
 
-// Allow the tf.text ops if they are registered in the global op registry.
-bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
+const std::set<std::string>& GetTFTextFlexAllowlist() {
+  // LINT.IfChange
   static const std::set<std::string>* tftext_flex_ops =
       new std::set<std::string>({
           "CaseFoldUTF8",
@@ -713,12 +744,19 @@ bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
           "WhitespaceTokenizeWithOffsets",
           "WordpieceTokenizeWithOffsets",
       });
-  if (tftext_flex_ops->count(op_name) == 0) return false;
+  // LINT.ThenChange(//tensorflow/lite/g3doc/guide/op_select_allowlist.md)
+
+  return *tftext_flex_ops;
+}
+
+// Allow the tf.text ops if they are registered in the global op registry.
+bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
+  if (GetTFTextFlexAllowlist().count(op_name) == 0) return false;
   return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
 }
 
-// Allow the sentencepiece ops if they are registered in the global op registry.
-bool IsAllowedSentencePieceOpForFlex(const std::string& op_name) {
+const std::set<std::string>& GetSentencePieceFlexAllowlist() {
+  // LINT.IfChange
   static const std::set<std::string>* sentencepiece_flex_ops =
       new std::set<std::string>({
           "SentencepieceGetPieceSize",
@@ -728,7 +766,14 @@ bool IsAllowedSentencePieceOpForFlex(const std::string& op_name) {
           "SentencepieceEncodeSparse",
           "SentencepieceDecode",
       });
-  if (sentencepiece_flex_ops->count(op_name) == 0) return false;
+  // LINT.ThenChange(//tensorflow/lite/g3doc/guide/op_select_allowlist.md)
+
+  return *sentencepiece_flex_ops;
+}
+
+// Allow the sentencepiece ops if they are registered in the global op registry.
+bool IsAllowedSentencePieceOpForFlex(const std::string& op_name) {
+  if (GetSentencePieceFlexAllowlist().count(op_name) == 0) return false;
   return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
 }
 

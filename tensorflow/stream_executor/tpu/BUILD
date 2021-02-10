@@ -22,7 +22,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/c:tf_attrtype",
-        "//tensorflow/c:tf_status",
         "//tensorflow/core/tpu:libtftpu_header",
         "//tensorflow/stream_executor:stream_executor_headers",
     ],
@@ -159,10 +158,17 @@ cc_library(
         ":tpu_topology_external",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
+)
+
+cc_library(
+    name = "tpu_platform_id",
+    srcs = ["tpu_platform_id.cc"],
+    hdrs = ["tpu_platform_id.h"],
+    deps = ["//tensorflow/stream_executor:stream_header"],
 )
 
 cc_library(
@@ -184,6 +190,7 @@ cc_library(
         ":status_helper",
         ":tpu_executor_c_api_hdrs",
         ":tpu_executor_interface",
+        ":tpu_platform_id",
         ":tpu_platform_interface",
         ":tpu_stream_interface",
         "//tensorflow/c:tf_status",
@@ -236,6 +243,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_executor",
+        ":tpu_platform_id",
         ":tpu_transfer_manager_base",
         "//tensorflow/compiler/xla/service:transfer_manager",
     ],
@@ -253,6 +261,7 @@ cc_library(
         ":status_helper",
         ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_platform_id",
         ":tpu_transfer_manager_interface",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

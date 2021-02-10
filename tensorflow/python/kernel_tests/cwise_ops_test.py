@@ -219,7 +219,8 @@ class ComparisonOpTest(test.TestCase):
         with self.subTest(t=t, f=f):
           with self.assertRaisesRegex(
               (ValueError, errors.InvalidArgumentError),
-              "Incompatible shapes|Dimensions must be equal"):
+              "Incompatible shapes|Dimensions must be equal|"
+              "required broadcastable shapes"):
             f(x.astype(t), y.astype(t))
 
 
@@ -871,6 +872,11 @@ class MathOpsOverloadTest(test.TestCase):
         dtypes_lib.float32,
         dtypes_lib.float64,
         dtypes_lib.bfloat16,
+        dtypes_lib.uint16,
+        dtypes_lib.uint32,
+        dtypes_lib.uint64,
+        dtypes_lib.int8,
+        dtypes_lib.int16,
         dtypes_lib.int32,
         dtypes_lib.int64,
         dtypes_lib.complex64,
@@ -890,6 +896,10 @@ class MathOpsOverloadTest(test.TestCase):
           if dtype in (dtypes_lib.complex64,
                        dtypes_lib.complex128) and tf_func == _FLOORDIV:
             continue  # floordiv makes no sense for complex
+          if dtype in (dtypes_lib.uint16, dtypes_lib.uint32,
+                       dtypes_lib.uint64) and tf_func in (_POW, _FLOORDIV,
+                                                          _TRUEDIV):
+            continue  # power and div not supported for unsigned types
           self._compareBinary(10, 5, dtype, np_func, tf_func)
     # Mod only works for int32 and int64.
     for dtype in [dtypes_lib.int32, dtypes_lib.int64]:
@@ -901,6 +911,12 @@ class MathOpsOverloadTest(test.TestCase):
         dtypes_lib.float16,
         dtypes_lib.float32,
         dtypes_lib.float64,
+        dtypes_lib.uint8,
+        dtypes_lib.uint16,
+        dtypes_lib.uint32,
+        dtypes_lib.uint64,
+        dtypes_lib.int8,
+        dtypes_lib.int16,
         dtypes_lib.int32,
         dtypes_lib.int64,
     ]

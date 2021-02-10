@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -72,7 +73,7 @@ static std::unique_ptr<xla::ComputationPlacer> CreateTpuComputationPlacer() {
 }
 
 static bool InitModule() {
-  xla::ComputationPlacer::RegisterComputationPlacer(TpuPlatform::kId,
+  xla::ComputationPlacer::RegisterComputationPlacer(GetTpuPlatformId(),
                                                     CreateTpuComputationPlacer);
   return true;
 }

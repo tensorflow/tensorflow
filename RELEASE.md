@@ -32,6 +32,9 @@
         examples in the same step.
     *   tf.data service supports custom data transfer protocols (other than
         gRPC).
+    *   `tf.data.Dataset.batch()` now supports `num_parallel_calls` argument,
+        which can be used to indicate that multiple input batches should be
+        computed in parallel.
 
 ## Bug Fixes and Other Changes
 
@@ -56,6 +59,9 @@
         the dataset elements. This avoids the need for explicitly specifying the
         `element_spec` argument of `tf.data.experimental.load` when loading the
         previously saved dataset.
+    *   Add `.element_spec` property to `tf.data.DatasetSpec` to access the
+        inner spec. This can be used to extract the structure of nested
+        datasets.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
@@ -97,6 +103,11 @@
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
         `tf.GradientTape` inside a `tf.function`.
     *   Changed the default step size in `gradient_checker_v2.compute_gradients` to be exactly representable as a binary floating point numbers. This avoids poluting gradient approximations needlessly, which is some cases leads to false negatives in op gradient tests.
+    * Added `tf.config.experimental.get_memory_info`, returning a dict with the
+      current and peak memory usage. Deprecated 
+      `tf.config.experimental.get_memory_usage` in favor of this new function.
+    *   Extended `tf.config.experimental.enable_tensor_float_32_execution` to
+        control Tensor-Float-32 evaluation in RNNs.
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph

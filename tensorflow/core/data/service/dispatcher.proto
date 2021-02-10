@@ -94,17 +94,30 @@ message ReleaseJobClientRequest {
 
 message ReleaseJobClientResponse {}
 
-message GetTasksRequest {
-  // The job client id to look up tasks for.
+message ClientHeartbeatRequest {
+  // The job client id to heartbeat for.
   int64 job_client_id = 1;
+  // Reports which round the client is currently reading from when doing
+  // round-robin reads.
+  oneof optional_current_round {
+    int64 current_round = 2;
+  }
+  // Reports whether the client has successfully blocked the indicated round
+  // from starting. This enables the dispatcher to add a new task in the
+  // blocked round or later.
+  oneof optional_blocked_round {
+    int64 blocked_round = 4;
+  }
 }
 
-message GetTasksResponse {
-  // A list of all tasks for a job.
+message ClientHeartbeatResponse {
+  // A list of all tasks that the client should read from.
   repeated TaskInfo task_info = 1;
-  // Whether the job has finished. An empty `task_info` list could either mean
-  // that no tasks have been started yet, or that all tasks have finished. This
-  // field gives us a way to tell the difference.
+  // Tells the client not to start the given round if possible.
+  oneof optional_block_round {
+    int64 block_round = 3;
+  }
+  // Whether the job has finished.
   bool job_finished = 2;
 }
 
@@ -148,8 +161,10 @@ service DispatcherService {
   rpc ReleaseJobClient(ReleaseJobClientRequest)
       returns (ReleaseJobClientResponse);
 
-  // Reports a list of all tasks for a job.
-  rpc GetTasks(GetTasksRequest) returns (GetTasksResponse);
+  // Heartbeats from the client. This lets the dispatcher know that the client
+  // is still active, and gives the dispatcher a chance to notify the client
+  // of new tasks.
+  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (ClientHeartbeatResponse);
 
   // Reports a list of all workers registered with the dispatcher.
   rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);

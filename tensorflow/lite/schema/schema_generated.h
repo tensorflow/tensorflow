@@ -402,11 +402,13 @@ enum TensorType {
   TensorType_FLOAT64 = 10,
   TensorType_COMPLEX128 = 11,
   TensorType_UINT64 = 12,
+  TensorType_RESOURCE = 13,
+  TensorType_VARIANT = 14,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_UINT64
+  TensorType_MAX = TensorType_VARIANT
 };
 
-inline const TensorType (&EnumValuesTensorType())[13] {
+inline const TensorType (&EnumValuesTensorType())[15] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -420,13 +422,15 @@ inline const TensorType (&EnumValuesTensorType())[13] {
     TensorType_INT8,
     TensorType_FLOAT64,
     TensorType_COMPLEX128,
-    TensorType_UINT64
+    TensorType_UINT64,
+    TensorType_RESOURCE,
+    TensorType_VARIANT
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[14] = {
+  static const char * const names[16] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -440,13 +444,15 @@ inline const char * const *EnumNamesTensorType() {
     "FLOAT64",
     "COMPLEX128",
     "UINT64",
+    "RESOURCE",
+    "VARIANT",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_UINT64)) return "";
+  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_VARIANT)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
@@ -811,11 +817,14 @@ enum BuiltinOperator {
   BuiltinOperator_BROADCAST_TO = 130,
   BuiltinOperator_RFFT2D = 131,
   BuiltinOperator_CONV_3D = 132,
+  BuiltinOperator_IMAG = 133,
+  BuiltinOperator_REAL = 134,
+  BuiltinOperator_COMPLEX_ABS = 135,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_CONV_3D
+  BuiltinOperator_MAX = BuiltinOperator_COMPLEX_ABS
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[133] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[136] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -949,13 +958,16 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[133] {
     BuiltinOperator_CALL_ONCE,
     BuiltinOperator_BROADCAST_TO,
     BuiltinOperator_RFFT2D,
-    BuiltinOperator_CONV_3D
+    BuiltinOperator_CONV_3D,
+    BuiltinOperator_IMAG,
+    BuiltinOperator_REAL,
+    BuiltinOperator_COMPLEX_ABS
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[134] = {
+  static const char * const names[137] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1089,13 +1101,16 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "BROADCAST_TO",
     "RFFT2D",
     "CONV_3D",
+    "IMAG",
+    "REAL",
+    "COMPLEX_ABS",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_CONV_3D)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_COMPLEX_ABS)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }

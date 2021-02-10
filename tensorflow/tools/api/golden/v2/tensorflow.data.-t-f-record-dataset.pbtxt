@@ -21,7 +21,7 @@ tf_class {
   }
   member_method {
     name: "batch"
-    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "cache"

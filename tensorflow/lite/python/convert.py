@@ -322,6 +322,7 @@ def build_toco_flags(inference_type=dtypes.float32,
                      target_ops=None,
                      conversion_summary_dir=None,
                      select_user_tf_ops=None,
+                     enable_tflite_resource_variables=False,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -355,6 +356,7 @@ def build_toco_flags(inference_type=dtypes.float32,
       toco.enable_select_tf_ops = True
     if set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
       toco.force_select_tf_ops = True
+  toco.enable_tflite_resource_variables = enable_tflite_resource_variables
   return toco
 
 

@@ -67,6 +67,12 @@ static llvm::cl::opt<bool> post_training_quantize(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
+static llvm::cl::opt<bool> legacy_float_scale(
+    "tfl-test-legacy-float-scale", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("calculate quantization scales in float instead of double"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
 static llvm::cl::opt<bool> disable_per_channel(
     "tfl-disable-per-channel", llvm::cl::value_desc("bool"),
     llvm::cl::desc("Whether disable per-channel quantized weights."),
@@ -103,6 +109,7 @@ class PrepareQuantizePass
     quant_specs_.inference_type =
         quantize_signed ? tensorflow::DT_QINT8 : tensorflow::DT_QUINT8;
     quant_specs_.post_training_quantization = post_training_quantize;
+    quant_specs_.legacy_float_scale = legacy_float_scale;
   }
 
   // Constructor used by manually creating the pass.
@@ -367,7 +374,7 @@ void PrepareQuantizePass::runOnFunction() {
     patterns_1.insert<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(
         ctx);
   }
-  applyPatternsAndFoldGreedily(func, std::move(patterns_1));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_1));
 
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
@@ -392,7 +399,7 @@ void PrepareQuantizePass::runOnFunction() {
         ctx, quant_specs_);
     patterns_2.insert<ConvertSvdfStatsToQDQs>(ctx, quant_specs_);
   }
-  applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 
   SanityCheckAndAdjustment(func);
 

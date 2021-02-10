@@ -34,6 +34,9 @@ PLATFORM_FLAGS = \
 # broken w/o it. Remove this workaround once the issue is resolved.
 PLATFORM_FLAGS += -DNDEBUG
 
+# TODO(#46937): Remove once initialization of global variables is sorted out.
+PLATFORM_FLAGS += -DRENODE
+
 CXXFLAGS += $(PLATFORM_FLAGS) -fno-use-cxa-atexit
 CCFLAGS += $(PLATFORM_FLAGS)
 
