@@ -51,20 +51,6 @@ template_rule(
     }),
 )
 
-_DNNL_VERSION_1_6_4 = {
-    "@DNNL_VERSION_MAJOR@": "1",
-    "@DNNL_VERSION_MINOR@": "6",
-    "@DNNL_VERSION_PATCH@": "4",
-    "@DNNL_VERSION_HASH@": "N/A",
-}
-
-_DNNL_VERSION_1_7 = {
-    "@DNNL_VERSION_MAJOR@": "1",
-    "@DNNL_VERSION_MINOR@": "7",
-    "@DNNL_VERSION_PATCH@": "0",
-    "@DNNL_VERSION_HASH@": "N/A",
-}
-
 # Create the file dnnl_version.h with DNNL version numbers.
 # Currently, the version numbers are hard coded here. If DNNL is upgraded then
 # the version numbers have to be updated manually. The version numbers can be
@@ -76,11 +62,12 @@ template_rule(
     name = "dnnl_version_h",
     src = "include/dnnl_version.h.in",
     out = "include/dnnl_version.h",
-    substitutions = select({
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_threadpool": _DNNL_VERSION_1_6_4,
-        "@org_tensorflow//third_party/mkl:build_with_mkl": _DNNL_VERSION_1_6_4,
-        "//conditions:default": _DNNL_VERSION_1_7,
-    }),
+    substitutions = {
+        "@DNNL_VERSION_MAJOR@": "1",
+        "@DNNL_VERSION_MINOR@": "6",
+        "@DNNL_VERSION_PATCH@": "4",
+        "@DNNL_VERSION_HASH@": "N/A",
+    },
 )
 
 cc_library(
@@ -128,33 +115,41 @@ cc_library(
     srcs = glob([
         "src/common/*.cpp",
         "src/cpu/*.cpp",
-        "src/cpu/**/*.c",
-        "src/cpu/**/*.cpp",
+        "src/cpu/gemm/**/*.cpp",
+        "src/cpu/matmul/**/*.cpp",
+        "src/cpu/rnn/**/*.cpp",
+        "src/cpu/x64/**/*.cpp",
+        "src/cpu/x64/jit_utils/jitprofiling/*.c",
     ]) + [
         ":dnnl_config_h",
         ":dnnl_version_h",
     ],
-    copts = ["-fexceptions"],
+    copts = [
+        "-fexceptions",
+        "-DDNNL_ENABLE_MAX_CPU_ISA",
+    ],
     includes = [
         "include",
         "src",
         "src/common",
         "src/cpu",
         "src/cpu/gemm",
-        "src/cpu/gemm/bf16",
         "src/cpu/gemm/f32",
         "src/cpu/gemm/s8x8s32",
+        "src/cpu/matmul",
         "src/cpu/rnn",
+        "src/cpu/x64",
         "src/cpu/x64/jit_utils",
-        "src/cpu/xbyak",
+        "src/cpu/x64/jit_utils/jitprofiling",
+        "src/cpu/x64/xbyak",
     ],
     textual_hdrs = glob([
         "include/*",
         "src/common/*.hpp",
         "src/cpu/*.hpp",
-        "src/cpu/**/*.h",
         "src/cpu/**/*.hpp",
-        "src/cpu/xbyak/*.h",
+        "src/cpu/x64/jit_utils/jitprofiling/*.h",
+        "src/cpu/x64/xbyak/*.h",
     ]),
     visibility = ["//visibility:public"],
 )
