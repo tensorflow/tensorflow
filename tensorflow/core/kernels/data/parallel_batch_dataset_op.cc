@@ -181,20 +181,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       if (num_parallel_calls_->value == model::kAutotune) {
-        // If autotuning is enabled, we initialize the parallelism to 1 to
-        // avoid accidentally running the machine out of memory before the
-        // optimization can pick values that respect the memory budget.
-        //
-        // If autotuning is disabled but the transformation uses `AUTOTUNE`, we
-        // default the parallelism to the size of the threadpool used for
-        // executing the user-defined computation. If this causes OOM, the
-        // input pipeline should either enable autotuning, or replace
-        // `AUTOTUNE` with fixed parallelism.
-        if (TF_PREDICT_TRUE(ctx->model())) {
-          num_parallel_calls_->value = 1;
-        } else {
-          num_parallel_calls_->value = ctx->runner_threadpool_size();
-        }
+        num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
