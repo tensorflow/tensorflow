@@ -205,6 +205,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context as eager_context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
@@ -1493,12 +1494,13 @@ class StrategyBase(object):
     computed on that worker.
 
     Args:
-      value: A value returned by `experimental_run()`, `run()`,
-        `extended.call_for_each_replica()`, or a variable created in `scope`.
+      value: A value returned by `experimental_run()`, `run(), or a variable
+      created in `scope`.
 
     Returns:
-      A tuple of values contained in `value`. If `value` represents a single
-      value, this returns `(value,).`
+      A tuple of values contained in `value` where ith element corresponds to
+      ith replica. If `value` represents a single value, this returns
+      `(value,).`
     """
     return self._extended._local_results(value)  # pylint: disable=protected-access
 
@@ -2537,8 +2539,26 @@ class StrategyExtendedV2(object):
   def _update(self, var, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
 
-  def _local_results(self, distributed_value):
-    raise NotImplementedError("must be implemented in descendants")
+  def _local_results(self, val):
+    """Returns local results per replica as a tuple."""
+    if isinstance(val, values.DistributedValues):
+      return val._values  # pylint: disable=protected-access
+
+    if nest.is_nested(val):
+      replica_values = []
+
+      def get_values(x, index):
+        if isinstance(x, values.DistributedValues):
+          return x._values[index]  # pylint: disable=protected-access
+        return x
+
+      for i in range(len(self.worker_devices)):
+        replica_values.append(
+            nest.map_structure(
+                lambda x: get_values(x, i),  # pylint: disable=cell-var-from-loop
+                val))
+      return tuple(replica_values)
+    return (val,)
 
   def value_container(self, value):
     """Returns the container that this per-replica `value` belongs to.
@@ -3071,13 +3091,10 @@ class ReplicaContextBase(object):
     ...   value2 = tf.identity(2.)
     ...   return ctx.all_reduce(tf.distribute.ReduceOp.SUM, [value1, value2])
     >>> strategy.experimental_local_results(strategy.run(step_fn))
-    ([PerReplica:{
-      0: <tf.Tensor: shape=(), dtype=float32, numpy=2.0>,
-      1: <tf.Tensor: shape=(), dtype=float32, numpy=2.0>
-    }, PerReplica:{
-      0: <tf.Tensor: shape=(), dtype=float32, numpy=4.0>,
-      1: <tf.Tensor: shape=(), dtype=float32, numpy=4.0>
-    }],)
+    ([<tf.Tensor: shape=(), dtype=float32, numpy=2.0>,
+    <tf.Tensor: shape=(), dtype=float32, numpy=4.0>],
+    [<tf.Tensor: shape=(), dtype=float32, numpy=2.0>,
+    <tf.Tensor: shape=(), dtype=float32, numpy=4.0>])
 
     Note that all replicas need to participate in the all-reduce, otherwise this
     operation hangs. Note that if there're multiple all-reduces, they need to
@@ -3228,21 +3245,18 @@ class ReplicaContext(ReplicaContextBase):
            [3, 4]], dtype=int32)>
     }]
     >>> strategy.experimental_local_results(result)
-    ([PerReplica:{
-      0: <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>,
-      1: <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>
-    }, PerReplica:{
-      0: <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
+    ([<tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>,
+    <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
     array([[1, 2],
            [3, 4],
            [1, 2],
-           [3, 4]], dtype=int32)>,
-      1: <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
+           [3, 4]], dtype=int32)>],
+           [<tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>,
+           <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
     array([[1, 2],
            [3, 4],
            [1, 2],
-           [3, 4]], dtype=int32)>
-    }],)
+           [3, 4]], dtype=int32)>])
 
 
     What if you are all-gathering tensors with different shapes on different

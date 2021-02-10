@@ -651,8 +651,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
     results = train_step()
 
-    self.assertAllEqual(1, results[0][0].values[0])
-    self.assertAllEqual(2, results[0][1][0].values[0])
+    self.assertAllEqual(1, results[0][0])
+    self.assertAllEqual(2, results[0][1][0])
     self.assertIsNone(results[0][1][1])
 
   def test_composite_input_output(self, enable_packed_var):
