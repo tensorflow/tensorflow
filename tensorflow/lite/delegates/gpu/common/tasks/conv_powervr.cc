@@ -80,11 +80,10 @@ std::string GenerateBlockCoords(const int4& block_size,
   launch_remap[work_group_launch_order.z] = 2;
   if (linear_spatial) {
     if (work_group_launch_order[0] == 0) {
-      c += "  int linear_spatial = get_global_id(0);\n";
+      c += "  int linear_spatial = GLOBAL_ID_0;\n";
     } else {
-      c += "  int linear_spatial = get_group_id(" +
-           std::to_string(launch_remap[0]) +
-           ") * get_local_size(0) + get_local_id(0);\n";
+      c += "  int linear_spatial = GROUP_ID_" +
+           std::to_string(launch_remap[0]) + " * GROUP_SIZE_0 + LOCAL_ID_0;\n";
     }
     if (need_depth) {
       c += "  int DST_X = (linear_spatial % args.task_size_x) * " +
@@ -101,28 +100,28 @@ std::string GenerateBlockCoords(const int4& block_size,
            std::to_string(block_size.x) + ";\n";
     }
     if (work_group_launch_order[1] == 1) {
-      c += "  int DST_S = get_global_id(1) * " + std::to_string(block_size.w) +
-           ";\n";
+      c +=
+          "  int DST_S = GLOBAL_ID_1 * " + std::to_string(block_size.w) + ";\n";
     } else {
-      c += "  int DST_S = (get_group_id(" + std::to_string(launch_remap[1]) +
-           ") * get_local_size(1) + get_local_id(1)) * " +
-           std::to_string(block_size.w) + ";\n";
+      c += "  int DST_S = (GROUP_ID_" + std::to_string(launch_remap[1]) +
+           " * GROUP_SIZE_1 + LOCAL_ID_1) * " + std::to_string(block_size.w) +
+           ";\n";
     }
   } else {
     if (work_group_launch_order[0] == 0) {
-      c += "  int DST_X = get_global_id(0) * " + std::to_string(block_size.x) +
-           ";\n";
+      c +=
+          "  int DST_X = GLOBAL_ID_0 * " + std::to_string(block_size.x) + ";\n";
     } else {
-      c += "  int DST_X = (get_group_id(" + std::to_string(launch_remap[0]) +
-           ") * get_local_size(0) + get_local_id(0)) * " +
-           std::to_string(block_size.x) + ";\n";
+      c += "  int DST_X = (GROUP_ID_" + std::to_string(launch_remap[0]) +
+           " * GROUP_SIZE_0 + LOCAL_ID_0) * " + std::to_string(block_size.x) +
+           ";\n";
     }
     std::string global_id_1;
     if (work_group_launch_order[1] == 1) {
-      global_id_1 = "get_global_id(1)";
+      global_id_1 = "GLOBAL_ID_1";
     } else {
-      global_id_1 = "(get_group_id(" + std::to_string(launch_remap[1]) +
-                    ") * get_local_size(1) + get_local_id(1))";
+      global_id_1 = "(GROUP_ID_" + std::to_string(launch_remap[1]) +
+                    " * GROUP_SIZE_1 + LOCAL_ID_1)";
     }
     if (need_depth) {
       c += "  int linear_id_1 = " + global_id_1 + ";\n";
@@ -135,12 +134,12 @@ std::string GenerateBlockCoords(const int4& block_size,
            std::to_string(block_size.y) + ";\n";
     }
     if (work_group_launch_order[2] == 2) {
-      c += "  int DST_S = get_global_id(2) * " + std::to_string(block_size.w) +
-           ";\n";
+      c +=
+          "  int DST_S = GLOBAL_ID_2 * " + std::to_string(block_size.w) + ";\n";
     } else {
-      c += "  int DST_S = (get_group_id(" + std::to_string(launch_remap[2]) +
-           ") * get_local_size(2) + get_local_id(2)) * " +
-           std::to_string(block_size.w) + ";\n";
+      c += "  int DST_S = (GROUP_ID_" + std::to_string(launch_remap[2]) +
+           " * GROUP_SIZE_2 + LOCAL_ID_2) * " + std::to_string(block_size.w) +
+           ";\n";
     }
   }
 
@@ -417,6 +416,13 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     args_.AddInt("task_size_y");
   }
 
+  const int wg_total_size =
+      work_group_size_.x * work_group_size_.y * work_group_size_.z;
+  const std::string barrier =
+      wg_total_size == 32 && gpu_info.IsWaveSizeEqualTo32()
+          ? "SIMD_LOCAL_MEM_BARRIER"
+          : "LOCAL_MEM_BARRIER";
+
   const bool need_local_mem =
       conv_params.weights_upload_type ==
           ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS ||
@@ -444,7 +450,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       weights_space + " " + weights_data_type + "*";
 
   std::string c;
-  if (use_simd_broadcast) {
+  if (use_simd_broadcast && gpu_info.IsApiOpenCl()) {
     if (gpu_info.opencl_info.cl_version == OpenClVersion::kCl2_0) {
       c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";
     } else if (gpu_info.SupportsExtension("cl_intel_subgroups")) {
@@ -452,13 +458,13 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     }
   }
   const int4 block_size = conv_params.block_size;
-  if (conv_params.fixed_work_group_size) {
+  if (conv_params.fixed_work_group_size && gpu_info.IsApiOpenCl()) {
     c += "__attribute__((reqd_work_group_size(" +
          std::to_string(work_group_size_.x) + ", " +
          std::to_string(work_group_size_.y) + ", " +
          std::to_string(work_group_size_.z) + ")))\n";
   }
-  if (use_simd_broadcast && gpu_info.IsIntel()) {
+  if (use_simd_broadcast && gpu_info.IsIntel() && gpu_info.IsApiOpenCl()) {
     c += "__attribute__((intel_reqd_sub_group_size(" +
          std::to_string(simd_size) + ")))\n";
   }
@@ -484,8 +490,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
           "args.dst_tensor.Height() || DST_S >= args.dst_tensor.Slices()";
     }
   }
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   c += GenerateBlockCoords(conv_params.block_size, work_group_launch_order_,
                            conv_params.linear_spatial,
                            src_def.HasAxis(Axis::DEPTH));
@@ -497,14 +502,14 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   if (conv_params.weights_upload_type ==
       ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
     if (conv_params.linear_spatial) {
-      c += "  int lid = get_local_id(0);\n";
+      c += "  int lid = LOCAL_ID_0;\n";
     } else {
-      c += "  int lid = get_local_id(1) * " +
-           std::to_string(work_group_size_.x) + " + get_local_id(0);\n";
+      c += "  int lid = LOCAL_ID_1 * " + std::to_string(work_group_size_.x) +
+           " + LOCAL_ID_0;\n";
     }
   }
   if (use_simd_broadcast) {
-    c += "  int simd_id = get_sub_group_local_id();\n";
+    c += "  int simd_id = SUB_GROUP_LOCAL_ID;\n";
   }
   for (int s = 0; s < block_size.w; ++s) {
     const std::string sind = std::to_string(s);
@@ -515,7 +520,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
         for (int x = 0; x < block_size.x; ++x) {
           const std::string xind = std::to_string(x);
           c += "  ACCUM_FLT4 r" + generate_id_full(xind, yind, zind, sind) +
-               " = (ACCUM_FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
+               " = INIT_ACCUM_FLT4(0.0f);\n";
         }
       }
     }
@@ -750,10 +755,10 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
               if (conditional_read) {
                 c += "    src" + id + " = " + check +
                      " ? args.src_tensor.Read<" + cl_type + ">(" + address +
-                     ") : (FLT4)(0.0f);\n";
+                     ") : INIT_FLT4(0.0f);\n";
               } else {
                 c += "    src" + id + " = args.src_tensor.Read<" + cl_type +
-                     ">(" + address + ") * (FLT)(" + check + ");\n";
+                     ">(" + address + ") * INIT_FLT(" + check + ");\n";
               }
             } else {
               c += "    src" + id + " = args.src_tensor.Read<" + cl_type +
@@ -787,16 +792,16 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                 if (use_simd_broadcast) {
                   int simd_id = (s * 4 + ch + shared_offset) / simd_size;
                   int thread_id = (s * 4 + ch + shared_offset) % simd_size;
-                  std::string w_val_x = "sub_group_broadcast(simd_w" +
+                  std::string w_val_x = "SUB_GROUP_BROADCAST(simd_w" +
                                         std::to_string(simd_id) + ".x, " +
                                         std::to_string(thread_id) + "u)";
-                  std::string w_val_y = "sub_group_broadcast(simd_w" +
+                  std::string w_val_y = "SUB_GROUP_BROADCAST(simd_w" +
                                         std::to_string(simd_id) + ".y, " +
                                         std::to_string(thread_id) + "u)";
-                  std::string w_val_z = "sub_group_broadcast(simd_w" +
+                  std::string w_val_z = "SUB_GROUP_BROADCAST(simd_w" +
                                         std::to_string(simd_id) + ".z, " +
                                         std::to_string(thread_id) + "u)";
-                  std::string w_val_w = "sub_group_broadcast(simd_w" +
+                  std::string w_val_w = "SUB_GROUP_BROADCAST(simd_w" +
                                         std::to_string(simd_id) + ".w, " +
                                         std::to_string(thread_id) + "u)";
                   c += "    " + R + ".x += " + w_val_x + " * " + S + "." +
@@ -842,7 +847,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                   F[i] = "f" + weight_id;
                 }
               }
-              c += "    " + R + " += convert_float4(" + S + ".x * " + F[0] +
+              c += "    " + R + " += TO_ACCUM_TYPE(" + S + ".x * " + F[0] +
                    " + " + S + ".y * " + F[1] + " + " + S + ".z * " + F[2] +
                    " + " + S + ".w * " + F[3] + ");\n";
             }
@@ -863,7 +868,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                              /*global_offset_name*/ "", local_mem_size);
   } else if (conv_params.weights_upload_type ==
              ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+    c += "    " + barrier + ";\n";
     c += GenerateUploadByThreads("weights_cache", "filters_loc",
                                  /*global_offset_name*/ "", "lid",
                                  total_work_items, local_mem_size);
@@ -907,7 +912,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   c += "    s += 1;\n";
   if (conv_params.weights_upload_type ==
       ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+    c += "    " + barrier + ";\n";
   }
   conv_core(0);
   for (int i = 1; i < conv_params.src_depth_loop_size; ++i) {
@@ -935,11 +940,11 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                                block_size.w);
     } else if (conv_params.weights_upload_type ==
                ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-      c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+      c += "  " + barrier + ";\n";
       c += GenerateUploadByThreads("weights_cache", "args.biases.GetPtr()",
                                    "DST_S", "lid", total_work_items,
                                    block_size.w);
-      c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+      c += "  " + barrier + ";\n";
     } else {
       c += "  weights_cache = args.biases.GetPtr() + DST_S;\n";
     }
