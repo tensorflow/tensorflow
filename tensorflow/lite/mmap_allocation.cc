@@ -26,26 +26,11 @@ namespace tflite {
 
 MMAPAllocation::MMAPAllocation(const char* filename,
                                ErrorReporter* error_reporter)
-    : MMAPAllocation(error_reporter, open(filename, O_RDONLY)) {
-  if (mmap_fd_ == -1) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Could not open '%s'.", filename);
-  }
-}
-
-MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter)
-    : MMAPAllocation(error_reporter, dup(fd)) {
-  if (mmap_fd_ == -1) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Failed to dup '%d' file descriptor.",
-                         fd);
-  }
-}
-
-MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd)
     : Allocation(error_reporter, Allocation::Type::kMMap),
-      mmap_fd_(owned_fd),
-      mmapped_buffer_(MAP_FAILED),
-      buffer_size_bytes_(0) {
+      mmapped_buffer_(MAP_FAILED) {
+  mmap_fd_ = open(filename, O_RDONLY);
   if (mmap_fd_ == -1) {
+    error_reporter_->Report("Could not open '%s'.", filename);
     return;
   }
   struct stat sb;
@@ -54,7 +39,7 @@ MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd)
   mmapped_buffer_ =
       mmap(nullptr, buffer_size_bytes_, PROT_READ, MAP_SHARED, mmap_fd_, 0);
   if (mmapped_buffer_ == MAP_FAILED) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Mmap of '%d' failed.", mmap_fd_);
+    error_reporter_->Report("Mmap of '%s' failed.", filename);
     return;
   }
 }

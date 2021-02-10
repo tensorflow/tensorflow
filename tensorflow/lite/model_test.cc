@@ -372,43 +372,6 @@ TEST(BasicFlatBufferModel, TestBuildFromModel) {
   ASSERT_NE(interpreter, nullptr);
 }
 
-// Test that loading model directly from an Allocation works.
-TEST(BasicFlatBufferModel, TestBuildFromAllocation) {
-  TestErrorReporter reporter;
-  std::unique_ptr<Allocation> model_allocation(new FileCopyAllocation(
-      "tensorflow/lite/testdata/test_model.bin", &reporter));
-  ASSERT_TRUE(model_allocation->valid());
-
-  auto model =
-      FlatBufferModel::BuildFromAllocation(std::move(model_allocation));
-  ASSERT_TRUE(model);
-
-  std::unique_ptr<Interpreter> interpreter;
-  ASSERT_EQ(
-      InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
-      kTfLiteOk);
-  ASSERT_NE(interpreter, nullptr);
-}
-
-TEST(BasicFlatBufferModel, TestBuildFromNullAllocation) {
-  TestErrorReporter reporter;
-  std::unique_ptr<Allocation> model_allocation;
-
-  auto model =
-      FlatBufferModel::BuildFromAllocation(std::move(model_allocation));
-  ASSERT_FALSE(model);
-}
-
-TEST(BasicFlatBufferModel, TestBuildFromInvalidAllocation) {
-  TestErrorReporter reporter;
-  std::unique_ptr<Allocation> model_allocation(
-      new MemoryAllocation(nullptr, 0, nullptr));
-
-  auto model =
-      FlatBufferModel::BuildFromAllocation(std::move(model_allocation));
-  ASSERT_FALSE(model);
-}
-
 // Test reading the minimum runtime string from metadata in a Model flatbuffer.
 TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
   // First read a model that doesn't have the runtime string.
