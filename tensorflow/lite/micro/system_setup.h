@@ -12,10 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// This file is empty to ensure that a specialized implementation of
-// micro_time.h is used (instead of the default implementation from
-// tensorflow/lite/micro/micro_time.cc).
-//
-// The actual target-specific implementation of micro_time.h is in
-// system_setup.cc since that allows us to consolidate all the target-specific
-// specializations into one source file.
+#ifndef TENSORFLOW_LITE_MICRO_SYSTEM_SETUP_H_
+#define TENSORFLOW_LITE_MICRO_SYSTEM_SETUP_H_
+
+namespace tflite {
+
+// This should called during initialization of TFLM binaries and tests. It can
+// be specialized if there is a need for custom target-specific intialization.
+// For more information, see tensorflow/lite/micro/system_setup.cc.
+void InitializeTarget();
+
+}  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_MICRO_SYSTEM_SETUP_H_

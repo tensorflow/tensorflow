@@ -216,6 +216,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "system_setup",
+    srcs = [
+        "system_setup.cc",
+    ],
+    hdrs = [
+        "system_setup.h",
+    ],
+    copts = micro_copts(),
+)
+
 cc_test(
     name = "micro_error_reporter_test",
     srcs = [
