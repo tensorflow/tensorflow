@@ -3546,13 +3546,25 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       }
       case HloOpcode::kTuple:
       case HloOpcode::kTranspose:
-      case HloOpcode::kGetTupleElement:
       case HloOpcode::kSlice:
       case HloOpcode::kBroadcast:
       case HloOpcode::kConcatenate:
       case HloOpcode::kReshape:
       case HloOpcode::kPad:
         break;
+      case HloOpcode::kGetTupleElement: {
+        // Rewrite parameter followed by gte into constants to avoid
+        // rematerializing the tuple parameter (could be very large).
+        int64 operand_handle = instr_proto->operand_ids(0);
+        TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                            LookUpInstructionByHandle(operand_handle));
+        TF_ASSIGN_OR_RETURN(HloOpcode operand_opcode,
+                            StringToHloOpcode(operand_proto->opcode()));
+        if (operand_opcode == HloOpcode::kParameter) {
+          SetInstructionAsConstant(new_instr, id, new_shape, true);
+        }
+        break;
+      }
       case HloOpcode::kGetDimensionSize: {
         int64 dimension = instr_proto->dimensions(0);
         int64 operand_handle = instr_proto->operand_ids(0);
@@ -3644,6 +3656,18 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       // We rewrite gte instructions into constants based on its operand shape
       // so no need to visit their operands.
       should_visit_operand = false;
+    }
+
+    if (opcode == HloOpcode::kGetTupleElement) {
+      int64 operand_handle = instr_proto->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          LookUpInstructionByHandle(operand_handle));
+      TF_ASSIGN_OR_RETURN(HloOpcode operand_opcode,
+                          StringToHloOpcode(operand_proto->opcode()));
+      if (operand_opcode == HloOpcode::kParameter) {
+        // Don't rematerialize the whole parameter if it's followed by a GTE.
+        should_visit_operand = false;
+      }
     }
 
     if (opcode == HloOpcode::kSelect) {
