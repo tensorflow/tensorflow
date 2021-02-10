@@ -558,90 +558,90 @@ func @testValidConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32
 
 // -----
 
-// CHECK-LABEL: func @testValidUnrankedInputAndFilterConv2D
-func @testValidUnrankedInputAndFilterConv2D(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<?x?x?x?xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<*xf32>) -> tensor<?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?xf32>
+func @testUnrankedInputAndFilterConv2D(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<?x?x?xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<?x?x?x?xf32>' are incompatible with return type(s) of operation 'tensor<?x?x?xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<*xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
 }
 
 // -----
 
-// CHECK-LABEL: func @testValidUnrankedFilterConv2D
-func @testValidUnrankedFilterConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<*xf32>) -> tensor<256x?x?x?xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<*xf32>) -> tensor<256x?x?x?xf32>
-  return %0 : tensor<256x?x?x?xf32>
+func @testUnrankedFilterConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<*xf32>) -> tensor<255x?x?x?xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<256x?x?x?xf32>' are incompatible with return type(s) of operation 'tensor<255x?x?x?xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<*xf32>) -> tensor<255x?x?x?xf32>
+  return %0 : tensor<255x?x?x?xf32>
 }
 
 // -----
 
-// CHECK-LABEL: func @testValidUnrankedFilterAndDynamicBatchConv2D
-func @testValidUnrankedFilterAndDynamicBatchConv2D(%arg0: tensor<?x32x32x3xf32>, %arg1: tensor<*xf32>) -> tensor<?x?x?x?xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x32x32x3xf32>, tensor<*xf32>) -> tensor<?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?xf32>
+func @testUnrankedFilterAndDynamicBatchConv2D(%arg0: tensor<?x32x32x3xf32>, %arg1: tensor<*xf32>) -> tensor<?x?x?xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<?x?x?x?xf32>' are incompatible with return type(s) of operation 'tensor<?x?x?xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x32x32x3xf32>, tensor<*xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
 }
 
 // -----
 
-// CHECK-LABEL: func @testValidUnrankedInputConv2D
-func @testValidUnrankedInputConv2D(%arg0: tensor<*xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<?x?x?x16xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<3x3x3x16xf32>) -> tensor<?x?x?x16xf32>
-  return %0 : tensor<?x?x?x16xf32>
+func @testUnrankedInputConv2D(%arg0: tensor<*xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<?x?x?x15xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<?x?x?x16xf32>' are incompatible with return type(s) of operation 'tensor<?x?x?x15xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<3x3x3x16xf32>) -> tensor<?x?x?x15xf32>
+  return %0 : tensor<?x?x?x15xf32>
 }
 
 // -----
 
-// CHECK-LABEL: func @testValidUnrankedInputAndDynamicChannelConv2D
-func @testValidUnrankedInputAndDynamicChannelConv2D(%arg0: tensor<*xf32>, %arg1: tensor<3x3x3x?xf32>) -> tensor<?x?x?x?xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<3x3x3x?xf32>) -> tensor<?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?xf32>
+func @testUnrankedInputAndDynamicChannelConv2D(%arg0: tensor<*xf32>, %arg1: tensor<3x3x3x?xf32>) -> tensor<?x?x?xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<?x?x?x?xf32>' are incompatible with return type(s) of operation 'tensor<?x?x?xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<3x3x3x?xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
 }
 
 // -----
 
-// CHECK-LABEL: func @testValidDynamicBatchConv2D
-func @testValidDynamicBatchConv2D(%arg0: tensor<?x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<?x32x32x16xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<?x32x32x16xf32>
-  return %0 : tensor<?x32x32x16xf32>
+func @testDynamicBatchConv2D(%arg0: tensor<?x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<?x31x32x16xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<?x32x32x16xf32>' are incompatible with return type(s) of operation 'tensor<?x31x32x16xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<?x31x32x16xf32>
+  return %0 : tensor<?x31x32x16xf32>
 }
 
 // -----
 
-// CHECK-LABEL: func @testValidDynamicChannelConv2D
-func @testValidDynamicChannelConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x?xf32>) -> tensor<256x32x32x?xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x?xf32>) -> tensor<256x32x32x?xf32>
-  return %0 : tensor<256x32x32x?xf32>
+func @testDynamicChannelConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x?xf32>) -> tensor<255x32x32x?xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<256x32x32x?xf32>' are incompatible with return type(s) of operation 'tensor<255x32x32x?xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x?xf32>) -> tensor<255x32x32x?xf32>
+  return %0 : tensor<255x32x32x?xf32>
 }
 
 // -----
 
-// CHECK-LABEL: func @testValidFullyDynamicSpatialDimConv2D
-func @testValidFullyDynamicSpatialDimConv2D(%arg0: tensor<256x?x?x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x?x?x16xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x?x?x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x?x?x16xf32>
-  return %0 : tensor<256x?x?x16xf32>
+func @testFullyDynamicSpatialDimConv2D(%arg0: tensor<256x?x?x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<255x?x?x16xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<256x?x?x16xf32>' are incompatible with return type(s) of operation 'tensor<255x?x?x16xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x?x?x3xf32>, tensor<3x3x3x16xf32>) -> tensor<255x?x?x16xf32>
+  return %0 : tensor<255x?x?x16xf32>
 }
 
 // -----
 
-// CHECK-LABEL: func @testValidPartiallyDynamicSpatialDimConv2D
-func @testValidPartiallyDynamicSpatialDimConv2D(%arg0: tensor<256x?x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x?x32x16xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x?x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x?x32x16xf32>
-  return %0 : tensor<256x?x32x16xf32>
+func @testPartiallyDynamicSpatialDimConv2D(%arg0: tensor<256x?x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<255x?x32x16xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<256x?x32x16xf32>' are incompatible with return type(s) of operation 'tensor<255x?x32x16xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x?x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<255x?x32x16xf32>
+  return %0 : tensor<255x?x32x16xf32>
 }
 
 // -----
 
-// CHECK-LABEL: func @testValidDynamicBatchAndPartiallyDynamicSpatialDimConv2D
-func @testValidDynamicBatchAndPartiallyDynamicSpatialDimConv2D(%arg0: tensor<?x?x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<?x?x32x16xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x?x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<?x?x32x16xf32>
-  return %0 : tensor<?x?x32x16xf32>
+func @tesDynamicBatchAndPartiallyDynamicSpatialDimConv2D(%arg0: tensor<?x?x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<?x?x31x16xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<?x?x32x16xf32>' are incompatible with return type(s) of operation 'tensor<?x?x31x16xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x?x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<?x?x31x16xf32>
+  return %0 : tensor<?x?x31x16xf32>
 }
 
 // -----
 
-// CHECK-LABEL: func @testValidDynamicBatchAndFullyDynamicSpatialDimConv2D
-func @testValidDynamicBatchAndFullyDynamicSpatialDimConv2D(%arg0: tensor<?x?x?x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<?x?x?x16xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x?x?x3xf32>, tensor<3x3x3x16xf32>) -> tensor<?x?x?x16xf32>
-  return %0 : tensor<?x?x?x16xf32>
+func @testDynamicBatchAndFullyDynamicSpatialDimConv2D(%arg0: tensor<?x?x?x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<?x?x?x15xf32> {
+  // expected-error @+1 {{op inferred type(s) 'tensor<?x?x?x16xf32>' are incompatible with return type(s) of operation 'tensor<?x?x?x15xf32>'}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x?x?x3xf32>, tensor<3x3x3x16xf32>) -> tensor<?x?x?x15xf32>
+  return %0 : tensor<?x?x?x15xf32>
 }
 
 // -----
