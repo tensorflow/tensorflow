@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
 
 namespace tflite {
 namespace gpu {
@@ -52,30 +51,6 @@ std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
   } else {
     auto gpu_op = CreateConvolutionTransposed(gpu_info, op_def, attr);
     return absl::make_unique<ConvolutionTransposed>(std::move(gpu_op));
-  }
-}
-
-std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
-    const OperationDef& op_def, const Winograd4x4To36Attributes& attr,
-    const GpuInfo& gpu_info) {
-  if (gpu_info.IsApple()) {
-    auto gpu_op = CreateWinograd4x4To36(op_def, attr);
-    return absl::make_unique<Winograd4x4To36>(std::move(gpu_op));
-  } else {
-    auto gpu_op = CreateWinograd4x4To36TileX6(op_def, attr);
-    return absl::make_unique<Winograd4x4To36TileX6>(std::move(gpu_op));
-  }
-}
-
-std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
-    const OperationDef& op_def, const Winograd36To4x4Attributes& attr,
-    const GpuInfo& gpu_info) {
-  if (gpu_info.IsApple()) {
-    auto gpu_op = CreateWinograd36To4x4(op_def, attr);
-    return absl::make_unique<Winograd36To4x4>(std::move(gpu_op));
-  } else {
-    auto gpu_op = CreateWinograd36To4x4Tile4x1(op_def, attr);
-    return absl::make_unique<Winograd36To4x4Tile4x1>(std::move(gpu_op));
   }
 }
 
@@ -130,10 +105,8 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   winograd_up_def.src_tensors.push_back(op_def.src_tensors[0]);
   winograd_up_def.dst_tensors.push_back(op_def.src_tensors[0]);
   auto& winograd_up = gpu_subgraph->operations[0];
-  Winograd4x4To36Attributes wino_up_attr;
-  wino_up_attr.padding = attr.padding;
   winograd_up.operation =
-      SelectWinograd4x4To36(winograd_up_def, wino_up_attr, gpu_info);
+      SelectWinograd4x4To36(gpu_info, attr.padding, winograd_up_def);
   winograd_up.input_ids = {static_cast<int>(inputs[0]->id)};
   winograd_up.output_ids = {-1};
 
@@ -154,11 +127,8 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   auto& winograd_down = gpu_subgraph->operations[2];
   winograd_down.input_ids = {-2};
   winograd_down.output_ids = {static_cast<int>(outputs[0]->id)};
-  Winograd36To4x4Attributes wino_down_attr;
-  wino_down_attr.output_shape = outputs[0]->tensor.shape;
-  wino_down_attr.biases = attr.bias;
   winograd_down.operation =
-      SelectWinograd36To4x4(winograd_down_def, wino_down_attr, gpu_info);
+      SelectWinograd36To4x4(gpu_info, winograd_down_def, attr.bias);
   return absl::OkStatus();
 }
 

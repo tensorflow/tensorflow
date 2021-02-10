@@ -28,6 +28,36 @@ namespace gpu {
 // You can read https://arxiv.org/pdf/1509.09308.pdf for understanding of basic
 // principles. In this kernels used different matrices for transformations than
 // in original work.
+class Winograd4x4To36 : public GPUOperation {
+ public:
+  Winograd4x4To36() = default;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
+  }
+  int3 GetGridSize() const override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
+
+  // Move only
+  Winograd4x4To36(Winograd4x4To36&& kernel) = default;
+  Winograd4x4To36& operator=(Winograd4x4To36&& kernel) = default;
+  Winograd4x4To36(const Winograd4x4To36&) = delete;
+  Winograd4x4To36& operator=(const Winograd4x4To36&) = delete;
+
+ private:
+  Winograd4x4To36(const OperationDef& definition, const Padding2D& padding)
+      : GPUOperation(definition), padding_(padding) {}
+  friend Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
+                                               const Padding2D& padding);
+
+  Padding2D padding_;
+};
+
+Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
+                                      const Padding2D& padding);
+
 class Winograd4x4To36TileX6 : public GPUOperation {
  public:
   Winograd4x4To36TileX6() = default;
@@ -64,6 +94,35 @@ class Winograd4x4To36TileX6 : public GPUOperation {
 Winograd4x4To36TileX6 CreateWinograd4x4To36TileX6(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const Padding2D& padding);
+
+class Winograd36To4x4 : public GPUOperation {
+ public:
+  Winograd36To4x4() = default;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
+  }
+  int3 GetGridSize() const override;
+
+  // Move only
+  Winograd36To4x4(Winograd36To4x4&& kernel) = default;
+  Winograd36To4x4& operator=(Winograd36To4x4&& kernel) = default;
+  Winograd36To4x4(const Winograd36To4x4&) = delete;
+  Winograd36To4x4& operator=(const Winograd36To4x4&) = delete;
+
+ private:
+  explicit Winograd36To4x4(const OperationDef& definition)
+      : GPUOperation(definition) {}
+  friend Winograd36To4x4 CreateWinograd36To4x4(
+      const OperationDef& definition,
+      const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases);
+};
+
+Winograd36To4x4 CreateWinograd36To4x4(
+    const OperationDef& definition,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases);
 
 class Winograd36To4x4Tile4x1 : public GPUOperation {
  public:

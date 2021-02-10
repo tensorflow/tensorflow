@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
 
 #import <XCTest/XCTest.h>
+#include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
 #include <string>
 #include <vector>
@@ -271,19 +271,14 @@ absl::Status Winograd4x4To6x6Test(TestExecutionEnvironment* env) {
       RETURN_IF_ERROR(
           env->ExecuteGPUOperation(src_tensor, std::move(op0_ptr), dst_shape, &output0));
 
-      Winograd4x4To36Attributes wino_up_attr;
-      wino_up_attr.padding = attr.padding;
-      auto gpu_op1 = CreateWinograd4x4To36(op_def, wino_up_attr);
+      auto gpu_op1 = CreateWinograd4x4To36(op_def, attr.padding);
       std::unique_ptr<GPUOperation> op1_ptr =
           absl::make_unique<Winograd4x4To36>(std::move(gpu_op1));
 
       auto gpu_op2 = CreateConvolutionWino4x4To6x6(op_def, conv_shape, attr, env->GetGpuInfo());
       auto op2_ptr = absl::make_unique<ConvolutionGeneric>(std::move(gpu_op2));
 
-      Winograd36To4x4Attributes wino_down_attr;
-      wino_down_attr.output_shape = dst_shape;
-      wino_down_attr.biases = attr.bias;
-      auto gpu_op3 = CreateWinograd36To4x4(op_def, wino_down_attr);
+      auto gpu_op3 = CreateWinograd36To4x4(op_def, attr.bias);
       std::unique_ptr<GPUOperation> op3_ptr =
           absl::make_unique<Winograd36To4x4>(std::move(gpu_op3));
 
