@@ -21,6 +21,12 @@ namespace tflite {
 
 MMAPAllocation::MMAPAllocation(const char* filename,
                                ErrorReporter* error_reporter)
+    : MMAPAllocation(error_reporter, -1) {}
+
+MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter)
+    : MMAPAllocation(error_reporter, -1) {}
+
+MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd)
     : Allocation(error_reporter, Allocation::Type::kMMap),
       mmapped_buffer_(nullptr) {
   // The disabled variant should never be created.
