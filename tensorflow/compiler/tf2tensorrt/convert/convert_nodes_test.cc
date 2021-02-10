@@ -1475,13 +1475,17 @@ class OpConverterTest : public ::testing::Test {
     if (engine_.get() != nullptr) {
       return errors::Internal("Engine already exists");
     }
-    TrtShapeOptimizationProfile profiles;
+    TrtShapeOptimizationProfile profiles(
+        ProfileStrategy::kImplicitBatchModeCompatible);
     if (!converter_->use_implicit_batch()) {
       // Create a single optimization profile for explicit batch mode
       std::vector<TensorShape> input_shapes;
       TF_RETURN_IF_ERROR(GetShapeFromDataVec(input_data, &input_shapes));
       profiles.AddShape(input_shapes);
-      profiles.InitProfiles();
+      std::vector<PartialTensorShape> input_partial_shapes;
+      TF_RETURN_IF_ERROR(
+          GetNetworkInputShapes(converter_->network(), &input_partial_shapes));
+      profiles.InitProfiles(input_partial_shapes);
     }
     TF_RETURN_IF_ERROR(
         converter_->BuildCudaEngine(&engine_,

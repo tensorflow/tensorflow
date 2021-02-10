@@ -181,25 +181,24 @@ bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
   }
   return true;
 }
-
-Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
-                            bool use_implicit_batch, int batch_size,
-                            TensorShape& shape) {
-  TF_RETURN_IF_ERROR(
-      TensorShapeUtils::MakeShape(trt_dims.data(), trt_dims.size(), &shape));
-  if (use_implicit_batch) {
-    shape.InsertDim(0, batch_size);
+Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,
+                             std::vector<PartialTensorShape>* input_shapes) {
+  const int n_inputs = network->getNbInputs();
+  input_shapes->resize(n_inputs);
+  for (int i = 0; i < n_inputs; i++) {
+    const nvinfer1::ITensor* input = network->getInput(i);
+    const nvinfer1::Dims input_dim = input->getDimensions();
+    TF_RETURN_IF_ERROR(TrtDimsToTensorShape(input_dim, &input_shapes->at(i)));
   }
   return Status::OK();
 }
-
-Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
-                            bool use_implicit_batch, int batch_size,
-                            TensorShape& shape) {
+Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                            TensorShape* shape,
+                            absl::optional<int> batch_size) {
   TF_RETURN_IF_ERROR(
-      TensorShapeUtils::MakeShape(trt_dims.d, trt_dims.nbDims, &shape));
-  if (use_implicit_batch) {
-    shape.InsertDim(0, batch_size);
+      TensorShapeUtils::MakeShape(trt_dims.data(), trt_dims.size(), shape));
+  if (batch_size) {
+    shape->InsertDim(0, batch_size.value());
   }
   return Status::OK();
 }

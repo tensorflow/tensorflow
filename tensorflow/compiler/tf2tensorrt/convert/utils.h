@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -122,6 +123,20 @@ inline bool HasStaticShape(std::vector<int> dims) {
   return !absl::c_any_of(dims, [](int i) { return i < 0; });
 }
 
+// Returns whether a shape is compatible with a TRT shape tensor.
+template <typename TensorShapeType>
+inline bool IsTrtShapeTensorCompatible(const TensorShapeType& shape) {
+  return (
+      shape.dims() == 0 ||
+      (shape.dims() == 1 && shape.num_elements() <= nvinfer1::Dims::MAX_DIMS));
+}
+
+// Returns whether a TF tensor could be interpreted as a TRT shape tensor.
+inline bool IsTrtShapeTensorCompatible(const Tensor& tensor) {
+  return tensor.dtype() == DT_INT32 &&
+         IsTrtShapeTensorCompatible(tensor.shape());
+}
+
 template <typename TensorShapeType>
 inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
                                            bool ignore_first_dim) {
@@ -134,13 +149,24 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   return trt_dims;
 }
 
-Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
-                            bool use_implicit_batch, int batch_size,
-                            TensorShape& shape);
+Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,
+                             std::vector<PartialTensorShape>* input_shapes);
 
+Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                            TensorShape* shape,
+                            absl::optional<int> batch_size = absl::nullopt);
+
+template <typename TensorShapeType>
 Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
-                            bool use_implicit_batch, int batch_size,
-                            TensorShape& shape);
+                            TensorShapeType* shape,
+                            absl::optional<int> batch_size = absl::nullopt) {
+  TF_RETURN_IF_ERROR(
+      TensorShapeUtils::MakeShape(trt_dims.d, trt_dims.nbDims, shape));
+  if (batch_size) {
+    shape->InsertDim(0, batch_size.value());
+  }
+  return Status::OK();
+}
 
 Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type);
 Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type);

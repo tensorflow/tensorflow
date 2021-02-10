@@ -178,6 +178,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // use_implicit_batch_=false.
   bool profile_generation_mode_;
 
+  // Whether the TRTEngineOp has any input with unknown dimensions.
+  bool has_dynamic_shape_input_;
+
   // Whether to build TensorRT engines at runtime.
   bool allow_build_at_runtime_;
 
@@ -432,6 +435,11 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                 errors::InvalidArgument(
                     "Explicit batch mode does not support calibration"));
   }
+  has_dynamic_shape_input_ = absl::c_any_of(
+      input_partial_shapes_,
+      [](PartialTensorShape shape) { return !shape.IsFullyDefined(); });
+  VLOG(2) << "TRTEngineOp has_dynamic_shape_input_: "
+          << has_dynamic_shape_input_;
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -663,7 +671,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     return;
   }
 
-  if (!use_implicit_batch_) {
+  if (!use_implicit_batch_ && has_dynamic_shape_input_) {
     if (profile_generation_mode_) {
       // Collecting new shapes for profiles can be only done once. After the
       // shapes are converted to TRT profiles, no shapes can be collected
@@ -678,8 +686,12 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       ExecuteNativeSegment(ctx, helper);
       return;
     } else if (cache_res->profiles_.GetNumProfiles() == 0) {
+      // Add current shape if we did not collect any shapes so far.
+      if (!cache_res->profiles_.HasShape()) {
+        cache_res->profiles_.AddShape(input_concrete_shapes);
+      }
       // Create profiles out of collected shapes during profile generation.
-      cache_res->profiles_.InitProfiles();
+      cache_res->profiles_.InitProfiles(input_partial_shapes_);
     }
   }
   StatusOr<std::pair<EngineContext*, int>> status =
@@ -763,6 +775,9 @@ Status TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(
       engine_context->GetExecutionContext(trt_context_idx, &execution_context));
 
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Selected execution context: " << trt_context_idx;
+  }
   const int num_batch =
       use_implicit_batch_ ? ctx->input(0).shape().dim_size(0) : 0;
 
@@ -990,6 +1005,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     VLOG(1) << "Added new engine to cache of " << name()
             << ". Cache size: " << cache.size();
     engine_contexts = cache.at(input_concrete_shapes).get();
+    // Query which profile of the new engine matches the actual input.
+    profile_id = cache_res->profiles_.GetProfileNumber(input_concrete_shapes);
   }
   return std::pair<EngineContext*, int>(engine_contexts,
                                         use_implicit_batch_ ? 0 : profile_id);
