@@ -588,6 +588,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "StringToHashBucket",
           "StringToHashBucketFast",
           "StringToHashBucketStrong",
+          "StringToNumber",
           "Sub",
           "Substr",
           "Sum",

@@ -6233,6 +6233,7 @@ filegroup(
         "string_strip_op.cc",
         "string_to_hash_bucket_op.cc",
         "string_to_hash_bucket_fast_op.cc",
+        "string_to_number_op.cc",
         "substr_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",

@@ -565,6 +565,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.StringToHashBucket`
 *   `raw_ops.StringToHashBucketFast`
 *   `raw_ops.StringToHashBucketStrong`
+*   `raw_ops.StringToNumber`
 *   `raw_ops.Sub`
 *   `raw_ops.Substr`
 *   `raw_ops.Sum`
