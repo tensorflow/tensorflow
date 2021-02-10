@@ -987,6 +987,7 @@ cc_library(
         ":cpu_runtime",
         ":ir_emission_utils",
         ":target_machine_features",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
