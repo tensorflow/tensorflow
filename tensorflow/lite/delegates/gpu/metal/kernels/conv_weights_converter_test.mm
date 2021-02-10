@@ -51,4 +51,9 @@ limitations under the License.
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testConverterToConvWeights4xTextures {
+  const auto status = ConverterToConvWeights4xTexturesTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 @end

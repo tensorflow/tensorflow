@@ -29,6 +29,8 @@ absl::Status ConverterToConvWeights1x1OutX2Test(TestExecutionEnvironment* env);
 absl::Status ConverterToConvWeightsOutX2Test(TestExecutionEnvironment* env);
 absl::Status ConverterToConvTransposedWeights4x4Test(
     TestExecutionEnvironment* env);
+absl::Status ConverterToConvWeights4xTexturesTest(
+    TestExecutionEnvironment* env);
 
 }  // namespace gpu
 }  // namespace tflite
