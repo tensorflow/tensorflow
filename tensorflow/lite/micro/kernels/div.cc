@@ -164,6 +164,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     } else {
       TF_LITE_DIV(reference_ops, Div, uint8_t);
     }
+#undef TF_LITE_DIV
   } else {
     TF_LITE_KERNEL_LOG(
         context, "Unsupported combination of input and output types in DIV.");
@@ -171,7 +172,6 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   }
 
   return kTfLiteOk;
-#undef TF_LITE_DIV
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
