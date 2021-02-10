@@ -166,14 +166,14 @@ bool ConcatIsEffectivelyElementwise(
     // Limit our supported cases to 1 dimensional slices.
     return false;
   }
-  absl::c_sort(users, [](const HloInstruction* a, const HloInstruction* b) {
-    return a->slice_starts().at(0) < b->slice_starts().at(0);
-  });
   // Verify that each operand to the concat is reversed by a slice.
   if (users.size() != concat.operand_count() ||
       concat.operand_count() != concat.unique_operands().size()) {
     return false;
   }
+  absl::c_sort(users, [](const HloInstruction* a, const HloInstruction* b) {
+    return a->slice_starts().at(0) < b->slice_starts().at(0);
+  });
   int64 prev_limit = 0;
   for (int64 i = 0; i < users.size(); ++i) {
     const HloInstruction* u = users[i];
@@ -185,7 +185,10 @@ bool ConcatIsEffectivelyElementwise(
     prev_limit = u->slice_limits().at(0);
   }
 
-  // If we have seen other concats, make sure they are identical.
+  // If we have seen other concats, make sure they are identical. Multiple
+  // concats exist because horizontal fusion inserts one concat for each output
+  // of the fusion candidates. Check all concats and operand ids are the same
+  // to make sure that the compute iteration space is the same.
   int64 operand_idx = concat.operand_index(&operand);
   *slice_to_recover_opnd = users.at(operand_idx);
   if (prev_concat_opnd_idx->first == nullptr) {
@@ -207,8 +210,10 @@ bool ConcatIsEffectivelyElementwise(
 }
 
 // Returns whether we can prove the transitive uses of `param` are in effect
-// elementwise. In other words, we prove that the transitive use closure will
+// elementwise. In other words, we prove that the "transitive use closure" will
 // all be computed in the same iteration space without any reorder of elements.
+// In addition, we check that the "transitive use closure" includes the output
+// in the `root_tuple`.
 // Theoretically, We can prove more patterns but our primary use case is
 // SliceInputFusion.
 bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* param,
