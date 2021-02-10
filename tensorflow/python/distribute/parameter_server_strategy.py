@@ -573,6 +573,11 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
       else:
         return nest.map_structure(self._local_results, result)
 
+  def _local_results(self, val):
+    if isinstance(val, values.DistributedValues):
+      return val.values
+    return (val,)
+
   def value_container(self, val):
     if (hasattr(val, "_aggregating_container") and
         not isinstance(val, ps_values.AggregatingVariable)):

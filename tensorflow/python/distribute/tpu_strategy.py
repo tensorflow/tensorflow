@@ -1302,6 +1302,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 
+  def _local_results(self, val):
+    if isinstance(val, values.DistributedValues):
+      return val.values
+    return (val,)
+
   def value_container(self, value):
     return value
 

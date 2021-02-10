@@ -793,6 +793,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return array_ops.identity(replica_local_var._get())
     # pylint: enable=protected-access
 
+  def _local_results(self, val):
+    if isinstance(val, values.DistributedValues):
+      return val._values  # pylint: disable=protected-access
+    return (val,)
+
   def value_container(self, val):
     return distribute_utils.value_container(val)
 
