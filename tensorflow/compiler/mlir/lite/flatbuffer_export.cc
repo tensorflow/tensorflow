@@ -340,7 +340,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     // Verify that all operations except the terminator have exactly one
     // result of type supported by TFLite.
     for (auto& inst : bb) {
-      if (inst.isKnownTerminator()) break;
+      if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
 
       for (auto result : inst.getResults()) {
         if (!HasValidTFLiteType(result, inst)) {
@@ -1395,7 +1395,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
   bool failed_once = false;
   for (auto& inst : bb) {
-    if (inst.isKnownTerminator()) break;
+    if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
     // For "quant.stats" op, it's used to store the quantization parameters info
     // and its output should be then replaced by its input value.
     if (auto quant_stats_op = llvm::dyn_cast<mlir::quant::StatisticsOp>(inst)) {

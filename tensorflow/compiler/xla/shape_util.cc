@@ -1058,11 +1058,12 @@ Status ForEachMutableSubshapeHelper(
     absl::Span<const int64> permutation, const Shape& shape) {
   Shape new_shape = shape;
   new_shape.clear_dimensions();
-  for (auto dim : Permute(permutation, shape.dimensions())) {
+  for (auto dim : Permute(shape.dimensions(), permutation)) {
     new_shape.add_dimensions(dim);
   }
+  auto inv_permutation = InversePermutation(permutation);
   for (int64 i = 0; i < shape.rank(); i++) {
-    new_shape.set_dynamic_dimension(permutation[i],
+    new_shape.set_dynamic_dimension(inv_permutation[i],
                                     shape.is_dynamic_dimension(i));
   }
 
@@ -1100,12 +1101,12 @@ Status ForEachMutableSubshapeHelper(
     new_layout->set_format(DENSE);
     new_layout->clear_minor_to_major();
     for (auto index : ComposePermutations(
-             permutation, AsInt64Slice(shape.layout().minor_to_major()))) {
+             inv_permutation, AsInt64Slice(shape.layout().minor_to_major()))) {
       new_layout->add_minor_to_major(index);
     }
     // The permutation accepted by TransposeIsBitcast is the inverse of the
     // permutation here.
-    CHECK(TransposeIsBitcast(shape, new_shape, InversePermutation(permutation)))
+    CHECK(TransposeIsBitcast(shape, new_shape, permutation))
         << "shape=" << HumanStringWithLayout(shape)
         << ", new_shape=" << HumanStringWithLayout(new_shape)
         << ", permutation={" << absl::StrJoin(permutation, ",") << "}";

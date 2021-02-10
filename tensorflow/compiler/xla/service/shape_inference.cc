@@ -3097,7 +3097,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,
   // we need output[i]=input[dimensions[i]] which is
   // Permute(Inverse(dimensions),input).
-  return ShapeUtil::PermuteDimensions(InversePermutation(dimensions), operand);
+  return ShapeUtil::PermuteDimensions(dimensions, operand);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferClampShape(

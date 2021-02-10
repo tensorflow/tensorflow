@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 
@@ -103,10 +104,16 @@ class ParallelDevice {
   // parallel device, then call `Join` on each; even if some of the `Join`s
   // return a bad status the caller must run all of the `Join`s or any future
   // `StartExecute`s will deadlock).
+  //
+  // If `is_async=false` (constructor argument), `cancellation_manager` must
+  // live until `Join` finishes. If `is_async=true` it must live until `Join` is
+  // followed by `TFE_ContextAsyncWait` to clear pending operations. It will be
+  // used to cancel all other operations if any fails.
   void StartExecute(TFE_Context* context,
                     const std::vector<ParallelTensor*>& inputs,
                     const char* operation_name, const TFE_OpAttrs* attributes,
-                    int expected_max_outputs) const;
+                    int expected_max_outputs,
+                    CancellationManager& cancellation_manager) const;
 
   // Blocks until the previous `StartExecute` has run `TFE_Execute` on each
   // device. If is_async=false (constructor argument) this means the ops have
@@ -140,6 +147,10 @@ class ParallelDevice {
   // than a single list of threads so aliased nested parallel devices don't
   // re-use a thread.
   std::vector<std::unique_ptr<DeviceThread>> device_threads_;
+  // A cancellation manager to use if the caller does not provide one. When ops
+  // are executed asynchronously this must outlive the queued op, so it can't be
+  // function-local to Execute.
+  mutable std::unique_ptr<CancellationManager> default_cancellation_manager_;
 };
 
 // Contains a tuple of tensors, one on each of the `underlying_devices_` of the

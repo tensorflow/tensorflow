@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
@@ -321,43 +322,63 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         return absl::OkStatus();
       } else {
         // CONVOLUTION_TRANSPOSED with runtime weights
-        auto weights_shape = inputs[1]->tensor.shape;
+        OHWI weights_shape =
+            OHWI(inputs[1]->tensor.shape.b, inputs[1]->tensor.shape.h,
+                 inputs[1]->tensor.shape.w, inputs[1]->tensor.shape.c);
         if (attr.bias.data.empty()) {
-          attr.bias.shape = Linear(weights_shape.b);
-          attr.bias.data.resize(weights_shape.b, 0.0f);
+          attr.bias.shape = Linear(weights_shape.o);
+          attr.bias.data.resize(weights_shape.o, 0.0f);
         }
-        TensorDescriptor weights_desc = {op_def.src_tensors[1].data_type,
-                                         TensorStorageType::BUFFER,
-                                         Layout::BHWC};
         gpu_subgraph->operations.clear();
         gpu_subgraph->operations.resize(2);
         auto& converter_op = gpu_subgraph->operations[0];
         auto& conv_op = gpu_subgraph->operations[1];
-        conv_op.input_ids = {static_cast<int>(inputs[0]->id), -1};
-        conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
-        OperationDef conv_def = op_def;
-        conv_def.src_tensors[1] = weights_desc;
-        WeightsDescription conv_weights_desc;
+        WeightsDescription weights_desc;
         conv_op.operation = SelectConvolutionTransposedWithDynamicWeights(
-            attr, gpu_info, conv_def, &conv_weights_desc);
+            attr, gpu_info, op_def, &weights_desc);
+        conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
 
-        int aligned_output = AlignByN(
-            weights_shape.b, conv_weights_desc.GetOutputGroupSize() * 4);
-        int aligned_input = AlignByN(weights_shape.c, 4);
-        gpu_subgraph->new_tensors = {
-            {BHWC(1, 1, 1,
-                  aligned_output * aligned_input * weights_shape.h *
-                      weights_shape.w),
-             weights_desc}};
+        const int dst_depth = AlignByN(DivideRoundUp(weights_shape.o, 4),
+                                       weights_desc.GetOutputGroupSize());
+        const int src_depth = DivideRoundUp(weights_shape.i, 4);
+        const int kernel_x = weights_shape.w;
+        const int kernel_y = weights_shape.h;
+        if (weights_desc.layout ==
+                WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4 ||
+            weights_desc.layout ==
+                WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4) {
+          // weights are 4x textures 2d
+          conv_op.input_ids = {static_cast<int>(inputs[0]->id), -1, -2, -3, -4};
+          int texture_width = dst_depth;
+          int texture_height = src_depth * kernel_x * kernel_y;
+          for (int i = 0; i < 4; ++i) {
+            gpu_subgraph->new_tensors.push_back(
+                {BHWC(1, texture_height, texture_width, 4),
+                 TensorDescriptor(op_def.GetDataType(),
+                                  TensorStorageType::TEXTURE_2D, Layout::HWC)});
+          }
+        } else {
+          // weights is single buffer
+          conv_op.input_ids = {static_cast<int>(inputs[0]->id), -1};
+          gpu_subgraph->new_tensors = {
+              {BHWC(
+                   1, 1, 1,
+                   GetTotalElementsCountForLayout(weights_desc, weights_shape)),
+               TensorDescriptor(op_def.GetDataType(), TensorStorageType::BUFFER,
+                                Layout::HWC)}};
+        }
+        OperationDef conv_def = conv_op.operation->GetDefinition();
         OperationDef converter_def;
         converter_def.precision = op_def.precision;
         converter_def.src_tensors.push_back(op_def.src_tensors[1]);
-        converter_def.dst_tensors.push_back(weights_desc);
+        for (int i = 1; i < conv_def.src_tensors.size(); ++i) {
+          converter_def.dst_tensors.push_back(conv_def.src_tensors[i]);
+          converter_op.output_ids.push_back(-i);
+        }
 
         converter_op.input_ids = {static_cast<int>(inputs[1]->id)};
-        converter_op.output_ids = {-1};
-        converter_op.operation = SelectConverterToConvWeights(
-            conv_weights_desc, converter_def, hints);
+        converter_op.operation =
+            SelectConverterToConvWeights(weights_desc, converter_def, hints);
         return absl::OkStatus();
       }
     }

@@ -19,8 +19,6 @@ cc_library(
     name = "kernels",
     deps = [
         ":conv",
-        ":transpose_conv",
-        ":winograd",
     ],
 )
 
@@ -96,7 +94,7 @@ objc_library(
     deps = [
         ":conv",
         ":test_util",
-        ":winograd",
+        "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
     ],
 )
 
@@ -533,21 +531,6 @@ ios_unit_test(
     deps = [":space_to_depth_test_lib"],
 )
 
-cc_library(
-    name = "transpose_conv",
-    srcs = ["transpose_conv.cc"],
-    hdrs = ["transpose_conv.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "transpose_conv_test_lib",
     testonly = 1,
@@ -555,7 +538,6 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
-        ":transpose_conv",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
     ],
@@ -641,22 +623,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "winograd",
-    srcs = ["winograd.cc"],
-    hdrs = ["winograd.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common:winograd_util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings:str_format",
-    ],
-)
-
 objc_library(
     name = "winograd_test_lib",
     testonly = 1,
@@ -664,7 +630,6 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
-        ":winograd",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
     ],
@@ -717,8 +682,6 @@ objc_library(
     deps = [
         ":conv",
         ":test_util",
-        ":transpose_conv",
-        ":winograd",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -749,6 +712,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
     ],

@@ -80,8 +80,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
                        original_dnums.lhs_contracting_dimensions().end());
   HloInstruction* transposed_lhs =
       computation->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::PermuteDimensions(InversePermutation(lhs_transpose),
-                                       lhs_shape),
+          ShapeUtil::PermuteDimensions(lhs_transpose, lhs_shape),
           original_dot->mutable_operand(0), lhs_transpose));
   std::vector<int64> lhs_reshape_dims = batch_dim_sizes;
   if (lhs_non_contracting_size > 1) {
@@ -127,8 +126,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
                        rhs_non_contracting_dims.end());
   HloInstruction* transposed_rhs =
       computation->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::PermuteDimensions(InversePermutation(rhs_transpose),
-                                       rhs_shape),
+          ShapeUtil::PermuteDimensions(rhs_transpose, rhs_shape),
           original_dot->mutable_operand(1), rhs_transpose));
 
   std::vector<int64> rhs_reshape_dims = batch_dim_sizes;

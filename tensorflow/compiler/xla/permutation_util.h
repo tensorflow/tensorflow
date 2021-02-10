@@ -31,14 +31,33 @@ namespace xla {
 bool IsPermutation(absl::Span<const int64> permutation);
 
 // Applies `permutation` on `input` and returns the permuted array.
-// For each i, output[permutation[i]] = input[i].
+// For each i, output[i] = input[permutation[i]].
 //
 // Precondition:
 // 1. `permutation` is a permutation of 0..permutation.size()-1.
 // 2. permutation.size() == input.size().
 template <typename Container>
 std::vector<typename Container::value_type> Permute(
-    absl::Span<const int64> permutation, const Container& input) {
+    const Container& input, absl::Span<const int64> permutation) {
+  using T = typename Container::value_type;
+  absl::Span<const T> data(input);
+  CHECK_EQ(permutation.size(), data.size());
+  CHECK(IsPermutation(permutation));
+  std::vector<T> output(data.size());
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    output[i] = data[permutation[i]];
+  }
+  return output;
+}
+// Applies the inverse of `permutation` on `input` and returns the permuted
+// array. For each i, output[permutation[i]] = input[i].
+//
+// Precondition:
+// 1. `permutation` is a permutation of 0..permutation.size()-1.
+// 2. permutation.size() == input.size().
+template <typename Container>
+std::vector<typename Container::value_type> PermuteInverse(
+    const Container& input, absl::Span<const int64> permutation) {
   using T = typename Container::value_type;
   absl::Span<const T> data(input);
   CHECK_EQ(permutation.size(), data.size());

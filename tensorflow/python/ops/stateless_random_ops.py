@@ -124,7 +124,7 @@ def fold_in(seed, data):
 
 
 def _get_key_counter_alg(seed):
-  if compat.forward_compatible(2021, 2, 2):
+  if compat.forward_compatible(2021, 3, 1):
     key, counter = gen_stateless_random_ops_v2.stateless_random_get_key_counter(
         seed)
     alg = gen_stateless_random_ops_v2.stateless_random_get_alg()

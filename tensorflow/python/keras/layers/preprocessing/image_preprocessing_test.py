@@ -198,8 +198,11 @@ class CenterCropTest(keras_parameterized.TestCase):
                                   ('center_crop_10_by_8', 10, 8),
                                   ('center_crop_10_by_12', 10, 12))
   def test_invalid_center_crop(self, expected_height, expected_width):
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                r'assertion failed'):
+    # InternelError is raised by tf.function MLIR lowering pass when TFRT
+    # is enabled.
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, errors.InternalError),
+        r'assertion failed|error: \'tf.Slice\' op'):
       self._run_test(expected_height, expected_width)
 
   def test_config_with_custom_name(self):
@@ -231,7 +234,9 @@ class RandomCropTest(keras_parameterized.TestCase):
                                   ('random_crop_10_by_8', 10, 8),
                                   ('random_crop_10_by_12', 10, 12))
   def test_invalid_random_crop(self, expected_height, expected_width):
-    with self.assertRaises(errors.InvalidArgumentError):
+    # InternelError is raised by tf.function MLIR lowering pass when TFRT
+    # is enabled.
+    with self.assertRaises((errors.InvalidArgumentError, errors.InternalError)):
       with CustomObjectScope({'RandomCrop': image_preprocessing.RandomCrop}):
         self._run_test(expected_height, expected_width)
 

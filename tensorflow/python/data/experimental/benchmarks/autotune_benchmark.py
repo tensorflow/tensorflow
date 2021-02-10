@@ -63,6 +63,29 @@ class AutotuneBenchmark(test.Benchmark):
         name=benchmark_label + (autotune_string if autotune else ""))
     return np.median(deltas)
 
+  def benchmark_batch(self):
+    a = self._benchmark_batch(autotune=False)
+    b = self._benchmark_batch(autotune=True, autotune_buffers=False)
+    c = self._benchmark_batch(autotune=True, autotune_buffers=True)
+    print("autotune parallelism vs no autotuning speedup: {}".format(a / b))
+    print("autotune parallelism and buffer sizes vs no autotuning speedup: {}"
+          .format(a / c))
+
+  def _benchmark_batch(self, autotune, autotune_buffers=False):
+    batch_size = 128
+    k = 1024
+    dataset = dataset_ops.Dataset.from_tensors(
+        (np.random.rand(1, 4 * k), np.random.rand(4 * k, 1))).repeat()
+    dataset = dataset.map(math_ops.matmul)
+    dataset = dataset.batch(
+        batch_size=batch_size, num_parallel_calls=dataset_ops.AUTOTUNE)
+    return self._run_benchmark(
+        dataset,
+        autotune,
+        autotune_buffers,
+        benchmark_iters=10000,
+        benchmark_label="batch")
+
   def benchmark_map(self):
     a = self._benchmark_map(autotune=False)
     b = self._benchmark_map(autotune=True, autotune_buffers=False)

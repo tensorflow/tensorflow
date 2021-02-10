@@ -1865,9 +1865,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     TF_RET_CHECK(shape.dimensions().size() ==
                  transpose->operand(0)->shape().dimensions().size());
     TF_RET_CHECK(std::equal(
-        operand->shape().dimensions().begin(),
-        operand->shape().dimensions().end(),
-        Permute(transpose->dimensions(), shape.dimensions()).begin()))
+        shape.dimensions().begin(), shape.dimensions().end(),
+        Permute(operand->shape().dimensions(), transpose->dimensions())
+            .begin()))
         << "shape: " << shape << ", operand->shape(): " << shape
         << ", dimensions: {" << absl::StrJoin(transpose->dimensions(), ", ")
         << "}";
