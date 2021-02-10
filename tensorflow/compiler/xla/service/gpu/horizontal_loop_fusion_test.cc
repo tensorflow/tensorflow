@@ -364,33 +364,33 @@ TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1.0e-5, 1.0e-5}));
 }
 
-TEST_F(HorizontalLoopFusionTest, NegativeTestForDynamicUpdateSlice) {
+TEST_F(HorizontalLoopFusionTest, DynamicUpdateSlice) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule NegativeTestForDynamicUpdateSlice
 
   fusion.1 {
     p.0 = f16[5,9,10]{2,1,0} parameter(0)
-    p.1 = s32[1]{0} parameter(1)
+    p.1 = s32[] parameter(1)
     p.2 = f16[1,9,10]{2,1,0} parameter(2)
     c.0 = s32[] constant(0)
-    pad = s32[3]{0} pad(p.1, c.0), padding=0_2
-    ROOT %dynamic-update-slice = f16[5,9,10]{2,1,0} dynamic-update-slice(p.0, p.2, pad)
+    ROOT %dynamic-update-slice =
+        f16[5,9,10]{2,1,0} dynamic-update-slice(p.0, p.2, p.1, c.0, c.0)
   }
 
   fusion.2 {
     p.0 = f16[5,9,10]{2,1,0} parameter(0)
-    p.1 = s32[1]{0} parameter(1)
+    p.1 = s32[] parameter(1)
     p.2 = f16[1,9,10]{2,1,0} parameter(2)
     c.0 = s32[] constant(0)
-    pad = s32[3]{0} pad(p.1, c.0), padding=0_2
-    ROOT %dynamic-update-slice = f16[5,9,10]{2,1,0} dynamic-update-slice(p.0, p.2, pad)
+    ROOT %dynamic-update-slice =
+        f16[5,9,10]{2,1,0} dynamic-update-slice(p.0, p.2, p.1, c.0, c.0)
   }
 
   ENTRY entry {
     p.00 = f16[5,9,10]{2,1,0} parameter(0)
     p.01 = f16[5,9,10]{2,1,0} parameter(1)
-    p.10 = s32[1]{0} parameter(2)
-    p.11 = s32[1]{0} parameter(3)
+    p.10 = s32[] parameter(2)
+    p.11 = s32[] parameter(3)
     p.20 = f16[1,9,10]{2,1,0} parameter(4)
     p.21 = f16[1,9,10]{2,1,0} parameter(5)
 
@@ -400,7 +400,13 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForDynamicUpdateSlice) {
   })")
                     .ValueOrDie();
 
-  EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
+
+  VLOG(2) << "Dump after horizontal fusion:";
+  VLOG(2) << module->ToString();
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
 }
 
 TEST_F(HorizontalLoopFusionTest, NegativeTestForSharedParam) {
