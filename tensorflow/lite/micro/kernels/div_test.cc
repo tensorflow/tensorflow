@@ -37,8 +37,7 @@ void ExecuteDivTest(TfLiteTensor* tensors, int tensors_count,
 
   const TfLiteRegistration registration = tflite::ops::micro::Register_DIV();
   micro::KernelRunner runner(registration, tensors, tensors_count, inputs_array,
-                             outputs_array, static_cast<void*>(&builtin_data),
-                             micro_test::reporter);
+                             outputs_array, static_cast<void*>(&builtin_data));
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
