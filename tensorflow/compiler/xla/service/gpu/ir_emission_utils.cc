@@ -369,29 +369,29 @@ bool IsReductionFromOrToContiguousDimensions(mlir::Operation* reduce) {
   return reduction_dimensions.dimensions[1] >= kWarpSize;
 }
 
-bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
+bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
                           bool verify_no_strides) {
-  if (!unnested_hlo.IsInputFusion()) {
+  auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo);
+  if (!fusion) {
     return false;
   }
 
-  auto is_non_strided = [](const std::vector<int64>& strides) -> bool {
-    return absl::c_all_of(strides, [](int stride) { return stride == 1; });
+  auto is_non_strided = [](mlir::DenseIntElementsAttr strides) -> bool {
+    return absl::c_all_of(
+        strides, [](const llvm::APInt& stride) { return stride == 1; });
   };
 
-  const HloInstruction* root = unnested_hlo.fused_expression_root();
-  if (root->opcode() == HloOpcode::kSlice) {
-    return !verify_no_strides || is_non_strided(root->slice_strides());
+  for (mlir::Value value : fusion.getFusionResults()) {
+    auto slice =
+        mlir::dyn_cast_or_null<mlir::mhlo::SliceOp>(value.getDefiningOp());
+    if (!slice) {
+      return false;
+    }
+    if (verify_no_strides && !is_non_strided(slice.strides())) {
+      return false;
+    }
   }
-
-  if (root->opcode() != HloOpcode::kTuple) {
-    return false;
-  }
-
-  return absl::c_all_of(root->operands(), [&](const HloInstruction* instr) {
-    return instr->opcode() == HloOpcode::kSlice &&
-           (!verify_no_strides || is_non_strided(instr->slice_strides()));
-  });
+  return true;
 }
 
 ReductionDimensions GetReductionKindAndContiguousComponents(
@@ -809,7 +809,6 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 
   auto maybe_lhs = GetAllocationSliceForMlir(parameter.memref(), allocations);
   auto maybe_rhs = GetAllocationSliceForMlir(output_buffers[0], allocations);
-  LOG(ERROR) << "TIM: ";
   return maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs;
 }
 

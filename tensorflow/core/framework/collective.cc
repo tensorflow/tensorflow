@@ -169,7 +169,7 @@ string CollectiveParams::ToString() const {
 CollectiveContext::CollectiveContext(
     CollectiveExecutor* col_exec, NcclCommunicatorInterface* nccl_communicator,
     const DeviceMgr* dev_mgr, OpKernelContext* ctx,
-    OpKernelContext::Params* op_params, const CollectiveParams& col_params,
+    OpKernelContext::Params* op_params, const CollectiveParams* col_params,
     const string& exec_key, int64 step_id, const Tensor* input, Tensor* output)
     : col_exec(col_exec),
       nccl_communicator(nccl_communicator),
@@ -182,7 +182,7 @@ CollectiveContext::CollectiveContext(
       input(input),
       output(output),
       device(nullptr),
-      device_name(col_params.group.device_names[col_params.default_rank]) {}
+      device_name(col_params->group.device_names[col_params->default_rank]) {}
 
 /*static*/
 int64 CollectiveExecutor::kInvalidId = -1;

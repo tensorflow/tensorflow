@@ -245,7 +245,7 @@ void MarkVariantInputsOutputs(tf_device::ClusterOp tpu_cluster) {
                 kXlaOutsideCompilationAttr)) {
           input_defining_op->setAttr(
               kXlaOutsideCompilationAttr,
-              StringAttr::get("auto", input_defining_op->getContext()));
+              StringAttr::get(input_defining_op->getContext(), "auto"));
           outside_compiled_ops.push(input_defining_op);
         }
       }
@@ -258,7 +258,7 @@ void MarkVariantInputsOutputs(tf_device::ClusterOp tpu_cluster) {
                 !HasOutsideCompiledAncestor(user) &&
                 !user->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
               user->setAttr(kXlaOutsideCompilationAttr,
-                            StringAttr::get("auto", user->getContext()));
+                            StringAttr::get(user->getContext(), "auto"));
               outside_compiled_ops.push(user);
             }
           }
@@ -285,11 +285,11 @@ LogicalResult MarkUncompilableOps(
       VLOG(3) << "Cloud TPU: Op " << op->getName().getStringRef().str()
               << " isn't compilable, adding outside_compilation attr. "
                  "This op will automatically be placed on CPU.";
-      op->setAttr(
-          kXlaOutsideCompilationAttr,
-          StringAttr::get(
-              llvm::formatv("auto{0}", outside_compiled_cluster_counter).str(),
-              op->getContext()));
+      op->setAttr(kXlaOutsideCompilationAttr,
+                  StringAttr::get(
+                      op->getContext(),
+                      llvm::formatv("auto{0}", outside_compiled_cluster_counter)
+                          .str()));
       outside_compiled_cluster_counter++;
     }
   });

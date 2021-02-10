@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -2188,7 +2189,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   for (auto dim : lhs_contracting_dims) {
     permutation.push_back(transpose_dims[dim] - lhs_contracting_dims[0]);
   }
-  CHECK(IsPermutation(permutation, permutation.size()));
+  CHECK(IsPermutation(permutation));
   auto new_lhs_contracting_dims =
       ComposePermutations(AsInt64Slice(lhs_contracting_dims), permutation);
   lhs_contracting_dims.Clear();
@@ -4434,19 +4435,24 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
           compatible = false;
           break;
         }
-        VLOG(2) << "slice :" << slice_dim_start->ToString();
+        VLOG(2) << "slice: " << slice_dim_start->ToString();
         absl::optional<int64> beg =
             slice_dim_start->literal().GetFirstInteger();
         if (!beg) {
           compatible = false;
           break;
         }
-        VLOG(2) << "beg value:" << *beg;
+        VLOG(2) << "beg value: " << *beg;
         auto update_width = ShapeUtil::GetDimension(update_shape, dim);
         auto bcast_width = ShapeUtil::GetDimension(updated_shape, dim);
+        // Clamp beg so that it is non-negative.
+        *beg = std::max<int64>(0, *beg);
+        // Clamp beg so that it is in-bounds.
+        *beg = std::min<int64>(bcast_width - update_width, *beg);
+        VLOG(2) << "adjusted beg value: " << *beg;
         padding_config_dim->set_edge_padding_low(*beg);
-        padding_config_dim->set_edge_padding_high(
-            std::max(bcast_width - (*beg + update_width), int64{0}));
+        padding_config_dim->set_edge_padding_high(bcast_width -
+                                                  (*beg + update_width));
         // dynamic_update_slice does not specify a stride
         padding_config_dim->set_interior_padding(0);
       }

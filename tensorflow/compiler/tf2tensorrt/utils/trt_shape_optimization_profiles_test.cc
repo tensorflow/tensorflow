@@ -123,14 +123,14 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
 };
 
 TEST_F(TrtShapeOptimizationProfileTest, Static) {
-  // Network with static input shape
+  // Network with static input shape.
   nvinfer1::Dims3 dims(8, 8, 10);
   DefineNetwork(network_.get(), dims);
 
   TrtShapeOptimizationProfile profile;
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // Configure and build engine - should be a no-op
+  // Configure and build engine - should be a no-op.
   TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
                                        network_.get()));
 
@@ -149,30 +149,32 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
 
   std::vector<nvinfer1::Dims3> dim_vec(2, dims);
   std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec);
-  EXPECT_EQ(-1, profile.GetProfileNumber(shape_vec));
+  EXPECT_EQ(0, profile.GetProfileNumber(shape_vec));
 }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
-  // Network with dynamic input shapes
+  // Network with dynamic input shapes.
   nvinfer1::Dims3 dims(-1, -1, 10);
   DefineNetwork(network_.get(), dims);
 
-  TrtShapeOptimizationProfile profile;
+  TrtShapeOptimizationProfile profile(ProfileStrategy::kOptimal);
   std::vector<std::vector<nvinfer1::Dims3>> input_profiles{
       {nvinfer1::Dims3(2, 2, 10), nvinfer1::Dims3(2, 2, 10)},
       {nvinfer1::Dims3(3, 3, 10), nvinfer1::Dims3(3, 3, 10)},
       {nvinfer1::Dims3(16, 16, 10), nvinfer1::Dims3(16, 16, 10)},
   };
 
-  // Simulate a profile collection phase
+  // Simulate a profile collection phase.
   for (auto dim_vec : input_profiles) {
     std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec);
     profile.AddShape(shape_vec);
   }
-  profile.InitProfiles();
+  std::vector<PartialTensorShape> input_partial_shapes;
+  TF_CHECK_OK(GetNetworkInputShapes(network_.get(), &input_partial_shapes));
+  profile.InitProfiles(input_partial_shapes);
 
-  // Configure and build engine
+  // Configure and build engine.
   TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
                                        network_.get()));
   engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(

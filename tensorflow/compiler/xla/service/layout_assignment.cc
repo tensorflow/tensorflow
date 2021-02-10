@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
@@ -1932,19 +1933,26 @@ Status LayoutAssignment::RunOnComputation(
 
   // Copy the root instruction's result if its layout does not match the result
   // layout constraint.
-  if (constraints.ResultLayout() != nullptr &&
-      !constraints.ResultLayout()->MatchesLayoutInShape(
-          computation->root_instruction()->shape(),
-          /*minor_to_major_only=*/true)) {
-    if (conditional_mismatch_.count(computation) > 0) {
-      *FindOrDie(computation_layouts_, computation).mutable_result_layout() =
-          FindOrDie(conditional_mismatch_, computation).result_layout();
+  if (constraints.ResultLayout() != nullptr) {
+    // Layout assignment at this point only does minor-to-major assignment so
+    // tiling info should be ignored here for comparison.
+    if (!constraints.ResultLayout()->MatchesLayoutInShape(
+            computation->root_instruction()->shape(),
+            /*minor_to_major_only=*/true)) {
+      if (conditional_mismatch_.count(computation) > 0) {
+        *FindOrDie(computation_layouts_, computation).mutable_result_layout() =
+            FindOrDie(conditional_mismatch_, computation).result_layout();
+      }
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * new_root,
+          CreateCopyWithNewLayout(constraints.ResultLayout()->shape(),
+                                  computation->root_instruction()));
+      computation->set_root_instruction(new_root);
+    } else {
+      // Use the specified shape including tiling info in layout.
+      *(computation->root_instruction()->mutable_shape()) =
+          constraints.ResultLayout()->shape();
     }
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * new_root,
-        CreateCopyWithNewLayout(constraints.ResultLayout()->shape(),
-                                computation->root_instruction()));
-    computation->set_root_instruction(new_root);
   }
   return Status::OK();
 }

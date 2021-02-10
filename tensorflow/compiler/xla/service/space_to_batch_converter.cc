@@ -693,6 +693,7 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
           (old_producer->opcode() == HloOpcode::kBroadcast &&
            IsBroadcastPropagatable(old_producer, producer)) ||
           (consumer->IsElementwiseBinary() &&
+           old_producer->opcode() == HloOpcode::kBroadcast &&
            IsBroadcastTree(old_producer, producer, to_transform));
 
       if (!old_to_new_instrs_.contains(old_producer) &&
@@ -799,7 +800,13 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     auto activations = consumer->mutable_operand(0);
     auto kernel = consumer->mutable_operand(1);
 
-    if (!last_try) {
+    auto win_dims =
+        consumer->window().dimensions(get_chosen_spatial_dim(consumer));
+    const int64 rhs_dilation = win_dims.window_dilation();
+
+    // If the rhs_dilation is absent, we want both LHS and RHS to be space-to-
+    // batched for propagating on backprop convolutions.
+    if (!last_try || rhs_dilation == 1) {
       if (!old_to_new_instrs_.contains(kernel) ||
           !old_to_new_instrs_.contains(activations)) {
         return false;
@@ -810,10 +817,6 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
         !old_to_new_instrs_.contains(activations)) {
       return false;
     }
-
-    const int64 rhs_dilation = consumer->window()
-                                   .dimensions(get_chosen_spatial_dim(consumer))
-                                   .window_dilation();
 
     if (!old_to_new_instrs_.contains(kernel)) {
       const int64 rhs_batch =
@@ -1310,6 +1313,8 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
         TF_CHECK_OK(
             new_consumer->ReplaceOperandWithDifferentShape(i, operand_to_use));
       } else if (consumer->IsElementwiseBinary() &&
+                 consumer->mutable_operand(i)->opcode() ==
+                     HloOpcode::kBroadcast &&
                  IsBroadcastTree(consumer->mutable_operand(i), producer,
                                  instructions_to_transform)) {
         RewriteBroadcastTree(producer, instructions_to_transform);

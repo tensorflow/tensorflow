@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
@@ -766,6 +767,168 @@ struct ConvertDigammaOp : public OpConversionPattern<DigammaOp> {
   }
 };
 
+Value MaterializeZetaComputation(ConversionPatternRewriter &rewriter,
+                                 Location loc, Value x, Value q) {
+  static const std::array<double, 12> kZetaCoeffs{
+      -7.1661652561756670113e18,
+      1.8152105401943546773e17,
+      -4.5979787224074726105e15,
+      1.1646782814350067249e14,
+      -2.950130727918164224e12,
+      7.47242496e10,
+      -1.8924375803183791606e9,
+      47900160.0,
+      -1209600.0,
+      30240.0,
+      -720.0,
+      12.0,
+  };
+
+  // For speed we'll always use 9 iterations for the initial series estimate,
+  // and a 12 term expansion for the Euler-Maclaurin formula.
+  Value a = q;
+  Value zero_like_a = chlo::getConstantLike(rewriter, loc, 0.0, a);
+  Value neg_power = zero_like_a;
+  Value neg_x = rewriter.create<mhlo::NegOp>(loc, x);
+  Value initial_sum = rewriter.create<mhlo::PowOp>(loc, q, neg_x);
+  Value one_like_a = chlo::getConstantLike(rewriter, loc, 1.0, a);
+  for (int i = 0; i < 9; ++i) {
+    a = rewriter.create<mhlo::AddOp>(loc, a, one_like_a);
+    neg_power = rewriter.create<mhlo::PowOp>(loc, a, neg_x);
+    initial_sum = rewriter.create<mhlo::AddOp>(loc, initial_sum, neg_power);
+  }
+  a = rewriter.create<mhlo::AddOp>(loc, a, one_like_a);
+  neg_power = rewriter.create<mhlo::PowOp>(loc, a, neg_x);
+  Value one_like_x = chlo::getConstantLike(rewriter, loc, 1.0, x);
+  Value x_minus_one = rewriter.create<mhlo::SubOp>(loc, x, one_like_x);
+  Value neg_power_mul_a = rewriter.create<mhlo::MulOp>(loc, neg_power, a);
+  Value neg_power_mul_a_div_x_minus_one =
+      rewriter.create<mhlo::DivOp>(loc, neg_power_mul_a, x_minus_one);
+  Value s = rewriter.create<mhlo::AddOp>(loc, initial_sum,
+                                         neg_power_mul_a_div_x_minus_one);
+  Value a_inverse_square = rewriter.create<mhlo::DivOp>(
+      loc, one_like_a, rewriter.create<mhlo::MulOp>(loc, a, a));
+
+  Value horner_sum = zero_like_a;
+  Value factor = one_like_a;
+  // Use Horner's rule for this.
+  // Note this differs from Cephes which does a 'naive' polynomial evaluation.
+  // Using Horner's rule allows to avoid some NaN's and Infs from happening,
+  // resulting in more numerically stable code.
+  for (int i = 0; i < 11; ++i) {
+    Value factor_lhs = rewriter.create<mhlo::SubOp>(
+        loc, x, chlo::getConstantLike(rewriter, loc, 22 - 2 * i, x));
+    Value factor_rhs = rewriter.create<mhlo::SubOp>(
+        loc, x, chlo::getConstantLike(rewriter, loc, 21 - 2 * i, x));
+    factor = rewriter.create<mhlo::MulOp>(loc, factor_lhs, factor_rhs);
+    horner_sum = rewriter.create<mhlo::MulOp>(
+        loc, factor,
+        rewriter.create<mhlo::MulOp>(
+            loc, a_inverse_square,
+            rewriter.create<mhlo::AddOp>(
+                loc, horner_sum,
+                chlo::getConstantLike(rewriter, loc, 1. / kZetaCoeffs[i], a))));
+  }
+  Value zero_point_five_like_neg_power =
+      chlo::getConstantLike(rewriter, loc, .5, neg_power);
+  Value x_div_a = rewriter.create<mhlo::DivOp>(loc, x, a);
+  s = rewriter.create<mhlo::AddOp>(
+      loc, s,
+      rewriter.create<mhlo::MulOp>(
+          loc, neg_power,
+          rewriter.create<mhlo::AddOp>(
+              loc, zero_point_five_like_neg_power,
+              rewriter.create<mhlo::MulOp>(
+                  loc, x_div_a,
+                  rewriter.create<mhlo::AddOp>(
+                      loc,
+                      chlo::getConstantLike(rewriter, loc, 1. / kZetaCoeffs[11],
+                                            a),
+                      horner_sum)))));
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  // Use the initial zeta sum without the correction term coming
+  // from Euler-Maclaurin if it is accurate enough.
+  const StringAttr kLT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
+  Value abs_neg_power = rewriter.create<mhlo::AbsOp>(loc, neg_power);
+  Value abs_initial_sum = rewriter.create<mhlo::AbsOp>(loc, initial_sum);
+  Value output = rewriter.create<mhlo::SelectOp>(
+      loc,
+      rewriter.create<mhlo::CompareOp>(
+          loc, abs_neg_power,
+          rewriter.create<mhlo::MulOp>(
+              loc, abs_initial_sum,
+              chlo::getConstantLikeSmallestFiniteValue(rewriter, loc, a)),
+          kLT),
+      initial_sum, s);
+  // This is the harmonic series.
+  const StringAttr kEQ = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::EQ));
+  Value inf_like_x = chlo::getConstantLike(rewriter, loc, inf, x);
+  output = rewriter.create<mhlo::SelectOp>(
+      loc, rewriter.create<mhlo::CompareOp>(loc, x, one_like_x, kEQ),
+      inf_like_x, output);
+  // Function is not defined for x < 1.
+  Value nan_like_x = chlo::getConstantLike(rewriter, loc, nan, x);
+  output = rewriter.create<mhlo::SelectOp>(
+      loc, rewriter.create<mhlo::CompareOp>(loc, x, one_like_x, kLT),
+      nan_like_x, output);
+  // If q <= 0, then when q is an integer or x is not an integer, this is
+  // NaN.
+  const StringAttr kLE = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LE));
+  const StringAttr kNE = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
+  Value zero_like_q = chlo::getConstantLike(rewriter, loc, 0.0, q);
+  Value q_le_zero = rewriter.create<mhlo::CompareOp>(loc, q, zero_like_q, kLE);
+  Value domain_error = rewriter.create<mhlo::AndOp>(
+      loc, q_le_zero,
+      rewriter.create<mhlo::CompareOp>(
+          loc, x, rewriter.create<mhlo::FloorOp>(loc, x), kNE));
+  Value negative_integer_q = rewriter.create<mhlo::AndOp>(
+      loc, q_le_zero,
+      rewriter.create<mhlo::CompareOp>(
+          loc, q, rewriter.create<mhlo::FloorOp>(loc, q), kEQ));
+  output = rewriter.create<mhlo::SelectOp>(loc, negative_integer_q, inf_like_x,
+                                           output);
+  output =
+      rewriter.create<mhlo::SelectOp>(loc, domain_error, nan_like_x, output);
+  return output;
+}
+
+struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
+  using OpConversionPattern<ZetaOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      ZetaOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    ZetaOpAdaptor adaptor(operands);
+    Location loc = op.getLoc();
+
+    // Zeta is only defined on tensors of float elements and statically
+    // verified that both have the same type. So it suffices to look at one
+    // here.
+    auto elm_type = adaptor.x().getType().cast<ShapedType>().getElementType();
+
+    bool needs_upcast = elm_type.isF16() || elm_type.isBF16();
+
+    Value x = adaptor.x();
+    Value q = adaptor.q();
+
+    if (needs_upcast) {
+      x = rewriter.create<mhlo::ConvertOp>(loc, x, rewriter.getF32Type());
+      q = rewriter.create<mhlo::ConvertOp>(loc, q, rewriter.getF32Type());
+    }
+    Value result = MaterializeZetaComputation(rewriter, loc, x, q);
+    if (needs_upcast) {
+      result = rewriter.create<mhlo::ConvertOp>(loc, result, elm_type);
+    }
+    rewriter.replaceOp(op, {result});
+
+    return success();
+  }
+};
+
 // Converts binary ops that statically are determined to not broadcast directly
 // to the corresponding mhlo non-broadcasting op.
 template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
@@ -904,10 +1067,8 @@ struct ConvertRankedDynamicBroadcastBinaryOp
 #include "generated_chlo_legalize_to_hlo.inc"
 }  // namespace
 
-void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
-                                       OwningRewritePatternList *patterns) {
-  populateWithGenerated(context, *patterns);
-
+void PopulateChloBroadcastingPatterns(MLIRContext *context,
+                                      OwningRewritePatternList *patterns) {
   // Instantiate conversion templates for conforming binary elementwise ops
   // that do not have different dtypes between operands and results and do
   // not have special attributes that need to be preserved.
@@ -915,6 +1076,12 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
       context, patterns, 10);
   PopulateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
       context, patterns, 5);
+}
+
+void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
+                                       OwningRewritePatternList *patterns) {
+  populateWithGenerated(context, *patterns);
+  PopulateChloBroadcastingPatterns(context, patterns);
 
   // Other patterns.
   // clang-format off
@@ -922,7 +1089,8 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                    ConvertDigammaOp,
                    ConvertErfOp,
                    ConvertErfcOp,
-                   ConvertLgammaOp>(context);
+                   ConvertLgammaOp,
+                   ConvertZetaOp>(context);
   // clang-format on
 }
 

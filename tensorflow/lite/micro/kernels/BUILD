@@ -145,6 +145,7 @@ cc_library(
         "tanh.cc",
         "transpose_conv.cc",
         "unpack.cc",
+        "zeros_like.cc",
     ] + select({
         "//conditions:default": [
             "conv.cc",
@@ -223,8 +224,8 @@ test_suite(
 )
 
 tflite_micro_cc_test(
-    name = "elementwise_test",
-    srcs = ["elementwise_test.cc"],
+    name = "cast_test",
+    srcs = ["cast_test.cc"],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
@@ -238,6 +239,45 @@ tflite_micro_cc_test(
 tflite_micro_cc_test(
     name = "div_test",
     srcs = ["div_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "elementwise_test",
+    srcs = ["elementwise_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "exp_test",
+    srcs = ["exp_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "zeros_like_test",
+    srcs = ["zeros_like_test.cc"],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
@@ -681,6 +721,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
     ],
 )

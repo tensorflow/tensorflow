@@ -739,11 +739,6 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       if (aggressiveness < 3) {
         return false;
       }
-      // Do not override existing tile sharding. This is likely from users.
-      if (IsSpatiallyPartitioned(instruction) &&
-          !instruction->sharding().IsTileMaximal()) {
-        return false;
-      }
       const HloInstruction* op = instruction->operand(0);
       if (!IsSpatiallyPartitioned(op) || op->sharding().IsReplicated()) {
         return false;

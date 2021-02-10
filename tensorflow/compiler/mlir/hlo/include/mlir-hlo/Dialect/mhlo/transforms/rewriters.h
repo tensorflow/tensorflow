@@ -99,8 +99,14 @@ void PopulateTrigonometricToApproximationPatterns(
 
 namespace chlo {
 
+// Populates a collection of conversion patterns for legalizing broadcasting
+// client-HLO to their non-broadcasting counterparts.
+void PopulateChloBroadcastingPatterns(MLIRContext *context,
+                                      OwningRewritePatternList *patterns);
+
 // Populates a collection of conversion patterns for legalizing client-HLO to
-// HLO.
+// HLO. Includes decomposition of operations and inserting of explicit
+// broadcasts.
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns);
 

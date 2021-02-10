@@ -345,7 +345,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     SmallVector<Type, 4> inferred_return_types;
     auto result = type_op.inferReturnTypes(
         op->getContext(), location, op->getOperands(),
-        DictionaryAttr::get(attributes, op->getContext()), op->getRegions(),
+        DictionaryAttr::get(op->getContext(), attributes), op->getRegions(),
         inferred_return_types);
     if (failed(result)) return failure();
 
@@ -371,7 +371,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     auto attributes = GetAllAttributesFromOperation(op);
     return shape_type_op.inferReturnTypeComponents(
         op->getContext(), location, op->getOperands(),
-        DictionaryAttr::get(attributes, op->getContext()), op->getRegions(),
+        DictionaryAttr::get(op->getContext(), attributes), op->getRegions(),
         inferred_return_shapes);
   }
 

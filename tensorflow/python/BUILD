@@ -3066,7 +3066,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_tfrt",  # TODO(b/179692150)
+    ],
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -6341,6 +6344,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "grappler",
+        "no_tfrt",  #TODO(b/174712583)
     ],
     deps = [
         ":array_ops",
@@ -6365,6 +6369,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "grappler",
+        "no_tfrt",  #TODO(b/174712583)
     ],
     xla_enable_strict_auto_jit = False,
     deps = [

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
@@ -295,29 +296,37 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             });
       }
 
-      while ((results_.empty() || !results_.front().ready) &&
-             !(job_finished_ && num_running_worker_threads_ == 0) &&
-             !cancelled_ && status_.ok()) {
-        VLOG(3) << "Blocking in GetNext. results_.size():" << results_.size()
-                << " results_.front().ready:"
-                << (!results_.empty() && results_.front().ready)
-                << " job_finished_:" << job_finished_
-                << " num_running_worker_threads_:"
-                << num_running_worker_threads_;
-        get_next_cv_.wait(l);
-      }
-      if (cancelled_) {
-        VLOG(3) << "Returning from GetNext due to cancellation";
-        return errors::Cancelled("Data service iterator was cancelled");
-      }
-      if (!status_.ok()) {
-        VLOG(3) << "Returning from GetNext with error " << status_;
-        return status_;
-      }
-      if (results_.empty()) {
-        *end_of_sequence = true;
-        VLOG(3) << "Returning from GetNext with end_of_sequence";
-        return Status::OK();
+      bool skip = true;
+      while (skip) {
+        while ((results_.empty() || !results_.front().ready) &&
+               !(job_finished_ && num_running_worker_threads_ == 0) &&
+               !cancelled_ && status_.ok()) {
+          VLOG(3) << "Blocking in GetNext. results_.size():" << results_.size()
+                  << " results_.front().ready:"
+                  << (!results_.empty() && results_.front().ready)
+                  << " job_finished_:" << job_finished_
+                  << " num_running_worker_threads_:"
+                  << num_running_worker_threads_;
+          get_next_cv_.wait(l);
+        }
+        if (cancelled_) {
+          VLOG(3) << "Returning from GetNext due to cancellation";
+          return errors::Cancelled("Data service iterator was cancelled");
+        }
+        if (!status_.ok()) {
+          VLOG(3) << "Returning from GetNext with error " << status_;
+          return status_;
+        }
+        if (results_.empty()) {
+          *end_of_sequence = true;
+          VLOG(3) << "Returning from GetNext with end_of_sequence";
+          return Status::OK();
+        }
+        skip = results_.front().skip;
+        if (skip) {
+          results_.pop();
+          worker_thread_cv_.notify_one();
+        }
       }
       *end_of_sequence = results_.front().end_of_sequence;
       if (!*end_of_sequence) {
@@ -378,6 +387,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       const std::unique_ptr<DataServiceWorkerClient> worker;
       // The next round to read from the task.
       int64 round = 0;
+      bool skipped_previous_round = false;
       // Indicates whether a worker thread is currently processing the task.
       bool in_use TF_GUARDED_BY(&Iterator::mu_) = false;
       // Indicates whether the worker has returned end_of_sequence for the task.
@@ -390,6 +400,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool ready TF_GUARDED_BY(&Iterator::mu_) = false;
       std::vector<Tensor> element TF_GUARDED_BY(&Iterator::mu_);
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
+      bool skip TF_GUARDED_BY(&Iterator::mu_) = false;
     };
 
     // Periodically refresh the task list.
@@ -643,12 +654,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         int64 deadline_micros = kint64max;
         Status s;
         if (StrictRoundRobin()) {
-          s = GetElement(task_to_process.get(), deadline_micros,
-                         /*enqueue_result=*/false, *result);
+          s = GetElementTraced(task_to_process.get(), deadline_micros,
+                               /*enqueue_result=*/false, *result);
         } else {
           Result r;
-          s = GetElement(task_to_process.get(), deadline_micros,
-                         /*enqueue_result=*/true, r);
+          s = GetElementTraced(task_to_process.get(), deadline_micros,
+                               /*enqueue_result=*/true, r);
         }
         if (!s.ok()) {
           mutex_lock l(mu_);
@@ -665,11 +676,53 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    // Gets an element from a task and stores the element in `result`. If
-    // `enqueue_result` is true, `GetElement` also enqueues (via std::move) any
-    // element-producing result in the `results_` queue.
-    Status GetElement(Task* task, int64 deadline_micros, bool enqueue_result,
-                      Result& result) TF_LOCKS_EXCLUDED(mu_) {
+    Status TryGetElement(const Task& task, GetElementResponse& resp) {
+      GetElementRequest req;
+      req.set_task_id(task.info.task_id());
+      req.set_skipped_previous_round(task.skipped_previous_round);
+      absl::optional<int64> round_index;
+      if (StrictRoundRobin()) {
+        round_index = task.round;
+        req.set_consumer_index(dataset()->consumer_index_.value());
+        req.set_round_index(task.round);
+        req.set_allow_skip(true);
+      }
+      return task.worker->GetElement(req, resp);
+    }
+
+    void ProcessGetElementResponse(bool enqueue_result,
+                                   GetElementResponse& resp, Result& result,
+                                   Task& task) {
+      std::vector<Tensor> element;
+      if (resp.has_compressed_element()) {
+        Tensor tensor(DT_VARIANT, TensorShape{});
+        tensor.scalar<Variant>()() = std::move(resp.compressed_element());
+        element.push_back(tensor);
+      }
+      mutex_lock l(mu_);
+      result.ready = true;
+      result.end_of_sequence = resp.end_of_sequence();
+      if (resp.has_compressed_element()) {
+        task.skipped_previous_round = false;
+        task.round++;
+        result.element = std::move(element);
+      } else if (resp.skip_task()) {
+        task.skipped_previous_round = true;
+        task.round++;
+        result.skip = true;
+      } else {
+        task.end_of_sequence = true;
+        finished_tasks_++;
+      }
+      if (enqueue_result && !resp.end_of_sequence()) {
+        results_.push(std::move(result));
+      }
+      get_next_cv_.notify_all();
+    }
+
+    Status GetElementTraced(Task* task, int64 deadline_micros,
+                            bool enqueue_result, Result& result)
+        TF_LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Getting an element for task id " << task->info.task_id();
       tensorflow::profiler::TraceMe activity(
           "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
@@ -677,28 +730,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return profiler::TraceMeEncode(
             {{"address", task->info.worker_address()}});
       });
-      CompressedElement compressed;
-      bool end_of_sequence;
+      GetElementResponse resp;
       for (int num_retries = 0;; ++num_retries) {
-        absl::optional<int64> consumer_index = dataset()->consumer_index_;
-        absl::optional<int64> round_index;
-        if (StrictRoundRobin()) {
-          round_index = task->round;
-          VLOG(3) << "Requesting element from consumer index "
-                  << consumer_index.value() << ", round "
-                  << round_index.value();
-          activity.AppendMetadata([&]() {
-            return profiler::TraceMeEncode(
-                {{"consumer_index", consumer_index.value()},
-                 {"round_index", round_index.value()}});
-          });
-        }
-        Status s =
-            task->worker->GetElement(task->info.task_id(), consumer_index,
-                                     round_index, compressed, end_of_sequence);
-        if (s.ok()) {
-          break;
-        }
+        Status s = TryGetElement(*task, resp);
+        if (s.ok()) break;
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
             !errors::IsAborted(s)) {
@@ -706,53 +741,24 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         {
           mutex_lock l(mu_);
-          // If `UpdateTaskThreads` finds that the task has been cancelled, it
-          // will set end_of_sequence to `true`.
-          if (task->end_of_sequence || cancelled_) {
-            end_of_sequence = true;
-            break;
+          if (cancelled_) {
+            return errors::Cancelled("DataServiceDataset iterator cancelled");
           }
         }
-        const int64 now_micros = EnvTime::NowMicros();
+        int64 now_micros = Env::Default()->NowMicros();
         if (now_micros > deadline_micros) {
           return s;
         }
-        const int64 deadline_with_backoff_micros =
-            now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries);
-        // Wait for a short period of time before retrying the RPC. If our
-        // backoff would put us past the RPC deadline, we truncate it to ensure
-        // our RPC starts before the deadline.
-        const auto backoff_until =
-            (deadline_micros > deadline_with_backoff_micros)
-                ? deadline_with_backoff_micros
-                : deadline_micros;
+        int64 backoff_until = std::min(
+            deadline_micros,
+            now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
         VLOG(1) << "Failed to get an element from worker "
                 << task->info.worker_address() << ": " << s
                 << ". Will retry in " << (backoff_until - now_micros)
                 << " microseconds";
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
       }
-
-      std::vector<Tensor> element;
-      if (!end_of_sequence) {
-        Tensor tensor(DT_VARIANT, TensorShape{});
-        tensor.scalar<Variant>()() = std::move(compressed);
-        element.push_back(tensor);
-      }
-      mutex_lock l(mu_);
-      result.ready = true;
-      result.end_of_sequence = end_of_sequence;
-      if (end_of_sequence) {
-        task->end_of_sequence = true;
-        finished_tasks_++;
-        return Status::OK();
-      }
-      result.element = std::move(element);
-      if (enqueue_result) {
-        results_.push(std::move(result));
-      }
-      get_next_cv_.notify_all();
-      VLOG(3) << "Got an element for task id " << task->info.task_id();
+      ProcessGetElementResponse(enqueue_result, resp, result, *task);
       return Status::OK();
     }
 

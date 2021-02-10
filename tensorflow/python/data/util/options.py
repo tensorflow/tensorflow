@@ -59,6 +59,14 @@ class OptionsBase(object):
       raise AttributeError(
           "Cannot set the property %s on %s." % (name, type(self).__name__))
 
+  def _to_proto(self):
+    """Convert options to protocol buffer."""
+    raise NotImplementedError("%s._to_proto()" % type(self).__name__)
+
+  def _from_proto(self, pb):
+    """Convert protocol buffer to options."""
+    raise NotImplementedError("%s._from_proto()" % type(self).__name__)
+
 
 # Creates a namedtuple with three keys for optimization graph rewrites settings.
 def graph_rewrites():

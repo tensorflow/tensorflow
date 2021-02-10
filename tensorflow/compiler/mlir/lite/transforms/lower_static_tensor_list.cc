@@ -331,12 +331,11 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
     if (!(dtype.isF16() || dtype.isF32() || dtype.isF64() ||
           dtype.isInteger(1) || dtype.isInteger(8) || dtype.isInteger(16) ||
           dtype.isInteger(32) || dtype.isInteger(64))) {
-      rewriter.notifyMatchFailure(
+      return rewriter.notifyMatchFailure(
           op,
           "requires element_dtype to be 1-bit/8-bit/16-bit/32-bit/64-bit "
           "integer or 16-bit/32-bit/64-bit float type during TF Lite "
           "transformation pass");
-      return failure();
     }
 
     Value element_shape = operands[0];
@@ -390,11 +389,10 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
           if (element_shape_acquired) break;
         }
         if (!element_shape_acquired) {
-          rewriter.notifyMatchFailure(
+          return rewriter.notifyMatchFailure(
               op,
               "requires element_shape to be 1D tensor during TF Lite "
               "transformation pass");
-          return failure();
         }
       }
     }
@@ -919,7 +917,7 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
     auto converted = rewriter.create<TF::WhileOp>(op.getLoc(), result_types,
                                                   operands, op.getAttrs());
     converted.removeAttr("T");
-    UpdateFunctionTypes(converted, tensor_list_args);
+    (void)UpdateFunctionTypes(converted, tensor_list_args);
 
     rewriter.replaceOp(op, converted.getResults());
     return success();

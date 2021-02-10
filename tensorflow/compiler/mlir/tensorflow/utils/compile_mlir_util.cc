@@ -360,7 +360,7 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
 
   if (failed(tf2xla.run(module_op))) {
     return error_handler.Combine(
-        errors::Internal("MLIR TF to XLA legalization failed"));
+        errors::InvalidArgument("TF to XLA legalization failed"));
   }
 
   if (VLOG_IS_ON(1))
@@ -403,9 +403,6 @@ Status ConvertMLIRToXlaComputation(
 Status CompileMlirSetup(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     XlaHelpers::ShapeRepresentationFn* shape_representation_fn) {
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_compile_before", module_op);
-
   // Use arg_shapes to improve the mlir type information of `main` in module_op.
   TF_RETURN_IF_ERROR(RefineShapes(arg_shapes, module_op));
 
@@ -425,6 +422,9 @@ Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
                       llvm::StringRef device_type,
                       llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
                           custom_legalization_passes) {
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("mlir_compile_before_build_hlo_tf", module_op);
+
   XlaHelpers::ShapeRepresentationFn shape_representation_fn;
   TF_RETURN_IF_ERROR(
       CompileMlirSetup(module_op, arg_shapes, &shape_representation_fn));
@@ -435,7 +435,7 @@ Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
                                          custom_legalization_passes));
 
   if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_compile_after", module_op);
+    tensorflow::DumpMlirOpToFile("mlir_compile_after_build_hlo_tf", module_op);
 
   return Status::OK();
 }
@@ -455,15 +455,10 @@ Status PopulateResultIOInfo(
                                        &compilation_result->xla_input_shapes));
 
   // Compute all output descriptions and resource writes
-  TF_RETURN_IF_ERROR(GetOutputInfo(
+  return GetOutputInfo(
       module_op, use_resource_updates_for_aliases, shape_representation_fn,
       &compilation_result->xla_output_shape, &compilation_result->outputs,
-      &compilation_result->resource_updates));
-
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_compile_after", module_op);
-
-  return Status::OK();
+      &compilation_result->resource_updates);
 }
 
 Status CompileMlirToXlaHlo(

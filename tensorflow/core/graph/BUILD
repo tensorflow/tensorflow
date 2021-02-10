@@ -201,6 +201,7 @@ exports_files(
     srcs = [
         "algorithm_test.cc",
         "control_flow_test.cc",
+        "costmodel_test.cc",
         "edgeset_test.cc",
         "graph_def_builder_test.cc",
         "graph_partition_test.cc",

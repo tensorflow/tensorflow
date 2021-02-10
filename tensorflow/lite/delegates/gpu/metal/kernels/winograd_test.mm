@@ -22,10 +22,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/winograd_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 
 @interface WinogradTest : XCTestCase
 @end
@@ -324,23 +325,33 @@ absl::Status Winograd36To4x4Tile4x1Test(TestExecutionEnvironment* env) {
 }  // namespace gpu
 }  // namespace tflite
 
-- (void)testWinograd4x4To36 {
+- (void)testWinograd4x4To36Metal {
   auto status = tflite::gpu::metal::Winograd4x4To36Test(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testWinograd4x4To36TileX6 {
+- (void)testWinograd4x4To36TileX6Metal {
   auto status = tflite::gpu::metal::Winograd4x4To36TileX6Test(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testWinograd36To4x4 {
+- (void)testWinograd36To4x4Metal {
   auto status = tflite::gpu::metal::Winograd36To4x4Test(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testWinograd36To4x4Tile4x1 {
+- (void)testWinograd36To4x4Tile4x1Metal {
   auto status = tflite::gpu::metal::Winograd36To4x4Tile4x1Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testWinograd4x4To36TileX6 {
+  auto status = tflite::gpu::Winograd4x4To36TileX6Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testWinograd36To4x4Tile4x1 {
+  auto status = tflite::gpu::Winograd36To4x4Tile4x1Test(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

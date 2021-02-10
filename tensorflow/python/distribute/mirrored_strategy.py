@@ -331,7 +331,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._communication_options = collective_util.Options(
           implementation=collective_util.CommunicationImplementation.NCCL)
     else:
-      # TODO(wxinyi): is this missing?
       self._communication_options = collective_util.Options()
     self._collective_ops_in_use = False
     self._collective_key_base = container_strategy._collective_key_base
@@ -355,8 +354,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._initialize_single_worker(devices)
       if self._prefer_collective_ops and (
           isinstance(self._cross_device_ops, cross_device_ops_lib.NcclAllReduce)
-          or isinstance(self._inferred_cross_device_ops),
-          cross_device_ops_lib.NcclAllReduce):
+          or isinstance(self._inferred_cross_device_ops,
+                        cross_device_ops_lib.NcclAllReduce)):
         self._use_collective_ops(devices)
         self._inferred_cross_device_ops = None
       logging.info("Using MirroredStrategy with devices %r", devices)
@@ -758,7 +757,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
     if (var.synchronization != variables_lib.VariableSynchronization.ON_READ and
-        var.synchronization != variables_lib.VariableAggregation.NONE):
+        var.aggregation != variables_lib.VariableAggregation.NONE):
       distribute_utils.assert_mirrored(args)
       distribute_utils.assert_mirrored(kwargs)
     updates = []

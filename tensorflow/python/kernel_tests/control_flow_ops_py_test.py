@@ -1460,6 +1460,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_tfrt("b/179459136")
   def testWhileAutoControlDeps(self):
     # Legacy while_loop fails this test because it produces deprecation notices
     # in stderr.

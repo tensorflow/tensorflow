@@ -202,10 +202,11 @@ TEST(Status, ErasePayloadRemovesIt) {
   ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece());
 }
 
-static void BM_TF_CHECK_OK(int iters) {
-  tensorflow::Status s =
-      (iters < 0) ? errors::InvalidArgument("Invalid") : Status::OK();
-  for (int i = 0; i < iters; i++) {
+static void BM_TF_CHECK_OK(::testing::benchmark::State& state) {
+  tensorflow::Status s = (state.max_iterations < 0)
+                             ? errors::InvalidArgument("Invalid")
+                             : Status::OK();
+  for (auto i : state) {
     TF_CHECK_OK(s);
   }
 }

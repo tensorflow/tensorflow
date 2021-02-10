@@ -302,6 +302,7 @@ tensorflow/lite/micro/kernels/svdf_test.cc \
 tensorflow/lite/micro/kernels/tanh_test.cc \
 tensorflow/lite/micro/kernels/transpose_conv_test.cc \
 tensorflow/lite/micro/kernels/unpack_test.cc \
+tensorflow/lite/micro/kernels/zeros_like_test.cc \
 tensorflow/lite/micro/memory_planner/greedy_memory_planner_test.cc \
 tensorflow/lite/micro/memory_planner/linear_memory_planner_test.cc
 
@@ -359,16 +360,15 @@ tensorflow/lite/micro/kernels/svdf.cc \
 tensorflow/lite/micro/kernels/svdf_common.cc \
 tensorflow/lite/micro/kernels/tanh.cc \
 tensorflow/lite/micro/kernels/transpose_conv.cc \
-tensorflow/lite/micro/kernels/unpack.cc
+tensorflow/lite/micro/kernels/unpack.cc \
+tensorflow/lite/micro/kernels/zeros_like.cc
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
 
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/micro/*.cc) \
-$(wildcard tensorflow/lite/micro/benchmarks/*model_data.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.cc) \
-$(wildcard tensorflow/lite/micro/testing/*model.cc) \
 tensorflow/lite/c/common.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
@@ -393,7 +393,6 @@ tensorflow/lite/c/common.h \
 tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
 tensorflow/lite/core/api/op_resolver.h \
-tensorflow/lite/core/api/profiler.h \
 tensorflow/lite/core/api/tensor_utils.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
@@ -666,9 +665,55 @@ $(BINDIR)%.bin: $(BINDIR)%
 	@mkdir -p $(dir $@)
 	$(OBJCOPY) $< $@ -O binary
 
-# Generate standalone makefile projects for all of the test targets.
+
+# Some tests have additional dependencies (beyond libtensorflow-microlite.a) and
+# those need to be explicitly specified with their own individual call to the
+# microlite_test helper function. For these tests, we also need to make sure to
+# not add targets for them if they have been excluded as part of the target
+# specific Makefile.
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/memory_arena_threshold_test.cc
+ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
+  MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
+  EXPLICITLY_SPECIFIED_TEST_SRCS := \
+  $(EXPLICITLY_SPECIFIED_TEST) \
+  tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.cc \
+  tensorflow/lite/micro/testing/test_conv_model.cc
+  EXPLICITLY_SPECIFIED_TEST_HDRS := \
+  tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.h \
+  tensorflow/lite/micro/testing/test_conv_model.h
+  $(eval $(call microlite_test,memory_arena_threshold_test,\
+  $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
+endif
+
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/micro_allocator_test.cc
+ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
+  MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
+  EXPLICITLY_SPECIFIED_TEST_SRCS := \
+  $(EXPLICITLY_SPECIFIED_TEST) \
+  tensorflow/lite/micro/testing/test_conv_model.cc
+  EXPLICITLY_SPECIFIED_TEST_HDRS := \
+  tensorflow/lite/micro/testing/test_conv_model.h
+  $(eval $(call microlite_test,micro_allocator_test,\
+  $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
+endif
+
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/recording_micro_allocator_test.cc
+ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
+  MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
+  EXPLICITLY_SPECIFIED_TEST_SRCS := \
+  $(EXPLICITLY_SPECIFIED_TEST) \
+  tensorflow/lite/micro/testing/test_conv_model.cc
+  EXPLICITLY_SPECIFIED_TEST_HDRS := \
+  tensorflow/lite/micro/testing/test_conv_model.h
+  $(eval $(call microlite_test,recording_micro_allocator_test,\
+  $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
+endif
+
+# For all the tests that do not have any additional dependencies, we can
+# add a make target in a common way.
 $(foreach TEST_TARGET,$(filter-out tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
+
 $(foreach TEST_TARGET,$(filter tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 

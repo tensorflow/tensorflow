@@ -138,6 +138,8 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.DenseToSparseSetOperation`
 *   `raw_ops.DepthToSpace`
 *   `raw_ops.DepthwiseConv2dNative`
+*   `raw_ops.DepthwiseConv2dNativeBackpropFilter`
+*   `raw_ops.DepthwiseConv2dNativeBackpropInput`
 *   `raw_ops.Dequantize`
 *   `raw_ops.DestroyResourceOp`
 *   `raw_ops.DestroyTemporaryVariable`
@@ -385,6 +387,8 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.RequantizationRange`
 *   `raw_ops.Requantize`
 *   `raw_ops.Reshape`
+*   `raw_ops.ResizeBicubic`
+*   `raw_ops.ResizeBicubicGrad`
 *   `raw_ops.ResizeBilinear`
 *   `raw_ops.ResizeBilinearGrad`
 *   `raw_ops.ResizeNearestNeighbor`
@@ -561,6 +565,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.StringToHashBucket`
 *   `raw_ops.StringToHashBucketFast`
 *   `raw_ops.StringToHashBucketStrong`
+*   `raw_ops.StringToNumber`
 *   `raw_ops.Sub`
 *   `raw_ops.Substr`
 *   `raw_ops.Sum`

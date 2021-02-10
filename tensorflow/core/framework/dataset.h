@@ -708,6 +708,11 @@ class IteratorBase {
     return Status::OK();
   }
 
+  Status RestoreInput(IteratorContext&& ctx, IteratorStateReader* reader,
+                      const std::unique_ptr<IteratorBase>& input) {
+    return RestoreInput(&ctx, reader, input);
+  }
+
   // Saves the state of this iterator.
   //
   // This method is used to store the state of the iterator in a checkpoint.

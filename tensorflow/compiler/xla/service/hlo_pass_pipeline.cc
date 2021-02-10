@@ -105,8 +105,8 @@ void SetInstructionMetadata(HloModule& module) {
       if (instruction->metadata().creation_pass_id() == 0) {
         instruction->set_creation_pass_id(*pass_id);
       }
-      if (instruction->metadata().op_name().empty()) {
-        instruction->set_metadata_op_name(absl::StrCat("DUMMY_", *pass_id));
+      if (instruction->metadata().logical_creation_pass_id() == 0) {
+        instruction->set_logical_creation_pass_id(*pass_id);
       }
     }
   }

@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_stride_h2.h"
 
 namespace tflite {
 namespace gpu {
@@ -62,6 +63,21 @@ std::unique_ptr<GPUOperation> SelectDWConvolutionMali(
         CreateDepthwiseConvolution2D(gpu_info, op_def, attr));
   }
 }
+
+std::unique_ptr<GPUOperation> SelectDWConvolutionApple(
+    const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info,
+    const OperationDef& op_def) {
+  if (IsDepthwiseConv3x3Supported(attr)) {
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(gpu_info, op_def, attr));
+  } else if (IsDepthWiseConv3x3StrideH2Supported(attr)) {
+    return absl::make_unique<DepthWiseConv3x3StrideH2>(
+        CreateDepthWiseConv3x3StrideH2(op_def, attr, gpu_info));
+  } else {
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(gpu_info, op_def, attr));
+  }
+}
 }  // namespace
 
 std::unique_ptr<GPUOperation> SelectDWConvolution(
@@ -73,6 +89,8 @@ std::unique_ptr<GPUOperation> SelectDWConvolution(
     return SelectDWConvolutionPowerVR(attr, gpu_info, op_def);
   } else if (gpu_info.IsMali()) {
     return SelectDWConvolutionMali(attr, gpu_info, op_def);
+  } else if (gpu_info.IsApple()) {
+    return SelectDWConvolutionApple(attr, gpu_info, op_def);
   } else {
     return SelectDWConvolutionAdreno(attr, gpu_info, op_def);
   }

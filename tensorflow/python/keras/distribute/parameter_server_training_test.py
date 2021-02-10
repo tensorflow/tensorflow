@@ -86,8 +86,11 @@ class KPLTest(test.TestCase, parameterized.TestCase):
           num_oov_indices=0, mask_token=None)
       label_lookup_layer.adapt(LABEL_VOCAB)
     else:
+      # Do vocab shuffling.
+      shuffled_vocab = FEATURE_VOCAB.copy()
+      random.shuffle(shuffled_vocab)
       feature_lookup_layer = string_lookup.StringLookup(
-          vocabulary=FEATURE_VOCAB, num_oov_indices=1)
+          vocabulary=shuffled_vocab, num_oov_indices=1)
       label_lookup_layer = string_lookup.StringLookup(
           vocabulary=LABEL_VOCAB, num_oov_indices=0, mask_token=None)
 

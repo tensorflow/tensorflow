@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 
 namespace tflite {
@@ -235,6 +236,17 @@ absl::Status MetalSpatialTensor::GetGPUResources(
           "TensorStorageType::BUFFER.");
     }
     resources->buffers.push_back({"buffer", memory_});
+    return absl::OkStatus();
+  }
+  const auto* texture2d_desc =
+      dynamic_cast<const Texture2DDescriptor*>(obj_ptr);
+  if (texture2d_desc) {
+    if (descriptor_.storage_type != TensorStorageType::TEXTURE_2D) {
+      return absl::InvalidArgumentError(
+          "Tensor can be used with Texture2DDescriptor only wtih "
+          "TensorStorageType::TEXTURE_2D.");
+    }
+    resources->images2d.push_back({"image2d", texture_mem_});
     return absl::OkStatus();
   }
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(obj_ptr);

@@ -3,6 +3,7 @@
 
 load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl")
 load("@org_tensorflow//third_party/mlir:linalggen.bzl", "genlinalg")
+load("@org_tensorflow//third_party/mlir:build_defs.bzl", "cc_headers_only")
 
 package(
     default_visibility = [":friends"],
@@ -1310,6 +1311,22 @@ cc_library(
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "LinalgInterfaces",
+    srcs = ["lib/Dialect/Linalg/IR/LinalgInterfaces.cpp"],
+    hdrs = ["include/mlir/Dialect/Linalg/IR/LinalgInterfaces.h"],
+    includes = ["include"],
+    deps = [
+        ":Affine",
+        ":DialectUtils",
+        ":IR",
+        ":LinalgInterfacesIncGen",
+        ":LinalgStructuredOpsIncGen",
+        ":ViewLikeInterface",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -2793,7 +2810,12 @@ cc_library(
 
 cc_library(
     name = "SPIRVSerialization",
-    srcs = ["lib/Target/SPIRV/Serialization/Serialization.cpp"],
+    srcs = [
+        "lib/Target/SPIRV/Serialization/Serialization.cpp",
+        "lib/Target/SPIRV/Serialization/SerializeOps.cpp",
+        "lib/Target/SPIRV/Serialization/Serializer.cpp",
+        "lib/Target/SPIRV/Serialization/Serializer.h",
+    ],
     hdrs = ["include/mlir/Target/SPIRV/Serialization.h"],
     includes = ["include"],
     deps = [
@@ -3925,17 +3947,33 @@ cc_binary(
     ],
 )
 
+# This target provides the headers from LLVM's Support target without any of
+# the symbols. In particular, it does not contain the static registration code
+# which may be executed by at most one shared library loaded by ORCJit. Direct
+# dependencies need to avoid requiring symbols from LLVMSupport by adding
+# copts = ["-DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1"].
+#
+# Bazel links the dependencies' object files instead of the archives, which
+# means that symbols are linked in even if none are used. The LLVM cmake build
+# on the other hand links archives (or shared libraries, depending on
+# BUILD_SHARED_LIBS), skipping them if none of the symbols are used.
+# See also https://reviews.llvm.org/D95613.
+cc_headers_only(
+    name = "LLVMSupportHeaders",
+    src = "@llvm-project//llvm:Support",
+)
+
 cc_binary(
     name = "tools/libcuda-runtime-wrappers.so",
     srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
+    # Prevent needing EnableABIBreakingChecks symbol from LLVMSupport.
+    copts = ["-DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1"],
     linkshared = True,
     deps = [
+        ":LLVMSupportHeaders",
         ":mlir_c_runner_utils",
         "//third_party/gpus/cuda:cuda_headers",
         "//third_party/gpus/cuda:libcuda",
-        # Note: for headers only, the archive itself should not be linked.
-        # See https://reviews.llvm.org/D95613 for details.
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -4424,9 +4462,9 @@ genlinalg(
 filegroup(
     name = "LinalgStructuredOpsTdFiles",
     srcs = [
+        "include/mlir/Dialect/Linalg/IR/LinalgInterfaces.td",
         "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
         "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
-        "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterface.td",
         "include/mlir/Interfaces/CopyOpInterface.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
         ":AffineOpsTdFiles",
@@ -4457,20 +4495,20 @@ gentbl(
 )
 
 gentbl(
-    name = "LinalgStructuredInterfacesIncGen",
+    name = "LinalgInterfacesIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
             "-gen-op-interface-decls",
-            "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterfaces.h.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgInterfaces.h.inc",
         ),
         (
             "-gen-op-interface-defs",
-            "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterfaces.cpp.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgInterfaces.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterface.td",
+    td_file = "include/mlir/Dialect/Linalg/IR/LinalgInterfaces.td",
     td_srcs = [":LinalgStructuredOpsTdFiles"],
 )
 
@@ -4597,9 +4635,10 @@ cc_library(
         ":CopyOpInterface",
         ":DialectUtils",
         ":IR",
+        ":LinalgInterfaces",
+        ":LinalgInterfacesIncGen",
         ":LinalgNamedStructuredOpsIncGen",
         ":LinalgOpsIncGen",
-        ":LinalgStructuredInterfacesIncGen",
         ":LinalgStructuredOpsIncGen",
         ":Parser",
         ":SideEffectInterfaces",
@@ -5013,6 +5052,8 @@ exports_files(
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/CopyOpInterface.td",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
+        "include/mlir/Interfaces/LoopLikeInterface.td",
         "include/mlir/Interfaces/SideEffectInterfaceBase.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/VectorInterfaces.td",
@@ -5026,8 +5067,6 @@ exports_files(
         "include/mlir/IR/RegionKindInterface.td",
         "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Transforms/InliningUtils.h",
-        "include/mlir/Interfaces/InferTypeOpInterface.td",
-        "include/mlir/Interfaces/LoopLikeInterface.td",
     ],
     visibility = [":friends"],
 )

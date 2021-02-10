@@ -499,6 +499,17 @@ class MeanAbsoluteErrorTest(test.TestCase):
     loss = mae_obj(y_true, y_pred, sample_weight=2.3)
     self.assertAlmostEqual(self.evaluate(loss), 25.29999, 3)
 
+  def test_ragged_tensor(self):
+    mae_obj = losses.MeanAbsoluteError()
+    y_true = ragged_factory_ops.constant([[1, 9, 2], [-5, -2]],
+                                         dtype=dtypes.float32)
+    y_pred = ragged_factory_ops.constant([[4, 8, 12], [8, 1]],
+                                         dtype=dtypes.float32)
+    # loss = [14/3, 16/2]
+    sample_weight = constant_op.constant([1.2, 1.0], shape=(2, 1))
+    loss = mae_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 6.8, 5)
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MeanAbsolutePercentageErrorTest(test.TestCase):

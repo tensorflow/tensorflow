@@ -107,7 +107,12 @@ Status TpuTracer::CollectData(XSpace* space) {
     tpu::OpsApiFn()->TpuProfiler_CollectDataFn(tpu_profiler_, status.c_status,
                                                buffer.data(), &size_in_bytes);
     // Deserialize XSpace from the buffer and return it.
-    space->ParseFromArray(buffer.data(), buffer.size());
+    XSpace tpu_space;
+    tpu_space.ParseFromArray(buffer.data(), buffer.size());
+    for (XPlane& tpu_plane : *tpu_space.mutable_planes()) {
+      XPlane* plane = space->add_planes();
+      plane->Swap(&tpu_plane);
+    }
   }
   if (!status.ok()) {
     LOG(ERROR) << "TPU tracer failed to collect data.";

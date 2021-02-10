@@ -135,7 +135,7 @@ void QuantizePass::runOnFunction() {
   patterns.insert<TFLFullQuantization>(
       ctx, enable_numeric_verify || verify_numeric, error_tolerance,
       enable_single_layer_verify, enable_log_if_failed);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
 

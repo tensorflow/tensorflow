@@ -19,6 +19,9 @@ py_test(
     name = "mlir_test",
     srcs = ["mlir_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_tfrt",  # TODO(b/179308349)
+    ],
     deps = [
         ":mlir",
         "//tensorflow/python:client_testlib",
