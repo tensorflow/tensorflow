@@ -178,7 +178,7 @@ $(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva/cev
 	sed -E 's#\%\{LD_FLAGS\}\%#$(6)#g' | \
 	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
 	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' > $$@
-	
+
 $(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva/%.tpl
 	@cp $$< $$@
 

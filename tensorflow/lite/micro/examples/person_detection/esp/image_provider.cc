@@ -50,16 +50,21 @@ extern "C" int capture_image() {
   }
   return 0;
 }
+
 // Begin the capture and wait for it to finish
 TfLiteStatus PerformCapture(tflite::ErrorReporter* error_reporter,
-                            uint8_t* image_data) {
+                            int8_t* image_data) {
   /* 2. Get one image with camera */
   int ret = capture_image();
   if (ret != 0) {
     return kTfLiteError;
   }
   TF_LITE_REPORT_ERROR(error_reporter, "Image Captured\n");
-  memcpy(image_data, fb->buf, fb->len);
+
+  // Convert camera data from uint to int8
+  for (int i = 0; i < fb->len; i++) {
+    image_data[i] = fb->buf[i] - 128;
+  }
   esp_camera_fb_return(fb);
   /* here the esp camera can give you grayscale image directly */
   return kTfLiteOk;
@@ -67,7 +72,7 @@ TfLiteStatus PerformCapture(tflite::ErrorReporter* error_reporter,
 
 // Get an image from the camera module
 TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
-                      int image_height, int channels, uint8_t* image_data) {
+                      int image_height, int channels, int8_t* image_data) {
   static bool g_is_camera_initialized = false;
   if (!g_is_camera_initialized) {
     TfLiteStatus init_status = InitCamera(error_reporter);
