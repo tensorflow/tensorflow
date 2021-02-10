@@ -246,7 +246,7 @@ absl::Status MetalSpatialTensor::GetGPUResources(
           "Tensor can be used with Texture2DDescriptor only wtih "
           "TensorStorageType::TEXTURE_2D.");
     }
-    resources->images2d.push_back({"image2d", texture_mem_});
+    resources->images2d.push_back({"tex2d", texture_mem_});
     return absl::OkStatus();
   }
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(obj_ptr);

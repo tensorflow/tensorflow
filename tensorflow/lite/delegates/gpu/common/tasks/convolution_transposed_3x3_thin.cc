@@ -251,11 +251,19 @@ ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3ThinDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed3x3Thin result(gpu_info, definition, attr);
+  OperationDef new_def = definition;
+  new_def.src_tensors = {
+      definition.src_tensors[0]};  // leaving only src_tensor def, weights defs
+                                   // will be added later
+  const DataType weights_type = definition.GetDataType();
+  // add 1 src_tensor(buffer) for weights
+  new_def.src_tensors.push_back(
+      {weights_type, TensorStorageType::BUFFER, Layout::HWC});
+  ConvolutionTransposed3x3Thin result(gpu_info, new_def, attr);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
+  desc.element_type = new_def.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));

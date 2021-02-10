@@ -443,13 +443,22 @@ ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
 ConvolutionTransposed4x4 CreateConvolutionTransposed4x4DynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed4x4 result(definition, gpu_info);
+  OperationDef new_def = definition;
+  new_def.src_tensors = {
+      definition.src_tensors[0]};  // leaving only src_tensor def, weights defs
+                                   // will be added later
+  const DataType weights_type = definition.GetDataType();
+  // add 1 src_tensor(buffer) for weights
+  new_def.src_tensors.push_back(
+      {weights_type, TensorStorageType::BUFFER, Layout::HWC});
+
+  ConvolutionTransposed4x4 result(new_def, gpu_info);
 
   TensorLinearDescriptor desc;
   desc.storage_type = gpu_info.IsApple() || !gpu_info.SupportsImages()
                           ? LinearStorageType::BUFFER
                           : LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
+  desc.element_type = new_def.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
