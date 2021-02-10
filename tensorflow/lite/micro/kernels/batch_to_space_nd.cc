@@ -29,8 +29,12 @@ constexpr int kBlockShapeTensor = 1;
 constexpr int kCropsTensor = 2;
 constexpr int kOutputTensor = 0;
 
-constexpr int kInputDims = 4;
-constexpr int kOutputDims = 4;
+// Currently, only 3D NHC and 4D NHWC input/output op_context are supported.
+// In case of 3D input, it will be extended to 3D NHWC by adding W=1.
+// The 4D array need to have exactly 2 spatial dimensions.
+// TODO(b/149952582): Support arbitrary dimension in SpaceToBatchND.
+const int kInputOutputMinDimensionNum = 3;
+const int kInputOutputMaxDimensionNum = 4;
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
@@ -40,15 +44,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TF_LITE_ENSURE(context, input != nullptr && output != nullptr);
 
-  // Only 4D input and output tensors are supported for this op on TFLM.
-  TF_LITE_ENSURE_EQ(context, NumDimensions(input), kInputDims);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(output), kOutputDims);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE(context, NumDimensions(input) >= kInputOutputMinDimensionNum);
+  TF_LITE_ENSURE(context, NumDimensions(output) >= kInputOutputMinDimensionNum);
+  TF_LITE_ENSURE(context, NumDimensions(input) <= kInputOutputMaxDimensionNum);
+  TF_LITE_ENSURE(context, NumDimensions(output) <= kInputOutputMaxDimensionNum);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
-  // Input and output must have the same flat size since TFLM does not support
-  // tensor resizing.
-  TF_LITE_ENSURE_EQ(context, GetTensorShape(input).FlatSize(),
-                    GetTensorShape(output).FlatSize());
   return kTfLiteOk;
 }
 
