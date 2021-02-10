@@ -831,7 +831,7 @@ StatusOr<Literal> LiteralBase::Reshape(
 
 Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
   CHECK(shape().IsArray()) << "Tuple is not supported for transpose";
-  CHECK(IsPermutation(permutation, shape().rank()))
+  CHECK(shape().rank() == permutation.size() && IsPermutation(permutation))
       << "Given permutation is not a permutation of dimension numbers";
   // To transpose the array, we just permute the dimensions and layout, and
   // do a straight memory copy of the raw data set.

@@ -251,6 +251,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "util_test",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":test",
+        ":types",
+        ":util",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:bfloat16",
+    ],
+)
+
 cc_library(
     name = "permutation_util",
     srcs = ["permutation_util.cc"],
@@ -261,6 +273,16 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "permutation_util_test",
+    srcs = ["permutation_util_test.cc"],
+    deps = [
+        ":permutation_util",
+        ":test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -279,18 +301,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/time",
-    ],
-)
-
-tf_cc_test(
-    name = "util_test",
-    srcs = ["util_test.cc"],
-    deps = [
-        ":test",
-        ":types",
-        ":util",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:bfloat16",
     ],
 )
 

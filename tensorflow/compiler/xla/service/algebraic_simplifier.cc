@@ -2189,7 +2189,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   for (auto dim : lhs_contracting_dims) {
     permutation.push_back(transpose_dims[dim] - lhs_contracting_dims[0]);
   }
-  CHECK(IsPermutation(permutation, permutation.size()));
+  CHECK(IsPermutation(permutation));
   auto new_lhs_contracting_dims =
       ComposePermutations(AsInt64Slice(lhs_contracting_dims), permutation);
   lhs_contracting_dims.Clear();

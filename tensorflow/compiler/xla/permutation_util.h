@@ -26,8 +26,9 @@ limitations under the License.
 
 namespace xla {
 
-// Checks whether permutation is a permutation of the [0, rank) integer range.
-bool IsPermutation(absl::Span<const int64> permutation, int64 rank);
+// Returns true if permutation is a permutation of the integers
+// [0, permutation.size()).
+bool IsPermutation(absl::Span<const int64> permutation);
 
 // Applies `permutation` on `input` and returns the permuted array.
 // For each i, output[permutation[i]] = input[i].
@@ -40,7 +41,8 @@ std::vector<typename Container::value_type> Permute(
     absl::Span<const int64> permutation, const Container& input) {
   using T = typename Container::value_type;
   absl::Span<const T> data(input);
-  CHECK(IsPermutation(permutation, data.size()));
+  CHECK_EQ(permutation.size(), data.size());
+  CHECK(IsPermutation(permutation));
   std::vector<T> output(data.size());
   for (size_t i = 0; i < permutation.size(); ++i) {
     output[permutation[i]] = data[i];

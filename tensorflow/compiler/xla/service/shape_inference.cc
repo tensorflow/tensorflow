@@ -3087,7 +3087,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& operand, absl::Span<const int64> dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
-  if (!IsPermutation(dimensions, operand.rank())) {
+  if (dimensions.size() != operand.rank() || !IsPermutation(dimensions)) {
     return InvalidArgument(
         "Transpose dimensions [%s] are not a permutation of the operand "
         "dimensions (operand shape is %s).",
