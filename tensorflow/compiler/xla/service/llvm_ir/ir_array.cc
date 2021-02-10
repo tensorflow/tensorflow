@@ -286,7 +286,7 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64> dimension_mapping) const {
   std::vector<llvm::Value*> operand_multidim_index =
-      Permute(dimension_mapping, multidim());
+      PermuteInverse(multidim(), dimension_mapping);
 
   if (linear() != nullptr && LayoutUtil::HasLayout(operand_shape) &&
       LayoutUtil::HasLayout(shape) &&

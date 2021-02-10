@@ -1058,7 +1058,7 @@ Status ForEachMutableSubshapeHelper(
     absl::Span<const int64> permutation, const Shape& shape) {
   Shape new_shape = shape;
   new_shape.clear_dimensions();
-  for (auto dim : Permute(permutation, shape.dimensions())) {
+  for (auto dim : PermuteInverse(shape.dimensions(), permutation)) {
     new_shape.add_dimensions(dim);
   }
   for (int64 i = 0; i < shape.rank(); i++) {

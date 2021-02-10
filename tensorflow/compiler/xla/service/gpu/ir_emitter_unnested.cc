@@ -4868,7 +4868,7 @@ void IrEmitterUnnested::EmitHlo021Tile(
       VLOG(3) << "Added shmem buffer for parameter " << id << ": "
               << llvm_ir::DumpToString(*param_shmem_buffers[id]);
       Shape reduced_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-          param_shape.element_type(), Permute({0, 2, 1}, reduced_output_dims));
+          param_shape.element_type(), Permute(reduced_output_dims, {0, 2, 1}));
       param_in_reduced_shape_arrays.push_back(
           param_arrays[id].CastToShape(reduced_shape, &b_));
     } else {
@@ -4903,8 +4903,8 @@ void IrEmitterUnnested::EmitHlo021Tile(
         if (!tiled_param_ids.empty()) {
           // Calculate the input tile origin from the output tile origin.
           const IrArray::Index input_tile_origin(
-              Permute({0, 2, 1}, index.multidim()),
-              Permute({0, 2, 1}, index.dims()), index.GetType());
+              Permute(index.multidim(), {0, 2, 1}),
+              Permute(index.dims(), {0, 2, 1}), index.GetType());
 
           // Copy input parameter values to shared memory buffers:
           // tile[thread_id_y, thread_id_x] = input[index]
