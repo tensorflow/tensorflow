@@ -257,22 +257,16 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* param,
           continue;
         }
         default:
-          if (user->IsElementwise()) {
-            for (const int64 use_index : user->OperandIndices(current)) {
-              if (!user->IsElementwiseOnOperand(use_index)) {
-                // Found a user that is non-elementwise on the current
-                // instruction.
-                return false;
-              }
-            }
-            if (!LayoutUtil::Equal(current->shape().layout(),
-                                   user->shape().layout())) {
-              // Make sure the layout is not changed by the elementwise op.
+          for (const int64 use_index : user->OperandIndices(current)) {
+            if (!user->IsElementwiseOnOperand(use_index)) {
+              // Found a user that is non-elementwise on the current
+              // instruction.
               return false;
             }
-          } else {
-            VLOG(3) << "Cannot prove that the op is effectively elementwise: "
-                    << user->ToString();
+          }
+          if (!LayoutUtil::Equal(current->shape().layout(),
+                                 user->shape().layout())) {
+            // Make sure the layout is not changed by the elementwise op.
             return false;
           }
           break;
