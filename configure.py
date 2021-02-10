@@ -184,6 +184,8 @@ def get_python_path(environ_cp, python_bin_path):
     ]
 
   all_paths = set(python_paths + library_paths)
+  # Sort set so order is deterministic
+  all_paths = sorted(all_paths)
 
   paths = []
   for path in all_paths:
