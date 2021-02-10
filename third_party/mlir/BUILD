@@ -188,6 +188,7 @@ cc_library(
         "lib/CAPI/IR/BuiltinAttributes.cpp",
         "lib/CAPI/IR/BuiltinTypes.cpp",
         "lib/CAPI/IR/Diagnostics.cpp",
+        "lib/CAPI/IR/DialectHandle.cpp",
         "lib/CAPI/IR/IR.cpp",
         "lib/CAPI/IR/IntegerSet.cpp",
         "lib/CAPI/IR/Pass.cpp",
@@ -1486,6 +1487,7 @@ cc_library(
         ":Support",
         ":TensorDialect",
         ":Transforms",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -3541,6 +3543,7 @@ cc_library(
         ":IR",
         ":LinalgOps",
         ":SCFDialect",
+        ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
         ":ViewLikeInterface",
@@ -3865,6 +3868,7 @@ cc_binary(
         "@llvm-project//llvm:AllTargetsCodeGens",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir/test:TestAffine",
+        "@llvm-project//mlir/test:TestAnalysis",
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
