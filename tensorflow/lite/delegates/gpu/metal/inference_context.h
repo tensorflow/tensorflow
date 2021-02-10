@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/profiling_info.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
@@ -113,6 +114,8 @@ class InferenceContext {
   ///             compileModelWithDevice() method.
   void EncodeWithCommandQueue(id<MTLCommandQueue> command_queue,
                               int flush_period);
+
+  void Profile(id<MTLDevice> device, ProfilingInfo* result);
 
  private:
   absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
