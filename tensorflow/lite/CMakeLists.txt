@@ -38,6 +38,7 @@ cmake_policy(SET CMP0028 NEW)
 # Enable MACOSX_RPATH (@rpath) for built dynamic libraries.
 cmake_policy(SET CMP0042 NEW)
 project(tensorflow-lite C CXX)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
   "Directory that contains the TensorFlow project"
 )
@@ -488,3 +489,28 @@ target_link_libraries(benchmark_model
     ${TFLITE_BENCHMARK_LIBS}
 )
 
+# Python interpreter wrapper.
+add_library(_pywrap_tensorflow_interpreter_wrapper SHARED EXCLUDE_FROM_ALL
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/interpreter_wrapper.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/interpreter_wrapper_pybind11.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/numpy.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/python_error_reporter.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/python_utils.cc
+)
+
+# To remove "lib" prefix.
+set_target_properties(_pywrap_tensorflow_interpreter_wrapper PROPERTIES PREFIX "")
+
+target_include_directories(_pywrap_tensorflow_interpreter_wrapper
+  PUBLIC
+    ${TFLITE_INCLUDE_DIRS}
+)
+
+target_link_libraries(_pywrap_tensorflow_interpreter_wrapper
+  tensorflow-lite
+  ${CMAKE_DL_LIBS}
+)
+target_compile_options(_pywrap_tensorflow_interpreter_wrapper
+  PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
+  PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
+)

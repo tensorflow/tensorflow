@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@ TENSORFLOW_VERSION=$(grep "_VERSION = " "${TENSORFLOW_DIR}/tensorflow/tools/pip_
 export PACKAGE_VERSION="${TENSORFLOW_VERSION}${VERSION_SUFFIX}"
 BUILD_DIR="${SCRIPT_DIR}/gen/tflite_pip/${PYTHON}"
 TENSORFLOW_TARGET=$1
+PYTHON_INCLUDE=$(${PYTHON} -c "from sysconfig import get_paths as gp; print(gp()['include'])")
+PYBIND11_INCLUDE=$(${PYTHON} -c "import pybind11; print (pybind11.get_include())")
 
 # Fix container image for cross build.
 if [ ! -z "${CI_BUILD_HOME}" ] && [ `pwd` = "/workspace" ]; then
@@ -53,31 +55,66 @@ echo "__version__ = '${PACKAGE_VERSION}'" >> "${BUILD_DIR}/tflite_runtime/__init
 echo "__git_version__ = '$(git -C "${TENSORFLOW_DIR}" describe)'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
 
 # Build python interpreter_wrapper.
-cd "${BUILD_DIR}"
+mkdir -p "${BUILD_DIR}/cmake_build"
+cd "${BUILD_DIR}/cmake_build"
+
+echo "Building for ${TENSORFLOW_TARGET}"
 case "${TENSORFLOW_TARGET}" in
   armhf)
-    BAZEL_FLAGS="--config=elinux_armhf
-      --copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
-      --copt=-O3 --copt=-fno-tree-pre --copt=-fpermissive
-      --define tensorflow_mkldnn_contraction_kernel=0
-      --define=raspberry_pi_with_neon=true"
+    eval $(${TENSORFLOW_LITE_DIR}/tools/cmake/download_toolchains.sh "${TENSORFLOW_TARGET}")
+    ARMCC_FLAGS="${ARMCC_FLAGS} -I${PYBIND11_INCLUDE}"
+    cmake \
+      -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
+      -DCMAKE_CXX_COMPILER=${ARMCC_PREFIX}g++ \
+      -DCMAKE_C_FLAGS="${ARMCC_FLAGS}" \
+      -DCMAKE_CXX_FLAGS="${ARMCC_FLAGS}" \
+      -DCMAKE_SYSTEM_NAME=Linux \
+      -DCMAKE_SYSTEM_PROCESSOR=armv7 \
+      "${TENSORFLOW_LITE_DIR}"
+    ;;
+  rpi0)
+    eval $(${TENSORFLOW_LITE_DIR}/tools/cmake/download_toolchains.sh "${TENSORFLOW_TARGET}")
+    ARMCC_FLAGS="${ARMCC_FLAGS} -I${PYBIND11_INCLUDE}"
+    cmake \
+      -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
+      -DCMAKE_CXX_COMPILER=${ARMCC_PREFIX}g++ \
+      -DCMAKE_C_FLAGS="${ARMCC_FLAGS}" \
+      -DCMAKE_CXX_FLAGS="${ARMCC_FLAGS}" \
+      -DCMAKE_SYSTEM_NAME=Linux \
+      -DCMAKE_SYSTEM_PROCESSOR=armv6 \
+      -DTFLITE_ENABLE_XNNPACK=OFF \
+      "${TENSORFLOW_LITE_DIR}"
     ;;
   aarch64)
-    BAZEL_FLAGS="--config=elinux_aarch64
-      --define tensorflow_mkldnn_contraction_kernel=0
-      --copt=-O3"
+    eval $(${TENSORFLOW_LITE_DIR}/tools/cmake/download_toolchains.sh "${TENSORFLOW_TARGET}")
+    ARMCC_FLAGS="${ARMCC_FLAGS} -I${PYBIND11_INCLUDE}"
+    cmake \
+      -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
+      -DCMAKE_CXX_COMPILER=${ARMCC_PREFIX}g++ \
+      -DCMAKE_C_FLAGS="${ARMCC_FLAGS}" \
+      -DCMAKE_CXX_FLAGS="${ARMCC_FLAGS}" \
+      -DCMAKE_SYSTEM_NAME=Linux \
+      -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+      "${TENSORFLOW_LITE_DIR}"
     ;;
   native)
-    BAZEL_FLAGS="--copt=-O3 --copt=-march=native"
+    BUILD_FLAGS=${BUILD_FLAGS:-"-march=native -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE}"}
+    cmake \
+      -DCMAKE_C_FLAGS="${BUILD_FLAGS}" \
+      -DCMAKE_CXX_FLAGS="${BUILD_FLAGS}" \
+      "${TENSORFLOW_LITE_DIR}"
     ;;
   *)
-    BAZEL_FLAGS="--copt=-O3"
+    BUILD_FLAGS=${BUILD_FLAGS:-"-I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE}"}
+    cmake \
+      -DCMAKE_C_FLAGS="${BUILD_FLAGS}" \
+      -DCMAKE_CXX_FLAGS="${BUILD_FLAGS}" \
+      "${TENSORFLOW_LITE_DIR}"
     ;;
 esac
 
-# We need to pass down the environment variable with a possible alternate Python
-# include path for Python 3.x builds to work.
-export CROSSTOOL_PYTHON_INCLUDE_PATH
+cmake --build . --verbose -j -t _pywrap_tensorflow_interpreter_wrapper
+cd "${BUILD_DIR}"
 
 case "${TENSORFLOW_TARGET}" in
   windows)
@@ -88,9 +125,7 @@ case "${TENSORFLOW_TARGET}" in
     ;;
 esac
 
-bazel build -c opt -s --config=monolithic --config=noaws --config=nogcp --config=nohdfs --config=nonccl \
-  ${BAZEL_FLAGS} ${CUSTOM_BAZEL_FLAGS} //tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper
-cp "${TENSORFLOW_DIR}/bazel-bin/tensorflow/lite/python/interpreter_wrapper/_pywrap_tensorflow_interpreter_wrapper${LIBRARY_EXTENSION}" \
+cp "${BUILD_DIR}/cmake_build/_pywrap_tensorflow_interpreter_wrapper${LIBRARY_EXTENSION}" \
    "${BUILD_DIR}/tflite_runtime"
 # Bazel generates the wrapper library with r-x permissions for user.
 # At least on Windows, we need write permissions to delete the file.
@@ -103,6 +138,10 @@ case "${TENSORFLOW_TARGET}" in
   armhf)
     ${PYTHON} setup_with_binary.py bdist --plat-name=linux-armv7l \
                        bdist_wheel --plat-name=linux-armv7l
+    ;;
+  rpi0)
+    ${PYTHON} setup_with_binary.py bdist --plat-name=linux_armv6l \
+                       bdist_wheel --plat-name=linux-armv6l
     ;;
   aarch64)
     ${PYTHON} setup_with_binary.py bdist --plat-name=linux-aarch64 \
@@ -148,6 +187,9 @@ fi
 case "${TENSORFLOW_TARGET}" in
   armhf)
     dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a armhf
+    ;;
+  rpi0)
+    dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a armel
     ;;
   aarch64)
     dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a arm64
