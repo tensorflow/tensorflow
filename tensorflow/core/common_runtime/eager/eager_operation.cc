@@ -481,6 +481,11 @@ string VariantDeviceDebugString(VariantDevice device) {
     return absl::get<Device*>(device)->DebugString();
   }
 }
+const AbstractOpAttrs* EagerOperation::GetOpAttrs() const { return &attrs_; }
+
+void EagerOperation::AddAttrs(const AbstractOpAttrs* op_attrs) {
+  attrs_.CopyAttributes(*(down_cast<const AttrBuilder*>(op_attrs)));
+}
 
 string EagerOperation::DebugString() const {
   string out;
@@ -506,5 +511,4 @@ void EagerOperation::AddTensorHandle(ImmediateExecutionTensorHandle* h) {
   inputs_.push_back(h);
   attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
-
 }  // namespace tensorflow

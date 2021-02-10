@@ -113,6 +113,7 @@ filegroup(
     srcs = [
         "abstract_context.h",
         "abstract_function.h",
+        "abstract_op_attrs.h",
         "abstract_operation.h",
         "abstract_tensor_handle.h",
         "c_api.h",
@@ -511,6 +512,21 @@ cc_library(
 )
 
 cc_library(
+    name = "abstract_op_attrs",
+    hdrs = ["abstract_op_attrs.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "abstract_operation",
     hdrs = ["abstract_operation.h"],
     visibility = [
@@ -658,10 +674,10 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
+        ":abstract_op_attrs",
         "//tensorflow/c:conversion_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime/eager:attr_builder",
     ],
 )
 

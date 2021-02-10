@@ -701,6 +701,7 @@ tf_cuda_library(
         # TODO(b/113535673): Break this dependency and avoid the C header completely.
         "//tensorflow/c:tf_attrtype",
         "@farmhash_archive//:farmhash",
+        "//tensorflow/c/eager:abstract_op_attrs",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
