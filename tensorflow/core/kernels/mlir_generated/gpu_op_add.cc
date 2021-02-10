@@ -22,4 +22,10 @@ GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(AddV2, f32, DT_FLOAT, float);
 GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(AddV2, f64, DT_DOUBLE, double);
 GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(AddV2, i64, DT_INT64, int64);
 
+// Add is the same as AddV2 except for strings, which we do not support on gpu.
+REGISTER_ALIASED_GPU_KERNEL(Add, AddV2, f16, f16, Eigen::half);
+REGISTER_ALIASED_GPU_KERNEL(Add, AddV2, f32, f32, float);
+REGISTER_ALIASED_GPU_KERNEL(Add, AddV2, f64, f64, double);
+REGISTER_ALIASED_GPU_KERNEL(Add, AddV2, i64, i64, int64);
+
 }  // namespace tensorflow

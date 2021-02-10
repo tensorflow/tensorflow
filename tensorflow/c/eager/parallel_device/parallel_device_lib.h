@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace parallel_device {
@@ -67,9 +68,10 @@ class ParallelDevice {
                                                        TF_Status* status) const;
 
   // Construct a parallel tensor consisting of the scalar values from `values`.
-  std::unique_ptr<ParallelTensor> Vector(
-      TFE_Context* context, TF_Status* status,
-      absl::Span<const int32_t> values) const;
+  template <typename DataType>
+  std::unique_ptr<ParallelTensor> ScalarsFromSequence(
+      absl::Span<const DataType> values, TFE_Context* context,
+      TF_Status* status) const;
 
   // A parallel tensor with scalar integers numbering component devices.
   std::unique_ptr<ParallelTensor> DeviceIDs(TFE_Context* context,
@@ -192,6 +194,56 @@ class ParallelTensor {
   mutable absl::optional<std::vector<int64_t>> shape_;
   const TF_DataType dtype_;
 };
+
+template <typename DataType>
+std::unique_ptr<ParallelTensor> ParallelDevice::ScalarsFromSequence(
+    absl::Span<DataType const> values, TFE_Context* context,
+    TF_Status* status) const {
+  std::vector<TensorHandlePtr> components;
+  components.reserve(underlying_devices_.size());
+
+  if (values.size() != num_underlying_devices()) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        "Number of values did not match number of underlying devices.");
+    return nullptr;
+  }
+  TF_DataType datatype_enum(
+      static_cast<TF_DataType>(DataTypeToEnum<DataType>().value));
+  for (int device_index = 0; device_index < num_underlying_devices();
+       ++device_index) {
+    auto device_value = absl::make_unique<DataType>();
+    *device_value = values[device_index];
+    std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tensor(
+        TF_NewTensor(
+            datatype_enum, /*dims=*/nullptr, /*num_dims=*/0,
+            device_value.release(), sizeof(DataType),
+            [](void* data, size_t, void* arg) {
+              delete reinterpret_cast<DataType*>(data);
+            },
+            nullptr),
+        TF_DeleteTensor);
+    // TODO(allenl): Here and when executing regular operations, we could hold
+    // on to one TFE_Op per device and just call TFE_ResetOp to avoid parsing
+    // device names repeatedly.
+    std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> const_op(
+        TFE_NewOp(context, "Const", status), TFE_DeleteOp);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    TFE_OpSetDevice(const_op.get(), underlying_devices_[device_index].c_str(),
+                    status);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    TFE_OpSetAttrTensor(const_op.get(), "value", tensor.get(), status);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    TFE_OpSetAttrType(const_op.get(), "dtype", datatype_enum);
+    TFE_TensorHandle* device_handle;
+    int num_outputs = 1;
+    TFE_Execute(const_op.get(), &device_handle, &num_outputs, status);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    components.emplace_back(device_handle);
+  }
+  return ParallelTensor::FromTensorHandles(*this, std::move(components),
+                                           status);
+}
 
 }  // namespace parallel_device
 }  // namespace tensorflow

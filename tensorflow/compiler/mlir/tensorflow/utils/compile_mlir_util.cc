@@ -360,7 +360,7 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
 
   if (failed(tf2xla.run(module_op))) {
     return error_handler.Combine(
-        errors::Internal("MLIR TF to XLA legalization failed"));
+        errors::InvalidArgument("TF to XLA legalization failed"));
   }
 
   if (VLOG_IS_ON(1))

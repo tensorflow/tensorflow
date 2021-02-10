@@ -113,6 +113,29 @@ ios_unit_test(
 )
 
 objc_library(
+    name = "conv_weights_converter_test_lib",
+    testonly = 1,
+    srcs = ["conv_weights_converter_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "conv_weights_converter_test",
+    testonly = 1,
+    minimum_os_version = "11.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":conv_weights_converter_test_lib"],
+)
+
+objc_library(
     name = "depthwise_conv_test_lib",
     testonly = 1,
     srcs = ["depthwise_conv_test.mm"],
@@ -666,6 +689,7 @@ objc_library(
         "add_test.mm",
         "concat_test.mm",
         "conv_test.mm",
+        "conv_weights_converter_test.mm",
         "depthwise_conv_test.mm",
         "elementwise_test.mm",
         "fully_connected_test.mm",
@@ -702,6 +726,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",

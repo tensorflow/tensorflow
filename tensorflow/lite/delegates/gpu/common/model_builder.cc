@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/lstm_parser.h"
@@ -2412,24 +2411,6 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
 absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
                          const TfLiteRegistration* registration,
                          bool allow_quant_ops = false) {
-  // Report it unsupported if there are unknown shapes in input/output tensors.
-  for (int i = 0; i < node->inputs->size; i++) {
-    const int input_id = node->inputs->data[i];
-    const auto* tensor = context->tensors + input_id;
-    if (HasUnspecifiedDimension(tensor)) {
-      return absl::UnimplementedError(
-          "one of input tensors has unknown dimension(s)");
-    }
-  }
-  for (int i = 0; i < node->outputs->size; i++) {
-    const int output_id = node->outputs->data[i];
-    const auto* tensor = context->tensors + output_id;
-    if (HasUnspecifiedDimension(tensor)) {
-      return absl::UnimplementedError(
-          "one of output tensors has unknown dimension(s)");
-    }
-  }
-
   return NewOperationParser(registration, allow_quant_ops)
       ->IsSupported(context, node, registration);
 }

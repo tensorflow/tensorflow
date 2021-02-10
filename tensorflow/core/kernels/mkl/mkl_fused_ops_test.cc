@@ -320,7 +320,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
     if (!NativeFormatEnabled()) {
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-      for (const Tensor& arg : args)
+      for (int i = 0; i < num_args; ++i)
         AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
     }
     TF_ASSERT_OK(RunOpKernel());
@@ -641,7 +641,7 @@ class MklFusedDepthwiseConv2DOpTest : public OpsTestBase {
     if (!NativeFormatEnabled()) {
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-      for (const Tensor& arg : args)
+      for (int i = 0; i < num_args; ++i)
         AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
     }
     TF_ASSERT_OK(RunOpKernel());
@@ -1038,7 +1038,7 @@ class MklFusedMatMulOpTest : public OpsTestBase {
       // Add MKL meta input for input, filter and bias.
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-      for (const Tensor& arg : args)
+      for (int i = 0; i < num_args; ++i)
         AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
     }
 

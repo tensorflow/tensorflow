@@ -329,7 +329,7 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
       auto range = window_strides->getAttributeValues();
       strides.assign(range.begin(), range.end());
     }
-    auto strides_arg = ArrayAttr::get(strides, op.getContext());
+    auto strides_arg = ArrayAttr::get(op.getContext(), strides);
 
     llvm::SmallVector<Attribute, 2> dilation;
     if (auto rhs_dilation = op.rhs_dilation()) {
@@ -339,7 +339,7 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
       // Default dilation of 1.
       dilation.resize(2, IntegerAttr::get(rewriter.getIntegerType(64), 1));
     }
-    auto dilation_arg = ArrayAttr::get(dilation, op.getContext());
+    auto dilation_arg = ArrayAttr::get(op.getContext(), dilation);
 
     // Set padding only if it is non-zero.
     DenseIntElementsAttr padding = op.paddingAttr();

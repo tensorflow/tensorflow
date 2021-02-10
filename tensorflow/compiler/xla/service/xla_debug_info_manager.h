@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_DEBUG_INFO_MANAGER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_DEBUG_INFO_MANAGER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_XLA_DEBUG_INFO_MANAGER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_XLA_DEBUG_INFO_MANAGER_H_
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -22,13 +22,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
-namespace gpu {
 
 using ModuleIdentifier = string;
 
-struct GpuModuleDebugInfo {
+struct XlaModuleDebugInfo {
   ModuleIdentifier module_id;
-  // The hlo proto associated with this gpu program.
+  // The hlo proto associated with this xla program.
   std::unique_ptr<HloProto> hlo_proto;
   // TODO(b/133503446): We might need add performance info from cost analysis
   // and DeviceDescription which contains peak memory bandwidth, clock speed,
@@ -44,14 +43,14 @@ struct GpuModuleDebugInfo {
 // information. We will only keep track unique debug information, identified
 // by module_id.
 // This class is thread-safe.
-class GpuDebugInfoManager {
+class XlaDebugInfoManager {
  public:
-  static GpuDebugInfoManager* Get() {
-    static GpuDebugInfoManager* singleton = new GpuDebugInfoManager();
+  static XlaDebugInfoManager* Get() {
+    static XlaDebugInfoManager* singleton = new XlaDebugInfoManager();
     return singleton;
   }
 
-  // Register an active module to GpuDebugInfoManager. We will keep track all
+  // Register an active module to XlaDebugInfoManager. We will keep track all
   // existing HloModules within the process.
   // Modules with same module id can be registered and tracked separately.
   void RegisterModule(
@@ -79,12 +78,12 @@ class GpuDebugInfoManager {
   // Then drop all modules that have no instances registered. Dump debug
   // information for all the running modules to module_debug_info if specified.
   void StopTracing(
-      std::vector<GpuModuleDebugInfo>* module_debug_info = nullptr);
+      std::vector<XlaModuleDebugInfo>* module_debug_info = nullptr);
 
-  friend class GpuDebugInfoManagerTest;
+  friend class XlaDebugInfoManagerTest;
 
  private:
-  GpuDebugInfoManager() {}
+  XlaDebugInfoManager() {}
 
   // Test accessors.
   std::set<ModuleIdentifier> GetRunningModules() {
@@ -108,8 +107,8 @@ class GpuDebugInfoManager {
   // can have same unique id if they are actually same program. From the
   // perspective of symbol table, they are identical, but for the life time
   // tracking, they need to be tracked separately.
-  struct GpuModuleInstance {
-    GpuModuleInstance(std::shared_ptr<HloModule> m,
+  struct XlaModuleInstance {
+    XlaModuleInstance(std::shared_ptr<HloModule> m,
                       std::shared_ptr<const BufferAssignmentProto> b)
         : hlo_module(std::move(m)), buffer_assignment(std::move(b)) {}
     std::shared_ptr<HloModule> hlo_module;
@@ -117,12 +116,12 @@ class GpuDebugInfoManager {
     bool active = true;
   };
 
-  // Each GpuModuleEntry can have multiple GpuModuleInstance's if XlA registers
+  // Each XlaModuleEntry can have multiple XlaModuleInstance's if XlA registers
   // them with the same ModuleIdentifier.
-  struct GpuModuleEntry {
+  struct XlaModuleEntry {
     // The module symbol table/debug info that shared by all instances.
     ModuleIdentifier module_id;
-    std::vector<GpuModuleInstance> instances;
+    std::vector<XlaModuleInstance> instances;
   };
 
   tensorflow::mutex mutex_;
@@ -135,11 +134,10 @@ class GpuDebugInfoManager {
   // Active modules are those still tracked by us. There could be much more
   // active modules than running modules, we will try to reduce the trace size
   // by only transfer those modules that were running during tracing period.
-  absl::flat_hash_map<ModuleIdentifier, GpuModuleEntry> active_modules_
+  absl::flat_hash_map<ModuleIdentifier, XlaModuleEntry> active_modules_
       TF_GUARDED_BY(mutex_);
 };
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_DEBUG_INFO_MANAGER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_XLA_DEBUG_INFO_MANAGER_H_

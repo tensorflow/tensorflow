@@ -294,26 +294,6 @@ REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-template <typename T>
-class VariableShapeOp : public OpKernel {
- public:
-  explicit VariableShapeOp(OpKernelConstruction* c) : OpKernel(c) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    core::RefCountPtr<Var> variable;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
-    variable->mu()->lock_shared();
-    TensorShape shape = variable->tensor()->shape();
-    variable->mu()->unlock_shared();
-    Tensor* output;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {shape.dims()}, &output));
-    for (int i = 0; i < shape.dims(); ++i) {
-      output->flat<T>()(i) = shape.dim_size(i);
-    }
-  }
-};
-
 REGISTER_KERNEL_BUILDER(
     Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
     VariableShapeOp<int32>);

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,64 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <math.h>
-#include <stdint.h>
-#include <stdlib.h>
 
-#include <algorithm>
-#include <initializer_list>
 #include <limits>
-#include <map>
-#include <memory>
-#include <random>
-#include <string>
-#include <utility>
-#include <vector>
+#include <type_traits>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 namespace tflite {
+namespace testing {
 namespace {
-
-using ::testing::ElementsAreArray;
-
-class BaseActivationsOpModel : public SingleOpModel {
- public:
-  // A dedicated constructor for LeakyRelu, which does some options.
-  BaseActivationsOpModel(TensorData input, float alpha) {
-    input_ = AddInput(input);
-    // The output scale and input scale might be different.
-    if (input.type == TensorType_UINT8 || input.type == TensorType_INT8 ||
-        input.type == TensorType_INT16) {
-      auto output_min = (input.min >= 0) ? input.min : input.min * alpha;
-      auto output_max = (input.max >= 0) ? input.max : input.max * alpha;
-      if (input.type == TensorType_INT16) {
-        output_ = AddOutput({TensorType_INT16,
-                             {},
-                             0,
-                             0,
-                             output_max / (std::numeric_limits<int16_t>::max()),
-                             0});
-      } else {
-        output_ = AddOutput({input.type, {}, output_min, output_max});
-      }
-    } else {
-      output_ = AddOutput({input.type, {}});
-    }
-    SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
-                 CreateLeakyReluOptions(builder_, alpha).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-
- protected:
-  int input_;
-  int output_;
-};
 
 // Our fixed-point math function implementations have roughly 12 bits of
 // accuracy, when specialized to 16-bit fixed-point arithmetic.
@@ -90,53 +45,13 @@ class BaseActivationsOpModel : public SingleOpModel {
 const float kQuantizedTolerance = 2 * (1. / 256);
 const float kQuantizedToleranceInt16 = 2 * (1. / 4096);
 
-class QuantizedActivationsOpModel : public BaseActivationsOpModel {
- public:
-  using BaseActivationsOpModel::BaseActivationsOpModel;
-
-  template <typename T>
-  void SetInput(const std::vector<float>& data) {
-    QuantizeAndPopulate<T>(input_, data);
-  }
-  template <typename T>
-  std::vector<T> GetOutput() {
-    return ExtractVector<T>(output_);
-  }
-
-  template <typename T>
-  std::vector<float> GetDequantizedOutput() {
-    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
-                         GetZeroPoint(output_));
-  }
-};
-
-TEST(QuantizedActivationsOpTest, LeakyReluUint8) {
-  const float kMin = -1;
-  const float kMax = 127.f / 128.f;
-  QuantizedActivationsOpModel m(
-      /*input=*/{TensorType_UINT8, {2, 3}, 8 * kMin, 8 * kMax}, 0.5);
-
-  m.SetInput<uint8_t>({
-      0.0f, 1.0f, 3.0f,    // Row 1
-      1.0f, -1.0f, -2.0f,  // Row 2
-  });
-  m.Invoke();
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {
-                      0.0f, 1.0f, 3.0f,    // Row 1
-                      1.0f, -0.5f, -1.0f,  // Row 2
-                  },
-                  kQuantizedTolerance * 8)));
-}
-
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedActivationsOpTestLeakyRelu() {
   const float kMin = -1;
   const float kMax =
       std::numeric_limits<integer_dtype>::max() /
       static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
-
+#ifdef notdef
   QuantizedActivationsOpModel m(
       /*input=*/{tensor_type, {5, 5}, 5 * kMin, 5 * kMax}, 0.1);
 
@@ -147,7 +62,6 @@ void QuantizedActivationsOpTestLeakyRelu() {
       1.0f,  1.4f,  1.8f,  2.2f,  2.6f,   // Row 4
       3.0f,  3.4f,  3.8f,  4.2f,  4.6f,   // Row 5
   });
-  m.Invoke();
 
   float kTestQuantizedTolerance = tensor_type == TensorType_INT16
                                       ? kQuantizedToleranceInt16
@@ -163,36 +77,42 @@ void QuantizedActivationsOpTestLeakyRelu() {
                       3.00f,  3.40f,  3.80f,  4.20f,  4.60f,   // Row 5
                   },
                   kTestQuantizedTolerance)));
+#endif  // notdef
 }
 
-TEST(QuantizedActivationsOpTest, LeakyReluInt8) {
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluUint8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+#ifdef notdef
+  QuantizedActivationsOpModel m(
+      /*input=*/{TensorType_UINT8, {2, 3}, 8 * kMin, 8 * kMax}, 0.5);
+
+  m.SetInput<uint8_t>({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 1.0f, 3.0f,    // Row 1
+                      1.0f, -0.5f, -1.0f,  // Row 2
+                  },
+                  kQuantizedTolerance * 8)));
+#endif  // notdef
+}
+
+TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt8) {
   QuantizedActivationsOpTestLeakyRelu<TensorType_INT8, int8_t>();
 }
 
-TEST(QuantizedActivationsOpTest, LeakyReluInt16) {
+TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt16) {
   QuantizedActivationsOpTestLeakyRelu<TensorType_INT16, int16_t>();
 }
 
-class LeakyReluOpModel : public SingleOpModel {
- public:
-  LeakyReluOpModel(const TensorData& input, float alpha) {
-    input_ = AddInput(input);
-    output_ = AddOutput(input);
-    SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
-                 CreateLeakyReluOptions(builder_, alpha).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-  void SetInput(std::initializer_list<float> data) {
-    PopulateTensor(input_, data);
-  }
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
-
- protected:
-  int input_;
-  int output_;
-};
-
-TEST(FloatActivationsOpTest, LeakyRelu) {
+TF_LITE_MICRO_TEST(FloatActivationsOpTestLeakyRelu) {
+#ifdef notdef
   LeakyReluOpModel m({TensorType_FLOAT32, {2, 3}}, 0.5f);
 
   m.SetInput({
@@ -204,7 +124,11 @@ TEST(FloatActivationsOpTest, LeakyRelu) {
                                  0.0f, 1.0f, 3.0f,    // Row 1
                                  1.0f, -0.5f, -1.0f,  // Row 2
                              }));
+#endif  // notdef
 }
 
+TF_LITE_MICRO_TESTS_END
+
 }  // namespace
+}  // namespace testing
 }  // namespace tflite

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -144,14 +145,8 @@ class DataServiceWorkerClient : public DataServiceClientBase {
       : DataServiceClientBase(address, protocol),
         transfer_protocol_(transfer_protocol) {}
 
-  // Fetches the next element for the specified task_id. The optional
-  // `consumer_index` and `round_index` must be specified for tasks which use
-  // round-robin ordering. The element's compressed tensors will be stored in
-  // `element`. If no element is available, `end_of_sequence` will be `true`,
-  // and `element` will be left unchanged.
-  Status GetElement(int64 task_id, absl::optional<int64> consumer_index,
-                    absl::optional<int64> round_index,
-                    CompressedElement& element, bool& end_of_sequence);
+  // Fetches an element from the worker.
+  Status GetElement(const GetElementRequest& req, GetElementResponse& resp);
 
   // Makes a best effort to cancel all outstanding calls in progress for the
   // client, and causes further calls to return Cancelled status.

@@ -151,6 +151,20 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_weights_converter_test_util",
+    testonly = 1,
+    srcs = ["conv_weights_converter_test_util.cc"],
+    hdrs = ["conv_weights_converter_test_util.h"],
+    deps = [
+        ":conv_weights_converter",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
+    ],
+)
+
+cc_library(
     name = "convolution_transposed",
     srcs = ["convolution_transposed.cc"],
     hdrs = ["convolution_transposed.h"],

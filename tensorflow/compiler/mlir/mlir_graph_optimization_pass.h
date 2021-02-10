@@ -29,7 +29,20 @@ namespace tensorflow {
 // MLIR passes running on Tensorflow function graphs (Tensorflow V2).
 // -------------------------------------------------------------------------- //
 
-enum class MlirOptimizationPassState { Disabled, Enabled, ShadowEnabled };
+// Disabled - skip execution of the pass.
+// Enabled - execute the pass, propagate errors to the caller if any.
+// ShadowEnabled - execute the pass in a shadow mode. The pass should not commit
+//   any changes to the MLIR module it's processing. Failures are not propagated
+//   to the caller.
+// FallbackEnabled - execute the pass and commit all the changes to the MLIR
+//   module in case of success. Do not commit any changes in case of failures,
+//   let the rest of the pipeline run.
+enum class MlirOptimizationPassState {
+  Disabled,
+  Enabled,
+  ShadowEnabled,
+  FallbackEnabled
+};
 
 // An API for registering MLIR ModulePass with the Tensorflow runtime. These
 // passes are running only for function graphs built by Tensorflow V2 and

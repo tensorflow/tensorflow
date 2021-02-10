@@ -181,7 +181,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       if (num_parallel_calls_->value == model::kAutotune) {
-        num_parallel_calls_->value = 1;
+        num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
@@ -262,6 +262,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       int64 batch_results_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBatchResultsSize),
                                             &batch_results_size));
+      DCHECK(batch_results_.empty());
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
       }
@@ -452,6 +453,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ReadStatus(prefix(),
                                     strings::StrCat(batch_prefix, "_", kStatus),
                                     reader, &result->status));
+      RecordBufferEnqueue(ctx, result->output);
       return Status::OK();
     }
 

@@ -56,8 +56,9 @@ class EagerOpRewriteTest : public ::testing::Test {
   // Validates the result of MKL eager rewrite.
   void CheckRewrite(EagerOperation* orig_op, string expected_op_name) {
     std::unique_ptr<tensorflow::EagerOperation> out_op;
-    EagerOpRewriteRegistry::Global()->RunRewrite(
-        EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op);
+    EXPECT_EQ(Status::OK(),
+              EagerOpRewriteRegistry::Global()->RunRewrite(
+                  EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op));
 
     // actual_op_name is same as original op name if rewrite didn't happen.
     string actual_op_name = orig_op->Name();
@@ -159,11 +160,12 @@ REGISTER_TEST_ALL_TYPES(MostOps_Positive);
   }
 #define DATA_FORMAT "NCDHW"
 REGISTER_TEST_ALL_TYPES(FusedBatchNormV3_5D_Negative_1);
+#undef DATA_FORMAT
 
 #define DATA_FORMAT "NDHWC"
 REGISTER_TEST_ALL_TYPES(FusedBatchNormV3_5D_Negative_2);
-
 #undef DATA_FORMAT
+
 #undef REGISTER_TEST
 
 }  // namespace tensorflow

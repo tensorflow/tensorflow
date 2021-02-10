@@ -3705,7 +3705,7 @@ ENTRY entry {
       op::Copy(op::DynamicSlice(op::Parameter(1), op::Constant(),
                                 op::Constant(), op::Reshape(), op::Reshape())),
       op::Shape("f32[32,39296,32,64]"));
-  EXPECT_THAT(root, AllOf(op::AllReduce(op::Dot(lhs, rhs)),
+  EXPECT_THAT(root, AllOf(op::AllReduce(op::AllReduce(op::Dot(lhs, rhs))),
                           op::Shape("f32[32,24,39296]")));
 }
 
@@ -4662,10 +4662,10 @@ ENTRY entry {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      AllOf(op::AllReduce(op::Scatter(
+      AllOf(op::AllReduce(op::AllReduce(op::Scatter(
                 op::Select(op::Broadcast(op::Convert(op::PartitionId())),
                            op::Broadcast(op::Constant()), op::Parameter(0)),
-                op::Parameter(1), op::Parameter(2))),
+                op::Parameter(1), op::Parameter(2)))),
             op::Shape("f32[2,9,8]")));
 }
 
@@ -4698,10 +4698,10 @@ ENTRY entry {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      AllOf(op::AllReduce(op::Scatter(
+      AllOf(op::AllReduce(op::AllReduce(op::Scatter(
                 op::Select(op::Broadcast(op::Convert(op::Reshape())),
                            op::Broadcast(op::Constant()), op::Parameter(0)),
-                op::Parameter(1), op::Parameter(2))),
+                op::Parameter(1), op::Parameter(2)))),
             op::Shape("f32[2,9,8]")));
 }
 
@@ -4732,10 +4732,10 @@ ENTRY entry {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      AllOf(op::AllReduce(op::Scatter(
+      AllOf(op::AllReduce(op::AllReduce(op::Scatter(
                 op::Select(op::Broadcast(op::Convert(op::PartitionId())),
                            op::Broadcast(op::Constant()), op::Parameter(0)),
-                op::Parameter(1), op::Parameter(2))),
+                op::Parameter(1), op::Parameter(2)))),
             op::Shape("f32[2,9,8]")));
 }
 
@@ -6733,8 +6733,8 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[2,2,2,2]"), op::DynamicSlice());
   auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[2,2,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)));
+  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
+                        op::DynamicUpdateSlice(_, gather, _, _, _, _))));
 }
 
 TEST_F(SpmdPartitioningTest, GatherParallelDimReplicatedIndices) {
@@ -6887,8 +6887,8 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[4,1,2,2]"), op::CollectivePermute());
   auto indices = AllOf(op::Shape("s32[2,4,1]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[4,1,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)));
+  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
+                        op::DynamicUpdateSlice(_, gather, _, _, _, _))));
 }
 
 TEST_F(SpmdPartitioningTest, GatherMergedParalleIndexPassthrough) {
