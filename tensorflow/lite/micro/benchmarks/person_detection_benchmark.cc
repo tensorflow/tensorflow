@@ -81,27 +81,27 @@ int main(int argc, char** argv) {
       CreateBenchmarkRunner(&profiler);
   profiler.EndEvent(event_handle);
   profiler.Log();
-  MicroPrintf("");
+  MicroPrintf("");  // null MicroPrintf serves as a newline.
 
   tflite::PersonDetectionNIerations(
       reinterpret_cast<const int8_t*>(g_person_data), 1,
       "WithPersonDataIterations(1)", *benchmark_runner, profiler);
   profiler.Log();
-  MicroPrintf("");
+  MicroPrintf("");  // null MicroPrintf serves as a newline.
 
   tflite::PersonDetectionNIerations(
       reinterpret_cast<const int8_t*>(g_no_person_data), 1,
       "NoPersonDataIterations(1)", *benchmark_runner, profiler);
   profiler.Log();
-  MicroPrintf("");
+  MicroPrintf("");  // null MicroPrintf serves as a newline.
 
   tflite::PersonDetectionNIerations(
       reinterpret_cast<const int8_t*>(g_person_data), 10,
       "WithPersonDataIterations(10)", *benchmark_runner, profiler);
-  MicroPrintf("");
+  MicroPrintf("");  // null MicroPrintf serves as a newline.
 
   tflite::PersonDetectionNIerations(
       reinterpret_cast<const int8_t*>(g_no_person_data), 10,
       "NoPersonDataIterations(10)", *benchmark_runner, profiler);
-  MicroPrintf("");
+  MicroPrintf("");  // null MicroPrintf serves as a newline.
 }
