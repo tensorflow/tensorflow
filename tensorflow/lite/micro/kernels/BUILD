@@ -7,14 +7,14 @@ load(
     "micro_copts",
 )
 
-config_setting(
-    name = "xtensa_hifimini",
-    define_values = {"tflm_build": "xtensa_hifimini"},
-)
-
 package(
     features = ["-layering_check"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+config_setting(
+    name = "xtensa_hifimini",
+    define_values = {"tflm_build": "xtensa_hifimini"},
 )
 
 package_group(
