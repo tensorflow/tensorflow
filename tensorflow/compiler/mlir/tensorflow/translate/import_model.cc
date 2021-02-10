@@ -402,6 +402,12 @@ class ImporterBase {
       const std::unordered_map<string, Node*>& node_name_map,
       std::unordered_set<const Node*>* nodes);
 
+  llvm::StringSet<>& GetUnmodelledOpTypes() {
+    // All the TF ops encountered that aren't modelled in dialect.
+    static auto* unmodelled_op_types = new llvm::StringSet<>();
+    return *unmodelled_op_types;
+  }
+
   // The input graph with backedges removed. The removed backedges are stored
   // in the back_edge_helper.
   BackEdgeHelper back_edge_helper_;
@@ -438,9 +444,6 @@ class ImporterBase {
  protected:
   // Maps feed as TensorId to new Placeholder node name.
   absl::flat_hash_map<TensorId, absl::string_view> remapped_feeds_;
-
-  // All the TF ops encountered that aren't modelled in dialect.
-  llvm::DenseSet<mlir::Identifier> unmodelled_op_types_;
 };
 
 // Returns true if the node with given name has a non primary output that is
@@ -1836,12 +1839,12 @@ mlir::Operation* ImporterBase::CreateOperation(
   if (!name.getAbstractOperation() &&
       // Skip unmodelled ops that are handled differently.
       (node_type_name != "_Arg" && node_type_name != "_Retval")) {
-    if (unmodelled_op_types_.insert(name.getIdentifier()).second) {
-      LOG(WARNING) << "Unmodelled op type `" << node.type_string() << "`"
-                   << (node.op_def().is_stateful()
-                           ? " is stateful but effects not modelled"
-                           : " is not stateful but will be treated as such "
-                             "conservatively");
+    if (GetUnmodelledOpTypes().insert(name.getStringRef()).second) {
+      LOG(INFO) << "Unmodelled op type `" << node.type_string() << "`"
+                << (node.op_def().is_stateful()
+                        ? " is stateful but effects not modelled"
+                        : " is not stateful but will be treated as such "
+                          "conservatively");
     }
   }
 
