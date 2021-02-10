@@ -320,6 +320,7 @@ cmd_status(){
 
 # Run bazel build --nobuild to test the validity of the BUILD files
 do_bazel_nobuild() {
+  _run_configure
   BUILD_TARGET="//tensorflow/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
@@ -331,6 +332,7 @@ do_bazel_nobuild() {
 }
 
 do_bazel_deps_query() {
+  _run_configure
   local BUILD_TARGET='//tensorflow/...'
   # Android targets tend to depend on an Android runtime being available.
   # Exclude until the sanity test has such a runtime available.
@@ -448,6 +450,17 @@ _check_no_deps() {
       exit 1
   fi
   rm "${TMP_FILE}"
+}
+
+_run_configure() {
+  export TF_NEED_ROCM=1
+  export PYTHON_BIN_PATH=$(which python3)
+  yes "" | ${PYTHON_BIN_PATH} configure.py
+
+  RESULT=$?
+  if [[ ${RESULT} != "0" ]]; then
+   exit 1
+  fi
 }
 
 # Supply all sanity step commands and descriptions
