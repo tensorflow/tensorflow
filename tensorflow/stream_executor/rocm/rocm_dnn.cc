@@ -708,7 +708,6 @@ class ScopedTensorDescriptor {
 class ScopedFilterDescriptor {
  public:
   ScopedFilterDescriptor(const FilterDescriptor& filter_descriptor,
-                         const BatchDescriptor& batch_descriptor,
                          miopenDataType_t elem_type)
       : handle_(nullptr) {
     auto status = wrap::miopenCreateTensorDescriptor(&handle_);
@@ -717,19 +716,70 @@ class ScopedFilterDescriptor {
                  << ToString(status);
     }
 
-    const int nd = batch_descriptor.ndims() + 2;
+    // We need to pass two vectors to the miopenSetTensorDescriptor routine
+    // "dims" (length == number of dims, elem value == dimension size)
+    // "strides" (length == number of dims, elem value == stride size)
+    //
+    // Irrespective of the actual filter layout, the indexing of both those
+    // vectors must be the following (coz that is what MIOpen expects)
+    // dims[0] = strides[0] = N or output
+    // dims[1] = strides[1] = C or input
+    // dims[2] = strides[2] = H or spatial dim 0
+    // dims[3] = strides[3] = W or spatial dim 1
+    //
+    // assume you have a tensor with dimensions
+    // batch descriptor name    filter descriptor name    value
+    //   N (batch size)            O (output features)    256
+    //   C (channels)              I (input features)       3
+    //   H (height)                H (height)               7
+    //   W (width)                 W (width)                5
+    //
+    // The content of "dims" will be the same irrespective of layout
+    // layout (NCHW or NHWC), and MIOpen expects it should be
+    //                           NCHW layout   NHWC layout
+    // dims[0] = size of N dim =    256           256
+    // dims[1] = size of C dim =      3             3
+    // dims[2] = size of H dim =      7             7
+    // dims[3] = size of W dim =      5             5
+    //
+    // The content of "strides" will be different based on layout
+    //                                  NCHW layout   NHWC layout
+    //  strides[0] = stride of N dim =     7x5x3       7x5x3
+    //  strides[1] = stride of C dim =     7x5         1
+    //  strides[2] = stride of H dim =     5           5x3
+    //  strides[3] = stride of W dim =     1           3
 
-    std::vector<int> dims(2 + filter_descriptor.ndims());
-    dims[0] = filter_descriptor.output_feature_map_count();
-    dims[1] = filter_descriptor.input_feature_map_count();
-    const auto& spatial_dims = filter_descriptor.input_filter_dims();
-    std::copy(spatial_dims.begin(), spatial_dims.end(), dims.begin() + 2);
+    switch (filter_descriptor.layout()) {
+      case dnn::FilterLayout::kOutputYXInput:
+      case dnn::FilterLayout::kOutputInputYX: {
+        const int nd = filter_descriptor.ndims() + 2;
 
-    status = wrap::miopenSetTensorDescriptor(handle_, elem_type, nd,
-                                             dims.data(), nullptr);
-    if (status != miopenStatusSuccess) {
-      LOG(FATAL) << "could not set miopen filter descriptor: "
-                 << ToString(status);
+        // MIOpen requires the strides and dims to be ordered as BDYX.
+        std::vector<int64> strides64 =
+            filter_descriptor.full_strides(dnn::FilterLayout::kOutputInputYX);
+        std::vector<int64> dims64 =
+            filter_descriptor.full_dims(dnn::FilterLayout::kOutputInputYX);
+
+        // MIOpen requires arrays of ints.
+        std::vector<int> strides(nd);
+        std::vector<int> dims(nd);
+        std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
+                       &CheckedNarrowing<int64, int>);
+        std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
+                       &CheckedNarrowing<int64, int>);
+        status = wrap::miopenSetTensorDescriptor(handle_, elem_type, nd,
+                                                 dims.data(), strides.data());
+
+        if (status != miopenStatusSuccess) {
+          LOG(FATAL) << "could not convert FilterDescriptor "
+                     << filter_descriptor.ToString()
+                     << " to miopen tensor descriptor: " << ToString(status);
+        }
+      } break;
+      default:
+        LOG(FATAL) << "Unsupported tensor format "
+                   << FilterLayoutString(filter_descriptor.layout());
+        break;
     }
   }
 
@@ -2950,7 +3000,7 @@ port::Status MIOpenSupport::DoConvolve(
                                   ToMIOpenDataType(element_type)};
   ScopedTensorDescriptor output_nd{output_descriptor,
                                    ToMIOpenDataType(element_type)};
-  ScopedFilterDescriptor filter{filter_descriptor, input_descriptor,
+  ScopedFilterDescriptor filter{filter_descriptor,
                                 ToMIOpenDataType(element_type)};
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
@@ -3131,7 +3181,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
                                   ToMIOpenDataType(element_type)};
   ScopedTensorDescriptor output_nd{output_descriptor,
                                    ToMIOpenDataType(element_type)};
-  ScopedFilterDescriptor filter{filter_descriptor, input_descriptor,
+  ScopedFilterDescriptor filter{filter_descriptor,
                                 ToMIOpenDataType(element_type)};
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
@@ -3340,7 +3390,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
                                   ToMIOpenDataType(element_type)};
   ScopedTensorDescriptor output_nd{output_descriptor,
                                    ToMIOpenDataType(element_type)};
-  ScopedFilterDescriptor filter{filter_descriptor, input_descriptor,
+  ScopedFilterDescriptor filter{filter_descriptor,
                                 ToMIOpenDataType(element_type)};
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
@@ -4586,8 +4636,7 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::BatchDescriptor* output_batch_descriptor) {
   ScopedTensorDescriptor input_nd{batch_descriptor, miopenFloat};
-  ScopedFilterDescriptor filter{filter_descriptor, batch_descriptor,
-                                miopenFloat};
+  ScopedFilterDescriptor filter{filter_descriptor, miopenFloat};
   ScopedConvolutionDescriptor conv{convolution_descriptor, miopenFloat};
 
   int dn = batch_descriptor.ndims() + 2;
@@ -4639,7 +4688,7 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    static_cast<miopenDataType_t>(miopen_type)};
 
-  ScopedFilterDescriptor filter{filter_descriptor, conv_input_descriptor,
+  ScopedFilterDescriptor filter{filter_descriptor,
                                 static_cast<miopenDataType_t>(miopen_type)};
 
   ScopedActivationDescriptor activation_desc{activation_mode};
