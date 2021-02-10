@@ -19,15 +19,22 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
+from tensorflow.python import keras
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
+from tensorflow.python.keras.optimizer_v2 import rmsprop
+from tensorflow.python.keras.utils import kpl_test_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
@@ -83,6 +90,51 @@ class MirroredStrategyDefunTest(test.TestCase):
       # All variables start at 1.0 and get two updates of 0.25.
       self.assertAllEqual(0.5 * np.ones([10, 1]), updated_var_values[0])
       self.assertAllEqual([0.5], updated_var_values[1])
+
+  def testTrainAndServeWithKPL(self, distribution):
+    use_adapt = False
+    test_utils_obj = kpl_test_utils.DistributeKplTestUtils()
+    with distribution.scope():
+      feature_mapper, label_mapper = test_utils_obj.define_kpls_for_training(
+          use_adapt)
+      model = test_utils_obj.define_model()
+      optimizer = rmsprop.RMSprop(learning_rate=0.1)
+      accuracy = keras.metrics.Accuracy()
+
+      def dataset_fn(_):
+        return test_utils_obj.dataset_fn(feature_mapper, label_mapper)
+
+      @def_function.function
+      def train_step(iterator):
+        """The step function for one training step."""
+
+        def step_fn(inputs):
+          """The computation to run on each TPU device."""
+          features, labels = inputs
+          with backprop.GradientTape() as tape:
+            pred = model(features, training=True)
+            loss = keras.losses.binary_crossentropy(labels, pred)
+            loss = nn.compute_average_loss(loss)
+          grads = tape.gradient(loss, model.trainable_variables)
+          optimizer.apply_gradients(list(zip(grads, model.trainable_variables)))
+
+          actual_pred = math_ops.cast(math_ops.greater(pred, 0.5), dtypes.int64)
+          accuracy.update_state(labels, actual_pred)
+
+        distribution.run(step_fn, args=(next(iterator),))
+
+      distributed_dataset = distribution.distribute_datasets_from_function(
+          dataset_fn)
+      distributed_iterator = iter(distributed_dataset)
+      num_epochs = 4
+      num_steps = 7
+      for _ in range(num_epochs):
+        accuracy.reset_states()
+        for _ in range(num_steps):
+          train_step(distributed_iterator)
+
+      self.assertGreater(accuracy.result().numpy(), 0.5)
+      self.assertEqual(optimizer.iterations.numpy(), num_epochs * num_steps)
 
 
 if __name__ == "__main__":
