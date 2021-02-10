@@ -373,8 +373,10 @@ def _graph_mode_decorator(f, args, kwargs):
       v.ref() for v in _get_dependent_variables(
           input_ops=filtered_input_tensors, output_ops=flat_result)
   ])
-  variables = list(
-      [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])
+  variables = sorted(
+      [v.deref() for v in variables_in_subgraph.union(variables_in_tape)],
+      key=lambda v: v.name
+  )
 
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or
