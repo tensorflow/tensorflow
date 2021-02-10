@@ -130,9 +130,6 @@ CXXFLAGS += -D$(ARM_CPU)$(CMSIS_ARM_FEATURES)
 CCFLAGS += -D$(ARM_CPU)$(CMSIS_ARM_FEATURES)
 
 THIRD_PARTY_CC_SRCS += \
-  $(wildcard $(ETHOS_U_CORE_PLATFORM)/*.c)
-
-THIRD_PARTY_CC_SRCS += \
   $(ETHOS_U_CORE_PLATFORM)/retarget.c \
   $(ETHOS_U_CORE_PLATFORM)/uart.c
 
@@ -145,10 +142,10 @@ INCLUDES += \
   -I$(CMSIS_PATH)/Device/ARM/$(ARM_CPU)/Include \
   -I$(CMSIS_PATH)/CMSIS/Core/Include
 
+# TODO(#47071): Examine why Micro benchmarks fails.
 MICRO_LITE_BENCHMARKS := $(filter-out tensorflow/lite/micro/benchmarks/Makefile.inc, $(MICRO_LITE_BENCHMARKS))
 
-# TODO: Figure out why pooling test fails and enable.
-# TODO: Examine why some tests fail here.
+# TODO(#47070): Examine why some tests fail here.
 EXCLUDED_TESTS := \
   tensorflow/lite/micro/micro_interpreter_test.cc \
   tensorflow/lite/micro/micro_allocator_test.cc \
@@ -160,8 +157,6 @@ EXCLUDED_TESTS := \
   tensorflow/lite/micro/kernels/circular_buffer_test.cc \
   tensorflow/lite/micro/kernels/pooling_test.cc
 MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
-
-# TODO: Examine why some tests fail here.
 EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
   tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
