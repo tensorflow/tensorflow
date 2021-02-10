@@ -84,8 +84,8 @@ TEST_P(CppGradients, TestIdentityNGrad) {
   AbstractTensorHandlePtr x1;
   {
     AbstractTensorHandle* x1_raw = nullptr;
-    status_ =
-        TestScalarTensorHandle(immediate_execution_ctx_.get(), 1.0f, &x1_raw);
+    status_ = TestScalarTensorHandle<float, TF_FLOAT>(
+        immediate_execution_ctx_.get(), 1.0f, &x1_raw);
     ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     x1.reset(x1_raw);
   }
@@ -93,8 +93,8 @@ TEST_P(CppGradients, TestIdentityNGrad) {
   AbstractTensorHandlePtr x2;
   {
     AbstractTensorHandle* x2_raw = nullptr;
-    status_ =
-        TestScalarTensorHandle(immediate_execution_ctx_.get(), 1.0f, &x2_raw);
+    status_ = TestScalarTensorHandle<float, TF_FLOAT>(
+        immediate_execution_ctx_.get(), 1.0f, &x2_raw);
     ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     x2.reset(x2_raw);
   }

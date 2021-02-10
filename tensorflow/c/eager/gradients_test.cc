@@ -77,7 +77,7 @@ TEST_P(CppGradients, TestSetAttrString) {
   AbstractTensorHandlePtr t;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 1.0f, &x_raw);
+    Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 1.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     t.reset(x_raw);
   }
@@ -142,7 +142,7 @@ TEST_P(CppGradients, TestRecordOperationWithNullGradientFunctionRaises) {
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
+    Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     x.reset(x_raw);
   }

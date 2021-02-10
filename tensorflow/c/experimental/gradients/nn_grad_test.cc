@@ -101,8 +101,8 @@ TEST_P(CppGradients, TestReluGrad) {
   AbstractTensorHandlePtr X;
   {
     AbstractTensorHandle* X_raw;
-    status_ = TestTensorHandleWithDimsFloat(immediate_execution_ctx_.get(),
-                                            X_vals, X_dims, 2, &X_raw);
+    status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
+        immediate_execution_ctx_.get(), X_vals, X_dims, 2, &X_raw);
     ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     X.reset(X_raw);
   }
@@ -116,8 +116,8 @@ TEST_P(CppGradients, TestReluGrad) {
   AbstractTensorHandlePtr Y;
   {
     AbstractTensorHandle* Y_raw;
-    status_ =
-        TestScalarTensorHandle(immediate_execution_ctx_.get(), 0.0f, &Y_raw);
+    status_ = TestScalarTensorHandle<float, TF_FLOAT>(
+        immediate_execution_ctx_.get(), 0.0f, &Y_raw);
     ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     Y.reset(Y_raw);
   }
@@ -144,19 +144,19 @@ TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {
   AbstractTensorHandlePtr X;
   {
     AbstractTensorHandle* X_raw;
-    status_ = TestTensorHandleWithDimsFloat(immediate_execution_ctx_.get(),
-                                            X_vals, X_dims, 2, &X_raw);
+    status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
+        immediate_execution_ctx_.get(), X_vals, X_dims, 2, &X_raw);
     ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     X.reset(X_raw);
   }
   // Label
-  int Y_vals[] = {1, 0, 1};
+  int32_t Y_vals[] = {1, 0, 1};
   int64_t Y_dims[] = {3};
   AbstractTensorHandlePtr Y;
   {
     AbstractTensorHandle* Y_raw;
-    status_ = TestTensorHandleWithDimsInt(immediate_execution_ctx_.get(),
-                                          Y_vals, Y_dims, 1, &Y_raw);
+    status_ = TestTensorHandleWithDims<int32_t, TF_INT32>(
+        immediate_execution_ctx_.get(), Y_vals, Y_dims, 1, &Y_raw);
     ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     Y.reset(Y_raw);
   }
@@ -182,8 +182,8 @@ TEST_P(CppGradients, TestBiasAddGrad) {
   AbstractTensorHandlePtr A;
   {
     AbstractTensorHandle* A_raw;
-    status_ = TestTensorHandleWithDimsFloat(immediate_execution_ctx_.get(),
-                                            A_vals, A_dims, 2, &A_raw);
+    status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
+        immediate_execution_ctx_.get(), A_vals, A_dims, 2, &A_raw);
     ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     A.reset(A_raw);
   }
@@ -193,8 +193,8 @@ TEST_P(CppGradients, TestBiasAddGrad) {
   AbstractTensorHandlePtr Bias;
   {
     AbstractTensorHandle* Bias_raw;
-    status_ = TestTensorHandleWithDimsFloat(immediate_execution_ctx_.get(),
-                                            Bias_vals, Bias_dims, 1, &Bias_raw);
+    status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
+        immediate_execution_ctx_.get(), Bias_vals, Bias_dims, 1, &Bias_raw);
     ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
     Bias.reset(Bias_raw);
   }

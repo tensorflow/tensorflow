@@ -53,20 +53,6 @@ Status RunModel(Model model, AbstractContext* ctx,
 
 Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx);
 
-// Get a Scalar TensorHandle with given float value.
-Status TestScalarTensorHandle(AbstractContext* ctx, float value,
-                              AbstractTensorHandle** tensor);
-
-// Get a Matrix TensorHandle with given float values and dimensions.
-Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float* data,
-                                     int64_t* dims, int num_dims,
-                                     AbstractTensorHandle** tensor);
-
-// Get a TensorHandle with given int values and dimensions
-Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int* data,
-                                   int64_t* dims, int num_dims,
-                                   AbstractTensorHandle** tensor);
-
 // Return a tensor handle with given type, values and dimensions.
 template <class T, TF_DataType datatype>
 Status TestTensorHandleWithDims(AbstractContext* ctx, const T* data,
