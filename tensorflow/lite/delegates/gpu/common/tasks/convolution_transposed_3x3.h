@@ -81,7 +81,7 @@ class ConvolutionTransposed3x3 : public GPUOperation {
   std::vector<int> GetSpatialWeightsRemap() const;
 
   std::string GenerateConvolutionTransposedCode(
-      const OperationDef& op_def,
+      const GpuInfo& gpu_info, const OperationDef& op_def,
       ConvolutionTransposed3x3::WeightsUploadType weights_upload_type,
       int2 padding, int3 work_group_launch_order);
 

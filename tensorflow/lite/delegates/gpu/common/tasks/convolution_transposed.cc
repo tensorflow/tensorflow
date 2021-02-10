@@ -578,7 +578,7 @@ void ConvolutionTransposed::GetPossibleKernelWorkGroups(
 ConvolutionTransposed CreateConvolutionTransposed(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  const bool weights_are_buffer = gpu_info.IsMali();
+  const bool weights_are_buffer = gpu_info.IsMali() || gpu_info.IsApple();
   ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
   result.UploadWeights(attr.weights, weights_are_buffer);
 
@@ -595,7 +595,7 @@ ConvolutionTransposed CreateConvolutionTransposed(
 ConvolutionTransposed CreateConvolutionTransposed3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr) {
-  const bool weights_are_buffer = gpu_info.IsMali();
+  const bool weights_are_buffer = gpu_info.IsMali() || gpu_info.IsApple();
   ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
   result.UploadWeights(attr.weights, weights_are_buffer);
 

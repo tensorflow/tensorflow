@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/convolution_transposed_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/default_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/dw_convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/fully_connected_selector.h"
@@ -35,25 +36,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-
-std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
-    const OperationDef& op_def, const ConvolutionTransposedAttributes& attr,
-    const GpuInfo& gpu_info) {
-  if (CheckConvolutionTransposed4x4Support(attr)) {
-    auto gpu_op = CreateConvolutionTransposed4x4(gpu_info, op_def, attr);
-    return absl::make_unique<ConvolutionTransposed4x4>(std::move(gpu_op));
-  } else {
-    auto gpu_op = CreateConvolutionTransposed(gpu_info, op_def, attr);
-    return absl::make_unique<ConvolutionTransposed>(std::move(gpu_op));
-  }
-}
-
 bool IsRecommendedForWinograd4x4To6x6(const Convolution2DAttributes& attr,
                                       const GpuInfo& gpu_info,
                                       const BHWC& dst_shape) {
@@ -199,18 +186,17 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       }
       break;
     }
-    case OperationType::CONVOLUTION_TRANSPOSED:
+    case OperationType::CONVOLUTION_TRANSPOSED: {
       if (inputs.size() != 1) {
         return absl::UnimplementedError(
             "Convolution Transposed does not support more than 1 runtime "
             "tensor");
       }
-      *gpu_op = SelectConvolutionTransposed(
-          op_def,
-          absl::any_cast<ConvolutionTransposedAttributes>(
-              node.operation.attributes),
-          gpu_info);
-      break;
+      auto attr = absl::any_cast<ConvolutionTransposedAttributes>(
+          node.operation.attributes);
+      *gpu_op = SelectConvolutionTransposed(attr, gpu_info, op_def);
+      return absl::OkStatus();
+    }
     case OperationType::DEPTHWISE_CONVOLUTION: {
       auto attr = absl::any_cast<DepthwiseConvolution2DAttributes>(
           node.operation.attributes);
