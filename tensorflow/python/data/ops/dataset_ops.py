@@ -1819,6 +1819,9 @@ name=None))
       Dataset: A `Dataset`.
     """
     if num_parallel_calls is None:
+      if deterministic is not None:
+        warnings.warn("The `deterministic` argument has no effect unless the "
+                      "`num_parallel_calls` argument is specified.")
       return MapDataset(self, map_func, preserve_cardinality=True)
     else:
       return ParallelMapDataset(
@@ -1955,6 +1958,9 @@ name=None))
       cycle_length = AUTOTUNE
 
     if num_parallel_calls is None:
+      if deterministic is not None:
+        warnings.warn("The `deterministic` argument has no effect unless the "
+                      "`num_parallel_calls` argument is specified.")
       return InterleaveDataset(self, map_func, cycle_length, block_length)
     else:
       return ParallelInterleaveDataset(
@@ -2686,6 +2692,9 @@ class DatasetV1(DatasetV2):
       Dataset: A `Dataset`.
     """
     if num_parallel_calls is None:
+      if deterministic is not None:
+        warnings.warn("The `deterministic` argument has no effect unless the "
+                      "`num_parallel_calls` argument is specified.")
       return DatasetV1Adapter(
           MapDataset(
               self,
