@@ -172,6 +172,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status EmitCustomCallFromMlir(MlirEmitterInput input);
   Status EmitConvolutionThunkFromMlir(MlirEmitterInput input);
   Status EmitGemmThunkFromMlir(MlirEmitterInput input);
   Status EmitBatchNormThunkFromMlir(MlirEmitterInput input);
@@ -187,6 +188,7 @@ class IrEmitterUnnested : public IrEmitter,
       absl::optional<int> unroll_factor_override = {});
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
+  Status EmitReduceFromMlir(MlirEmitterInput mlir_input);
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
   Status EmitSelectAndScatterFromMlir(MlirEmitterInput mlir_input);
   Status HandleTuple(HloInstruction* tuple) override;

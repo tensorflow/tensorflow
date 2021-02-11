@@ -1060,10 +1060,13 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
 }
 
 Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(custom_call));
+  return EmitCustomCallFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitCustomCallFromMlir(MlirEmitterInput input) {
   using mlir::dyn_cast;
   using mlir::isa;
-
-  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(custom_call));
 
   if (auto call = dyn_cast<mlir::lmhlo::CustomCallOp>(input.op)) {
     if (call.call_target_name() == "PadToStatic") {
@@ -1100,7 +1103,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
 #endif  // GOOGLE_CUDA
 
   return Unimplemented("No registered implementation for custom call to \"%s\"",
-                       custom_call->custom_call_target());
+                       MlirToString(input.op));
 }
 
 Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
@@ -2127,7 +2130,10 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
   TF_ASSIGN_OR_RETURN(auto mlir_input, GetMlirEmitterInput(reduce));
+  return EmitReduceFromMlir(mlir_input);
+}
 
+Status IrEmitterUnnested::EmitReduceFromMlir(MlirEmitterInput mlir_input) {
   if (GetHloOutputs(mlir_input.op).size() == 1 &&
       IsReductionFromOrToContiguousDimensions(mlir_input.op)) {
     return EmitReductionFromOrToContiguousDimensions(mlir_input);
@@ -2836,20 +2842,8 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
 }
 
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
-  MlirEmitterInput result;
-
-  TF_ASSIGN_OR_RETURN(auto sort_op, lhlo_scratch_emitter_->EmitOp(sort));
-  result.op = sort_op;
-  const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
-  auto& slice = result.extra_slice.emplace();
-  TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                      buffer_assignment.GetUniqueSlice(sort, {}));
-  slice.written = true;
-  slice.shape = sort->shape();
-
-  result.thunk_info = GetThunkInfo(sort);
-
-  return EmitSortFromMlir(result);
+  TF_ASSIGN_OR_RETURN(auto mlir_input, GetMlirEmitterInput(sort));
+  return EmitSortFromMlir(mlir_input);
 }
 
 Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
