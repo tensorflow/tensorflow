@@ -72,13 +72,33 @@ std::string GenerateAsyncUpload(const std::string& local_ptr_name,
 
 std::string GenerateBlockCoords(const int4& block_size,
                                 const int3& work_group_launch_order,
-                                bool linear_spatial, bool need_depth) {
+                                bool linear_spatial, bool linear_all,
+                                bool need_depth) {
   std::string c;
   int3 launch_remap;
   launch_remap[work_group_launch_order.x] = 0;
   launch_remap[work_group_launch_order.y] = 1;
   launch_remap[work_group_launch_order.z] = 2;
-  if (linear_spatial) {
+  if (linear_all) {
+    c += "  int linear_id = GLOBAL_ID_0;\n";
+    c += "  int DST_S = (linear_id / args.task_size_spatial) * " +
+         std::to_string(block_size.w) + ";\n";
+    c += "  int linear_spatial = linear_id % args.task_size_spatial;\n";
+    if (need_depth) {
+      c += "  int DST_X = (linear_spatial % args.task_size_x) * " +
+           std::to_string(block_size.x) + ";\n";
+      c += "  linear_spatial = linear_spatial / args.task_size_x;\n";
+      c += "  int DST_Y = (linear_spatial % args.task_size_y) * " +
+           std::to_string(block_size.y) + ";\n";
+      c += "  int DST_Z = (linear_spatial / args.task_size_y) * " +
+           std::to_string(block_size.z) + ";\n";
+    } else {
+      c += "  int DST_Y = (linear_spatial / args.task_size_x) * " +
+           std::to_string(block_size.y) + ";\n";
+      c += "  int DST_X = (linear_spatial % args.task_size_x) * " +
+           std::to_string(block_size.x) + ";\n";
+    }
+  } else if (linear_spatial) {
     if (work_group_launch_order[0] == 0) {
       c += "  int linear_spatial = GLOBAL_ID_0;\n";
     } else {
@@ -219,7 +239,9 @@ ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
 }
 
 void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
-  if (conv_params_.linear_spatial) {
+  if (conv_params_.linear_all) {
+    grid_dimension_ = 1;
+  } else if (conv_params_.linear_spatial) {
     grid_dimension_ = 2;
   }
   const bool stride_correction =
@@ -264,16 +286,16 @@ absl::Status ConvPowerVR::BindArguments(ArgumentsBinder* args) {
     RETURN_IF_ERROR(args->SetInt("kernel_size_z", kernel_size_.z));
     RETURN_IF_ERROR(args->SetInt("dilation_z", dilation_.z));
   }
-  if (conv_params_.linear_spatial) {
-    const int grid_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
-                                     conv_params_.block_size.x);
-    RETURN_IF_ERROR(args->SetInt("task_size_x", grid_x));
-  }
-  if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
-    const int task_size_y =
-        DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
-    RETURN_IF_ERROR(args->SetInt("task_size_y", task_size_y));
-  }
+  const int task_size_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
+                                        conv_params_.block_size.x);
+  const int task_size_y =
+      DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
+  const int task_size_z =
+      DivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
+  RETURN_IF_ERROR(args->SetInt("task_size_x", task_size_x));
+  RETURN_IF_ERROR(args->SetInt("task_size_y", task_size_y));
+  const int task_size_spatial = task_size_x * task_size_y * task_size_z;
+  RETURN_IF_ERROR(args->SetInt("task_size_spatial", task_size_spatial));
   return absl::OkStatus();
 }
 
@@ -288,18 +310,12 @@ int3 ConvPowerVR::GetGridSize() const {
       DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w);
   int3 wg;
 
-  if (conv_params_.linear_spatial) {
-    int grid_x = task_size_x * task_size_y;
-    if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
-      grid_x *= task_size_z;
-    }
-    return int3(grid_x, task_size_s, 1);
+  if (conv_params_.linear_all) {
+    return int3(task_size_x * task_size_y * task_size_z * task_size_s, 1, 1);
+  } else if (conv_params_.linear_spatial) {
+    return int3(task_size_x * task_size_y * task_size_z, task_size_s, 1);
   } else {
-    int grid_y = task_size_y;
-    if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
-      grid_y *= task_size_z;
-    }
-    return int3(task_size_x, grid_y, task_size_s);
+    return int3(task_size_x, task_size_y * task_size_z, task_size_s);
   }
 }
 
@@ -409,12 +425,9 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     args_.AddInt("kernel_size_z");
     args_.AddInt("dilation_z");
   }
-  if (conv_params_.linear_spatial) {
-    args_.AddInt("task_size_x");
-  }
-  if (src_def.HasAxis(Axis::DEPTH)) {
-    args_.AddInt("task_size_y");
-  }
+  args_.AddInt("task_size_x");
+  args_.AddInt("task_size_y");
+  args_.AddInt("task_size_spatial");
 
   const int wg_total_size =
       work_group_size_.x * work_group_size_.y * work_group_size_.z;
@@ -470,7 +483,9 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   }
   std::string dst_oob_check;
   if (src_def.HasAxis(Axis::DEPTH)) {
-    if (conv_params.linear_spatial) {
+    if (conv_params.linear_all) {
+      dst_oob_check = "DST_S >= args.dst_tensor.Slices()";
+    } else if (conv_params.linear_spatial) {
       dst_oob_check =
           "DST_Z >= args.dst_tensor.Depth() || DST_S >= "
           "args.dst_tensor.Slices()";
@@ -480,7 +495,9 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
           "args.dst_tensor.Depth() || DST_S >= args.dst_tensor.Slices()";
     }
   } else {
-    if (conv_params.linear_spatial) {
+    if (conv_params.linear_all) {
+      dst_oob_check = "DST_S >= args.dst_tensor.Slices()";
+    } else if (conv_params.linear_spatial) {
       dst_oob_check =
           "DST_Y >= args.dst_tensor.Height() || DST_S >= "
           "args.dst_tensor.Slices()";
@@ -492,7 +509,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   }
   c += "MAIN_FUNCTION($0) {\n";
   c += GenerateBlockCoords(conv_params.block_size, work_group_launch_order_,
-                           conv_params.linear_spatial,
+                           conv_params.linear_spatial, conv_params.linear_all,
                            src_def.HasAxis(Axis::DEPTH));
   if (!late_oob_check) {
     c += "  if (" + dst_oob_check + ") {\n";
@@ -1021,6 +1038,8 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     bool different_weights_for_height, const BHWC* dst_shape) {
   ConvParams conv_params;
   conv_params.linear_spatial = false;
+  conv_params.linear_all = false;
+  conv_params.block_size = int4(1, 1, 1, 1);
   conv_params.weights_data_type =
       DeduceDataTypeFromPrecision(definition.precision);
   conv_params.x_kernel_is_1 = x_kernel_is_1;

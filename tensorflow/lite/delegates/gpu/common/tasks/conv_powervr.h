@@ -82,6 +82,10 @@ class ConvPowerVR : public GPUOperation {
     int4 block_size;             // WHDS
     bool fixed_work_group_size;
     bool linear_spatial;  // spatial dimensions are Width/Height/Depth
+    bool linear_all;  // linear_spatial & linear_all can not be used together,
+                      // linear_all can not be used with WeightsUploadTypes
+                      // that use workgroups(subgroups) for
+                      // uploading(LOCAL_MEM_BY_THREADS for example).
     bool different_weights_for_height;
     int src_depth_loop_size;
     WeightsUploadType weights_upload_type;
