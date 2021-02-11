@@ -2912,8 +2912,6 @@ TEST_F(CopyInsertionTest, HorizontalLoopFusionNoCopy) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  // Set up the aliasing manually which normally would be set by
-  // alias_passthrough_params pass.
   ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
       /*output_index=*/{0},
       /*param_number=*/0,

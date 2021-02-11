@@ -200,17 +200,12 @@ bool HasOnlyRowMajorLayout(const HloInstruction& fusion_instr) {
 bool AnyOpndIsParamSharedAmongFusions(
     const HloInstruction* instr,
     const absl::flat_hash_set<HloInstruction*>& fusion_instrs) {
-  for (const HloInstruction* opnd : instr->operands()) {
-    if (opnd->opcode() != HloOpcode::kParameter) {
-      continue;
-    }
-    for (const HloInstruction* user : opnd->users()) {
-      if (user != instr && fusion_instrs.contains(user)) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return absl::c_any_of(instr->operands(), [&](const HloInstruction* opnd) {
+    return opnd->opcode() == HloOpcode::kParameter &&
+           absl::c_any_of(opnd->users(), [&](const HloInstruction* user) {
+             return user != instr && fusion_instrs.contains(user);
+           });
+  });
 }
 
 void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
