@@ -1808,11 +1808,12 @@ name=None))
         If not specified, elements will be processed sequentially. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
-      deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be yielded out
-        of order.  If `deterministic` is `None`, the
-        `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to run deterministically.
+      deterministic: (Optional.) When `num_parallel_calls` is specified, this
+        boolean controls the order in which the transformation produces
+        elements. If set to `False`, the transformation is allowed to yield
+        elements out of order to trade determinism for performance. If not
+        specified, the `tf.data.Options.experimental_deterministic` option
+        (`True` by default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1937,11 +1938,12 @@ name=None))
         from cycle elements synchronously with no parallelism. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
-      deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be produced out
-        of order.  If `deterministic` is `None`, the
-        `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to run deterministically.
+      deterministic: (Optional.) When `num_parallel_calls` is specified, this
+        boolean controls the order in which the transformation produces
+        elements. If set to `False`, the transformation is allowed to yield
+        elements out of order to trade determinism for performance. If not
+        specified, the `tf.data.Options.experimental_deterministic` option
+        (`True` by default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.
@@ -2673,12 +2675,12 @@ class DatasetV1(DatasetV2):
         If not specified, elements will be processed sequentially. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
-      deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be produced out
-        of order.  If `deterministic` is `None`, the
-        `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to produce elements
-        deterministically.
+      deterministic: (Optional.) When `num_parallel_calls` is specified, this
+        boolean controls the order in which the transformation produces
+        elements. If set to `False`, the transformation is allowed to yield
+        elements out of order to trade determinism for performance. If not
+        specified, the `tf.data.Options.experimental_deterministic` option
+        (`True` by default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.
