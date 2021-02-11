@@ -8389,7 +8389,7 @@ def TF_MinimumOp : TF_Op<"Minimum", [NoSideEffect, ResultsBroadcastableShape, TF
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_MirrorPadOp : TF_Op<"MirrorPad", [NoSideEffect]> {
+def TF_MirrorPadOp : TF_Op<"MirrorPad", [NoSideEffect, TF_OperandHasRank<1, 2>]> {
   let summary = "Pads a tensor with mirrored values.";
 
   let description = [{
@@ -8436,7 +8436,7 @@ rows must be the same as the rank of `input`.}]>:$paddings,
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_MirrorPadGradOp : TF_Op<"MirrorPadGrad", [NoSideEffect]> {
+def TF_MirrorPadGradOp : TF_Op<"MirrorPadGrad", [NoSideEffect, TF_OperandHasRank<1, 2>]> {
   let summary = [{
 Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor.
   }];
@@ -9315,7 +9315,7 @@ This is the opposite of `unpack`.
   let hasFolder = 1;
 }
 
-def TF_PadOp : TF_Op<"Pad", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
+def TF_PadOp : TF_Op<"Pad", [NoSideEffect, TF_FoldOperandsTransposeInterface, TF_OperandHasRank<1, 2>]> {
   let summary = "Pads a tensor with zeros.";
 
   let description = [{
@@ -9363,7 +9363,7 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
   }];
 }
 
-def TF_PadV2Op : TF_Op<"PadV2", [NoSideEffect]> {
+def TF_PadV2Op : TF_Op<"PadV2", [NoSideEffect, TF_OperandHasRank<1, 2>]> {
   let summary = "Pads a tensor.";
 
   let description = [{
