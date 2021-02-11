@@ -68,8 +68,11 @@ class Conv2DBackpropFilterGradTest(test.TestCase):
               [in_val, out_backprop_val], [in_shape, out_backprop_shape],
               output, filter_shape)
           print("conv2d_backprop_filter gradient err = %g " % err)
-          err_tolerance = 2e-3
-          self.assertLess(err, err_tolerance)
+          err_tolerance = 3e-2 if test.is_gpu_available() else 2e-3
+          self.assertLess(
+              err,
+              err_tolerance,
+              msg="padding={0},stride={1},".format(str(padding), stride))
 
   @test_util.run_deprecated_v1
   def testGradientDilatedConv(self):
