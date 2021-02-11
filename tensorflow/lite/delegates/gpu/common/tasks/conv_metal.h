@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONV_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONV_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_METAL_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_METAL_H_
 
 #include <vector>
 
@@ -25,9 +25,8 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace metal {
 
-class ConvolutionGeneric : public GPUOperation {
+class ConvolutionMetal : public GPUOperation {
  public:
   enum class WeightsUploadType {
     PRIVATE_MEM_SIMD8_BROADCAST,
@@ -54,7 +53,7 @@ class ConvolutionGeneric : public GPUOperation {
     bool y_kernel_is_1;
   };
 
-  ConvolutionGeneric() = default;
+  ConvolutionMetal() = default;
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
@@ -65,10 +64,10 @@ class ConvolutionGeneric : public GPUOperation {
   absl::Status BindArguments(ArgumentsBinder* args) override;
 
   // Move only
-  ConvolutionGeneric(ConvolutionGeneric&& kernel) = default;
-  ConvolutionGeneric& operator=(ConvolutionGeneric&& kernel) = default;
-  ConvolutionGeneric(const ConvolutionGeneric&) = delete;
-  ConvolutionGeneric& operator=(const ConvolutionGeneric&) = delete;
+  ConvolutionMetal(ConvolutionMetal&& kernel) = default;
+  ConvolutionMetal& operator=(ConvolutionMetal&& kernel) = default;
+  ConvolutionMetal(const ConvolutionMetal&) = delete;
+  ConvolutionMetal& operator=(const ConvolutionMetal&) = delete;
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
@@ -78,30 +77,31 @@ class ConvolutionGeneric : public GPUOperation {
   }
 
  private:
-  explicit ConvolutionGeneric(const OperationDef& definition)
+  explicit ConvolutionMetal(const OperationDef& definition)
       : GPUOperation(definition) {}
-  friend ConvolutionGeneric CreateConvolutionGeneric(
+  friend ConvolutionMetal CreateConvolutionMetal(
       const OperationDef& definition, const BHWC& dst_shape,
       const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
 
-  friend ConvolutionGeneric CreateConvolutionWino4x4To6x6(
+  friend ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
       const OperationDef& definition, const BHWC& dst_shape,
       const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
 
   ConvParams params_;
 };
 
-ConvolutionGeneric CreateConvolutionGeneric(const OperationDef& definition,
-                                            const BHWC& dst_shape,
-                                            const Convolution2DAttributes& attr,
-                                            const GpuInfo& gpu_info);
+ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
+                                        const BHWC& dst_shape,
+                                        const Convolution2DAttributes& attr,
+                                        const GpuInfo& gpu_info);
 
-ConvolutionGeneric CreateConvolutionWino4x4To6x6(
+ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
     const OperationDef& definition, const BHWC& dst_shape,
     const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
 
-}  // namespace metal
+bool IsConvolutionMetalSupported(const OperationDef& definition);
+
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONV_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_METAL_H_

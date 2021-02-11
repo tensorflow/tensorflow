@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal.h"
 
 #import <XCTest/XCTest.h>
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
@@ -64,10 +64,10 @@ absl::Status ConvolutionO2H2W1I1Stride1x1Dilation1x1Test(TestExecutionEnvironmen
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvolutionGeneric operation =
-          CreateConvolutionGeneric(op_def, BHWC(1, 2, 2, 2), attr, env->GetGpuInfo());
+      ConvolutionMetal operation =
+          CreateConvolutionMetal(op_def, BHWC(1, 2, 2, 2), attr, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<ConvolutionGeneric>(std::move(operation)), BHWC(1, 2, 2, 2),
+          src_tensor, absl::make_unique<ConvolutionMetal>(std::move(operation)), BHWC(1, 2, 2, 2),
           &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({4, 8, 4, 8, 2, 4, 2, 4}, dst_tensor.data, eps))
           << "Failed using precision " << ToString(precision);
@@ -100,10 +100,10 @@ absl::Status ConvolutionO1H2W2I1Stride1x1Dilation2x2Test(TestExecutionEnvironmen
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvolutionGeneric operation =
-          CreateConvolutionGeneric(op_def, BHWC(1, 1, 1, 1), attr, env->GetGpuInfo());
+      ConvolutionMetal operation =
+          CreateConvolutionMetal(op_def, BHWC(1, 1, 1, 1), attr, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<ConvolutionGeneric>(std::move(operation)), BHWC(1, 1, 1, 1),
+          src_tensor, absl::make_unique<ConvolutionMetal>(std::move(operation)), BHWC(1, 1, 1, 1),
           &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({10}, dst_tensor.data, eps))
           << "Failed using precision " << ToString(precision);
@@ -136,10 +136,10 @@ absl::Status ConvolutionO1H3W3I1Stride1x1Dilation1x1Test(TestExecutionEnvironmen
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvolutionGeneric operation =
-          CreateConvolutionGeneric(op_def, BHWC(1, 1, 1, 1), attr, env->GetGpuInfo());
+      ConvolutionMetal operation =
+          CreateConvolutionMetal(op_def, BHWC(1, 1, 1, 1), attr, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<ConvolutionGeneric>(std::move(operation)), BHWC(1, 1, 1, 1),
+          src_tensor, absl::make_unique<ConvolutionMetal>(std::move(operation)), BHWC(1, 1, 1, 1),
           &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({11}, dst_tensor.data, eps))
           << "Failed using precision " << ToString(precision);
@@ -172,10 +172,10 @@ absl::Status ConvolutionO2H1W1I2Stride1x1Dilation1x1Test(TestExecutionEnvironmen
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvolutionGeneric operation =
-          CreateConvolutionGeneric(op_def, BHWC(1, 2, 1, 2), attr, env->GetGpuInfo());
+      ConvolutionMetal operation =
+          CreateConvolutionMetal(op_def, BHWC(1, 2, 1, 2), attr, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<ConvolutionGeneric>(std::move(operation)), BHWC(1, 2, 1, 2),
+          src_tensor, absl::make_unique<ConvolutionMetal>(std::move(operation)), BHWC(1, 2, 1, 2),
           &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({4, 8, 4, 8}, dst_tensor.data, eps))
           << "Failed using precision " << ToString(precision);
@@ -208,10 +208,10 @@ absl::Status ConvolutionO1H1W1I1Stride2x2Dilation1x1Test(TestExecutionEnvironmen
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvolutionGeneric operation =
-          CreateConvolutionGeneric(op_def, BHWC(1, 2, 2, 1), attr, env->GetGpuInfo());
+      ConvolutionMetal operation =
+          CreateConvolutionMetal(op_def, BHWC(1, 2, 2, 1), attr, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<ConvolutionGeneric>(std::move(operation)), BHWC(1, 2, 2, 1),
+          src_tensor, absl::make_unique<ConvolutionMetal>(std::move(operation)), BHWC(1, 2, 2, 1),
           &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({2, 4, 8, 16}, dst_tensor.data, eps))
           << "Failed using precision " << ToString(precision);
@@ -267,8 +267,8 @@ absl::Status Winograd4x4To6x6Test(TestExecutionEnvironment* env) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
 
       TensorFloat32 output0;
-      auto gpu_op0 = CreateConvolutionGeneric(op_def, dst_shape, attr, env->GetGpuInfo());
-      auto op0_ptr = absl::make_unique<ConvolutionGeneric>(std::move(gpu_op0));
+      auto gpu_op0 = CreateConvolutionMetal(op_def, dst_shape, attr, env->GetGpuInfo());
+      auto op0_ptr = absl::make_unique<ConvolutionMetal>(std::move(gpu_op0));
       RETURN_IF_ERROR(
           env->ExecuteGPUOperation(src_tensor, std::move(op0_ptr), dst_shape, &output0));
 
@@ -276,8 +276,9 @@ absl::Status Winograd4x4To6x6Test(TestExecutionEnvironment* env) {
       std::unique_ptr<GPUOperation> op1_ptr =
           absl::make_unique<Winograd4x4To36>(std::move(gpu_op1));
 
-      auto gpu_op2 = CreateConvolutionWino4x4To6x6(op_def, conv_shape, attr, env->GetGpuInfo());
-      auto op2_ptr = absl::make_unique<ConvolutionGeneric>(std::move(gpu_op2));
+      auto gpu_op2 =
+          CreateConvolutionMetalWino4x4To6x6(op_def, conv_shape, attr, env->GetGpuInfo());
+      auto op2_ptr = absl::make_unique<ConvolutionMetal>(std::move(gpu_op2));
 
       auto gpu_op3 = CreateWinograd36To4x4(op_def, attr.bias);
       std::unique_ptr<GPUOperation> op3_ptr =

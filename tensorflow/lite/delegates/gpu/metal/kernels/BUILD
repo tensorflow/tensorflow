@@ -15,13 +15,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-cc_library(
-    name = "kernels",
-    deps = [
-        ":conv",
-    ],
-)
-
 objc_library(
     name = "add_test_lib",
     testonly = 1,
@@ -68,33 +61,14 @@ ios_unit_test(
     deps = [":concat_test_lib"],
 )
 
-cc_library(
-    name = "conv",
-    srcs = ["conv.cc"],
-    hdrs = ["conv.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common:winograd_util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
-        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "conv_test_lib",
     testonly = 1,
     srcs = ["conv_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":conv",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
     ],
@@ -672,7 +646,6 @@ objc_library(
     ],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":conv",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:precision",
@@ -681,6 +654,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
