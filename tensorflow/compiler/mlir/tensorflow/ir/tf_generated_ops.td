@@ -12716,6 +12716,47 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_SaveSlicesOp : TF_Op<"SaveSlices", []> {
+  let summary = "Saves input tensors slices to disk.";
+
+  let description = [{
+This is like `Save` except that tensors can be listed in the saved file as being
+a slice of a larger tensor.  `shapes_and_slices` specifies the shape of the
+larger tensor and the slice that this tensor covers. `shapes_and_slices` must
+have as many elements as `tensor_names`.
+
+Elements of the `shapes_and_slices` input must either be:
+
+*  The empty string, in which case the corresponding tensor is
+   saved normally.
+*  A string of the form `dim0 dim1 ... dimN-1 slice-spec` where the
+   `dimI` are the dimensions of the larger tensor and `slice-spec`
+   specifies what part is covered by the tensor to save.
+
+`slice-spec` itself is a `:`-separated list: `slice0:slice1:...:sliceN-1`
+where each `sliceI` is either:
+
+*  The string `-` meaning that the slice covers all indices of this dimension
+*  `start,length` where `start` and `length` are integers.  In that
+   case the slice covers `length` indices starting at `start`.
+
+See also `Save`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element. The name of the file to which we write the
+tensor.}]>:$filename,
+    Arg<TF_StrTensor, [{Shape `[N]`. The names of the tensors to be saved.}]>:$tensor_names,
+    Arg<TF_StrTensor, [{Shape `[N]`.  The shapes and slice specifications to use when
+saving the tensors.}]>:$shapes_and_slices,
+    Arg<Variadic<TF_Tensor>, [{`N` tensors to save.}]>:$data
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<3>;
+}
+
 def TF_SaveV2Op : TF_Op<"SaveV2", []> {
   let summary = "Saves tensors in V2 checkpoint format.";
 
