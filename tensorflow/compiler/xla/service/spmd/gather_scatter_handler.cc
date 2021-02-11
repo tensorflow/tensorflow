@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
@@ -285,17 +286,15 @@ StatusOr<HloInstruction*> ParititonTrivialIndexedOperandDimension(
       replicated_dim.push_back(
           operand.sharding().tile_assignment().num_dimensions() - 1);
     }
-    auto sharding_grouped =
-        GroupShardingOnDims(operand.sharding(), replicated_dim);
-    auto per_group_partitioner_state = CreatePerGroupPartitioningState(
-        operand.state(), sharding_grouped.device_groups, b);
-    auto collective_ops_creator =
-        per_group_partitioner_state.collective_ops_creator;
-    auto ar = collective_ops_creator.create_cross_partition_all_reduce(
-        b, filtered,
+    // All-reduce along all dims in operand sharding -- this is OK because the
+    // operand is sharded only on trivially sliced dimensions.
+    std::vector<int64> all_dims(operand.base_shape().rank());
+    absl::c_iota(all_dims, 0);
+    auto ar = operand.state().partitioner->AllReduceAlongShardingDims(
+        b, filtered, operand.sharding(), operand.state().next_channel_id,
+        all_dims, operand.state().collective_ops_creator,
         MakeBinaryAdd(filtered->shape().element_type(),
-                      per_group_partitioner_state.module),
-        {}, visitor->NewChannel());
+                      operand.state().module));
     VLOG(5) << "[Gather partitioning]: Partitioned as trivial operand "
                "batch_dim slice";
     ar->set_sharding(HloSharding::Replicate());
@@ -574,8 +573,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
               update_dim_to_index_dim);
       CHECK(new_updates_sharding.has_value());
       updates = updates.Reshard(*new_updates_sharding);
-      // Update collective_ops_creator and partition_id for partial replicate.
-      auto collective_ops_creator = collective_ops_creator_;
+      // Update partition_id for partial replicate.
       auto partition_id = partition_id_;
       if (indices.sharding().ReplicateOnLastTileDim()) {
         auto sharding_grouped = GroupShardingOnDims(
@@ -583,8 +581,6 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
             {indices.sharding().tile_assignment().num_dimensions() - 1});
         auto per_group_partitioner_state = CreatePerGroupPartitioningState(
             indices.state(), sharding_grouped.device_groups, &b_);
-        collective_ops_creator =
-            per_group_partitioner_state.collective_ops_creator;
         partition_id = per_group_partitioner_state.partition_id;
       }
       // To avoid accumulating the initial operand multiple times during
@@ -600,9 +596,13 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
               identity, operand.Replicate().hlo()));
       auto pscatter = b_.AddInstruction(scatter->CloneWithNewOperands(
           scatter->shape(), {select_operand, indices.hlo(), updates.hlo()}));
-      auto all_reduce =
-          collective_ops_creator.create_cross_partition_all_reduce(
-              &b_, pscatter, scatter->to_apply(), {}, NewChannel());
+      // All-reduce along all dims in operand sharding -- this is OK because the
+      // operand is not sharded on index_vector_dim.
+      std::vector<int64> all_dims(indices.base_shape().rank());
+      absl::c_iota(all_dims, 0);
+      auto all_reduce = operand.state().partitioner->AllReduceAlongShardingDims(
+          &b_, pscatter, indices.sharding(), indices.state().next_channel_id,
+          all_dims, collective_ops_creator_, scatter->to_apply());
       all_reduce->set_sharding(HloSharding::Replicate());
       SetPartitionedHlo(hlo, [&]() {
         return PartitionedHlo(all_reduce, hlo->shape(), MakePartitioningState())

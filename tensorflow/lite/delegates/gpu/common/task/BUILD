@@ -69,6 +69,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:compiler_options",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_tensor",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
         "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "@com_google_absl//absl/strings",
@@ -78,6 +79,15 @@ cc_library(
 cc_library(
     name = "gpu_tensor",
     hdrs = ["gpu_tensor.h"],
+)
+
+cc_library(
+    name = "profiling_info",
+    srcs = ["profiling_info.cc"],
+    hdrs = ["profiling_info.h"],
+    deps = [
+        "@com_google_absl//absl/time",
+    ],
 )
 
 flatbuffer_cc_library(
@@ -181,10 +191,13 @@ cc_library(
 
 cc_library(
     name = "weights_conversion",
+    srcs = ["weights_conversion.cc"],
     hdrs = ["weights_conversion.h"],
     deps = [
+        ":weights_layout",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
@@ -194,6 +207,7 @@ cc_library(
 
 cc_library(
     name = "weights_layout",
+    srcs = ["weights_layout.cc"],
     hdrs = ["weights_layout.h"],
 )
 

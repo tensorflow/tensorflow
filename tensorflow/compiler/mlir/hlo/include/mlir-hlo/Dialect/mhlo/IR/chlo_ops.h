@@ -36,7 +36,7 @@ class HloClientDialect : public Dialect {
   void initialize();
 
  public:
-  explicit HloClientDialect(MLIRContext *context)
+  explicit HloClientDialect(MLIRContext* context)
       : Dialect(getDialectNamespace(), context,
                 TypeID::get<HloClientDialect>()) {
     initialize();
@@ -73,6 +73,8 @@ Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val);
 
 Value getConstantLikeInfValue(OpBuilder& b, Location loc, Value val,
                               bool negative);
+
+Value getConstantLikeSmallestFiniteValue(OpBuilder& b, Location loc, Value val);
 
 }  // namespace chlo
 }  // namespace mlir

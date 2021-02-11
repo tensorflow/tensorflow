@@ -531,6 +531,7 @@ def TFL_AbsOp : TFL_Op<"abs", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
+    SameOperandsAndResultsScale,
     NoQuantizableResult]> {
   let summary = "Absolute value operator";
 
@@ -4680,6 +4681,69 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
   let hasOptions = 1;
 
   let customOption = "Conv3DOptions";
+}
+
+def TFL_ComplexAbsOp : TFL_Op<"complex_abs", [
+  NoSideEffect,
+  SameOperandsAndResultShape]> {
+  let summary = "Computes the complex absolute value of a tensor.";
+
+  let description = [{
+Given a tensor `x` of complex numbers, this operation returns a tensor of type
+`float` or `double` that is the absolute value of each element in `x`. All
+elements in `x` must be complex numbers of the form \\(a + bj\\). The absolute
+value is computed as \\( \sqrt{a^2 + b^2}\\).
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[Complex<F<32>>, Complex<F<64>>]>:$input
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, F64]>:$output
+  );
+}
+
+def TFL_RealOp : TFL_Op<"real", [
+  NoSideEffect,
+  SameOperandsAndResultShape]> {
+  let summary = "Returns the real part of a complex number.";
+
+  let description = [{
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the real part of each element in `input`. All elements in
+`input` must be complex numbers of the form \\(a + bj\\), where *a* is the real
+ part returned by this operation and *b* is the imaginary part.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[Complex<F<32>>, Complex<F<64>>]>:$input
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, F64]>:$output
+  );
+}
+
+def TFL_ImagOp : TFL_Op<"imag", [
+  NoSideEffect,
+  SameOperandsAndResultShape]> {
+  let summary = "Returns the imaginary part of a complex number.";
+
+  let description = [{
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the imaginary part of each element in `input`. All
+elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
+is the real part and *b* is the imaginary part returned by this operation.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[Complex<F<32>>, Complex<F<64>>]>:$input
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, F64]>:$output
+  );
 }
 
 #endif // TFL_OPS

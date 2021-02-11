@@ -44,7 +44,7 @@ namespace tensorrt {
 // by the TensorRT builder to select the best kernel for the optimum value among
 // those kernels that are valid for all input tensors in the [min, max] range.
 struct OptimizationProfileConfig {
-  // Length of vector == num_inputs to engine
+  // Length of vector == num_inputs to engine.
   std::vector<nvinfer1::Dims> min;
   std::vector<nvinfer1::Dims> opt;
   std::vector<nvinfer1::Dims> max;
@@ -57,7 +57,14 @@ struct OptimizationProfileConfig {
   }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // Sets the stored min/opt/max dimensions for profile.
+  // Sets the min/opt/max dimensions for profile.
+  //
+  // The given min/opt/max dimensions should satisfy the condition
+  // min <= opt <= max. Additionally TRT requires that the min/opt/max values
+  // are compatible with the network input. Compatibility is defined the
+  // following way: let dim be the shape of an input binding and min/opt/max the
+  // corresponding profile dims. TRT requires that dim.d[k] must be -1 if
+  // (min.d[k] != dim.d[k] || opt.d[k] != dim.d[k] || max.d[k] != dim.d[k]).
   //
   // Parameters:
   // network - TensorRT network, used to enumerate all the input tensors
@@ -70,7 +77,10 @@ struct OptimizationProfileConfig {
       return errors::Internal("Incorrect number of profile config parameters");
     }
     for (int i = 0; i < n_inputs; i++) {
-      const char* name = network->getInput(i)->getName();
+      const nvinfer1::ITensor* input = network->getInput(i);
+      const char* name = input->getName();
+      VLOG(2) << "Setting input dimensions for " << name << ", "
+              << ::tensorflow::tensorrt::DebugString(opt[i]);
       profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN, min[i]);
       profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT, opt[i]);
       profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX, max[i]);
@@ -105,6 +115,12 @@ struct OptimizationProfileConfig {
   }
 };
 
+// Optimization profile generation strategies.
+enum class ProfileStrategy {
+  kImplicitBatchModeCompatible,
+  kOptimal,
+};
+
 // Manages Optimization profiles during TRT Engine construction.
 //
 // An optimization profile describes a range of dimensions for each TRT network
@@ -117,10 +133,12 @@ struct OptimizationProfileConfig {
 // before the engine is created.
 class TrtShapeOptimizationProfile {
  public:
-  TrtShapeOptimizationProfile() {}
+  TrtShapeOptimizationProfile(
+      ProfileStrategy strategy = ProfileStrategy::kImplicitBatchModeCompatible)
+      : strategy_(strategy) {}
 
-  // Stores input shape information during profile_generation_mode
-  void AddShape(std::vector<TensorShape> shapes) {
+  // Stores input shape information during profile_generation_mode.
+  void AddShape(const std::vector<TensorShape>& shapes) {
     input_shapes_.insert(shapes);
     VLOG(1) << "Collected shape(s) " << DebugString(shapes) << " for profiles.";
   }
@@ -130,7 +148,7 @@ class TrtShapeOptimizationProfile {
   // Returns the profile number that should be used to execute the network with
   // the given input shapes. Returns -1 if none of cached profiles are
   // compatible with the given input shapes.
-  int GetProfileNumber(std::vector<TensorShape> shapes);
+  int GetProfileNumber(const std::vector<TensorShape>& shapes);
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Creates optimization profiles and add them to the builder config.
@@ -144,30 +162,55 @@ class TrtShapeOptimizationProfile {
                                  std::vector<ExecutionContext>& exec_context,
                                  TRTBaseAllocator* memory_allocator);
 
-  // Maps input vector shapes to TRT Optimization profiles (min, max, opt) i.e.
-  // maps input_shapes_ to profiles_
-  void InitProfiles();
+  // Creates optimization profiles profiles_ for the set of concrete input
+  // shapes collected in input_shapes_. The input_partial_shapes of the network
+  // is used to ensure that the created optimization profiles are compatible
+  // with the network.
+  void InitProfiles(
+      const std::vector<PartialTensorShape>& input_partial_shapes);
 
   // Returns number of created profiles.
   int GetNumProfiles() const;
 
-  // Restores profiles from the engine (used after deserialization)
+  bool HasShape() const { return !input_shapes_.empty(); }
+  bool NeedProfiles() const { return need_profiles_; }
+
+  // Restores profiles from the engine (used after deserialization).
   Status RestoreProfiles(const nvinfer1::ICudaEngine* engine);
 
  private:
-  // Set of input shape vetors that we collect during profile_generation_mode
+  // Set of input shape vetors that we collect during profile_generation_mode.
   std::unordered_set<std::vector<TensorShape>, VectorTensorShapeHasher>
       input_shapes_;
 
-  // The optimization profiles generated from input_shapes_
+  // The optimization profiles generated from input_shapes_.
   std::vector<OptimizationProfileConfig> profiles_;
 
+  // Whether the network has any shape tensors.
+  bool has_shape_tensor_;
+
+  // Whether the network/engine requires optimization profiles.
+  bool need_profiles_ = false;
+
+  // Whether an input tensor is a shape tensor.
+  std::vector<bool> is_shape_tensor_;
+
+  // Optimization profile generation strategy.
+  ProfileStrategy strategy_;
+
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  /// Adds optimization profiles to the builder config
+  // Adds optimization profiles to the builder config.
   Status AddProfiles(nvinfer1::IBuilder* builder,
                      nvinfer1::IBuilderConfig* config,
                      const nvinfer1::INetworkDefinition* network);
 #endif
+
+  void SetShapeTensorMask(const nvinfer1::INetworkDefinition* network);
+  void SetShapeTensorMask(
+      const std::vector<PartialTensorShape>& input_partial_shapes);
+
+  void ImplicitBatchModeCompatibleStrategy();
+  void OptimalStrategy();
 };
 
 }  // namespace tensorrt

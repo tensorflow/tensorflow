@@ -751,6 +751,46 @@ PyTpuExecutable::ExecuteOnLocalDevices(
   return wrapped_results;
 }
 
+StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
+PyTpuExecutable::ExecuteShardedOnLocalDevices(
+    absl::Span<const std::vector<PyTpuBuffer*>> args) {
+  std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>> output_buffers;
+  TF_RET_CHECK(!args.empty());
+  int num_computations = args.front().size();
+  for (const auto& arg : args) {
+    if (arg.size() != num_computations) {
+      return xla::InvalidArgument(
+          "Expected args to execute_sharded_on_local_devices to have %d "
+          "shards, got: [%s]",
+          num_computations,
+          absl::StrJoin(
+              args, ", ",
+              [](std::string* out, const std::vector<PyTpuBuffer*>& arg) {
+                out->append(std::to_string(arg.size()));
+              }));
+    }
+  }
+  std::vector<std::vector<PyTpuBuffer*>> arg_buffers(num_computations);
+  for (int computation = 0; computation < num_computations; ++computation) {
+    arg_buffers[computation].resize(args.size());
+    absl::c_transform(
+        args, arg_buffers[computation].begin(),
+        [&](const std::vector<PyTpuBuffer*>& arg) { return arg[computation]; });
+  }
+  TF_ASSIGN_OR_RETURN(output_buffers, ExecuteOnLocalDevices(arg_buffers));
+  int num_output_buffers = output_buffers[0].size();
+  std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>> outputs;
+  outputs.resize(num_output_buffers);
+  for (int buffer_id = 0; buffer_id < num_output_buffers; ++buffer_id) {
+    outputs[buffer_id].reserve(num_computations);
+    for (int computation = 0; computation < num_computations; ++computation) {
+      outputs[buffer_id].push_back(
+          std::move(output_buffers[computation][buffer_id]));
+    }
+  }
+  return outputs;
+}
+
 /*static*/ StatusOr<std::unique_ptr<PyTpuExecutable>> PyTpuExecutable::Compile(
     const XlaComputation& computation,
     absl::optional<std::vector<Shape>> argument_layouts,

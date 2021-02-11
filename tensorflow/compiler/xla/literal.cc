@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -830,15 +831,13 @@ StatusOr<Literal> LiteralBase::Reshape(
 
 Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
   CHECK(shape().IsArray()) << "Tuple is not supported for transpose";
-  CHECK(IsPermutation(permutation, shape().rank()))
+  CHECK(shape().rank() == permutation.size() && IsPermutation(permutation))
       << "Given permutation is not a permutation of dimension numbers";
   // To transpose the array, we just permute the dimensions and layout, and
   // do a straight memory copy of the raw data set.
   // This is considerably faster than iterating over every array element using
   // the EachCell<>() and Set<>() APIs.
-  std::vector<int64> inverse_permutation = InversePermutation(permutation);
-  Shape permuted_shape =
-      ShapeUtil::PermuteDimensions(inverse_permutation, shape());
+  Shape permuted_shape = ShapeUtil::PermuteDimensions(permutation, shape());
   // Replace the layout with one affine to this shape, such that a
   // transpose operation can be performed by leaving the flat values
   // representation intact.
@@ -852,6 +851,7 @@ Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
   // dimension has within the transposed array, a layout is affine if
   // MinMaj(Di) == TMinMaj(T(Di)), with TMinMaj() being the minor to major
   // vector of the affine layout.
+  std::vector<int64> inverse_permutation = InversePermutation(permutation);
   CHECK(LayoutUtil::IsDenseArray(permuted_shape));
   Layout* layout = permuted_shape.mutable_layout();
   layout->clear_minor_to_major();

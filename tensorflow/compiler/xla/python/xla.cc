@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "numpy/arrayobject.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/attr.h"
@@ -73,20 +72,6 @@ bool IsOptimizedBuild() {
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
-  // Caution: import_array1 works by initializing a static variable
-  // (PyArray_API) which is *defined* in a NumPy header. import_array1() must
-  // therefore be called from the *same translation unit* as any users of
-  // NumPy C APIs.
-  auto init_numpy = []() -> bool {
-    // import_array1 might look like a function. It's not. It's a macro that
-    // calls `return`, which is why we wrap it in this strange-looking lambda.
-    import_array1(false);
-    return true;
-  };
-  if (!init_numpy()) {
-    throw std::runtime_error("Unable to initialize Numpy API");
-  }
-
   CHECK(tensorflow::RegisterNumpyBfloat16());
 
   // Types
@@ -142,14 +127,13 @@ PYBIND11_MODULE(xla_extension, m) {
           [](const ClientAndPtr<PjRtDevice>& device) { return device.client; })
       .def("__str__", &PjRtDevice::DebugString)
       .def("transfer_to_infeed",
-           [](const PjRtDevice& device, const LiteralSlice& literal) {
+           [](PjRtDevice& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
              return device.TransferToInfeed(literal);
            })
       .def("transfer_from_outfeed",
-           [](const PjRtDevice& device,
-              const Shape& shape) -> StatusOr<py::object> {
+           [](PjRtDevice& device, const Shape& shape) -> StatusOr<py::object> {
              GlobalPyRefManager()->CollectGarbage();
              std::shared_ptr<Literal> literal;
              {

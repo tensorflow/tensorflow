@@ -14,7 +14,9 @@
 # ==============================================================================
 """Python TF-Lite QuantizationDebugger."""
 import collections
-from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence
+import csv
+from typing import (Any, Callable, Dict, IO, Iterable, List, Mapping, Optional,
+                    Sequence, Tuple)
 
 import numpy as np
 import tensorflow as tf
@@ -31,7 +33,18 @@ _DEFAULT_LAYER_DEBUG_METRICS = {
 }
 
 
-@tf_export.tf_export(v1=['lite.experimental.QuantizationDebugOptions'])
+def _get_quant_params(
+    tensor_detail: Mapping[str, Any]) -> Optional[Tuple[float, int]]:
+  """Returns first scale and zero point from tensor detail, if present."""
+  quant_params = tensor_detail['quantization_parameters']
+  if not quant_params:
+    return None
+  if quant_params['scales'] and quant_params['zero_points']:
+    return (quant_params['scales'][0], quant_params['zero_points'][0])
+  return None
+
+
+@tf_export.tf_export('lite.experimental.QuantizationDebugOptions')
 class QuantizationDebugOptions:
   """Debug options to set up a given QuantizationDebugger."""
 
@@ -58,7 +71,7 @@ class QuantizationDebugOptions:
     self.model_debug_metrics = model_debug_metrics
 
 
-@tf_export.tf_export(v1=['lite.experimental.QuantizationDebugger'])
+@tf_export.tf_export('lite.experimental.QuantizationDebugger')
 class QuantizationDebugger:
   """Debugger for Quantized TensorFlow Lite debug mode models.
 
@@ -107,6 +120,14 @@ class QuantizationDebugger:
     if self._debug_options.model_debug_metrics:
       self._float_interpreter = tf.lite.Interpreter(float_model_path,
                                                     float_model_content)
+
+    # TODO(b/177749613) : Fix the dependency on tf.lite._get_ops_details()
+    # Following code is needed to get op's name from the output tensor index,
+    # since NumericVerify op only provides its quantized input tensor index.
+    self._defining_op = dict()
+    for op_info in self._quant_interpreter._get_ops_details():  # pylint: disable=protected-access
+      self._defining_op.update(
+          {tensor_idx: op_info['op_name'] for tensor_idx in op_info['outputs']})
 
     self._numeric_verify_tensor_details = None
     if not self._get_numeric_verify_tensor_details():
@@ -204,12 +225,10 @@ class QuantizationDebugger:
         for metric_name, metric in model_statistics.items()
     }
 
-  def _set_input_tensors(
-      self,
-      interpreter: tf.lite.Interpreter,
-      tensor_data: Sequence[np.ndarray],
-      initialize: bool,
-  ) -> None:
+  def _set_input_tensors(self,
+                         interpreter: tf.lite.Interpreter,
+                         tensor_data: Sequence[np.ndarray],
+                         initialize: bool) -> None:
     """Sets input tensors into TFLite model Interpreter.
 
     Args:
@@ -222,21 +241,24 @@ class QuantizationDebugger:
       ValueError: when inputs can't be set, or size of provided inputs does not
       match size of model inputs.
     """
-    input_indices = [
-        detail['index'] for detail in interpreter.get_input_details()
-    ]
-    if len(input_indices) != len(tensor_data):
+    input_details = interpreter.get_input_details()
+    if len(input_details) != len(tensor_data):
       raise ValueError(
           'Number of inputs provided ({}) does not match number of inputs to '
-          'the model ({})'.format(len(tensor_data), len(input_indices)))
+          'the model ({})'.format(len(tensor_data), len(input_details)))
 
     if initialize:
-      for input_idx, tensor in zip(input_indices, tensor_data):
-        interpreter.resize_tensor_input(input_idx, tensor.shape)
+      for input_detail, tensor in zip(input_details, tensor_data):
+        interpreter.resize_tensor_input(input_detail['index'], tensor.shape)
       interpreter.allocate_tensors()
 
-    for input_idx, tensor in zip(input_indices, tensor_data):
-      interpreter.set_tensor(input_idx, tensor)
+    for input_detail, tensor in zip(input_details, tensor_data):
+      if tensor.dtype == np.float32 and input_detail['dtype'] == np.int8:
+        quant_params = _get_quant_params(input_detail)
+        if quant_params:
+          scale, zero_point = quant_params
+          tensor = np.round((tensor / scale) + zero_point).astype(np.int8)
+      interpreter.set_tensor(input_detail['index'], tensor)
 
   def _get_output_tensors(self,
                           interpreter: tf.lite.Interpreter) -> List[np.ndarray]:
@@ -248,10 +270,19 @@ class QuantizationDebugger:
     Returns:
       a list of numpy arrays representing output tensor results.
     """
-    return [
-        interpreter.get_tensor(tensor['index'])
-        for tensor in interpreter.get_output_details()
-    ]
+
+    outputs = []
+    for output_detail in interpreter.get_output_details():
+      tensor = interpreter.get_tensor(output_detail['index'])
+      if output_detail['dtype'] == np.int8:
+        quant_params = _get_quant_params(output_detail)
+        if quant_params:
+          scale, zero_point = quant_params
+          tensor = ((tensor.astype(np.float32) - zero_point) * scale).astype(
+              np.float32)
+      outputs.append(tensor)
+
+    return outputs
 
   def _get_numeric_verify_tensor_details(self) -> List[str]:
     """Returns all names of all tensors from NumericVerify op."""
@@ -261,3 +292,28 @@ class QuantizationDebugger:
           if detail['name'].startswith('NumericVerify')
       ]
     return self._numeric_verify_tensor_details
+
+  def _get_operand_index(self, numeric_verify_name: str) -> int:
+    """Gets the index of NumericVerify Op's quantized input tensor."""
+    tensor_idx = numeric_verify_name.rsplit(':', 1)[-1]
+    return int(tensor_idx)
+
+  def layer_statistics_dump(self, file: IO[str]) -> None:
+    """Dumps layer statistics into file, in csv format.
+
+    Args:
+      file: file, or file-like object to write.
+    """
+    fields = ['op_name', 'op_idx'] + list(
+        self._layer_debug_metrics.keys()) + ['scales', 'zero_points']
+    writer = csv.DictWriter(file, fields)
+    writer.writeheader()
+    for name, metrics in self.layer_statistics.items():
+      data = metrics.copy()
+      data['op_idx'] = self._get_operand_index(name)
+      data['op_name'] = self._defining_op[data['op_idx']]
+      details = self._quant_interpreter._get_tensor_details(data['op_idx'])  # pylint: disable=protected-access
+      data['scales'], data['zero_points'] = (
+          details['quantization_parameters']['scales'],
+          details['quantization_parameters']['zero_points'])
+      writer.writerow(data)

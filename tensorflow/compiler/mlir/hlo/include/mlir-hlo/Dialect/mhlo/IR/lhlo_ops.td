@@ -380,12 +380,6 @@ def LHLO_BatchNormTrainingOp : LHLO_Op<"batch_norm_training", []>,
   );
 }
 
-// TODO(timshen): add a custom verifier.
-def LHLO_BitcastOp: LHLO_Op<"bitcast", []> {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
-}
-
 def LHLO_BroadcastOp : LHLO_Op<"broadcast",
       []>, BASE_HLO_BroadcastOp {
   let arguments = (ins
@@ -641,7 +635,10 @@ def LHLO_TriangularSolveOp: LHLO_Op<"triangular_solve", [SameOperandsElementType
     BoolAttr:$left_side,
     BoolAttr:$lower,
     BoolAttr:$unit_diagonal,
-    HLO_TransposeAttr:$transpose_a
+    HLO_TransposeAttr:$transpose_a,
+    HLO_LayoutAttr:$layout_a,
+    HLO_LayoutAttr:$layout_b,
+    HLO_LayoutAttr:$layout_output
   );
 }
 

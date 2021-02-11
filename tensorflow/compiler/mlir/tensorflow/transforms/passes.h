@@ -197,7 +197,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass();
 // in the same function are placed on the same host. Each result of the per-host
 // function will have a "tf.device" attribute which specifies the device
 // assignment of the result.
-std::unique_ptr<FunctionPass> CreateClusterTFOpsByHostPass();
+std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateClusterTFOpsByHostPass();
 
 // Creates a pass to insert tf_device.send and tf_device.receive ops to make
 // sure any argument of any op is on the same host of the op itself.

@@ -75,6 +75,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "BatchCholesky",
           "BatchMatMul",
           "BatchMatMulV2",
+          "BatchMatrixDeterminant",
           "BatchMatrixDiag",
           "BatchMatrixDiagPart",
           "BatchMatrixInverse",
@@ -158,6 +159,8 @@ const std::set<std::string>& GetFlexAllowlist() {
           "DenseToSparseSetOperation",
           "DepthToSpace",
           "DepthwiseConv2dNative",
+          "DepthwiseConv2dNativeBackpropFilter",
+          "DepthwiseConv2dNativeBackpropInput",
           "Dequantize",
           "DestroyResourceOp",
           "DestroyTemporaryVariable",
@@ -257,12 +260,14 @@ const std::set<std::string>& GetFlexAllowlist() {
           "LinSpace",
           "ListDiff",
           "Log",
+          "LogMatrixDeterminant",
           "LogSoftmax",
           "LogicalAnd",
           "LogicalNot",
           "LogicalOr",
           "LoopCond",
           "MatMul",
+          "MatrixDeterminant",
           "MatrixDiag",
           "MatrixDiagPart",
           "MatrixDiagPartV2",
@@ -405,6 +410,8 @@ const std::set<std::string>& GetFlexAllowlist() {
           "RequantizationRange",
           "Requantize",
           "Reshape",
+          "ResizeBicubic",
+          "ResizeBicubicGrad",
           "ResizeBilinear",
           "ResizeBilinearGrad",
           "ResizeNearestNeighbor",
@@ -581,6 +588,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "StringToHashBucket",
           "StringToHashBucketFast",
           "StringToHashBucketStrong",
+          "StringToNumber",
           "Sub",
           "Substr",
           "Sum",
@@ -714,8 +722,7 @@ const std::set<std::string>& GetFlexAllowlist() {
   // NOLINTNEXTLINE
 }
 
-// Allow the tf.text ops if they are registered in the global op registry.
-bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
+const std::set<std::string>& GetTFTextFlexAllowlist() {
   // LINT.IfChange
   static const std::set<std::string>* tftext_flex_ops =
       new std::set<std::string>({
@@ -739,12 +746,16 @@ bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
       });
   // LINT.ThenChange(//tensorflow/lite/g3doc/guide/op_select_allowlist.md)
 
-  if (tftext_flex_ops->count(op_name) == 0) return false;
+  return *tftext_flex_ops;
+}
+
+// Allow the tf.text ops if they are registered in the global op registry.
+bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
+  if (GetTFTextFlexAllowlist().count(op_name) == 0) return false;
   return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
 }
 
-// Allow the sentencepiece ops if they are registered in the global op registry.
-bool IsAllowedSentencePieceOpForFlex(const std::string& op_name) {
+const std::set<std::string>& GetSentencePieceFlexAllowlist() {
   // LINT.IfChange
   static const std::set<std::string>* sentencepiece_flex_ops =
       new std::set<std::string>({
@@ -757,7 +768,12 @@ bool IsAllowedSentencePieceOpForFlex(const std::string& op_name) {
       });
   // LINT.ThenChange(//tensorflow/lite/g3doc/guide/op_select_allowlist.md)
 
-  if (sentencepiece_flex_ops->count(op_name) == 0) return false;
+  return *sentencepiece_flex_ops;
+}
+
+// Allow the sentencepiece ops if they are registered in the global op registry.
+bool IsAllowedSentencePieceOpForFlex(const std::string& op_name) {
+  if (GetSentencePieceFlexAllowlist().count(op_name) == 0) return false;
   return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
 }
 

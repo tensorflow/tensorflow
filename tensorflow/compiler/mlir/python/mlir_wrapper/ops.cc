@@ -180,7 +180,7 @@ void init_ops(py::module& m) {
                         mlir::Value y) {
         return opb
             .create<mlir::TF::NotEqualOp>(
-                loc, x, y, mlir::BoolAttr::get(true, opb.getContext()))
+                loc, x, y, mlir::BoolAttr::get(opb.getContext(), true))
             .getOperation();
       });
 

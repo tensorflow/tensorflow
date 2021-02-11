@@ -36,6 +36,9 @@ message TaskInfo {
   int64 task_id = 2;
   // The id of the job that the task is part of.
   int64 job_id = 3;
+  // The round to start reading from the task in. For non-round-robin reads,
+  // this is always 0.
+  int64 starting_round = 5;
 }
 
 enum ProcessingModeDef {

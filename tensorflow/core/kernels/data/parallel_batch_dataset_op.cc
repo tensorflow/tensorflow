@@ -181,7 +181,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       if (num_parallel_calls_->value == model::kAutotune) {
-        num_parallel_calls_->value = 1;
+        num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
@@ -262,6 +262,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       int64 batch_results_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBatchResultsSize),
                                             &batch_results_size));
+      DCHECK(batch_results_.empty());
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
       }
@@ -405,7 +406,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         new_calls.reserve(num_parallel_calls_->value);
       }
       auto busy = [this]() TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
-        return num_calls_ >= num_parallel_calls_->value;
+        int64 num_parallel_calls = num_parallel_calls_->value;
+        return num_calls_ >= num_parallel_calls ||
+               batch_results_.size() >= num_parallel_calls;
       };
       while (true) {
         {
@@ -452,6 +455,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ReadStatus(prefix(),
                                     strings::StrCat(batch_prefix, "_", kStatus),
                                     reader, &result->status));
+      RecordBufferEnqueue(ctx, result->output);
       return Status::OK();
     }
 

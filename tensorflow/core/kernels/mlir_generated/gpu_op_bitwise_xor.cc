@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_BINARY_KERNEL(BitwiseXor, i8, DT_INT8, int8);
-GENERATE_AND_REGISTER_BINARY_KERNEL(BitwiseXor, i16, DT_INT16, int16);
-GENERATE_AND_REGISTER_BINARY_KERNEL(BitwiseXor, i32, DT_INT32, int32);
-GENERATE_AND_REGISTER_BINARY_KERNEL(BitwiseXor, i64, DT_INT64, int64);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(BitwiseXor, i8, DT_INT8, int8);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(BitwiseXor, i16, DT_INT16, int16);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(BitwiseXor, i32, DT_INT32, int32);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(BitwiseXor, i64, DT_INT64, int64);
 
 // TODO(b/172804967): Enable once fixed.
-// GENERATE_AND_REGISTER_BINARY_KERNEL(BitwiseXor, ui8, DT_UINT8, uint8);
-// GENERATE_AND_REGISTER_BINARY_KERNEL(BitwiseXor, ui16, DT_UINT16, uint16);
-// GENERATE_AND_REGISTER_BINARY_KERNEL(BitwiseXor, ui32, DT_UINT32, uint32);
-// GENERATE_AND_REGISTER_BINARY_KERNEL(BitwiseXor, ui64, DT_UINT64, uint64);
+// GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(BitwiseXor, ui8, DT_UINT8, uint8);
+// GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(BitwiseXor, ui16, DT_UINT16, uint16);
+// GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(BitwiseXor, ui32, DT_UINT32, uint32);
+// GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(BitwiseXor, ui64, DT_UINT64, uint64);
 
 }  // namespace tensorflow

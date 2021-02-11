@@ -20,8 +20,7 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 #if GOOGLE_CUDA
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_UNARY2(get_angle, complex64, complex128);
 #endif
 #endif

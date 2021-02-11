@@ -865,7 +865,12 @@ func @replica_id_memrefs(%arg_out: memref<ui32>) -> () {
 
 // CHECK-LABEL: func @triangular_solve_memrefs
 func @triangular_solve_memrefs(%arg0: memref<4x4xf32>, %arg1: memref<3x4xf32>, %arg_out: memref<3x4xf32>) -> () {
-  "lmhlo.triangular_solve"(%arg0, %arg1, %arg_out) {left_side = true, lower = true, transpose_a = "NO_TRANSPOSE", unit_diagonal = true}
+  "lmhlo.triangular_solve"(%arg0, %arg1, %arg_out)
+       {layout_a = dense<[1, 0]> : tensor<2xindex>,
+        layout_b = dense<[1, 0]> : tensor<2xindex>,
+        layout_output = dense<[1, 0]> : tensor<2xindex>,
+        left_side = true, lower = true, transpose_a = "NO_TRANSPOSE",
+        unit_diagonal = true}
       : (memref<4x4xf32>, memref<3x4xf32>, memref<3x4xf32>) -> ()
   return
 }
@@ -889,14 +894,6 @@ func @while_memrefs(%arg0: memref<i64>, %arg1: memref<5xf32>, %arg0_out: memref<
     { ^bb0(%cur0: memref<i64>, %cur1: memref<5xf32>, %cond: memref<i1>): "lmhlo.terminator"() : () -> () },
     { ^bb0(%cur0: memref<i64>, %cur1: memref<5xf32>, %body_out0: memref<i64>, %body_out1: memref<5xf32>): "lmhlo.terminator"() : () -> () }
   ) : (memref<i64>, memref<5xf32>, memref<i64>, memref<5xf32>) -> ()
-  return
-}
-
-// -----
-
-// CHECK-LABEL: func @bitcast_memrefs
-func @bitcast_memrefs(%arg0: memref<1xf64>, %arg_out: memref<2xi32>) -> () {
-  "lmhlo.bitcast"(%arg0, %arg_out) : (memref<1xf64>, memref<2xi32>) -> ()
   return
 }
 

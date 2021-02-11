@@ -47,15 +47,4 @@ TfLiteStatus ResetVariableTensor(TfLiteTensor* tensor) {
   return kTfLiteOk;
 }
 
-bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
-#ifndef TF_LITE_STATIC_MEMORY
-  if (tensor->dims_signature) {
-    for (int i = 0; i < tensor->dims_signature->size; ++i) {
-      if (tensor->dims_signature->data[i] == -1) return true;
-    }
-  }
-#endif
-  return false;
-}
-
 }  // namespace tflite

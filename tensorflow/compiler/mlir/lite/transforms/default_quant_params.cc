@@ -109,7 +109,7 @@ void DefaultQuantParamsPass::runOnFunction() {
   }
 
   func.walk([&](Operation *op) {
-    if (op->isKnownTerminator() ||
+    if (op->hasTrait<OpTrait::IsTerminator>() ||
         op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
         llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op))
       return;

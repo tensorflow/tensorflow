@@ -134,7 +134,7 @@ enum class PointerMode {
 };
 
 // Converts a ComputationType to a string.
-string DataTypeString(DataType ty);
+std::string DataTypeString(DataType ty);
 
 std::ostream &operator<<(std::ostream &os, DataType ty);
 

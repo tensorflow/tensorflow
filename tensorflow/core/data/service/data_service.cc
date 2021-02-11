@@ -196,21 +196,13 @@ Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
 }
 
 Status DataServiceDispatcherClient::ClientHeartbeat(
-    int64 job_client_id, std::vector<TaskInfo>& tasks, bool& job_finished) {
+    ClientHeartbeatRequest& req, ClientHeartbeatResponse& resp) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  ClientHeartbeatRequest req;
-  req.set_job_client_id(job_client_id);
-  ClientHeartbeatResponse resp;
   grpc::ClientContext ctx;
   grpc::Status s = stub_->ClientHeartbeat(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get tasks", s);
   }
-  tasks.clear();
-  for (auto& task : resp.task_info()) {
-    tasks.push_back(task);
-  }
-  job_finished = resp.job_finished();
   return Status::OK();
 }
 
@@ -256,25 +248,14 @@ class GrpcDataTransferClient : public DataTransferClient {
     stub_ = WorkerService::NewStub(channel);
   }
 
-  Status GetElement(int64 task_id, absl::optional<int64> consumer_index,
-                    absl::optional<int64> round_index,
-                    CompressedElement& element,
-                    bool& end_of_sequence) override {
+  Status GetElement(const GetElementRequest& req,
+                    GetElementResponse& resp) override {
     {
       mutex_lock l(mu_);
       if (cancelled_) {
         return errors::Cancelled("Client was cancelled.");
       }
     }
-    GetElementRequest req;
-    req.set_task_id(task_id);
-    if (consumer_index.has_value()) {
-      req.set_consumer_index(consumer_index.value());
-    }
-    if (round_index.has_value()) {
-      req.set_round_index(round_index.value());
-    }
-    GetElementResponse resp;
     grpc::ClientContext ctx;
     {
       mutex_lock l(mu_);
@@ -287,10 +268,6 @@ class GrpcDataTransferClient : public DataTransferClient {
     }
     if (!s.ok()) {
       return grpc_util::WrapError("Failed to get element", s);
-    }
-    end_of_sequence = resp.end_of_sequence();
-    if (!end_of_sequence) {
-      element = std::move(*resp.mutable_compressed_element());
     }
     return Status::OK();
   }
@@ -332,14 +309,10 @@ class GrpcTransferClientRegistrar {
 };
 static GrpcTransferClientRegistrar registrar;
 
-Status DataServiceWorkerClient::GetElement(int64 task_id,
-                                           absl::optional<int64> consumer_index,
-                                           absl::optional<int64> round_index,
-                                           CompressedElement& element,
-                                           bool& end_of_sequence) {
+Status DataServiceWorkerClient::GetElement(const GetElementRequest& req,
+                                           GetElementResponse& resp) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  return client_->GetElement(task_id, consumer_index, round_index, element,
-                             end_of_sequence);
+  return client_->GetElement(req, resp);
 }
 
 Status DataServiceWorkerClient::EnsureInitialized() {

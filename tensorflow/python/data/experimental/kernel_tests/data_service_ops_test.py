@@ -47,10 +47,6 @@ from tensorflow.python.platform import test
 
 TMP_WORK_DIR = data_service_test_base.TMP_WORK_DIR
 NO_WORK_DIR = data_service_test_base.NO_WORK_DIR
-# Some clusters may take a long time to shut down due to blocked outstanding
-# RPCs. We store the clusters here so that they are destroyed at end of process
-# instead of slowing down unit tests.
-GLOBAL_CLUSTERS = set()
 
 
 class DataServiceOpsTest(data_service_test_base.TestBase,
@@ -294,9 +290,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   def testRoundRobin(self, num_workers, num_consumers):
     cluster = self.create_cluster(num_workers=num_workers)
     # Round robin reads can cause slow cluster shutdown.
-    GLOBAL_CLUSTERS.add(cluster)
-    num_elements = 100
-    ds = dataset_ops.Dataset.range(num_elements)
+    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
+    ds = dataset_ops.Dataset.range(10000000)
     ds = ds.repeat()
     consumers = []
     for consumer_index in range(num_consumers):
@@ -313,18 +308,15 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         lambda x: x,
         cycle_length=num_consumers,
         num_parallel_calls=num_consumers)
-    ds = ds.take(2 * num_elements * num_workers)
+    ds = ds.take(1000)
     results = self.getDatasetOutput(ds, requires_initialization=True)
 
-    expected = []
-    round_index = 0
-    while len(expected) < len(results):
-      for _ in range(num_workers):
-        for consumer in range(num_consumers):
-          expected.append(
-              (round_index * num_consumers + consumer) % num_elements)
-      round_index += 1
-    self.assertEqual(results, expected)
+    for i in range(0, len(results), num_consumers):
+      self.assertEqual(0, results[i] % num_consumers)
+      # Check that each group of `num_consumers` results are consecutive.
+      for offset in range(1, num_consumers):
+        if i + offset < len(results):
+          self.assertEqual(results[i] + offset, results[i + offset])
 
   @combinations.generate(test_base.default_test_combinations())
   def testRoundRobinBucketizing(self):
@@ -332,7 +324,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     # consumers should get batches with the same bucket size.
     cluster = self.create_cluster(num_workers=4)
     # Round robin reads can cause slow cluster shutdown.
-    GLOBAL_CLUSTERS.add(cluster)
+    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
     num_elements = 100
     low_bucket_max = 30
     mid_bucket_max = 60

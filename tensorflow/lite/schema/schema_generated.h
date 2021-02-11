@@ -817,11 +817,14 @@ enum BuiltinOperator {
   BuiltinOperator_BROADCAST_TO = 130,
   BuiltinOperator_RFFT2D = 131,
   BuiltinOperator_CONV_3D = 132,
+  BuiltinOperator_IMAG = 133,
+  BuiltinOperator_REAL = 134,
+  BuiltinOperator_COMPLEX_ABS = 135,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_CONV_3D
+  BuiltinOperator_MAX = BuiltinOperator_COMPLEX_ABS
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[133] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[136] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -955,13 +958,16 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[133] {
     BuiltinOperator_CALL_ONCE,
     BuiltinOperator_BROADCAST_TO,
     BuiltinOperator_RFFT2D,
-    BuiltinOperator_CONV_3D
+    BuiltinOperator_CONV_3D,
+    BuiltinOperator_IMAG,
+    BuiltinOperator_REAL,
+    BuiltinOperator_COMPLEX_ABS
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[134] = {
+  static const char * const names[137] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1095,13 +1101,16 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "BROADCAST_TO",
     "RFFT2D",
     "CONV_3D",
+    "IMAG",
+    "REAL",
+    "COMPLEX_ABS",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_CONV_3D)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_COMPLEX_ABS)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }

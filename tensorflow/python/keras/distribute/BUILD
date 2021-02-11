@@ -448,8 +448,8 @@ distribute_py_test(
         "no_oss",  # TODO(b/173021094)
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        "noasan",  # TODO(b/178803051)
         "nogpu",  # TODO(b/170905292)
+        "notap",  # TODO(b/178803051): flaky
         "notsan",
     ],
     deps = [
@@ -692,6 +692,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     deps = [
@@ -706,6 +707,7 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/utils:kpl_test_utils",
     ],
 )
 

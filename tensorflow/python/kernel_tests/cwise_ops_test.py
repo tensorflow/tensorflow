@@ -219,7 +219,8 @@ class ComparisonOpTest(test.TestCase):
         with self.subTest(t=t, f=f):
           with self.assertRaisesRegex(
               (ValueError, errors.InvalidArgumentError),
-              "Incompatible shapes|Dimensions must be equal"):
+              "Incompatible shapes|Dimensions must be equal|"
+              "required broadcastable shapes"):
             f(x.astype(t), y.astype(t))
 
 

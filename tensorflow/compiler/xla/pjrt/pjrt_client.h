@@ -91,10 +91,10 @@ class PjRtDevice {
   virtual std::string DebugString() const = 0;
 
   // Transfer the given literal to the infeed queue.
-  virtual Status TransferToInfeed(const LiteralSlice& literal) const = 0;
+  virtual Status TransferToInfeed(const LiteralSlice& literal) = 0;
 
   // Transfer and return a value of the given shape from the outfeed queue.
-  virtual Status TransferFromOutfeed(MutableBorrowingLiteral literal) const = 0;
+  virtual Status TransferFromOutfeed(MutableBorrowingLiteral literal) = 0;
 };
 
 // Forward declaration.

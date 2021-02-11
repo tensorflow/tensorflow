@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
@@ -625,6 +626,119 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
       lgamma);
 }
 
+// Compute the Digamma function using Lanczos' approximation from "A Precision
+// Approximation of the Gamma Function". SIAM Journal on Numerical Analysis
+// series B. Vol. 1:
+//   digamma(z + 1) = log(t(z)) + a'(z) / a(z) - kLanczosGamma / t(z)
+//   with   t(z) = z + kLanczosGamma + 1/2
+//          a(z) = kBaseLanczosCoeff
+//                   + sum(k = 1, n, kLanczosCoefficients[i] / (z + k))
+//          a'(z) = - sum(k = 1, n, kLanczosCoefficients[i] / (z + k) / (z + k))
+Value MaterializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
+                         Value x) {
+  // If the input is less than 0.5 use Euler's reflection formula.
+  //   digamma(x) = digamma(1 - x) - pi * cot(pi * x)
+  // Let z be
+  //   z = -x      if x < 1/2
+  //   z = x - 1   otheriwse
+  const StringAttr kLT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
+  Value half = getConstantLike(rewriter, loc, 0.5, x);
+  Value need_to_reflect = rewriter.create<mhlo::CompareOp>(loc, x, half, kLT);
+  Value neg_x = rewriter.create<mhlo::NegOp>(loc, x);
+  Value one = getConstantLike(rewriter, loc, 1, x);
+  Value x_sub_one = rewriter.create<mhlo::SubOp>(loc, x, one);
+  Value z =
+      rewriter.create<mhlo::SelectOp>(loc, need_to_reflect, neg_x, x_sub_one);
+
+  // Materialize
+  //   a(z) = kBaseLanczosCoeff
+  //            + sum(k = 1, n, kLanczosCoefficients[i] / (z + k))
+  //   a'(z) = - sum(k = 1, n, kLanczosCoefficients[i] / (z + k) / (z + k))
+  Value zero = getConstantLike(rewriter, loc, 0.0, x);
+  Value a = getConstantLike(rewriter, loc, kBaseLanczosCoeff, x);
+  Value a_prime = zero;
+  for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
+    Value coeff = getConstantLike(rewriter, loc, kLanczosCoefficients[i], x);
+    Value one_based_index = getConstantLike(rewriter, loc, i + 1, x);
+    Value z_term = rewriter.create<mhlo::AddOp>(loc, z, one_based_index);
+    a_prime = rewriter.create<mhlo::SubOp>(
+        loc, a_prime,
+        rewriter.create<mhlo::DivOp>(
+            loc, coeff, rewriter.create<mhlo::MulOp>(loc, z_term, z_term)));
+    a = rewriter.create<mhlo::AddOp>(
+        loc, a, rewriter.create<mhlo::DivOp>(loc, coeff, z_term));
+  }
+
+  // To improve accuracy on platforms with less-precise log implementations,
+  // compute log(kLanczosGamma + 1/2) at compile time and use log1p on the
+  // device.
+  // Materialize as
+  //   log(t) = log(kLanczosGamma + 1/2 + z)
+  //          = log(kLanczosGamma + 1/2) + log1p(z / (kLanczosGamma + 1/2)).
+  Value lanczos_plus_half =
+      getConstantLike(rewriter, loc, kLanczosGamma + 0.5, x);
+  Value t = rewriter.create<mhlo::AddOp>(loc, lanczos_plus_half, z);
+  Value log_term =
+      getConstantLike(rewriter, loc, std::log(kLanczosGamma + 0.5), x);
+  Value log1p_term = rewriter.create<mhlo::Log1pOp>(
+      loc, rewriter.create<mhlo::DivOp>(loc, z, lanczos_plus_half));
+  Value log_t = rewriter.create<mhlo::AddOp>(loc, log_term, log1p_term);
+
+  // Materialize the final result (modulo reflection) as
+  //   digamma(z + 1) = log(t(z)) + a'(z) / a(z) - kLanczosGamma / t(z).
+  Value a_prime_div_a = rewriter.create<mhlo::DivOp>(loc, a_prime, a);
+  Value lanczos_gamma_div_t = rewriter.create<mhlo::DivOp>(
+      loc, getConstantLike(rewriter, loc, kLanczosGamma, x), t);
+  Value digamma = rewriter.create<mhlo::SubOp>(
+      loc, rewriter.create<mhlo::AddOp>(loc, log_t, a_prime_div_a),
+      lanczos_gamma_div_t);
+
+  // We need to be careful how we compute cot(pi * input) below: For
+  // near-integral arguments, pi * input can lose precision.
+  //
+  // Input is already known to be less than 0.5 (otherwise we don't have to
+  // reflect). We shift values smaller than -0.5 into the range [-0.5, 0.5] to
+  // increase precision of pi * x and the resulting cotangent.
+  Value reduced_x = rewriter.create<mhlo::AddOp>(
+      loc, x,
+      rewriter.create<mhlo::AbsOp>(
+          loc, rewriter.create<mhlo::FloorOp>(
+                   loc, rewriter.create<mhlo::AddOp>(
+                            loc, x, getConstantLike(rewriter, loc, 0.5, x)))));
+
+  // Materialize reflection for inputs less than 0.5 as
+  //   digamma(x) = digamma(1 - x) - pi * cot(pi * x)
+  //              = digamma(1 - x) - pi * cos(pi * x) / sin(pi * x)
+  Value pi = getConstantLike(rewriter, loc, M_PI, x);
+  Value pi_mul_reduced_x = rewriter.create<mhlo::MulOp>(loc, pi, reduced_x);
+  Value cos = rewriter.create<mhlo::CosOp>(loc, pi_mul_reduced_x);
+  Value sin = rewriter.create<mhlo::SinOp>(loc, pi_mul_reduced_x);
+  Value reflection = rewriter.create<mhlo::SubOp>(
+      loc, digamma,
+      rewriter.create<mhlo::DivOp>(
+          loc, rewriter.create<mhlo::MulOp>(loc, pi, cos), sin));
+
+  // Select whether or not to rely on the reflection.
+  digamma = rewriter.create<mhlo::SelectOp>(loc, need_to_reflect, reflection,
+                                            digamma);
+
+  // Digamma has poles at negative integers and zero; return nan for those.
+  const StringAttr kLE = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LE));
+  Value is_le_zero = rewriter.create<mhlo::CompareOp>(loc, x, zero, kLE);
+  const StringAttr kEQ = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::EQ));
+  Value is_int = rewriter.create<mhlo::CompareOp>(
+      loc, x, rewriter.create<mhlo::FloorOp>(loc, x), kEQ);
+  Value is_pole = rewriter.create<mhlo::AndOp>(loc, is_le_zero, is_int);
+  return rewriter.create<mhlo::SelectOp>(
+      loc, is_pole,
+      getConstantLike(rewriter, loc, std::numeric_limits<double>::quiet_NaN(),
+                      x),
+      digamma);
+}
+
 struct ConvertLgammaOp : public OpConversionPattern<LgammaOp> {
   using OpConversionPattern<LgammaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -635,6 +749,182 @@ struct ConvertLgammaOp : public OpConversionPattern<LgammaOp> {
     rewriter.replaceOp(
         op, MaterializeWithUpcast(rewriter, op.getLoc(), transformed.operand(),
                                   min_precision_ty, &MaterializeLgamma));
+    return success();
+  }
+};
+
+struct ConvertDigammaOp : public OpConversionPattern<DigammaOp> {
+  using OpConversionPattern<DigammaOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      DigammaOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    DigammaOp::Adaptor transformed(operands);
+    FloatType min_precision_ty = rewriter.getF32Type();
+    rewriter.replaceOp(
+        op, MaterializeWithUpcast(rewriter, op.getLoc(), transformed.operand(),
+                                  min_precision_ty, &MaterializeDigamma));
+    return success();
+  }
+};
+
+Value MaterializeZetaComputation(ConversionPatternRewriter &rewriter,
+                                 Location loc, Value x, Value q) {
+  static const std::array<double, 12> kZetaCoeffs{
+      -7.1661652561756670113e18,
+      1.8152105401943546773e17,
+      -4.5979787224074726105e15,
+      1.1646782814350067249e14,
+      -2.950130727918164224e12,
+      7.47242496e10,
+      -1.8924375803183791606e9,
+      47900160.0,
+      -1209600.0,
+      30240.0,
+      -720.0,
+      12.0,
+  };
+
+  // For speed we'll always use 9 iterations for the initial series estimate,
+  // and a 12 term expansion for the Euler-Maclaurin formula.
+  Value a = q;
+  Value zero_like_a = chlo::getConstantLike(rewriter, loc, 0.0, a);
+  Value neg_power = zero_like_a;
+  Value neg_x = rewriter.create<mhlo::NegOp>(loc, x);
+  Value initial_sum = rewriter.create<mhlo::PowOp>(loc, q, neg_x);
+  Value one_like_a = chlo::getConstantLike(rewriter, loc, 1.0, a);
+  for (int i = 0; i < 9; ++i) {
+    a = rewriter.create<mhlo::AddOp>(loc, a, one_like_a);
+    neg_power = rewriter.create<mhlo::PowOp>(loc, a, neg_x);
+    initial_sum = rewriter.create<mhlo::AddOp>(loc, initial_sum, neg_power);
+  }
+  a = rewriter.create<mhlo::AddOp>(loc, a, one_like_a);
+  neg_power = rewriter.create<mhlo::PowOp>(loc, a, neg_x);
+  Value one_like_x = chlo::getConstantLike(rewriter, loc, 1.0, x);
+  Value x_minus_one = rewriter.create<mhlo::SubOp>(loc, x, one_like_x);
+  Value neg_power_mul_a = rewriter.create<mhlo::MulOp>(loc, neg_power, a);
+  Value neg_power_mul_a_div_x_minus_one =
+      rewriter.create<mhlo::DivOp>(loc, neg_power_mul_a, x_minus_one);
+  Value s = rewriter.create<mhlo::AddOp>(loc, initial_sum,
+                                         neg_power_mul_a_div_x_minus_one);
+  Value a_inverse_square = rewriter.create<mhlo::DivOp>(
+      loc, one_like_a, rewriter.create<mhlo::MulOp>(loc, a, a));
+
+  Value horner_sum = zero_like_a;
+  Value factor = one_like_a;
+  // Use Horner's rule for this.
+  // Note this differs from Cephes which does a 'naive' polynomial evaluation.
+  // Using Horner's rule allows to avoid some NaN's and Infs from happening,
+  // resulting in more numerically stable code.
+  for (int i = 0; i < 11; ++i) {
+    Value factor_lhs = rewriter.create<mhlo::SubOp>(
+        loc, x, chlo::getConstantLike(rewriter, loc, 22 - 2 * i, x));
+    Value factor_rhs = rewriter.create<mhlo::SubOp>(
+        loc, x, chlo::getConstantLike(rewriter, loc, 21 - 2 * i, x));
+    factor = rewriter.create<mhlo::MulOp>(loc, factor_lhs, factor_rhs);
+    horner_sum = rewriter.create<mhlo::MulOp>(
+        loc, factor,
+        rewriter.create<mhlo::MulOp>(
+            loc, a_inverse_square,
+            rewriter.create<mhlo::AddOp>(
+                loc, horner_sum,
+                chlo::getConstantLike(rewriter, loc, 1. / kZetaCoeffs[i], a))));
+  }
+  Value zero_point_five_like_neg_power =
+      chlo::getConstantLike(rewriter, loc, .5, neg_power);
+  Value x_div_a = rewriter.create<mhlo::DivOp>(loc, x, a);
+  s = rewriter.create<mhlo::AddOp>(
+      loc, s,
+      rewriter.create<mhlo::MulOp>(
+          loc, neg_power,
+          rewriter.create<mhlo::AddOp>(
+              loc, zero_point_five_like_neg_power,
+              rewriter.create<mhlo::MulOp>(
+                  loc, x_div_a,
+                  rewriter.create<mhlo::AddOp>(
+                      loc,
+                      chlo::getConstantLike(rewriter, loc, 1. / kZetaCoeffs[11],
+                                            a),
+                      horner_sum)))));
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  // Use the initial zeta sum without the correction term coming
+  // from Euler-Maclaurin if it is accurate enough.
+  const StringAttr kLT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
+  Value abs_neg_power = rewriter.create<mhlo::AbsOp>(loc, neg_power);
+  Value abs_initial_sum = rewriter.create<mhlo::AbsOp>(loc, initial_sum);
+  Value output = rewriter.create<mhlo::SelectOp>(
+      loc,
+      rewriter.create<mhlo::CompareOp>(
+          loc, abs_neg_power,
+          rewriter.create<mhlo::MulOp>(
+              loc, abs_initial_sum,
+              chlo::getConstantLikeSmallestFiniteValue(rewriter, loc, a)),
+          kLT),
+      initial_sum, s);
+  // This is the harmonic series.
+  const StringAttr kEQ = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::EQ));
+  Value inf_like_x = chlo::getConstantLike(rewriter, loc, inf, x);
+  output = rewriter.create<mhlo::SelectOp>(
+      loc, rewriter.create<mhlo::CompareOp>(loc, x, one_like_x, kEQ),
+      inf_like_x, output);
+  // Function is not defined for x < 1.
+  Value nan_like_x = chlo::getConstantLike(rewriter, loc, nan, x);
+  output = rewriter.create<mhlo::SelectOp>(
+      loc, rewriter.create<mhlo::CompareOp>(loc, x, one_like_x, kLT),
+      nan_like_x, output);
+  // If q <= 0, then when q is an integer or x is not an integer, this is
+  // NaN.
+  const StringAttr kLE = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LE));
+  const StringAttr kNE = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
+  Value zero_like_q = chlo::getConstantLike(rewriter, loc, 0.0, q);
+  Value q_le_zero = rewriter.create<mhlo::CompareOp>(loc, q, zero_like_q, kLE);
+  Value domain_error = rewriter.create<mhlo::AndOp>(
+      loc, q_le_zero,
+      rewriter.create<mhlo::CompareOp>(
+          loc, x, rewriter.create<mhlo::FloorOp>(loc, x), kNE));
+  Value negative_integer_q = rewriter.create<mhlo::AndOp>(
+      loc, q_le_zero,
+      rewriter.create<mhlo::CompareOp>(
+          loc, q, rewriter.create<mhlo::FloorOp>(loc, q), kEQ));
+  output = rewriter.create<mhlo::SelectOp>(loc, negative_integer_q, inf_like_x,
+                                           output);
+  output =
+      rewriter.create<mhlo::SelectOp>(loc, domain_error, nan_like_x, output);
+  return output;
+}
+
+struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
+  using OpConversionPattern<ZetaOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      ZetaOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    ZetaOpAdaptor adaptor(operands);
+    Location loc = op.getLoc();
+
+    // Zeta is only defined on tensors of float elements and statically
+    // verified that both have the same type. So it suffices to look at one
+    // here.
+    auto elm_type = adaptor.x().getType().cast<ShapedType>().getElementType();
+
+    bool needs_upcast = elm_type.isF16() || elm_type.isBF16();
+
+    Value x = adaptor.x();
+    Value q = adaptor.q();
+
+    if (needs_upcast) {
+      x = rewriter.create<mhlo::ConvertOp>(loc, x, rewriter.getF32Type());
+      q = rewriter.create<mhlo::ConvertOp>(loc, q, rewriter.getF32Type());
+    }
+    Value result = MaterializeZetaComputation(rewriter, loc, x, q);
+    if (needs_upcast) {
+      result = rewriter.create<mhlo::ConvertOp>(loc, result, elm_type);
+    }
+    rewriter.replaceOp(op, {result});
+
     return success();
   }
 };
@@ -777,10 +1067,8 @@ struct ConvertRankedDynamicBroadcastBinaryOp
 #include "generated_chlo_legalize_to_hlo.inc"
 }  // namespace
 
-void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
-                                       OwningRewritePatternList *patterns) {
-  populateWithGenerated(context, *patterns);
-
+void PopulateChloBroadcastingPatterns(MLIRContext *context,
+                                      OwningRewritePatternList *patterns) {
   // Instantiate conversion templates for conforming binary elementwise ops
   // that do not have different dtypes between operands and results and do
   // not have special attributes that need to be preserved.
@@ -788,10 +1076,22 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
       context, patterns, 10);
   PopulateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
       context, patterns, 5);
+}
+
+void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
+                                       OwningRewritePatternList *patterns) {
+  populateWithGenerated(context, *patterns);
+  PopulateChloBroadcastingPatterns(context, patterns);
 
   // Other patterns.
-  patterns->insert<ConvertConstantLikeOp, ConvertErfOp, ConvertErfcOp,
-                   ConvertLgammaOp>(context);
+  // clang-format off
+  patterns->insert<ConvertConstantLikeOp,
+                   ConvertDigammaOp,
+                   ConvertErfOp,
+                   ConvertErfcOp,
+                   ConvertLgammaOp,
+                   ConvertZetaOp>(context);
+  // clang-format on
 }
 
 }  // namespace chlo

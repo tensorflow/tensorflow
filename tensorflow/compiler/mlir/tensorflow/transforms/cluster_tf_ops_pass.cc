@@ -99,6 +99,8 @@ struct FunctionMetadata {
   llvm::SmallVector<std::string, 4> result_devices;
   // The operations to be included in the body of the function.
   llvm::SmallVector<Operation *, 4> ops;
+
+  FuncOp partition_op;
 };
 
 // Returns a map that maps the host address to the metadata of the function
@@ -150,7 +152,7 @@ llvm::Optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
 
       // If the value is used as an operand of the terminator op, adds it to
       // the result list of function that defines this op.
-      if (op->isKnownTerminator()) {
+      if (op->hasTrait<OpTrait::IsTerminator>()) {
         if (llvm::find(defining_func_metadata.results, value) ==
             defining_func_metadata.results.end()) {
           defining_func_metadata.results.push_back(value);
@@ -208,15 +210,15 @@ void CreateFunctions(ModuleOp module_op,
     // function.
     for (int i : llvm::seq<int>(0, metadata.input_devices.size())) {
       func_op.setArgAttr(i, kTFDeviceAttr,
-                         StringAttr::get(metadata.input_devices[i], context));
+                         StringAttr::get(context, metadata.input_devices[i]));
     }
     for (int i : llvm::seq<int>(0, metadata.result_devices.size())) {
       func_op.setResultAttr(
           i, kTFDeviceAttr,
-          StringAttr::get(metadata.result_devices[i], context));
+          StringAttr::get(context, metadata.result_devices[i]));
     }
 
-    func_op->setAttr(kHostAttr, StringAttr::get(host, context));
+    func_op->setAttr(kHostAttr, StringAttr::get(context, host));
     func_op.setPublic();
     Block *block = func_op.addEntryBlock();
 
@@ -296,32 +298,36 @@ void CreateRemoteRunCalls(MLIRContext *context,
 }
 
 class ClusterTFOpsByHostPass
-    : public PassWrapper<ClusterTFOpsByHostPass, FunctionPass> {
-  void runOnFunction() override {
+    : public PassWrapper<ClusterTFOpsByHostPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override {
     MLIRContext *context = &getContext();
-    FuncOp func_op = getOperation();
-    ModuleOp module_op = func_op->getParentOfType<mlir::ModuleOp>();
-
-    llvm::Optional<llvm::StringMap<FunctionMetadata>> metadatas =
-        GetFunctionMetadatas(func_op);
-    if (!metadatas) {
-      signalPassFailure();
-      return;
+    ModuleOp module_op = getOperation();
+    SmallVector<FuncOp, 4> original_func;
+    for (auto func_op : module_op.getOps<FuncOp>()) {
+      original_func.push_back(func_op);
     }
+    for (auto func_op : original_func) {
+      llvm::Optional<llvm::StringMap<FunctionMetadata>> metadatas =
+          GetFunctionMetadatas(func_op);
+      if (!metadatas) {
+        signalPassFailure();
+        return;
+      }
 
-    CreateFunctions(module_op, *metadatas);
-    CreateRemoteRunCalls(context, *metadatas);
+      CreateFunctions(module_op, *metadatas);
+      CreateRemoteRunCalls(context, *metadatas);
 
-    // Erases the original operations which have been cloned in the remote
-    // functions.
-    for (auto &iter : *metadatas) {
-      llvm::StringRef host = iter.first();
-      FunctionMetadata &metadata = iter.second;
-      // Do not erase operations placed on the localhost.
-      if (IsOnLocalHost(host)) continue;
+      // Erases the original operations which have been cloned in the remote
+      // functions.
+      for (auto &iter : *metadatas) {
+        llvm::StringRef host = iter.first();
+        FunctionMetadata &metadata = iter.second;
+        // Do not erase operations placed on the localhost.
+        if (IsOnLocalHost(host)) continue;
 
-      for (int i = metadata.ops.size() - 1; i >= 0; i--) {
-        metadata.ops[i]->erase();
+        for (int i = metadata.ops.size() - 1; i >= 0; i--) {
+          metadata.ops[i]->erase();
+        }
       }
     }
   }
@@ -329,7 +335,7 @@ class ClusterTFOpsByHostPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateClusterTFOpsByHostPass() {
+std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateClusterTFOpsByHostPass() {
   return std::make_unique<ClusterTFOpsByHostPass>();
 }
 

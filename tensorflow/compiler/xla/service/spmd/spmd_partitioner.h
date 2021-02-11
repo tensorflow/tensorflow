@@ -49,6 +49,9 @@ struct SpmdPartitionerOptions {
   // Whether unroll windowed einsum loop by degree of two.
   bool unroll_windowed_einsum = false;
 
+  // Whether doing bidirectional collective permute in windowed einsum loop.
+  bool bidirectional_windowed_einsum = false;
+
   // Whether the entry computations' signature could change after partitioning.
   bool allow_module_signature_change = false;
 
@@ -194,7 +197,7 @@ class SpmdPartitioner : public HloModulePass {
                                       int64* next_channel_id,
                                       SpmdLogger* logger);
 
-  // Creates all-gather based on HloSharding. Can be overridden to customize.
+  // Creates all-gather(s) based on HloSharding. Can be overridden to customize.
   // The default uses a single all-gather even if there are multiple sharded
   // dimensions, and adds potential reshapes and transposes to achieve that.
   // If it returns false, the partitioner will fall back to all-reduce.
@@ -203,8 +206,16 @@ class SpmdPartitioner : public HloModulePass {
   // all-gather.
   virtual HloInstruction* AllGatherShards(
       SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
-      int64 channel_id, absl::Span<const int64> selected_dims,
+      int64* next_channel_id, absl::Span<const int64> selected_dims,
       const SPMDCollectiveOpsCreator& collectives_creator);
+
+  // Creates all-reduce(s) across devices along selected_dims in sharding. Can
+  // be overridden to customize.
+  virtual HloInstruction* AllReduceAlongShardingDims(
+      SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
+      int64* next_channel_id, absl::Span<const int64> selected_dims,
+      const SPMDCollectiveOpsCreator& collectives_creator,
+      HloComputation* reduction);
 
   const SpmdPartitionerOptions& options() { return options_; }
 
@@ -214,6 +225,16 @@ class SpmdPartitioner : public HloModulePass {
       const SPMDCollectiveOpsCreator& collective_ops_creator,
       int64* next_channel_id, SpmdLogger* logger,
       SpmdPartitionerOptions options);
+
+  HloInstruction* AllGatherShardsInternal(
+      SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
+      int64* next_channel_id, absl::Span<const int64> selected_dims,
+      const SPMDCollectiveOpsCreator& collectives_creator, bool per_dim_ag);
+  HloInstruction* AllReduceAlongShardingDimsInternal(
+      SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
+      int64* next_channel_id, absl::Span<const int64> selected_dims,
+      const SPMDCollectiveOpsCreator& collectives_creator,
+      HloComputation* reduction, bool per_dim_ar);
 
   // Verify that the sharding of instructions in the module are valid, and also
   // fill in missing sharding information.

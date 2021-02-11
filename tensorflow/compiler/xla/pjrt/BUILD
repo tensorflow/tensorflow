@@ -121,6 +121,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/stream_executor:event",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",

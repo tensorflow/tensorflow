@@ -357,7 +357,7 @@ double NominalCPUFrequency() {
 }
 
 MemoryInfo GetMemoryInfo() {
-  MemoryInfo mem_info = {INT64_MAX, INT64_MAX};
+  MemoryInfo mem_info = {INT64_MAX, INT64_MAX, INT64_MAX};
 #if defined(__linux__) && !defined(__ANDROID__)
   struct sysinfo info;
   int err = sysinfo(&info);

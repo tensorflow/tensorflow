@@ -147,9 +147,7 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   const int batch_size = op_context->params->adj_x
                              ? lhs->dims->data[lhs_rank - 2]
                              : lhs->dims->data[lhs_rank - 1];
-  const int num_units = op_context->params->adj_x
-                            ? lhs->dims->data[lhs_rank - 1]
-                            : lhs->dims->data[lhs_rank - 2];
+  const int num_units = rhs->dims->data[rhs_rank - 1];
 
   // Temp tensor for Transposed LHS;
   {

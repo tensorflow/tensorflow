@@ -172,7 +172,7 @@ int GetBiggestDivider(int number, int max_divider) {
   return 1;
 }
 
-int GetOptimalSizeForMetal(int grid_size) {
+int GetOptimalSizeForApple(int grid_size) {
   if (grid_size % 8 == 0 || grid_size % 8 >= 4 || grid_size >= 16) {
     return 8;
   }
@@ -185,10 +185,11 @@ int GetOptimalSizeForMetal(int grid_size) {
   return 1;
 }
 
-int3 GetWorkGroupSizeForMetal(const uint3& grid_size) {
-  int x_size = GetOptimalSizeForMetal(grid_size.x);
-  int y_size = GetOptimalSizeForMetal(grid_size.y);
+int3 GetWorkGroupSizeForApple(const uint3& grid_size) {
+  int x_size = GetOptimalSizeForApple(grid_size.x);
+  int y_size = GetOptimalSizeForApple(grid_size.y);
   int z_size = std::max(1, 32 / (x_size * y_size));
+  z_size = std::min(z_size, static_cast<int>(grid_size.z));
   return {x_size, y_size, z_size};
 }
 
@@ -270,8 +271,8 @@ bool XY128RequiresMoreWorkGroupsThenXY128Linear(int width, int height) {
 void GetPossibleWorkGroups(TuningType tuning_type, const GpuInfo& gpu_info,
                            const KernelInfo& kernel_info, const int3& grid,
                            std::vector<int3>* work_groups) {
-  if (gpu_info.IsApiMetal()) {
-    work_groups->push_back(GetWorkGroupSizeForMetal(grid));
+  if (gpu_info.IsApple()) {
+    work_groups->push_back(GetWorkGroupSizeForApple(grid));
     return;
   }
   switch (tuning_type) {
@@ -292,8 +293,8 @@ void GetPossibleWorkGroups(TuningType tuning_type, const GpuInfo& gpu_info,
 void GetPossibleWorkGroupsConv(TuningType tuning_type, const GpuInfo& gpu_info,
                                const KernelInfo& kernel_info, const int3& grid,
                                std::vector<int3>* work_groups) {
-  if (gpu_info.IsApiMetal()) {
-    work_groups->push_back(GetWorkGroupSizeForMetal(grid));
+  if (gpu_info.IsApple()) {
+    work_groups->push_back(GetWorkGroupSizeForApple(grid));
     return;
   }
   switch (tuning_type) {

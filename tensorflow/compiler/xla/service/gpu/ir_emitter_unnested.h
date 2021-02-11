@@ -157,6 +157,7 @@ class IrEmitterUnnested : public IrEmitter,
   }
 
   Status DefaultAction(HloInstruction* hlo) override;
+  Status HandleBitcast(HloInstruction* bitcast) override;
   Status EmitUsingElementalIrEmitter(MlirEmitterInput input);
 
   // IrEmitterUnnested handles the following instructions differently from
@@ -171,6 +172,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status EmitCustomCallFromMlir(MlirEmitterInput input);
   Status EmitConvolutionThunkFromMlir(MlirEmitterInput input);
   Status EmitGemmThunkFromMlir(MlirEmitterInput input);
   Status EmitBatchNormThunkFromMlir(MlirEmitterInput input);
@@ -179,12 +181,14 @@ class IrEmitterUnnested : public IrEmitter,
 #endif  // GOOGLE_CUDA
   Status EmitCustomCallThunkFromMlir(MlirEmitterInput input);
   Status HandleFft(HloInstruction* fft) override;
+  Status EmitFftThunkFromMlir(MlirEmitterInput input);
   Status HandleFusion(HloInstruction* fusion) override;
   Status EmitLoopFusionFromMlir(
       MlirEmitterInput input, const Shape& output_shape,
       absl::optional<int> unroll_factor_override = {});
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
+  Status EmitReduceFromMlir(MlirEmitterInput mlir_input);
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
   Status EmitSelectAndScatterFromMlir(MlirEmitterInput mlir_input);
   Status HandleTuple(HloInstruction* tuple) override;
@@ -196,10 +200,10 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitRngGetAndUpdateState(MlirEmitterInput mlir_input);
   Status HandleScatter(HloInstruction* scatter) override;
   Status EmitScatterFromMlir(MlirEmitterInput mlir_input);
-  Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
   Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
+  Status EmitTriangularSolveFromMlir(MlirEmitterInput mlir_input);
 
   template <typename NcclThunkType, typename OpTy>
   Status EmitNcclThunkFromMlir(MlirEmitterInput mlir_input);
@@ -215,6 +219,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandlePartitionId(HloInstruction* hlo) override;
 
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+  Status EmitCollectivePermuteFromMlir(MlirEmitterInput input);
 
   Status EmitOp(MlirEmitterInput mlir_input);
 
@@ -446,11 +451,12 @@ class IrEmitterUnnested : public IrEmitter,
   // different. On the other hand, the input ranges of slices can be
   // overlapping. Further generalization/specialization when the needs are seen
   // in the future.
-  Status EmitInputFusibleNonStridedSlices(HloInstruction* unnested_hlo);
+  Status EmitInputFusibleNonStridedSlices(MlirEmitterInput mlir_input);
 
-  void EmitElementForInputFusibleSlices(
-      HloInstruction* unnested_hlo,
-      const llvm_ir::IrArray::Index& slice_input_index);
+  Status EmitElementForInputFusibleSlices(
+      mlir::lmhlo::FusionOp fusion,
+      absl::Span<const llvm_ir::IrArray> ir_arrays,
+      const llvm_ir::IrArray::Index& index);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. Scatter indices are taken from `scatter_indices_gen`, updates

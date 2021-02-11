@@ -3066,7 +3066,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_tfrt",  # TODO(b/179692150)
+    ],
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -6341,6 +6344,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "grappler",
+        "no_tfrt",  #TODO(b/174712583)
     ],
     deps = [
         ":array_ops",
@@ -6365,6 +6369,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "grappler",
+        "no_tfrt",  #TODO(b/174712583)
     ],
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -6775,6 +6780,7 @@ tf_python_pybind_extension(
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/c/eager:tfe_cancellationmanager_internal_hdrs_only",
         "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

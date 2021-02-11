@@ -76,12 +76,14 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 
   MlirBridgeRolloutPolicy policy =
       GetMlirBridgeRolloutPolicy(graph, config_proto);
-  if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
-    return MlirOptimizationPassState::Enabled;
-  } else if (policy == MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis) {
-    return MlirOptimizationPassState::ShadowEnabled;
-  } else {
-    return MlirOptimizationPassState::Disabled;
+  switch (policy) {
+    case MlirBridgeRolloutPolicy::kEnabledByUser:
+      return MlirOptimizationPassState::Enabled;
+    case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
+      return MlirOptimizationPassState::ShadowEnabled;
+    case MlirBridgeRolloutPolicy::kDisabledByUser:
+    case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
+      return MlirOptimizationPassState::Disabled;
   }
 }
 
@@ -97,18 +99,19 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
   // based on the devices in the module.
   if (GetPassState(/*device_set=*/nullptr, config_proto, graph) ==
       MlirOptimizationPassState::Disabled) {
-    VLOG(0) << "Skipping MLIR TPU Bridge, session flag not enabled";
+    VLOG(1) << "Skipping MLIR TPU Bridge, session flag not enabled";
     mlir_bridge_gauge_v2->GetCell()->Set(false);
     return Status::OK();
   }
 
   // Skip MLIR TPU Bridge if no TPU devices found.
   if (!HasTPUDevice(module)) {
-    VLOG(0) << "Skipping MLIR TPU Bridge, no TPU devices found";
+    VLOG(1) << "Skipping MLIR TPU Bridge, no TPU devices found";
     return Status::OK();
   }
 
-  VLOG(0) << "Running MLIR TPU Bridge";
+  // TODO(b/178633630): Revisit whether to use LOG_FIRST_N.
+  VLOG(1) << "Running MLIR TPU Bridge";
   mlir_bridge_gauge_v2->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(
       mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
@@ -138,18 +141,18 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   // based on the devices in the module.
   if (!IsEnabled(/*device_set=*/nullptr, options.session_options->config,
                  **options.graph)) {
-    VLOG(0) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
+    VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
     mlir_bridge_gauge_v1->GetCell()->Set(false);
     return Status::OK();
   }
 
   // Skip MLIR TPU Bridge if no TPU devices found.
   if (!HasTPUDevice(module)) {
-    VLOG(0) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices found";
+    VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices found";
     return Status::OK();
   }
 
-  VLOG(0) << "Running MLIR TPU Bridge V1 Compat";
+  VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
   mlir_bridge_gauge_v1->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(
       mlir::TFTPU::TPUBridgeV1Compat(module, /*enable_logging=*/VLOG_IS_ON(1)));

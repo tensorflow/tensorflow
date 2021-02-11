@@ -38,6 +38,9 @@ limitations under the License.
 
 namespace tensorflow {
 class EagerExecutor;
+class EagerContext;
+class CustomDevice;
+class CustomDeviceOpHandler;
 
 // LINT.IfChange
 // Note: Keep in sync with exported copy of enum in eager/c_api.h.
@@ -122,6 +125,7 @@ class ImmediateExecutionContext : public AbstractContext {
 
   // Return the ParsedName of Host CPU device.
   virtual const DeviceNameUtils::ParsedName& HostCPUParsedName() const = 0;
+  virtual const string& HostCPUName() const = 0;
 
   // Configure soft device placement policy.
   virtual void SetAllowSoftPlacement(bool enable) = 0;
@@ -148,6 +152,18 @@ class ImmediateExecutionContext : public AbstractContext {
   }
 
   //===--------------------------------------------------------------------===//
+  // Experimental Custom Device.
+  //===--------------------------------------------------------------------===//
+  virtual CustomDeviceOpHandler& GetCustomDeviceOpHandler() = 0;
+
+  // Register a custom device. It will return error is the device name is
+  // already registered.
+  // TODO(tfrt-devs): Remove this method. Let caller register it directly into
+  // CustomDeviceOpHandler.
+  virtual Status RegisterCustomDevice(const string& name,
+                                      std::unique_ptr<CustomDevice> device) = 0;
+
+  //===--------------------------------------------------------------------===//
   // Following are features in current TF Eager Runtime.
   // TODO(tfrt-devs): Figure out a way to deprecate following features after
   // migrated to TFRT.
@@ -166,6 +182,9 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual EagerExecutor& Executor() = 0;
   // Update the Eager Executor for current thread.
   virtual void SetExecutorForThread(EagerExecutor* executor) = 0;
+
+  // Return a list of local tensorflow::Device*.
+  virtual std::vector<tensorflow::Device*> ListLocalTfDevices() = 0;
 
   //===--------------------------------------------------------------------===//
   // Following are helper functions to assist integrating TFRT with current

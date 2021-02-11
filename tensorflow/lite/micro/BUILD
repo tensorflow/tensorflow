@@ -179,9 +179,8 @@ cc_library(
     ],
     copts = micro_copts(),
     deps = [
-        ":micro_compatibility",
+        ":micro_error_reporter",
         ":micro_time",
-        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
@@ -249,6 +248,7 @@ tflite_micro_cc_test(
         "micro_interpreter_test.cc",
     ],
     deps = [
+        ":micro_compatibility",
         ":micro_framework",
         ":micro_utils",
         ":op_resolvers",

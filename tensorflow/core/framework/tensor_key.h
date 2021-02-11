@@ -56,6 +56,7 @@ class TensorKey : public Tensor {
     const uint8* d = static_cast<uint8*>(k.data());
     size_t s = k.AllocatedBytes();
     std::vector<uint8> vec;
+    vec.reserve(s);
     for (int i = 0; i < s; i++) {
       vec.push_back(d[i]);
     }

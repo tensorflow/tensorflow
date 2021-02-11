@@ -1974,6 +1974,16 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
   const bool use_spmd = (UseSpmdForXlaPartitioning(replicate_node) ||
                          replicate_inputs_outputs_by_default_for_xla_spmd_) &&
                         allow_parameter_replication_for_spmd;
+
+  // Offset _TPUReplicate non per replica argument indices by
+  // (num_replicas - 1) * num_per_replica_args as _TPUReplicate nodes are
+  // constructed with all per replica args across all replicas while the
+  // encapsulated function only has 1 replica's per replica args. Per replica
+  // args are ordered by replica first, so the index here does not require an
+  // offset and the first replica's input nodes is sufficient for determining
+  // argument sharding.
+  const int index_offset =
+      (params_info.NumReplicas() - 1) * params_info.NumPerReplicaArgs();
   for (int i = 0; i < args.size(); ++i) {
     const Node* n = args[i];
     absl::optional<int64> assigned_core;
@@ -1983,9 +1993,11 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
         *n, num_cores_per_replica, flr, &cached_function_handles,
         &node_and_sharding, &is_fast_mem));
 
-    if (params_info.IsPerReplicaArg(i) || params_info.IsDistributedArg(i)) {
+    const bool is_per_replica_arg = params_info.IsPerReplicaArg(i);
+    if (is_per_replica_arg || params_info.IsDistributedArg(i)) {
       Node* input_node;
-      TF_RETURN_IF_ERROR(replicate_node->input_node(i, &input_node));
+      TF_RETURN_IF_ERROR(replicate_node->input_node(
+          i + (is_per_replica_arg ? 0 : index_offset), &input_node));
       if (input_node->type_string() == kTPUPartitionedInput) {
         TF_ASSIGN_OR_RETURN(
             absl::optional<xla::OpSharding> parsed_sharding,
@@ -2002,7 +2014,8 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
 
     if (params_info.IsVariableArg(i)) {
       Node* input_node;
-      TF_RETURN_IF_ERROR(replicate_node->input_node(i, &input_node));
+      TF_RETURN_IF_ERROR(
+          replicate_node->input_node(i + index_offset, &input_node));
       if (input_node->type_string() == kVarHandleOp) {
         TF_ASSIGN_OR_RETURN(
             absl::optional<xla::OpSharding> parsed_sharding,
@@ -2070,10 +2083,12 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::OTHER) {
       for (int64 core : node_and_sharding->sharding.tile_assignment_devices()) {
         args_device_selector.ReportDeviceAssigned(core, i);
-        VLOG(3) << "Assigning argument " << i << " (" << n->DebugString()
-                << ") with tiled sharding to core " << core
-                << FormatNodeAndShardingMsg(node_and_sharding);
       }
+      VLOG(3) << "Assigning argument " << i << " (" << n->DebugString()
+              << ") with tiled sharding to cores "
+              << absl::StrJoin(
+                     node_and_sharding->sharding.tile_assignment_devices(), ",")
+              << " " << FormatNodeAndShardingMsg(node_and_sharding);
     } else {
       DCHECK_EQ(node_and_sharding->sharding.type(),
                 xla::OpSharding::REPLICATED);
@@ -2173,10 +2188,12 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::OTHER) {
       for (int64 core : node_and_sharding->sharding.tile_assignment_devices()) {
         retvals_device_selector.ReportDeviceAssigned(core, i);
-        VLOG(3) << "Assigning return value " << i << " ("
-                << retvals[i]->DebugString() << ") with tiled sharding to core "
-                << core << FormatNodeAndShardingMsg(node_and_sharding);
       }
+      VLOG(3) << "Assigning return value " << i << " ("
+              << retvals[i]->DebugString() << ") with tiled sharding to cores "
+              << absl::StrJoin(
+                     node_and_sharding->sharding.tile_assignment_devices(), ",")
+              << " " << FormatNodeAndShardingMsg(node_and_sharding);
     } else {
       DCHECK_EQ(node_and_sharding->sharding.type(),
                 xla::OpSharding::REPLICATED);

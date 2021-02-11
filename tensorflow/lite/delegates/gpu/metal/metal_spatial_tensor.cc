@@ -18,12 +18,41 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
+
+absl::Status CreateTextureBuffer(id<MTLBuffer> buffer, const BHWDC& shape,
+                                 const TensorDescriptor& descriptor,
+                                 id<MTLTexture>* texture) {
+  if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
+    const int slices = DivideRoundUp(shape.c, 4);
+    const size_t flt4_count = shape.b * shape.w * shape.h * shape.d * slices;
+    const size_t data_size = flt4_count * 4 * SizeOf(descriptor.data_type);
+    MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
+    texture_desc.width = flt4_count;
+    texture_desc.pixelFormat =
+        DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+    texture_desc.textureType = MTLTextureTypeTextureBuffer;
+    texture_desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+    texture_desc.storageMode = buffer.storageMode;
+    *texture = [buffer newTextureWithDescriptor:texture_desc
+                                         offset:0
+                                    bytesPerRow:data_size];
+    if (!*texture) {
+      return absl::UnknownError("Failed to allocate id<MTLTexture>");
+    }
+  } else {
+    return absl::UnknownError(
+        "TensorStorageType::IMAGE_BUFFER available only in iOS 12/tvOS "
+        "12/macOS 10.14 and higher.");
+  }
+  return absl::OkStatus();
+}
 
 absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
                                   const TensorDescriptor& descriptor,
@@ -47,23 +76,8 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
         return absl::UnknownError("Failed to allocate id<MTLBuffer>");
       }
       if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
-        MTLTextureDescriptor* texture_desc =
-            [[MTLTextureDescriptor alloc] init];
-        texture_desc.width = shape.b * shape.w * shape.h * shape.d * slices;
-        texture_desc.pixelFormat =
-            DataTypeToRGBAPixelFormat(descriptor.data_type, false);
-        if (@available(iOS 12.0, *)) {
-          texture_desc.textureType = MTLTextureTypeTextureBuffer;
-        }
-        texture_desc.usage =
-            MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-        texture_desc.storageMode = MTLStorageModePrivate;
-        *texture = [*buffer newTextureWithDescriptor:texture_desc
-                                              offset:0
-                                         bytesPerRow:data_size];
-        if (!*texture) {
-          return absl::UnknownError("Failed to allocate id<MTLTexture>");
-        }
+        RETURN_IF_ERROR(
+            CreateTextureBuffer(*buffer, shape, descriptor, texture));
       }
       return absl::OkStatus();
     }
@@ -222,6 +236,17 @@ absl::Status MetalSpatialTensor::GetGPUResources(
           "TensorStorageType::BUFFER.");
     }
     resources->buffers.push_back({"buffer", memory_});
+    return absl::OkStatus();
+  }
+  const auto* texture2d_desc =
+      dynamic_cast<const Texture2DDescriptor*>(obj_ptr);
+  if (texture2d_desc) {
+    if (descriptor_.storage_type != TensorStorageType::TEXTURE_2D) {
+      return absl::InvalidArgumentError(
+          "Tensor can be used with Texture2DDescriptor only wtih "
+          "TensorStorageType::TEXTURE_2D.");
+    }
+    resources->images2d.push_back({"tex2d", texture_mem_});
     return absl::OkStatus();
   }
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(obj_ptr);
@@ -496,8 +521,23 @@ absl::Status MetalSpatialTensor::CreateFromDescriptor(
   return absl::OkStatus();
 }
 
-void MetalSpatialTensor::SetBufferHandle(id<MTLBuffer> buffer) {
+absl::Status MetalSpatialTensor::SetBufferHandle(id<MTLBuffer> buffer) {
+  if (memory_owner_) {
+    return absl::InvalidArgumentError(
+        "SetBufferHandle can be used only with shared "
+        "Tensors(CreateSharedBufferTensor).");
+  }
+  if (memory_ == buffer) {
+    return absl::OkStatus();
+  }
   memory_ = buffer;
+  if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    id<MTLTexture> texture_buffer = nullptr;
+    RETURN_IF_ERROR(
+        CreateTextureBuffer(memory_, shape_, descriptor_, &texture_buffer));
+    texture_mem_ = texture_buffer;
+  }
+  return absl::OkStatus();
 }
 
 id<MTLBuffer> MetalSpatialTensor::GetBufferHandle() const { return memory_; }
@@ -515,17 +555,31 @@ absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
   return CreateTensor(device, shape, descriptor, nullptr, nullptr, result);
 }
 
-MetalSpatialTensor CreateSharedBufferTensor(
-    id<MTLBuffer> buffer, const BHWC& shape,
-    const TensorDescriptor& descriptor) {
+absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
+                                      const TensorDescriptor& descriptor,
+                                      MetalSpatialTensor* result) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
-  return MetalSpatialTensor(buffer, nullptr, false, false, shape5D, descriptor);
+  id<MTLTexture> texture_buffer = nullptr;
+  if (buffer && descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    RETURN_IF_ERROR(
+        CreateTextureBuffer(buffer, shape5D, descriptor, &texture_buffer));
+  }
+  *result = MetalSpatialTensor(buffer, texture_buffer, false, true, shape5D,
+                               descriptor);
+  return absl::OkStatus();
 }
 
-MetalSpatialTensor CreateSharedBufferTensor(
-    id<MTLBuffer> buffer, const BHWDC& shape,
-    const TensorDescriptor& descriptor) {
-  return MetalSpatialTensor(buffer, nullptr, false, false, shape, descriptor);
+absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
+                                      const TensorDescriptor& descriptor,
+                                      MetalSpatialTensor* result) {
+  id<MTLTexture> texture_buffer = nullptr;
+  if (buffer && descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    RETURN_IF_ERROR(
+        CreateTextureBuffer(buffer, shape, descriptor, &texture_buffer));
+  }
+  *result = MetalSpatialTensor(buffer, texture_buffer, false, true, shape,
+                               descriptor);
+  return absl::OkStatus();
 }
 
 }  // namespace metal
