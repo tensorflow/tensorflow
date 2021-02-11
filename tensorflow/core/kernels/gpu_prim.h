@@ -14,6 +14,8 @@ limitations under the license, the license you must see.
 #ifndef TENSORFLOW_CORE_KERNELS_GPU_PRIM_H_
 #define TENSORFLOW_CORE_KERNELS_GPU_PRIM_H_
 
+#include "tensorflow/core/platform/bfloat16.h"
+
 #if GOOGLE_CUDA
 #include "cub/block/block_load.cuh"
 #include "cub/block/block_scan.cuh"
@@ -31,16 +33,30 @@ limitations under the license, the license you must see.
 #include "third_party/gpus/cuda/include/cusparse.h"
 
 namespace gpuprim = ::cub;
+
+// Required for sorting Eigen::half and bfloat16.
+namespace cub {
+template <>
+struct NumericTraits<Eigen::half>
+    : BaseTraits<FLOATING_POINT, true, false, uint16_t, Eigen::half> {};
+template <>
+struct NumericTraits<tensorflow::bfloat16>
+    : BaseTraits<FLOATING_POINT, true, false, uint16_t, tensorflow::bfloat16> {
+};
+}  // namespace cub
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/include/hipcub/hipcub.hpp"
 namespace gpuprim = ::hipcub;
 
-// Required for sorting Eigen::half
+// Required for sorting Eigen::half and bfloat16.
 namespace rocprim {
 namespace detail {
 template <>
 struct radix_key_codec_base<Eigen::half>
     : radix_key_codec_floating<Eigen::half, uint16_t> {};
+template <>
+struct radix_key_codec_base<tensorflow::bfloat16>
+    : radix_key_codec_floating<tensorflow::bfloat16, uint16_t> {};
 };  // namespace detail
 };  // namespace rocprim
 
