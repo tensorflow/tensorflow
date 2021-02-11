@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 
 namespace tflite {
 namespace gpu {
@@ -37,11 +38,6 @@ class ConvolutionGeneric : public GPUOperation {
     CONSTANT_MEM,
   };
 
-  enum class WeightsInnerBlockLayout {
-    O4I4,
-    I4O4,
-  };
-
   struct ConvParams {
     int3 block_size;
     int3 work_group_size;
@@ -52,7 +48,7 @@ class ConvolutionGeneric : public GPUOperation {
     bool linear_wh;
     bool linear_whs;
     WeightsUploadType weights_upload_type;
-    WeightsInnerBlockLayout weight_layout;
+    WeightsLayout weights_layout;
     bool different_weights_for_height = false;
     bool x_kernel_is_1;
     bool y_kernel_is_1;
@@ -73,6 +69,13 @@ class ConvolutionGeneric : public GPUOperation {
   ConvolutionGeneric& operator=(ConvolutionGeneric&& kernel) = default;
   ConvolutionGeneric(const ConvolutionGeneric&) = delete;
   ConvolutionGeneric& operator=(const ConvolutionGeneric&) = delete;
+
+  WeightsDescription GetWeightsDescription() const {
+    WeightsDescription desc;
+    desc.layout = params_.weights_layout;
+    desc.output_group_size = params_.block_size.z;
+    return desc;
+  }
 
  private:
   explicit ConvolutionGeneric(const OperationDef& definition)
