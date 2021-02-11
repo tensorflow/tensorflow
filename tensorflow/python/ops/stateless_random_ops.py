@@ -515,7 +515,7 @@ def stateless_random_normal(shape,
     shape = tensor_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
-    if compat.forward_compatible(2021, 2, 2):
+    if compat.forward_compatible(2021, 3, 1):
       key, counter, alg = _get_key_counter_alg(seed)
       rnd = gen_stateless_random_ops_v2.stateless_random_normal_v2(
           shape, key=key, counter=counter, dtype=dtype, alg=alg)
