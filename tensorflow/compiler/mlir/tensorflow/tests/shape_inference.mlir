@@ -1046,7 +1046,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %arg0 : tensor<*xi32>
   }
 
-  // Test conv2d inferReturnTypes.
+  // Test conv2d inferReturnTypes can infer some information when input or
+  // filter does not have fully static shape.
 
   // CHECK-LABEL: func @conv2d_unranked_input_and_filter
   func @conv2d_unranked_input_and_filter(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
