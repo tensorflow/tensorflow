@@ -1,11 +1,5 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers Vision Example.
-
-load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
-)
-
 package(
     default_visibility = ["//visibility:public"],
     features = ["-layering_check"],
@@ -53,7 +47,7 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "person_detection_test",
     srcs = ["person_detection_test.cc"],
     tags = [
@@ -87,7 +81,7 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "image_provider_test",
     srcs = [
         "image_provider_test.cc",
@@ -115,7 +109,7 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "detection_responder_test",
     srcs = [
         "detection_responder_test.cc",
