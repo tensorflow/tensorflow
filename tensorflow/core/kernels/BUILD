@@ -1287,7 +1287,11 @@ tf_kernel_library(
     prefix = "unique_op",
     deps = ARRAY_DEPS + [
         "@com_google_absl//absl/container:flat_hash_map",
-    ],
+    ] + if_cuda_or_rocm([
+        ":gpu_prim_hdrs",
+        ":gpu_prim_helpers",
+        "//tensorflow/core/util:cuda_solvers",
+    ]),
 )
 
 tf_kernel_library(
