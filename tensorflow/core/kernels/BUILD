@@ -502,6 +502,14 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_prim_helpers",
+    hdrs = ["gpu_prim_helpers.h"],
+    deps = if_cuda_or_rocm([
+        ":gpu_prim_hdrs",
+    ]),
+)
+
+cc_library(
     name = "conv_ops_gpu_hdrs",
     hdrs = ["conv_ops_gpu.h"],
 )

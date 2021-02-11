@@ -23,6 +23,7 @@ limitations under the license, the license you must see.
 #include "cub/device/device_histogram.cuh"
 #include "cub/device/device_radix_sort.cuh"
 #include "cub/device/device_reduce.cuh"
+#include "cub/device/device_scan.cuh"
 #include "cub/device/device_segmented_radix_sort.cuh"
 #include "cub/device/device_segmented_reduce.cuh"
 #include "cub/device/device_select.cuh"

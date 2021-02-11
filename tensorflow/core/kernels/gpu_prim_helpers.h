@@ -1,0 +1,142 @@
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+#ifndef TENSORFLOW_CORE_KERNELS_GPU_PRIM_HELPERS_H_
+#define TENSORFLOW_CORE_KERNELS_GPU_PRIM_HELPERS_H_
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#define EIGEN_USE_GPU
+
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/gpu_prim.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+
+namespace tensorflow {
+
+namespace detail {
+
+template <typename T>
+__global__ void RangeInitKernel(const T start, const T delta, const T size,
+                                T* out) {
+  GPU_1D_KERNEL_LOOP(i, size) { out[i] = start + i * delta; }
+}
+
+// Initialize out with range start, start + delta, start + 2 * delta, ...
+template <typename T>
+Status RangeInit(const Eigen::GpuDevice& d, const T start, const T delta,
+                 const T size, T* out) {
+  if (size == 0) return Status::OK();
+  GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
+  return GpuLaunchKernel(RangeInitKernel<T>, config.block_count,
+                         config.thread_per_block, 0, d.stream(), start, delta,
+                         size, out);
+}
+
+}  // namespace detail
+
+// Computes keys_out = sorted(keys_in), and indices_out = argsort(keys_in).
+// If keys_out is not required, it can be set to nullptr.
+// If indices_in is nullptr, the range of input indices [0, size) will be used.
+template <typename Tkey, typename Tindex>
+Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
+                    Tkey* keys_out,            // Optional
+                    const Tindex* indices_in,  // Optional
+                    Tindex* indices_out) {
+  if (size == 0) return Status::OK();
+  // Allocate temporary inputs/outputs if necessary.
+  Tensor tmp_indices_in;
+  if (!indices_in) {
+    TF_RETURN_IF_ERROR(context->allocate_temp(
+        DataTypeToEnum<Tindex>::value, TensorShape({size}), &tmp_indices_in));
+    Tindex* mutable_indices_in = tmp_indices_in.flat<Tindex>().data();
+    indices_in = mutable_indices_in;
+    const Eigen::GpuDevice& device = context->eigen_device<Eigen::GpuDevice>();
+    // Initialize indices_in to the input index range.
+    TF_RETURN_IF_ERROR(detail::RangeInit(device, Tindex(0), Tindex(1),
+                                         Tindex(size), mutable_indices_in));
+  }
+  Tensor tmp_keys_out;
+  if (!keys_out) {
+    TF_RETURN_IF_ERROR(context->allocate_temp(
+        DataTypeToEnum<Tkey>::value, TensorShape({size}), &tmp_keys_out));
+    keys_out = tmp_keys_out.flat<Tkey>().data();
+  }
+  // Determine temporary device storage requirements.
+  Tensor temp_storage;
+  size_t temp_storage_bytes = 0;
+  const auto& cu_stream = GetGpuStream(context);
+  auto err = gpuprim::DeviceRadixSort::SortPairs(
+      NULL, temp_storage_bytes, keys_in, keys_out, indices_in, indices_out,
+      size, 0, sizeof(Tkey) * 8, cu_stream);
+  if (err != 0) {
+    return errors::Internal(
+        "Failed to launch gpuprim::DeviceRadixSort::SortPairs to calculate "
+        "temp_storage_bytes, status: ",
+        cudaGetErrorString(err));
+  }
+  // Allocate temporary storage.
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      &temp_storage));
+  // Sort indices by keys.
+  err = gpuprim::DeviceRadixSort::SortPairs(
+      temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in, keys_out,
+      indices_in, indices_out, size, 0, sizeof(Tkey) * 8, cu_stream);
+  if (err != 0) {
+    return errors::Internal(
+        "Failed to launch gpuprim::DeviceRadixSort::SortPairs, "
+        "temp_storage_bytes: ",
+        temp_storage_bytes, "status: ", cudaGetErrorString(err));
+  }
+  return Status::OK();
+}
+
+template <typename InputIteratorT, typename OutputIteratorT>
+Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
+                             InputIteratorT input, OutputIteratorT output) {
+  if (size == 0) return Status::OK();
+  const auto& cu_stream = GetGpuStream(context);
+  size_t temp_storage_bytes;
+  auto err = gpuprim::DeviceScan::InclusiveSum(nullptr, temp_storage_bytes,
+                                               input, output, size, cu_stream);
+  if (err != 0) {
+    return errors::Internal(
+        "Failed to launch gpuprim::DeviceScan::InclusiveSum to calculate "
+        "temp_storage_bytes, status: ",
+        cudaGetErrorString(err));
+  }
+  Tensor temp_storage;
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      &temp_storage));
+  err = gpuprim::DeviceScan::InclusiveSum(temp_storage.flat<int8>().data(),
+                                          temp_storage_bytes, input, output,
+                                          size, cu_stream);
+  if (err != 0) {
+    return errors::Internal(
+        "Failed to launch gpuprim::DeviceScan::InclusiveSum, "
+        "temp_storage_bytes: ",
+        temp_storage_bytes, ", status: ", cudaGetErrorString(err));
+  }
+  return Status::OK();
+}
+
+}  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#endif  // TENSORFLOW_CORE_KERNELS_GPU_PRIM_HELPERS_H_
