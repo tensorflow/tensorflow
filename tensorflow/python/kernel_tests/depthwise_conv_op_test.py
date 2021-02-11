@@ -313,7 +313,7 @@ class DepthwiseConv2DTest(test.TestCase):
     ops.reset_default_graph()
     graph = ops.get_default_graph()
     with self.session(graph=graph) as sess, ops.device(
-      "/gpu:0" if use_gpu else "/cpu:0"):
+        "/gpu:0" if use_gpu else "/cpu:0"):
       tolerance = {
           dtypes.float16: 4e-2,
           dtypes.float32: 1e-5,
@@ -609,7 +609,7 @@ class DepthwiseConv2DTest(test.TestCase):
     ops.reset_default_graph()
     graph = ops.get_default_graph()
     with self.session(graph=graph) as sess, ops.device(
-      "/gpu:0" if use_gpu else "/cpu:0"):
+        "/gpu:0" if use_gpu else "/cpu:0"):
       tolerance = {
           dtypes.float16: 4e-0,
           dtypes.float32: 8e-4,
@@ -908,7 +908,7 @@ class DepthwiseConv2DTest(test.TestCase):
 
     def _GetVal(use_gpu):
       with self.session() as sess, ops.device(
-        "/gpu:0" if use_gpu else "/cpu:0"):
+          "/gpu:0" if use_gpu else "/cpu:0"):
         t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
         t1 = constant_op.constant(x1, shape=filter_sizes)
         t2 = constant_op.constant(x2, shape=output_sizes)
@@ -960,16 +960,18 @@ class DepthwiseConv2DTest(test.TestCase):
 
   def _CompareBackpropFilter(self, input_sizes, filter_sizes, output_sizes,
                              stride, padding, dtype):
-    x0 = np.linspace(start=0,stop=1,
-       num=np.prod(input_sizes)).reshape(input_sizes).astype(dtype)
-    x2 = np.linspace(start=0,stop=1,
-       num=np.prod(output_sizes)).reshape(output_sizes).astype(dtype)
+    x0 = np.linspace(
+        start=0, stop=1,
+        num=np.prod(input_sizes)).reshape(input_sizes).astype(dtype)
+    x2 = np.linspace(
+        start=0, stop=1,
+        num=np.prod(output_sizes)).reshape(output_sizes).astype(dtype)
     if isinstance(padding, list):
       padding = [(0, 0)] + padding + [(0, 0)]
 
     def _GetVal(use_gpu):
       with self.session() as sess, ops.device(
-        "/gpu:0" if use_gpu else "/cpu:0"):
+          "/gpu:0" if use_gpu else "/cpu:0"):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes)

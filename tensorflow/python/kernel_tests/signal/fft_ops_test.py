@@ -354,54 +354,54 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     if sh[0] & 1:
       return c2r
 
-    if nd==0:
-      nd=len(sh)
+    if nd == 0:
+      nd = len(sh)
     h = sh[-1]//2
-    if h<c2r.shape[-1]:
-      if len(sh)>1:
-        c2r[:,h]=0.0
+    if h < c2r.shape[-1]:
+      if len(sh) > 1:
+        c2r[:, h] = 0.0
       else:
-        c2r[h]=0.0
+        c2r[h] = 0.0
 
     # Ugly, but I don't see how to shorten this 
 
     # dim 0
     h = sh[0]//2
-    c2r[0]=np.real(c2r[0])
-    c2r[h]=np.real(c2r[h])
+    c2r[0] = np.real(c2r[0])
+    c2r[h] = np.real(c2r[h])
 
-    if len(sh)>=2:
+    if len(sh) >= 2:
       for x in range(1, h):
-        c2r[-x]=np.conj(c2r[x])
+        c2r[-x] = np.conj(c2r[x])
 
     # dim 1
-    if len(sh)>=2:
-      c2r[:,0]=np.real(c2r[:,0])
-      c2r[:,h]=np.real(c2r[:,h])
-    if len(sh)>=3:
+    if len(sh) >= 2:
+      c2r[:, 0] = np.real(c2r[:, 0])
+      c2r[:, h] = np.real(c2r[:, h])
+    if len(sh) >= 3:
       for x in range(1, h):
-        c2r[:,-x]=np.conj(c2r[:,x])
+        c2r[:, -x] = np.conj(c2r[:, x])
 
     # dim 2
-    if len(sh)>=3:
-      c2r[:,:,0]=np.real(c2r[:,:,0])
-      c2r[:,:,h]=np.real(c2r[:,:,h])
-    if len(sh)>=4:
+    if len(sh) >= 3:
+      c2r[:, :, 0] = np.real(c2r[:, :, 0])
+      c2r[:, :, h] = np.real(c2r[:, :, h])
+    if len(sh) >= 4:
       for x in range(1, h):
-        c2r[:,:,-x]=np.conj(c2r[:,:,x])
+        c2r[:, :, -x] = np.conj(c2r[:, :, x])
 
     # dim 3
-    if len(sh)>=4:
-      c2r[:,:,:,0]=np.real(c2r[:,:,:,0])
-      c2r[:,:,:,h]=np.real(c2r[:,:,:,h])
-    if len(sh)>=5:
+    if len(sh) >= 4:
+      c2r[:, :, :, 0] = np.real(c2r[:, :, :, 0])
+      c2r[:, :, :, h] = np.real(c2r[:, :, :, h])
+    if len(sh) >= 5:
       for x in range(1, h):
-        c2r[:,:,:,-x]=np.conj(c2r[:,:,:,x])
+        c2r[:, :, :, -x] = np.conj(c2r[:, :, :, x])
 
     # dim 4
-    if len(sh)>=5:
-      c2r[:,:,:,:,0]=np.real(c2r[:,:,:,:,0])
-      c2r[:,:,:,:,h]=np.real(c2r[:,:,:,:,h])
+    if len(sh) >= 5:
+      c2r[:, :, :, :, 0] = np.real(c2r[:, :, :, :, 0])
+      c2r[:, :, :, :, h] = np.real(c2r[:, :, :, :, h])
     return c2r
 
   @parameterized.parameters(itertools.product(
@@ -478,7 +478,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
       VALID_FFT_RANKS, range(3), (5, 6), (np.float32, np.float64)))
   def test_fft_lenth_truncate(self, rank, extra_dims, size, np_rtype):
     """Test truncation (FFT size < dimensions)."""
-    if test.is_built_with_rocm() and (rank==2 or rank==3):
+    if test.is_built_with_rocm() and (rank == 2 or rank == 3):
       return
     np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
     tol = 1e-4 if np_rtype == np.float32 else 8e-5
@@ -512,7 +512,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
       VALID_FFT_RANKS, range(3), (5, 6), (np.float32, np.float64)))
   def test_fft_lenth_pad(self, rank, extra_dims, size, np_rtype):
     """Test padding (FFT size > dimensions)."""
-    if test.is_built_with_rocm() and size==6:
+    if test.is_built_with_rocm() and size == 6:
       return
     np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
     tol = 1e-4 if np_rtype == np.float32 else 8e-5
@@ -527,7 +527,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     self._compare_forward(r2c.astype(np_rtype), rank, fft_length,
                           rtol=tol, atol=tol)
     self._compare_backward(c2r.astype(np_ctype), rank, fft_length,
-                          rtol=tol, atol=tol)
+                           rtol=tol, atol=tol)
     # Confirm it works with unknown shapes as well.
     if not context.executing_eagerly():
       self._compare_forward(

@@ -1085,7 +1085,7 @@ class ProgbarLogger(Callback):
     if self.verbose == 1:
       # Only block async when verbose = 1.
       logs = tf_utils.to_numpy_or_python_type(logs)
-      items=list(logs.items())
+      items = list(logs.items())
       items.sort()
       self.progbar.update(self.seen, items, finalize=False)
 
