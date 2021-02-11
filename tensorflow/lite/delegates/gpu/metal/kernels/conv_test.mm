@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_powervr_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
@@ -336,6 +337,26 @@ absl::Status Winograd4x4To6x6Test(TestExecutionEnvironment* env) {
 
 - (void)testWinograd4x4To6x6 {
   auto status = tflite::gpu::metal::Winograd4x4To6x6Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvPowerVR1x1SimpleWeights {
+  const auto status = ConvPowerVR1x1SimpleWeightsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvPowerVR1x1 {
+  const auto status = ConvPowerVR1x1Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvPowerVRSimpleWeights {
+  const auto status = ConvPowerVRSimpleWeightsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvPowerVR {
+  const auto status = ConvPowerVRTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

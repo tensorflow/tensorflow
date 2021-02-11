@@ -95,6 +95,7 @@ objc_library(
     deps = [
         ":conv",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
     ],
 )
@@ -690,6 +691,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",

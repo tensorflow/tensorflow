@@ -1291,6 +1291,13 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     if (src_depth % 4 == 0 && conv_params.block_size.w <= 2) {
       conv_params.src_depth_loop_size = 4;
     }
+  } else if (gpu_info.IsApple()) {
+    conv_params.block_size = int4(2, 2, 1, 2);
+    work_group_size_ = int3(8, 4, 1);
+    work_group_launch_order_ = int3(0, 1, 2);
+    conv_params.fixed_work_group_size = true;
+    conv_params.src_depth_loop_size = 1;
+    conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   } else {
     conv_params.block_size = int4(1, 1, 1, 4);
     work_group_size_ = int3(8, 2, 1);

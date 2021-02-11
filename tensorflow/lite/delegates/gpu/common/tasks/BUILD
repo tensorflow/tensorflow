@@ -137,6 +137,19 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_powervr_test_util",
+    testonly = 1,
+    srcs = ["conv_powervr_test_util.cc"],
+    hdrs = ["conv_powervr_test_util.h"],
+    deps = [
+        ":conv_powervr",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "conv_weights_converter",
     srcs = ["conv_weights_converter.cc"],
     hdrs = ["conv_weights_converter.h"],
