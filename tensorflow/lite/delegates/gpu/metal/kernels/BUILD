@@ -615,16 +615,6 @@ objc_library(
     ],
 )
 
-cc_library(
-    name = "util",
-    srcs = ["util.cc"],
-    hdrs = ["util.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:types",
-    ],
-)
-
 objc_library(
     name = "winograd_test_lib",
     testonly = 1,
