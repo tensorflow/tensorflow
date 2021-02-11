@@ -1206,6 +1206,8 @@ class LayerNormalization(Layer):
   def call(self, inputs):
     # Compute the axes along which to reduce the mean / variance
     input_shape = inputs.shape
+    if 0 in input_shape:
+      return inputs
     ndims = len(input_shape)
 
     # Broadcasting only necessary for norm when the axis is not just
