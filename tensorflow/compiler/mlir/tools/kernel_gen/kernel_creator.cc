@@ -220,10 +220,6 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
         mlir::kernel_gen::transforms::CreateMapParallelLoopsPass());
   }
 
-  // Now lower the shape computations, bufferize all remaining ops and insert
-  // deallocs.
-  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
   // Expand memref_reshape to its ranked form so that we can propagate
   // scalars and avoid allocation.
   pm.addNestedPass<mlir::FuncOp>(mlir::createStdExpandOpsPass());
@@ -245,13 +241,19 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // Longer term, this should be handled by proper device placement.
   pm.addPass(mlir::kernel_gen::tf_framework::
                  CreateEmbedTFFrameworkFunctionAndAllocPass());
+  // Now lower the shape computations, bufferize all remaining ops and insert
+  // deallocs.
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
+  // TODO(herhut): Enable once no-longer broken.
+  // This depends on https://bugs.llvm.org/show_bug.cgi?id=49142 being fixed.
+  // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(64));
   // TODO(herhut): Depends on https://bugs.llvm.org/show_bug.cgi?id=48385.
   // We also cannot properly free temporaries until
   // https://llvm.discourse.group/t/remove-tight-coupling-of-the-bufferdeallocation-pass-to-std-and-linalg-operations/2162
   // is resolved.
   // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
+  // pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
   // Apply the mapping and go to GPU. We cannot do this earlier due to missing
   // interfaces on the GPU dialect.
   // TODO(b/174830459): Move up once implemented.
