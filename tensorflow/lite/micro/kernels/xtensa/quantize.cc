@@ -15,20 +15,22 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"
 
-#include <xtensa/tie/xt_hifi2.h>
-
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/quantize.h"
 #include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/quantize.h"
 #include "tensorflow/lite/micro/kernels/xtensa/fixedpoint_utils.h"
+#include "tensorflow/lite/micro/kernels/xtensa/xtensa.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace {
 
+#if defined(HIFIMINI)
 struct OpData {
   int32_t zero_point = 0;
   int scale_multiplier = 0;
@@ -107,34 +109,7 @@ void AffineQuantize(int scale_multiplier, const int32_t zero_point,
   }
 }
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  return context->AllocatePersistentBuffer(context, sizeof(OpData));
-}
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TFLITE_DCHECK(node->user_data != nullptr);
-  auto* op_data = static_cast<OpData*>(node->user_data);
-
-  TfLiteTensor* output = GetOutput(context, node, 0);
-  const TfLiteTensor* input = GetInput(context, node, 0);
-
-  // TODO(b/155682734): Fix dangerous input/output scale ratio assumptions.
-  op_data->scale_multiplier =
-      CreateQConstantForInt24(0, input->params.scale / output->params.scale);
-
-  op_data->zero_point = output->params.zero_point;
-  op_data->input_zero_point = input->params.zero_point;
-
-  double effective_scale = static_cast<double>(input->params.scale) /
-                           static_cast<double>(output->params.scale);
-  QuantizeMultiplier(effective_scale, &op_data->requantize_output_multiplier,
-                     &op_data->requantize_output_shift);
-
-  return kTfLiteOk;
-}
-
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus EvalHifimini(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   auto* op_data = static_cast<OpData*>(node->user_data);
 
@@ -161,6 +136,54 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
   return kTfLiteOk;
+}
+#endif  // defined(HIFIMINI)
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+#if defined(HIFIMINI)
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
+#else
+  return context->AllocatePersistentBuffer(context,
+                                           sizeof(OpDataQuantizeReference));
+#endif
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+
+#if defined(HIFIMINI)
+  auto* op_data = static_cast<OpData*>(node->user_data);
+  // TODO(b/155682734): Fix dangerous input/output scale ratio assumptions.
+  op_data->scale_multiplier =
+      CreateQConstantForInt24(0, input->params.scale / output->params.scale);
+  op_data->zero_point = output->params.zero_point;
+#else
+  auto* op_data = static_cast<OpDataQuantizeReference*>(node->user_data);
+  op_data->quantization_params.zero_point = output->params.zero_point;
+  op_data->quantization_params.scale =
+      static_cast<double>(output->params.scale);
+#endif
+
+  op_data->input_zero_point = input->params.zero_point;
+
+  double effective_scale = static_cast<double>(input->params.scale) /
+                           static_cast<double>(output->params.scale);
+  QuantizeMultiplier(effective_scale, &op_data->requantize_output_multiplier,
+                     &op_data->requantize_output_shift);
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+#if defined(HIFIMINI)
+  return EvalHifimini(context, node);
+#else
+  return EvalQuantizeReference(context, node);
+#endif
 }
 
 }  // namespace

@@ -297,7 +297,7 @@ void PerformGemmThenCompareResultsThenAgainWithClamping(
 // done so far. Until that is done, the best that we can do is to search for
 // a good exponent value by trial-and-error. This is expensive, as each try
 // requires computing a whole GEMM. This is thus probably a major contribution
-// to the overall latency of this tesat. To partially mitigate that,
+// to the overall latency of this test. To partially mitigate that,
 // we use a bisection to reduce the required number of tries.
 //
 // This function is recursive. The bisect_min and bisect_max arguments

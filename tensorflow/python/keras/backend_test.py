@@ -93,8 +93,8 @@ def compare_two_inputs_op_to_numpy(keras_op,
       backend.variable(input_a, dtype=dtype),
       backend.variable(input_b, dtype=dtype), *keras_args, **keras_kwargs)
   keras_output = backend.eval(keras_output)
-  np_output = np_op(input_a.astype(dtype), input_b.astype(dtype),
-                    *np_args, **np_kwargs)
+  np_output = np_op(
+      input_a.astype(dtype), input_b.astype(dtype), *np_args, **np_kwargs)
   try:
     np.testing.assert_allclose(keras_output, np_output, atol=1e-4)
   except AssertionError:
@@ -425,19 +425,31 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
         (backend.argmax, np.argmax),
     ]
     for keras_op, np_op in ops_to_test:
-      compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
-                                       keras_kwargs={'axis': 1},
-                                       np_kwargs={'axis': 1})
-      compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
-                                       keras_kwargs={'axis': -1},
-                                       np_kwargs={'axis': -1})
+      compare_single_input_op_to_numpy(
+          keras_op,
+          np_op,
+          input_shape=(4, 7, 5),
+          keras_kwargs={'axis': 1},
+          np_kwargs={'axis': 1})
+      compare_single_input_op_to_numpy(
+          keras_op,
+          np_op,
+          input_shape=(4, 7, 5),
+          keras_kwargs={'axis': -1},
+          np_kwargs={'axis': -1})
       if 'keepdims' in tf_inspect.getargspec(keras_op).args:
-        compare_single_input_op_to_numpy(keras_op, np_op,
-                                         input_shape=(4, 7, 5),
-                                         keras_kwargs={'axis': 1,
-                                                       'keepdims': True},
-                                         np_kwargs={'axis': 1,
-                                                    'keepdims': True})
+        compare_single_input_op_to_numpy(
+            keras_op,
+            np_op,
+            input_shape=(4, 7, 5),
+            keras_kwargs={
+                'axis': 1,
+                'keepdims': True
+            },
+            np_kwargs={
+                'axis': 1,
+                'keepdims': True
+            })
 
   def test_elementwise_ops(self):
     ops_to_test = [
@@ -457,9 +469,8 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
         (backend.log, np.log),
     ]
     for keras_op, np_op in ops_to_test:
-      compare_single_input_op_to_numpy(keras_op, np_op,
-                                       input_shape=(4, 7),
-                                       negative_values=False)
+      compare_single_input_op_to_numpy(
+          keras_op, np_op, input_shape=(4, 7), negative_values=False)
 
     compare_single_input_op_to_numpy(
         backend.clip,
@@ -489,9 +500,8 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
         (backend.minimum, np.minimum),
     ]
     for keras_op, np_op in ops_to_test:
-      compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                     input_shape_a=(4, 7),
-                                     input_shape_b=(4, 7))
+      compare_two_inputs_op_to_numpy(
+          keras_op, np_op, input_shape_a=(4, 7), input_shape_b=(4, 7))
 
   def test_relu(self):
     x = ops.convert_to_tensor_v2_with_dispatch([[-4, 0], [2, 7]], 'float32')
@@ -713,19 +723,14 @@ class BackendShapeOpsTest(test.TestCase):
         shape[2] += padding[1][0] + padding[1][1]
         shape[3] += padding[2][0] + padding[2][1]
         y = np.zeros(tuple(shape))
-        y[:,
-          padding[0][0]:-padding[0][1],
-          padding[1][0]:-padding[1][1],
-          padding[2][0]:-padding[2][1],
-          :] = x
+        y[:, padding[0][0]:-padding[0][1], padding[1][0]:-padding[1][1],
+          padding[2][0]:-padding[2][1], :] = x
       else:
         shape[2] += padding[0][0] + padding[0][1]
         shape[3] += padding[1][0] + padding[1][1]
         shape[4] += padding[2][0] + padding[2][1]
         y = np.zeros(tuple(shape))
-        y[:, :,
-          padding[0][0]:-padding[0][1],
-          padding[1][0]:-padding[1][1],
+        y[:, :, padding[0][0]:-padding[0][1], padding[1][0]:-padding[1][1],
           padding[2][0]:-padding[2][1]] = x
       return y
 
@@ -753,18 +758,14 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
   def test_bias_add(self):
     keras_op = backend.bias_add
     np_op = np.add
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 7),
-                                   input_shape_b=(7,))
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 3, 7),
-                                   input_shape_b=(7,))
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 3, 5, 7),
-                                   input_shape_b=(7,))
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 3, 5, 2, 7),
-                                   input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 7), input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 3, 7), input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 3, 5, 7), input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 3, 5, 2, 7), input_shape_b=(7,))
 
     with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       x = backend.variable((3, 4))
@@ -787,12 +788,10 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
         b = b.reshape((1, b.shape[0], 1, 1))
       return x + b
 
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 3, 7),
-                                   input_shape_b=(3,))
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 3, 5, 7),
-                                   input_shape_b=(3,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 3, 7), input_shape_b=(3,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 3, 5, 7), input_shape_b=(3,))
 
   def test_pool2d(self):
     val = np.random.random((10, 3, 10, 10))
@@ -847,8 +846,6 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
       y = backend.pool2d(x, (2, 2), strides=(2, 2), pool_mode='other')
 
   def test_pool3d(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     val = np.random.random((10, 3, 10, 10, 10))
     x = backend.variable(val)
     y = backend.pool3d(
@@ -938,18 +935,16 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
           kernel_sizes = (kernel_size,) * dim
           strides = (stride,) * dim
 
-          output_shape = tuple([(i - kernel_size + stride) // stride
-                                for i in input_spatial_shape])
+          output_shape = tuple([
+              (i - kernel_size + stride) // stride for i in input_spatial_shape
+          ])
 
           kernel_shape = (np.prod(output_shape),
-                          np.prod(kernel_sizes) * channels_in,
-                          filters)
+                          np.prod(kernel_sizes) * channels_in, filters)
 
           kernel = np.random.normal(
-              0,
-              1,
-              output_shape + (channels_in, np.prod(kernel_sizes), filters)
-          )
+              0, 1,
+              output_shape + (channels_in, np.prod(kernel_sizes), filters))
 
           kernel_cf = np.reshape(kernel, kernel_shape)
           kernel_cf = backend.variable(kernel_cf)
@@ -957,14 +952,14 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
           conv_cf = backend.local_conv(inputs_cf, kernel_cf, kernel_sizes,
                                        strides, output_shape, 'channels_first')
 
-          inputs_cl = np.transpose(inputs, [0, 2] + list(range(3, dim + 2)) +
-                                   [1])
+          inputs_cl = np.transpose(inputs,
+                                   [0, 2] + list(range(3, dim + 2)) + [1])
           inputs_cl = backend.variable(inputs_cl)
 
           kernel_cl = np.reshape(
-              np.transpose(kernel, list(range(dim)) + [dim + 1, dim, dim + 2]),
-              kernel_shape
-          )
+              np.transpose(kernel,
+                           list(range(dim)) + [dim + 1, dim, dim + 2]),
+              kernel_shape)
           kernel_cl = backend.variable(kernel_cl)
 
           conv_cl = backend.local_conv(inputs_cl, kernel_cl, kernel_sizes,
@@ -975,18 +970,13 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 
           self.assertAllCloseAccordingToType(
               conv_cf,
-              np.transpose(conv_cl,
-                           [0, dim + 1] + list(range(1, dim + 1))),
-              atol=1e-5
-          )
+              np.transpose(conv_cl, [0, dim + 1] + list(range(1, dim + 1))),
+              atol=1e-5)
 
   @parameterized.named_parameters(
       ('local_conv1d', (5, 6), (3,), (1,), (3,)),
       ('local_conv2d', (4, 5, 6), (3, 3), (1, 1), (2, 3)))
-  def test_local_conv_1d_and_2d(self,
-                                input_shape,
-                                kernel_sizes,
-                                strides,
+  def test_local_conv_1d_and_2d(self, input_shape, kernel_sizes, strides,
                                 output_shape):
     filters = 3
     batch_size = 2
@@ -994,9 +984,9 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     inputs = np.random.normal(0, 1, (batch_size,) + input_shape)
     inputs = backend.variable(inputs)
 
-    kernel = np.random.normal(0, 1, (np.prod(output_shape),
-                                     np.prod(kernel_sizes) * input_shape[-1],
-                                     filters))
+    kernel = np.random.normal(0, 1,
+                              (np.prod(output_shape), np.prod(kernel_sizes) *
+                               input_shape[-1], filters))
     kernel = backend.variable(kernel)
 
     local_conv = backend.local_conv(inputs, kernel, kernel_sizes, strides,
@@ -1225,12 +1215,33 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     mask = backend.variable(np_mask)
 
     kwargs_list = [
-        {'go_backwards': False, 'mask': None},
-        {'go_backwards': False, 'mask': None, 'unroll': True},
-        {'go_backwards': True, 'mask': None},
-        {'go_backwards': True, 'mask': None, 'unroll': True},
-        {'go_backwards': False, 'mask': mask},
-        {'go_backwards': False, 'mask': mask, 'unroll': True},
+        {
+            'go_backwards': False,
+            'mask': None
+        },
+        {
+            'go_backwards': False,
+            'mask': None,
+            'unroll': True
+        },
+        {
+            'go_backwards': True,
+            'mask': None
+        },
+        {
+            'go_backwards': True,
+            'mask': None,
+            'unroll': True
+        },
+        {
+            'go_backwards': False,
+            'mask': mask
+        },
+        {
+            'go_backwards': False,
+            'mask': mask,
+            'unroll': True
+        },
     ]
     for i, kwargs in enumerate(kwargs_list):
       last_output, outputs, new_states = backend.rnn(rnn_fn, inputs,
@@ -1319,12 +1330,33 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     mask = backend.variable(np_mask)
 
     kwargs_list = [
-        {'go_backwards': False, 'mask': None},
-        {'go_backwards': False, 'mask': None, 'unroll': True},
-        {'go_backwards': True, 'mask': None},
-        {'go_backwards': True, 'mask': None, 'unroll': True},
-        {'go_backwards': False, 'mask': mask},
-        {'go_backwards': False, 'mask': mask, 'unroll': True},
+        {
+            'go_backwards': False,
+            'mask': None
+        },
+        {
+            'go_backwards': False,
+            'mask': None,
+            'unroll': True
+        },
+        {
+            'go_backwards': True,
+            'mask': None
+        },
+        {
+            'go_backwards': True,
+            'mask': None,
+            'unroll': True
+        },
+        {
+            'go_backwards': False,
+            'mask': mask
+        },
+        {
+            'go_backwards': False,
+            'mask': mask,
+            'unroll': True
+        },
     ]
     for i, kwargs in enumerate(kwargs_list):
       last_output, outputs, new_states = backend.rnn(rnn_fn, inputs,
@@ -1394,8 +1426,8 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     def step_function(inputs, states):
       return inputs, [s + 1 for s in states]
 
-    inputs_vals = np.random.random((num_samples, num_timesteps,
-                                    state_and_io_size))
+    inputs_vals = np.random.random(
+        (num_samples, num_timesteps, state_and_io_size))
     initial_state_vals = np.random.random((num_samples, state_and_io_size))
     # masking of two last timesteps for second sample only
     mask_vals = np.ones((num_samples, num_timesteps))
@@ -1785,29 +1817,34 @@ class TestCTC(test.TestCase):
     depth = 6
     seq_len_0 = 5
     input_prob_matrix_0 = np.asarray(
-        [[0.30999, 0.309938, 0.0679938, 0.0673362, 0.0708352, 0.173908],
-         [0.215136, 0.439699, 0.0370931, 0.0393967, 0.0381581, 0.230517],
-         [0.199959, 0.489485, 0.0233221, 0.0251417, 0.0233289, 0.238763],
-         [0.279611, 0.452966, 0.0204795, 0.0209126, 0.0194803, 0.20655],
-         [0.51286, 0.288951, 0.0243026, 0.0220788, 0.0219297, 0.129878],
-         # Random entry added in at time=5
-         [0.155251, 0.164444, 0.173517, 0.176138, 0.169979, 0.160671]],
+        [
+            [0.30999, 0.309938, 0.0679938, 0.0673362, 0.0708352, 0.173908],
+            [0.215136, 0.439699, 0.0370931, 0.0393967, 0.0381581, 0.230517],
+            [0.199959, 0.489485, 0.0233221, 0.0251417, 0.0233289, 0.238763],
+            [0.279611, 0.452966, 0.0204795, 0.0209126, 0.0194803, 0.20655],
+            [0.51286, 0.288951, 0.0243026, 0.0220788, 0.0219297, 0.129878],
+            # Random entry added in at time=5
+            [0.155251, 0.164444, 0.173517, 0.176138, 0.169979, 0.160671]
+        ],
         dtype=np.float32)
 
     # len max_time_steps array of batch_size x depth matrices
-    inputs = ([input_prob_matrix_0[t, :][np.newaxis, :]
-               for t in range(seq_len_0)] +  # Pad to max_time_steps = 8
-              2 * [np.zeros((1, depth), dtype=np.float32)])
+    inputs = (
+        [input_prob_matrix_0[t, :][np.newaxis, :] for t in range(seq_len_0)
+        ] +  # Pad to max_time_steps = 8
+        2 * [np.zeros((1, depth), dtype=np.float32)])
 
     inputs = backend.variable(np.asarray(inputs).transpose((1, 0, 2)))
 
     # batch_size length vector of sequence_lengths
     input_length = backend.variable(np.array([seq_len_0], dtype=np.int32))
     # batch_size length vector of negative log probabilities
-    log_prob_truth = np.array([
-        -3.5821197,  # output beam 0
-        -3.777835    # output beam 1
-    ], np.float32)[np.newaxis, :]
+    log_prob_truth = np.array(
+        [
+            -3.5821197,  # output beam 0
+            -3.777835  # output beam 1
+        ],
+        np.float32)[np.newaxis, :]
 
     decode_truth = [
         np.array([1, 0, -1, -1, -1, -1, -1]),
@@ -1866,9 +1903,9 @@ class TestCTC(test.TestCase):
 
       labels = np.asarray([[0, 1, 2, 1, 0]])
       inputs = np.asarray(
-          [[[0.633766, 0.221185, 0.0917319, 0.0129757, 0.0142857, 0.0260553], [
-              0.111121, 0.588392, 0.278779, 0.0055756, 0.00569609, 0.010436
-          ], [0.0357786, 0.633813, 0.321418, 0.00249248, 0.00272882, 0.0037688],
+          [[[0.633766, 0.221185, 0.0917319, 0.0129757, 0.0142857, 0.0260553],
+            [0.111121, 0.588392, 0.278779, 0.0055756, 0.00569609, 0.010436],
+            [0.0357786, 0.633813, 0.321418, 0.00249248, 0.00272882, 0.0037688],
             [0.0663296, 0.643849, 0.280111, 0.00283995, 0.0035545, 0.00331533],
             [0.458235, 0.396634, 0.123377, 0.00648837, 0.00903441, 0.00623107]]
           ],
@@ -1975,12 +2012,12 @@ class FunctionTest(test.TestCase):
 
     x_ph = backend.placeholder(ndim=2)
     v = backend.variable(np.ones((4, 2)))
-    output = x_ph ** 2 + v
+    output = x_ph**2 + v
     new_v = v + x_ph
     f = backend.function(x_ph, output, updates=[(v, new_v)])
     input_val = np.random.random((4, 2))
     result = f(input_val)
-    self.assertAllClose(result, input_val ** 2 + 1)
+    self.assertAllClose(result, input_val**2 + 1)
     self.assertAllClose(backend.get_value(v), np.ones((4, 2)) + input_val)
 
 

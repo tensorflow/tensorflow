@@ -10,7 +10,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "nest",
     srcs = ["nest.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "@six_archive//:six",
@@ -22,7 +22,7 @@ py_test(
     size = "small",
     srcs = ["nest_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":nest",
         "//tensorflow/python:array_ops",
@@ -37,7 +37,7 @@ py_test(
 py_library(
     name = "sparse",
     srcs = ["sparse.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":nest",
         "//tensorflow/python:dtypes",
@@ -55,7 +55,7 @@ py_test(
     size = "small",
     srcs = ["sparse_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":nest",
         ":sparse",
@@ -69,7 +69,7 @@ py_test(
 py_library(
     name = "structure",
     srcs = ["structure.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":nest",
         "//tensorflow/python:dtypes",
@@ -91,7 +91,7 @@ py_test(
     size = "small",
     srcs = ["structure_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":nest",
         ":structure",
@@ -120,7 +120,7 @@ py_test(
 py_library(
     name = "options",
     srcs = ["options.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_test(
@@ -128,7 +128,7 @@ py_test(
     size = "small",
     srcs = ["options_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":options",
         "//tensorflow/python:client_testlib",
@@ -138,7 +138,7 @@ py_test(
 py_library(
     name = "convert",
     srcs = ["convert.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -152,7 +152,7 @@ py_test(
     size = "small",
     srcs = ["convert_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":convert",
         "//tensorflow/python:client_testlib",
@@ -164,7 +164,7 @@ py_test(
 py_library(
     name = "random_seed",
     srcs = ["random_seed.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -177,7 +177,7 @@ py_test(
     size = "small",
     srcs = ["random_seed_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":random_seed",
         "//tensorflow/python:client_testlib",
@@ -189,7 +189,7 @@ py_test(
 py_library(
     name = "traverse",
     srcs = ["traverse.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
     ],
 )
@@ -199,7 +199,7 @@ py_test(
     size = "small",
     srcs = ["traverse_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":traverse",
         "//tensorflow/python:client_testlib",

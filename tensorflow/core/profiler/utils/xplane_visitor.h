@@ -100,6 +100,17 @@ class XStatsOwner {
   // Prefer ForEachStat above when multiple stat values are necessary.
   absl::optional<XStatVisitor> GetStat(int64 stat_type) const;
 
+  // Same as above that skips searching for the stat.
+  absl::optional<XStatVisitor> GetStat(
+      int64 stat_type, const XStatMetadata& stat_metadata) const {
+    for (const XStat& stat : stats_owner_->stats()) {
+      if (stat.metadata_id() == stat_metadata.id()) {
+        return XStatVisitor(plane_, &stat, &stat_metadata, stat_type);
+      }
+    }
+    return absl::nullopt;  // type does not exist in this owner.
+  }
+
  protected:
   const XPlaneVisitor* plane() const { return plane_; }
   const T* stats_owner() const { return stats_owner_; }
@@ -165,6 +176,7 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   int64 EndOffsetPs() const {
     return event_->offset_ps() + event_->duration_ps();
   }
+  int64 EndTimestampPs() const { return TimestampPs() + DurationPs(); }
 
   int64 NumOccurrences() const { return event_->num_occurrences(); }
 
@@ -285,11 +297,7 @@ template <class T>
 absl::optional<XStatVisitor> XStatsOwner<T>::GetStat(int64 stat_type) const {
   const auto* stat_metadata = plane_->GetStatMetadataByType(stat_type);
   if (stat_metadata != nullptr) {
-    for (const XStat& stat : stats_owner_->stats()) {
-      if (stat.metadata_id() == stat_metadata->id()) {
-        return XStatVisitor(plane_, &stat, stat_metadata, stat_type);
-      }
-    }
+    return GetStat(stat_type, *stat_metadata);
   }
   return absl::nullopt;  // type does not exist in this owner.
 }

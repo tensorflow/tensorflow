@@ -88,7 +88,8 @@ class DispatchServer(object):
 
   >>> dispatcher = tf.data.experimental.service.DispatchServer()
   >>> dispatcher_address = dispatcher.target.split("://")[1]
-  >>> worker = tf.data.experimental.service.WorkerServer(WorkerConfig(
+  >>> worker = tf.data.experimental.service.WorkerServer(
+  ...     tf.data.experimental.service.WorkerConfig(
   ...     dispatcher_address=dispatcher_address))
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
@@ -306,7 +307,8 @@ class WorkerServer(object):
         port=config.port,
         protocol=config.protocol,
         heartbeat_interval_ms=config.heartbeat_interval_ms,
-        dispatcher_timeout_ms=config.dispatcher_timeout_ms)
+        dispatcher_timeout_ms=config.dispatcher_timeout_ms,
+        data_transfer_protocol=None)
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
         config_proto.SerializeToString())
     if start:

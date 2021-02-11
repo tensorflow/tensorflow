@@ -73,7 +73,6 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # p
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -122,7 +121,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   Users will just instantiate a layer and then treat it as a callable.
 
-  Arguments:
+  Args:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
     dtype: The dtype of the layer's computations and weights. Can also be a
@@ -167,14 +166,20 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     depend on the shape(s) of the input(s), using `add_weight()`. `__call__()`
     will automatically build the layer (if it has not been built yet) by
     calling `build()`.
-  * `call(self, *args, **kwargs)`: Called in `__call__` after making sure
-    `build()` has been called. `call()` performs the logic of applying the
+  * `call(self, inputs, *args, **kwargs)`: Called in `__call__` after making
+    sure `build()` has been called. `call()` performs the logic of applying the
     layer to the input tensors (which should be passed in as argument).
     Two reserved keyword arguments you can optionally use in `call()` are:
-      - `training` (boolean, whether the call is in
-        inference mode or training mode)
+      - `training` (boolean, whether the call is in inference mode or training
+        mode). See more details in [the layer/model subclassing guide](
+        https://www.tensorflow.org/guide/keras/custom_layers_and_models#privileged_training_argument_in_the_call_method)
       - `mask` (boolean tensor encoding masked timesteps in the input, used
-        in RNN layers)
+        in RNN layers). See more details in [the layer/model subclassing guide](
+        https://www.tensorflow.org/guide/keras/custom_layers_and_models#privileged_mask_argument_in_the_call_method)
+    A typical signature for this method is `call(self, inputs)`, and user could
+    optionally add `training` and `mask` if the layer need them. `*args` and
+    `**kwargs` is only useful for future extension when more input parameters
+    are planned to be added.
   * `get_config(self)`: Returns a dictionary containing the configuration used
     to initialize this layer. If the keys differ from the arguments
     in `__init__`, then override `from_config(self)` as well.
@@ -300,6 +305,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   # not available to the restoration code).
   _must_restore_from_config = False
 
+  def _get_cell_name(self):
+    canonical_name = get_canonical_name_for_symbol(
+        self.__class__, api_name='keras', add_prefix_to_v1_names=True)
+    if canonical_name is not None:
+      return 'tf.{}'.format(canonical_name)
+    return self.__class__.__module__ + '.' + self.__class__.__name__
+
   def _instrument_layer_creation(self):
     self._instrumented_keras_api = False
     self._instrumented_keras_layer_class = False
@@ -308,10 +320,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       keras_api_gauge.get_cell('layer').set(True)
       self._instrumented_keras_api = True
       if getattr(self, '_is_model_for_instrumentation', False):
-        keras_models_gauge.get_cell(self.__class__.__name__).set(True)
+        keras_models_gauge.get_cell(self._get_cell_name()).set(True)
         self._instrumented_keras_model_class = True
       else:
-        keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+        keras_layers_gauge.get_cell(self._get_cell_name()).set(True)
         self._instrumented_keras_layer_class = True
 
   @trackable.no_automatic_dependency_tracking
@@ -459,7 +471,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     This is typically used to create the weights of `Layer` subclasses.
 
-    Arguments:
+    Args:
       input_shape: Instance of `TensorShape`, or list of instances of
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
@@ -470,7 +482,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self.built = True
 
   @doc_controls.for_subclass_implementers
-  def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
+  def call(self, inputs, *args, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
     Note here that `call()` method in `tf.keras` is little bit different
@@ -478,8 +490,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     layers as additional arguments. Whereas `tf.keras` has `compute_mask()`
     method to support masking.
 
-    Arguments:
+    Args:
         inputs: Input tensor, or list/tuple of input tensors.
+        *args: Additional positional arguments. Currently unused.
         **kwargs: Additional keyword arguments. Currently unused.
 
     Returns:
@@ -491,7 +504,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _add_trackable(self, trackable_object, trainable):
     """Adds a Trackable object to this layer's state.
 
-    Arguments:
+    Args:
       trackable_object: The tf.tracking.Trackable object to add.
       trainable: Boolean, whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases) or
@@ -522,7 +535,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                  **kwargs):
     """Adds a new variable to the layer.
 
-    Arguments:
+    Args:
       name: Variable name.
       shape: Variable shape. Defaults to scalar if unspecified.
       dtype: The type of the variable. Defaults to `self.dtype`.
@@ -676,6 +689,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     information, nor the layer class name. These are handled
     by `Network` (one layer of abstraction above).
 
+    Note that `get_config()` does not guarantee to return a fresh copy of dict
+    every time it is called. The callers should make a copy of the returned dict
+    if they want to modify it.
+
     Returns:
         Python dictionary.
     """
@@ -713,7 +730,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     dictionary. It does not handle layer connectivity
     (handled by Network), nor weights (handled by `set_weights`).
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the
             output of get_config.
 
@@ -729,7 +746,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     layer. This assumes that the layer will later be used with inputs that
     match the input shape provided here.
 
-    Arguments:
+    Args:
         input_shape: Shape tuple (tuple of integers)
             or list of shape tuples (one per output tensor of the layer).
             Shape tuples can include None for free dimensions,
@@ -882,7 +899,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
-    Arguments:
+    Args:
         inputs: Tensor or list of tensors.
         mask: Tensor or list of tensors.
 
@@ -903,7 +920,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def __call__(self, *args, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
-    Arguments:
+    Args:
       *args: Positional arguments to be passed to `self.call`.
       **kwargs: Keyword arguments to be passed to `self.call`.
 
@@ -920,6 +937,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         for `inputs` by the previous layer (if `input` did come from
         a layer that generated a corresponding mask, i.e. if it came from
         a Keras layer with masking support.
+      - If the layer is not built, the method will call `build`.
 
     Raises:
       ValueError: if the layer's `call` method returns None (an invalid value).
@@ -1069,7 +1087,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         training_value = backend.learning_phase()
         # Force the training_value to be bool type which matches to the contract
         # for layer/model call args.
-        if tensor_util.is_tensor(training_value):
+        if tensor_util.is_tf_type(training_value):
           training_value = math_ops.cast(training_value, dtypes.bool)
         else:
           training_value = bool(training_value)
@@ -1204,7 +1222,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           # Ensure value is a `bool` or `tf.bool`.
           if isinstance(training_mode, bool):
             pass
-          elif tensor_util.is_tensor(training_mode):
+          elif tensor_util.is_tf_type(training_mode):
             training_mode = math_ops.cast(training_mode, dtypes.bool)
           else:
             training_mode = bool(training_mode)
@@ -1526,7 +1544,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     model.add_loss(lambda: tf.reduce_mean(d.kernel))
     ```
 
-    Arguments:
+    Args:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
       **kwargs: Additional keyword arguments for backward compatibility.
@@ -1546,7 +1564,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
-      if not tensor_util.is_tensor(loss):
+      if not tensor_util.is_tf_type(loss):
         loss = ops.convert_to_tensor_v2_with_dispatch(
             loss, dtype=backend.floatx())
       loss._unconditional_loss = True  # pylint: disable=protected-access
@@ -1563,7 +1581,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         continue
       if loss is None:
         continue
-      if not tensor_util.is_tensor(loss) and not isinstance(
+      if not tensor_util.is_tf_type(loss) and not isinstance(
           loss, keras_tensor.KerasTensor):
         loss = ops.convert_to_tensor_v2_with_dispatch(
             loss, dtype=backend.floatx())
@@ -1572,7 +1590,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
            isinstance(loss, keras_tensor.KerasTensor)) and
           not base_layer_utils.is_in_tf_function()):
         symbolic_losses.append(loss)
-      elif tensor_util.is_tensor(loss):
+      elif tensor_util.is_tf_type(loss):
         eager_losses.append(loss)
 
     self._callable_losses.extend(callable_losses)
@@ -1768,7 +1786,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     updates are run on the fly and thus do not need to be tracked for later
     execution).
 
-    Arguments:
+    Args:
       updates: Update op, or list/tuple of update ops, or zero-arg callable
         that returns an update op. A zero-arg callable should be passed in
         order to disable running the updates by setting `trainable=False`
@@ -1823,7 +1841,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
 
-    Arguments:
+    Args:
         weights: a list of Numpy arrays. The number
             of arrays and their shape must match
             number of the dimensions of the weights
@@ -1920,7 +1938,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Retrieves updates relevant to a specific set of inputs.
 
-    Arguments:
+    Args:
       inputs: Input tensor or list/tuple of input tensors.
 
     Returns:
@@ -1937,7 +1955,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Retrieves losses relevant to a specific set of inputs.
 
-    Arguments:
+    Args:
       inputs: Input tensor or list/tuple of input tensors.
 
     Returns:
@@ -1952,7 +1970,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_input_mask_at(self, node_index):
     """Retrieves the input mask tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1972,7 +1990,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_output_mask_at(self, node_index):
     """Retrieves the output mask tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -2036,7 +2054,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_input_shape_at(self, node_index):
     """Retrieves the input shape(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -2056,7 +2074,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_output_shape_at(self, node_index):
     """Retrieves the output shape(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -2076,7 +2094,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_input_at(self, node_index):
     """Retrieves the input tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -2095,7 +2113,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_output_at(self, node_index):
     """Retrieves the output tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -2256,7 +2274,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     This is an alias of `self.__call__`.
 
-    Arguments:
+    Args:
       inputs: Input tensor(s).
       *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.
@@ -2645,7 +2663,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         - get_input_at
         etc...
 
-    Arguments:
+    Args:
         node_index: Integer index of the node from which
             to retrieve the attribute.
         attr: Exact node attribute name.
@@ -2865,11 +2883,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
     for val in nest.flatten(value, expand_composites=True):
-      # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
-      # no longer return True for isinstance Variable checks.
       if not isinstance(val, tf_variables.Variable):
-        continue
-      if isinstance(val, resource_variable_ops._UnreadVariable):  # pylint: disable=protected-access
         continue
 
       # Users may add extra weights/variables
@@ -2911,7 +2925,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _flatten_modules(self, recursive=True, include_self=True):
     """Flattens `tf.Module` instances (excluding `Metrics`).
 
-    Arguments:
+    Args:
       recursive: Whether to recursively flatten through submodules.
       include_self: Whether to include this `Layer` instance.
 

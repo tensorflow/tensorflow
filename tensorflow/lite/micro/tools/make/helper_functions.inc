@@ -39,18 +39,10 @@ substitute_specialized_implementation = \
 substitute_specialized_implementations = \
   $(foreach source,$(1),$(call substitute_specialized_implementation,$(source),$(2)))
 
-# Here we're first looking for specialized implementations in ref_dir/$(TAG1)
-# and then ref_dir/$(TAG2), etc, before falling back to ref_dir's
-# implementation.
-# The argument to this function should be a list of space-separated file paths,
-# with any wildcards already expanded.
-define specialize_on_tags
-$(if $(2),$(call substitute_specialized_implementations,$(call specialize_on_tags,$(1),$(wordlist 2,$(words $(2)),$(2))),$(firstword $(2))),$(1))
-endef
-
-# The entry point that most targets should use to find implementation-specific
-# versions of their source files. The only argument is a list of file paths.
-specialize = $(call specialize_on_tags,$(1),$(strip $(call reverse,$(ALL_TAGS))))
+# Tests and project generation targets use this entrypoint for to get the
+# specialized sources. It should be avoided for any new functionality.
+# The only argument is a list of file paths.
+specialize = $(call substitute_specialized_implementations,$(1),$(TARGET))
 
 # TODO(b/143904317): It would be better to have the dependency be
 # THIRD_PARTY_TARGETS instead of third_party_downloads. However, that does not
@@ -174,9 +166,9 @@ endef
 
 define generate_ceva_bx1_project
 ifeq ($(TARGET), ceva)
-ifeq ($(TARGET_ARCH), bx1)
+ifeq ($(TARGET_ARCH), CEVA_BX1)
 
-$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
+$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva/ceva_app_makefile_v18.0.5.tpl
 	@mkdir -p $$(dir $$@)
 	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
 	sed -E 's#\%\{CC\}\%#$(CC_TOOL)#g' | \
@@ -185,17 +177,9 @@ $(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_bx1
 	sed -E 's#\%\{EXECUTABLE\}\%#$(3).elf#g' | \
 	sed -E 's#\%\{LD_FLAGS\}\%#$(6)#g' | \
 	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
-	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' | \
-	sed -E 's#\%\{EXTRA_APP_SETTINGS\}\%#$(ARC_EXTRA_APP_SETTINGS)#g' | \
-	sed -E 's#\%\{EXTRA_APP_RULES\}\%#$(ARC_EXTRA_APP_RULES)#g' | \
-	sed -E 's#\%\{BIN_DEPEND\}\%#$(ARC_BIN_DEPEND)#g' | \
-	sed -E 's#\%\{BIN_RULE\}\%#$(ARC_BIN_RULE)#g' | \
-	sed -E 's#\%\{EXTRA_RM_TARGETS\}\%#$(ARC_EXTRA_RM_TARGETS)#g' | \
-	sed -E 's#\%\{APP_RUN_CMD\}\%#$(ARC_APP_RUN_CMD)#g' | \
-	sed -E 's#\%\{APP_DEBUG_CMD\}\%#$(ARC_APP_DEBUG_CMD)#g' | \
-	sed -E 's#\%\{EXTRA_EXECUTE_RULES\}\%#$(ARC_EXTRA_EXECUTE_RULES)#g' > $$@
-
-$(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva_bx1/%.tpl
+	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' > $$@
+	
+$(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva/%.tpl
 	@cp $$< $$@
 
 $(foreach var,$(CEVA_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
@@ -479,7 +463,7 @@ $(1): $$($(1)_BINARY)
 $(1)_bin: $$($(1)_BINARY).bin
 test_$(1): $$($(1)_BINARY)
 	@test -f $$(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $$(TARGET)?'; exit 1)
-	$$(TEST_SCRIPT) $$($(1)_BINARY) '~~~ALL TESTS PASSED~~~'
+	$$(TEST_SCRIPT) $$($(1)_BINARY) $$(TEST_PASS_STRING) $$(TARGET)
 
 ifneq (,$(findstring _test,$(1)))
   MICROLITE_TEST_TARGETS += test_$(1)

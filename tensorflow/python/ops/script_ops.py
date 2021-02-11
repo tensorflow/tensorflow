@@ -28,13 +28,13 @@ import weakref
 import numpy as np
 import six
 
-from tensorflow.python import _pywrap_py_func
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.core import _pywrap_py_func
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat

@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
@@ -36,15 +35,14 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+using ::tensorflow::profiler::SpinForNanos;
 using ::testing::ElementsAre;
 
 MATCHER_P(Named, name, "") { return arg.name == name; }
 
-constexpr static uint64 kNanosInSec = 1000000000;
-
 TEST(RecorderTest, SingleThreaded) {
   int64 start_time = GetCurrentTimeNanos();
-  int64 end_time = start_time + kNanosInSec;
+  int64 end_time = start_time + SecondsToNanos(1);
 
   TraceMeRecorder::Record({"before", start_time, end_time});
   TraceMeRecorder::Start(/*level=*/1);
@@ -56,12 +54,6 @@ TEST(RecorderTest, SingleThreaded) {
   ASSERT_EQ(results.size(), 1);
   EXPECT_THAT(results[0].events,
               ElementsAre(Named("during1"), Named("during2")));
-}
-
-void SpinNanos(int nanos) {
-  uint64 deadline = Env::Default()->NowNanos() + nanos;
-  while (Env::Default()->NowNanos() < deadline) {
-  }
 }
 
 // Checks the functional behavior of the recorder, when used from several
@@ -90,7 +82,7 @@ TEST(RecorderTest, Multithreaded) {
       bool was_active = false;
       auto record_event = [&j]() {
         int64 start_time = GetCurrentTimeNanos();
-        int64 end_time = start_time + kNanosInSec;
+        int64 end_time = start_time + SecondsToNanos(1);
         TraceMeRecorder::Record(
             {/*name=*/absl::StrCat(j++), start_time, end_time});
       };
@@ -116,7 +108,7 @@ TEST(RecorderTest, Multithreaded) {
         // This snowballs into OOM in some configurations, causing flakiness.
         // Keep this big enough to prevent OOM and small enough such that
         // each thread records at least one event.
-        SpinNanos(10);
+        SpinForNanos(10);
       }
     });
   }
@@ -141,7 +133,7 @@ TEST(RecorderTest, Multithreaded) {
   // Wait while all the threads are spun up.
   while (thread_count.load(std::memory_order_relaxed) < kNumThreads) {
     LOG(INFO) << "Waiting for all threads to spin up...";
-    Env::Default()->SleepForMicroseconds(1 * EnvTime::kMillisToMicros);
+    SleepForMillis(1);
   }
 
   // We will probably be done after two iterations (with each thread getting
@@ -152,7 +144,7 @@ TEST(RecorderTest, Multithreaded) {
   for (int iters = 0; iters < kMaxIters && !done(); ++iters) {
     LOG(INFO) << "Looping until convergence, iteration: " << iters;
     TraceMeRecorder::Start(/*level=*/1);
-    Env::Default()->SleepForMicroseconds(100 * EnvTime::kMillisToMicros);
+    SleepForMillis(100);
     auto results = TraceMeRecorder::Stop();
     for (const auto& thread : results) {
       if (thread.events.empty()) continue;
@@ -180,7 +172,7 @@ TEST(RecorderTest, Multithreaded) {
         }
       }
     }
-    Env::Default()->SleepForMicroseconds(1 * EnvTime::kMillisToMicros);
+    SleepForMillis(1);
   }
   stop.Notify();
 

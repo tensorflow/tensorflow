@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace {
@@ -33,13 +32,7 @@ TfLiteTensor* input = nullptr;
 TfLiteTensor* output = nullptr;
 int inference_count = 0;
 
-// Create an area of memory to use for input, output, and intermediate arrays.
-// Minimum arena size, at the time of writing. After allocating tensors
-// you can retrieve this value by invoking interpreter.arena_used_bytes().
-const int kModelArenaSize = 754;
-// Extra headroom for model + alignment + future interpreter changes.
-const int kExtraArenaSize = 554 + 16 + 100;
-const int kTensorArenaSize = kModelArenaSize + kExtraArenaSize;
+constexpr int kTensorArenaSize = 2000;
 uint8_t tensor_arena[kTensorArenaSize];
 }  // namespace
 

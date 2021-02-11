@@ -67,7 +67,7 @@ void TestFullyConnectedQuantized(
   tensors[3].params.zero_point = 0;
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
+  PopulateContext(tensors, tensors_size, &context);
 
   ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =

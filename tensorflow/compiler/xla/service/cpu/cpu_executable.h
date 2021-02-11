@@ -53,7 +53,7 @@ class CpuExecutable : public Executable {
                 const string& entry_function_name,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
-  ~CpuExecutable() override {}
+  ~CpuExecutable() override;
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
@@ -131,11 +131,16 @@ class CpuExecutable : public Executable {
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;
 
+  std::shared_ptr<const BufferAssignmentProto> buffer_assignment_;
+
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving
   // llvm::Module* in a singleton can cause the heap checker to emit false
   // positives.
   string ir_module_string_;
+
+  // Unique identifier.
+  string module_name_;
 
   ComputeFunctionType compute_function_;
 

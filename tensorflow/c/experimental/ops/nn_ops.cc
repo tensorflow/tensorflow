@@ -69,5 +69,38 @@ Status Relu(AbstractContext* ctx,
   return Status::OK();
 }
 
+Status BiasAdd(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr bias_add_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      bias_add_op->Reset("BiasAdd", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(bias_add_op.get(), name));
+  TF_RETURN_IF_ERROR(bias_add_op->AddInput(inputs[0]));  // tensor input
+  TF_RETURN_IF_ERROR(bias_add_op->AddInput(inputs[1]));  // bias
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(bias_add_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+// Computes Bias Add gradient given upstream grads
+Status BiasAddGrad(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const char* data_format, const char* name) {
+  AbstractOperationPtr bias_add_grad_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      bias_add_grad_op->Reset("BiasAddGrad", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(bias_add_grad_op.get(), name));
+  TF_RETURN_IF_ERROR(bias_add_grad_op->SetAttrString("data_format", data_format,
+                                                     strlen(data_format)));
+  TF_RETURN_IF_ERROR(bias_add_grad_op->AddInput(inputs[0]));
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(bias_add_grad_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
 }  // namespace ops
 }  // namespace tensorflow

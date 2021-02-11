@@ -1151,15 +1151,11 @@ class StridedSliceAssignChecker(object):
 
 class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
   def testInvalidSlice(self):
-    with self.cached_session() as sess:
-      foo = constant_op.constant([1, 2, 3])
-      with self.assertRaisesRegex(
-          ValueError, "Sliced assignment"
-          " is only supported for variables"):
-        bar = foo[:2].assign(constant_op.constant([1, 2]))
-        sess.run(bar)
+    foo = constant_op.constant([1, 2, 3])
+    with self.assertRaisesRegex(AttributeError, "no attribute 'assign'"):
+      bar = foo[:2].assign(constant_op.constant([1, 2]))
+      self.evaluate(bar)
 
   def doTestSliceAssign(self, use_resource):
     for dtype in STRIDED_SLICE_TYPES:

@@ -50,6 +50,7 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -256,7 +257,7 @@ def disable_tensor_equality():
 
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
-@tf_export("Tensor")
+@tf_export("Tensor", "experimental.numpy.ndarray", v1=["Tensor"])
 class Tensor(internal.NativeObject, core_tf_types.Tensor):
   """A tensor is a multidimensional array of elements represented by a
 
@@ -384,6 +385,16 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     self._consumers = []
     self._id = uid()
     self._name = None
+
+  def __getattr__(self, name):
+    if name in {"T", "astype", "ravel", "transpose", "reshape", "clip", "size",
+                "tolist", "data"}:
+      # TODO(wangpeng): Export the enable_numpy_behavior knob
+      raise AttributeError("""
+        If you are looking for numpy-related methods, please run the following:
+        import tensorflow.python.ops.numpy_ops.np_config
+        np_config.enable_numpy_behavior()""")
+    self.__getattribute__(name)
 
   @staticmethod
   def _create_with_tf_output(op, value_index, dtype, tf_output):
@@ -1200,7 +1211,7 @@ class _EagerTensorBase(Tensor):
   def gpu(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
 
-    Arguments:
+    Args:
       gpu_index: Identifies which GPU to place the contents on the returned
         Tensor in.
 
@@ -1991,7 +2002,6 @@ class Operation(object):
 
     # pylint: disable=protected-access
     self._original_op = original_op
-    self._traceback = tf_stack.extract_stack()
 
     # List of _UserDevSpecs holding code location of device context manager
     # invocations and the users original argument to them.
@@ -2019,6 +2029,9 @@ class Operation(object):
       self._c_op = _create_c_op(self._graph, node_def, inputs,
                                 control_input_ops, op_def)
       name = compat.as_str(node_def.name)
+
+    self._traceback = tf_stack.extract_stack_for_node(self._c_op)
+
     # pylint: enable=protected-access
 
     self._is_stateful = op_def.is_stateful
@@ -2332,7 +2345,7 @@ class Operation(object):
     Note: this is generally unsafe to use. This is used in certain situations in
     conjunction with _set_type_list_attr.
 
-    Arguments:
+    Args:
       types: list of DTypes
       shapes: list of TensorShapes
     """
@@ -3290,18 +3303,18 @@ class Graph(object):
             continue
           # TODO(b/141471245): Fix the inconsistency when inputs of func graph
           # are appended during gradient computation of while/cond.
-          for input_tensor, _ in zip(func_graph_inputs,
-                                     function_def.signature.input_arg):
+          for input_tensor, arg_def in zip(func_graph_inputs,
+                                           function_def.signature.input_arg):
+            input_shapes.list.shape.add().CopyFrom(
+                input_tensor.get_shape().as_proto())
             if input_tensor.dtype == dtypes.resource:
-              # TODO(allenl): Save and restore handle data, then save the
-              # resource placeholder's shape. Right now some shape functions get
-              # confused if we set the shape of the resource placeholder (to a
-              # scalar of course) and there isn't any handle data.
-              input_shapes.list.shape.add().CopyFrom(
-                  tensor_shape.TensorShape(None).as_proto())
-            else:
-              input_shapes.list.shape.add().CopyFrom(
-                  input_tensor.get_shape().as_proto())
+              _copy_handle_data_to_arg_def(input_tensor, arg_def)
+
+          for output_tensor, arg_def in zip(func_graph.outputs,
+                                            function_def.signature.output_arg):
+            if output_tensor.dtype == dtypes.resource:
+              _copy_handle_data_to_arg_def(output_tensor, arg_def)
+
           for node in function_def.node_def:
             try:
               op = func_graph.get_operation_by_name(node.name)
@@ -4960,10 +4973,13 @@ class Graph(object):
     """Specify gradient function for the given op type."""
 
     # This is an internal API and we don't need nested context for this.
+    # TODO(mdan): make it a proper context manager.
     assert not self._gradient_function_map
     self._gradient_function_map = gradient_function_map
-    yield
-    self._gradient_function_map = {}
+    try:
+      yield
+    finally:
+      self._gradient_function_map = {}
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager
@@ -5330,13 +5346,12 @@ def _colocate_with(op, ignore_existing=False):
 def control_dependencies(control_inputs):
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
-  See `tf.Graph.control_dependencies`
-  for more details.
+  See `tf.Graph.control_dependencies` for more details.
 
   Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
-  this method, as code executes in the expected order.* Only use
-  `tf.control_dependencies` when working with v1-style code or in a graph
-  context such as inside `Dataset.map`.
+  this method, as ops execute in the expected order thanks to automatic control
+  dependencies.* Only use `tf.control_dependencies` when working with v1
+  `tf.Graph` code.
 
   When eager execution is enabled, any callable object in the `control_inputs`
   list will be called.
@@ -6938,6 +6953,30 @@ def _reconstruct_sequence_inputs(op_def, inputs, attrs):
   return grouped_inputs
 
 
+_numpy_style_type_promotion = False
+
+
+def enable_numpy_style_type_promotion():
+  """If called, follows NumPy's rules for type promotion.
+
+  Used for enabling NumPy behavior on methods for TF NumPy.
+  """
+  global _numpy_style_type_promotion
+  _numpy_style_type_promotion = True
+
+
+_numpy_style_slicing = False
+
+
+def enable_numpy_style_slicing():
+  """If called, follows NumPy's rules for slicing Tensors.
+
+  Used for enabling NumPy behavior on slicing for TF NumPy.
+  """
+  global _numpy_style_slicing
+  _numpy_style_slicing = True
+
+
 class _TensorIterator(object):
   """Iterates over the leading dim of a Tensor. Performs no error checks."""
 
@@ -6977,3 +7016,22 @@ def _get_enclosing_context(graph):
 
   if graph.building_function and hasattr(graph, "outer_graph"):
     return _get_enclosing_context(graph.outer_graph)
+
+
+def get_resource_handle_data(graph_op):
+  assert type(graph_op) == Tensor  # pylint: disable=unidiomatic-typecheck
+
+  handle_data = pywrap_tf_session.GetHandleShapeAndType(
+      graph_op.graph._c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
+
+  return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
+      compat.as_bytes(handle_data))
+
+
+def _copy_handle_data_to_arg_def(tensor, arg_def):
+  handle_data = get_resource_handle_data(tensor)
+  if handle_data.shape_and_type:
+    shape_and_type = handle_data.shape_and_type[0]
+    proto = arg_def.handle_data.add()
+    proto.dtype = shape_and_type.dtype
+    proto.shape.CopyFrom(handle_data.shape_and_type[0].shape)

@@ -67,8 +67,8 @@ typedef struct {
 typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
-  kTfLiteActReluN1To1,                    // min(max(-1, x), 1)
-  kTfLiteActRelu6,                        // min(max(0, x), 6)
+  kTfLiteActReluN1To1,  // min(max(-1, x), 1)
+  kTfLiteActRelu6,      // min(max(0, x), 6)
   kTfLiteActTanh,
   kTfLiteActSignBit,
   kTfLiteActSigmoid,
@@ -86,6 +86,17 @@ typedef struct {
   int dilation_width_factor;
   int dilation_height_factor;
 } TfLiteConvParams;
+
+typedef struct {
+  TfLitePadding padding;
+  int stride_width;
+  int stride_height;
+  int stride_depth;
+  int dilation_width_factor;
+  int dilation_height_factor;
+  int dilation_depth_factor;
+  TfLiteFusedActivation activation;
+} TfLiteConv3DParams;
 
 typedef struct {
   TfLitePadding padding;

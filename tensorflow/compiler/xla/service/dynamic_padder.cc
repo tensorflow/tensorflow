@@ -44,16 +44,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 
 namespace {
-
-auto* dynamic_padding_gauge = tensorflow::monitoring::Gauge<bool, 0>::New(
-    "/tensorflow/core/use_dynamic_padding_gauge",
-    "Tracks if dynamic padder is used.");
 
 // ChooseIdentityValue looks at the instruction's operand, returns a
 // identity value which, when padded, doesn't change the result of the
@@ -98,6 +93,9 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
       return inst->mutable_operand(init_value_index);
     }
     case HloOpcode::kReduceWindow: {
+      if (inst->shape().IsTuple()) {
+        return Unimplemented("Variadic reduce window not yet supported. ");
+      }
       // Because of the way we do reduce, we already require the `init`
       // operand of hlo reduce instruction to be identity value. Here we reuse
       // the operand.
@@ -1020,6 +1018,10 @@ StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
 StatusOr<bool> RewriteDynamicReduceWindowSamePadding(
     HloInstruction* hlo,
     DynamicDimensionInference* dynamic_dimension_inference) {
+  if (hlo->shape().IsTuple()) {
+    // TODO (b/73062247) variadic reduce window is not yet supported here.
+    return Unimplemented("Variadic reduce window net yet supported.");
+  }
   HloInstruction* input = hlo->mutable_operand(0);
   HloInstruction* init = hlo->mutable_operand(1);
   HloComputation* comp = hlo->parent();
@@ -1804,7 +1806,6 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
               operand, input_dim, operand_dynamic_size, identity_value);
           TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, padded));
           operand = inst->mutable_operand(operand_num);
-          dynamic_padding_gauge->GetCell()->Set(true);
           changed = true;
         }
       }
@@ -1851,7 +1852,6 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
 
   VLOG(2) << "Post DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());
-  dynamic_padding_gauge->GetCell()->Set(changed);
   return changed;
 }
 

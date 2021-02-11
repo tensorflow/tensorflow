@@ -18,7 +18,7 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_pip_deps pip3.6
+install_ubuntu_16_python_pip_deps python3.6
 # Update bazel
 install_bazelisk
 
@@ -27,7 +27,7 @@ export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
 export TF_NEED_S3=1
 export TF_NEED_CUDA=0
-export CC_OPT_FLAGS='-mavx'
+export CC_OPT_FLAGS='-mavx -march=native'
 export PYTHON_BIN_PATH=$(which python3.6)
 export TF2_BEHAVIOR=1
 yes "" | "$PYTHON_BIN_PATH" configure.py

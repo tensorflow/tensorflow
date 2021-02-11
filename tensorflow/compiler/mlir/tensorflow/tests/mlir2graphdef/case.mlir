@@ -13,7 +13,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     return
   }
 
-  func @indexed_case_branch0_40(%arg0: tensor<i32>) -> tensor<*xi32> attributes {sym_visibility = "private"} {
+  func private @indexed_case_branch0_40(%arg0: tensor<i32>) -> tensor<*xi32> {
     %0 = tf_executor.graph {
       %outputs, %control = tf_executor.island wraps "tf.Const"() {device = "", value = dense<1> : tensor<i32>} : () -> tensor<i32>
       %outputs_0, %control_1 = tf_executor.island wraps "tf.AddV2"(%arg0, %outputs) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<*xi32>
@@ -22,7 +22,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     return %0 : tensor<*xi32>
   }
 
-  func @indexed_case_branch1_50(%arg0: tensor<i32>) -> tensor<*xi32> attributes {sym_visibility = "private"} {
+  func private @indexed_case_branch1_50(%arg0: tensor<i32>) -> tensor<*xi32> {
     %0 = tf_executor.graph {
       %outputs, %control = tf_executor.island wraps "tf.Const"() {device = "", value = dense<2> : tensor<i32>} : () -> tensor<i32>
       %outputs_0, %control_1 = tf_executor.island wraps "tf.AddV2"(%arg0, %outputs) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<*xi32>

@@ -320,6 +320,18 @@ cc_library(
     }),
 )
 
+# Provide a library for clients to link to if they need to stay on deprecated
+# arithmetic backends. Include as a dependency of cpu_backend_gemm to start.
+# TODO(b/168923364): Move to dependent targets.
+cc_library(
+    name = "deprecated_backends",
+    srcs = [
+        "deprecated_backends.cc",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    alwayslink = 1,
+)
+
 cc_library(
     name = "cpu_backend_context",
     srcs = [
@@ -337,6 +349,9 @@ cc_library(
         "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
     }),
     deps = [
+        # TODO(b/168923364): Remove deprecated_backends after it is added to all
+        # necessary targets.
+        ":deprecated_backends",
         ":tflite_with_ruy",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.
@@ -345,6 +360,7 @@ cc_library(
         "@ruy//ruy:context",
         "@gemmlowp",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite/kernels/internal:compatibility",
     ] + select({
@@ -522,6 +538,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:types",
     ],
 )
 
@@ -541,8 +558,10 @@ BUILTIN_KERNEL_SRCS = [
     "cast.cc",
     "ceil.cc",
     "comparisons.cc",
+    "complex_support.cc",
     "concatenation.cc",
     "conv.cc",
+    "conv3d.cc",
     "cumsum.cc",
     "densify.cc",
     "depth_to_space.cc",
@@ -621,6 +640,7 @@ BUILTIN_KERNEL_SRCS = [
     "where.cc",
     "while.cc",
     "zeros_like.cc",
+    "rfft2d.cc",
 ]
 
 BUILTIN_KERNEL_DEPS = [
@@ -669,10 +689,12 @@ cc_library(
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
     deps = BUILTIN_KERNEL_DEPS + [
+        "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite:string",
         "@farmhash_archive//:farmhash",
+        "//third_party/fft2d:fft2d_headers",
     ],
 )
 
@@ -710,10 +732,8 @@ cc_test(
 cc_library(
     name = "custom_ops",
     srcs = [
-        "complex_support.cc",
         "multinomial.cc",
         "random_standard_normal.cc",
-        "rfft2d.cc",
     ],
     hdrs = ["custom_ops_register.h"],
     copts = tflite_copts(),
@@ -722,8 +742,6 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
-        "//third_party/fft2d:fft2d_headers",
-        "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -1064,6 +1082,21 @@ cc_test(
 )
 
 cc_test(
+    name = "conv3d_test",
+    size = "small",
+    srcs = ["conv3d_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "densify_test",
     size = "small",
     srcs = ["densify_test.cc"],
@@ -1141,14 +1174,17 @@ cc_test(
     srcs = ["numeric_verify_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
+        ":kernel_util",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:reference",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
@@ -2187,13 +2223,9 @@ cc_test(
     size = "small",
     srcs = ["rfft2d_test.cc"],
     deps = [
-        ":custom_ops",
         ":test_main",
         ":test_util",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2243,7 +2275,9 @@ cc_library(
         ":builtin_ops",
         ":kernel_util",
         ":variable_op_kernels",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
@@ -2344,7 +2378,6 @@ cc_test(
     name = "complex_support_test",
     srcs = ["complex_support_test.cc"],
     deps = [
-        ":custom_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",

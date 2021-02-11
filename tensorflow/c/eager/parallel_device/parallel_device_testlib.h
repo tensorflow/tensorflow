@@ -16,29 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_PARALLEL_DEVICE_PARALLEL_DEVICE_TESTLIB_H_
 #define TENSORFLOW_C_EAGER_PARALLEL_DEVICE_PARALLEL_DEVICE_TESTLIB_H_
 
-#include "tensorflow/c/eager/parallel_device/parallel_device.h"
-
 #include <array>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/parallel_device/parallel_device.h"
+#include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/core/platform/test.h"
 
-
-// Functor for making unique_ptr to TFE_TensorHandle slightly more
-// ergonomic. Using decltype(TFE_DeleteTensorHandle) in the unique_ptr's second
-// template argument requires passing a function pointer to
-// TFE_DeleteTensorHandle when constructing the unique_ptr.
-class TensorHandleDeleter {
- public:
-  void operator()(TFE_TensorHandle* to_delete) {
-    TFE_DeleteTensorHandle(to_delete);
-  }
-};
-
-using TensorHandlePtr = std::unique_ptr<TFE_TensorHandle, TensorHandleDeleter>;
+namespace tensorflow {
+namespace parallel_device {
 
 // A helper for performing common operations on variables. A much more
 // restricted stand-in for tf.Variable in Python.
@@ -151,11 +140,13 @@ template <typename value_type>
 void ExpectScalarEq(TFE_TensorHandle* handle, value_type expected_value) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
-  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> value_zero(
+  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> actual_value(
       TFE_TensorHandleResolve(handle, status.get()), TF_DeleteTensor);
-  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
+  ASSERT_EQ(TF_TensorType(actual_value.get()),
+            static_cast<TF_DataType>(DataTypeToEnum<value_type>().value));
   EXPECT_EQ(expected_value,
-            *static_cast<value_type*>(TF_TensorData(value_zero.get())));
+            *static_cast<value_type*>(TF_TensorData(actual_value.get())));
 }
 
 template <std::size_t num_devices>
@@ -170,5 +161,8 @@ void RegisterParallelDevice(
       &device, &device_info);
   TFE_RegisterCustomDevice(context, device, device_name, device_info, status);
 }
+
+}  // namespace parallel_device
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EAGER_PARALLEL_DEVICE_PARALLEL_DEVICE_TESTLIB_H_

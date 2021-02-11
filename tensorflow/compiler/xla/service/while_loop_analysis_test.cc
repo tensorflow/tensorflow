@@ -120,5 +120,157 @@ TEST_F(WhileLoopAnalysisTest, ExactBound) {
   EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 42);
 }
 
+TEST_F(WhileLoopAnalysisTest, NoAIVNoConstChain) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], s32[], s32[]) parameter(0)
+      val1 = f32[2] get-tuple-element(p_body), index=0
+      val2 = s32[] get-tuple-element(p_body), index=1
+      val3 = s32[] get-tuple-element(p_body), index=2
+      add = s32[] add(val2, val3)
+      sub = s32[] subtract(add, val3)
+      ROOT root = (f32[2], s32[], s32[]) tuple(val1, add, sub)
+    }
+
+    condition {
+      p_cond = (f32[2], s32[], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=1
+      const = s32[] constant(42)
+      ROOT result = pred[] compare(gte, const), direction=EQ
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] parameter(1)
+      param.2 = s32[] parameter(2)
+      while_init = (f32[2], s32[], s32[]) tuple(param.0, param.1, param.2)
+      ROOT while = (f32[2], s32[], s32[]) while(while_init), condition=condition, body=body
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::vector<const HloInstruction*> aux_indices =
+      GetAuxiliaryLoopInductionVars(while_op);
+  EXPECT_EQ(aux_indices.size(), 0);
+}
+
+TEST_F(WhileLoopAnalysisTest, AIVMultiChain) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], s32[]) parameter(0)
+      val1 = f32[2] get-tuple-element(p_body), index=0
+      val2 = s32[] get-tuple-element(p_body), index=1
+      const.1 = s32[] constant(42)
+      const.2 = s32[] constant(42)
+      const.3 = s32[] constant(42)
+      add = s32[] add(val2, const.1)
+      sub = s32[] subtract(add, const.2)
+      mul = s32[] multiply(sub, const.3)
+      ROOT root = (f32[2], s32[]) tuple(val1, mul)
+    }
+
+    condition {
+      p_cond = (f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=1
+      const = s32[] constant(42)
+      ROOT result = pred[] compare(gte, const), direction=EQ
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] parameter(1)
+      while_init = (f32[2], s32[]) tuple(param.0, param.1)
+      ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::vector<const HloInstruction*> aux_indices =
+      GetAuxiliaryLoopInductionVars(while_op);
+  EXPECT_EQ(aux_indices.size(), 1);
+  EXPECT_EQ(aux_indices[0]->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_EQ(aux_indices[0]->tuple_index(), 1);
+}
+
+TEST_F(WhileLoopAnalysisTest, NoAIV) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], s32[]) parameter(0)
+      val1 = f32[2] get-tuple-element(p_body), index=0
+      val2 = s32[] get-tuple-element(p_body), index=1
+      add = s32[] add(val2, val2)
+      const.1 = s32[] constant(42)
+      mul = s32[] multiply(add, const.1)
+      div = s32[] divide(mul, add)
+      ROOT root = (f32[2], s32[]) tuple(val1, div)
+    }
+
+    condition {
+      p_cond = (f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=1
+      const = s32[] constant(42)
+      ROOT result = pred[] compare(gte, const), direction=EQ
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] parameter(1)
+      while_init = (f32[2], s32[]) tuple(param.0, param.1)
+      ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::vector<const HloInstruction*> aux_indices =
+      GetAuxiliaryLoopInductionVars(while_op);
+  EXPECT_EQ(aux_indices.size(), 0);
+}
+
+TEST_F(WhileLoopAnalysisTest, AIVNoChain) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], s32[]) parameter(0)
+      val1 = f32[2] get-tuple-element(p_body), index=0
+      val2 = s32[] get-tuple-element(p_body), index=1
+      const = s32[] constant(42)
+      add = s32[] add(val2, const)
+      ROOT root = (f32[2], s32[]) tuple(val1, add)
+    }
+
+    condition {
+      p_cond = (f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=1
+      const = s32[] constant(42)
+      ROOT result = pred[] compare(gte, const), direction=EQ
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] parameter(1)
+      while_init = (f32[2], s32[]) tuple(param.0, param.1)
+      ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::vector<const HloInstruction*> aux_indices =
+      GetAuxiliaryLoopInductionVars(while_op);
+  EXPECT_EQ(aux_indices.size(), 1);
+  EXPECT_EQ(aux_indices[0]->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_EQ(aux_indices[0]->tuple_index(), 1);
+}
+
 }  // namespace
 }  // namespace xla

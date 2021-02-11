@@ -52,10 +52,10 @@ class ModelInputsTest(test.TestCase):
     model_inputs = training_utils_v1.ModelInputs(a)
     self.assertEqual(['input_1'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
-    self.assertTrue(tensor_util.is_tensor(vals))
+    self.assertTrue(tensor_util.is_tf_type(vals))
     vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
     self.assertEqual(1, len(vals))
-    self.assertTrue(tensor_util.is_tensor(vals[0]))
+    self.assertTrue(tensor_util.is_tf_type(vals[0]))
     self.assertEqual(backend.floatx(), vals[0].dtype)
 
   def test_single_thing_eager(self):
@@ -87,8 +87,8 @@ class ModelInputsTest(test.TestCase):
     model_inputs = training_utils_v1.ModelInputs(a)
     self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
-    self.assertTrue(tensor_util.is_tensor(vals[0]))
-    self.assertTrue(tensor_util.is_tensor(vals[1]))
+    self.assertTrue(tensor_util.is_tf_type(vals[0]))
+    self.assertTrue(tensor_util.is_tf_type(vals[1]))
 
   def test_list_eager(self):
     if not context.executing_eagerly():
@@ -113,8 +113,8 @@ class ModelInputsTest(test.TestCase):
     model_inputs = training_utils_v1.ModelInputs(a)
     self.assertEqual(['a', 'b'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
-    self.assertTrue(tensor_util.is_tensor(vals['a']))
-    self.assertTrue(tensor_util.is_tensor(vals['b']))
+    self.assertTrue(tensor_util.is_tf_type(vals['a']))
+    self.assertTrue(tensor_util.is_tf_type(vals['b']))
 
   def test_dict_eager(self):
     if not context.executing_eagerly():

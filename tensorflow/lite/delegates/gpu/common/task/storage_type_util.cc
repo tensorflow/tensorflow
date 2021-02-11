@@ -84,6 +84,9 @@ TensorStorageType SelectBestStorageType(const GpuInfo& gpu_info,
                                TensorDescriptor{data_type, desired, layout})) {
     return desired;
   }
+  if (gpu_info.IsApiMetal()) {
+    return TensorStorageType::BUFFER;
+  }
   auto GetBestTypeAfterTextureArray = [&]() {
     if (gpu_info.SupportsImageBuffer() &&
         CanCreateTensorWithShape(

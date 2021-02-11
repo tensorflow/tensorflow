@@ -191,6 +191,34 @@ TEST(ElementWise, AbsInt8) {
               ElementsAreArray(ArrayFloatNear(abs_data, kInputScale)));
 }
 
+TEST(ElementWise, AbsSameScaleInt8) {
+  std::vector<float> data = {15., 46., 78., -142., -1., -17., -49., 113.};
+  std::vector<float> abs_data(data.size());
+  for (int i = 0; i < abs_data.size(); i++) {
+    abs_data[i] = std::abs(data[i]);
+  }
+  const auto minmax = std::minmax_element(data.begin(), data.end());
+  const float abs_max = std::max(std::abs(*minmax.first), *minmax.second);
+  const float kInputScale = (*minmax.second - *minmax.first) / 255.0;
+  const int input_zero_point = 127 - *minmax.second;
+  ElementWiseOpQuantizedModel m(
+      BuiltinOperator_ABS,
+      {TensorType_INT8,
+       {1, 8},
+       *minmax.first,
+       *minmax.second,
+       kInputScale,
+       input_zero_point,
+       true,
+       {kInputScale},
+       {input_zero_point}},
+      {TensorType_INT8, {1, 8}, 0, abs_max, kInputScale, input_zero_point});
+  m.AsymmetricQuantizeAndPopulate<int8_t>(m.input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.ExtractDequantVector<int8_t>(m.output()),
+              ElementsAreArray(ArrayFloatNear(abs_data, kInputScale)));
+}
+
 TEST(ElementWise, AbsInt16) {
   const float kQuantizedTolerance = GetQuantizationStep<int16_t>(-150, 150);
   std::vector<float> data = {15., 46., 78., -142., -1., -17., -49., 113.};

@@ -60,7 +60,7 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = ["nccl_manager_test.cc"],
     tags = tf_cuda_tests_tags() + [
-        "guitar",
+        "noguitar",  # TODO(b/176867216): Flaky.
         "manual",
         "multi_gpu",
         "no_oss",

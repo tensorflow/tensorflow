@@ -33,8 +33,13 @@ namespace tf_framework {
 void PopulateTFFrameworkToLLVMConversionPatterns(
     LLVMTypeConverter *converter, OwningRewritePatternList *patterns);
 
+/// Collects a set of patterns to rewrite functions for use with TF framework
+/// and also replace `alloc` and correspondign free operations with .
+void PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
+
 /// Collects a set of patterns to embed TF Framework.
-void PopulateEmbedTFFrameworkConversionPatterns(
+void PopulateEmbedTFFrameworkAssertConversionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
 }  // namespace tf_framework

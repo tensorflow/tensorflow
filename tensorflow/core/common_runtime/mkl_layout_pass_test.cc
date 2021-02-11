@@ -53,7 +53,6 @@ static void InitGraph(const string& s, Graph* graph,
   GraphDef graph_def;
 
   auto parser = protobuf::TextFormat::Parser();
-  //  parser.AllowRelaxedWhitespace(true);
   CHECK(parser.MergeFromString(s, &graph_def)) << s;
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, graph));
@@ -66,7 +65,6 @@ static void InitGraph(const string& s, Graph* graph,
 class MklLayoutPassTest : public ::testing::Test {
  public:
   MklLayoutPassTest() : graph_(OpRegistry::Global()) {}
-  // Ashraf added
   Node* FindNode(const string& name) {
     for (Node* node : graph_.nodes()) {
       if (node->name() == name) return node;
@@ -129,7 +127,7 @@ class MklLayoutPassTest : public ::testing::Test {
   T DoMklLayoutOptimizationPassGetAttrVal(const string& attr,
                                           const string& node_name) {
     DoMklLayoutOptimizationPass();
-    T attr_val;
+    T attr_val = T();
     for (const Node* n : graph_.nodes()) {
       if (IncludeNode(n) && n->type_string() == node_name) {
         TF_CHECK_OK(GetNodeAttr(n->def(), attr, &attr_val));
@@ -1842,19 +1840,21 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive8);
 // BiasAdd fusion
 #define FUSED_OPS "{s: 'BiasAdd'}"
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedDepthwiseConv2dNative_Positive1);
+#undef FUSED_OPS
 
 // BiasAdd + Relu fusion
 #define FUSED_OPS "{s: 'BiasAdd', s: 'Relu'}"
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedDepthwiseConv2dNative_Positive2);
+#undef FUSED_OPS
 
 // BiasAdd + Relu6 fusion
 #define FUSED_OPS "{s: 'BiasAdd', s: 'Relu6'}"
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedDepthwiseConv2dNative_Positive3);
+#undef FUSED_OPS
 
 // BiasAdd + Elu fusion
 #define FUSED_OPS "{s: 'BiasAdd', s: 'Elu'}"
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedDepthwiseConv2dNative_Positive4);
-
 #undef FUSED_OPS
 #undef REGISTER_TEST
 
@@ -2031,6 +2031,36 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_Positive)
             "|A->D;B->D:1;C->D:2;C->Z:1;D->Z");                                \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_Negative);
+#undef REGISTER_TEST
+
+// Test set: _FusedMatMul -> MklFusedMatMul rewrite tests
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+  InitGraph(                                                                   \
+      "node { name: 'A' op: '" #INPUT "'}"                                     \
+      "node { name: 'B' op: '" #INPUT "'}"                                     \
+      "node { name: 'C' op: '" #INPUT "'}"                                     \
+      "node { name: 'D' op: '_FusedMatMul'"                                    \
+      " attr { key: 'T'                value { type: " #T "} }"                \
+      " attr { key: 'transpose_a'      value { b: false } }"                   \
+      " attr { key: 'transpose_b'      value { b: false } }"                   \
+      " attr { key: 'num_args'         value { i: 1 } }"                       \
+      " attr { key: 'fused_ops'"                                               \
+      "              value { list: {s: 'BiasAdd', s: 'LeakyRelu'} } }"         \
+      " attr { key: 'epsilon'          value { f: 0.001 }}"                    \
+      " attr { key: 'leakyrelu_alpha'  value { f: 0.3 }}"                      \
+      " input: ['A', 'B', 'C']}"                                               \
+      "node { name: 'Z' op: 'Zeta'"                                            \
+      " attr {key: 'T'                 value { type: " #T " } }"               \
+      " input: ['D', 'C']}");                                                  \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedMatMul);"    \
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);Z(Zeta)"                \
+            "|A->D;A:control->DMT/_0:control;A:control->DMT/_1:control;"       \
+            "A:control->DMT/_2:control;B->D:1;C->D:2;C->Z:1;D->Z;"             \
+            "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                            \
+}
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_LeakyRelu_Positive);
 #undef REGISTER_TEST
 
 // Merge test for PadWithFusedConv2D Op with BiasAdd fusion
@@ -2691,7 +2721,6 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Input_Mkl);
 // Concat with 1 Mkl and 1 non-Mkl layer feeding it
 #define REGISTER_TEST(NAME, T, INPUT)                                           \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                       \
-REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Input_MixedMkl) {                    \
   InitGraph(                                                                    \
       "node { name: 'A' op: '" #INPUT "'}"                                      \
       "node { name: 'B' op: '" #INPUT "'}"                                      \
@@ -2727,6 +2756,8 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Input_MixedMkl) {                    
             "DMT/_1->E:3;DMT/_2->H:3;DMT/_3->H:5;E->H:1;E:2->H:4;F->H:2;"       \
             "G->H;G:control->DMT/_2:control;G:control->DMT/_3:control;H->I:1"); \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Input_MixedMkl);
+#undef REGISTER_TEST
 
 // ConcatV2 Op test: ConcatV2 with no Mkl layer feeding it
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
@@ -3054,8 +3085,6 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluGrad_Negative);
 REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluLeakyReluGrad_Positive);
 #undef REGISTER_TEST
 
-#ifdef ENABLE_MKLDNN_V1
-
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
     DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);     \
@@ -3113,7 +3142,6 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhGrad_Positive);
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhTanhGrad_Positive);
 #undef REGISTER_TEST
-#endif  // ENABLE_MKLDNN_V1
 
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
@@ -3418,10 +3446,10 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV3_Positive);
 }
 #define DATA_FORMAT "'NCDHW'"
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV3_5D_Negative_1);
+#undef DATA_FORMAT
 
 #define DATA_FORMAT "'NDHWC'"
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV3_5D_Negative_2);
-
 #undef DATA_FORMAT
 #undef REGISTER_TEST
 
@@ -3473,14 +3501,13 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_Negative) {
 }
 #define DATA_FORMAT "'NCDHW'"
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGradV3_5D_Negative_1);
+#undef DATA_FORMAT
 
 #define DATA_FORMAT "'NDHWC'"
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGradV3_5D_Negative_2);
-
 #undef DATA_FORMAT
 #undef REGISTER_TEST
 
-#ifdef ENABLE_MKLDNN_V1
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
     InitGraph("node { name: 'A' op: '" #INPUT "'}"                           \
@@ -3570,7 +3597,6 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Negative1);
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Negative2);
 #undef REGISTER_TEST
-#endif  // ENABLE_MKLDNN_V1
 
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
   InitGraph(
@@ -5151,8 +5177,8 @@ static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
 
   bool first = true;
   while (iters > 0) {
-    Graph* graph = new Graph(OpRegistry::Global());
-    InitGraph(s, graph);
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    InitGraph(s, graph.get());
     int N = graph->num_node_ids();
     if (first) {
       testing::SetLabel(strings::StrCat("Per graph node.  Nodes: ", N));
@@ -5160,13 +5186,12 @@ static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
     }
     {
       testing::StartTiming();
-      std::unique_ptr<Graph> ug(graph);
+      std::unique_ptr<Graph> ug(graph.get());
       RunMklLayoutRewritePass(&ug);
       testing::StopTiming();
     }
     iters -= N;  // Our benchmark units are individual graph nodes,
                  // not whole graphs
-    // delete graph;
   }
 }
 BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);

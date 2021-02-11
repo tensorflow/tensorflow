@@ -89,7 +89,7 @@ string TRTEngineCacheResource::DebugString() const {
         << "ICudaEngine: " << item.second->cuda_engine.get() << ", "
         << "IExecutionContext: ";
     for (auto& ctx : item.second->execution_context) {
-      oss << ctx.get() << ", ";
+      oss << ctx.GetIExecutionContext() << ", ";
     }
     oss << dec << endl;
   }
@@ -120,7 +120,7 @@ EngineContext* TRTEngineCacheResource::GetEngineContext(
 }
 
 EngineContext* TRTEngineCacheResource::GetEngineContext(const int profile_id) {
-  if (profile_id >= profiles_.GetNumProfiles()) {
+  if (profiles_.NeedProfiles() && profile_id >= profiles_.GetNumProfiles()) {
     LOG(ERROR) << "Out of range: profile_id " << profile_id
                << " is larger than number of profiles "
                << profiles_.GetNumProfiles();

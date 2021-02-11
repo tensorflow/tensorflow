@@ -27,7 +27,7 @@ limitations under the License.
 // human-readable graphical format.
 //
 // Fundamentally all graphs are rendered using the DOT language, but they can be
-// packaged three different ways:
+// packaged four different ways:
 //
 //  - as a raw DOT file, which can be rendered using `graphviz`.
 //
@@ -36,7 +36,9 @@ limitations under the License.
 //
 //  - as a URL hosted somewhere which somehow embeds the DOT file.
 //
-// This last option is not implemented by default, but you can add a plugin to
+//  - as an HTML page showing the fusion progress.
+//
+// Two last options are not implemented by default, but you can add a plugin to
 // implement it via RegisterGraphToURLRenderer.
 //
 // TODO(jlebar): Rename this file to hlo_graph_renderer.
@@ -48,6 +50,7 @@ enum class RenderedGraphFormat {
   kDot,
   kHtml,
   kUrl,
+  kFusionVisualization,
 };
 
 struct HloRenderOptions {
@@ -91,6 +94,11 @@ StatusOr<string> RenderAllPathsFromTo(const HloInstruction& from,
                                       const HloInstruction& to, int64 max_nodes,
                                       RenderedGraphFormat format,
                                       HloRenderOptions hlo_render_options = {});
+
+// Registers the fusion state of the graph for future visualization using
+// the kFusionVisulization render format.
+Status RegisterFusionState(const HloComputation& computation,
+                           absl::string_view label);
 
 // Registers a function which implements RenderedGraphFormat::kUrl.
 //

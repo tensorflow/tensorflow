@@ -18,20 +18,23 @@ from absl.testing import parameterized
 from tensorflow.compiler.mlir.tfr.examples.mnist import mnist_train
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import test_util
-from tensorflow.python.platform import test
+from tensorflow.python.distribute import test_util as distribute_test_util
+from tensorflow.python.framework import test_util
+
+strategies = [
+    strategy_combinations.one_device_strategy,
+    strategy_combinations.one_device_strategy_gpu,
+    strategy_combinations.tpu_strategy,
+]
 
 
-class MnistTrainTest(test.TestCase, parameterized.TestCase):
+class MnistTrainTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  # TODO(b/172367622) Switch to strategy_combinations.all_strategies after
-  # issues with TPU strategies are resolved.
-  @combinations.generate(
-      combinations.combine(strategy=strategy_combinations.strategies_minus_tpu))
+  @combinations.generate(combinations.combine(strategy=strategies))
   def testMnistTrain(self, strategy):
     accuracy = mnist_train.main(strategy)
     self.assertGreater(accuracy, 0.75, 'accuracy sanity check')
 
 
 if __name__ == '__main__':
-  test_util.main()
+  distribute_test_util.main()

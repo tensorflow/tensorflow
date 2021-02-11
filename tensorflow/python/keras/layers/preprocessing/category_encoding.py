@@ -100,7 +100,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
            [0. , 0.2, 0.3, 0. ],
            [0. , 0.2, 0. , 0.4]])>
 
-  Arguments:
+  Args:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary.
     output_mode: Specification for the output of the layer.
@@ -193,7 +193,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     Overrides the default adapt method to apply relevant preprocessing to the
     inputs before passing to the combiner.
 
-    Arguments:
+    Args:
       data: The data to train on. It can be passed either as a tf.data Dataset,
         or as a numpy array.
       reset_state: Optional argument specifying whether to clear the state of
@@ -534,5 +534,6 @@ def dense_bincount(inputs, out_depth, binary_output, count_weights=None):
       dtype=K.floatx(),
       axis=-1,
       binary_output=binary_output)
-  result.set_shape(tensor_shape.TensorShape((None, out_depth)))
+  batch_size = inputs.shape.as_list()[0]
+  result.set_shape(tensor_shape.TensorShape((batch_size, out_depth)))
   return result

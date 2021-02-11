@@ -9,6 +9,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -37,6 +38,7 @@ cc_library(
         ":memory_planner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_compatibility",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 

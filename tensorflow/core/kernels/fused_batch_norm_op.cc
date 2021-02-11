@@ -1248,7 +1248,7 @@ class FusedBatchNormOpBase : public OpKernel {
     const Tensor& estimated_variance = context->input(4);
     const Tensor* side_input = has_side_input_ ? &context->input(5) : nullptr;
 
-    OP_REQUIRES(context, x.dims() == 4 or x.dims() == 5,
+    OP_REQUIRES(context, x.dims() == 4 || x.dims() == 5,
                 errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         x.shape().DebugString()));
     OP_REQUIRES(context, scale.dims() == 1,
@@ -1408,10 +1408,10 @@ class FusedBatchNormGradOpBase : public OpKernel {
     // saves inverted variance.
     const Tensor& saved_maybe_inv_var_or_pop_var = context->input(4);
 
-    OP_REQUIRES(context, y_backprop.dims() == 4 or y_backprop.dims() == 5,
+    OP_REQUIRES(context, y_backprop.dims() == 4 || y_backprop.dims() == 5,
                 errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         y_backprop.shape().DebugString()));
-    OP_REQUIRES(context, x.dims() == 4 or x.dims() == 5,
+    OP_REQUIRES(context, x.dims() == 4 || x.dims() == 5,
                 errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         x.shape().DebugString()));
     OP_REQUIRES(context, scale.dims() == 1,

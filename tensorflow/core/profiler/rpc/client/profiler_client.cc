@@ -84,22 +84,22 @@ Status MonitorGrpc(const std::string& service_address,
 }
 
 /*static*/ std::unique_ptr<RemoteProfilerSession> RemoteProfilerSession::Create(
-    std::string service_address, absl::Time deadline,
-    ProfileRequest profile_request) {
-  auto instance = absl::WrapUnique(new RemoteProfilerSession(
-      std::move(service_address), deadline, std::move(profile_request)));
+    const std::string& service_address, absl::Time deadline,
+    const ProfileRequest& profile_request) {
+  auto instance = absl::WrapUnique(
+      new RemoteProfilerSession(service_address, deadline, profile_request));
   instance->ProfileAsync();
   return instance;
 }
 
-RemoteProfilerSession::RemoteProfilerSession(std::string service_address,
-                                             absl::Time deadline,
-                                             ProfileRequest profile_request)
+RemoteProfilerSession::RemoteProfilerSession(
+    const std::string& service_address, absl::Time deadline,
+    const ProfileRequest& profile_request)
     : response_(absl::make_unique<ProfileResponse>()),
-      service_address_(std::move(service_address)),
+      service_address_(service_address),
       stub_(CreateStub<grpc::ProfilerService>(service_address_)),
       deadline_(deadline),
-      profile_request_(std::move(profile_request)) {
+      profile_request_(profile_request) {
   response_->set_empty_trace(true);
 }
 

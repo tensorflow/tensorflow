@@ -23,8 +23,8 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
-# Install macos pip dependencies
-install_macos_pip_deps sudo pip3.7
+# Set up and install MacOS pip dependencies.
+install_macos_pip_deps_no_venv python3.7
 
 # Export required variables for running pip_new.sh
 export OS_TYPE="MACOS"

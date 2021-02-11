@@ -146,6 +146,7 @@ enum StatType {
   kRegionType,
   kDataType,
   kTensorShapes,
+  kTensorLayout,
   kKpiName,
   kKpiValue,
   kElementId,
@@ -161,9 +162,15 @@ enum StatType {
   kDeviceId,
   kContextId,
   kCorrelationId,
+  // TODO(b/176137043): These "details" should differentiate between activity
+  // and API event sources.
   kMemcpyDetails,
   kMemallocDetails,
+  kMemFreeDetails,
+  kMemsetDetails,
+  kMemoryResidencyDetails,
   kKernelAnnotation,
+  kNVTXRange,
   kKernelDetails,
   kStream,
   // Stats added when processing traces.

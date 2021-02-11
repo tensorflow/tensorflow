@@ -28,8 +28,9 @@ source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 TARGET=esp
 
 # setup esp-idf and toolchains
+echo "Checking out esp-idf..."
 readable_run git clone --recursive --single-branch --branch release/v4.2 https://github.com/espressif/esp-idf.git
-readable_run export IDF_PATH="${ROOT_DIR}"/esp-idf
+export IDF_PATH="${ROOT_DIR}"/esp-idf
 cd $IDF_PATH
 readable_run ./install.sh
 readable_run . ./export.sh

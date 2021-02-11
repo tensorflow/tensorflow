@@ -48,7 +48,6 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.util import compat
@@ -517,8 +516,6 @@ class _TypeSpecCodec(object):
           resource_variable_ops.VariableSpec,
       struct_pb2.TypeSpecProto.ROW_PARTITION_SPEC:
           row_partition.RowPartitionSpec,
-      struct_pb2.TypeSpecProto.NDARRAY_SPEC:
-          np_arrays.NdarraySpec,
   }
 
   # Mapping from type (TypeSpec subclass) to enum value.

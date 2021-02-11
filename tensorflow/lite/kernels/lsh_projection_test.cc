@@ -87,7 +87,13 @@ TEST(LSHProjectionOpTest2, Dense1DInputs) {
 
   m.Invoke();
 
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  // Hash returns differently on machines with different endianness
+  EXPECT_THAT(m.GetOutput(), ElementsAre(0, 0, 1, 1, 1, 0));
+#else
   EXPECT_THAT(m.GetOutput(), ElementsAre(0, 0, 0, 1, 0, 0));
+#endif
 }
 
 TEST(LSHProjectionOpTest2, Sparse1DInputs) {
@@ -98,7 +104,13 @@ TEST(LSHProjectionOpTest2, Sparse1DInputs) {
 
   m.Invoke();
 
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  // Hash returns differently on machines with different endianness
+  EXPECT_THAT(m.GetOutput(), ElementsAre(0 + 0, 4 + 3, 8 + 2));
+#else
   EXPECT_THAT(m.GetOutput(), ElementsAre(0 + 0, 4 + 1, 8 + 0));
+#endif
 }
 
 TEST(LSHProjectionOpTest2, Sparse3DInputs) {
@@ -111,7 +123,13 @@ TEST(LSHProjectionOpTest2, Sparse3DInputs) {
 
   m.Invoke();
 
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  // Hash returns differently on machines with different endianness
+  EXPECT_THAT(m.GetOutput(), ElementsAre(0 + 0, 4 + 3, 8 + 2));
+#else
   EXPECT_THAT(m.GetOutput(), ElementsAre(0 + 2, 4 + 1, 8 + 1));
+#endif
 }
 
 }  // namespace

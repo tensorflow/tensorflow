@@ -47,27 +47,22 @@ GpuTransferManager::GpuTransferManager(se::Platform::Id id,
 
 Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
-  const Shape& shape = literal.shape();
+  const Shape& literal_shape = literal.shape();
   VLOG(2) << "Transferring literal to infeed with shape: "
-          << ShapeUtil::HumanString(shape);
+          << ShapeUtil::HumanString(literal_shape);
 
   // For a tuple, we transfer each of its elements to the device and
   // enqueue the resulting destination device addresses with the
   // infeed manager.
-  ShapeTree<InfeedBuffer> buffer_tree(shape);
-
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      shape, [&](const Shape& literal_subshape, const ShapeIndex& index) {
-        if (literal_subshape.IsArray()) {
-          int64 tuple_element_size = GetByteSizeRequirement(literal_subshape);
-          TF_ASSIGN_OR_RETURN(
-              *buffer_tree.mutable_element(index),
-              TransferBufferToInfeedInternal(executor, tuple_element_size,
-                                             literal.untyped_data(index)));
-        }
-        return Status::OK();
-      }));
-
+  ShapeTree<InfeedBuffer> buffer_tree(literal_shape);
+  for (auto& leaf : buffer_tree.leaves()) {
+    const Shape& sub_shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
+    CHECK(sub_shape.IsArray()) << ShapeUtil::HumanStringWithLayout(sub_shape);
+    int64 tuple_element_size = GetByteSizeRequirement(sub_shape);
+    TF_ASSIGN_OR_RETURN(leaf.second, TransferBufferToInfeedInternal(
+                                         executor, tuple_element_size,
+                                         literal.untyped_data(leaf.first)));
+  }
   return EnqueueBuffersToInfeed(executor, std::move(buffer_tree));
 }
 
@@ -118,61 +113,31 @@ StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
   return std::move(buffer);
 }
 
-static void ShapeTreeToLiteral(
-    ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree) {
-  // This is a struct instead of a lambda for std::function-free recursion.
-  struct Helper {
-    static void helper(
-        ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree,
-        ShapeIndex* index) {
-      const Shape& shape = ShapeUtil::GetSubshape(shape_tree->shape(), *index);
-      if (shape.IsArray()) {
-        (*shape_tree->mutable_element(*index))->WaitUntilAvailable();
-        return;
-      }
-
-      CHECK(shape.IsTuple()) << ShapeUtil::HumanStringWithLayout(shape);
-      const int64 tuple_element_count = ShapeUtil::TupleElementCount(shape);
-      index->push_back(0);
-      for (int64 i = 0; i < tuple_element_count; ++i) {
-        index->back() = i;
-        helper(shape_tree, index);
-      }
-      index->pop_back();
-    }
-  };
-  ShapeIndex index;
-  Helper::helper(shape_tree, &index);
-}
-
 Status GpuTransferManager::TransferLiteralFromOutfeed(
-    se::StreamExecutor* /*executor*/, const Shape& literal_shape,
-    MutableBorrowingLiteral literal) {
+    se::StreamExecutor* /*executor*/, MutableBorrowingLiteral literal) {
   ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
-      &literal_shape);
+      &literal.shape());
 
-  // First create a tree of literal buffers that the device can write to.
-  outfeed_buffers.ForEachMutableElement(
-      [&](const ShapeIndex& index,
-          std::unique_ptr<gpu::OutfeedBuffer>* buffer) {
-        const Shape& shape = ShapeUtil::GetSubshape(literal_shape, index);
-        // Do not transfer tuple index buffers.
-        if (shape.IsTuple()) {
-          return;
-        }
-        *buffer = absl::make_unique<gpu::OutfeedBuffer>(
-            GetByteSizeRequirement(shape));
-        (*buffer)->set_destination(
-            absl::make_unique<MutableBorrowingLiteral>(literal, index));
-      });
+  for (auto& leaf : outfeed_buffers.leaves()) {
+    const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), leaf.first);
+    CHECK(shape.IsArray()) << ShapeUtil::HumanStringWithLayout(shape);
+    leaf.second =
+        absl::make_unique<gpu::OutfeedBuffer>(GetByteSizeRequirement(shape));
+    leaf.second->set_destination(
+        absl::make_unique<MutableBorrowingLiteral>(literal, leaf.first));
+  }
 
   // Give the tree of buffers to the outfeed manager. The device will fill it
   // while we're waiting for it below.
   gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
   outfeed_manager->EnqueueDestination(&outfeed_buffers);
 
-  // Now wait for the tree of buffers are written.
-  ShapeTreeToLiteral(&outfeed_buffers);
+  // Now wait till all the buffers are written.
+  for (auto& leaf : outfeed_buffers.leaves()) {
+    const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), leaf.first);
+    CHECK(shape.IsArray()) << ShapeUtil::HumanStringWithLayout(shape);
+    leaf.second->WaitUntilAvailable();
+  }
   return Status::OK();
 }
 

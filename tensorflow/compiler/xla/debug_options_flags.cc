@@ -40,6 +40,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_asm_extra_flags("");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
+  opts.set_xla_dump_fusion_visualization(false);
   opts.set_xla_dump_include_timestamp(true);
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
@@ -484,6 +485,15 @@ static void AllocateFlags() {
       "default; you need to add a plugin which calls "
       "RegisterGraphToURLRenderer()."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_fusion_visualization",
+      bool_setter_for(&DebugOptions::set_xla_dump_fusion_visualization),
+      flag_values->xla_dump_fusion_visualization(),
+      "Tries to generate HLO fusion visualization as an HTML page to the "
+      "directory specified by --xla_dump_to). This is not implemented by "
+      "default; you need to add a plugin which calls "
+      "RegisterGraphToURLRenderer(). Generates a file per computation. "
+      "Currently only implemented for the GPU backend."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_dump_hlo_snapshots",
       bool_setter_for(&DebugOptions::set_xla_dump_hlo_snapshots),
       flag_values->xla_dump_hlo_snapshots(),
@@ -593,6 +603,18 @@ static void AllocateFlags() {
       "fragmentation. The constraint is soft, so it works with tensors "
       "larger than the given constraint size. -1 corresponds to no "
       "constraints."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_force_compilation_parallelism",
+      int32_setter_for(
+          &DebugOptions::set_xla_gpu_force_compilation_parallelism),
+      flag_values->xla_gpu_force_compilation_parallelism(),
+      "Overrides normal multi-threaded compilation settting to use this many "
+      "threads. Setting to 0 (the default value) means no enforcement."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_deterministic_ops",
+      bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
+      flag_values->xla_gpu_deterministic_ops(),
+      "Guarantees run-to-run determinism on GPU."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

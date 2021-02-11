@@ -435,6 +435,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     self._extended = ParameterServerStrategyV2Extended(self, cluster_resolver,
                                                        variable_partitioner)
     self._verify_args_and_config(cluster_resolver)
+    self._cluster_coordinator = None
     logging.info(
         "`tf.distribute.experimental.ParameterServerStrategy` is initialized "
         "with cluster_spec: %s", cluster_resolver.cluster_spec())
@@ -444,6 +445,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     super(ParameterServerStrategyV2, self).__init__(self._extended)
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
         "ParameterServerStrategy")
+    self._should_use_with_coordinator = True
 
   def _connect_to_cluster(self, coordinator_name):
     if coordinator_name in ["worker", "ps"]:
@@ -560,7 +562,13 @@ class ParameterServerStrategyV2Extended(
     name = kwargs.get("name", None)
     initial_value = kwargs.get("initial_value", None)
     if initial_value is None:
-      raise ValueError("initial_value must be specified.")
+      raise ValueError(
+          "It looks like you are using `ParameterServerStrategy` with a "
+          "`variable_partitioner`, and trying to create a variable without "
+          "specifying `initial_value`. This is not allowed. Please specify the "
+          "`initial_value`. This can also happen if you are trying to load a "
+          "saved_model within a `ParameterServerStrategy` scope. Loading a "
+          "saved_model with `variable_partitioner` is not supported.")
 
     # Two cases where initial_value can be a callable:
     #   1. initial_value is passed as a callable, e.g, an `initializer` class.

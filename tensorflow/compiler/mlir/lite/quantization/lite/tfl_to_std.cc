@@ -49,7 +49,7 @@ void ConvertMlirQuantOpsToTFLQuantOps(FuncOp func) {
                                           dq.arg());
       dq.getResult().replaceAllUsesWith(dcast);
       if (auto extra_attr = op->getAttr(mlir::quant::kVolatileOpAttrName)) {
-        dcast.setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
+        dcast->setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
       }
       dq.erase();
     } else if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(op)) {
@@ -58,7 +58,7 @@ void ConvertMlirQuantOpsToTFLQuantOps(FuncOp func) {
                                         TypeAttr::get(out_type));
       q.getResult().replaceAllUsesWith(qcast);
       if (auto extra_attr = op->getAttr(mlir::quant::kVolatileOpAttrName)) {
-        qcast.setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
+        qcast->setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
       }
       q.erase();
     }

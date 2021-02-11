@@ -94,6 +94,7 @@ cc_library(
     hdrs = ["ir_array.h"],
     deps = [
         ":llvm_util",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",

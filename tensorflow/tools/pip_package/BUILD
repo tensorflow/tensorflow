@@ -46,17 +46,17 @@ transitive_hdrs(
         # Code that relies on these headers should dynamically link to
         # _pywrap_tensorflow_internal.so as well.
         "//tensorflow/python:model_analyzer_lib",
-        "//tensorflow/python:py_exception_registry",
-        "//tensorflow/python:pybind11_absl",
-        "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
-        "//tensorflow/python:pybind11_proto",
-        "//tensorflow/python:kernel_registry",
-        "//tensorflow/python:cpp_python_util",
-        "//tensorflow/python:py_func_lib",
-        "//tensorflow/python:py_seq_tensor",
-        "//tensorflow/python:py_util",
-        "//tensorflow/python:py_record_reader_lib",
+        "//tensorflow/python/lib/core:py_exception_registry",
+        "//tensorflow/python/lib/core:pybind11_proto",
+        "//tensorflow/python/lib/core:pybind11_absl",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/lib/core:py_seq_tensor",
+        "//tensorflow/python/lib/core:py_util",
+        "//tensorflow/python/lib/io:py_record_reader_lib",
+        "//tensorflow/python/util:cpp_python_util",
+        "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python:python_op_gen",
         "//tensorflow/python:tf_session_helper",
         "//third_party/eigen3",
@@ -68,7 +68,7 @@ transitive_hdrs(
 py_binary(
     name = "simple_console",
     srcs = ["simple_console.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -95,7 +95,6 @@ COMMON_PIP_DEPS = [
     ":included_headers",
     ":xla_compiled_cpu_runtime_srcs.txt_file",
     ":xla_cmake",
-    "//tensorflow:tensorflow_py",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
     "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
@@ -116,7 +115,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/training/experimental:loss_scale_optimizer",
     "//tensorflow/python:memory_checker",
     "//tensorflow/python:meta_graph_testdata",
-    "//tensorflow/python:util_example_parser_configuration",
     "//tensorflow/python/data/benchmarks:benchmark_base",
     "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:data_service_test_base",
@@ -136,6 +134,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras/mixed_precision:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",
     "//tensorflow/python/keras/tests:model_architectures",
+    "//tensorflow/python/keras/utils:dataset_creator",
     "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
@@ -147,6 +146,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python/tpu",
+    "//tensorflow/python/util:example_parser_configuration",
     "//tensorflow/python:image_grad_test_base",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
@@ -157,6 +157,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute/coordinator:cluster_coordinator",
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
     "//tensorflow/python/distribute/coordinator:metric_utils",
+    "//tensorflow:tensorflow_py",
+    "//tensorflow/tools/docs:tf_doctest_lib",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -168,7 +170,7 @@ py_binary(
     data = COMMON_PIP_DEPS + [
         "//tensorflow/python:pywrap_tensorflow_import_lib_file",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 

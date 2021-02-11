@@ -21,12 +21,13 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -83,7 +84,7 @@ LogicalResult LowerIfOp(mlir::mhlo::IfOp if_op) {
 
   // Extract the predicate for checking branching, then branch to the true and
   // false regions appropriately.
-  auto cond_value = builder.create<mlir::ExtractElementOp>(loc, if_op.pred());
+  auto cond_value = builder.create<mlir::tensor::ExtractOp>(loc, if_op.pred());
   builder.create<mlir::CondBranchOp>(loc, cond_value, true_block,
                                      if_op.true_arg(), false_block,
                                      if_op.false_arg());
@@ -142,7 +143,7 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   builder.create<mlir::BranchOp>(loc, cond_block, while_op.getOperand());
 
   // Updates the inlined condition blocks by replacing the return op with an
-  // extract_element and conditional branch. This changes the block below:
+  // tensor.extract and conditional branch. This changes the block below:
   //   ^cond(%0):
   //     <inlined conditional region>
   //    "mhlo".return(%1)
@@ -150,7 +151,7 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   //  Into:
   //   ^cond(%0):
   //     <inlined conditional region>
-  //     %2 = extract_element %1[] : tensor<i1> // Extract the condition value.
+  //     %2 = tensor.extract %1[] : tensor<i1> // Extract the condition value.
   //     cond_br %2, ^body(%0), ^tail(%0) // Branch.
   builder.setInsertionPointToStart(cond_block);
 
@@ -166,7 +167,8 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
     builder.setInsertionPointToEnd(new_block);
 
     auto return_value = return_op.getOperand(0);
-    auto cond_value = builder.create<mlir::ExtractElementOp>(loc, return_value);
+    auto cond_value =
+        builder.create<mlir::tensor::ExtractOp>(loc, return_value);
 
     // Get the body block arguments.
     llvm::SmallVector<Value, 4> successor_args(cond_block->args_begin(),

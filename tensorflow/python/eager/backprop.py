@@ -28,7 +28,6 @@ import sys
 import six
 
 from tensorflow.python import pywrap_tfe
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -49,6 +48,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
@@ -62,9 +62,6 @@ from tensorflow.python.util.tf_export import tf_export
 pfor_ops = LazyLoader(
     "pfor_ops", globals(),
     "tensorflow.python.ops.parallel_for.control_flow_ops")
-np_arrays = LazyLoader(
-    "np_arrays", globals(),
-    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 function = LazyLoader("function", globals(),
                       "tensorflow.python.eager.function")
@@ -678,7 +675,7 @@ def _zeros(shape, dtype):
 
   device = ctx.device_name
 
-  if tensor_util.is_tensor(shape):
+  if tensor_util.is_tf_type(shape):
     shape_key = shape.ref()
   else:
     shape_key = shape
@@ -727,8 +724,6 @@ def _handle_or_self(x):
   """Unwrap resource variable/ndarray to return tensors."""
   if resource_variable_ops.is_resource_variable(x):
     return x.handle
-  if isinstance(x, np_arrays.ndarray):
-    return x.data
   return x
 
 
@@ -1007,11 +1002,12 @@ class GradientTape(object):
     Raises:
       RuntimeError: If called on a used, non-persistent tape.
       RuntimeError: If called inside the context of the tape.
+      TypeError: If the target is a None object.
       ValueError: If the target is a variable or if unconnected gradients is
        called with an unknown value.
     """
     if self._tape is None:
-      raise RuntimeError("A non-persistent GradientTape can only be used to"
+      raise RuntimeError("A non-persistent GradientTape can only be used to "
                          "compute one set of gradients (or jacobians)")
     if self._recording:
       if not self._persistent:
@@ -1028,7 +1024,11 @@ class GradientTape(object):
             "gradient in order to compute higher order "
             "derivatives.", 1)
 
-    num_ndarrays = 0
+    if target is None:
+      raise TypeError("Target should be a list or nested structure"
+                      " of Tensors or Variables to be differentiated,"
+                      " but recieved %r" % (target))
+
     flat_targets = []
     for t in nest.flatten(target):
       if not backprop_util.IsTrainable(t):
@@ -1039,12 +1039,7 @@ class GradientTape(object):
       if resource_variable_ops.is_resource_variable(t):
         with self:
           t = ops.convert_to_tensor(t)
-      elif isinstance(t, np_arrays.ndarray):
-        t = t.data
-        num_ndarrays += 1
       flat_targets.append(t)
-    # Only rewrap if all targets are ndarray. If not, prefer tensors.
-    rewrap_as_ndarray = num_ndarrays == len(flat_targets)
 
     flat_sources = nest.flatten(sources)
     flat_sources_raw = flat_sources
@@ -1076,13 +1071,6 @@ class GradientTape(object):
       # Keep track of watched variables before setting tape to None
       self._watched_variables = self._tape.watched_variables()
       self._tape = None
-
-    if rewrap_as_ndarray:
-      def _tensor_to_ndarray(x):
-        if x is not None:
-          return np_arrays.tensor_to_ndarray(x)
-        return None
-      flat_grad = nest.map_structure(_tensor_to_ndarray, flat_grad)
 
     grad = nest.pack_sequence_as(sources, flat_grad)
     return grad
@@ -1148,14 +1136,10 @@ class GradientTape(object):
       ValueError: If vectorization of jacobian computation fails.
     """
     if self._tape is None:
-      raise RuntimeError("A non-persistent GradientTape can only be used to"
+      raise RuntimeError("A non-persistent GradientTape can only be used to "
                          "compute one set of gradients (or jacobians)")
 
     flat_sources = nest.flatten(sources)
-    rewrap_as_ndarray = False
-    if isinstance(target, np_arrays.ndarray):
-      target = target.data
-      rewrap_as_ndarray = True
     target_static_shape = target.shape
     target_shape = array_ops.shape(target)
     # Note that we push and pop the tape here and below. This is needed since we
@@ -1205,8 +1189,6 @@ class GradientTape(object):
         out = array_ops.reshape(out, new_shape)
         if context.executing_eagerly():
           out.set_shape(target_static_shape.concatenate(flat_sources[i].shape))
-      if rewrap_as_ndarray:
-        out = np_arrays.tensor_to_ndarray(out)
       output[i] = out
 
     return nest.pack_sequence_as(sources, output)
@@ -1281,12 +1263,6 @@ class GradientTape(object):
     if self._tape is None:
       raise RuntimeError("A non-persistent GradientTape can only be used to"
                          "compute one set of gradients (or jacobians)")
-    rewrap_as_ndarray = False
-    if isinstance(target, np_arrays.ndarray):
-      target = target.data
-      rewrap_as_ndarray = True
-    if isinstance(source, np_arrays.ndarray):
-      source = source.data
     target_shape = target.shape
     if target_shape.rank is None:
       dim = tensor_shape.Dimension(None)
@@ -1344,9 +1320,10 @@ class GradientTape(object):
                                  parallel_iterations=parallel_iterations)
     new_shape = array_ops.concat([target_shape, source_shape[1:]], axis=0)
     if output is None:
-      output = array_ops.zeros(new_shape)
-      if rewrap_as_ndarray:
-        output = np_arrays.tensor_to_ndarray(output)
+      # Note that this block is returning zeros when it could use `None` to
+      # represent unconnected gradients. This is to maintain compatibility with
+      # the previous behavior, which ignored `unconnected_gradients`.
+      output = array_ops.zeros(new_shape, target.dtype)
       return output
     else:
       output = array_ops.reshape(output,
@@ -1354,6 +1331,4 @@ class GradientTape(object):
       output = array_ops.transpose(output, [1, 0, 2])
 
       output = array_ops.reshape(output, new_shape)
-      if rewrap_as_ndarray:
-        output = np_arrays.tensor_to_ndarray(output)
       return output

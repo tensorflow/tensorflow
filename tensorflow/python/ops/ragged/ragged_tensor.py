@@ -2178,6 +2178,7 @@ def match_row_splits_dtypes(*tensors, **kwargs):
 # RaggedTensorSpec
 #===============================================================================
 @tf_export("RaggedTensorSpec")
+@type_spec.register("tf.RaggedTensorSpec")
 class RaggedTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for a `tf.RaggedTensor`."""
 

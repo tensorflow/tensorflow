@@ -28,11 +28,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.engine import base_preprocessing_layer
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
@@ -69,6 +69,19 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
            [0],
            [1],
            [1],
+           [2]])>
+
+  Example (FarmHash64) with a mask value:
+
+  >>> layer = tf.keras.layers.experimental.preprocessing.Hashing(num_bins=3,
+  ...    mask_value='')
+  >>> inp = [['A'], ['B'], [''], ['C'], ['D']]
+  >>> layer(inp)
+  <tf.Tensor: shape=(5, 1), dtype=int64, numpy=
+    array([[1],
+           [1],
+           [0],
+           [2],
            [2]])>
 
 
@@ -113,8 +126,13 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
 
   Reference: [SipHash with salt](https://www.131002.net/siphash/siphash.pdf)
 
-  Arguments:
-    num_bins: Number of hash bins.
+  Args:
+    num_bins: Number of hash bins. Note that this includes the `mask_value` bin,
+      so the effective number of bins is `(num_bins - 1)` if `mask_value` is
+      set.
+    mask_value: A value that represents masked inputs, which are mapped to
+      index 0. Defaults to None, meaning no mask term will be added and the
+      hashing will start at index 0.
     salt: A single unsigned integer or None.
       If passed, the hash function used will be SipHash64, with these values
       used as an additional input (known as a "salt" in cryptography).
@@ -134,12 +152,13 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
 
   """
 
-  def __init__(self, num_bins, salt=None, name=None, **kwargs):
+  def __init__(self, num_bins, mask_value=None, salt=None, name=None, **kwargs):
     if num_bins is None or num_bins <= 0:
       raise ValueError('`num_bins` cannot be `None` or non-positive values.')
     super(Hashing, self).__init__(name=name, **kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('Hashing').set(True)
     self.num_bins = num_bins
+    self.mask_value = mask_value
     self.strong_hash = True if salt is not None else False
     if salt is not None:
       if isinstance(salt, (tuple, list)) and len(salt) == 2:
@@ -161,7 +180,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
     if isinstance(inputs, (tuple, list)):
       # If any of them is tensor or ndarray, then treat as list
       if any(
-          tensor_util.is_tensor(inp) or isinstance(inp, np.ndarray)
+          tensor_util.is_tf_type(inp) or isinstance(inp, np.ndarray)
           for inp in inputs):
         return [self._preprocess_single_input(inp) for inp in inputs]
     return self._preprocess_single_input(inputs)
@@ -170,39 +189,22 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
     inputs = self._preprocess_inputs(inputs)
     if isinstance(inputs, (tuple, list)):
       return self._process_input_list(inputs)
-    else:
-      return self._process_single_input(inputs)
-
-  def _process_single_input(self, inputs):
-    # Converts integer inputs to string.
-    if inputs.dtype.is_integer:
-      if isinstance(inputs, sparse_tensor.SparseTensor):
-        inputs = sparse_tensor.SparseTensor(
-            indices=inputs.indices,
-            values=string_ops.as_string(inputs.values),
-            dense_shape=inputs.dense_shape)
-      else:
-        inputs = string_ops.as_string(inputs)
-    str_to_hash_bucket = self._get_string_to_hash_bucket_fn()
-    if tf_utils.is_ragged(inputs):
-      return ragged_functional_ops.map_flat_values(
-          str_to_hash_bucket, inputs, num_buckets=self.num_bins, name='hash')
     elif isinstance(inputs, sparse_tensor.SparseTensor):
-      sparse_values = inputs.values
-      sparse_hashed_values = str_to_hash_bucket(
-          sparse_values, self.num_bins, name='hash')
       return sparse_tensor.SparseTensor(
           indices=inputs.indices,
-          values=sparse_hashed_values,
+          values=self._hash_values_to_bins(inputs.values),
           dense_shape=inputs.dense_shape)
-    else:
-      return str_to_hash_bucket(inputs, self.num_bins, name='hash')
+    return self._hash_values_to_bins(inputs)
 
   def _process_input_list(self, inputs):
     # TODO(momernick): support ragged_cross_hashed with corrected fingerprint
     # and siphash.
     if any(isinstance(inp, ragged_tensor.RaggedTensor) for inp in inputs):
       raise ValueError('Hashing with ragged input is not supported yet.')
+    if self.mask_value is not None:
+      raise ValueError(
+          'Cross hashing with a mask_value is not supported yet, mask_value is '
+          '{}.'.format(self.mask_value))
     sparse_inputs = [
         inp for inp in inputs if isinstance(inp, sparse_tensor.SparseTensor)
     ]
@@ -225,6 +227,24 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
     if all_dense:
       return sparse_ops.sparse_tensor_to_dense(sparse_out)
     return sparse_out
+
+  def _hash_values_to_bins(self, values):
+    """Converts a non-sparse tensor of values to bin indices."""
+    str_to_hash_bucket = self._get_string_to_hash_bucket_fn()
+    num_available_bins = self.num_bins
+    mask = None
+    # If mask_value is set, the zeroth bin is reserved for it.
+    if self.mask_value is not None and num_available_bins > 1:
+      num_available_bins -= 1
+      mask = math_ops.equal(values, self.mask_value)
+    # Convert all values to strings before hashing.
+    if values.dtype.is_integer:
+      values = string_ops.as_string(values)
+    values = str_to_hash_bucket(values, num_available_bins, name='hash')
+    if mask is not None:
+      values = math_ops.add(values, array_ops.ones_like(values))
+      values = array_ops.where(mask, array_ops.zeros_like(values), values)
+    return values
 
   def _get_string_to_hash_bucket_fn(self):
     """Returns the string_to_hash_bucket op to use based on `hasher_key`."""
@@ -274,6 +294,10 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
     return tensor_spec.TensorSpec(shape=output_shape, dtype=dtypes.int64)
 
   def get_config(self):
-    config = {'num_bins': self.num_bins, 'salt': self.salt}
+    config = {
+        'num_bins': self.num_bins,
+        'salt': self.salt,
+        'mask_value': self.mask_value,
+    }
     base_config = super(Hashing, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

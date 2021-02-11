@@ -17,6 +17,21 @@ cc_library(
     includes = ["."],
 )
 
+cc_library(
+    name = "TestAnalysis",
+    srcs = glob(["lib/Analysis/*.cpp"]),
+    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
+    includes = ["lib/Dialect/Test"],
+    deps = [
+        ":TestDialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 filegroup(
     name = "TestOpTdFiles",
     srcs = [
@@ -206,6 +221,19 @@ cc_library(
 )
 
 cc_library(
+    name = "TestRewrite",
+    srcs = [
+        "lib/Rewrite/TestPDLByteCode.cpp",
+    ],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
     name = "TestReducer",
     srcs = [
         "lib/Reducer/MLIRTestReducer.cpp",
@@ -273,6 +301,20 @@ cc_library(
 )
 
 cc_library(
+    name = "TestShapeDialect",
+    srcs = [
+        "lib/Dialect/Shape/TestShapeFunctions.cpp",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+    ],
+)
+
+cc_library(
     name = "TestSPIRV",
     srcs = glob([
         "lib/Dialect/SPIRV/*.cpp",
@@ -281,9 +323,10 @@ cc_library(
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SPIRVConversion",
         "@llvm-project//mlir:SPIRVDialect",
-        "@llvm-project//mlir:SPIRVLinking",
-        "@llvm-project//mlir:SPIRVLowering",
+        "@llvm-project//mlir:SPIRVModuleCombiner",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 

@@ -30,8 +30,10 @@ limitations under the License.
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
@@ -352,7 +354,8 @@ else_branch: A function that takes 'inputs' and returns a list of
 }
 
 def TF_YieldOp : TF_Op<"Yield",
-      [Terminator, ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>]> {
+      [NoSideEffect, ReturnLike, Terminator,
+       ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>]> {
   let summary = "Yield operation";
 
   let description = [{
@@ -862,22 +865,59 @@ Example:
     Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
   );
 
-  TF_DerivedOperandOrResultHandleTypeAttr dtype =
-    TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
-  TF_DerivedOperandOrResultHandleShapeAttr shape =
-    TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
+  let verifier = [{
+    // VarHandleOp requires the resource handle supply a single subtype from
+    // which to derive the dtype and shape attributes.
+    if (resource_type().getSubtypes().size() != 1) {
+      return emitOpError(
+          "must have exactly one subtype in the result resource type");
+    }
+
+    return success();
+  }];
+
+  DerivedTypeAttr dtype = DerivedTypeAttr<
+      "return getElementTypeOrSelf(resource_subtype());">;
+  DerivedAttr shape = DerivedAttr<
+      "ShapedType",
+      "return resource_subtype().cast<ShapedType>();",
+      [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
   let extraClassDeclaration = [{
     // TF_ResourceHandleAllocatorInterface:
     ResourceHandleValueAndId GetResourceHandleValueAndId(
       llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
       int64_t &next_id);
+
+    TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
+
+    ResourceType resource_type() {
+      return getElementTypeOrSelf(resource()).cast<TF::ResourceType>();
+    }
   }];
+}
+
+def TF_EnqueueTPUEmbeddingBatchOp : TF_Op<"EnqueueTPUEmbeddingBatch", [TF_TPUEmbeddingSideEffect]> {
+  let summary = [{
+An op that enqueues a list of input batch tensors to TPUEmbedding.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_StrTensor>:$batch,
+    TF_StrTensor:$mode_override,
+
+    DefaultValuedAttr<I64Attr, "-1">:$device_ordinal,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$combiners
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 // Multiple variadic operands with different sizes are not supported by the
 // dialect generator, so we manually added the op.
-def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments]> {
+def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
   let summary = "Performs gradient updates of embedding tables.";
 
   let description = [{
@@ -908,7 +948,7 @@ config: Serialized TPUEmbeddingConfiguration proto.
 
 // Multiple variadic operands with different sizes are not supported by the
 // dialect generator, so we manually added the op.
-def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments]> {
+def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
   let summary = "Performs gradient updates of embedding tables.";
 
   let description = [{
@@ -973,6 +1013,7 @@ An op which shards the input based on the given sharding attribute.
   let arguments = (ins
     TF_Tensor:$input,
 
+    DefaultValuedAttr<StrAttr, "">:$sharding,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
@@ -1340,12 +1381,12 @@ def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastable
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$x,
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$y
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$x,
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$z
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2021,5 +2062,48 @@ argument "ref" in addition to returning the results.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TPUPartitionedInputOp : TF_Op<"TPUPartitionedInput", [NoSideEffect]> {
+  let summary = [{
+An op that groups a list of partitioned inputs together. This op
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+
+    DefaultValuedAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_TPUPartitionedOutputOp : TF_Op<"TPUPartitionedOutput", [NoSideEffect]> {
+  let summary = [{
+An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
+  }];
+
+  let description = [{
+outputs outside the XLA computation.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$inputs,
+
+    DefaultValuedAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr num_splits = TF_DerivedResultSizeAttr<0>;
+}
 
 #endif // TF_OPS
