@@ -182,8 +182,9 @@ Status MlirFunctionOptimizationPass::Run(
                        << ", Total: " << registry_->passes().size();
 
   GraphDebugInfo debug_info;
-  mlir::MLIRContext context;
-  RegisterDialects(context.getDialectRegistry());
+  mlir::DialectRegistry registry;
+  RegisterDialects(registry);
+  mlir::MLIRContext context(registry);
   GraphImportConfig import_config;
   import_config.graph_as_function = true;
   import_config.control_outputs = *control_ret_node_names;
@@ -342,8 +343,9 @@ Status MlirV1CompatGraphOptimizationPass::Run(
                           << " passes)";
 
   GraphDebugInfo debug_info;
-  mlir::MLIRContext context;
-  RegisterDialects(context.getDialectRegistry());
+  mlir::DialectRegistry registry;
+  RegisterDialects(registry);
+  mlir::MLIRContext context(registry);
   GraphImportConfig import_config;
   import_config.upgrade_legacy = true;
   // Restrict functionalization to TPU nodes to avoid problems in v1 session

@@ -77,8 +77,10 @@ using tensorflow::tracing::TracingTensorHandle;
 namespace {
 
 void RegisterDialects(mlir::MLIRContext& ctx) {
-  mlir::RegisterAllTensorFlowDialects(ctx.getDialectRegistry());
-  ctx.getDialectRegistry().loadAll(&ctx);
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  ctx.appendDialectRegistry(registry);
+  ctx.loadAllAvailableDialects();
 }
 
 Status ConvertDataTypeToTensor(tensorflow::DataType dtype, Builder builder,

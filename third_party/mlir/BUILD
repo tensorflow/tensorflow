@@ -4498,6 +4498,34 @@ gentbl(
     ],
 )
 
+filegroup(
+    name = "LinalgSparseOpsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.td",
+        "include/mlir/Interfaces/ViewLikeInterface.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "LinalgSparseOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.td",
+    td_srcs = [":LinalgSparseOpsTdFiles"],
+)
+
 gentbl(
     name = "LinalgInterfacesIncGen",
     strip_include_prefix = "include",
@@ -4643,6 +4671,7 @@ cc_library(
         ":LinalgInterfacesIncGen",
         ":LinalgNamedStructuredOpsIncGen",
         ":LinalgOpsIncGen",
+        ":LinalgSparseOpsIncGen",
         ":LinalgStructuredOpsIncGen",
         ":Parser",
         ":SideEffectInterfaces",
@@ -4700,6 +4729,7 @@ cc_library(
         ":LLVMDialect",
         ":LinalgOps",
         ":LinalgPassIncGen",
+        ":LinalgSparseOpsIncGen",
         ":LinalgStructuredOpsIncGen",
         ":Pass",
         ":SCFDialect",

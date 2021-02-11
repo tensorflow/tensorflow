@@ -388,9 +388,10 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     bool embed_memref_prints, bool generate_fatbin, bool print_ptx,
     bool enable_ftz, bool cpu_codegen) {
-  auto& registry = context.getDialectRegistry();
+  mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
+  context.appendDialectRegistry(registry);
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
 
   TF_RETURN_IF_ERROR(
