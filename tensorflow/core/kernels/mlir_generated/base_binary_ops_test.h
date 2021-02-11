@@ -188,6 +188,42 @@ class BinaryOpsTestBase : public OpsTestBase {
 
   template <typename T, typename BaselineT, typename OutT,
             typename BaselineOutT>
+  void TestOneEffectiveScalar(const std::string& op_name, T scalar_input,
+                              const TensorShape& other_shape,
+                              const absl::InlinedVector<T, 10>& other_input,
+                              BaselineOutT (*baseline_callback)(BaselineT,
+                                                                BaselineT),
+                              const test::OpsTestConfig& config) {
+    // Prepare inputs.
+    TensorShape effective_scalar_shape{1, 1, 1, 1, 1, 1};
+    CHECK(other_input.size() <= other_shape.num_elements() &&
+          "expect other input shape to hold all input values");
+    auto repeated_other_input =
+        test::RepeatInputToMatchShape(other_input, other_shape.num_elements());
+
+    // Compute expected results.
+    absl::InlinedVector<OutT, 10> expected_output;
+    for (auto it = repeated_other_input.begin(),
+              end = repeated_other_input.end();
+         it != end; ++it) {
+      auto scalar = static_cast<BaselineT>(scalar_input);
+      auto other_value = static_cast<BaselineT>(*it);
+      auto result = static_cast<OutT>(baseline_callback(scalar, other_value));
+      expected_output.push_back(result);
+    }
+
+    auto scalar_input_vector = test::InputAsVector<T>({scalar_input});
+    TensorShape expected_shape = other_shape;
+    while (expected_shape.dims() < effective_scalar_shape.dims()) {
+      expected_shape.InsertDim(0, 1);
+    }
+    RunAndExpectResult<T, OutT>(
+        op_name, effective_scalar_shape, scalar_input_vector, other_shape,
+        repeated_other_input, expected_shape, expected_output, config);
+  }
+
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
   void TestBroadcastingExpand(const std::string& op_name,
                               const absl::InlinedVector<T, 10>& lhs_input,
                               const absl::InlinedVector<T, 10>& rhs_input,
@@ -325,6 +361,13 @@ class BinaryOpsTestBase : public OpsTestBase {
                                                                               \
   TEST_F(BinaryOpsTest, op_name##OneScalar##test_name) {                      \
     TestOneScalar<T, BaselineT, OutT, BaselineOutT>(                          \
+        #op_name, /*scalar_input=*/lhs_input.front(),                         \
+        /*other_shape=*/test::DefaultInputShape(), /*other_input=*/rhs_input, \
+        baseline_callback, config);                                           \
+  }                                                                           \
+                                                                              \
+  TEST_F(BinaryOpsTest, op_name##TestOneEffectiveScalar##test_name) {         \
+    TestOneEffectiveScalar<T, BaselineT, OutT, BaselineOutT>(                 \
         #op_name, /*scalar_input=*/lhs_input.front(),                         \
         /*other_shape=*/test::DefaultInputShape(), /*other_input=*/rhs_input, \
         baseline_callback, config);                                           \
