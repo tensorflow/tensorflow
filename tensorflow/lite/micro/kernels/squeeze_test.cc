@@ -55,7 +55,7 @@ void TestSqueezeOp(const int* input_dims_data, const int* input_data,
   const TfLiteRegistration registration = Register_SQUEEZE();
   micro::KernelRunner runner(
       registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<void*>(squeeze_params), micro_test::reporter);
+      reinterpret_cast<void*>(squeeze_params));
 
   const char* init_data = reinterpret_cast<const char*>(squeeze_params);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare(init_data));
