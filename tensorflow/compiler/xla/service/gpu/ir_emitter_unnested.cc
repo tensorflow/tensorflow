@@ -5858,5 +5858,11 @@ void MlirEmitterContext::SetOperation(mlir::Operation* op) {
   }
 }
 
+Status IrEmitterUnnested::HandleBitcast(HloInstruction* bitcast) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(bitcast));
+  DCHECK_EQ(nullptr, input.op);
+  return Status::OK();
+}
+
 }  // namespace gpu
 }  // namespace xla
