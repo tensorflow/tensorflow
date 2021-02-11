@@ -821,14 +821,25 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                   std::string w_val_w = "SUB_GROUP_BROADCAST(simd_w" +
                                         std::to_string(simd_id) + ".w, " +
                                         std::to_string(thread_id) + "u)";
-                  c += "    " + R + ".x += " + w_val_x + " * " + S + "." +
-                       channels[ch] + ";\n";
-                  c += "    " + R + ".y += " + w_val_y + " * " + S + "." +
-                       channels[ch] + ";\n";
-                  c += "    " + R + ".z += " + w_val_z + " * " + S + "." +
-                       channels[ch] + ";\n";
-                  c += "    " + R + ".w += " + w_val_w + " * " + S + "." +
-                       channels[ch] + ";\n";
+                  if (GetWeightsDescription().IsI4O4()) {
+                    c += "    " + R + ".x += " + w_val_x + " * " + S + "." +
+                         channels[ch] + ";\n";
+                    c += "    " + R + ".y += " + w_val_y + " * " + S + "." +
+                         channels[ch] + ";\n";
+                    c += "    " + R + ".z += " + w_val_z + " * " + S + "." +
+                         channels[ch] + ";\n";
+                    c += "    " + R + ".w += " + w_val_w + " * " + S + "." +
+                         channels[ch] + ";\n";
+                  } else {
+                    c += "    " + R + "." + channels[ch] + " += " + w_val_x +
+                         " * " + S + ".x;\n";
+                    c += "    " + R + "." + channels[ch] + " += " + w_val_y +
+                         " * " + S + ".y;\n";
+                    c += "    " + R + "." + channels[ch] + " += " + w_val_z +
+                         " * " + S + ".z;\n";
+                    c += "    " + R + "." + channels[ch] + " += " + w_val_w +
+                         " * " + S + ".w;\n";
+                  }
                 } else {
                   const std::string weight_id =
                       std::to_string(s * 4 + ch + shared_offset);
@@ -838,8 +849,13 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                   } else {
                     w_val = "f" + weight_id;
                   }
-                  c += "    " + R + " += " + w_val + " * " + S + "." +
-                       channels[ch] + ";\n";
+                  if (GetWeightsDescription().IsI4O4()) {
+                    c += "    " + R + " += " + w_val + " * " + S + "." +
+                         channels[ch] + ";\n";
+                  } else {
+                    c += "    " + R + "." + channels[ch] + " += dot(" + w_val +
+                         ", " + S + ");\n";
+                  }
                 }
               }
             }
@@ -864,9 +880,16 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                   F[i] = "f" + weight_id;
                 }
               }
-              c += "    " + R + " += TO_ACCUM_TYPE(" + S + ".x * " + F[0] +
-                   " + " + S + ".y * " + F[1] + " + " + S + ".z * " + F[2] +
-                   " + " + S + ".w * " + F[3] + ");\n";
+              if (GetWeightsDescription().IsI4O4()) {
+                c += "    " + R + " += TO_ACCUM_TYPE(" + S + ".x * " + F[0] +
+                     " + " + S + ".y * " + F[1] + " + " + S + ".z * " + F[2] +
+                     " + " + S + ".w * " + F[3] + ");\n";
+              } else {
+                c += "    " + R + ".x += dot(" + S + ", " + F[0] + ");\n";
+                c += "    " + R + ".y += dot(" + S + ", " + F[1] + ");\n";
+                c += "    " + R + ".z += dot(" + S + ", " + F[2] + ");\n";
+                c += "    " + R + ".w += dot(" + S + ", " + F[3] + ");\n";
+              }
             }
           }
         }
@@ -1287,6 +1310,19 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     }
     if (src_depth % 4 == 0 && conv_params.block_size.w <= 2) {
       conv_params.src_depth_loop_size = 4;
+    }
+  }
+  if (conv_params.AreWeightsBuffer()) {
+    if (gpu_info.IsApple()) {
+      conv_params.weights_layout = WeightsLayout::kOHWIOGroupO4I4;
+    } else {
+      conv_params.weights_layout = WeightsLayout::kOHWIOGroupI4O4;
+    }
+  } else {
+    if (gpu_info.IsApple()) {
+      conv_params.weights_layout = WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4;
+    } else {
+      conv_params.weights_layout = WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4;
     }
   }
 
