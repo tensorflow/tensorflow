@@ -152,7 +152,8 @@ class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
 };
 
 Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
-                      llvm::ArrayRef<int64_t> unroll_factors) {
+                      llvm::ArrayRef<int64_t> unroll_factors,
+                      bool cpu_codegen) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
@@ -197,10 +198,14 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   // recognized as such.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
 
-  // Collapse and tile parallel loops.
-  pm.addNestedPass<mlir::FuncOp>(std::make_unique<CollapseParallelLoopsTo1D>());
-  pm.addNestedPass<mlir::FuncOp>(
-      std::make_unique<TileLoops>(tile_sizes, unroll_factors));
+  if (!cpu_codegen) {
+    // Collapse and tile parallel loops. Collapsing shouldn't provide benefits
+    // to CPU and tiling is handled by vectorization.
+    pm.addNestedPass<mlir::FuncOp>(
+        std::make_unique<CollapseParallelLoopsTo1D>());
+    pm.addNestedPass<mlir::FuncOp>(
+        std::make_unique<TileLoops>(tile_sizes, unroll_factors));
+  }
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   if (failed(pm.run(module))) {
@@ -388,7 +393,8 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
 
-  TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors));
+  TF_RETURN_IF_ERROR(
+      LowerTFtoLoops(module.get(), tile_sizes, unroll_factors, cpu_codegen));
   TF_RETURN_IF_ERROR(
       LowerLoopsToGPUorCPU(module.get(), embed_memref_prints, cpu_codegen));
   if (!cpu_codegen) {
