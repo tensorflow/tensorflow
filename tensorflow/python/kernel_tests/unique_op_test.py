@@ -152,6 +152,14 @@ class UniqueTest(test.TestCase):
     _, idx = gen_array_ops.unique_v2(x, axis=axis_t)
     self.assertEqual(idx.shape.as_list(), [None])
 
+  def testEmpty(self):
+    x = np.random.randint(2, size=0)
+    y, idx = array_ops.unique(x)
+    tf_y, tf_idx = self.evaluate([y, idx])
+
+    self.assertEqual(len(x), len(tf_idx))
+    self.assertEqual(len(tf_y), len(np.unique(x)))
+
 
 class UniqueWithCountsTest(test.TestCase):
 
