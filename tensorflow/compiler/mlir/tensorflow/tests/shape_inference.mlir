@@ -1045,4 +1045,94 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: tensor<i32>
     return %arg0 : tensor<*xi32>
   }
+
+  // Test conv2d inferReturnTypes.
+
+  // CHECK-LABEL: func @conv2d_unranked_input_and_filter
+  func @conv2d_unranked_input_and_filter(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<?x?x?x?xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @conv2d_unranked_filter
+  func @conv2d_unranked_filter(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<256x?x?x?xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<*xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @conv2d_unranked_filter_and_dynamic_batch
+  func @conv2d_unranked_filter_and_dynamic_batch(%arg0: tensor<?x32x32x3xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<?x?x?x?xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x32x32x3xf32>, tensor<*xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @conv2d_unranked_input
+  func @conv2d_unranked_input(%arg0: tensor<*xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<?x?x?x16xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @conv2d_unranked_input_and_dynamic_channel
+  func @conv2d_unranked_input_and_dynamic_channel(%arg0: tensor<*xf32>, %arg1: tensor<3x3x3x?xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<?x?x?x?xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<3x3x3x?xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @conv2d_dynamic_batch
+  func @conv2d_dynamic_batch(%arg0: tensor<?x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<?x32x32x16xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @conv2d_dynamic_channel
+  func @conv2d_dynamic_channel(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x?xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<256x32x32x?xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x?xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @conv2d_fully_dynamic_spatial_dim
+  func @conv2d_fully_dynamic_spatial_dim(%arg0: tensor<256x?x?x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<256x?x?x16xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x?x?x3xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @conv2d_partially_dynamic_spatial_dim
+  func @conv2d_partially_dynamic_spatial_dim(%arg0: tensor<256x?x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<256x?x32x16xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x?x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @conv2d_dynamic_batch_and_partially_dynamic_spatial_dim
+  func @conv2d_dynamic_batch_and_partially_dynamic_spatial_dim(%arg0: tensor<?x?x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<?x?x32x16xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x?x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @conv2d_dynamic_batch_and_fully_dynamic_spatial_dim
+  func @conv2d_dynamic_batch_and_fully_dynamic_spatial_dim(%arg0: tensor<?x?x?x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Conv2D"
+    // CHECK-SAME: -> tensor<?x?x?x16xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x?x?x3xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
 }
