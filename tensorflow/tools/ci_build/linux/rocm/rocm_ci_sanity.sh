@@ -202,7 +202,7 @@ do_pylint() {
   # We use `${ALLOW_LIST_FILE}` to record the errors we temporarily accept. Goal
   # is to make that file only contain errors caused by difference between
   # internal and external versions.
-  ALLOW_LIST_FILE="${SCRIPT_DIR}/pylint_allowlist"
+  ALLOW_LIST_FILE="${SCRIPT_DIR}/../../pylint_allowlist"
 
   if [[ ! -f "${ALLOW_LIST_FILE}" ]]; then
     die "ERROR: Cannot find pylint allowlist file at ${ALLOW_LIST_FILE}"

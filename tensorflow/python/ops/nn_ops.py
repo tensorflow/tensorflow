@@ -5172,7 +5172,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
         rate = gen_math_ops.cast(rate, x_dtype, name="rate")
       one_tensor = constant_op.constant(1, dtype=x_dtype)
       ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
-    null_noise_shape = (noise_shape==None)
+    null_noise_shape = (noise_shape == None)
     noise_shape = _get_noise_shape(x, noise_shape)
 
     # Should there be ROCm support, use it. Otherwise fallback to generic
@@ -5180,7 +5180,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     def_dropout = os.environ.get("TF_ROCM_OLD_DROPOUT")
     if build_info.build_info['is_rocm_build'] and \
        (x.dtype == dtypes.float64 or x.dtype == dtypes.float32 \
-        or x.dtype == dtypes.float16) and def_dropout!="1" \
+        or x.dtype == dtypes.float16) and def_dropout != "1" \
         and null_noise_shape:
       if seed is None:
         seed = 0

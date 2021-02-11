@@ -1892,8 +1892,8 @@ def _BatchMatMulV2(op, grad):
 def _BatchGemm(op, grad):
   """Returns the gradient of x and y given the gradient of alpha * x * y."""
   alpha = op.get_attr("alpha")
-  return [math_ops.multiply(grad,
-    alpha) for grad in _BatchMatMulV2(op, grad)] + [None]
+  return [math_ops.multiply(
+      grad, alpha) for grad in _BatchMatMulV2(op, grad)] + [None]
 
 
 ops.NotDifferentiable("Range")
@@ -2054,38 +2054,38 @@ def _FusedMulAddSubGrad(op, grad, sgn):
   x1 = op.inputs[0]
   y1 = op.inputs[1]
   x2 = op.inputs[2]
-  (sx1, rx1, must_reduce_x1), _= SmartBroadcastGradientArgs(x1, grad, grad)
-  (sy1, ry1, must_reduce_y1), _= SmartBroadcastGradientArgs(y1, grad, grad)
-  (sx2, rx2, must_reduce_x2), _= SmartBroadcastGradientArgs(x2, grad, grad)
+  (sx1, rx1, must_reduce_x1), _ = SmartBroadcastGradientArgs(x1, grad, grad)
+  (sy1, ry1, must_reduce_y1), _ = SmartBroadcastGradientArgs(y1, grad, grad)
+  (sx2, rx2, must_reduce_x2), _ = SmartBroadcastGradientArgs(x2, grad, grad)
   gx1 = gen_math_ops.mul(grad, y1)
   gy1 = gen_math_ops.mul(grad, x1)
   gx2 = grad[:]
-  if sgn==-1:
-    gx2=math_ops.negative(gx2)
-  elif sgn==0:
-    gx1=math_ops.negative(gx1)
-    gy1=math_ops.negative(gy1)
-  return [gx1 if not must_reduce_x1 else math_ops.reduce_sum(gx1,rx1), \
-      gy1 if not must_reduce_y1 else math_ops.reduce_sum(gy1,ry1), \
-      gx2 if not must_reduce_x2 else math_ops.reduce_sum(gx2,rx2)]
+  if sgn == -1:
+    gx2 = math_ops.negative(gx2)
+  elif sgn == 0:
+    gx1 = math_ops.negative(gx1)
+    gy1 = math_ops.negative(gy1)
+  return [gx1 if not must_reduce_x1 else math_ops.reduce_sum(gx1, rx1), \
+      gy1 if not must_reduce_y1 else math_ops.reduce_sum(gy1, ry1), \
+      gx2 if not must_reduce_x2 else math_ops.reduce_sum(gx2, rx2)]
 
 def _FusedMulAddSub2Grad(op, grad, sgn):
   x1 = op.inputs[0]
   y1 = op.inputs[1]
   x2 = op.inputs[2]
   y2 = op.inputs[3]
-  (sx1, rx1, must_reduce_x1), _= SmartBroadcastGradientArgs(x1, grad, grad)
-  (sy1, ry1, must_reduce_y1), _= SmartBroadcastGradientArgs(y1, grad, grad)
-  (sx2, rx2, must_reduce_x2), _= SmartBroadcastGradientArgs(x2, grad, grad)
-  (sy2, ry2, must_reduce_y2), _= SmartBroadcastGradientArgs(y2, grad, grad)
+  (sx1, rx1, must_reduce_x1), _ = SmartBroadcastGradientArgs(x1, grad, grad)
+  (sy1, ry1, must_reduce_y1), _ = SmartBroadcastGradientArgs(y1, grad, grad)
+  (sx2, rx2, must_reduce_x2), _ = SmartBroadcastGradientArgs(x2, grad, grad)
+  (sy2, ry2, must_reduce_y2), _ = SmartBroadcastGradientArgs(y2, grad, grad)
   gx1 = gen_math_ops.mul(grad, y1)
   gy1 = gen_math_ops.mul(grad, x1)
   gx2 = gen_math_ops.mul(grad, y2)*sgn
   gy2 = gen_math_ops.mul(grad, x2)*sgn
-  return [gx1 if not must_reduce_x1 else math_ops.reduce_sum(gx1,rx1), \
-      gy1 if not must_reduce_y1 else math_ops.reduce_sum(gy1,ry1), \
-      gx2 if not must_reduce_x2 else math_ops.reduce_sum(gx2,rx2),
-      gy2 if not must_reduce_y2 else math_ops.reduce_sum(gy2,ry2)
+  return [gx1 if not must_reduce_x1 else math_ops.reduce_sum(gx1, rx1), \
+      gy1 if not must_reduce_y1 else math_ops.reduce_sum(gy1, ry1), \
+      gx2 if not must_reduce_x2 else math_ops.reduce_sum(gx2, rx2), \
+      gy2 if not must_reduce_y2 else math_ops.reduce_sum(gy2, ry2) \
       ]
 
 @ops.RegisterGradient("_FusedMulAdd")

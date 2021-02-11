@@ -490,7 +490,7 @@ class GeluTest(test.TestCase):
 
   def _testGelu(self, np_features):
     np_gelu = self._npGelu(np_features)
-    tf_gelu = nn_ops.gelu(np_features,approximate=True)
+    tf_gelu = nn_ops.gelu(np_features, approximate=True)
     self.assertAllCloseAccordingToType(np_gelu, tf_gelu)
     self.assertShapeEqual(np_gelu, tf_gelu)
 
@@ -513,7 +513,7 @@ class GeluTest(test.TestCase):
       for gpu in [True, False]:
         if gpu and not test.is_gpu_available():
           continue
-        delta = 2e-2 if t==np.float16 else 1e-3
+        delta = 2e-2 if t == np.float16 else 1e-3
         tol = 2e-2 if t==np.float16 else (1e-4 if t==np.float32 else 1e-6)
         def approx_gelu(x):
           return nn_ops.gelu(x, approximate=True)
@@ -523,8 +523,8 @@ class GeluTest(test.TestCase):
           e1, e2 = gradient_checker_v2.compute_gradient(approx_gelu,
                                                         [x], delta=delta)
           err = gradient_checker_v2.max_error(
-              e1,e2)
-          print(e1,e2)
+              e1, e2)
+          print(e1, e2)
           print("gelu", t, "GPU" if gpu else "CPU", "gradient err = ", err)
           self.assertLess(err, tol)
 

@@ -78,7 +78,7 @@ class BatchGemmOpTest(test.TestCase):
             alpha=alpha, beta=beta)
         z0_val = sess.run(z0, feed_dict={x_ph: x, y_ph: y})
       z1 = alpha * self._npBatchGemm(x, y, transpose_a,
-           transpose_b) + beta * z_in
+                                     transpose_b) + beta * z_in
       self.assertAllClose(z0_val, z1, rtol=tol, atol=tol)
 
   def _testNonEmpty(self, dtype, transpose_a, transpose_b, use_static_shape):
@@ -147,7 +147,7 @@ class BatchGemmGradientTest(test.TestCase):
     # not be fed into the loss function as an independent variable
     def Loss(x, y):
       return math_ops.reduce_sum(math_ops.batch_gemm(x, y, z, transpose_a,
-             transpose_b, alpha, beta))
+                                                     transpose_b, alpha, beta))
 
     with self.cached_session(use_gpu=True):
       ((x_jacob_t, y_jacob_t),
@@ -187,7 +187,7 @@ if __name__ == "__main__":
               BatchGemmOpTest,
               "testBatchGemmOp_" + name + "_{}".format(use_static_shape_),
               _GetBatchGemmOpTest(dtype_, transpose_a_, transpose_b_,
-                                    use_static_shape_))
+                                  use_static_shape_))
         setattr(BatchGemmGradientTest, "testBatchGemmGradient_" + name,
                 _GetBatchGemmGradientTest(dtype_, transpose_a_, transpose_b_))
 
