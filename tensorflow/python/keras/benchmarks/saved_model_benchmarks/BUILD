@@ -43,7 +43,6 @@ cuda_py_test(
     tags = [
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
-        "noguitar",  # b/179813008
     ],
     deps = [
         ":saved_model_benchmark_util",
@@ -58,7 +57,6 @@ cuda_py_test(
     tags = [
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
-        "noguitar",  # b/179813008
     ],
     deps = [
         ":saved_model_benchmark_util",
@@ -73,7 +71,6 @@ cuda_py_test(
     tags = [
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
-        "noguitar",  # b/179813008
     ],
     deps = [
         ":saved_model_benchmark_util",
@@ -88,7 +85,6 @@ cuda_py_test(
     tags = [
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
-        "noguitar",  # b/179813008
     ],
     deps = [
         ":saved_model_benchmark_util",
@@ -103,7 +99,6 @@ cuda_py_test(
     tags = [
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
-        "noguitar",  # b/179813008
     ],
     deps = [
         ":saved_model_benchmark_util",
@@ -118,7 +113,6 @@ cuda_py_test(
     tags = [
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
-        "noguitar",  # b/179813008
     ],
     deps = [
         ":saved_model_benchmark_util",
@@ -133,7 +127,6 @@ cuda_py_test(
     tags = [
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
-        "noguitar",  # b/179813008
     ],
     deps = [
         ":saved_model_benchmark_util",
@@ -148,7 +141,6 @@ cuda_py_test(
     tags = [
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
-        "noguitar",  # b/179813008
     ],
     deps = [
         ":saved_model_benchmark_util",

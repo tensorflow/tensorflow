@@ -76,7 +76,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = COMMON_TAGS + [
         "no_oss_py38",  # TODO(b/162044699)
-        "noguitar",  # b/179813008
     ],
     deps = [
         ":profiler_lib",
