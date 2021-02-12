@@ -120,6 +120,175 @@ bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
   return true;
 }
 
+namespace {
+bool Is1dSliceWithoutStrides(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kSlice &&
+         1 == instr->slice_starts().size() &&
+         1 == instr->slice_limits().size() &&
+         1 == instr->slice_strides().size() &&
+         1 == instr->slice_strides().at(0);
+}
+
+bool IsSliceInputFusion(const HloInstruction& unnested_hlo) {
+  if (!unnested_hlo.IsInputFusion()) {
+    return false;
+  }
+  const HloInstruction* root = unnested_hlo.fused_expression_root();
+  if (root->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+  return absl::c_all_of(root->operands(), [](const HloInstruction* instr) {
+    return Is1dSliceWithoutStrides(instr);
+  });
+}
+
+struct ConcatUsageInfo {
+  // Pointer to a previously seen concat. nullptr if no previously seen concat.
+  const HloInstruction* prev_concat;
+  // The opnd id of the seen concat.
+  int64 concat_opnd_idx;
+  // The slice that recovers the opnd in the concat outputs.
+  const HloInstruction* slice_to_recover_opnd;
+};
+
+// Returns an optional concat usage info to denote whether the concat is used in
+// an elementwise manner. A concat followed by slices is considered effectively
+// elementwise if the slices combinedly is a reverse function of the concat.
+absl::optional<ConcatUsageInfo> ConcatIsEffectivelyElementwise(
+    const HloInstruction& concat, const HloInstruction& operand,
+    const ConcatUsageInfo& info) {
+  // First, check if this concat is in the below pattern. Also, we check
+  // that the slices combinedly are in effect a reverse function of the concat.
+  //
+  //     Concat
+  //     |    |
+  //     v    v
+  //   Slice Slice
+  //
+  std::vector<HloInstruction*> users = concat.users();
+  if (!absl::c_all_of(users, Is1dSliceWithoutStrides)) {
+    // Limit our supported cases to 1 dimensional slices.
+    return absl::optional<ConcatUsageInfo>();
+  }
+  // Verify that each operand to the concat is reversed by a slice.
+  if (users.size() != concat.operand_count() ||
+      concat.operand_count() != concat.unique_operands().size()) {
+    return absl::optional<ConcatUsageInfo>();
+  }
+  absl::c_sort(users, [](const HloInstruction* a, const HloInstruction* b) {
+    return a->slice_starts().at(0) < b->slice_starts().at(0);
+  });
+  int64 prev_limit = 0;
+  for (int64 i = 0; i < users.size(); ++i) {
+    const HloInstruction* u = users[i];
+    int64 slice_size = u->slice_limits().at(0) - u->slice_starts().at(0);
+    if (u->slice_starts().at(0) != prev_limit ||
+        slice_size != ShapeUtil::ElementsIn(concat.operand(i)->shape())) {
+      return absl::optional<ConcatUsageInfo>();
+    }
+    prev_limit = u->slice_limits().at(0);
+  }
+
+  // If we have seen other concats, make sure they are identical. Multiple
+  // concats exist because horizontal fusion inserts one concat for each output
+  // of the fusion candidates. Check that all concats and operand ids are the
+  // same to know that the "transitive use closure" will be computed in the same
+  // iteration space.
+  int64 operand_idx = concat.operand_index(&operand);
+  if (info.prev_concat != nullptr) {
+    bool is_concat_identical = info.prev_concat->Identical(
+        concat,
+        /*eq_operands=*/[](const HloInstruction*, const HloInstruction*) {
+          // Operands don't need to be the same.
+          return true;
+        });
+    if (!is_concat_identical || info.concat_opnd_idx != operand_idx) {
+      return absl::optional<ConcatUsageInfo>();
+    }
+  }
+
+  const HloInstruction* slice_to_recover_opnd = users.at(operand_idx);
+  return absl::optional<ConcatUsageInfo>(
+      ConcatUsageInfo{&concat, operand_idx, slice_to_recover_opnd});
+}
+
+// Returns whether we can prove the transitive uses of `param` are in effect
+// elementwise. In other words, we prove that the "transitive use closure" will
+// all be computed in the same iteration space without any reorder of elements.
+// In addition, we check that the "transitive use closure" includes the output
+// in the `root_tuple`.
+// Theoretically, We can prove more patterns but our primary use case is
+// SliceInputFusion.
+bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* param,
+                                             const HloInstruction* root_tuple,
+                                             const ShapeIndex& out_shape_idx) {
+  CHECK_EQ(root_tuple->opcode(), HloOpcode::kTuple);
+  CHECK_EQ(out_shape_idx.size(), 1);
+  absl::flat_hash_set<const HloInstruction*> visited;
+  absl::InlinedVector<const HloInstruction*, 4> stack;
+  stack.push_back(param);
+  ConcatUsageInfo concat_usage_info{nullptr, 0, nullptr};
+  bool is_output_reachable = false;
+  while (!stack.empty()) {
+    const HloInstruction* current = stack.back();
+    stack.pop_back();
+    visited.insert(current);
+    for (const HloInstruction* user : current->users()) {
+      VLOG(3) << "Visiting: " << user->ToString();
+      switch (user->opcode()) {
+        case HloOpcode::kTuple:
+          if (user == root_tuple &&
+              current == root_tuple->operand(out_shape_idx.back())) {
+            // We need to know if the output is reachable by the `param` to make
+            // sure that they will be computed in the same iteration space.
+            is_output_reachable = true;
+          }
+          break;
+        case HloOpcode::kReshape:
+          if (!ShapeUtil::ReshapeIsBitcast(current->shape(), user->shape())) {
+            return false;
+          }
+          break;
+        case HloOpcode::kConcatenate: {
+          absl::optional<ConcatUsageInfo> optional_concat_info =
+              ConcatIsEffectivelyElementwise(*user, *current,
+                                             concat_usage_info);
+          if (!optional_concat_info) {
+            return false;
+          }
+          concat_usage_info = *optional_concat_info;
+          // Early continue as we only want to traverse through the slice that
+          // recovers the operand. It is guaranteed that the operand to the
+          // concat and the slice have the same iteration space. Insert the
+          // slice instead of the concat.
+          CHECK(!visited.contains(concat_usage_info.slice_to_recover_opnd));
+          stack.push_back(concat_usage_info.slice_to_recover_opnd);
+          continue;
+        }
+        default:
+          for (const int64 use_index : user->OperandIndices(current)) {
+            if (!user->IsElementwiseOnOperand(use_index)) {
+              // Found a user that is non-elementwise on the current
+              // instruction.
+              return false;
+            }
+          }
+          if (!LayoutUtil::Equal(current->shape().layout(),
+                                 user->shape().layout())) {
+            // Make sure the layout is not changed by the elementwise op.
+            return false;
+          }
+          break;
+      }  // end of switch
+      if (!visited.contains(user)) {
+        stack.push_back(user);
+      }
+    }
+  }
+  return is_output_reachable;
+}
+}  // namespace
+
 bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
                                            const ShapeIndex& index) const {
   const HloValueSet& value_set = GetValueSet(instruction, index);
@@ -1266,10 +1435,22 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   if (operand->opcode() == HloOpcode::kConstant) {
     return false;
   }
+
   const Shape& operand_subshape =
       ShapeUtil::GetSubshape(operand->shape(), operand_index);
   const Shape& user_subshape =
       ShapeUtil::GetSubshape(user->shape(), user_index);
+  if (IsSliceInputFusion(*user)) {
+    HloInstruction* fusion_param =
+        user->fused_parameter(user->operand_index(operand));
+    // We don't require the same dimensions but only the same number of elements
+    // and type (to make sure the same buffer size).
+    return ShapeUtil::ElementsIn(operand_subshape) ==
+               ShapeUtil::ElementsIn(user_subshape) &&
+           ShapeUtil::SameElementType(operand_subshape, user_subshape) &&
+           AreTransitiveUsesEffectivelyElementwise(
+               fusion_param, user->fused_expression_root(), user_index);
+  }
 
   // Check that operand and user emit the same shape and layout.
   if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
