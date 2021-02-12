@@ -308,6 +308,34 @@ func @testIncompatibleElementTypes(%arg0: tensor<3x2xf32>, %arg1: tensor<3x2xf32
 
 // -----
 
+func @testPadRank1Paddings(%input: tensor<2xi64>) -> tensor<3xi64> {
+  %paddings = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+1 {{failed to verify that operand 1 is 2-D}}
+  %0 = "tf.Pad"(%input, %paddings) : (tensor<2xi64>, tensor<2xi64>) -> tensor<3xi64>
+  return %0 : tensor<3xi64>
+}
+
+// -----
+
+func @testPadV2Rank1Paddings(%input: tensor<2xi64>) -> tensor<3xi64> {
+  %constant = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
+  %paddings = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+1 {{failed to verify that operand 1 is 2-D}}
+  %0 = "tf.PadV2"(%input, %paddings, %constant) : (tensor<2xi64>, tensor<2xi64>, tensor<i64>) -> tensor<3xi64>
+  return %0 : tensor<3xi64>
+}
+
+// -----
+
+func @testMirrorPadRank1Paddings(%input: tensor<2xi64>) -> tensor<3xi64> {
+  %paddings = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+1 {{failed to verify that operand 1 is 2-D}}
+  %0 = "tf.MirrorPad"(%input, %paddings) { mode = "SYMMETRIC" }: (tensor<2xi64>, tensor<2xi64>) -> tensor<3xi64>
+  return %0 : tensor<3xi64>
+}
+
+// -----
+
 // CHECK-LABEL: func @testReshape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<10000xf32>, %arg3: tensor<*xi32>)
 func @testReshape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<10000xf32>, %arg3: tensor<*xi32>) -> (tensor<100x100xf32>, tensor<*xf32>, tensor<100x100xf32>, tensor<100x100xf32>, tensor<*xf32>, tensor<*xf32>) {
   %shape1 = constant dense<100> : tensor<2xi32>

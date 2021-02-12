@@ -226,6 +226,16 @@ class SpmdPartitioner : public HloModulePass {
       int64* next_channel_id, SpmdLogger* logger,
       SpmdPartitionerOptions options);
 
+  HloInstruction* AllGatherShardsInternal(
+      SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
+      int64* next_channel_id, absl::Span<const int64> selected_dims,
+      const SPMDCollectiveOpsCreator& collectives_creator, bool per_dim_ag);
+  HloInstruction* AllReduceAlongShardingDimsInternal(
+      SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
+      int64* next_channel_id, absl::Span<const int64> selected_dims,
+      const SPMDCollectiveOpsCreator& collectives_creator,
+      HloComputation* reduction, bool per_dim_ar);
+
   // Verify that the sharding of instructions in the module are valid, and also
   // fill in missing sharding information.
   Status PreprocessSharding(HloModule* module);

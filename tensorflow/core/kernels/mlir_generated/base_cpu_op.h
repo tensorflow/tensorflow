@@ -20,19 +20,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define GENERATE_AND_REGISTER_UNARY_CPU_KERNEL(tf_op, mlir_type, tf_data_type, \
-                                               data_type)                      \
-  GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, CPU, mlir_type, tf_data_type,      \
-                                     data_type)
+#define GENERATE_AND_REGISTER_UNARY_CPU_KERNEL(tf_op, mlir_type, data_type) \
+  GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, CPU, mlir_type, data_type)
 
-#define GENERATE_UNARY_CPU_KERNEL(tf_op, mlir_type, tf_data_type, data_type) \
-  GENERATE_UNARY_KERNEL(tf_op, CPU, mlir_type, tf_data_type, data_type)
+#define GENERATE_UNARY_CPU_KERNEL(tf_op, mlir_type, data_type) \
+  GENERATE_UNARY_KERNEL(tf_op, CPU, mlir_type, data_type)
 
 #define GENERATE_UNARY_CPU_KERNEL2(tf_op, mlir_type, mlir_output_type, \
-                                   tf_data_type, result_data_type,     \
-                                   input_data_type)                    \
+                                   result_data_type, input_data_type)  \
   GENERATE_UNARY_KERNEL2(tf_op, CPU, mlir_type, mlir_output_type,      \
-                         tf_data_type, result_data_type, input_data_type)
+                         result_data_type, input_data_type)
 
 #define REGISTER_ALIASED_CPU_KERNEL(tf_op, mlir_op, mlir_type,              \
                                     mlir_output_type, data_type)            \
@@ -51,26 +48,22 @@ namespace tensorflow {
                                                mlir_output_type) \
   REGISTER_KERNEL_NO_TYPE_CONSTRAINT(tf_op, CPU, mlir_type, mlir_output_type)
 
-#define GENERATE_AND_REGISTER_BINARY_CPU_KERNEL(tf_op, mlir_type,          \
-                                                tf_data_type, data_type)   \
-  GENERATE_AND_REGISTER_BINARY_KERNEL(tf_op, CPU, mlir_type, tf_data_type, \
-                                      data_type)
+#define GENERATE_AND_REGISTER_BINARY_CPU_KERNEL(tf_op, mlir_type, data_type) \
+  GENERATE_AND_REGISTER_BINARY_KERNEL(tf_op, CPU, mlir_type, data_type)
 
-#define GENERATE_AND_REGISTER_BINARY_CPU_KERNEL2(                       \
-    tf_op, mlir_type, mlir_output_type, tf_data_type, result_data_type, \
-    input_data_type)                                                    \
-  GENERATE_AND_REGISTER_BINARY_KERNEL2(tf_op, CPU, mlir_type,           \
-                                       mlir_output_type, tf_data_type,  \
-                                       result_data_type, input_data_type)
+#define GENERATE_AND_REGISTER_BINARY_CPU_KERNEL2(                          \
+    tf_op, mlir_type, mlir_output_type, result_data_type, input_data_type) \
+  GENERATE_AND_REGISTER_BINARY_KERNEL2(tf_op, CPU, mlir_type,              \
+                                       mlir_output_type, result_data_type, \
+                                       input_data_type)
 
-#define GENERATE_BINARY_CPU_KERNEL(tf_op, mlir_type, tf_data_type, data_type) \
-  GENERATE_BINARY_KERNEL(tf_op, CPU, mlir_type, tf_data_type, data_type)
+#define GENERATE_BINARY_CPU_KERNEL(tf_op, mlir_type, data_type) \
+  GENERATE_BINARY_KERNEL(tf_op, CPU, mlir_type, data_type)
 
 #define GENERATE_BINARY_CPU_KERNEL2(tf_op, mlir_type, mlir_output_type, \
-                                    tf_data_type, result_data_type,     \
-                                    input_data_type)                    \
+                                    result_data_type, input_data_type)  \
   GENERATE_BINARY_KERNEL2(tf_op, CPU, mlir_type, mlir_output_type,      \
-                          tf_data_type, result_data_type, input_data_type)
+                          result_data_type, input_data_type)
 
 }  // namespace tensorflow
 

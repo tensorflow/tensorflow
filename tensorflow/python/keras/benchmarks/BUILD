@@ -58,7 +58,9 @@ py_test(
     size = "large",
     srcs = ["keras_cpu_benchmark_test.py"],
     python_version = "PY3",
-    tags = COMMON_TAGS,
+    tags = COMMON_TAGS + [
+        "noguitar",  # b/179813008
+    ],
     deps = [
         ":benchmark_util",
         ":profiler_lib",

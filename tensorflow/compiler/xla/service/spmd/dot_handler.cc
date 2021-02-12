@@ -1935,7 +1935,7 @@ StatusOr<HloInstruction*> PartitionDot(
         may_group_on_lhs_non_contracting &&
         (!may_group_on_rhs_non_contracting ||
          lhs_non_contracting_partitions *
-                 ShapeUtil::ByteSizeOf(rhs.hlo()->shape()) <=
+                 ShapeUtil::ByteSizeOf(rhs.hlo()->shape()) <
              rhs_non_contracting_partitions *
                  ShapeUtil::ByteSizeOf(lhs.hlo()->shape()));
     TF_ASSIGN_OR_RETURN(

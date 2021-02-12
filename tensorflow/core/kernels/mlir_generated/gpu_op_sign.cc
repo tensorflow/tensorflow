@@ -18,11 +18,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, f16, DT_HALF, Eigen::half);
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, f32, DT_FLOAT, float);
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, f64, DT_DOUBLE, double);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, f16, Eigen::half);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, f32, float);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, f64, double);
 // TODO(b/25387198): We cannot use a regular GPU kernel for int32.
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, i64, DT_INT64, int64);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, i64, int64);
 // TODO(b/162577610): Register the kernel for complex types and bfloat.
 
 }  // namespace tensorflow

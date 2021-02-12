@@ -259,7 +259,6 @@ py_library(
     name = "category_encoding",
     srcs = [
         "category_encoding.py",
-        "category_encoding_v1.py",
     ],
     srcs_version = "PY3",
     deps = [

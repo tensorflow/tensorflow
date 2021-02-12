@@ -81,6 +81,15 @@ cc_library(
     hdrs = ["gpu_tensor.h"],
 )
 
+cc_library(
+    name = "profiling_info",
+    srcs = ["profiling_info.cc"],
+    hdrs = ["profiling_info.h"],
+    deps = [
+        "@com_google_absl//absl/time",
+    ],
+)
+
 flatbuffer_cc_library(
     name = "serialization_base_cc_fbs",
     srcs = ["serialization_base.fbs"],

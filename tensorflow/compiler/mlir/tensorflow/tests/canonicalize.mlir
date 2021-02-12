@@ -226,6 +226,50 @@ func @testConcatCwiseBinaryNegativeAxis(%arg0: tensor<f32>,
   return %3 : tensor<2xf32>
 }
 
+// Synthesize binary ops when 1 of the 3 concat inputs is a non-binary op.
+// CHECK-LABEL: testConcatCwiseBinarySynthMulOp3Inputs
+func @testConcatCwiseBinarySynthMulOp3Inputs(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1xf32>, %arg2: tensor<?x1xf32>) -> tensor<?x3xf32> {
+  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<[2.000000e+00, 3.000000e+00, 1.000000e+00]>
+  // CHECK: %[[CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %arg2,
+  // CHECK: "tf.Mul"(%[[CONCAT]], %[[CONST]])
+  %axis = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %mul0_const = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %mul0 = "tf.Mul"(%arg0, %mul0_const) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %mul1_const = "tf.Const"() { value = dense<3.0> : tensor<f32> } : () -> tensor<f32>
+  %mul1 = "tf.Mul"(%arg1, %mul1_const) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %ret = "tf.ConcatV2"(%mul0, %mul1, %arg2, %axis) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x3xf32>
+
+  return %ret : tensor<?x3xf32>
+}
+
+// Similar to to the above, with tf.Sub as the binary op kind.
+func @testConcatCwiseBinarySynthSubOp3Inputs(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1xf32>, %arg2: tensor<?x1xf32>) -> tensor<?x3xf32> {
+  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<[2.000000e+00, 3.000000e+00, 0.000000e+00]>
+  // CHECK: %[[CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %arg2,
+  // CHECK: "tf.Sub"(%[[CONCAT]], %[[CONST]])
+  %axis = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %mul0_const = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %mul0 = "tf.Sub"(%arg0, %mul0_const) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %mul1_const = "tf.Const"() { value = dense<3.0> : tensor<f32> } : () -> tensor<f32>
+  %mul1 = "tf.Sub"(%arg1, %mul1_const) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %ret = "tf.ConcatV2"(%mul0, %mul1, %arg2, %axis) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x3xf32>
+
+  return %ret : tensor<?x3xf32>
+}
+
+// Do not synthesize binary ops when 1 of the 2 concat inputs is a non-binary op.
+// CHECK-LABEL: testConcatCwiseBinarySynthMulOp2Inputs
+func @testConcatCwiseBinarySynthMulOp2Inputs(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1xf32>) -> tensor<?x2xf32> {
+  // CHECK: %[[MUL:.*]] = "tf.Mul"(%arg0,
+  // CHECK: "tf.ConcatV2"(%[[MUL]], %arg1,
+  %axis = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %mul0_const = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %mul0 = "tf.Mul"(%arg0, %mul0_const) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %ret = "tf.ConcatV2"(%mul0, %arg1, %axis) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
+
+  return %ret : tensor<?x2xf32>
+}
+
 // CHECK-LABEL: testLogOfSoftmax
 func @testLogOfSoftmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Softmax"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>

@@ -798,6 +798,9 @@ class StrategyBase(object):
     self._mean_reduce_helper_fns = {}
     self._reduce_sum_fns = {}
 
+    # Whether this strategy is designed to work with `ClusterCoordinator`.
+    self._should_use_with_coordinator = False
+
   @property
   def extended(self):
     """`tf.distribute.StrategyExtended` with additional methods."""

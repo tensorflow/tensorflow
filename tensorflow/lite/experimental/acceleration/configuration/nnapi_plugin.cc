@@ -60,12 +60,12 @@ class NnapiPlugin : public DelegatePluginInterface {
         absl::make_unique<tflite::StatefulNnApiDelegate>(options_);
     return TfLiteDelegatePtr(
         nnapi_delegate.release(), [](TfLiteDelegate* delegate) {
-          delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(delegate);
+          delete static_cast<tflite::StatefulNnApiDelegate*>(delegate);
         });
   }
   int GetDelegateErrno(TfLiteDelegate* from_delegate) override {
     auto nnapi_delegate =
-        reinterpret_cast<tflite::StatefulNnApiDelegate*>(from_delegate);
+        static_cast<tflite::StatefulNnApiDelegate*>(from_delegate);
     return nnapi_delegate->GetNnApiErrno();
   }
   static std::unique_ptr<NnapiPlugin> New(

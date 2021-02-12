@@ -509,7 +509,7 @@ TEST_F(HloEvaluatorTest, DoesReshape) {
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   result.EachCell<NativeT>([&](absl::Span<const int64> indices, NativeT value) {
-    std::vector<int64> rindexes = Permute(permutation, indices);
+    std::vector<int64> rindexes = PermuteInverse(indices, permutation);
     EXPECT_NEAR(value, literal_clone.Get<NativeT>(rindexes), 0.031250);
   });
 }

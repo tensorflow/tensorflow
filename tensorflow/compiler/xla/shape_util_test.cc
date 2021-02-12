@@ -725,11 +725,8 @@ TEST(ShapeUtilTest, PermuteDimensionsLayout) {
       SCOPED_TRACE(
           absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 
-      // TransposeIsBitcast takes the inverse of the permutation that
-      // PermuteDimensions takes.
       EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(
-          s, ShapeUtil::PermuteDimensions(permutation, s),
-          InversePermutation(permutation)));
+          s, ShapeUtil::PermuteDimensions(permutation, s), permutation));
     } while (std::next_permutation(permutation.begin(), permutation.end()));
   } while (std::next_permutation(layout.begin(), layout.end()));
 }
@@ -756,9 +753,9 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
 
     auto permuted = ShapeUtil::PermuteDimensions(permutation, shape);
     for (int i = 0; i < shape.rank(); i++) {
-      EXPECT_EQ(permuted.dimensions(permutation[i]), shape.dimensions(i));
-      EXPECT_EQ(permuted.is_dynamic_dimension(permutation[i]),
-                shape.is_dynamic_dimension(i));
+      EXPECT_EQ(permuted.dimensions(i), shape.dimensions(permutation[i]));
+      EXPECT_EQ(permuted.is_dynamic_dimension(i),
+                shape.is_dynamic_dimension(permutation[i]));
     }
   } while (std::next_permutation(permutation.begin(), permutation.end()));
 }

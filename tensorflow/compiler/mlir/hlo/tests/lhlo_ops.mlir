@@ -899,14 +899,6 @@ func @while_memrefs(%arg0: memref<i64>, %arg1: memref<5xf32>, %arg0_out: memref<
 
 // -----
 
-// CHECK-LABEL: func @bitcast_memrefs
-func @bitcast_memrefs(%arg0: memref<1xf64>, %arg_out: memref<2xi32>) -> () {
-  "lmhlo.bitcast"(%arg0, %arg_out) : (memref<1xf64>, memref<2xi32>) -> ()
-  return
-}
-
-// -----
-
 // CHECK-LABEL: func @scatter_memrefs
 func @scatter_memrefs(%input: memref<200x100x300xf32>, %indices: memref<10x2xi32>,
                       %updates: memref<10x300xf32>, %arg_out: memref<200x100x300xf32>) -> () {

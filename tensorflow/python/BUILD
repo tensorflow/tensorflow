@@ -6780,6 +6780,7 @@ tf_python_pybind_extension(
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/c/eager:tfe_cancellationmanager_internal_hdrs_only",
         "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

@@ -203,7 +203,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   bool matched = true;
   root->literal().EachCell<NativeT>(
       [&](absl::Span<const int64> indices, NativeT value) {
-        std::vector<int64> rindexes = Permute(permutation, indices);
+        std::vector<int64> rindexes = PermuteInverse(indices, permutation);
         matched = matched && (value == literal_clone.Get<NativeT>(rindexes));
       });
   EXPECT_TRUE(matched);

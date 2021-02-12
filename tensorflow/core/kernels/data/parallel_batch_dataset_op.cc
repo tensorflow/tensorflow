@@ -406,7 +406,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         new_calls.reserve(num_parallel_calls_->value);
       }
       auto busy = [this]() TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
-        return num_calls_ >= num_parallel_calls_->value;
+        int64 num_parallel_calls = num_parallel_calls_->value;
+        return num_calls_ >= num_parallel_calls ||
+               batch_results_.size() >= num_parallel_calls;
       };
       while (true) {
         {

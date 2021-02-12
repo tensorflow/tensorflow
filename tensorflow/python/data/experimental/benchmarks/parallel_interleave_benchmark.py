@@ -17,16 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
-import numpy as np
 
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import testing
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import test
 
 NON_PARALLEL = "non_parallel"
 EXPERIMENTAL_PARALLEL = "experimental_parallel"
@@ -65,7 +61,7 @@ def _make_fake_dataset_fn(initial_delay_us, remainder_delay_us):
   return fake_dataset_fn
 
 
-class ParallelInterleaveBenchmark(test.Benchmark):
+class ParallelInterleaveBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.experimental.parallel_interleave()`."""
 
   def apply_interleave(self, interleave_version, dataset, interleave_fn,
@@ -94,8 +90,12 @@ class ParallelInterleaveBenchmark(test.Benchmark):
                    num_parallel_calls=None):
     dataset = dataset_ops.Dataset.range(1).repeat()
     interleave_fn = _make_fake_dataset_fn(initial_delay, remainder_delay)
-    return self.apply_interleave(interleave_version, dataset, interleave_fn,
-                                 cycle_length, num_parallel_calls)
+    return self.apply_interleave(
+        interleave_version=interleave_version,
+        dataset=dataset,
+        interleave_fn=interleave_fn,
+        cycle_length=cycle_length,
+        num_parallel_calls=num_parallel_calls)
 
   def _benchmark(self,
                  interleave_version,
@@ -107,26 +107,29 @@ class ParallelInterleaveBenchmark(test.Benchmark):
                  num_parallel_calls=None,
                  attach_stats_aggregator=False,
                  name=None):
-    ds = self.make_dataset(interleave_version, initial_delay_us,
-                           remainder_delay_us, cycle_length, num_parallel_calls)
+    dataset = self.make_dataset(
+        interleave_version=interleave_version,
+        initial_delay=initial_delay_us,
+        remainder_delay=remainder_delay_us,
+        cycle_length=cycle_length,
+        num_parallel_calls=num_parallel_calls)
     if attach_stats_aggregator:
       aggregator = stats_aggregator.StatsAggregator()
       opts = dataset_ops.Options()
       opts.experimental_stats.aggregator = aggregator
-      ds = ds.with_options(opts)
+      dataset = dataset.with_options(opts)
 
-    ds = ds.skip(num_elements)
-    deltas = []
-    for _ in range(iters):
-      start = time.time()
-      next(iter(ds))
-      deltas.append(time.time() - start)
-    self.report_benchmark(iters=iters, wall_time=np.median(deltas), name=name)
+    self.run_and_report_benchmark(
+        dataset=dataset,
+        num_elements=num_elements,
+        iters=iters,
+        warmup=True,
+        name=name)
 
   def benchmark_remote_file_simulation(self):
     for version in [EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
       self._benchmark(
-          version,
+          interleave_version=version,
           initial_delay_us=100 * 1000,
           remainder_delay_us=1000,
           num_elements=5000,
@@ -135,14 +138,16 @@ class ParallelInterleaveBenchmark(test.Benchmark):
   def benchmark_fast_input(self):
     for version in [EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
       self._benchmark(
-          version, num_elements=200000, name="fast_input_" + version)
+          interleave_version=version,
+          num_elements=200000,
+          name="fast_input_" + version)
 
   # Measure the overhead of parallel interleaves compared to non-parallel
   # interleave.
   def benchmark_single_cycle(self):
     for version in [NON_PARALLEL, EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
       self._benchmark(
-          version,
+          interleave_version=version,
           cycle_length=1,
           num_elements=200000,
           name="single_cycle_" + version)
@@ -151,7 +156,7 @@ class ParallelInterleaveBenchmark(test.Benchmark):
   # cannot be compared here because it sets num_parallel_calls = cycle_length.
   def benchmark_single_parallel_call(self):
     self._benchmark(
-        CORE_PARALLEL,
+        interleave_version=CORE_PARALLEL,
         num_elements=200000,
         num_parallel_calls=1,
         name="single_parallel_call_" + CORE_PARALLEL)
@@ -159,14 +164,14 @@ class ParallelInterleaveBenchmark(test.Benchmark):
   def benchmark_long_cycle(self):
     for version in [EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
       self._benchmark(
-          version,
+          interleave_version=version,
           cycle_length=1000,
           num_elements=100000,
           name="long_cycle_" + version)
 
   def benchmark_stats(self):
     self._benchmark(
-        CORE_PARALLEL,
+        interleave_version=CORE_PARALLEL,
         cycle_length=50,
         num_elements=1000,
         name="stats",
@@ -174,5 +179,4 @@ class ParallelInterleaveBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution()
-  test.main()
+  benchmark_base.test.main()
