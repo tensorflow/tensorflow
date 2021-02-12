@@ -72,14 +72,14 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
           "b": constant_op.constant([1, 2, 3])
       }, dict, [dtypes.float32, dtypes.int32], [[], [3]]),
       ("Nested_2", lambda: {
-          "a":
-              constant_op.constant(37.0),
+          "a": constant_op.constant(37.0),
           "b": (sparse_tensor.SparseTensor(
-              indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
-                sparse_tensor.SparseTensor(
-                    indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
-      }, dict, [dtypes.float32, dtypes.variant, dtypes.variant], [[], None, None
-                                                                 ]),
+              indices=[[0, 0]], values=[1],
+              dense_shape=[1, 1]), sparse_tensor.SparseTensor(
+                  indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
+      }, dict, [dtypes.float32, dtypes.variant, dtypes.variant], [
+          [], None, None]
+      ),
   )
   def testFlatStructure(self, value_fn, expected_structure, expected_types,
                         expected_shapes):
@@ -135,9 +135,11 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
                           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
                       lambda: [
                           sparse_tensor.SparseTensor(
-                              indices=[[1, 1], [3, 4]], values=[10, -1], dense_shape=[4, 5]),
+                              indices=[[1, 1], [3, 4]], values=[10, -1],
+                              dense_shape=[4, 5]),
                           sparse_tensor.SparseTensorValue(
-                              indices=[[1, 1], [3, 4]], values=[10, -1], dense_shape=[4, 5]),
+                              indices=[[1, 1], [3, 4]], values=[10, -1],
+                              dense_shape=[4, 5]),
                           array_ops.sparse_placeholder(dtype=dtypes.int32),
                           array_ops.sparse_placeholder(
                               dtype=dtypes.int32, shape=[None, None])
@@ -145,11 +147,13 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
                       lambda: [
                           constant_op.constant(37, shape=[4, 5]),
                           sparse_tensor.SparseTensor(
-                              indices=[[3, 4]], values=[-1], dense_shape=[5, 6]),
+                              indices=[[3, 4]], values=[-1],
+                              dense_shape=[5, 6]),
                           array_ops.sparse_placeholder(
                               dtype=dtypes.int32, shape=[None, None, None]),
                           sparse_tensor.SparseTensor(
-                              indices=[[3, 4]], values=[-1.0], dense_shape=[4, 5])
+                              indices=[[3, 4]], values=[-1.0],
+                              dense_shape=[4, 5])
                       ]
                   ]),
               combinations.NamedObject(
@@ -187,13 +191,12 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
                           constant_op.constant(15),
                           "b":
                           sparse_tensor.SparseTensor(
-                              indices=[[0], [1], [2]], values=[4, 5, 6], dense_shape=[3])
-                      }, (constant_op.constant(15.0), constant_op.constant([4, 5, 6]))
-                      ]
+                              indices=[[0], [1], [2]], values=[4, 5, 6],
+                              dense_shape=[3])
+                      }, (constant_op.constant(15.0),
+                          constant_op.constant([4, 5, 6]))]
                   ]),
-          ])
-      )
-  )
+          ])))
   def testIsCompatibleWithStructure(self, value_fns):
     value_fns = value_fns._obj
     original_value_fn = value_fns[0]
