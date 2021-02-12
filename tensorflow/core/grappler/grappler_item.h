@@ -70,6 +70,11 @@ struct GrapplerItem {
   // ensure that the optimized metagraph can still be loaded.
   std::vector<string> keep_ops;
 
+  // A hint for if this item will later be compiled by XLA.
+  // Grappler optimizers can use this hint to avoid making changes to the
+  // item that might not be compatible with XLA.
+  bool will_be_compiled_by_xla = false;
+
   // Return the set of node evaluated during a regular train/inference step.
   std::vector<const NodeDef*> MainOpsFanin() const;
   // Return the set of node run to populate the queues (if any).

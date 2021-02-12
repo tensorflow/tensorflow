@@ -514,6 +514,15 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
 
 bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
                     GrapplerItem* item) {
+  // This pass involves making TemporaryVariables, which are not necessarily
+  // supported by XLA devices. Skip if the item will be compiled by XLA later.
+  // Ideally we would do a check to see if the compiling XLA device implements
+  // the TemporaryVariable XlaOpKernel, but when Grappler is run we don't yet
+  // know what the compiling device will be.
+  if (item->will_be_compiled_by_xla) {
+    return false;
+  }
+
   // Look for AddN nodes (and equivalent) and record input names.
   MutableGraphView view(&item->graph);
 

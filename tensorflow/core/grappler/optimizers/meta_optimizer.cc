@@ -738,12 +738,12 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     find_differentiable_functions(function.node_def());
   }
 
-  // Find functions that will be compiled by XLA later
-  // We do it by looking for XlaLaunch ops that call functions,
-  // then depth first search down those functions to find transitive functions.
-  // Grappler rewrites can potentially add nodes that are
-  // not supported by XLA, so we choose to skip such functions when we optimize
-  // the function library.
+  // Find functions that will be compiled by XLA later.
+  // We do it by looking for XlaLaunch ops that call functions, then depth first
+  // search down those functions to find transitively called functions.
+  // The grappler items created from these functions will be marked as being
+  // compiled by XLA later, which means grappler optimizers can check this hint
+  // first before doing rewrites that are potentially not supported by XLA.
   absl::flat_hash_set<string> xla_compiled_functions;
   std::function<void(const string&)> find_all_functions;
   find_all_functions = [&](const string& func) -> void {
@@ -800,8 +800,6 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       if (!flib.Contains(func_name)) continue;
       // Skip already optimized functions.
       if (optimized_funcs.contains(func_name)) continue;
-      // Skip functions that will be compiled by XLA.
-      if (xla_compiled_functions.contains(func_name)) continue;
 
       // Skip parametrized functions (function type or body is defined only at
       // function call time by caller node attributes).
@@ -826,6 +824,11 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       GrapplerFunctionItem func_item;
       TF_RETURN_IF_ERROR(
           MakeGrapplerFunctionItem(func, flib, producer, &func_item));
+
+      // Add a hint to functions that will be compiled by XLA.
+      if (xla_compiled_functions.contains(func_name)) {
+        func_item.will_be_compiled_by_xla = true;
+      }
 
       // If we need to compute the gradient of optimized function at runtime, we
       // can't perform non-differentiable rewrites.
