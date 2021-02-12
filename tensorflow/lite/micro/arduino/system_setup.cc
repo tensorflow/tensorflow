@@ -12,10 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// This file is empty to ensure that a specialized implementation of
-// micro_time.h is used (instead of the default implementation from
-// tensorflow/lite/micro/micro_time.cc).
-//
-// The actual target-specific implementation of micro_time.h is in
-// system_setup.cc since that allows us to consolidate all the target-specific
-// specializations into one source file.
+
+#include "tensorflow/lite/micro/system_setup.h"
+
+#include "Arduino.h"
+#include "tensorflow/lite/micro/debug_log.h"
+
+// The Arduino DUE uses a different object for the default serial port shown in
+// the monitor than most other models, so make sure we pick the right one. See
+// https://github.com/arduino/Arduino/issues/3088#issuecomment-406655244
+#if defined(__SAM3X8E__)
+#define DEBUG_SERIAL_OBJECT (SerialUSB)
+#else
+#define DEBUG_SERIAL_OBJECT (Serial)
+#endif
+
+extern "C" void DebugLog(const char* s) { DEBUG_SERIAL_OBJECT.print(s); }
+
+namespace tflite {
+
+void InitializeTarget() { DEBUG_SERIAL_OBJECT.begin(9600); }
+
+}  // namespace tflite
