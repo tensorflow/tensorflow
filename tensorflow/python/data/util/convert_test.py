@@ -19,10 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.util import convert
+from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -61,7 +62,7 @@ class ConvertTest(test.TestCase):
                             convert.partial_shape_to_tensor(
                                 constant_op.constant([1], dtype=dtypes.int64))))
 
-  @test_util.run_deprecated_v1
+  @combinations.generate(test_base.graph_only_combinations())
   def testPartialShapeToTensorUnknownDimension(self):
     self.assertAllEqual([-1],
                         self.evaluate(
