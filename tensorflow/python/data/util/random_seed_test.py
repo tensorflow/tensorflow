@@ -20,16 +20,17 @@ from __future__ import print_function
 
 from tensorflow.python.data.util import random_seed as data_random_seed
 from tensorflow.python.eager import context
+from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class RandomSeedTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(test_base.default_test_combinations())
   def testRandomSeed(self):
     zero_t = constant_op.constant(0, dtype=dtypes.int64, name='zero')
     one_t = constant_op.constant(1, dtype=dtypes.int64, name='one')
