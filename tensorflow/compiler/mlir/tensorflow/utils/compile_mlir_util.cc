@@ -360,7 +360,7 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
 
   if (failed(tf2xla.run(module_op))) {
     return error_handler.Combine(
-        errors::Internal("MLIR TF to XLA legalization failed"));
+        errors::InvalidArgument("TF to XLA legalization failed"));
   }
 
   if (VLOG_IS_ON(1))
@@ -491,8 +491,9 @@ Status CompileSerializedMlirToXlaHlo(
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
-  mlir::MLIRContext mlir_context;
-  RegisterDialects(mlir_context.getDialectRegistry());
+  mlir::DialectRegistry mlir_registry;
+  RegisterDialects(mlir_registry);
+  mlir::MLIRContext mlir_context(mlir_registry);
   mlir::OwningModuleRef mlir_module;
 
   TF_RETURN_IF_ERROR(
@@ -646,7 +647,9 @@ Status GraphToModule(const Graph& graph,
                      const GraphDebugInfo& debug_info,
                      mlir::MLIRContext* context,
                      mlir::OwningModuleRef* module) {
-  RegisterDialects(context->getDialectRegistry());
+  mlir::DialectRegistry registry;
+  RegisterDialects(registry);
+  context->appendDialectRegistry(registry);
   GraphImportConfig config;
   config.graph_as_function = true;
   config.control_outputs = control_rets;

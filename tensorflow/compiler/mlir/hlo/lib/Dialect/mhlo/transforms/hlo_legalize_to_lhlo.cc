@@ -193,9 +193,30 @@ struct HloToLhloCustomCallOpConverter
   }
 };
 
+class HloToLhloReshapeUnrankedConverter
+    : public BaseOpConversion<mhlo::ReshapeOp> {
+ public:
+  using BaseOpConversion<mhlo::ReshapeOp>::BaseOpConversion;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReshapeOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    mhlo::ReshapeOp::Adaptor adaptor(operands);
+    auto unranked_operand_type =
+        adaptor.operand().getType().dyn_cast<UnrankedMemRefType>();
+    if (unranked_operand_type == nullptr) return failure();
+
+    auto result_type = op.getType().cast<RankedTensorType>();
+    rewriter.replaceOpWithNewOp<MemRefCastOp>(
+        op, adaptor.operand(),
+        MemRefType::get(result_type.getShape(), result_type.getElementType()));
+    return success();
+  }
+};
+
 // TODO(pifon): Consider inserting lhlo.copy as in
 // HloToLhloDynamicBroadcastInDimOpConverter.
-struct HloToLhloDynamicReshapeConverter
+class HloToLhloDynamicReshapeConverter
     : public BaseOpConversion<mhlo::DynamicReshapeOp> {
  public:
   using BaseOpConversion<mhlo::DynamicReshapeOp>::BaseOpConversion;
@@ -609,7 +630,8 @@ void populateDynamicHLOToLHLOConversionPattern(
     OwningRewritePatternList* patterns, bool insert_copy) {
   patterns->insert<HloToLhloDynamicBroadcastInDimOpConverter>(
       *converter, context, insert_copy);
-  patterns->insert<HloToLhloDynamicReshapeConverter>(*converter, context);
+  patterns->insert<HloToLhloDynamicReshapeConverter,
+                   HloToLhloReshapeUnrankedConverter>(*converter, context);
 }
 
 void populateHLOToLHLOConversionPattern(MLIRContext* context,

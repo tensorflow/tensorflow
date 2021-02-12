@@ -18,9 +18,8 @@ limitations under the License.
 namespace tflite {
 
 // To add an equivalent function for your own platform, create your own
-// implementation file, and place it in a subfolder named after the OS
-// you're targeting. See tensorflow/lite/micro/debug_log.cc for a similar
-// example.
+// implementation file, and place it in a subfolder named after the target. See
+// tensorflow/lite/micro/debug_log.cc for a similar example.
 void InitializeTarget() {}
 
 }  // namespace tflite

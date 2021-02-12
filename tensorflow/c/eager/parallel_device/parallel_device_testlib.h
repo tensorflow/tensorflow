@@ -140,11 +140,13 @@ template <typename value_type>
 void ExpectScalarEq(TFE_TensorHandle* handle, value_type expected_value) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
-  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> value_zero(
+  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> actual_value(
       TFE_TensorHandleResolve(handle, status.get()), TF_DeleteTensor);
-  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
+  ASSERT_EQ(TF_TensorType(actual_value.get()),
+            static_cast<TF_DataType>(DataTypeToEnum<value_type>().value));
   EXPECT_EQ(expected_value,
-            *static_cast<value_type*>(TF_TensorData(value_zero.get())));
+            *static_cast<value_type*>(TF_TensorData(actual_value.get())));
 }
 
 template <std::size_t num_devices>

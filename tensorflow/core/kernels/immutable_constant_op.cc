@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "tensorflow/core/framework/types.pb.h"
+
 namespace tensorflow {
 
 namespace {
@@ -86,6 +88,9 @@ ImmutableConstantOp::ImmutableConstantOp(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  context->GetAttr(kMemoryRegionNameAttr, &region_name_));
   OP_REQUIRES_OK(context, context->GetAttr(kDTypeAttr, &dtype_));
+  OP_REQUIRES(context, dtype_ != DT_RESOURCE && dtype_ != DT_VARIANT,
+              errors::InvalidArgument(
+                  "Resource and variant dtypes are invalid for this op."));
   OP_REQUIRES_OK(context, context->GetAttr(kShapeAttr, &shape_));
 }
 

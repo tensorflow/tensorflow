@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/micro_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -108,7 +109,7 @@ MicroInterpreter::MicroInterpreter(const Model* model,
                                    uint8_t* tensor_arena,
                                    size_t tensor_arena_size,
                                    ErrorReporter* error_reporter,
-                                   tflite::Profiler* profiler)
+                                   MicroProfiler* profiler)
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(error_reporter),
@@ -127,7 +128,7 @@ MicroInterpreter::MicroInterpreter(const Model* model,
                                    const MicroOpResolver& op_resolver,
                                    MicroAllocator* allocator,
                                    ErrorReporter* error_reporter,
-                                   tflite::Profiler* profiler)
+                                   MicroProfiler* profiler)
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(error_reporter),
@@ -156,7 +157,7 @@ MicroInterpreter::~MicroInterpreter() {
   }
 }
 
-void MicroInterpreter::Init(tflite::Profiler* profiler) {
+void MicroInterpreter::Init(MicroProfiler* profiler) {
   const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
       model_->subgraphs();
   if (subgraphs->size() != 1) {
@@ -320,35 +321,35 @@ TfLiteStatus MicroInterpreter::Invoke() {
     auto* node = &(node_and_registrations_[i].node);
     auto* registration = node_and_registrations_[i].registration;
 
-    if (registration->invoke) {
-      TfLiteStatus invoke_status;
-#ifndef NDEBUG  // Omit profiler overhead from release builds.
-      // The case where profiler == nullptr is handled by
-      // ScopedOperatorProfile.
-      tflite::Profiler* profiler =
-          reinterpret_cast<tflite::Profiler*>(context_.profiler);
-      ScopedOperatorProfile scoped_profiler(
-          profiler, OpNameFromRegistration(registration), i);
+// This ifdef is needed (even though ScopedMicroProfiler itself is a no-op with
+// -DTF_LITE_STRIP_ERROR_STRINGS) because the function OpNameFromRegistration is
+// only defined for builds with the error strings.
+#if !defined(TF_LITE_STRIP_ERROR_STRINGS)
+    ScopedMicroProfiler scoped_profiler(
+        OpNameFromRegistration(registration),
+        reinterpret_cast<MicroProfiler*>(context_.profiler));
 #endif
-      invoke_status = registration->invoke(&context_, node);
 
-      // All TfLiteTensor structs used in the kernel are allocated from temp
-      // memory in the allocator. This creates a chain of allocations in the
-      // temp section. The call below resets the chain of allocations to
-      // prepare for the next call.
-      allocator_.ResetTempAllocations();
+    TFLITE_DCHECK(registration->invoke);
+    TfLiteStatus invoke_status = registration->invoke(&context_, node);
 
-      if (invoke_status == kTfLiteError) {
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
-            "Node %s (number %d) failed to invoke with status %d",
-            OpNameFromRegistration(registration), i, invoke_status);
-        return kTfLiteError;
-      } else if (invoke_status != kTfLiteOk) {
-        return invoke_status;
-      }
+    // All TfLiteTensor structs used in the kernel are allocated from temp
+    // memory in the allocator. This creates a chain of allocations in the
+    // temp section. The call below resets the chain of allocations to
+    // prepare for the next call.
+    allocator_.ResetTempAllocations();
+
+    if (invoke_status == kTfLiteError) {
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "Node %s (number %d) failed to invoke with status %d",
+          OpNameFromRegistration(registration), i, invoke_status);
+      return kTfLiteError;
+    } else if (invoke_status != kTfLiteOk) {
+      return invoke_status;
     }
   }
+
   return kTfLiteOk;
 }
 

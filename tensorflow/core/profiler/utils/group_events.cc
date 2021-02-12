@@ -299,9 +299,11 @@ bool IsIteratorEventType(absl::optional<int64> event_type) {
          event_type == HostEventType::kDeviceInputPipelineSecondIterator;
 }
 
+}  // namespace
+
 // Returns true if TF's loop ops exist in the given XSpace's metadata.
-bool CheckLoopOp(XSpace* space) {
-  for (const XPlane& plane : space->planes()) {
+bool CheckLoopOp(const XSpace& space) {
+  for (const XPlane& plane : space.planes()) {
     for (const auto& event_metadata : plane.event_metadata()) {
       absl::optional<int64> event_type =
           FindHostEventType(event_metadata.second.name());
@@ -320,8 +322,6 @@ bool CheckLoopOp(XSpace* space) {
   }
   return false;
 }
-
-}  // namespace
 
 EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
                      XEvent* raw_event)
@@ -896,7 +896,7 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
 }
 
 void GroupTfEvents(XSpace* space, EventForest* event_forest) {
-  if (CheckLoopOp(space)) {
+  if (CheckLoopOp(*space)) {
     // TODO(b/154510598): Support TF's loop ops.
     return;
   }

@@ -41793,6 +41793,14 @@ func InitializeTableFromTextFileV2Delimiter(value string) InitializeTableFromTex
 	}
 }
 
+// InitializeTableFromTextFileV2Offset sets the optional offset attribute to value.
+// If not specified, defaults to 0
+func InitializeTableFromTextFileV2Offset(value int64) InitializeTableFromTextFileV2Attr {
+	return func(m optionalAttr) {
+		m["offset"] = value
+	}
+}
+
 // Initializes a table from a text file.
 //
 // It inserts one key-value pair into the table for each line of the file.

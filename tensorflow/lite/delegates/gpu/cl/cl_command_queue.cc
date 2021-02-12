@@ -326,52 +326,6 @@ absl::Status CreateProfilingCommandQueue(const CLDevice& device,
   return absl::OkStatus();
 }
 
-absl::Duration ProfilingInfo::GetTotalTime() const {
-  absl::Duration total_time;
-  for (const auto& dispatch : dispatches) {
-    total_time += dispatch.duration;
-  }
-  return total_time;
-}
-
-std::string ProfilingInfo::GetDetailedReport() const {
-  std::string result;
-  struct OpStatistic {
-    int count;
-    double total_time;
-  };
-  std::map<std::string, OpStatistic> statistics;
-  result +=
-      "Per kernel timing(" + std::to_string(dispatches.size()) + " kernels):\n";
-  for (const auto& dispatch : dispatches) {
-    result += "  " + dispatch.label + " - " +
-              std::to_string(absl::ToDoubleMilliseconds(dispatch.duration)) +
-              " ms\n";
-    auto name = dispatch.label.substr(0, dispatch.label.find(' '));
-    if (statistics.find(name) != statistics.end()) {
-      statistics[name].count++;
-      statistics[name].total_time +=
-          absl::ToDoubleMilliseconds(dispatch.duration);
-    } else {
-      statistics[name].count = 1;
-      statistics[name].total_time =
-          absl::ToDoubleMilliseconds(dispatch.duration);
-    }
-  }
-  result += "--------------------\n";
-  result += "Accumulated time per operation type:\n";
-  for (auto& t : statistics) {
-    auto stat = t.second;
-    result += "  " + t.first + "(x" + std::to_string(stat.count) + ") - " +
-              std::to_string(stat.total_time) + " ms\n";
-  }
-  result += "--------------------\n";
-  result += "Ideal total time: " +
-            std::to_string(absl::ToDoubleMilliseconds(GetTotalTime())) + "\n";
-  result += "--------------------\n";
-  return result;
-}
-
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

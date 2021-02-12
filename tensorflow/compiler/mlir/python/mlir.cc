@@ -238,8 +238,9 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
                                         const std::string &pass_pipeline,
                                         bool show_debug_info,
                                         TF_Status *status) {
-  mlir::MLIRContext context;
-  mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::MLIRContext context(registry);
   mlir::OwningModuleRef module;
   {
     mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);

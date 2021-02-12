@@ -193,6 +193,20 @@ class BFCAllocator : public Allocator {
     uint64 step_id = 0;
     uint64 action_count = 0;
 
+    // Get the op name used for memory debugging.
+    const char* GetDebugOpName() const {
+      // If chunk is not in use, although the op_name pointer is not nullptr,
+      // the corresponding OpKernel might have already been deallocated, and the
+      // op_name pointer might point to invalid memory. So in this case, return
+      // a special op name "UNUSED";
+      if (!in_use())
+        return "UNUSED";
+      else if (op_name)
+        return op_name;
+      else
+        return "UNKNOWN";
+    }
+
     string DebugString(BFCAllocator* a,
                        bool recurse) TF_NO_THREAD_SAFETY_ANALYSIS {
       string dbg;
@@ -208,7 +222,7 @@ class BFCAllocator : public Allocator {
         Chunk* n = a->ChunkFromHandle(next);
         strings::StrAppend(&dbg, ", next: ", n->DebugString(a, false));
       }
-      strings::StrAppend(&dbg, ", for: ", op_name ? op_name : "UNKNOWN",
+      strings::StrAppend(&dbg, ", for: ", GetDebugOpName(),
                          ", stepid: ", step_id,
                          ", last_action: ", action_count);
       return dbg;

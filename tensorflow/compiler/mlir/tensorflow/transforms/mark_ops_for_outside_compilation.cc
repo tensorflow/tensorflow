@@ -254,7 +254,7 @@ void MarkVariantInputsOutputs(tf_device::ClusterOp tpu_cluster) {
       for (auto value : op->getResults()) {
         if (IsVariant(value)) {
           for (auto user : value.getUsers()) {
-            if (!user->isKnownTerminator() &&
+            if (!user->hasTrait<OpTrait::IsTerminator>() &&
                 !HasOutsideCompiledAncestor(user) &&
                 !user->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
               user->setAttr(kXlaOutsideCompilationAttr,

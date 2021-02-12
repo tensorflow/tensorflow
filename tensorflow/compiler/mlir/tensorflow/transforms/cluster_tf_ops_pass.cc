@@ -152,7 +152,7 @@ llvm::Optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
 
       // If the value is used as an operand of the terminator op, adds it to
       // the result list of function that defines this op.
-      if (op->isKnownTerminator()) {
+      if (op->hasTrait<OpTrait::IsTerminator>()) {
         if (llvm::find(defining_func_metadata.results, value) ==
             defining_func_metadata.results.end()) {
           defining_func_metadata.results.push_back(value);

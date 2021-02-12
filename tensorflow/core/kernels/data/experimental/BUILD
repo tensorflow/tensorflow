@@ -168,6 +168,7 @@ tf_kernel_library(
         "//tensorflow/core/data/service:data_service",
         "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/data/service:worker_proto_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",

@@ -114,7 +114,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinearUint8_2x2) {
     if (op_params.align_corners) {
       // Align_corners causes small discrepencies between reference & optimized
       // versions.
-      error_threshold = 3e-4;
+      error_threshold = 1e-3;
     }
     TestOneResizeBilinear<uint8>(op_params, batch, depth, input_width,
                                  input_height, output_width, output_height,
@@ -139,7 +139,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinearFloat) {
     if (op_params.align_corners) {
       // align_corners causes small discrepencies between reference & optimized
       // versions.
-      error_threshold = 1e-4;
+      error_threshold = 1e-3;
     }
     TestOneResizeBilinear<float>(op_params, batch, depth, input_width,
                                  input_height, output_width, output_height,
@@ -164,7 +164,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinearFloat_2x2) {
     if (op_params.align_corners) {
       // Align_corners causes small discrepencies between reference & optimized
       // versions.
-      error_threshold = 1e-4;
+      error_threshold = 1e-3;
     }
     TestOneResizeBilinear<float>(op_params, batch, depth, input_width,
                                  input_height, output_width, output_height,

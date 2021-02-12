@@ -106,6 +106,8 @@
     * Added `tf.config.experimental.get_memory_info`, returning a dict with the
       current and peak memory usage. Deprecated 
       `tf.config.experimental.get_memory_usage` in favor of this new function.
+    *   Extended `tf.config.experimental.enable_tensor_float_32_execution` to
+        control Tensor-Float-32 evaluation in RNNs.
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph

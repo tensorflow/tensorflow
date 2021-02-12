@@ -15,15 +15,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-cc_library(
-    name = "kernels",
-    deps = [
-        ":conv",
-        ":transpose_conv",
-        ":winograd",
-    ],
-)
-
 objc_library(
     name = "add_test_lib",
     testonly = 1,
@@ -70,33 +61,16 @@ ios_unit_test(
     deps = [":concat_test_lib"],
 )
 
-cc_library(
-    name = "conv",
-    srcs = ["conv.cc"],
-    hdrs = ["conv.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common:winograd_util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "conv_test_lib",
     testonly = 1,
     srcs = ["conv_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":conv",
         ":test_util",
-        ":winograd",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
     ],
 )
 
@@ -110,6 +84,29 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":conv_test_lib"],
+)
+
+objc_library(
+    name = "conv_weights_converter_test_lib",
+    testonly = 1,
+    srcs = ["conv_weights_converter_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "conv_weights_converter_test",
+    testonly = 1,
+    minimum_os_version = "11.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":conv_weights_converter_test_lib"],
 )
 
 objc_library(
@@ -510,21 +507,6 @@ ios_unit_test(
     deps = [":space_to_depth_test_lib"],
 )
 
-cc_library(
-    name = "transpose_conv",
-    srcs = ["transpose_conv.cc"],
-    hdrs = ["transpose_conv.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "transpose_conv_test_lib",
     testonly = 1,
@@ -532,7 +514,6 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
-        ":transpose_conv",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
     ],
@@ -608,32 +589,6 @@ objc_library(
     ],
 )
 
-cc_library(
-    name = "util",
-    srcs = ["util.cc"],
-    hdrs = ["util.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:types",
-    ],
-)
-
-cc_library(
-    name = "winograd",
-    srcs = ["winograd.cc"],
-    hdrs = ["winograd.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common:winograd_util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings:str_format",
-    ],
-)
-
 objc_library(
     name = "winograd_test_lib",
     testonly = 1,
@@ -641,7 +596,6 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
-        ":winograd",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
     ],
@@ -666,6 +620,7 @@ objc_library(
         "add_test.mm",
         "concat_test.mm",
         "conv_test.mm",
+        "conv_weights_converter_test.mm",
         "depthwise_conv_test.mm",
         "elementwise_test.mm",
         "fully_connected_test.mm",
@@ -691,10 +646,7 @@ objc_library(
     ],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":conv",
         ":test_util",
-        ":transpose_conv",
-        ":winograd",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -702,6 +654,9 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
@@ -724,6 +679,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
     ],

@@ -53,8 +53,9 @@ TfLiteStatus QuantizeModel(
     return kTfLiteError;
   }
 
-  MLIRContext context;
-  context.getDialectRegistry().insert<mlir::TFL::TensorFlowLiteDialect>();
+  DialectRegistry registry;
+  registry.insert<mlir::TFL::TensorFlowLiteDialect>();
+  MLIRContext context(registry);
   StatusScopedDiagnosticHandler statusHandler(&context,
                                               /*propagate=*/true);
 

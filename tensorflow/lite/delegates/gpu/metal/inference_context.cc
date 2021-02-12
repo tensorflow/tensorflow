@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "absl/time/clock.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -485,6 +486,31 @@ void InferenceContext::EncodeWithEncoder(
   for (int i = 0; i < nodes_.size(); ++i) {
     auto& task = nodes_[i].task;
     task.Encode(command_encoder);
+  }
+}
+
+void InferenceContext::Profile(id<MTLDevice> device, ProfilingInfo* result) {
+  result->dispatches.resize(nodes_.size());
+  id<MTLCommandQueue> command_queue = [device newCommandQueue];
+  for (int k = 0; k < nodes_.size(); ++k) {
+    @autoreleasepool {
+      id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+      id<MTLComputeCommandEncoder> encoder =
+          [command_buffer computeCommandEncoder];
+      auto& task = nodes_[k].task;
+      const int kRuns = 500;
+      for (int i = 0; i < kRuns; ++i) {
+        task.Encode(encoder);
+      }
+      [encoder endEncoding];
+      auto start = absl::Now();
+      [command_buffer commit];
+      [command_buffer waitUntilCompleted];
+      auto end = absl::Now();
+      auto& dispatch_info = result->dispatches[k];
+      dispatch_info.label = nodes_[k].name;
+      dispatch_info.duration = (end - start) / static_cast<float>(kRuns);
+    }
   }
 }
 

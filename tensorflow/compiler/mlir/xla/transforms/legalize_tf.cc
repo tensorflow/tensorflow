@@ -2774,7 +2774,7 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
   Value lhs_shape = rewriter->create<shape::ShapeOfOp>(loc, lhs);
   Value rhs_shape = rewriter->create<shape::ShapeOfOp>(loc, rhs);
   Value const_neg2 =
-      rewriter->create<ConstantOp>(loc, rewriter->getI32IntegerAttr(-2));
+      rewriter->create<ConstantOp>(loc, rewriter->getIndexAttr(-2));
   auto lhs_splitted =
       rewriter->create<shape::SplitAtOp>(loc, lhs_shape, const_neg2);
   auto rhs_splitted =
@@ -4613,9 +4613,15 @@ class ConvertInfeedDequeueTupleOp
     auto data_and_token_type = mlir::TupleType::get(
         rewriter.getContext(), {data_tuple_type, token.getType()});
 
+    ArrayAttr layout =
+        GetLayout(data_and_token_type, rewriter).cast<ArrayAttr>();
     auto data_and_token =
         rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
-                                  /*infeed_config=*/rewriter.getStringAttr(""));
+                                  /*infeed_config=*/rewriter.getStringAttr(""),
+                                  /*layout=*/layout);
+
+    // TODO(b/171212005): Reenable layout.
+    data_and_token.removeAttr("layout");
 
     if (op._XlaSharding().hasValue()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding

@@ -206,6 +206,8 @@ absl::Status TensorDescriptor::PerformSelector(
     return PerformWriteSelector(gpu_info, args, result);
   } else if (selector == "WriteLinear") {
     return PerformWriteLinearSelector(gpu_info, args, result);
+  } else if (selector == "Write2D") {
+    return PerformWrite2DSelector(gpu_info, args, result);
   } else if (selector == "GetAddress") {
     return PerformGetAddressSelector(args, result);
   } else if (selector == "GetPtrWithSliceOffset") {
@@ -310,6 +312,21 @@ absl::Status TensorDescriptor::PerformWriteLinearSelector(
     return absl::NotFoundError("Unrecognized WriteLinear selector");
   }
   *result = Write(gpu_info, args[0], {args[1]});
+  return absl::OkStatus();
+}
+
+absl::Status TensorDescriptor::PerformWrite2DSelector(
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    std::string* result) const {
+  if (storage_type != TensorStorageType::TEXTURE_2D) {
+    return absl::InvalidArgumentError(
+        "Write2D selector can be used only with 2d "
+        "storages(TEXTURE_2D)");
+  }
+  if (args.size() != 3) {
+    return absl::NotFoundError("Unrecognized Write2D selector");
+  }
+  *result = Write(gpu_info, args[0], {args[1], args[2]});
   return absl::OkStatus();
 }
 

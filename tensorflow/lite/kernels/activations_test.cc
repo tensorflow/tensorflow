@@ -1884,6 +1884,26 @@ TEST(FloatActivationsOpTest, Softmax1D) {
           {.09752, .05352, .11911, .14548, .13164, .07984, .26509, .10778})));
 }
 
+TEST(FloatActivationsOpTest, Softmax1DMax) {
+  FloatActivationsOpModel m(0.1f, {TensorType_FLOAT32, {8}},
+                            TensorType_FLOAT32);
+  m.SetInput({std::numeric_limits<float>::max(), -6, 2, 4, 3, -2, 10, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({1, 0, 0, 0, 0, 0, 0, 0})));
+}
+
+TEST(FloatActivationsOpTest, Softmax1DInf) {
+  FloatActivationsOpModel m(0.1f, {TensorType_FLOAT32, {8}},
+                            TensorType_FLOAT32);
+  m.SetInput({std::numeric_limits<float>::infinity(), -6, 2, 4, 3, -2, 10, 1});
+  m.Invoke();
+  auto output = m.GetOutput();
+  for (int i = 0; i < 8; ++i) {
+    EXPECT_TRUE(isnan(output[i]));
+  }
+}
+
 TEST(QuantizedActivationsOpTest, Softmax1DUint8) {
   QuantizedActivationsOpModel m(0.1f, {TensorType_UINT8, {8}, -10, 10},
                                 TensorType_UINT8);
