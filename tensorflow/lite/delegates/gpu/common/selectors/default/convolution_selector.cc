@@ -185,7 +185,14 @@ std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
     const BHWC& dst_shape, const GpuInfo& gpu_info,
     const OperationDef& op_def, ModelHints hints,
     WeightsDescription* weights_desc) {
-  if (gpu_info.IsAdreno()) {
+  if (gpu_info.IsApiMetal() && IsConvolutionMetalSupported(op_def)) {
+    Convolution2DAttributes attr_copy = attr;
+    attr_copy.weights.shape = OHWI(weights_shape.b, weights_shape.h,
+                                   weights_shape.w, weights_shape.c);
+    ConvolutionMetal conv =
+        CreateConvolutionMetal(op_def, dst_shape, attr_copy, gpu_info);
+    return absl::make_unique<ConvolutionMetal>(std::move(conv));
+  } else if (gpu_info.IsAdreno()) {
     return SelectConvolutionDynamicWeightsAdreno(attr, weights_shape, dst_shape,
                                                  gpu_info, op_def, hints,
                                                  weights_desc);

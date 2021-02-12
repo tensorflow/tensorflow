@@ -1027,15 +1027,24 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
           ? MemoryType::CONSTANT
           : MemoryType::GLOBAL;
 
-  BufferDescriptor weights_desc;
-  weights_desc.element_type = weights_type;
-  weights_desc.element_size = 4;
-  weights_desc.memory_type = mem_type;
-  weights_desc.data = ReorderWeightsForConv(
-      attr.weights, desc.GetWeightsDescription(), weights_type);
-  weights_desc.size = weights_desc.data.size();
-  desc.args_.AddObject(
-      "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
+  if (definition.src_tensors.size() == 2) {
+    // dynamic weights
+    BufferDescriptor weights_desc;
+    weights_desc.element_type = definition.src_tensors[1].data_type;
+    weights_desc.element_size = 4;
+    weights_desc.memory_type = mem_type;
+    desc.AddSrcBuffer("weights", weights_desc);
+  } else {
+    BufferDescriptor weights_desc;
+    weights_desc.element_type = weights_type;
+    weights_desc.element_size = 4;
+    weights_desc.memory_type = mem_type;
+    weights_desc.data = ReorderWeightsForConv(
+        attr.weights, desc.GetWeightsDescription(), weights_type);
+    weights_desc.size = weights_desc.data.size();
+    desc.args_.AddObject("weights", absl::make_unique<BufferDescriptor>(
+                                        std::move(weights_desc)));
+  }
 
   BufferDescriptor bias_desc;
   bias_desc.element_type = weights_type;
@@ -1179,8 +1188,7 @@ ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
 }
 
 bool IsConvolutionMetalSupported(const OperationDef& definition) {
-  return definition.src_tensors.size() == 1 &&
-         !definition.src_tensors[0].HasAxis(Axis::DEPTH);
+  return !definition.src_tensors[0].HasAxis(Axis::DEPTH);
 }
 
 }  // namespace gpu
