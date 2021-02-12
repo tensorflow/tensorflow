@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_UNARY_GPU_KERNEL(LogicalNot, i1, DT_BOOL, bool);
+GENERATE_UNARY_GPU_KERNEL(LogicalNot, i1, bool);
 // LogicalNot does not have a "T" attribute because it only works with type
 // bool. So we need to register it without TypeConstraint<bool>("T").
 REGISTER_GPU_KERNEL_NO_TYPE_CONSTRAINT(LogicalNot, i1, i1);
