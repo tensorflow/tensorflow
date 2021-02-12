@@ -2938,53 +2938,6 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
   return port::Status::OK();
 }
 
-// NOTE(keveman): Temporary data layout transformation until MIOpen supports
-// kBatchYXDepth for backward pass. This function allocates temporary memory,
-// lays out the source data into the temporary but in the kBatchDepthXY
-// layout, and returns the temporary memory. The caller is responsible for
-// deallocating the temporary. Since the allocation is done using Stream's
-// AllocateTemporaryMemory, a later BlockHostUntilDone could be used for
-// deallocation.
-//
-// transform_scratch is populated with a legitimate temporary allocation iff
-// the original output data needs to be transformed.
-static DeviceMemoryBase MaybeTransformLayout(
-    Stream* stream, miopenHandle_t handle_,
-    int miopen_type,  // Actually miopenDataType_t.
-    BatchDescriptor* output_descriptor, DeviceMemoryBase backward_output_data,
-    std::unique_ptr<TemporaryDeviceMemory<uint8>>* transform_scratch) {
-  if (output_descriptor->layout() == dnn::DataLayout::kBatchDepthYX) {
-    return backward_output_data;
-  }
-  CHECK(output_descriptor->layout() == dnn::DataLayout::kBatchYXDepth);
-  *transform_scratch =
-      stream->AllocateTemporaryArray<uint8>(backward_output_data.size())
-          .ConsumeValueOrDie();
-  BatchDescriptor transformed_output_descriptor;
-  transformed_output_descriptor.CloneFrom(*output_descriptor);
-  transformed_output_descriptor.set_layout(dnn::DataLayout::kBatchDepthYX);
-  ScopedTensorDescriptor orig_out_back_nd{
-      *output_descriptor, static_cast<miopenDataType_t>(miopen_type)};
-  ScopedTensorDescriptor transformed_out_back_nd{
-      transformed_output_descriptor,
-      static_cast<miopenDataType_t>(miopen_type)};
-
-  float alpha1 = 1.0f;
-  float alpha2 = 0.0f;
-  float beta = 0.0f;
-  auto status = wrap::miopenOpTensor(
-      handle_, miopenTensorOpAdd, &alpha1, orig_out_back_nd.handle(),
-      backward_output_data.opaque(), &alpha2, orig_out_back_nd.handle(),
-      backward_output_data.opaque(), &beta, transformed_out_back_nd.handle(),
-      (*transform_scratch)->mutable_device_memory()->opaque());
-
-  if (status != miopenStatusSuccess) {
-    LOG(FATAL) << "Failed to transform the data layout.";
-  }
-  output_descriptor->set_layout(dnn::DataLayout::kBatchDepthYX);
-  return (*transform_scratch)->device_memory();
-}
-
 port::Status MIOpenSupport::DoConvolve(
     dnn::ConvolutionKind kind, dnn::DataType element_type,
     dnn::DataType output_type, Stream* stream,
@@ -3049,14 +3002,6 @@ port::Status MIOpenSupport::DoConvolve(
       break;
     }
     case dnn::ConvolutionKind::BACKWARD_DATA: {
-      // TBD: remove once MIOpen supports kBatchYXDepth for backward pass.
-      BatchDescriptor output_back_descriptor;
-      output_back_descriptor.CloneFrom(output_descriptor);
-      std::unique_ptr<TemporaryDeviceMemory<uint8>> transform_scratch;
-      output_data = MaybeTransformLayout(
-          stream, miopen.handle(), ToMIOpenDataType(element_type),
-          &output_back_descriptor, output_data, &transform_scratch);
-
       if (use_immediate_mode_) {
         status = wrap::miopenConvolutionBackwardDataImmediate(
             miopen.handle(), output_nd.handle(), output_data.opaque(),
@@ -3075,14 +3020,6 @@ port::Status MIOpenSupport::DoConvolve(
       break;
     }
     case dnn::ConvolutionKind::BACKWARD_FILTER: {
-      // TBD: remove once MIOpen supports kBatchYXDepth for backward pass.
-      BatchDescriptor output_back_descriptor;
-      output_back_descriptor.CloneFrom(output_descriptor);
-      std::unique_ptr<TemporaryDeviceMemory<uint8>> transform_scratch;
-      output_data = MaybeTransformLayout(
-          stream, miopen.handle(), ToMIOpenDataType(element_type),
-          &output_back_descriptor, output_data, &transform_scratch);
-
       if (use_immediate_mode_) {
         status = wrap::miopenConvolutionBackwardWeightsImmediate(
             miopen.handle(), output_nd.handle(), output_data.opaque(),
