@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -68,6 +69,18 @@ const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor);
 // Return true if the given tensors have the same shape.
 bool HaveSameShapes(const TfLiteEvalTensor* input1,
                     const TfLiteEvalTensor* input2);
+
+inline PaddingType RuntimePaddingType(TfLitePadding padding) {
+  switch (padding) {
+    case TfLitePadding::kTfLitePaddingSame:
+      return PaddingType::kSame;
+    case TfLitePadding::kTfLitePaddingValid:
+      return PaddingType::kValid;
+    case TfLitePadding::kTfLitePaddingUnknown:
+    default:
+      return PaddingType::kNone;
+  }
+}
 
 }  // namespace micro
 }  // namespace tflite
