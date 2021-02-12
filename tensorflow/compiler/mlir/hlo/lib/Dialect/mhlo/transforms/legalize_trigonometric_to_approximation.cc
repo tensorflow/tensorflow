@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
@@ -74,10 +75,10 @@ class ApproximateOnExtendedF32Lowering : public OpRewritePattern<OpTy> {
 };
 
 class ApproximateTanhLowering
-    : public ApproximateOnExtendedF32Lowering<TanhOp> {
+    : public ApproximateOnExtendedF32Lowering<math::TanhOp> {
  public:
   explicit ApproximateTanhLowering(MLIRContext *ctx)
-      : ApproximateOnExtendedF32Lowering<TanhOp>(ctx) {}
+      : ApproximateOnExtendedF32Lowering<math::TanhOp>(ctx) {}
 
   // Emits the fast tanh approximation that is also used by XLA.
   Value emitApproximation(ValueRange args, Location loc,

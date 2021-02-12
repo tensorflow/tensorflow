@@ -1,4 +1,3 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//third_party/mlir:tblgen.bzl", "gentbl")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
@@ -19,6 +18,7 @@ cc_library(
     name = "tf_framework_legalize_to_llvm",
     srcs = ["tf_framework_legalize_to_llvm.cc"],
     hdrs = ["rewriters.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//llvm:Support",
@@ -35,6 +35,7 @@ cc_library(
     name = "bufferize",
     srcs = ["bufferize.cc"],
     hdrs = ["rewriters.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -49,6 +50,7 @@ cc_library(
     name = "embed_tf_framework",
     srcs = ["embed_tf_framework.cc"],
     hdrs = ["rewriters.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//mlir:IR",
@@ -87,6 +89,7 @@ cc_library(
         "tf_kernel_to_llvm_pass.cc",
     ],
     hdrs = ["passes.h"],
+    compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":bufferize",
@@ -118,6 +121,7 @@ cc_library(
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
+        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Support",

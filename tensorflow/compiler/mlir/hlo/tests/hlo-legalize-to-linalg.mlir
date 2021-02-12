@@ -182,7 +182,7 @@ func @float_logistic(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: ^bb0(%[[ARG:.*]]: f32, %{{.*}}: f32):
   // CHECK: %[[C1:.*]] = constant 1.{{.*}}e+00
   // CHECK: %[[NEG_ARG:.*]] = negf %[[ARG]]
-  // CHECK: %[[EXP_NEG_ARG:.*]] = exp %[[NEG_ARG]]
+  // CHECK: %[[EXP_NEG_ARG:.*]] = math.exp %[[NEG_ARG]]
   // CHECK: %[[ONE_ADD_EXP_NEG_ARG:.*]] = addf %[[C1]], %[[EXP_NEG_ARG]]
   // CHECK: %[[RESULT:.*]] = divf %[[C1]], %[[ONE_ADD_EXP_NEG_ARG]]
   // CHECK: linalg.yield %[[RESULT]]
@@ -834,7 +834,7 @@ func @float_pow(%lhs: tensor<2x2xf32>,
   // CHECK: ^{{[a-z0-9_]*}}
   // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]*]]: f32
   // CHECK-SAME: %[[ARG1:[a-zA-Z0-9_]*]]: f32
-  // CHECK: %[[RESULT:[a-zA-Z0-9_]*]] = powf %[[ARG0]], %[[ARG1]]
+  // CHECK: %[[RESULT:[a-zA-Z0-9_]*]] = math.powf %[[ARG0]], %[[ARG1]]
   // CHECK: linalg.yield %[[RESULT]]
   %0 = "mhlo.power"(%lhs, %rhs) : (tensor<2x2xf32>,
                                    tensor<2x2xf32>) -> tensor<2x2xf32>
