@@ -118,6 +118,13 @@ class InferenceContext {
   void Profile(id<MTLDevice> device, ProfilingInfo* result);
 
  private:
+  enum class TensorMemoryType {
+    kStrongShape,
+    kBuffer,
+    kVariable,
+    kConst,
+    kPreallocated
+  };
   absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
                        ModelHints hints);
 
@@ -128,11 +135,14 @@ class InferenceContext {
 
   absl::Status Merge();
   absl::Status AllocateTensors(MetalDevice* device);
+  absl::Status AllocateMemoryForConstTensors(MetalDevice* device);
   absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   void BindTensorsToOperations();
   absl::Status UpdateParams(const GpuInfo& gpu_info);
   MetalSpatialTensor* GetTensor(ValueId tensor_id);
-  void GetUsages(std::map<ValueId, int2>* usages);
+  void GetUsages(const std::function<bool(ValueId)>& functor,
+                 std::map<ValueId, int2>* usages);
+  TensorMemoryType GetTensorMemoryType(ValueId id);
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
   struct DummyTensor {
@@ -196,6 +206,9 @@ class InferenceContext {
   std::vector<ValueId> output_ids_;
   CalculationsPrecision precision_;
   std::map<ValueId, MetalSpatialTensor> preallocated_tensors_;
+
+  std::map<ValueId, TensorDescriptor> const_tensors_descs_;
+  std::map<ValueId, MetalSpatialTensor> const_tensors_;
 
   std::map<ValueId, int> graph_ids_to_shared_buffer_tensors_;
   std::vector<id<MTLBuffer>> shared_buffers_;
