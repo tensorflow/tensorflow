@@ -787,6 +787,7 @@ string BufferAssignment::ToString() const {
     }
   }
   absl::StrAppend(&output, "\nTotal bytes used: ", total_size, "\n");
+  absl::StrAppend(&output, hlo_live_range_->ToString());
   absl::StrAppend(&output, "\nUsed values:\n");
   absl::c_sort(used_values, &CompareHloValuesById);
   for (const HloValue* value : used_values) {
@@ -1732,6 +1733,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   assignment->CombineTempAllocations();
 
   XLA_VLOG_LINES(2, assignment->ToString());
+
   TF_RETURN_IF_ERROR(assignment->ComputeSummaryStats());
   XLA_VLOG_LINES(1, assignment->GetStats().ToString());
   VLOG(1) << "Buffer assignment done.";

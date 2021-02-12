@@ -228,6 +228,27 @@ std::string HloLiveRange::ToString() const {
     }
   }
 
+  absl::StrAppendFormat(&output, "  Live ranges at every moment:\n");
+  for (int i = 0; i < schedule_end_time(); i++) {
+    int total = 0;
+    std::string s;
+    for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
+      auto it = buffer_live_ranges_.find(value);
+      if (it != buffer_live_ranges_.end()) {
+        if (it->second.start <= i && i <= it->second.end) {
+          absl::StrAppendFormat(&s, "%s,", value->instruction()->name());
+          total += ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
+        }
+      }
+    }
+    if (!s.empty()) {
+      // Remove the trailing comma.
+      s.pop_back();
+    }
+    absl::StrAppendFormat(&s, "\n");
+    absl::StrAppendFormat(&output, "    %d, %d bytes: %s", i, total, s);
+  }
+
   return output;
 }
 
