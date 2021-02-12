@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/operation_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
-#include "tensorflow/lite/delegates/gpu/metal/selectors/operation_selector.h"
 
 namespace tflite {
 namespace gpu {
@@ -140,8 +140,7 @@ absl::Status InferenceContext::InitFromGraph(
 
   MetalDevice metal_device(device_id);
   ReserveGraphTensors(create_info, metal_device.GetInfo(), graph);
-  RETURN_IF_ERROR(
-      Compile(graph, metal_device.GetInfo(), create_info.precision));
+  RETURN_IF_ERROR(Compile(graph, metal_device.GetInfo(), create_info.hints));
   RETURN_IF_ERROR(Merge());
   RETURN_IF_ERROR(CompileOperations(&metal_device));
   RETURN_IF_ERROR(AllocateTensors(&metal_device));
@@ -184,7 +183,7 @@ void InferenceContext::ReserveGraphTensors(
 
 absl::Status InferenceContext::Compile(const GraphFloat32& graph,
                                        const GpuInfo& gpu_info,
-                                       CalculationsPrecision precision) {
+                                       ModelHints hints) {
   if (!IsBatchMatchesForAllValues(graph)) {
     return absl::InvalidArgumentError(
         "Only identical batch dimension is supported");
@@ -220,7 +219,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
       std::swap(inputs[0], inputs[latest_written_tensor_index]);
     }
     OperationDef op_def;
-    op_def.precision = precision;
+    op_def.precision = precision_;
     for (int j = 0; j < inputs.size(); ++j) {
       op_def.src_tensors.push_back(
           tensor_reserver_.Get(inputs[j]->id).descriptor);
@@ -230,8 +229,8 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
           tensor_reserver_.Get(outputs[j]->id).descriptor);
     }
     GPUOperationsSubgraph gpu_subgraph;
-    RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, inputs, outputs,
-                                         node, &gpu_subgraph));
+    RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, hints, inputs,
+                                         outputs, node, &gpu_subgraph));
     std::map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];

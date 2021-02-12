@@ -119,7 +119,7 @@ class InferenceContext {
 
  private:
   absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
-                       CalculationsPrecision precision);
+                       ModelHints hints);
 
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
                            const GpuInfo& gpu_info, const GraphFloat32& graph);

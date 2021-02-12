@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_buffer_1x1.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_powervr.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_weights_converter.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -137,10 +138,14 @@ std::unique_ptr<GPUOperation> SelectConvolution(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const GpuInfo& gpu_info, const OperationDef& op_def,
     ModelHints hints) {
-  if (gpu_info.IsAdreno()) {
+  if (gpu_info.IsApiMetal() && IsConvolutionMetalSupported(op_def)) {
+    ConvolutionMetal conv =
+        CreateConvolutionMetal(op_def, dst_shape, attr, gpu_info);
+    return absl::make_unique<ConvolutionMetal>(std::move(conv));
+  } else if (gpu_info.IsAdreno()) {
     return SelectConvolutionAdreno(attr, dst_shape, gpu_info, op_def, hints);
-  } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() ||
-             gpu_info.IsIntel()) {
+  } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() || gpu_info.IsIntel() ||
+             gpu_info.IsApple()) {
     return SelectConvolutionPowerVR(attr, gpu_info, op_def);
   } else if (gpu_info.IsNvidia()) {
     return SelectConvolutionNVidia(attr, dst_shape, gpu_info, op_def);
@@ -155,11 +160,15 @@ std::unique_ptr<GPUOperation> SelectConvolutionForWinograd(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const GpuInfo& gpu_info, const OperationDef& op_def,
     ModelHints hints) {
-  if (gpu_info.IsAdreno()) {
+  if (gpu_info.IsApiMetal() && IsConvolutionMetalSupported(op_def)) {
+    ConvolutionMetal conv =
+        CreateConvolutionMetalWino4x4To6x6(op_def, dst_shape, attr, gpu_info);
+    return absl::make_unique<ConvolutionMetal>(std::move(conv));
+  } else if (gpu_info.IsAdreno()) {
     return SelectConvolutionWinogradAdreno(attr, dst_shape, gpu_info, op_def,
                                            hints);
-  } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() ||
-             gpu_info.IsNvidia() || gpu_info.IsIntel()) {
+  } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() || gpu_info.IsNvidia() ||
+             gpu_info.IsIntel() || gpu_info.IsApple()) {
     ConvPowerVR conv =
         CreateConvPowerVRWino4x4To6x6(gpu_info, op_def, attr, &dst_shape);
     return absl::make_unique<ConvPowerVR>(std::move(conv));

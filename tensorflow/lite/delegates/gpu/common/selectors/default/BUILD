@@ -18,6 +18,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter",
         "@com_google_absl//absl/memory",
