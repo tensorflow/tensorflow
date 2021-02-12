@@ -134,23 +134,27 @@ absl::Status InferenceContext::InitFromGraphWithTransforms(
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
     id<MTLDevice> device_id) {
+  std::set<ValueId> preallocated_ids;
   const auto inputs = graph.inputs();
   for (const auto& input : inputs) {
     input_ids_.push_back(input->id);
+    preallocated_ids.insert(input->id);
   }
 
   const auto outputs = graph.outputs();
   for (const auto& output : outputs) {
     output_ids_.push_back(output->id);
+    preallocated_ids.insert(output->id);
   }
   precision_ = create_info.precision;
 
   MetalDevice metal_device(device_id);
-  ReserveGraphTensors(create_info, metal_device.GetInfo(), graph);
+  ReserveGraphTensors(create_info, metal_device.GetInfo(), graph,
+                      preallocated_ids);
   RETURN_IF_ERROR(Compile(graph, metal_device.GetInfo(), create_info.hints));
   RETURN_IF_ERROR(Merge());
   RETURN_IF_ERROR(CompileOperations(&metal_device));
-  RETURN_IF_ERROR(AllocateTensors(&metal_device));
+  RETURN_IF_ERROR(AllocateTensors(&metal_device, preallocated_ids));
   BindTensorsToOperations();
   RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
   RETURN_IF_ERROR(Tune(TuningType::kFast, &metal_device));
@@ -159,12 +163,15 @@ absl::Status InferenceContext::InitFromGraph(
 
 void InferenceContext::ReserveGraphTensors(
     const CreateInferenceInfo& create_info, const GpuInfo& gpu_info,
-    const GraphFloat32& graph) {
+    const GraphFloat32& graph, const std::set<ValueId>& preallocated_ids) {
   ValueId max_id = 0;
   auto tensors = graph.values();
   auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
   for (auto& t : tensors) {
     TensorStorageType storage_type = create_info.storage_type;
+    if (preallocated_ids.find(t->id) != preallocated_ids.end()) {
+      storage_type = TensorStorageType::BUFFER;
+    }
     const auto shape = graph.GetValue(t->id)->tensor.shape;
     Layout layout = shape.b == 1 ? Layout::HWC : Layout::BHWC;
     // Temporary disabled because no support of SINGLE_TEXTURE_2D in Metal
@@ -352,14 +359,8 @@ absl::Status InferenceContext::CompileOperations(MetalDevice* device) {
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::AllocateTensors(MetalDevice* device) {
-  std::set<ValueId> preallocated_ids;
-  for (auto tensor_id : input_ids_) {
-    preallocated_ids.insert(tensor_id);
-  }
-  for (const auto& outputId : output_ids_) {
-    preallocated_ids.insert(outputId);
-  }
+absl::Status InferenceContext::AllocateTensors(
+    MetalDevice* device, const std::set<ValueId>& preallocated_ids) {
   for (int i = 0; i < nodes_.size(); ++i) {
     auto& node = nodes_[i];
     if (HasIntersection(node.inputs, preallocated_ids) ||
@@ -376,6 +377,7 @@ absl::Status InferenceContext::AllocateTensors(MetalDevice* device) {
 
   RETURN_IF_ERROR(AllocateMemoryForConstTensors(device));
   RETURN_IF_ERROR(AllocateMemoryForBuffers(device));
+  RETURN_IF_ERROR(AllocateMemoryForStrongShapes(device));
   return absl::OkStatus();
 }
 
@@ -388,6 +390,10 @@ MetalSpatialTensor* InferenceContext::GetTensor(ValueId tensor_id) {
              graph_ids_to_shared_buffer_tensors_.end()) {
     return &shared_buffer_tensors_
         [graph_ids_to_shared_buffer_tensors_[tensor_id]];
+  } else if (graph_ids_to_strong_shape_tensors_.find(tensor_id) !=
+             graph_ids_to_strong_shape_tensors_.end()) {
+    return &strong_shape_tensors_
+        [graph_ids_to_strong_shape_tensors_[tensor_id]];
   }
   return nullptr;
 }
@@ -530,6 +536,49 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
           shared_buffers_[buffer_index], tensor_dummy.shape,
           tensor_dummy.descriptor, &shared_buffer_tensors_[tensor_index]));
       created_tensors[tensor_index] = true;
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::AllocateMemoryForStrongShapes(
+    MetalDevice* device) {
+  std::map<ValueId, int2> usages;
+  GetUsages(
+      [this](ValueId id) {
+        return GetTensorMemoryType(id) == TensorMemoryType::kStrongShape;
+      },
+      &usages);
+
+  std::vector<TensorUsageRecord<DummyTensor>> usage_records;
+  std::map<ValueId, ValueId> remap_from_graph_ids;
+  for (auto& usage : usages) {
+    remap_from_graph_ids[usage.first] = usage_records.size();
+    usage_records.push_back({tensor_reserver_.Get(usage.first),
+                             static_cast<TaskId>(usage.second.x),
+                             static_cast<TaskId>(usage.second.y)});
+  }
+
+  ObjectsAssignment<DummyTensor> assignment;
+  RETURN_IF_ERROR(AssignObjectsToTensors(
+      usage_records, MemoryStrategy::EQUALITY, &assignment));
+
+  for (auto& node : nodes_) {
+    std::vector<ValueId> all_ids = node.inputs;
+    all_ids.insert(all_ids.end(), node.outputs.begin(), node.outputs.end());
+    for (auto& tensor_id : all_ids) {
+      const auto& tensor_dummy = tensor_reserver_.Get(tensor_id);
+      if (GetTensorMemoryType(tensor_id) != TensorMemoryType::kStrongShape) {
+        continue;
+      }
+      const auto id = assignment.object_ids[remap_from_graph_ids[tensor_id]];
+      graph_ids_to_strong_shape_tensors_[tensor_id] = id;
+      const auto& it = strong_shape_tensors_.find(id);
+      if (it == strong_shape_tensors_.end()) {
+        RETURN_IF_ERROR(CreateTensor(device->device(), tensor_dummy.shape,
+                                     tensor_dummy.descriptor,
+                                     &strong_shape_tensors_[id]));
+      }
     }
   }
   return absl::OkStatus();

@@ -129,14 +129,17 @@ class InferenceContext {
                        ModelHints hints);
 
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const GpuInfo& gpu_info, const GraphFloat32& graph);
+                           const GpuInfo& gpu_info, const GraphFloat32& graph,
+                           const std::set<ValueId>& preallocated_ids);
 
   absl::Status CompileOperations(MetalDevice* device);
 
   absl::Status Merge();
-  absl::Status AllocateTensors(MetalDevice* device);
+  absl::Status AllocateTensors(MetalDevice* device,
+                               const std::set<ValueId>& preallocated_ids);
   absl::Status AllocateMemoryForConstTensors(MetalDevice* device);
   absl::Status AllocateMemoryForBuffers(MetalDevice* device);
+  absl::Status AllocateMemoryForStrongShapes(MetalDevice* device);
   void BindTensorsToOperations();
   absl::Status UpdateParams(const GpuInfo& gpu_info);
   MetalSpatialTensor* GetTensor(ValueId tensor_id);
@@ -215,6 +218,9 @@ class InferenceContext {
   std::vector<MetalSpatialTensor>
       shared_buffer_tensors_;  // use references to memory
                                // from _sharedBuffers
+
+  std::map<ValueId, MetalSpatialTensor> strong_shape_tensors_;
+  std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
 };
 
 // Runs specific transforms for the graph.
