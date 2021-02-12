@@ -66,12 +66,50 @@ namespace tensorflow {
 namespace kernel_gen {
 namespace {
 
+using mlir::Value;
 using mlir::scf::ParallelOp;
 using tensorflow::Status;
 using xla::InternalError;
 using xla::StatusOr;
 
 constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
+
+/// Check if the size of the allocation is less than the given size. The
+/// transformation is only applied to small buffers since large buffers could
+/// exceed the stack space.
+bool IsSmallAlloc(Value alloc) {
+  constexpr unsigned kMaximumSizeInBytes = 64;
+  constexpr unsigned kBitwidthOfIndexType = 64;
+  constexpr unsigned kMaxRankOfAllocatedMemRef = 1;
+
+  auto type = alloc.getType().dyn_cast<mlir::ShapedType>();
+  if (!type || !alloc.getDefiningOp<mlir::AllocOp>()) return false;
+  if (!type.hasStaticShape()) {
+    // Check if the dynamic shape dimension of the alloc is produced by RankOp
+    // or SelectOp(_, RankOp, RankOp).
+    // If this is the case, it is likely to be small. Furthermore, the dimension
+    // is limited to the maximum rank of the allocated memref to avoid large
+    // values by multiplying several small values.
+    if (type.getRank() <= kMaxRankOfAllocatedMemRef) {
+      for (Value alloc_arg : alloc.getDefiningOp()->getOperands()) {
+        if (auto select = alloc_arg.getDefiningOp<mlir::SelectOp>()) {
+          if (!select.true_value().getDefiningOp<mlir::RankOp>() ||
+              !select.false_value().getDefiningOp<mlir::RankOp>())
+            return false;
+        } else if (!alloc_arg.getDefiningOp<mlir::RankOp>()) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+  // For index types, use the provided size, as the type does not know.
+  unsigned int bitwidth = type.getElementType().isIndex()
+                              ? kBitwidthOfIndexType
+                              : type.getElementTypeBitWidth();
+  return type.getNumElements() * bitwidth <= kMaximumSizeInBytes * 8;
+}
 
 // TODO(herhut): Remove this once leftover tensor_to_memref are handled in core.
 struct RemoveUnusedTensorToMemrefOperations
@@ -252,7 +290,8 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // TODO(herhut): Enable once no-longer broken.
   // This depends on https://bugs.llvm.org/show_bug.cgi?id=49142 being fixed.
   // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(64));
+  pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(
+      [](Value alloc) { return IsSmallAlloc(alloc); }));
   // TODO(herhut): Depends on https://bugs.llvm.org/show_bug.cgi?id=48385.
   // We also cannot properly free temporaries until
   // https://llvm.discourse.group/t/remove-tight-coupling-of-the-bufferdeallocation-pass-to-std-and-linalg-operations/2162
