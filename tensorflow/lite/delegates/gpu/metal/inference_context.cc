@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/operation_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -194,6 +195,12 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     return absl::InvalidArgumentError(
         "Only identical batch dimension is supported");
   }
+  std::map<ValueId, TensorDescriptor> tensor_descriptors;
+  const auto values = graph.values();
+  for (auto value : values) {
+    tensor_descriptors[value->id] = tensor_reserver_.Get(value->id).descriptor;
+  }
+  std::set<NodeId> consumed_nodes;
   std::map<ValueId, int>
       tensor_usages;  // keeps latest index of operation that updated tensor
   for (const auto& input_id : input_ids_) {
@@ -213,40 +220,52 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
       const_tensors_descs_[outputs[0]->id].UploadData(attr.tensor);
       continue;
     }
-    auto inputs = graph.FindInputs(node.id);
-    auto outputs = graph.FindOutputs(node.id);
-    // Reordering of input ids and updating of temporary tensors_usage struct.
-    // This stage is necessary because we are building OperationDef that rely
-    // on order of input ids. But we also should have input id on first
-    // position that potentially can be "linking" tensor and as result
-    // eliminated(unused) We apply it only for ADD operation, because of ADD
-    // associativity and ADD can be linked. In current approach "linking"
-    // tensor can be only latest written tensor(during linear order of
-    // execution) among input tensors.
-    if (IsGenericAdd(node, inputs, outputs)) {
-      int latest_written_tensor_index = 0;
-      int last_usage = tensor_usages[inputs[0]->id];
-      for (int j = 1; j < inputs.size(); ++j) {
-        if (tensor_usages[inputs[j]->id] > last_usage) {
-          last_usage = tensor_usages[inputs[j]->id];
-          latest_written_tensor_index = j;
-        }
-      }
-      std::swap(inputs[0], inputs[latest_written_tensor_index]);
-    }
-    OperationDef op_def;
-    op_def.precision = precision_;
-    for (int j = 0; j < inputs.size(); ++j) {
-      op_def.src_tensors.push_back(
-          tensor_reserver_.Get(inputs[j]->id).descriptor);
-    }
-    for (int j = 0; j < outputs.size(); ++j) {
-      op_def.dst_tensors.push_back(
-          tensor_reserver_.Get(outputs[j]->id).descriptor);
-    }
+    std::string op_name = node.operation.type + " " + std::to_string(node.id);
     GPUOperationsSubgraph gpu_subgraph;
-    RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, hints, inputs,
-                                         outputs, node, &gpu_subgraph));
+    if (hints.Check(ModelHints::kAllowSpecialKernels) &&
+        GPUSubgraphFromGraph(gpu_info, precision_, graph, node.id,
+                             tensor_descriptors, &consumed_nodes, &gpu_subgraph,
+                             &op_name)
+            .ok()) {
+      // Mapping of subgraph (set of nodes) to GPU operations. Should happen
+      // before straigtforward mapping.
+    } else {
+      // Straigtforward mapping of one graph node to GPU operations.
+      auto inputs = graph.FindInputs(node.id);
+      auto outputs = graph.FindOutputs(node.id);
+      // Reordering of input ids and updating of temporary tensors_usage struct.
+      // This stage is necessary because we are building OperationDef that rely
+      // on order of input ids. But we also should have input id on first
+      // position that potentially can be "linking" tensor and as result
+      // eliminated(unused) We apply it only for ADD operation, because of ADD
+      // associativity and ADD can be linked. In current approach "linking"
+      // tensor can be only latest written tensor(during linear order of
+      // execution) among input tensors.
+      if (IsGenericAdd(node, inputs, outputs)) {
+        int latest_written_tensor_index = 0;
+        int last_usage = tensor_usages[inputs[0]->id];
+        for (int j = 1; j < inputs.size(); ++j) {
+          if (tensor_usages[inputs[j]->id] > last_usage) {
+            last_usage = tensor_usages[inputs[j]->id];
+            latest_written_tensor_index = j;
+          }
+        }
+        std::swap(inputs[0], inputs[latest_written_tensor_index]);
+      }
+      consumed_nodes.insert(node.id);
+      OperationDef op_def;
+      op_def.precision = precision_;
+      for (int j = 0; j < inputs.size(); ++j) {
+        op_def.src_tensors.push_back(
+            tensor_reserver_.Get(inputs[j]->id).descriptor);
+      }
+      for (int j = 0; j < outputs.size(); ++j) {
+        op_def.dst_tensors.push_back(
+            tensor_reserver_.Get(outputs[j]->id).descriptor);
+      }
+      RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, hints, inputs,
+                                           outputs, node, &gpu_subgraph));
+    }
     std::map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
@@ -275,7 +294,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
           metal_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      metal_node.name = node.operation.type + " " + std::to_string(node.id);
+      metal_node.name = op_name;
       nodes_.push_back(std::move(metal_node));
     }
   }

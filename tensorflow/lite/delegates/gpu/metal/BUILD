@@ -160,6 +160,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/selectors:operation_selector",
+        "//tensorflow/lite/delegates/gpu/common/selectors:special_selector",
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common/task:profiling_info",
         "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
