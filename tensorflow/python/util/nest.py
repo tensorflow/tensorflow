@@ -1,4 +1,4 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,7 +48,6 @@ import six as _six
 import wrapt as _wrapt
 
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.util import _pywrap_nest
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.compat import collections_abc as _collections_abc
 from tensorflow.python.util.tf_export import tf_export
@@ -563,7 +562,30 @@ def flatten_dict_items(dictionary):
     ValueError: If any key and value do not have the same structure layout, or
     if keys are not unique.
   """
-  return _pywrap_nest.FlattenDictItems(dictionary)
+  if not isinstance(dictionary, (dict, _collections_abc.Mapping)):
+    raise TypeError("input must be a dictionary")
+  flat_dictionary = {}
+  for i, v in _six.iteritems(dictionary):
+    if not is_sequence(i):
+      if i in flat_dictionary:
+        raise ValueError(
+            "Could not flatten dictionary: key %s is not unique." % i)
+      flat_dictionary[i] = v
+    else:
+      flat_i = flatten(i)
+      flat_v = flatten(v)
+      if len(flat_i) != len(flat_v):
+        raise ValueError(
+            "Could not flatten dictionary. Key had %d elements, but value had "
+            "%d elements. Key: %s, value: %s."
+            % (len(flat_i), len(flat_v), flat_i, flat_v))
+      for new_i, new_v in zip(flat_i, flat_v):
+        if new_i in flat_dictionary:
+          raise ValueError(
+              "Could not flatten dictionary: key %s is not unique."
+              % (new_i))
+        flat_dictionary[new_i] = new_v
+  return flat_dictionary
 
 
 def _packed_nest_with_indices(structure, flat, index, is_seq, sequence_fn=None):

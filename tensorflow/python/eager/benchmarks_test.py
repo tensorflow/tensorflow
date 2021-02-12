@@ -1,4 +1,4 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1448,14 +1448,6 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     nested = {"a": [1, 2, 3], "b": (4, 5, 6)}
     def fn():
       nest.flatten(nested)
-
-    self._run(fn, 100000)
-
-  def benchmark_tf_flatten_dict_items(self):
-    nested = {(4, 5, (6, 8)): ("a", "b", ("c", "d"))}
-
-    def fn():
-      nest.flatten_dict_items(nested)
 
     self._run(fn, 100000)
 
