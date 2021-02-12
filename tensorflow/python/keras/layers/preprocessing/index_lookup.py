@@ -184,6 +184,18 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self._value_dtype = dtypes.int64
       oov_value = self._oov_value
 
+    self._table = lookup_ops.MutableHashTable(
+        key_dtype=self._key_dtype,
+        value_dtype=self._value_dtype,
+        default_value=oov_value,
+        name=(self._name + "_index_table"))
+    tracked_table = self._add_trackable(self._table, trainable=False)
+    # This is a workaround for summary() on this layer. Because the table is
+    # not mutable during training, the effective number of parameters (and so
+    # the weight shape) is 0; we add this as an attr so that the parameter
+    # counting code in the Model object doesn't throw an attribute error.
+    tracked_table.shape = tensor_shape.TensorShape((0,))
+
     if self.num_oov_indices <= 1:
       oov_indices = None
     else:
@@ -191,30 +203,13 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       oov_end = oov_start + num_oov_indices
       oov_indices = list(range(oov_start, oov_end))
 
-    if vocabulary is not None and isinstance(vocabulary,
-                                             lookup_ops.TextFileInitializer):
-      self._table = self._static_table_class()(
-          vocabulary, default_value=oov_value)
-      self._table_handler = table_utils.TableHandler(
-          table=self._table,
-          mask_token=mask_token,
-          oov_tokens=oov_indices,
-          use_v1_apis=self._use_v1_apis())
-      self.max_tokens = (
-          self._table_handler.vocab_size() + self.num_oov_indices +
-          (0 if mask_token is None else 1))
-    else:
-      self._table = lookup_ops.MutableHashTable(
-          key_dtype=self._key_dtype,
-          value_dtype=self._value_dtype,
-          default_value=oov_value,
-          name=(self._name + "_index_table"))
-      self._table_handler = table_utils.TableHandler(
-          table=self._table,
-          oov_tokens=oov_indices,
-          use_v1_apis=self._use_v1_apis())
-      if vocabulary is not None:
-        self.set_vocabulary(vocabulary)
+    self._table_handler = table_utils.TableHandler(
+        table=self._table,
+        oov_tokens=oov_indices,
+        use_v1_apis=self._use_v1_apis())
+
+    if vocabulary is not None:
+      self.set_vocabulary(vocabulary)
 
     if self.output_mode == TFIDF:
       # The TF-IDF weight may have a (None,) tensorshape. This creates
@@ -236,13 +231,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           shape=tensor_shape.TensorShape(idf_shape),
           dtype=K.floatx(),
           initializer=initializer)
-
-    tracked_table = self._add_trackable(self._table, trainable=False)
-    # This is a workaround for summary() on this layer. Because the table is
-    # not mutable during training, the effective number of parameters (and so
-    # the weight shape) is 0; we add this as an attr so that the parameter
-    # counting code in the Model object doesn't throw an attribute error.
-    tracked_table.shape = tensor_shape.TensorShape((0,))
 
   def compute_output_shape(self, input_shape):
     if self.output_mode != INT:
@@ -549,9 +537,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def _use_v1_apis(self):
     return False
-
-  def _static_table_class(self):
-    return lookup_ops.StaticHashTable
 
 
 class _IndexLookupAccumulator(

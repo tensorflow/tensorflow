@@ -77,7 +77,7 @@ class TextFileLineIterator
   //   delimiter.
   Status Init(const string& filename, int64 vocab_size, char delimiter,
               DataType key_dtype, int64 key_index, DataType value_dtype,
-              int64 value_index, int64 offset, Env* env) {
+              int64 value_index, Env* env) {
     filename_ = filename;
     vocab_size_ = vocab_size;
     delimiter_ = delimiter;
@@ -93,7 +93,6 @@ class TextFileLineIterator
     input_buffer_.reset(new io::InputBuffer(file_.get(), kInputBufferSize));
     valid_ = true;
     next_id_ = 0;
-    offset_ = offset;
     ignore_split_ = std::max(key_index_, value_index_) < 0;
     Next();
     return status_;
@@ -144,7 +143,6 @@ class TextFileLineIterator
         return;
       }
     }
-
     status_ = SetValue(line, tokens, key_index_, &key_);
     if (!status_.ok()) {
       valid_ = false;
@@ -188,7 +186,6 @@ class TextFileLineIterator
   int64 value_index_;
   Env* env_;
   int64 next_id_;
-  int64 offset_;
   int64 vocab_size_;
   string filename_;
   char delimiter_;
@@ -202,7 +199,7 @@ class TextFileLineIterator
   Status SetValue(const string& line, const std::vector<string>& tokens,
                   int64 index, Tensor* tensor) {
     if (index == kLineNumber) {
-      tensor->flat<int64>()(0) = next_id_ + offset_;
+      tensor->flat<int64>()(0) = next_id_;
       return Status::OK();
     }
     const string& token = (index == kWholeLine) ? line : tokens[index];
@@ -215,7 +212,7 @@ class TextFileLineIterator
           return errors::InvalidArgument("Field ", token, " in line ", next_id_,
                                          " is not a valid int32.");
         }
-        tensor->flat<int32>()(0) = value + offset_;
+        tensor->flat<int32>()(0) = value;
       } break;
       case DT_INT64: {
         int64 value;
@@ -355,7 +352,7 @@ Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
 // Helper function to initialize an InitializableLookupTable from a text file.
 Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
                                    char delimiter, int32 key_index,
-                                   int32 value_index, int64 offset, Env* env,
+                                   int32 value_index, Env* env,
                                    InitializableLookupTable* table) {
   if (key_index == kLineNumber && table->key_dtype() != DT_INT64) {
     return errors::InvalidArgument(
@@ -383,8 +380,7 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
 
   TextFileLineIterator iter;
   TF_RETURN_IF_ERROR(iter.Init(filename, vocab_size, delimiter, key_dtype,
-                               key_index, value_dtype, value_index, offset,
-                               env));
+                               key_index, value_dtype, value_index, env));
   // For initialization from files, ignore if the table is already
   // initialized. The table shared name should contain the filename to
   // avoid trying to initialize the same table from the same file at the same

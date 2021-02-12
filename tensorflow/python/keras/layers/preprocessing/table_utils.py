@@ -27,7 +27,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
@@ -39,24 +38,8 @@ from tensorflow.python.platform import gfile
 class TableHandler(object):
   """Wrapper object that holds a lookup table and provides accessors."""
 
-  def __init__(self,
-               table,
-               oov_tokens=None,
-               mask_token=None,
-               use_v1_apis=False):
+  def __init__(self, table, oov_tokens=None, use_v1_apis=False):
     self.table = table
-
-    # If we are using V1 APIs, and the table has an initializer, we need to run
-    # it. However, not all tables have initializers, so we try-except here.
-    if use_v1_apis:
-      try:
-        K.get_session().run(self.table.initializer)
-      except AttributeError:
-        pass
-
-    self.mutable = isinstance(table, lookup_ops.MutableHashTable)
-    self.mask_token = mask_token
-
     self.use_v1_apis = use_v1_apis
     if oov_tokens is None:
       self.oov_tokens = oov_tokens
@@ -73,17 +56,10 @@ class TableHandler(object):
     return self._eval(self.table.size())
 
   def clear(self):
-    if not self.mutable:
-      return RuntimeError("Unable to clear a statically-backed table.")
-
     keys, _ = self.table.export()
     self._run(self.table.remove(keys))
 
   def insert(self, keys, values):
-    """Insert values into the backed table."""
-    if not self.mutable:
-      raise RuntimeError("Unable to insert into a statically-backed table.")
-
     if len(values) != len(keys):
       raise RuntimeError("Size mismatch between values and key arrays. "
                          "Keys had size %s, values had size %s." %
@@ -114,35 +90,12 @@ class TableHandler(object):
 
     return array_ops.where(oov_locations, oov_values, lookups)
 
-  def _lookup_and_mask(self, inputs):
-    """Return a lookup with any location with the mask_token masked to 0."""
-    lookups = self.table.lookup(inputs)
-    # If we don't need to handle masking, return the lookup values directly.
-    if self.mask_token is None:
-      return lookups
-
-    # If we do need to handle masking, increment all the lookup values by 1
-    # to account for the mask value at location 0. This also increments the
-    # OOV value, so replace that. (This is inefficient, but we can't adjust
-    # the table safely, so we don't have a choice.)
-    oov_locations = math_ops.equal(lookups, self.table._default_value)  # pylint: disable=protected-access
-    oov_values = array_ops.ones_like(
-        lookups, dtype=self.table._value_dtype) * self.table._default_value  # pylint: disable=protected-access
-    adjusted_lookups = array_ops.where(oov_locations, oov_values, lookups)
-
-    # Inject 0s wherever the mask token was in the inputs.
-    mask_locations = math_ops.equal(inputs, self.mask_token)
-    return array_ops.where(
-        mask_locations,
-        array_ops.zeros_like(lookups, dtype=self.table._value_dtype),  # pylint: disable=protected-access
-        adjusted_lookups)  # pylint: disable=protected-access
-
   def _ragged_lookup(self, inputs):
     """Perform a table lookup on a ragged tensor."""
     # The table lookup ops don't natively support ragged tensors, so if we have
     # a RT we need to use map_flat_values to look up every element.
     indexed_data = ragged_functional_ops.map_flat_values(
-        self._lookup_and_mask, inputs)
+        self.table.lookup, inputs)
     indexed_data = ragged_functional_ops.map_flat_values(
         self._replace_oov_buckets, inputs, indexed_data)
     # table.lookup is not shape-preserving, so we need to set the shape here.
@@ -154,7 +107,7 @@ class TableHandler(object):
 
   def _sparse_lookup(self, inputs):
     """Perform a table lookup on a sparse tensor."""
-    values = self._lookup_and_mask(inputs.values)
+    values = self.table.lookup(inputs.values)
     values = self._replace_oov_buckets(inputs.values, values)
     indexed_data = sparse_tensor.SparseTensor(inputs.indices, values,
                                               inputs.dense_shape)
@@ -165,7 +118,7 @@ class TableHandler(object):
 
   def _tensor_lookup(self, inputs):
     """Perform a table lookup on a tf.tensor."""
-    values = self._lookup_and_mask(inputs)
+    values = self.table.lookup(inputs)
     indexed_data = self._replace_oov_buckets(inputs, values)
     # (b/149446477): output does not preserve input shape.
     indexed_data.set_shape(inputs.shape)

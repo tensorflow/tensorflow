@@ -81,21 +81,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "index_lookup_forward_benchmark",
-    srcs = ["index_lookup_forward_benchmark.py"],
-    python_version = "PY3",
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:platform_benchmark",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/keras/layers/preprocessing:index_lookup",
-    ],
-)
-
-tf_py_test(
     name = "normalization_adapt_benchmark",
     srcs = ["normalization_adapt_benchmark.py"],
     python_version = "PY3",
