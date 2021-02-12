@@ -28,8 +28,10 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-// OutputShapeTensor is tensor 0, but it is unused in TFLM because we do not
-// support dynamic tensor resizing.
+// For the TfLite transpose_conv implementation, input tensor 0 corresponds to
+// the OutputShapeTensor. However, since TFLM does not support dynamic tensors,
+// the TFLM implementation ignores input tensor 0 and the only inputs we care
+// about are kFilterTensor, kInputTensor and kBiasTensor.
 constexpr int kFilterTensor = 1;
 constexpr int kInputTensor = 2;
 constexpr int kBiasTensor = 3;
