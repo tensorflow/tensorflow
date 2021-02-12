@@ -25,7 +25,6 @@ constexpr int kInputTensor = 0;
 constexpr int kAxisTensor = 1;
 constexpr int kOutputTensor = 0;
 
-namespace {
 TfLiteStatus ExpandTensorDim(TfLiteContext* context, const TfLiteTensor* input,
                              int axis, TfLiteTensor* output) {
   const TfLiteIntArray *input_dims = input->dims;
