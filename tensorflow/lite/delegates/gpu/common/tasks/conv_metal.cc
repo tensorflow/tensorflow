@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -155,7 +156,8 @@ std::string GenerateUploadByThreads(const std::string& local_ptr_name,
 }
 
 std::string GenerateConvolution(const ConvolutionMetal::ConvParams& params,
-                                const OperationDef& definition) {
+                                const OperationDef& definition,
+                                bool stride_correction) {
   GlobalIdsParams ids_params;
   ids_params.group_ids = {"group_id.x", "group_id.y", "group_id.z"};
   ids_params.global_ids = {"ugid.x", "ugid.y", "ugid.z"};
@@ -272,8 +274,15 @@ kernel void ComputeFunction(
   if (!params.x_kernel_is_1) {
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
-      c += "  int x" + s_x + " = (X + " + s_x +
-           ") * args.stride_x + args.padding_x;\n";
+      if (stride_correction) {
+        c += "  int x" + s_x + " = " +
+             GetXStrideCorrected("(X + " + s_x + ")", "args.src_tensor.Batch()",
+                                 "args.stride_x", "args.padding_x") +
+             ";\n";
+      } else {
+        c += "  int x" + s_x + " = (X + " + s_x +
+             ") * args.stride_x + args.padding_x;\n";
+      }
     }
   }
   if (!params.y_kernel_is_1) {
@@ -915,7 +924,10 @@ ConvolutionMetal::ConvParams GetConvParams(const GpuInfo& gpu_info,
 }  // namespace
 
 absl::Status ConvolutionMetal::BindArguments(ArgumentsBinder* args) {
-  const int grid_x = DivideRoundUp(dst_[0]->Width(), params_.block_size.x);
+  RETURN_IF_ERROR(args->SetInt("padding_x", padding_.x * src_[0]->Batch()));
+  RETURN_IF_ERROR(args->SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
+  const int grid_x =
+      DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), params_.block_size.x);
   const int grid_y = DivideRoundUp(dst_[0]->Height(), params_.block_size.y);
   RETURN_IF_ERROR(args->SetInt("task_size_x", grid_x));
   RETURN_IF_ERROR(args->SetInt("task_size_y", grid_x * grid_y));
@@ -923,7 +935,8 @@ absl::Status ConvolutionMetal::BindArguments(ArgumentsBinder* args) {
 }
 
 int3 ConvolutionMetal::GetGridSize() const {
-  int grid_x = DivideRoundUp(dst_[0]->Width(), params_.block_size.x);
+  int grid_x =
+      DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), params_.block_size.x);
   int grid_y = DivideRoundUp(dst_[0]->Height(), params_.block_size.y);
   int grid_z = DivideRoundUp(dst_[0]->Slices(), params_.block_size.z);
 
@@ -943,14 +956,26 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
                                         const BHWC& dst_shape,
                                         const Convolution2DAttributes& attr,
                                         const GpuInfo& gpu_info) {
+  BHWC new_shape = BHWC(1, dst_shape.h, dst_shape.w * dst_shape.b, dst_shape.c);
   ConvolutionMetal::ConvParams params =
-      GetConvParams(gpu_info, attr, definition.precision, dst_shape);
+      GetConvParams(gpu_info, attr, definition.precision, new_shape);
 
   ConvolutionMetal desc(definition);
   desc.params_ = params;
-  desc.code_ = GenerateConvolution(params, definition);
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  const bool stride_correction =
+      definition.IsBatchSupported() && attr.strides.w != 1;
+  desc.code_ = GenerateConvolution(params, definition, stride_correction);
+
+  auto src_desc = definition.src_tensors[0];
+  if (definition.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  desc.AddSrcTensor("src_tensor", src_desc);
+  auto dst_desc = definition.dst_tensors[0];
+  if (definition.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  desc.AddDstTensor("dst_tensor", dst_desc);
 
   desc.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   desc.args_.AddInt("kernel_size_y", attr.weights.shape.h);
@@ -960,6 +985,8 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
   desc.args_.AddInt("stride_y", attr.strides.h);
   desc.args_.AddInt("padding_x", -attr.padding.prepended.w);
   desc.args_.AddInt("padding_y", -attr.padding.prepended.h);
+  desc.padding_ = int2(-attr.padding.prepended.w, -attr.padding.prepended.h);
+  desc.dilation_ = int2(attr.dilations.w, attr.dilations.h);
 
   auto weights_type = DeduceDataTypeFromPrecision(definition.precision);
 
@@ -1054,9 +1081,17 @@ ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
 
   ConvolutionMetal desc(definition);
   desc.params_ = params;
-  desc.code_ = GenerateConvolution(params, definition);
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.code_ = GenerateConvolution(params, definition, false);
+  auto src_desc = definition.src_tensors[0];
+  if (definition.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  desc.AddSrcTensor("src_tensor", src_desc);
+  auto dst_desc = definition.dst_tensors[0];
+  if (definition.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  desc.AddDstTensor("dst_tensor", dst_desc);
 
   desc.args_.AddInt("kernel_size_x", 1);
   desc.args_.AddInt("kernel_size_y", 1);
@@ -1066,6 +1101,8 @@ ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
   desc.args_.AddInt("stride_y", 1);
   desc.args_.AddInt("padding_x", 0);
   desc.args_.AddInt("padding_y", 0);
+  desc.padding_ = int2(0, 0);
+  desc.dilation_ = int2(1, 1);
 
   auto weights_type = DeduceDataTypeFromPrecision(definition.precision);
 
@@ -1119,8 +1156,7 @@ bool IsConvolutionMetalSupported(const OperationDef& definition) {
       (dst_storage_type == TensorStorageType::BUFFER ||
        dst_storage_type == TensorStorageType::IMAGE_BUFFER);
   return storages_are_buffers && definition.src_tensors.size() == 1 &&
-         !definition.src_tensors[0].HasAxis(Axis::DEPTH) &&
-         !definition.src_tensors[0].HasAxis(Axis::BATCH);
+         !definition.src_tensors[0].HasAxis(Axis::DEPTH);
 }
 
 }  // namespace gpu
