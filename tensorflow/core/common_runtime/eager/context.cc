@@ -1067,8 +1067,23 @@ Status EagerContext::StoreCollectiveOpsServer(
     CollectiveExecutorMgrInterface* rpc_collective_executor_mgr) {
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
-  local_device_manager_.Reset(device_mgr);
+  if (device_mgr != local_device_manager_.Get()) {
+    if (local_device_manager_.Owned()) {
+      old_local_device_managers_.push_back(
+          std::move(local_device_manager_.owned_object));
+    }
+    local_device_manager_.Reset(device_mgr);
+  }
   host_cpu_device_ = local_device_manager_.Get()->HostCPU();
+
+  if (reuse_rendezvous_for_functions_) {
+    // If reuse_rendezvous_for_functions_ is true, CreateRendezvous is
+    // idempotent and ignores its step_id argument. Create a rendezvous now to
+    // replace the old one, preventing the old one from getting used.
+    if (rendezvous_ != nullptr) rendezvous_->Unref();
+    rendezvous_ = CreateRendezvous(/*step_id=*/-1);
+    return errors::Aborted("Cannot create a valid rendezvous.");
+  }
 
   InitPrioritizedDeviceTypeList();
   ClearCachesAndThreadExecutors();
