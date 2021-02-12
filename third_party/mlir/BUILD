@@ -3661,8 +3661,14 @@ cc_library(
 # TODO(zinenko): Update these so that we can simplify mapping to cmake.
 cc_library(
     name = "ExecutionEngine",
-    srcs = ["lib/ExecutionEngine/ExecutionEngine.cpp"],
-    hdrs = ["include/mlir/ExecutionEngine/ExecutionEngine.h"],
+    srcs = [
+        "include/mlir/ExecutionEngine/CRunnerUtils.h",
+        "lib/ExecutionEngine/ExecutionEngine.cpp",
+    ],
+    hdrs = [
+        "include/mlir/ExecutionEngine/ExecutionEngine.h",
+        "include/mlir/ExecutionEngine/MemRefUtils.h",
+    ],
     includes = ["include"],
     deps = [
         ":IR",
@@ -3885,7 +3891,9 @@ cc_binary(
 cc_library(
     name = "MlirJitRunner",
     srcs = ["lib/ExecutionEngine/JitRunner.cpp"],
-    hdrs = ["include/mlir/ExecutionEngine/JitRunner.h"],
+    hdrs = [
+        "include/mlir/ExecutionEngine/JitRunner.h",
+    ],
     includes = ["include"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
