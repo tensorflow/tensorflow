@@ -20,11 +20,12 @@ from __future__ import print_function
 
 import collections
 
-from absl.testing import parameterized
 import numpy as np
 import wrapt
+from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.framework import combinations
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -77,10 +78,10 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
               constant_op.constant(37.0),
           "b": (sparse_tensor.SparseTensor(
               indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
-                sparse_tensor.SparseTensor(
-                    indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
+                  sparse_tensor.SparseTensor(
+              indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
       }, dict, [dtypes.float32, dtypes.variant, dtypes.variant], [[], None, None
-                                                                 ]),
+                                                                  ]),
   )
   def testFlatStructure(self, value_fn, expected_structure, expected_types,
                         expected_shapes):
@@ -111,12 +112,12 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
                   dtype=dtypes.float32, element_shape=(3,), size=0),
               tensor_array_ops.TensorArray(
                   dtype=dtypes.float32, element_shape=(3,), size=10)
-          ], lambda: [
+      ], lambda: [
               tensor_array_ops.TensorArray(
                   dtype=dtypes.int32, element_shape=(3,), size=0),
               tensor_array_ops.TensorArray(
                   dtype=dtypes.float32, element_shape=(), size=0)
-          ]),
+      ]),
       ("SparseTensor", lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
        lambda: [
@@ -126,7 +127,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
                indices=[[1, 1], [3, 4]], values=[10, -1], dense_shape=[4, 5]),
            array_ops.sparse_placeholder(dtype=dtypes.int32),
            array_ops.sparse_placeholder(dtype=dtypes.int32, shape=[None, None])
-       ], lambda: [
+      ], lambda: [
            constant_op.constant(37, shape=[4, 5]),
            sparse_tensor.SparseTensor(
                indices=[[3, 4]], values=[-1], dense_shape=[5, 6]),
@@ -134,17 +135,17 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
                dtype=dtypes.int32, shape=[None, None, None]),
            sparse_tensor.SparseTensor(
                indices=[[3, 4]], values=[-1.0], dense_shape=[4, 5])
-       ]),
+      ]),
       ("RaggedTensor", lambda: ragged_factory_ops.constant([[1, 2], [], [3]]),
        lambda: [
            ragged_factory_ops.constant([[1, 2], [3, 4], []]),
            ragged_factory_ops.constant([[1], [2, 3, 4], [5]]),
-       ], lambda: [
+      ], lambda: [
            ragged_factory_ops.constant(1),
            ragged_factory_ops.constant([1, 2]),
            ragged_factory_ops.constant([[1], [2]]),
            ragged_factory_ops.constant([["a", "b"]]),
-       ]),
+      ]),
       ("Nested", lambda: {
           "a": constant_op.constant(37.0),
           "b": constant_op.constant([1, 2, 3])
@@ -165,7 +166,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
                   indices=[[0], [1], [2]], values=[4, 5, 6], dense_shape=[3])
       }, (constant_op.constant(15.0), constant_op.constant([4, 5, 6]))]),
   )
-  @test_util.run_deprecated_v1
+  @combinations.generate(test_base.graph_only_combinations())
   def testIsCompatibleWithStructure(self, original_value_fn,
                                     compatible_values_fn,
                                     incompatible_values_fn):
@@ -322,8 +323,8 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
                   constant_op.constant(37.0),
               "b": (sparse_tensor.SparseTensor(
                   indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
-                    sparse_tensor.SparseTensor(
-                        indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
+                      sparse_tensor.SparseTensor(
+                  indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
           },
       ),
   )
@@ -351,7 +352,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
         self.assertAllEqual(b.dense_shape, a.dense_shape)
       elif isinstance(
           b,
-          (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue)):
+              (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue)):
         self.assertAllEqual(b, a)
       else:
         self.assertAllEqual(b, a)
@@ -418,11 +419,11 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     flat_nest = structure.to_tensor_list(s_nest, value_nest)
 
     with self.assertRaisesRegex(
-        ValueError, r"SparseTensor.* is not convertible to a tensor with "
-        r"dtype.*float32.* and shape \(\)"):
+            ValueError, r"SparseTensor.* is not convertible to a tensor with "
+            r"dtype.*float32.* and shape \(\)"):
       structure.to_tensor_list(s_tensor, value_sparse_tensor)
     with self.assertRaisesRegex(
-        ValueError, "The two structures don't have the same nested structure."):
+            ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_tensor, value_nest)
 
     with self.assertRaisesRegex(TypeError,
@@ -430,15 +431,15 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
       structure.to_tensor_list(s_sparse_tensor, value_tensor)
 
     with self.assertRaisesRegex(
-        ValueError, "The two structures don't have the same nested structure."):
+            ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_sparse_tensor, value_nest)
 
     with self.assertRaisesRegex(
-        ValueError, "The two structures don't have the same nested structure."):
+            ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_nest, value_tensor)
 
     with self.assertRaisesRegex(
-        ValueError, "The two structures don't have the same nested structure."):
+            ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_nest, value_sparse_tensor)
 
     with self.assertRaisesRegex(ValueError, r"Incompatible input:"):
@@ -492,19 +493,19 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
             constant_op.constant(37.0),
         "b": (sparse_tensor.SparseTensor(
             indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
-              sparse_tensor.SparseTensor(
-                  indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
+                sparse_tensor.SparseTensor(
+            indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
     }
     s_2 = structure.type_spec_from_value(value_2)
     flat_s_2 = structure.to_tensor_list(s_2, value_2)
 
     with self.assertRaisesRegex(
-        ValueError, r"SparseTensor.* is not convertible to a tensor with "
-        r"dtype.*int32.* and shape \(3,\)"):
+            ValueError, r"SparseTensor.* is not convertible to a tensor with "
+            r"dtype.*int32.* and shape \(3,\)"):
       structure.to_tensor_list(s_0, value_1)
 
     with self.assertRaisesRegex(
-        ValueError, "The two structures don't have the same nested structure."):
+            ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_0, value_2)
 
     with self.assertRaisesRegex(TypeError,
@@ -512,7 +513,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
       structure.to_tensor_list(s_1, value_0)
 
     with self.assertRaisesRegex(
-        ValueError, "The two structures don't have the same nested structure."):
+            ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_1, value_2)
 
     # NOTE(mrry): The repr of the dictionaries is not sorted, so the regexp
@@ -520,11 +521,11 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     # adding a deterministic repr for these error messages (among other
     # improvements).
     with self.assertRaisesRegex(
-        ValueError, "The two structures don't have the same nested structure."):
+            ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_2, value_0)
 
     with self.assertRaisesRegex(
-        ValueError, "The two structures don't have the same nested structure."):
+            ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_2, value_1)
 
     with self.assertRaisesRegex(ValueError, r"Incompatible input:"):
@@ -553,17 +554,17 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
        sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32)),
       ("TensorArray_0", dtypes.int32,
        tensor_shape.TensorShape([None, True, 2, 2
-                                ]), tensor_array_ops.TensorArray,
+                                 ]), tensor_array_ops.TensorArray,
        tensor_array_ops.TensorArraySpec(
            [2, 2], dtypes.int32, dynamic_size=None, infer_shape=True)),
       ("TensorArray_1", dtypes.int32,
        tensor_shape.TensorShape([True, None, 2, 2
-                                ]), tensor_array_ops.TensorArray,
+                                 ]), tensor_array_ops.TensorArray,
        tensor_array_ops.TensorArraySpec(
            [2, 2], dtypes.int32, dynamic_size=True, infer_shape=None)),
       ("TensorArray_2", dtypes.int32,
        tensor_shape.TensorShape([True, False, 2, 2
-                                ]), tensor_array_ops.TensorArray,
+                                 ]), tensor_array_ops.TensorArray,
        tensor_array_ops.TensorArraySpec(
            [2, 2], dtypes.int32, dynamic_size=True, infer_shape=False)),
       ("RaggedTensor", dtypes.int32, tensor_shape.TensorShape([2, None]),
@@ -727,7 +728,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
         unbatched_s, [t[0] for t in batched_tensor_list])
 
     for expected, actual in zip(
-        nest.flatten(expected_element_0), nest.flatten(actual_element_0)):
+            nest.flatten(expected_element_0), nest.flatten(actual_element_0)):
       self.assertValuesEqual(expected, actual)
 
   # pylint: enable=g-long-lambda
