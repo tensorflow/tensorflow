@@ -210,7 +210,7 @@ do_pylint() {
 
   # We can split with just 2 grep invocations
   grep    -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} > ${PERMIT_FILE}
-  grep -v -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} | uniq -u > ${FORBID_FILE}
+  grep -v -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} | sort -u -t : -k1,1 -k2n > ${FORBID_FILE}
 
   # Determine counts of errors
   N_PERMIT_ERRORS=$(wc -l ${PERMIT_FILE} | cut -d' ' -f1)

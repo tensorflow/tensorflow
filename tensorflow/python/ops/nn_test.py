@@ -349,24 +349,24 @@ class DropoutTest(test_lib.TestCase):
     # over a large number of samples, based on the keep probability.
     for gpu in (True, False):
       for t, x_dim, y_dim in (
-          (np.float16,40,30), (np.float16,41,31),
-          (np.float32,40,30), (np.float64,40,30), (np.float32,1000,1000)):
+          (np.float16, 40, 30), (np.float16, 41, 31),
+          (np.float32, 40, 30), (np.float64, 40, 30), (np.float32, 1000, 1000)):
       #for t, x_dim, y_dim in ((np.float32,40,30),):
       #for t, x_dim, y_dim in ((np.float32,40,30), (np.float64,40,30), (np.float32,1000,1000)):
         num_iter = 100 if x_dim*y_dim < 100000 else 1
         for keep_prob in [0.1, 0.5, 0.8]:
-          print("****",gpu,t,x_dim,y_dim,keep_prob)
+          print("****", gpu, t, x_dim, y_dim, keep_prob)
           with self.session(use_gpu=gpu):
             site_counts = np.zeros([x_dim, y_dim], dtype=np.int32)
             arr = np.ones([x_dim, y_dim], dtype=t)
             dropout = nn_ops.dropout(arr, rate=(1 - keep_prob))
             final_count = 0
             self.assertEqual([x_dim, y_dim], dropout.get_shape())
-            xc = {x: np.array([0,0,0,0],dtype=np.int32) for x in [1,2,4]}
+            xc = {x: np.array([0, 0, 0, 0], dtype=np.int32) for x in [1, 2, 4]}
             for _ in xrange(0, num_iter):
               value = self.evaluate(dropout)
               final_count += np.count_nonzero(value)
-              signs = np.where(value != 0,1,0)
+              signs = np.where(value != 0, 1, 0)
               site_counts += signs
               for stride in [1, 2, 4]:
                 xc[stride] += self._test_correl(signs, stride)
@@ -429,7 +429,7 @@ class DropoutTest(test_lib.TestCase):
       y_dim = 30
       shape = [x_dim, y_dim]
       rate = 0.1
-      tol = 0.5 if t==np.float16 else (1e-2 if t==np.float32 else 1e-4)
+      tol = 0.5 if t == np.float16 else (1e-2 if t == np.float32 else 1e-4)
 
       @def_function.function
       def test_func(x):

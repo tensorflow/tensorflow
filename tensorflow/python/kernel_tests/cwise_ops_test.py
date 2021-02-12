@@ -63,23 +63,23 @@ _INV = lambda x: ~x
 #_FMA2 = lambda x1,y1,x2,y2: gen_math_ops.fused_mul_add(x1,y1,x2,y2)
 
 @def_function.function
-def _FMA(x1,y1,x2):
+def _FMA(x1, y1, x2):
   return x1*y1+x2
 
 @def_function.function
-def _FMS(x1,y1,x2):
+def _FMS(x1, y1, x2):
   return x1*y1-x2
 
 @def_function.function
-def _FMSR(x1,y1,x2):
+def _FMSR(x1, y1, x2):
   return x2-x1*y1
 
 @def_function.function
-def _FMA2(x1,y1,x2,y2):
+def _FMA2(x1, y1, x2, y2):
   return x1*y1+x2*y2
 
 @def_function.function
-def _FMS2(x1,y1,x2,y2):
+def _FMS2(x1, y1, x2, y2):
   return x1*y1-x2*y2
 
 # TODO(zongheng): it'd be great to factor out this function and various random
@@ -939,7 +939,7 @@ class MathOpsOverloadTest(test.TestCase):
 
   def _gen_random_for_broadcast(self, sh, type): # pylint: disable=redefined-builtin
     red_sh = [(sh[k] if np.random.randint(2) else 1) for k in range(len(sh))]
-    while len(red_sh)>1 and red_sh[0]==1 and np.random.randint(2):
+    while len(red_sh) > 1 and red_sh[0] == 1 and np.random.randint(2):
       red_sh = red_sh[1:]
     return np.random.normal(size=red_sh).astype(type)
 
@@ -962,16 +962,16 @@ class MathOpsOverloadTest(test.TestCase):
         ]
     print("Running the test")
     test_count = 0
-    for sgn in (-1,0,1):
+    for sgn in (-1, 0, 1):
       for dtype in dtypes:
         # todo(rocm):
         # investigate why ROCm 3.5 onwards needs a slightly elevated tolerance
         rtol, atol = (2e-3, 2e-3) if dtype == np.float16 else (1e-6, 1e-6)
         for shape in (
-            (1,), (4,), (5,5), (100,14), (3,3,3,3), (3,3,3,3,3),
-            (512,3,3,3), (3,512,3,3), (3,3,512,3), (3,3,3,512),
+            (1,), (4,), (5, 5), (100, 14), (3, 3, 3, 3), (3, 3, 3, 3, 3),
+            (512, 3, 3, 3), (3, 512, 3, 3), (3, 3, 512, 3), (3, 3, 3, 512),
             ):
-          for bcast in (0,2,4,6,7,8,11,15,15,15):
+          for bcast in (0, 2, 4, 6, 7, 8, 11, 15, 15, 15):
             with self.session(use_gpu=True):
               print(sgn, dtype, shape, bcast)
               if bcast != 15:
@@ -988,24 +988,27 @@ class MathOpsOverloadTest(test.TestCase):
                 y1 = self._gen_random_for_broadcast(shape, dtype)
                 x2 = self._gen_random_for_broadcast(shape, dtype)
                 y2 = self._gen_random_for_broadcast(shape, dtype)
-                print(x1.shape,y1.shape,x2.shape)
+                print(x1.shape, y1.shape, x2.shape)
               inx1 = ops.convert_to_tensor(x1)
               iny1 = ops.convert_to_tensor(y1)
               inx2 = ops.convert_to_tensor(x2)
               iny2 = ops.convert_to_tensor(y2)
               if sgn > 0:
-                self.assertAllClose(x1*y1+x2, _FMA(inx1,iny1,inx2), atol, rtol)
-                self.assertAllClose(x1*y1+x2*y2, _FMA2(inx1,iny1,inx2,iny2),
+                self.assertAllClose(x1*y1+x2, _FMA(inx1, iny1, inx2),
+                                    atol, rtol)
+                self.assertAllClose(x1*y1+x2*y2, _FMA2(inx1, iny1, inx2, iny2),
                                     atol, rtol)
               elif sgn < 0:
-                self.assertAllClose(x1*y1-x2, _FMS(inx1,iny1,inx2), atol, rtol)
-                self.assertAllClose(x1*y1-x2*y2, _FMS2(inx1,iny1,inx2,iny2),
+                self.assertAllClose(x1*y1-x2, _FMS(inx1, iny1, inx2),
+                                    atol, rtol)
+                self.assertAllClose(x1*y1-x2*y2, _FMS2(inx1, iny1, inx2, iny2),
                                     atol, rtol)
               else:
-                self.assertAllClose(x2-x1*y1, _FMSR(inx1,iny1,inx2), atol, rtol)
+                self.assertAllClose(x2-x1*y1, _FMSR(inx1, iny1, inx2),
+                                    atol, rtol)
               if np.prod(shape) < 100 and not (test_count % 5):
                 jacob_t, jacob_n = gradient_checker_v2.compute_gradient(
-                    _FMA if sgn>0 else (_FMS if sgn<0 else _FMSR),
+                    _FMA if sgn > 0 else (_FMS if sgn < 0 else _FMSR),
                     [inx1, iny1, inx2],
                     delta=0.2 if dtype == np.float16 else 0.01)
                 if dtype == np.float16:
@@ -1507,9 +1510,9 @@ class FMABenchmark(test.Benchmark):
     for k in range(n):
       w[0] = op(w[0], y1[k], x2[k])
     if len(w[0].shape) == 3:
-      return w[0][0,0,0]
+      return w[0][0, 0, 0]
     else:
-      return w[0][0,0,0,0]
+      return w[0][0, 0, 0, 0]
 
     #with ops.control_dependencies([logging_ops.print_v2(x1[0])]):
     #  return x1[0]
@@ -1572,8 +1575,8 @@ class FMABenchmark(test.Benchmark):
     ]
 
     shapes = []
-    for order in [14,18,22]:
-      for c1 in [2,3,5,7,13]:
+    for order in [14, 18, 22]:
+      for c1 in [2, 3, 5, 7, 13]:
         for x in range(len(all_shapes)):
           n1 = len([y for y in all_shapes[x] if y == 4])
           n2 = len([y for y in all_shapes[x] if y == 512])
@@ -1594,7 +1597,7 @@ class FMABenchmark(test.Benchmark):
       s1 = tuple(s1)
       s2 = tuple(s2)
       s3 = tuple(s3)
-      tests.append((s1,s2,s3))
+      tests.append((s1, s2, s3))
     num_iters = 10
     os.environ["HIP_TRACE_API"] = "14" if num_iters == 1 else "0"
     min_repeats = None
@@ -1621,9 +1624,9 @@ class FMABenchmark(test.Benchmark):
       x1 = rng_sx1 + c1
       y1 = rng_sy1 + c2
       x2 = rng_sx2 + c3
-      return x1,y1,x2
+      return x1, y1, x2
 
-    for min_repeats in [4,8,16,32]:
+    for min_repeats in [4, 8, 16, 32]:
       if min_repeats != None:
         os.environ["TF_FMA_MIN_REPEATS"] = str(min_repeats)
       if min_blocks != None:
