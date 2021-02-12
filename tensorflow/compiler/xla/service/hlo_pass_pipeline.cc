@@ -180,7 +180,7 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     RecordPassEndMetadata(*hlo, pass_name, pass_changed);
     changed |= pass_changed;
     if (pass_changed) {
-      VLOG(3) << "  Pass caused changes" << pass->name();
+      VLOG(3) << "  Pass caused changes " << pass->name();
     }
     TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
     if (!pass->IsPassPipeline()) {
