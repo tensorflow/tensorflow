@@ -237,6 +237,7 @@ py_library(
         "//tensorflow/python/util",
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
         "//tensorflow/python/util:_pywrap_kernel_registry",
+        "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_stat_summarizer",
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
@@ -751,6 +752,7 @@ py_library(
     deps = [
         ":_pywrap_debug_events_writer",
         ":_pywrap_events_writer",
+        "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         "//tensorflow/python/lib/core:_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
@@ -5212,6 +5214,7 @@ pywrap_tensorflow_macro(
         ":model_analyzer_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:function_parameter_canonicalizer",
         "//tensorflow/python/util:kernel_registry",
