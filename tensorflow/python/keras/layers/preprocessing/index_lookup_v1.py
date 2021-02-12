@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
 from tensorflow.python.keras.layers.preprocessing import index_lookup
+from tensorflow.python.ops import lookup_ops
 
 
 class IndexLookup(index_lookup.IndexLookup,
@@ -58,3 +59,6 @@ class IndexLookup(index_lookup.IndexLookup,
 
   def _use_v1_apis(self):
     return True
+
+  def _static_table_class(self):
+    return lookup_ops.StaticHashTableV1
