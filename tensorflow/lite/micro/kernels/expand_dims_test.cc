@@ -110,15 +110,5 @@ TYPED_TEST(ExpandDimsOpTest, NegativeAxis) {
   }
 }
 
-TEST(ExpandDimsOpTest, StrTensor) {
-  std::initializer_list<std::string> values = {"abc", "de", "fghi"};
-
-  // this test will fail on TestType::CONST
-  ExpandDimsOpModel<std::string> m(0, {3}, values, TestType::kDynamic);
-  m.Invoke();
-  EXPECT_THAT(m.GetValues(), ElementsAreArray(values));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
-}
-
 }  // namespace
 }  // namespace tflite
