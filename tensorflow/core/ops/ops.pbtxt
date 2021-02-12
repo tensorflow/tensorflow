@@ -19797,6 +19797,13 @@ op {
       s: "\t"
     }
   }
+  attr {
+    name: "offset"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
 }
 op {
   name: "InitializeTableFromTextFileV2"
@@ -19834,6 +19841,13 @@ op {
     type: "string"
     default_value {
       s: "\t"
+    }
+  }
+  attr {
+    name: "offset"
+    type: "int"
+    default_value {
+      i: 0
     }
   }
   is_stateful: true
