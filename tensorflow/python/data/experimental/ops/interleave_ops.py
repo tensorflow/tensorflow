@@ -111,17 +111,11 @@ class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
     first_output_types = dataset_ops.get_legacy_output_types(data_inputs[0])
     first_output_classes = dataset_ops.get_legacy_output_classes(data_inputs[0])
 
-    for i, data_input in enumerate(data_inputs[1:]):
+    for data_input in data_inputs[1:]:
       if (dataset_ops.get_legacy_output_types(data_input) != first_output_types
           or dataset_ops.get_legacy_output_classes(data_input)
           != first_output_classes):
-        raise TypeError(f"All datasets must have the same type and class.\n"
-                        f"dataset 0 types vs dataset {i+1} types: %s; %s\n"
-                        f"dataset 0 classes vs dataset {i+1} classes: %s; %s" %
-                        (first_output_types,
-                         dataset_ops.get_legacy_output_types(data_input),
-                         first_output_classes,
-                         dataset_ops.get_legacy_output_classes(data_input)))
+        raise TypeError("All datasets must have the same type and class.")
 
     output_shapes = dataset_ops.get_legacy_output_shapes(self._data_inputs[0])
     for data_input in self._data_inputs[1:]:
