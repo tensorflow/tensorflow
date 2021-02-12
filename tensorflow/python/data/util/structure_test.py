@@ -96,6 +96,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       else:
         self.assertEqual(actual.as_list(), expected)
 
+  @combinations.generate(test_base.graph_only_combinations())
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0), lambda: [
           constant_op.constant(38.0),
@@ -164,7 +165,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
                   indices=[[0], [1], [2]], values=[4, 5, 6], dense_shape=[3])
       }, (constant_op.constant(15.0), constant_op.constant([4, 5, 6]))]),
   )
-  @combinations.generate(test_base.graph_only_combinations())
   def testIsCompatibleWithStructure(self, original_value_fn,
                                     compatible_values_fn,
                                     incompatible_values_fn):
