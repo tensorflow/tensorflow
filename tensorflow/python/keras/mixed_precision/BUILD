@@ -289,7 +289,10 @@ cuda_py_test(
     srcs = ["layer_correctness_test.py"],
     python_version = "PY3",
     shard_count = 10,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_tfrt",  # TODO(b/179863362)
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/compat:v2_compat",

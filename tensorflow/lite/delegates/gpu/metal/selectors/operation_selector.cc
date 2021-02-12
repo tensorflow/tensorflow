@@ -31,11 +31,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 
 namespace tflite {
 namespace gpu {
@@ -105,8 +105,8 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   conv.input_ids = {-1};
   conv.output_ids = {-2};
   auto gpu_op =
-      CreateConvolutionWino4x4To6x6(conv_def, shape_1, attr, gpu_info);
-  conv.operation = absl::make_unique<ConvolutionGeneric>(std::move(gpu_op));
+      CreateConvolutionMetalWino4x4To6x6(conv_def, shape_1, attr, gpu_info);
+  conv.operation = absl::make_unique<ConvolutionMetal>(std::move(gpu_op));
   OperationDef winograd_down_def;
   winograd_down_def.precision = op_def.precision;
   winograd_down_def.src_tensors.push_back(op_def.src_tensors[0]);
@@ -181,8 +181,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         return absl::OkStatus();
       } else {
         auto conv_op =
-            CreateConvolutionGeneric(op_def, output_shape, attr, gpu_info);
-        *gpu_op = absl::make_unique<ConvolutionGeneric>(std::move(conv_op));
+            CreateConvolutionMetal(op_def, output_shape, attr, gpu_info);
+        *gpu_op = absl::make_unique<ConvolutionMetal>(std::move(conv_op));
       }
       break;
     }

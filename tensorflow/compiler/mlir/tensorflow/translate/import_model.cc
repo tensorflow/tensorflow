@@ -146,7 +146,8 @@ void LoadImporterDialects(mlir::MLIRContext& context) {
   // Load dialects involved in the conversion
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
-  registry.loadAll(&context);
+  context.appendDialectRegistry(registry);
+  context.loadAllAvailableDialects();
 }
 
 // This class is used to generate new MLIR function name strings that are both

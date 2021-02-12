@@ -233,6 +233,7 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
       CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
   grpc::ChannelArguments args;
   args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
+  args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
   auto channel = grpc::CreateCustomChannel(address_, credentials, args);
   stub_ = DispatcherService::NewStub(channel);
   return Status::OK();

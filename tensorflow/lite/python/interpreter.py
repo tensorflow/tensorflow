@@ -817,7 +817,7 @@ class InterpreterWithCustomOps(Interpreter):
     Raises:
       ValueError: If the interpreter was unable to create.
     """
-    self._custom_op_registerers = custom_op_registerers
+    self._custom_op_registerers = custom_op_registerers or []
     super(InterpreterWithCustomOps, self).__init__(
         model_path=model_path,
         model_content=model_content,

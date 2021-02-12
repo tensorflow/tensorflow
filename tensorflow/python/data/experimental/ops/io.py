@@ -25,6 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -98,8 +99,8 @@ def save(dataset, path, compression=None, shard_func=None):
 
   coder = nested_structure_coder.StructureCoder()
   encoded = coder.encode_structure(dataset.element_spec)
-  os.makedirs(path, exist_ok=True)
-  with open(os.path.join(path, DATASET_SPEC_FILENAME), "wb") as f:
+  gfile.MakeDirs(path)
+  with gfile.GFile(os.path.join(path, DATASET_SPEC_FILENAME), "wb") as f:
     f.write(encoded.SerializeToString())
 
   path = ops.convert_to_tensor(path, dtype=dtypes.string, name="path")
@@ -131,7 +132,7 @@ class _LoadDataset(dataset_ops.DatasetSource):
 
     self._path = path
     if element_spec is None:
-      with open(os.path.join(path, DATASET_SPEC_FILENAME), "rb") as f:
+      with gfile.GFile(os.path.join(path, DATASET_SPEC_FILENAME), "rb") as f:
         encoded_spec = f.read()
       struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
       struct_pb.ParseFromString(encoded_spec)

@@ -8389,7 +8389,7 @@ def TF_MinimumOp : TF_Op<"Minimum", [NoSideEffect, ResultsBroadcastableShape, TF
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_MirrorPadOp : TF_Op<"MirrorPad", [NoSideEffect]> {
+def TF_MirrorPadOp : TF_Op<"MirrorPad", [NoSideEffect, TF_OperandHasRank<1, 2>]> {
   let summary = "Pads a tensor with mirrored values.";
 
   let description = [{
@@ -8436,7 +8436,7 @@ rows must be the same as the rank of `input`.}]>:$paddings,
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_MirrorPadGradOp : TF_Op<"MirrorPadGrad", [NoSideEffect]> {
+def TF_MirrorPadGradOp : TF_Op<"MirrorPadGrad", [NoSideEffect, TF_OperandHasRank<1, 2>]> {
   let summary = [{
 Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor.
   }];
@@ -9315,7 +9315,7 @@ This is the opposite of `unpack`.
   let hasFolder = 1;
 }
 
-def TF_PadOp : TF_Op<"Pad", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
+def TF_PadOp : TF_Op<"Pad", [NoSideEffect, TF_FoldOperandsTransposeInterface, TF_OperandHasRank<1, 2>]> {
   let summary = "Pads a tensor with zeros.";
 
   let description = [{
@@ -9363,7 +9363,7 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
   }];
 }
 
-def TF_PadV2Op : TF_Op<"PadV2", [NoSideEffect]> {
+def TF_PadV2Op : TF_Op<"PadV2", [NoSideEffect, TF_OperandHasRank<1, 2>]> {
   let summary = "Pads a tensor.";
 
   let description = [{
@@ -12714,6 +12714,47 @@ is the corresponding input gradient.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SaveSlicesOp : TF_Op<"SaveSlices", []> {
+  let summary = "Saves input tensors slices to disk.";
+
+  let description = [{
+This is like `Save` except that tensors can be listed in the saved file as being
+a slice of a larger tensor.  `shapes_and_slices` specifies the shape of the
+larger tensor and the slice that this tensor covers. `shapes_and_slices` must
+have as many elements as `tensor_names`.
+
+Elements of the `shapes_and_slices` input must either be:
+
+*  The empty string, in which case the corresponding tensor is
+   saved normally.
+*  A string of the form `dim0 dim1 ... dimN-1 slice-spec` where the
+   `dimI` are the dimensions of the larger tensor and `slice-spec`
+   specifies what part is covered by the tensor to save.
+
+`slice-spec` itself is a `:`-separated list: `slice0:slice1:...:sliceN-1`
+where each `sliceI` is either:
+
+*  The string `-` meaning that the slice covers all indices of this dimension
+*  `start,length` where `start` and `length` are integers.  In that
+   case the slice covers `length` indices starting at `start`.
+
+See also `Save`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element. The name of the file to which we write the
+tensor.}]>:$filename,
+    Arg<TF_StrTensor, [{Shape `[N]`. The names of the tensors to be saved.}]>:$tensor_names,
+    Arg<TF_StrTensor, [{Shape `[N]`.  The shapes and slice specifications to use when
+saving the tensors.}]>:$shapes_and_slices,
+    Arg<Variadic<TF_Tensor>, [{`N` tensors to save.}]>:$data
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<3>;
 }
 
 def TF_SaveV2Op : TF_Op<"SaveV2", []> {

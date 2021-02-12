@@ -23,8 +23,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/selectors:fully_connected_selector",
         "//tensorflow/lite/delegates/gpu/common/selectors:simple_selectors",
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
         "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization",
-        "//tensorflow/lite/delegates/gpu/metal/kernels",
     ],
 )
