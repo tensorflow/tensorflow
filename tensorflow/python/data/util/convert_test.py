@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import combinations
@@ -28,7 +30,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class ConvertTest(test.TestCase):
+class ConvertTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testInteger(self):
     resp = convert.optional_param_to_tensor("foo", 3)

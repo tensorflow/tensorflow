@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import traverse
 from tensorflow.python.data.kernel_tests import test_base
@@ -40,7 +42,7 @@ class _TestDataset(dataset_ops.UnaryUnchangedStructureDataset):
     super(_TestDataset, self).__init__(input_dataset, variant_tensor)
 
 
-class TraverseTest(test.TestCase):
+class TraverseTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.graph_only_combinations())
   def testOnlySource(self):

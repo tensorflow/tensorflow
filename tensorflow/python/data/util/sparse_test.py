@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.data.kernel_tests import test_base
@@ -30,7 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
 
 
-class SparseTest(test.TestCase):
+class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testAnySparse(self):
     test_cases = (
