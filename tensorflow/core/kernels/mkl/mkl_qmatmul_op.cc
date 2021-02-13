@@ -531,56 +531,63 @@ class MklDnnQuantizedMatMulReluOp
   }
 };
 
-#define REGISTER_MKL_KERNEL(op, kernel, bias_type, output_type, is_native) \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name(op)                                                             \
-          .Device(DEVICE_CPU)                                              \
-          .TypeConstraint<quint8>("T1")                                    \
-          .TypeConstraint<qint8>("T2") BIAS_TYPE_CONSTRAINT(bias_type)     \
-          .TypeConstraint<output_type>("Toutput") LABEL,                   \
-      kernel<CPUDevice, quint8, qint8, bias_type, output_type, is_native>);
+#define REGISTER_MKL_KERNEL(op, kernel, bias_type, output_type, is_native)   \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name(op)                                                               \
+          .Device(DEVICE_CPU)                                                \
+          .TypeConstraint<quint8>("T1")                                      \
+          .TypeConstraint<qint8>("T2") BIAS_TYPE_CONSTRAINT(bias_type)       \
+          .TypeConstraint<output_type>("Toutput") LABEL,                     \
+      kernel TEMPLATE_ARGS(CPUDevice, quint8, qint8, bias_type, output_type, \
+                           is_native));
 
 #define REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(op, kernel, output_type, is_native) \
   REGISTER_MKL_KERNEL(op, kernel, float, output_type, is_native)               \
   REGISTER_MKL_KERNEL(op, kernel, qint32, output_type, is_native);
 
 #define LABEL
+#define TEMPLATE_ARGS(CPUDevice, quint8, qint8, bias_type, output_type, \
+                      is_native)
 #define BIAS_TYPE_CONSTRAINT(bias_type)
-REGISTER_MKL_KERNEL("QuantizedMatMulWithBiasAndRelu",
+REGISTER_MKL_KERNEL("QuantizedMatMulWithBiasAndRelu", NoOp, float, qint32,
+                    false);
+#undef BIAS_TYPE_CONSTRAINT
+
+#define BIAS_TYPE_CONSTRAINT(bias_type) .TypeConstraint<bias_type>("Tbias")
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("QuantizedMatMulWithBias", NoOp, qint32,
+                                   false);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
+    "QuantizedMatMulWithBiasAndReluAndRequantize", NoOp, quint8, false);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("QuantizedMatMulWithBiasAndRequantize", NoOp,
+                                   quint8, false);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("QuantizedMatMulWithBiasAndDequantize", NoOp,
+                                   float, false);
+#undef BIAS_TYPE_CONSTRAINT
+#undef TEMPLATE_ARGS
+#undef LABEL
+
+#define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
+#define TEMPLATE_ARGS(CPUDevice, quint8, qint8, bias_type, output_type, \
+                      is_native)                                        \
+<CPUDevice, quint8, qint8, bias_type, output_type, is_native>
+#define BIAS_TYPE_CONSTRAINT(bias_type)
+REGISTER_MKL_KERNEL("_MklQuantizedMatMulWithBiasAndRelu",
                     MklDnnQuantizedMatMulReluOp, float, qint32, true);
 #undef BIAS_TYPE_CONSTRAINT
 
 #define BIAS_TYPE_CONSTRAINT(bias_type) .TypeConstraint<bias_type>("Tbias")
-REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("QuantizedMatMulWithBias",
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBias",
                                    MklDnnQuantizedMatMulOp, qint32, true);
 REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
-    "QuantizedMatMulWithBiasAndReluAndRequantize", MklDnnQuantizedMatMulReluOp,
-    quint8, true);
-REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("QuantizedMatMulWithBiasAndRequantize",
-                                   MklDnnQuantizedMatMulOp, quint8, true);
-REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("QuantizedMatMulWithBiasAndDequantize",
-                                   MklDnnQuantizedMatMulOp, float, true);
-#undef LABEL
-#undef BIAS_TYPE_CONSTRAINT
-
-#define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
-#define BIAS_TYPE_CONSTRAINT(bias_type)
-REGISTER_MKL_KERNEL("_MklQuantizedMatMulWithBiasAndRelu",
-                    MklDnnQuantizedMatMulReluOp, float, qint32, false);
-#undef BIAS_TYPE_CONSTRAINT
-
-#define BIAS_TYPE_CONSTRAINT(bias_type) .TypeConstraint<bias_type>("Tbias")
-REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBias",
-                                   MklDnnQuantizedMatMulOp, qint32, false);
-REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
     "_MklQuantizedMatMulWithBiasAndReluAndRequantize",
-    MklDnnQuantizedMatMulReluOp, quint8, false);
+    MklDnnQuantizedMatMulReluOp, quint8, true);
 REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBiasAndRequantize",
-                                   MklDnnQuantizedMatMulOp, quint8, false);
+                                   MklDnnQuantizedMatMulOp, quint8, true);
 REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBiasAndDequantize",
-                                   MklDnnQuantizedMatMulOp, float, false);
-#undef LABEL
+                                   MklDnnQuantizedMatMulOp, float, true);
 #undef BIAS_TYPE_CONSTRAINT
+#undef TEMPLATE_ARGS
+#undef LABEL
 
 }  // namespace tensorflow
 
