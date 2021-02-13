@@ -354,21 +354,9 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklAvgPoolingOp<CPUDevice, quint8>);
-
-REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<qint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklAvgPoolingOp<CPUDevice, qint8>);
-
-REGISTER_KERNEL_BUILDER(Name("_MklNativeQuantizedAvgPool")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
                         MklAvgPoolingOp<CPUDevice, quint8, true>);
 
-REGISTER_KERNEL_BUILDER(Name("_MklNativeQuantizedAvgPool")
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),

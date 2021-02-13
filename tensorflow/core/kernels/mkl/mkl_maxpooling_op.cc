@@ -414,21 +414,9 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklMaxPoolingOp<CPUDevice, quint8>);
-
-REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<qint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklMaxPoolingOp<CPUDevice, qint8>);
-
-REGISTER_KERNEL_BUILDER(Name("_MklNativeQuantizedMaxPool")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
                         MklMaxPoolingOp<CPUDevice, quint8, true>);
 
-REGISTER_KERNEL_BUILDER(Name("_MklNativeQuantizedMaxPool")
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),

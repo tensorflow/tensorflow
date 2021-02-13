@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/mkl_graph_util.h"
-#include "tensorflow/core/kernels/mkl/mkl_kernel_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
@@ -33,36 +31,21 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Helper class for converting MKL tensors to TF tensors and comparing to
-// expected values
-
-static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const TensorShape dummy_shape({8});
-
 class QuantizedPoolingTest : public OpsTestBase {};
 
 TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
   const int ksize = 2;
   const int stride = 2;
-  NodeDefBuilder builder =
-      NodeDefBuilder("quantized_avg_pool_op", NativeFormatEnabled()
-                                                  ? "_MklNativeQuantizedAvgPool"
-                                                  : "_MklQuantizedAvgPool")
-          .Input(FakeInput(DT_QUINT8))
-          .Input(FakeInput(DT_FLOAT))
-          .Input(FakeInput(DT_FLOAT))
-          .Attr("T", DataTypeToEnum<quint8>::v())
-          .Attr("ksize", {1, ksize, ksize, 1})
-          .Attr("strides", {1, stride, stride, 1})
-          .Attr("padding", "SAME")
-          .Attr("_kernel", "QuantizedMklOp");
-  if (!NativeFormatEnabled()) {
-    // Add MKL metadata tensors
-    builder.Input(FakeInput(DT_UINT8))
-        .Input(FakeInput(DT_UINT8))
-        .Input(FakeInput(DT_UINT8));
-  }
-  TF_ASSERT_OK(builder.Finalize(node_def()));
+  TF_ASSERT_OK(NodeDefBuilder("quantized_avg_pool_op", "_MklQuantizedAvgPool")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("ksize", {1, ksize, ksize, 1})
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "SAME")
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   const float input_min = 0.0f;
   const float input_max = 255.0f;
@@ -95,46 +78,31 @@ TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
                             input_quantized.flat<quint8>());
   AddInputFromArray<float>(TensorShape({1}), {input_min});
   AddInputFromArray<float>(TensorShape({1}), {input_max});
-  if (!NativeFormatEnabled()) {
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  }
 
   TF_ASSERT_OK(RunOpKernel());
 
   const Tensor& output = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  const Tensor* mkl_shape_tensor_ptr =
-      NativeFormatEnabled() ? nullptr : GetOutput(3);
-  Tensor output_float = QuantizedToFloatTFFormat<quint8>(
-      DT_QUINT8, output, mkl_shape_tensor_ptr, output_min, output_max);
+  Tensor output_float =
+      QuantizedTensorToFloat<quint8>(output, output_min, output_max);
+
   test::ExpectTensorNear<float>(expected_float, output_float, 0.2);
 }
 
 TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
   const int ksize = 2;
   const int stride = 2;
-  NodeDefBuilder builder =
-      NodeDefBuilder("quantized_max_pool_op", NativeFormatEnabled()
-                                                  ? "_MklNativeQuantizedMaxPool"
-                                                  : "_MklQuantizedMaxPool")
-          .Input(FakeInput(DT_QUINT8))
-          .Input(FakeInput(DT_FLOAT))
-          .Input(FakeInput(DT_FLOAT))
-          .Attr("T", DataTypeToEnum<quint8>::v())
-          .Attr("ksize", {1, ksize, ksize, 1})
-          .Attr("strides", {1, stride, stride, 1})
-          .Attr("padding", "SAME")
-          .Attr("_kernel", "QuantizedMklOp");
-  if (!NativeFormatEnabled()) {
-    // Add MKL metadata tensors
-    builder.Input(FakeInput(DT_UINT8))
-        .Input(FakeInput(DT_UINT8))
-        .Input(FakeInput(DT_UINT8));
-  }
-  TF_ASSERT_OK(builder.Finalize(node_def()));
+  TF_ASSERT_OK(NodeDefBuilder("quantized_max_pool_op", "_MklQuantizedMaxPool")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("ksize", {1, ksize, ksize, 1})
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "SAME")
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   const float input_min = 0.0f;
   const float input_max = 255.0f;
@@ -166,21 +134,15 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
                             input_quantized.flat<quint8>());
   AddInputFromArray<float>(TensorShape({1}), {input_min});
   AddInputFromArray<float>(TensorShape({1}), {input_max});
-  if (!NativeFormatEnabled()) {
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  }
 
   TF_ASSERT_OK(RunOpKernel());
 
   const Tensor& output = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  const Tensor* mkl_shape_tensor_ptr =
-      NativeFormatEnabled() ? nullptr : GetOutput(3);
-  Tensor output_float = QuantizedToFloatTFFormat<quint8>(
-      DT_QUINT8, output, mkl_shape_tensor_ptr, output_min, output_max);
+  Tensor output_float =
+      QuantizedTensorToFloat<quint8>(output, output_min, output_max);
+
   test::ExpectTensorNear<float>(expected_float, output_float, 0.2);
 }
 }  // namespace tensorflow
