@@ -1278,6 +1278,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                 absl::StrCat(kResultsSuffix, "[", i, "][", j, "]"),
                 &result->return_values.back()));
           }
+          RecordBufferEnqueue(ctx, result->return_values);
           element->results[i] = std::move(result);
         }
         if (!reader->Contains(iterator_name,
@@ -1317,7 +1318,20 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         mutex_lock l(*mu_);
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(prefix(), kCurrentElementsSize, &size));
-        DCHECK_EQ(current_elements_.size(), size);
+        if (current_elements_.size() != size) {
+          // This could mean two things: (1) the user created their checkpoint
+          // from a dataset with one cycle_length, then changed the cycle_length
+          // and tried to restore from the old checkpoint, or (2) the user set
+          // the cycle length to tf.data.AUTOTUNE, wrote the checkpoint from one
+          // machine, then tried to restore the checkpoint on another machine
+          // with a different CPU budget (causing autotune to pick a different
+          // cycle length).
+          return errors::FailedPrecondition(
+              "The iterator cycle length ", current_elements_.size(),
+              " is different from the cycle length to restore from the "
+              "checkpoint: ",
+              size);
+        }
       }
       if (size == 0) {
         return Status::OK();
@@ -1326,6 +1340,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           ReadElementsParallel(ctx, reader, size, kCurrentElements, &elements));
       mutex_lock l(*mu_);
+      for (auto& element : current_elements_) {
+        DCHECK(element == nullptr);
+      }
       for (int idx = 0; idx < size; ++idx) {
         current_elements_[idx] = std::move(elements[idx]);
       }
@@ -1348,6 +1365,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           ReadElementsParallel(ctx, reader, size, kFutureElements, &elements));
       mutex_lock l(*mu_);
+      for (auto& element : future_elements_) {
+        DCHECK(element == nullptr);
+      }
       for (int idx = 0; idx < size; ++idx) {
         future_elements_[idx] = std::move(elements[idx]);
       }

@@ -18,6 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +28,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
@@ -35,15 +39,21 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
 
-class InterpreterTest;
-class TestDelegate;
+class InterpreterTest;  // Class for friend declarations.
+
 namespace delegates {
 class InterpreterUtils;  // Class for friend declarations.
+
+namespace test_utils {
+class TestDelegate;  // Class for friend declarations.
+}  // namespace test_utils
 }  // namespace delegates
 
 /// An interpreter for a graph of nodes that input and output from tensors.
@@ -464,10 +474,11 @@ class Interpreter {
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// 'delegate' must outlive the interpreter.
-  /// Returns one of the following three status codes:
+  /// Returns one of the following four status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
-  /// delegate. The Interpreter has been restored to its pre-delegation state.
+  /// delegate, or the delegate parameter was null. The Interpreter has been
+  /// restored to its pre-delegation state.
   /// NOTE: This undoes all delegates previously applied to the Interpreter.
   /// 3. kTfLiteApplicationError : Delegation failed to be applied due to the
   /// incompatibility with the TfLite runtime, e.g., the model graph is already
@@ -662,8 +673,8 @@ class Interpreter {
   };
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
-  friend class tflite::TestDelegate;
   friend class tflite::delegates::InterpreterUtils;
+  friend class tflite::delegates::test_utils::TestDelegate;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,

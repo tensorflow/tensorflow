@@ -220,7 +220,11 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
         return errors::InvalidArgument(
             "Run-time shape mismatch for TPUExecute argument[", i, "] (",
             context->op_kernel().requested_input(i), "). Expected ",
-            expected.DebugString(), "; got empty tensor");
+            expected.DebugString(),
+            "; got empty tensor. If you are running "
+            "with TF2 TPU, make sure you set `drop_remainder=False` when "
+            "calling `dataset.batch` on the `tf.data.Dataset` so dynamic batch "
+            "size can be handled");
       }
     } else {
       // Compare host shapes, easier than getting the expected device shape.
@@ -435,16 +439,14 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
   auto output_buffers =
       absl::make_unique<OutputBuffers>(std::move(scoped_buffers), allocator);
 
-  xla::Shape output_host_shape = output_buffers->buffers.on_host_shape();
   xla::Shape output_device_shape = output_buffers->buffers.on_device_shape();
 
-  if (!output_host_shape.is_static()) {
+  if (!output_device_shape.is_static()) {
     TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
-        stream, &output_buffers->buffers, &output_host_shape,
-        &output_device_shape));
+        stream, &output_buffers->buffers, &output_device_shape));
     for (int64 i = 0; i < sub_elements; ++i) {
       const xla::Shape& subshape =
-          xla::ShapeUtil::GetSubshape(output_host_shape, {i});
+          xla::ShapeUtil::GetSubshape(output_device_shape, {i});
       TensorShape shape;
       TF_RETURN_IF_ERROR(XLAShapeToTensorShape(subshape, &shape));
       output_tensor_shapes[i] = shape;
@@ -454,8 +456,6 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
   // Transfers ownership of the buffers that back XLA computation output 'i'
   // to 'output_tensor'.
   auto transfer_buffers = [&](int i, Tensor* output_tensor) {
-    const xla::Shape& host_shape =
-        xla::ShapeUtil::GetTupleElementShape(output_host_shape, i);
     const xla::Shape& device_shape =
         xla::ShapeUtil::GetTupleElementShape(output_device_shape, i);
 
@@ -464,7 +464,7 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
     // backing XlaTensor, so we let retain 'output_buffers' ownership of any
     // buffers in that case.
     if (output_tensor->NumElements() > 0) {
-      xla::ScopedShapedBuffer shaped_buffer(host_shape, device_shape, allocator,
+      xla::ScopedShapedBuffer shaped_buffer(device_shape, allocator,
                                             device_ordinal);
       shaped_buffer.buffers().ForEachMutableElement(
           [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {

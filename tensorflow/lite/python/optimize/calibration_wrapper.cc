@@ -79,6 +79,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_INT8;
     case kTfLiteInt64:
       return TensorType_INT64;
+    case kTfLiteUInt64:
+      return TensorType_UINT64;
     case kTfLiteString:
       return TensorType_STRING;
     case kTfLiteBool:
@@ -89,6 +91,10 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_COMPLEX64;
     case kTfLiteComplex128:
       return TensorType_COMPLEX128;
+    case kTfLiteResource:
+      return TensorType_RESOURCE;
+    case kTfLiteVariant:
+      return TensorType_VARIANT;
   }
   // No default to get compiler error when new type is introduced.
 }

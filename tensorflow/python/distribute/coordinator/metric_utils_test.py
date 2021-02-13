@@ -58,7 +58,7 @@ class MetricUtilsTest(test.TestCase):
     result = cluster.schedule(func, args=None, kwargs=None)
     result = cluster.schedule(func, args=None, kwargs=None)
     cluster.join()
-    self.assertEqual(result._get_value().numpy(), 3)
+    self.assertEqual(result.fetch(), 3)
 
     # Tracing, closure execution, and remote_value fetching should be executed
     # exactly once for running this function.

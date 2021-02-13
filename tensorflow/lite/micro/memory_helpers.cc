@@ -48,8 +48,14 @@ size_t AlignSizeUp(size_t size, size_t alignment) {
 
 TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size) {
   switch (type) {
+    case kTfLiteFloat16:
+      *size = sizeof(int16_t);
+      break;
     case kTfLiteFloat32:
       *size = sizeof(float);
+      break;
+    case kTfLiteFloat64:
+      *size = sizeof(double);
       break;
     case kTfLiteInt16:
       *size = sizeof(int16_t);
@@ -65,6 +71,9 @@ TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size) {
       break;
     case kTfLiteInt64:
       *size = sizeof(int64_t);
+      break;
+    case kTfLiteUInt64:
+      *size = sizeof(uint64_t);
       break;
     case kTfLiteBool:
       *size = sizeof(bool);

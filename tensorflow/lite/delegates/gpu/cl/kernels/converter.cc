@@ -22,13 +22,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_errors.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -54,7 +54,7 @@ class OpenClConverterImpl : public TensorObjectConverter {
     const int3 grid = int3(tensor->Width() * tensor->Batch(), tensor->Height(),
                            tensor->Slices());
     std::vector<int3> work_groups;
-    GetPossibleWorkGroupsConv(TuningType::FAST, gpu_info_, kernel_.info_, grid,
+    GetPossibleWorkGroupsConv(TuningType::kFast, gpu_info_, kernel_.info_, grid,
                               &work_groups);
     const int3 work_group_size = work_groups[0];
     const int3 work_groups_count = GetWorkGroupsCount(grid, work_group_size);

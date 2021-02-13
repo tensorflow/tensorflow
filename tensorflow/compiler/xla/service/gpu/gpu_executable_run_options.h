@@ -21,21 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
-#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/int_type.h"
 
 namespace xla {
-
-// Strongly-typed integer type for naming a device globally within a distributed
-// system. XLA doesn't have a strong opinion about what global numbering scheme
-// is applied to GPUs; the user must provide a local -> global mapping via
-// GpuExecutableRunOptions for the local GPUs.
-TF_LIB_GTL_DEFINE_INT_TYPE(GlobalDeviceId, int64);
-
-// Returns a comma-separated string of global device IDs.
-std::string GlobalDeviceIdsToString(absl::Span<GlobalDeviceId const> ids);
+namespace gpu {
 
 // Key for naming up a particular NCCL clique.  This is just a set of unique
 // device IDs (i.e. GPU IDs). The device IDs must be global within a cluster.
@@ -52,6 +43,8 @@ class NcclCliqueKey {
   }
 
   const std::vector<GlobalDeviceId>& devices() const { return devices_; }
+
+  std::string ToString() const;
 
  private:
   std::vector<GlobalDeviceId> devices_;
@@ -85,6 +78,7 @@ class GpuExecutableRunOptions {
   NcclUniqueIdCallback nccl_unique_id_callback_;
 };
 
+}  // namespace gpu
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_

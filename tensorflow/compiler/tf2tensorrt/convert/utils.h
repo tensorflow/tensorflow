@@ -20,9 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
@@ -51,7 +54,7 @@ using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
 
 enum class TrtPrecisionMode { FP32, FP16, INT8 };
 
-Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name);
+Status TrtPrecisionModeToName(const TrtPrecisionMode mode, string* name);
 
 Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode);
 
@@ -65,6 +68,9 @@ struct VectorTensorShapeHasher {
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
+using absl::StrAppend;
+using absl::StrCat;
+
 #define IS_TRT_VERSION_GE(major, minor, patch, build)           \
   ((NV_TENSORRT_MAJOR > major) ||                               \
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
@@ -73,9 +79,32 @@ struct VectorTensorShapeHasher {
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
     NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
 
+// This utility template converts an arithmetic type to a string. This function
+// is necessary to allow the following function to behave recursively:
+// `string DebugString(const std::vector<CType>&)`.
+template <typename CType, typename = typename std::enable_if<
+                              std::is_arithmetic<CType>::value, CType>::type>
+string DebugString(const CType& el) {
+  string el_str = std::to_string(el);
+  // Prettify std::to_string which can sometimes returns 1.50000 instead of 1.5.
+  // In short it removes trailing 0s in a string-formatted number.
+  el_str.erase(el_str.find_last_not_of('0') + 1, std::string::npos);
+  return el_str;
+}
+// This utility template converts nested vectors to a string for debug purposes.
+template <typename CType>
+string DebugString(const std::vector<CType>& vector) {
+  string tmp_s = "";
+  for (const auto el : vector) {
+    StrAppend(&tmp_s, StrCat(DebugString(el), ", "));
+  }
+  return StrCat("{", tmp_s.substr(0, tmp_s.length() - 2), "}");
+}
 string DebugString(const nvinfer1::DimensionType type);
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::DataType trt_dtype);
+string DebugString(const TrtPrecisionMode mode);
+string DebugString(const DataType tf_type);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
 string DebugString(const std::vector<nvinfer1::Dims>& dimvec);
@@ -94,6 +123,20 @@ inline bool HasStaticShape(std::vector<int> dims) {
   return !absl::c_any_of(dims, [](int i) { return i < 0; });
 }
 
+// Returns whether a shape is compatible with a TRT shape tensor.
+template <typename TensorShapeType>
+inline bool IsTrtShapeTensorCompatible(const TensorShapeType& shape) {
+  return (
+      shape.dims() == 0 ||
+      (shape.dims() == 1 && shape.num_elements() <= nvinfer1::Dims::MAX_DIMS));
+}
+
+// Returns whether a TF tensor could be interpreted as a TRT shape tensor.
+inline bool IsTrtShapeTensorCompatible(const Tensor& tensor) {
+  return tensor.dtype() == DT_INT32 &&
+         IsTrtShapeTensorCompatible(tensor.shape());
+}
+
 template <typename TensorShapeType>
 inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
                                            bool ignore_first_dim) {
@@ -106,13 +149,24 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   return trt_dims;
 }
 
-Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
-                            bool use_implicit_batch, int batch_size,
-                            TensorShape& shape);
+Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,
+                             std::vector<PartialTensorShape>* input_shapes);
 
+Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                            TensorShape* shape,
+                            absl::optional<int> batch_size = absl::nullopt);
+
+template <typename TensorShapeType>
 Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
-                            bool use_implicit_batch, int batch_size,
-                            TensorShape& shape);
+                            TensorShapeType* shape,
+                            absl::optional<int> batch_size = absl::nullopt) {
+  TF_RETURN_IF_ERROR(
+      TensorShapeUtils::MakeShape(trt_dims.d, trt_dims.nbDims, shape));
+  if (batch_size) {
+    shape->InsertDim(0, batch_size.value());
+  }
+  return Status::OK();
+}
 
 Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type);
 Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type);

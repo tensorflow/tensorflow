@@ -1643,7 +1643,8 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
     self._testBrightness(x_np, y_np, delta=-10. / 255.)
 
 
-class PerImageWhiteningTest(test_util.TensorFlowTestCase):
+class PerImageWhiteningTest(test_util.TensorFlowTestCase,
+                            parameterized.TestCase):
 
   def _NumpyPerImageWhitening(self, x):
     num_pixels = np.prod(x.shape)
@@ -1656,13 +1657,19 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
     y /= stddev
     return y
 
-  def testBasic(self):
+  @parameterized.named_parameters([("_int8", np.int8), ("_int16", np.int16),
+                                   ("_int32", np.int32), ("_int64", np.int64),
+                                   ("_uint8", np.uint8), ("_uint16", np.uint16),
+                                   ("_uint32", np.uint32),
+                                   ("_uint64", np.uint64),
+                                   ("_float32", np.float32)])
+  def testBasic(self, data_type):
     x_shape = [13, 9, 3]
-    x_np = np.arange(0, np.prod(x_shape), dtype=np.float32).reshape(x_shape)
+    x_np = np.arange(0, np.prod(x_shape), dtype=data_type).reshape(x_shape)
     y_np = self._NumpyPerImageWhitening(x_np)
 
     with self.cached_session(use_gpu=True):
-      x = constant_op.constant(x_np, shape=x_shape)
+      x = constant_op.constant(x_np, dtype=data_type, shape=x_shape)
       y = image_ops.per_image_standardization(x)
       y_tf = self.evaluate(y)
       self.assertAllClose(y_tf, y_np, atol=1e-4)
@@ -1684,17 +1691,6 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
       whiten_tf = self.evaluate(whiten)
       for w_tf, w_np in zip(whiten_tf, whiten_np):
         self.assertAllClose(w_tf, w_np, atol=1e-4)
-
-  def testPreservesDtype(self):
-    imgs_npu8 = np.random.uniform(0., 255., [2, 5, 5, 3]).astype(np.uint8)
-    imgs_tfu8 = constant_op.constant(imgs_npu8)
-    whiten_tfu8 = image_ops.per_image_standardization(imgs_tfu8)
-    self.assertEqual(whiten_tfu8.dtype, dtypes.uint8)
-
-    imgs_npf16 = np.random.uniform(0., 255., [2, 5, 5, 3]).astype(np.float16)
-    imgs_tff16 = constant_op.constant(imgs_npf16)
-    whiten_tff16 = image_ops.per_image_standardization(imgs_tff16)
-    self.assertEqual(whiten_tff16.dtype, dtypes.float16)
 
 
 class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
@@ -4537,6 +4533,26 @@ class GifTest(test_util.TensorFlowTestCase):
         image = image_ops.decode_gif(gif)
         self.assertEqual(image.get_shape().as_list(), [None, None, None, 3])
 
+  def testAnimatedGif(self):
+    # Test if all frames in the animated GIF file is properly decoded.
+    with self.cached_session(use_gpu=True):
+      base = "tensorflow/core/lib/gif/testdata"
+      gif = io_ops.read_file(os.path.join(base, "pendulum_sm.gif"))
+      gt_frame0 = io_ops.read_file(os.path.join(base, "pendulum_sm_frame0.png"))
+      gt_frame1 = io_ops.read_file(os.path.join(base, "pendulum_sm_frame1.png"))
+      gt_frame2 = io_ops.read_file(os.path.join(base, "pendulum_sm_frame2.png"))
+
+      image = image_ops.decode_gif(gif)
+      frame0 = image_ops.decode_png(gt_frame0)
+      frame1 = image_ops.decode_png(gt_frame1)
+      frame2 = image_ops.decode_png(gt_frame2)
+      image, frame0, frame1, frame2 = self.evaluate([image, frame0, frame1,
+                                                     frame2])
+      # Compare decoded gif frames with ground-truth data.
+      self.assertAllEqual(image[0], frame0)
+      self.assertAllEqual(image[1], frame1)
+      self.assertAllEqual(image[2], frame2)
+
 
 class ConvertImageTest(test_util.TensorFlowTestCase):
 
@@ -4815,6 +4831,49 @@ class FormatTest(test_util.TensorFlowTestCase):
           decode(io_ops.read_file(path)).eval()
 
 
+class CombinedNonMaxSuppressionTest(test_util.TensorFlowTestCase):
+
+  # NOTE(b/142795960): parameterized tests do not work well with tf.tensor
+  # inputs. Due to failures, creating another test `testInvalidTensorInput`
+  # which is identical to this one except that the input here is a scalar as
+  # opposed to a tensor.
+  def testInvalidPyInput(self):
+    boxes_np = [[[[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]]]
+    scores_np = [[[0.9, 0.75, 0.6, 0.95, 0.5, 0.3]]]
+    max_output_size_per_class = 5
+    max_total_size = 2**31
+    with self.assertRaisesRegex(
+        (TypeError, ValueError),
+        "type int64 that does not match expected type of int32|"
+        "Tensor conversion requested dtype int32 for Tensor with dtype int64"):
+      image_ops.combined_non_max_suppression(
+          boxes=boxes_np,
+          scores=scores_np,
+          max_output_size_per_class=max_output_size_per_class,
+          max_total_size=max_total_size)
+
+  # NOTE(b/142795960): parameterized tests do not work well with tf.tensor
+  # inputs. Due to failures, creating another this test which is identical to
+  # `testInvalidPyInput` except that the input is a tensor here as opposed
+  # to a scalar.
+  def testInvalidTensorInput(self):
+    boxes_np = [[[[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]]]
+    scores_np = [[[0.9, 0.75, 0.6, 0.95, 0.5, 0.3]]]
+    max_output_size_per_class = 5
+    max_total_size = ops.convert_to_tensor(2**31)
+    with self.assertRaisesRegex(
+        (TypeError, ValueError),
+        "type int64 that does not match expected type of int32|"
+        "Tensor conversion requested dtype int32 for Tensor with dtype int64"):
+      image_ops.combined_non_max_suppression(
+          boxes=boxes_np,
+          scores=scores_np,
+          max_output_size_per_class=max_output_size_per_class,
+          max_total_size=max_total_size)
+
+
 class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
 
   def testNonMaxSuppression(self):
@@ -4969,7 +5028,7 @@ class NonMaxSuppressionWithScoresTest(test_util.TensorFlowTestCase):
                 [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
     scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
     max_output_size_np = 6
-    iou_threshold_np = 1.0
+    iou_threshold_np = 0.5
     score_threshold_np = 0.0
     soft_nms_sigma_np = 0.5
     boxes = constant_op.constant(boxes_np)
@@ -5151,6 +5210,17 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase,
         with test_util.run_functions_eagerly(run_func_eagerly):
           self.assertAllClose(selected_indices, [0, 2, 4])
           self.assertEqual(self.evaluate(num_valid), 3)
+
+  def testInvalidDtype(self):
+    boxes_np = [[4.0, 6.0, 3.0, 6.0],
+                [2.0, 1.0, 5.0, 4.0],
+                [9.0, 0.0, 9.0, 9.0]]
+    scores = [5.0, 6.0, 5.0]
+    max_output_size = 2**31
+    with self.assertRaisesRegex(
+        (TypeError, ValueError), "type int64 that does not match type int32"):
+      boxes = constant_op.constant(boxes_np)
+      image_ops.non_max_suppression_padded(boxes, scores, max_output_size)
 
 
 class NonMaxSuppressionWithOverlapsTest(test_util.TensorFlowTestCase):

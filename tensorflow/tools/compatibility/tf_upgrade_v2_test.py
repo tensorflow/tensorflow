@@ -901,7 +901,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(
         new_text,
-        "tf.nn.dropout(x, 1 - (keep_prob), name=\"foo\")\n",
+        "tf.nn.dropout(x, rate=1 - (keep_prob), name=\"foo\")\n",
     )
 
     text = "tf.nn.dropout(x, keep_prob=.4, name=\"foo\")\n"
@@ -934,7 +934,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(
         new_text,
-        "tf.nn.dropout(x, 1 - (1 - func(3 + 4.)), name=\"foo\")\n",
+        "tf.nn.dropout(x, rate=1 - (1 - func(3 + 4.)), name=\"foo\")\n",
     )
 
   def testContribL1(self):

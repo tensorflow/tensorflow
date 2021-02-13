@@ -87,15 +87,12 @@ TEST(OpStatsToTfStats, GpuTfStats) {
   constexpr int64 kKernel5DurationNs = 10000;
 
   // Mock kernel details for both kernel4 and kernel5.
-  const std::string kKernelDetails = R"MULTI(registers_per_thread:32
-static_shared_memory_usage:0
-dynamic_shared_memory_usage:16384
-grid_x:2
-grid_y:1
-grid_z:1
-block_x:32
-block_y:1
-block_z:1)MULTI";
+  const std::string kKernelDetails = R"MULTI(regs:32
+static_shared:0
+dynamic_shared:16384
+grid:2,1,1
+block:32,1,1
+occ_pct:100)MULTI";
 
   XSpace space;
   XPlaneBuilder device_plane(

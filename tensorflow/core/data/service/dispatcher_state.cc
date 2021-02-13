@@ -45,6 +45,12 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kReleaseJobClient:
       ReleaseJobClient(update.release_job_client());
       break;
+    case Update::kCreatePendingTask:
+      CreatePendingTask(update.create_pending_task());
+      break;
+    case Update::kClientHeartbeat:
+      ClientHeartbeat(update.client_heartbeat());
+      break;
     case Update::kCreateTask:
       CreateTask(update.create_task());
       break;
@@ -74,7 +80,8 @@ void DispatcherState::RegisterWorker(
     const RegisterWorkerUpdate& register_worker) {
   std::string address = register_worker.worker_address();
   DCHECK(!workers_.contains(address));
-  workers_[address] = std::make_shared<Worker>(address);
+  workers_[address] =
+      std::make_shared<Worker>(address, register_worker.transfer_address());
   tasks_by_worker_[address] =
       absl::flat_hash_map<int64, std::shared_ptr<Task>>();
 }
@@ -86,9 +93,14 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
     named_job_key.emplace(create_job.named_job_key().name(),
                           create_job.named_job_key().index());
   }
+  absl::optional<int64> num_consumers;
+  if (create_job.optional_num_consumers_case() ==
+      CreateJobUpdate::kNumConsumers) {
+    num_consumers = create_job.num_consumers();
+  }
   auto job = std::make_shared<Job>(job_id, create_job.dataset_id(),
                                    ProcessingMode(create_job.processing_mode()),
-                                   named_job_key);
+                                   named_job_key, num_consumers);
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
@@ -135,14 +147,50 @@ void DispatcherState::ReleaseJobClient(
   jobs_for_client_ids_.erase(job_client_id);
 }
 
+void DispatcherState::CreatePendingTask(
+    const CreatePendingTaskUpdate& create_pending_task) {
+  int64 task_id = create_pending_task.task_id();
+  auto& task = tasks_[task_id];
+  DCHECK_EQ(task, nullptr);
+  auto& job = jobs_[create_pending_task.job_id()];
+  DCHECK_NE(job, nullptr);
+  task =
+      std::make_shared<Task>(task_id, job, create_pending_task.worker_address(),
+                             create_pending_task.transfer_address());
+  job->pending_tasks.emplace(task, create_pending_task.starting_round());
+  tasks_by_worker_[create_pending_task.worker_address()][task->task_id] = task;
+  next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
+}
+
+void DispatcherState::ClientHeartbeat(
+    const ClientHeartbeatUpdate& client_heartbeat) {
+  int64 job_client_id = client_heartbeat.job_client_id();
+  auto& job = jobs_for_client_ids_[job_client_id];
+  DCHECK(!job->pending_tasks.empty());
+  auto& task = job->pending_tasks.front();
+  if (client_heartbeat.has_task_rejected()) {
+    task.failures++;
+    task.ready_consumers.clear();
+    task.target_round = client_heartbeat.task_rejected().new_target_round();
+  }
+  if (client_heartbeat.task_accepted()) {
+    task.ready_consumers.insert(job_client_id);
+    if (task.ready_consumers.size() == job->num_consumers.value()) {
+      task.task->starting_round = task.target_round;
+      tasks_by_job_[job->job_id].push_back(task.task);
+      job->pending_tasks.pop();
+    }
+  }
+}
+
 void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   int64 task_id = create_task.task_id();
   auto& task = tasks_[task_id];
   DCHECK_EQ(task, nullptr);
-  task = std::make_shared<Task>(task_id, create_task.job_id(),
-                                create_task.dataset_id(),
-                                ProcessingMode(create_task.processing_mode()),
-                                create_task.worker_address());
+  auto& job = jobs_[create_task.job_id()];
+  DCHECK_NE(job, nullptr);
+  task = std::make_shared<Task>(task_id, job, create_task.worker_address(),
+                                create_task.transfer_address());
   tasks_by_job_[create_task.job_id()].push_back(task);
   tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
@@ -156,13 +204,13 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   task->finished = true;
   tasks_by_worker_[task->worker_address].erase(task->task_id);
   bool all_finished = true;
-  for (const auto& task_for_job : tasks_by_job_[task->job_id]) {
+  for (const auto& task_for_job : tasks_by_job_[task->job->job_id]) {
     if (!task_for_job->finished) {
       all_finished = false;
     }
   }
-  VLOG(3) << "Job " << task->job_id << " finished: " << all_finished;
-  jobs_[task->job_id]->finished = all_finished;
+  VLOG(3) << "Job " << task->job->job_id << " finished: " << all_finished;
+  jobs_[task->job->job_id]->finished = all_finished;
 }
 
 int64 DispatcherState::NextAvailableDatasetId() const {

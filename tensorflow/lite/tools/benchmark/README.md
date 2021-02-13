@@ -34,6 +34,12 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
+*   `run_frequency`: `float` (default=-1.0) \
+    The frequency of running a benchmark run as the number of prorated runs per
+    second. If the targeted rate per second cannot be reached, the benchmark
+    would start the next run immediately, trying its best to catch up. If set,
+    this will override the `run_delay` parameter. A non-positive value means
+    there is no delay between subsequent runs.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 *   `profiling_output_csv_file`: `str` (default="") \
@@ -45,6 +51,41 @@ and the following optional parameters:
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
     flags.
+
+### Model input parameters
+By default, the tool will use randomized data for model inputs. The following
+parameters allow users to specify customized input values to the model when
+running the benchmark tool:
+
+*   `input_layer`: `string` \
+    A comma-separated list of input layer names, e.g. 'input1,input2'. Note all
+    inputs of the model graph need to be specified. However, the input name
+    does not need to match that encoded in the model. Additionally, the order
+    of input layer names specified here is assumed to be same with that is seen
+    by the Tensorflow Lite interpreter. This is a bit inconvenient but the
+    [visualization tool](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/visualize.py)
+    should help to find this order.
+*   `input_layer_shape`: `string` \
+    A colon-separated list of input layer shapes, where each shape is a
+    comma-separated list, e.g. '1,30:1,10'. Similar to `input_layer`, this
+    parameter also requires shapes of all inputs be specified, and the order of
+    inputs be same with that is seen by the interpreter.
+*   `input_layer_value_range`: `string` \
+    A map-like string representing value range for *integer* input layers. Each
+    item is separated by ':', and the item value consists of input layer name
+    and integer-only range values (both low and high are inclusive) separated by
+    ',', e.g. 'input1,1,2:input2,0,254'. Note that the input layer name must
+    exist in the list of names specified by `input_layer`.
+*   `input_layer_value_files`: `string` \
+    A map-like string representing files that contain input values. Each
+    item is separated by ',', and the item value consists of input layer name
+    and the file path separated by ':',
+    e.g. 'input1:file_path1,input2:file_path2'. If a input name appears in both
+    `input_layer_value_range` and `input_layer_value_files`,
+    the corresponding input value range specified by`input_layer_value_range`
+    will be ignored. The file format is binary, and the content should be either
+    a byte array or null-separated strings. Note that the inpput layer name must
+    also exist in the list of names specified by `input_layer`.
 
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
@@ -75,7 +116,7 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \
     Note this requires Android 10+.
-*   `disable_nnapi_cpu`: `bool` (default=false)
+*   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
 
 #### Hexagon delegate
@@ -97,11 +138,16 @@ the reported data on hexagon is in cycles, not in ms like on cpu.
 *   `external_delegate_path`: `string` (default="")
 *   `external_delegate_options`: `string` (default="")
 
+As some delegates are only available on certain platforms, when running the
+benchmark tool on a particular platform, specifying `--help` will print out all
+supported parameters.
+
 ## To build/install/run
 
 ### On Android:
 
-(0) Refer to https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android to edit the `WORKSPACE` to configure the android NDK/SDK.
+(0) Refer to https://www.tensorflow.org/lite/guide/build_android to edit the
+`WORKSPACE` to configure the android NDK/SDK.
 
 (1) Build for your specific platform, e.g.:
 

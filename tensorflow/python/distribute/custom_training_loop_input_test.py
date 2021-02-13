@@ -27,6 +27,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -991,4 +992,4 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
 
 if __name__ == "__main__":
-  test.main()
+  test_util.main()

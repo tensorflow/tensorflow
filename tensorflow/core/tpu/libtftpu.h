@@ -41,7 +41,8 @@ limitations under the License.
 extern "C" {
 #endif
 
-TFTPU_CAPI_EXPORT void TfTpu_Initialize(bool init_library);
+TFTPU_CAPI_EXPORT void TfTpu_Initialize(bool init_library, int num_args,
+                                        const char** args);
 
 #ifdef __cplusplus
 }

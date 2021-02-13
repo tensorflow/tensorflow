@@ -458,7 +458,7 @@ class DatasetInitializer(TableInitializerBase):
   """
 
   def __init__(self, dataset):
-    """Creates a table initializser from a `tf.data.Dataset`.
+    """Creates a table initializer from a `tf.data.Dataset`.
 
     Args:
       dataset: A `tf.data.Dataset` object that produces tuples of scalars. The
@@ -633,8 +633,7 @@ class TextFileInitializer(TableInitializerBase):
   >>> init = tf.lookup.TextFileInitializer(
   ...   filename=f.name,
   ...   key_dtype=tf.string, key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
-  ...   value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER,
-  ...   delimiter=" ")
+  ...   value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER)
   >>> table = tf.lookup.StaticHashTable(init, -1)
   >>> table.lookup(tf.constant('palmer 30')).numpy()
   2
@@ -648,7 +647,8 @@ class TextFileInitializer(TableInitializerBase):
                value_index,
                vocab_size=None,
                delimiter="\t",
-               name=None):
+               name=None,
+               value_index_offset=0):
     """Constructs a table initializer object to populate from a text file.
 
     It generates one key-value pair per line. The type of table key and
@@ -676,6 +676,13 @@ class TextFileInitializer(TableInitializerBase):
       vocab_size: The number of elements in the file, if known.
       delimiter: The delimiter to separate fields in a line.
       name: A name for the operation (optional).
+      value_index_offset: A number to add to all indices extracted from the file
+        This is useful for cases where a user would like to reserve one or more
+        low index values for control characters. For instance, if you would
+        like to ensure that no vocabulary item is mapped to index 0 (so you can
+        reserve 0 for a masking value), you can set value_index_offset to 1;
+        this will mean that the first vocabulary element is mapped to 1
+        instead of 0.
 
     Raises:
       ValueError: when the filename is empty, or when the table key and value
@@ -719,6 +726,7 @@ class TextFileInitializer(TableInitializerBase):
     self._name = name
     self._filename = self._track_trackable(
         trackable.Asset(filename), "_filename")
+    self._offset = value_index_offset
 
     super(TextFileInitializer, self).__init__(key_dtype, value_dtype)
 
@@ -741,7 +749,8 @@ class TextFileInitializer(TableInitializerBase):
           self._filename, dtypes.string, name="asset_filepath")
       init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
           table.resource_handle, filename, self._key_index, self._value_index,
-          -1 if self._vocab_size is None else self._vocab_size, self._delimiter)
+          -1 if self._vocab_size is None else self._vocab_size, self._delimiter,
+          self._offset)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g.,
     # if it is a placeholder) then it does not make sense to track it as an

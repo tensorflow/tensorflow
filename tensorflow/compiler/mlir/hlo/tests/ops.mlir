@@ -361,7 +361,7 @@ func @concat_1D_unranked(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<
 // -----
 
 func @concat_1D_unranked_error(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<3xi32> {
-  // expected-error@+1 {{'mhlo.concatenate' op inferred type incompatible with return type of operation}}
+  // expected-error@+1 {{op inferred type(s) 'tensor<*xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<*xi32>) -> tensor<3xi32>
   return %0 : tensor<3xi32>
 }
@@ -369,7 +369,7 @@ func @concat_1D_unranked_error(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> t
 // -----
 
 func @concat_1D_error(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<4xi32> {
-  // expected-error@+1 {{'mhlo.concatenate' op inferred type incompatible with return type of operation}}
+  // expected-error@+1 {{op inferred type(s) 'tensor<3xi32>' are incompatible with return type(s) of operation 'tensor<4xi32>'}}
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<4xi32>
   return %0 : tensor<4xi32>
 }
@@ -442,7 +442,7 @@ func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -
 
 func @infeed_invalid_number_of_results(%token: !mhlo.token) -> tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>> {
   // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
-  %0 = "mhlo.infeed"(%token) {infeed_config = "foobar"} : (!mhlo.token) -> tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>>
+  %0 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout = [[[0]], unit, [0]]} : (!mhlo.token) -> tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>>
   return %0 : tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>>
 }
 
@@ -450,7 +450,7 @@ func @infeed_invalid_number_of_results(%token: !mhlo.token) -> tuple<tuple<tenso
 
 func @infeed_non_token_second_result(%token: !mhlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>> {
   // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
-  %0 = "mhlo.infeed"(%token) {infeed_config = "foobar"} : (!mhlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>>
+  %0 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout = [[[0]], [0]]} : (!mhlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>>
   return %0 : tuple<tuple<tensor<i32>>, tensor<i32>>
 }
 

@@ -751,8 +751,7 @@ class RandomAccessFile {
   virtual tensorflow::Status Read(uint64 offset, size_t n, StringPiece* result,
                                   char* scratch) const = 0;
 
-  // TODO(ebrevdo): Remove this ifdef when absl is updated.
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   /// \brief Read up to `n` bytes from the file starting at `offset`.
   virtual tensorflow::Status Read(uint64 offset, size_t n,
                                   absl::Cord* cord) const {
@@ -778,8 +777,7 @@ class WritableFile {
   /// \brief Append 'data' to the file.
   virtual tensorflow::Status Append(StringPiece data) = 0;
 
-  // TODO(ebrevdo): Remove this ifdef when absl is updated.
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   // \brief Append 'data' to the file.
   virtual tensorflow::Status Append(const absl::Cord& cord) {
     return errors::Unimplemented("Append(absl::Cord) is not implemented");

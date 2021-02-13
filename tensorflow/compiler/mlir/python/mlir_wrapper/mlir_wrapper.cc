@@ -30,17 +30,20 @@ limitations under the License.
 
 PYBIND11_MODULE(mlir_wrapper, m) {
   m.def("preloadTensorFlowDialects", [](mlir::MLIRContext &context) {
-    mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
-    context.getDialectRegistry().loadAll(&context);
+    mlir::DialectRegistry registry;
+    mlir::RegisterAllTensorFlowDialects(registry);
+    context.appendDialectRegistry(registry);
+    context.loadAllAvailableDialects();
   });
 
   m.def("verify", [](std::string input) {
     llvm::SourceMgr SM = llvm::SourceMgr();
     SM.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(input),
                           llvm::SMLoc());
-    mlir::MLIRContext ctx;
-    mlir::RegisterAllTensorFlowDialects(ctx.getDialectRegistry());
-    ctx.getDialectRegistry().loadAll(&ctx);
+    mlir::DialectRegistry registry;
+    mlir::RegisterAllTensorFlowDialects(registry);
+    mlir::MLIRContext ctx(registry);
+    ctx.loadAllAvailableDialects();
     auto module = mlir::parseSourceFile(SM, &ctx);
     if (!module) {
       return false;

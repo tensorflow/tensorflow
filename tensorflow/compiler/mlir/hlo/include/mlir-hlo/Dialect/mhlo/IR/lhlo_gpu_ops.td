@@ -23,8 +23,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td"
+include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.td"
-
 
 class LHLOGPU_Op<string mnemonic, list<OpTrait> traits = []> :
   Op<LHLO_GPU_Dialect, mnemonic,
@@ -47,14 +47,14 @@ def I32Buffer : MemRefOf<[I32]>;
 def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad">,
     BASE_HLO_BatchNormGradOp {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemRead]>:$scale,
-    Arg<LHLO_Buffer, "", [MemRead]>:$mean,
-    Arg<LHLO_Buffer, "", [MemRead]>:$stddev,
-    Arg<LHLO_Buffer, "", [MemRead]>:$grad_output,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$grad_operand,  // gradient of $operand.
-    Arg<LHLO_Buffer, "", [MemWrite]>:$grad_scale,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$grad_offset,
+    Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
+    Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
+    Arg<LHLO_FpBuffer,      "", [MemRead]>:$mean,
+    Arg<LHLO_FpBuffer,      "", [MemRead]>:$stddev,
+    Arg<LHLO_FpBuffer, "", [MemRead]>:$grad_output,
+    Arg<LHLO_FpBuffer, "", [MemWrite]>:$grad_operand,  // gradient of $operand.
+    Arg<LHLO_FpBuffer,      "", [MemWrite]>:$grad_scale,
+    Arg<LHLO_FpBuffer,      "", [MemWrite]>:$grad_offset,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
@@ -63,12 +63,12 @@ def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad">,
 def LHLOGPU_BatchNormInferenceOp : LHLOGPU_Op<"batch_norm_inference">,
     BASE_HLO_BatchNormInferenceOp {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemRead]>:$scale,
-    Arg<LHLO_Buffer, "", [MemRead]>:$offset,
-    Arg<LHLO_Buffer, "", [MemRead]>:$mean,
-    Arg<LHLO_Buffer, "", [MemRead]>:$stddev,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
+    Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
+    Arg<LHLO_FpBuffer,      "", [MemRead]>:$offset,
+    Arg<LHLO_FpBuffer,      "", [MemRead]>:$mean,
+    Arg<LHLO_FpBuffer,      "", [MemRead]>:$stddev,
+    Arg<LHLO_FpBuffer, "", [MemWrite]>:$output,
     F32Attr:$epsilon,
     I64Attr:$feature_index);
 }
@@ -77,12 +77,12 @@ def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training">,
     BASE_HLO_BatchNormTrainingOp {
 
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemRead]>:$scale,
-    Arg<LHLO_Buffer, "", [MemRead]>:$offset,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$batch_mean,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$batch_stddev,
+    Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
+    Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
+    Arg<LHLO_FpBuffer,      "", [MemRead]>:$offset,
+    Arg<LHLO_FpBuffer, "", [MemWrite]>:$output,
+    Arg<LHLO_FpBuffer,      "", [MemWrite]>:$batch_mean,
+    Arg<LHLO_FpBuffer,      "", [MemWrite]>:$batch_stddev,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
@@ -92,33 +92,11 @@ def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training">,
 // LMHLO ops representing convolution library functions.
 //===----------------------------------------------------------------------===//
 
-def ActivationModeNone : StrEnumAttrCase<"None">;
-def ActivationModeSigmoid : StrEnumAttrCase<"Sigmoid">;
-def ActivationModeTanh : StrEnumAttrCase<"Relu">;
-def ActivationModeRelu : StrEnumAttrCase<"Relu">;
-def ActivationModeRelu6 : StrEnumAttrCase<"Relu6">;
-def ActivationModeReluX : StrEnumAttrCase<"ReluX">;
-def ActivationModeBandPass : StrEnumAttrCase<"BandPass">;
-
-def ActivationAttr : StrEnumAttr<"Activation",
-    "Activation applied with fused convolution",
-    [ActivationModeNone,  ActivationModeSigmoid, ActivationModeTanh,
-     ActivationModeRelu, ActivationModeRelu6, ActivationModeReluX,
-     ActivationModeBandPass]>;
-
-def GpuConvolutionAttributes {
+class GpuConvolutionAttributes<dag extraAttribs> {
   dag attributes = !con(
-    ConvolutionAttributes<LHLO_GPU_Dialect>.attributes,
+    ConvolutionAttributes.attributes,
     (ins F64Attr:$result_scale),
-    (ins ConvolutionBackendConfigAttr:$backend_config));
-}
-
-def GpuFusedConvolutionAttributes {
-  dag attributes = !con(
-    ConvolutionAttributes<LHLO_GPU_Dialect>.attributes,
-    (ins F64Attr:$result_scale,
-         ActivationAttr:$activation_mode,
-         F64Attr:$side_input_scale),
+    extraAttribs,
     (ins ConvolutionBackendConfigAttr:$backend_config));
 }
 
@@ -128,8 +106,8 @@ def LHLOGPU_ConvForwardOp : LHLOGPU_Op<"conv_forward"> {
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
        Arg<LHLO_Buffer, "", [MemRead]>:$filter,
        Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-       Arg<UntypedBuffer, "", [MemWrite]>:$scratch),
-     GpuConvolutionAttributes.attributes);
+       Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
+     GpuConvolutionAttributes<(ins)>.attributes);
 }
 
 def LHLOGPU_ConvBackwardInputOp : LHLOGPU_Op<"conv_backwardinput"> {
@@ -138,8 +116,8 @@ def LHLOGPU_ConvBackwardInputOp : LHLOGPU_Op<"conv_backwardinput"> {
        Arg<LHLO_Buffer, "", [MemRead]>:$d_output,
        Arg<LHLO_Buffer, "", [MemRead]>:$filter,
        Arg<LHLO_Buffer, "", [MemWrite]>:$d_input,
-       Arg<UntypedBuffer, "", [MemWrite]>:$scratch),
-     GpuConvolutionAttributes.attributes);
+       Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
+     GpuConvolutionAttributes<(ins)>.attributes);
 }
 
 def LHLOGPU_ConvBackwardFilterOp : LHLOGPU_Op<"conv_backwardfilter"> {
@@ -148,14 +126,27 @@ def LHLOGPU_ConvBackwardFilterOp : LHLOGPU_Op<"conv_backwardfilter"> {
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
        Arg<LHLO_Buffer, "", [MemRead]>:$d_output,
        Arg<LHLO_Buffer, "", [MemWrite]>:$d_filter,
-       Arg<UntypedBuffer, "", [MemWrite]>:$scratch),
-     GpuConvolutionAttributes.attributes);
+       Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
+     GpuConvolutionAttributes<(ins)>.attributes);
+}
+
+// output = activation(result_scale * conv(input, filter) + bias)
+def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
+  let arguments = !con(
+    (ins
+       Arg<LHLO_Buffer, "", [MemRead]>:$input,
+       Arg<LHLO_Buffer, "", [MemRead]>:$filter,
+       Arg<LHLO_Buffer, "", [MemRead]>:$bias,
+       Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+       Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
+     GpuConvolutionAttributes<(ins
+         ActivationAttr:$activation_mode)>.attributes);
 }
 
 // output = activation(result_scale * conv(input, filter) +
 //                     side_input * side_input_scale +
 //                     bias)
-def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
+def LHLOGPU_ConvForwardFusedSideInputOp : LHLOGPU_Op<"conv_forward_fused_with_side_input"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
@@ -163,8 +154,10 @@ def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
        Arg<LHLO_Buffer, "", [MemRead]>:$bias,
        Arg<LHLO_Buffer, "", [MemRead]>:$side_input,
        Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-       Arg<UntypedBuffer, "", [MemWrite]>:$scratch),
-     GpuFusedConvolutionAttributes.attributes);
+       Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
+     GpuConvolutionAttributes<(ins
+         ActivationAttr:$activation_mode,
+         F64Attr:$side_input_scale)>.attributes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -179,9 +172,10 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$output,
     DotDimensionNumbers:$dot_dimension_numbers,
-    F64Attr:$alpha,
+    F64Attr:$alpha_real,
+    F64Attr:$alpha_imag,
     I64Attr:$batch_size,
-    I64Attr:$algorithm);
+    OptionalAttr<I64Attr>:$algorithm);
 }
 
 // output = alpha(lhs * rhs) + beta * bias
@@ -192,19 +186,20 @@ def LHLOGPU_GEMM_BiasOp : LHLOGPU_Op<"gemm_bias"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$bias,
     Arg<LHLO_Buffer, "", [MemRead]>:$output,
     DotDimensionNumbers:$dot_dimension_numbers,
-    F64Attr:$alpha,
+    F64Attr:$alpha_real,
+    F64Attr:$alpha_imag,
     F64Attr:$beta,
     I64Attr:$batch_size,
-    I64Attr:$algorithm);
+    OptionalAttr<I64Attr>:$algorithm);
 }
 
 def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$input,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    Arg<UntypedBuffer, "", [MemWrite]>:$scratch,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
     Arg<I32Buffer, "", [MemWrite]>:$info,
-    BoolAttr:$is_upper);
+    BoolAttr:$is_lower);
 }
 
 #endif // LHLO_GPU_OPS

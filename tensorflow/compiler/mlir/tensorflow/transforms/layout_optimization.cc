@@ -18,8 +18,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -94,12 +93,21 @@ class MoveTransposesPass
   enum class Direction { kBegin, kEnd };
 
   MoveTransposesPass() = default;
-  explicit MoveTransposesPass(Direction direction) { direction_ = direction; }
+  explicit MoveTransposesPass(Direction direction, bool fold_transpose_in_ops) {
+    direction_ = direction;
+    fold_transpose_in_ops_ = fold_transpose_in_ops;
+  }
   MoveTransposesPass(const MoveTransposesPass& pass) {}
 
   void runOnFunction() final;
 
  private:
+  Option<bool> fold_transpose_in_ops_{
+      *this, "fold-transpose-in-ops",
+      llvm::cl::desc(
+          "Whether to fold transposes in ops which can support folding."),
+      llvm::cl::init(true)};
+
   Option<Direction> direction_{
       *this, "direction",
       llvm::cl::desc("Move transposes to the beginning or the end of the block "
@@ -116,7 +124,7 @@ void LayoutAssignmentPass::runOnFunction() {
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
-  if (failed(::tensorflow::GetDevicesFromOp(func.getParentOfType<ModuleOp>(),
+  if (failed(::tensorflow::GetDevicesFromOp(func->getParentOfType<ModuleOp>(),
                                             &devices)))
     return signalPassFailure();
 
@@ -286,7 +294,8 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
 }
 
 // Move Transpose operations that permute `op` operands after the `op`.
-void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
+void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
+                        bool fold_transpose_in_ops) {
   // Indices of operands and results that depend on data layout.
   SmallVector<unsigned, 4> layout_dependent_operands;
   SmallVector<unsigned, 4> layout_dependent_results;
@@ -294,7 +303,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
   auto fold_operands = dyn_cast<FoldOperandsTransposeInterface>(op);
   bool layout_agnostic = op->hasTrait<OpTrait::TF::LayoutAgnostic>();
 
-  if (fold_operands) {
+  if (fold_operands && fold_transpose_in_ops) {
     layout_dependent_operands = fold_operands.GetLayoutDependentArgs();
     layout_dependent_results = fold_operands.GetLayoutDependentResults();
 
@@ -350,7 +359,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
     original_type[idx] = op->getResult(idx).getType();
 
   // Check if we can fold transpose into the operation.
-  if (fold_operands) {
+  if (fold_operands && fold_transpose_in_ops) {
     SmallVector<int64_t, 8> permutation;
 
     auto attr = permutation_op.value().cast<DenseElementsAttr>();
@@ -438,7 +447,7 @@ void MoveTransposesPass::runOnFunction() {
     if (direction_ == Direction::kBegin) {
       MoveTransposeBefore(op, &work_list);
     } else if (direction_ == Direction::kEnd) {
-      MoveTransposeAfter(op, &work_list);
+      MoveTransposeAfter(op, &work_list, fold_transpose_in_ops_);
     }
   }
 
@@ -463,10 +472,12 @@ void CreateLayoutOptimizationPipeline(
   pm.addPass(std::make_unique<LayoutAssignmentPass>(options.force_data_format));
 
   // Move transposes to the beginning of the block and try to fold them.
-  pm.addPass(std::make_unique<MoveTransposesPass>(Direction::kBegin));
+  pm.addPass(std::make_unique<MoveTransposesPass>(
+      Direction::kBegin, !options.skip_fold_transpose_in_ops));
 
   // Move transposes to the end of the block and try to fold them.
-  pm.addPass(std::make_unique<MoveTransposesPass>(Direction::kEnd));
+  pm.addPass(std::make_unique<MoveTransposesPass>(
+      Direction::kEnd, !options.skip_fold_transpose_in_ops));
 }
 
 static PassRegistration<LayoutAssignmentPass> layout_assignment(

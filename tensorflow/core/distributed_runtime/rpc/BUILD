@@ -538,6 +538,7 @@ tf_cuda_cc_test(
     srcs = ["grpc_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # b/176448181
         "no_oss",  # b/62956105: port conflicts.
     ],
     deps = [
@@ -561,34 +562,4 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/protobuf:master_proto_cc",
     ],
-)
-
-cc_library(
-    name = "grpc_rpc_factory",
-    srcs = [
-        "grpc_rpc_factory.cc",
-    ],
-    hdrs = ["grpc_rpc_factory.h"],
-    deps = [
-        ":grpc_state",
-        ":grpc_util",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/util/rpc:call_container",
-        "//tensorflow/core/util/rpc:rpc_factory",
-    ],
-)
-
-cc_library(
-    name = "grpc_rpc_factory_registration",
-    srcs = [
-        "grpc_rpc_factory_registration.cc",
-    ],
-    deps = [
-        ":grpc_rpc_factory",
-        "//tensorflow/core/util/rpc:rpc_factory",
-        "//tensorflow/core/util/rpc:rpc_factory_registry",
-    ],
-    alwayslink = 1,
 )

@@ -109,6 +109,48 @@ func @mul_float() -> (tensor<f32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) 
   return %5, %6, %7, %8 : tensor<f32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
 }
 
+// CHECK-LABEL: @mul_bf16
+func @mul_bf16() -> (tensor<bf16>, tensor<4xbf16>, tensor<4xbf16>, tensor<4xbf16>) {
+  %0 = constant dense<4.5> : tensor<bf16>
+  %1 = constant dense<1.5> : tensor<bf16>
+
+  %2 = constant dense< 3.5> : tensor<4xbf16>
+  %3 = constant dense<-0.5> : tensor<4xbf16>
+
+  // CHECK: %[[CST:.*]] = constant dense<6.750000e+00> : tensor<bf16>
+  // CHECK: %[[CST_0:.*]]  = constant dense<-2.250000e+00> : tensor<4xbf16>
+  // CHECK: %[[CST_1:.*]]  = constant dense<5.250000e+00> : tensor<4xbf16>
+  // CHECK: %[[CST_2:.*]]  = constant dense<-1.750000e+00> : tensor<4xbf16>
+
+  %5 = "tfl.mul"(%0, %1) {fused_activation_function = "NONE"} : (tensor<  bf16>, tensor<  bf16>) -> tensor<  bf16>
+  %6 = "tfl.mul"(%0, %3) {fused_activation_function = "NONE"} : (tensor<  bf16>, tensor<4xbf16>) -> tensor<4xbf16>
+  %7 = "tfl.mul"(%2, %1) {fused_activation_function = "NONE"} : (tensor<4xbf16>, tensor<  bf16>) -> tensor<4xbf16>
+  %8 = "tfl.mul"(%2, %3) {fused_activation_function = "NONE"} : (tensor<4xbf16>, tensor<4xbf16>) -> tensor<4xbf16>
+
+  return %5, %6, %7, %8 : tensor<bf16>, tensor<4xbf16>, tensor<4xbf16>, tensor<4xbf16>
+}
+
+// CHECK-LABEL: @mul_f16
+func @mul_f16() -> (tensor<f16>, tensor<4xf16>, tensor<4xf16>, tensor<4xf16>) {
+  %0 = constant dense<4.5> : tensor<f16>
+  %1 = constant dense<1.5> : tensor<f16>
+
+  %2 = constant dense< 3.5> : tensor<4xf16>
+  %3 = constant dense<-0.5> : tensor<4xf16>
+
+  // CHECK: %[[CST:.*]] = constant dense<6.750000e+00> : tensor<f16>
+  // CHECK: %[[CST_0:.*]]  = constant dense<-2.250000e+00> : tensor<4xf16>
+  // CHECK: %[[CST_1:.*]]  = constant dense<5.250000e+00> : tensor<4xf16>
+  // CHECK: %[[CST_2:.*]]  = constant dense<-1.750000e+00> : tensor<4xf16>
+
+  %5 = "tfl.mul"(%0, %1) {fused_activation_function = "NONE"} : (tensor<  f16>, tensor<  f16>) -> tensor<  f16>
+  %6 = "tfl.mul"(%0, %3) {fused_activation_function = "NONE"} : (tensor<  f16>, tensor<4xf16>) -> tensor<4xf16>
+  %7 = "tfl.mul"(%2, %1) {fused_activation_function = "NONE"} : (tensor<4xf16>, tensor<  f16>) -> tensor<4xf16>
+  %8 = "tfl.mul"(%2, %3) {fused_activation_function = "NONE"} : (tensor<4xf16>, tensor<4xf16>) -> tensor<4xf16>
+
+  return %5, %6, %7, %8 : tensor<f16>, tensor<4xf16>, tensor<4xf16>, tensor<4xf16>
+}
+
 // CHECK-LABEL: @elementwise_unary_ops
 func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
   %0 = constant dense<-1.0> : tensor<f32>
@@ -638,4 +680,49 @@ func @cast_ui8_to_i32() -> tensor<4xi32> {
 // CHECK:  return %[[CST]]
 }
 
+// CHECK-LABEL: @cast_identity
+func @cast_identity(%arg0 : tensor<7xf32>) -> tensor<7xf32> {
+  %0 = "tfl.cast"(%arg0) : (tensor<7xf32>) -> tensor<7xf32>
+  return %0 : tensor<7xf32>
+  // CHECK: return %arg0 : tensor<7xf32>
+}
 
+// CHECK-LABEL: @cast_i1_to_i8
+func @cast_i1_to_i8() -> tensor<2xi8> {
+  %cst = constant dense<[false, true]> : tensor<2xi1>
+  %0 = "tfl.cast"(%cst) : (tensor<2xi1>) -> tensor<2xi8>
+  return %0 : tensor<2xi8>
+
+// CHECK: %[[CST:.*]] = constant dense<[0, 1]> : tensor<2xi8>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_i1_to_ui8
+func @cast_i1_to_ui8() -> tensor<2xui8> {
+  %cst = constant dense<[false, true]> : tensor<2xi1>
+  %0 = "tfl.cast"(%cst) : (tensor<2xi1>) -> tensor<2xui8>
+  return %0 : tensor<2xui8>
+
+// CHECK: %[[CST:.*]] = constant dense<[0, 1]> : tensor<2xui8>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_i8_to_i1
+func @cast_i8_to_i1() -> tensor<4xi1> {
+  %cst = constant dense<[0, 1, 2, -1]> : tensor<4xi8>
+  %0 = "tfl.cast"(%cst) : (tensor<4xi8>) -> tensor<4xi1>
+  return %0 : tensor<4xi1>
+
+// CHECK: %[[CST:.*]] = constant dense<[false, true, true, true]> : tensor<4xi1>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_ui8_to_i1
+func @cast_ui8_to_i1() -> tensor<4xi1> {
+  %cst = constant dense<[0, 127, 128, 255]> : tensor<4xui8>
+  %0 = "tfl.cast"(%cst) : (tensor<4xui8>) -> tensor<4xi1>
+  return %0 : tensor<4xi1>
+
+// CHECK: %[[CST:.*]] = constant dense<[false, true, true, true]> : tensor<4xi1>
+// CHECK:  return %[[CST]]
+}

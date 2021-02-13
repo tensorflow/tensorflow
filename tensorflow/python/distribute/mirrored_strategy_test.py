@@ -39,6 +39,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -1313,10 +1314,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
       with test.mock.patch.dict("os.environ",
                                 {"TF_CONFIG": json.dumps(tf_config)}):
         strategy = mirrored_strategy.MirroredStrategy()
-        if context.num_gpus() > 0:
-          self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
-                                cross_device_ops_lib.NcclAllReduce)
-        else:
+        if context.num_gpus() == 0:
           self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
                                 cross_device_ops_lib.ReductionToOneDevice)
       self.skipTest("b/130551176, run the following once fixed.")
@@ -1437,4 +1435,5 @@ def _replica_id_as_int():
 
 
 if __name__ == "__main__":
-  test.main()
+  # TODO(b/172304955)
+  test_util.main(config_logical_devices=False)

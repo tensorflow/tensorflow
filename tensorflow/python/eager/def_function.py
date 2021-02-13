@@ -31,6 +31,7 @@ from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -51,27 +52,66 @@ from tensorflow.python.util.tf_export import tf_export
 
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
 FREQUENT_TRACING_WARNING_THRESHOLD = 5
+FREQUENT_TRACING_WARNING_MAX_WARNING_PER_DETECTOR = 2
 
 
-class _CallCounter(object):
+_tf_function_counter = monitoring.Counter(
+    "/tensorflow/core/tf_function_counter",
+    "Counter for the number of tf.functions created when Eager execution is "
+    "enabled.",
+    # jit_compile is "0" or "1".
+    "jit_compile")
+
+
+class _FrequentTracingDetector(object):
   """Class keeping track of how many recent calls triggered tracing."""
 
-  __slots__ = ["_max_call_history", "_calls_per_tracings", "call_count"]
+  __slots__ = ["_calls_per_tracings", "_call_count", "_total_warning_count"]
 
-  def __init__(self, max_call_history):
-    self._max_call_history = max_call_history
+  def __init__(self):
     self._calls_per_tracings = []
-    self.call_count = 0
+    self._total_warning_count = 0
+    self._call_count = 0
 
-  def called_with_tracing(self):
-    self.call_count += 1
+  def called_with_tracing(self, function_name, omit_warning):
+    """Updates the list of most recent calls' tracing information.
+
+    Warns the user when recent calls caused retracing too often.
+
+    Args:
+      function_name: the python function being traced.
+      omit_warning: If 'True', this call will not warn the user even if
+        retracing happens too often.
+    """
+    self._call_count += 1
     self._calls_per_tracings.append(1)
 
     while self._calls_per_tracings:
-      if self.call_count - self._calls_per_tracings[0] > self._max_call_history:
-        self.call_count -= self._calls_per_tracings.pop(0)
+      if (self._call_count - self._calls_per_tracings[0] >
+          FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY):
+        self._call_count -= self._calls_per_tracings.pop(0)
       else:
         break
+
+    if (omit_warning or self._total_warning_count >=
+        FREQUENT_TRACING_WARNING_MAX_WARNING_PER_DETECTOR):
+      return
+    if len(self._calls_per_tracings) >= FREQUENT_TRACING_WARNING_THRESHOLD:
+      self._total_warning_count += 1
+      logging.warning(
+          "{} out of the last {} calls to {} triggered tf.function "
+          "retracing. Tracing is expensive and the excessive number of "
+          "tracings could be due to (1) creating @tf.function repeatedly in "
+          "a loop, (2) passing tensors with different shapes, (3) passing "
+          "Python objects instead of tensors. For (1), please define your "
+          "@tf.function outside of the loop. For (2), @tf.function has "
+          "experimental_relax_shapes=True option that relaxes argument "
+          "shapes that can avoid unnecessary retracing. For (3), please "
+          "refer to "
+          "https://www.tensorflow.org/guide/function#controlling_retracing"
+          " and https://www.tensorflow.org/api_docs/python/tf/function for "
+          " more details.".format(
+              len(self._calls_per_tracings), self._call_count, function_name))
 
   def called_without_tracing(self):
     # We don't count tracing when users load a concrete function directly or
@@ -79,54 +119,35 @@ class _CallCounter(object):
     if not self._calls_per_tracings:
       self._calls_per_tracings = [0]
     self._calls_per_tracings[-1] += 1
-    self.call_count += 1
-
-  def get_tracing_count(self):
-    return len(self._calls_per_tracings)
+    self._call_count += 1
 
 
-class _FrequentTracingDetector(object):
-  """Class for frequent retracing detection and warning."""
+class _FrequentTracingDetectorManager(object):
+  """Class for the management of all _FrequentTracingDetector objects."""
 
-  __slots__ = ["_counters", "_lock"]
+  __slots__ = ["_detectors", "_lock"]
 
   def __init__(self):
-    self._counters = weakref.WeakKeyDictionary()  # GUARDED_BY(self._lock)
+    self._detectors = weakref.WeakKeyDictionary()  # GUARDED_BY(self._lock)
     self._lock = threading.Lock()
 
-  def _get_counter(self, key):
-    if key not in self._counters:
-      self._counters[key] = _CallCounter(
-          FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
-    return self._counters[key]
+  def _get_detector(self, key):
+    if key not in self._detectors:
+      self._detectors[key] = _FrequentTracingDetector()
+    return self._detectors[key]
 
   def called_without_tracing(self, key):
     with self._lock:
-      counter = self._get_counter(key)
-      counter.called_without_tracing()
+      detector = self._get_detector(key)
+      detector.called_without_tracing()
 
-  def called_with_tracing(self, key, function_name):
+  def called_with_tracing(self, key, function_name, omit_warning):
     with self._lock:
-      counter = self._get_counter(key)
-      counter.called_with_tracing()
-      if counter.get_tracing_count() >= FREQUENT_TRACING_WARNING_THRESHOLD:
-        logging.warning(
-            "{} out of the last {} calls to {} triggered tf.function "
-            "retracing. Tracing is expensive and the excessive number of "
-            "tracings could be due to (1) creating @tf.function repeatedly in "
-            "a loop, (2) passing tensors with different shapes, (3) passing "
-            "Python objects instead of tensors. For (1), please define your "
-            "@tf.function outside of the loop. For (2), @tf.function has "
-            "experimental_relax_shapes=True option that relaxes argument "
-            "shapes that can avoid unnecessary retracing. For (3), please "
-            "refer to "
-            "https://www.tensorflow.org/guide/function#controlling_retracing"
-            " and https://www.tensorflow.org/api_docs/python/tf/function for "
-            " more details.".format(counter.get_tracing_count(),
-                                    counter.call_count, function_name))
+      detector = self._get_detector(key)
+      detector.called_with_tracing(function_name, omit_warning)
 
 
-_frequent_tracing_detector = _FrequentTracingDetector()
+_frequent_tracing_detector_manager = _FrequentTracingDetectorManager()
 
 
 class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
@@ -514,6 +535,7 @@ class Function(object):
     self._name = name
     self._input_signature = input_signature
     self._key_for_call_stats = self._get_key_for_call_stats()
+    self._omit_frequent_tracing_warning = False
     ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
 
   def __getstate__(self):
@@ -681,6 +703,18 @@ class Function(object):
         self._stateful_fn._get_concrete_function_internal_garbage_collected(  # pylint: disable=protected-access
             *args, **kwds))
 
+    compiled = bool(self._jit_compile and
+                    not control_flow_util.GraphOrParentsInXlaContext(
+                        ops.get_default_graph()))
+    # For nested functions, increment the counter only when a function with
+    # jit_compile=True is called within a function with jit_compile=False. We
+    # count this special case to correctly record that both jit_compile=True and
+    # jit_compile=False is being used for parts of the outer function.
+    if ops.executing_eagerly_outside_functions() and (
+        context.executing_eagerly() or compiled):
+      # Labels must be strings in Python, so we convert 'compiled' to a string
+      _tf_function_counter.get_cell(str(int(compiled))).increase_by(1)
+
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
       raise ValueError(
@@ -773,9 +807,13 @@ class Function(object):
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0
     return result
 
+  @property
+  def _run_functions_eagerly(self):
+    return RUN_FUNCTIONS_EAGERLY
+
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
-    if RUN_FUNCTIONS_EAGERLY:
+    if self._run_functions_eagerly:
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 
@@ -791,11 +829,12 @@ class Function(object):
 
     if context.executing_eagerly():
       if without_tracing:
-        _frequent_tracing_detector.called_without_tracing(
+        _frequent_tracing_detector_manager.called_without_tracing(
             self._key_for_call_stats)
       else:
-        _frequent_tracing_detector.called_with_tracing(self._key_for_call_stats,
-                                                       self._python_function)
+        _frequent_tracing_detector_manager.called_with_tracing(
+            self._key_for_call_stats, self._python_function,
+            self._omit_frequent_tracing_warning)
 
     return result
 
@@ -923,13 +962,21 @@ class Function(object):
       **kwargs: Keyword arguments used for compilation.
 
     Returns:
-      Function callable with the stage at which the compiler IR should be
-      serialized. Allowed values for the `stage` are:
-       - `hlo`: HLO output after conversion from TF
-         (https://www.tensorflow.org/xla/operation_semantics).
-       - `optimized_hlo`: HLO after compiler optimizations.
-       - `optimized_hlo_dot`: optimized HLO in DOT format suitable for
-         Graphviz.
+      Function callable with the following kwargs:
+        - `stage` at which the compiler IR should be serialized. Allowed values
+          are:
+           - `hlo`: HLO output after conversion from TF
+            (https://www.tensorflow.org/xla/operation_semantics).
+           - `hlo_serialized`: Like stage=`hlo`, but the output is a serialized
+             HLO module proto (a bytes object).
+           - `optimized_hlo`: HLO after compiler optimizations.
+           - `optimized_hlo_serialized`: Like stage=`optimized_hlo`, but the
+             output is a serialized HLO module proto (a bytes object).
+           - `optimized_hlo_dot`: optimized HLO in DOT format suitable for
+             Graphviz.
+        - `device_name` can be either None, in which case the preferred device
+          is used for compilation, or a device name. It can be a full device
+          name, or a partial one, e.g., `/device:CPU:0`.
 
       For example, for
 
@@ -978,21 +1025,20 @@ class Function(object):
         concrete_fn._function_spec.canonicalize_function_inputs(
             *args, **kwargs)
 
-    def compiler_ir_generator(stage='hlo'):
-      """Returns compiler IR for the given `stage`.
-
-      Args:
-        stage: Stage at which to return the IR. Allowed values are 'hlo' and
-        'optimized_hlo'.
-      """
+    def compiler_ir_generator(stage="hlo", device_name=None):
       # TODO(cheshire): This is a hack to get the current "preferred" device,
       # there is no current API to get it otherwise.
-      device = random_ops.random_normal([]).device
-      return context.context().get_compiler_ir(
-          device_name=device,
+      if device_name is None:
+        device_name = random_ops.random_normal([]).device
+      res_bytes = context.context().get_compiler_ir(
+          device_name=device_name,
           stage=stage,
           function_name=fn_name,
           args=list(filtered_flat_args) + concrete_fn.captured_inputs)
+      if stage in ("hlo_serialized", "optimized_hlo_serialized"):
+        return res_bytes
+      else:
+        return res_bytes.decode("utf-8")
 
     return compiler_ir_generator
 
@@ -1531,7 +1577,9 @@ def function(func=None,
       This can either be specified as just the string name of the function or
       a NameAttrList corresponding to a list of key-value attributes associated
       with the function name. The name of the function will be in the 'name'
-      field of the NameAttrList.
+      field of the NameAttrList. To define a formal TF op for this function
+      implements, try the experimental [composite TF](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/tfr)
+      project.
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
     experimental_relax_shapes: When True, `tf.function` may generate fewer,

@@ -1,0 +1,30 @@
+op {
+  name: "StatelessRandomGetAlg"
+  output_arg {
+    name: "alg"
+    type: DT_INT32
+  }
+}
+op {
+  name: "StatelessRandomGetAlg"
+  output_arg {
+    name: "alg"
+    type: DT_INT32
+  }
+  is_stateful: true
+}
+op {
+  name: "StatelessRandomGetAlg"
+  output_arg {
+    name: "alg"
+    type: DT_INT32
+  }
+}
+op {
+  name: "StatelessRandomGetAlg"
+  output_arg {
+    name: "alg"
+    type: DT_INT32
+  }
+  is_stateful: true
+}

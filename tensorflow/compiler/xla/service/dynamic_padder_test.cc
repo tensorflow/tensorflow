@@ -919,6 +919,34 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, DynamicInputFeature) {
+  const string hlo_text = R"(
+HloModule DynamicInputFeature
+
+ENTRY main {
+  param = f32[1, 1, 5] parameter(0)
+  const = s32[] constant(5)
+  one = f32[] constant(1)
+  kernel = f32[1,5,1]{2,1,0} broadcast(f32[] one), dimensions={}
+  param_dynamic = f32[1,1,<=5] set-dimension-size(param, const), dimensions={2}
+  ROOT conv = f32[1, 1, 1]{2,1,0} custom-call(f32[1, 1, <=5] param_dynamic, f32[1,5,1]{2,1,0} kernel),
+                             window={size=1 pad=0_0},
+                             dim_labels=b0f_0io->b0f,
+                             padding_type=PADDING_VALID,
+                             custom_call_target="DynamicConvolutionForward"
+}
+)";
+
+  Literal operand = LiteralUtil::CreateR3<float>({{{1, 2, 3, 4, 5}}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  Literal expected = LiteralUtil::CreateR3<float>({{{15}}});
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, DynamicDimensionReshapeUnchanged) {
   const string hlo_text = R"(
 HloModule TensorFlowScatterV1
@@ -1337,10 +1365,10 @@ ENTRY main {
   param = s32[4] parameter(0)
   size = s32[] constant(3)
   padding = s32[] constant(2)
-  param_dynamic = s32[4] set-dimension-size(param, size),
+  param_dynamic = s32[<=4] set-dimension-size(param, size),
     dimensions={0}
-  // pad head and tail to 2
-  pad = s32[6] pad(param_dynamic, padding), padding=1_1
+  // Pad head and tail with 2
+  pad = s32[<=6] pad(param_dynamic, padding), padding=1_1
 
   init = s32[] constant(0)
   ROOT reduce = s32[] reduce(pad, init),
@@ -1350,11 +1378,50 @@ ENTRY main {
 )";
 
   Literal operand = LiteralUtil::CreateR1<int32>({1, 4, 3, 5});
-  auto module = GetHloModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   // After padding head and tail with "2", the effective data will be [2, 1, 4,
   // 3, 2]
 
+  Literal result = PadAndExecute(std::move(module), {&operand},
+                                 /*slice_dynamic_output=*/false);
+  Literal expected = LiteralUtil::CreateR0<int32>(12);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicPadInteriorPadding) {
+  const string hlo_text = R"(
+HloModule TEST
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[4] parameter(0)
+  size = s32[] constant(3)
+  padding = s32[] constant(2)
+  param_dynamic = s32[<=4] set-dimension-size(param, size),
+    dimensions={0}
+  // Pad interior with constant 2.
+  pad = s32[<=7] pad(param_dynamic, padding), padding=0_0_1
+
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(pad, init),
+    dimensions={0},
+    to_apply=update_s32
+}
+)";
+
+  // Only the first 3 elements are effective: 1, 4, 3
+  Literal operand = LiteralUtil::CreateR1<int32>({1, 4, 3, 5});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  // After interior padding with "2", the effective data will be
+  // [1, 2, 4, 2, 3]
   Literal result = PadAndExecute(std::move(module), {&operand},
                                  /*slice_dynamic_output=*/false);
   Literal expected = LiteralUtil::CreateR0<int32>(12);

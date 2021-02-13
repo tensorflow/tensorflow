@@ -165,3 +165,28 @@ func @rnn(%arg0: tensor<4x4x3xf32> {tf.device = "/device:CPU:0"}) -> tensor<4x?x
 // CHECK-SAME:       [[VAL_91]], [[VAL_52]] : tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<4x4x3xf32>
 // CHECK:         }
 // CHECK:       }
+
+// -----
+
+// CHECK-LABEL: func @whileDifferentResultShapes
+func @whileDifferentResultShapes(%arg0: tensor<i32>) -> tensor<?xf32>
+    attributes {tf.entry_function = {outputs = "result"}} {
+  %cst0 = constant dense<5> : tensor<i32> loc("N")
+  %cst1 = constant dense<3.0> : tensor<1xf32> loc("val")
+
+  %0:2 = "tfl.while"(%cst0, %cst1) ( {
+    ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
+      %cst_0 = constant dense<0> : tensor<i32>
+      %1 = "tfl.greater"(%arg2, %cst_0) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
+      "tfl.yield"(%1) : (tensor<i1>) -> ()
+  },  {
+    ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
+      %1 = "tfl.sub"(%arg2, %arg0) {fused_activation_function = "NONE"} :
+        (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+      %2 = tfl.add %arg3, %arg3 {fused_activation_function = "NONE"} : tensor<*xf32>
+      "tfl.yield"(%1, %2) : (tensor<*xi32>, tensor<*xf32>) -> ()
+  }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<?xf32>) loc("WhileOp")
+
+  // CHECK: (tensor<i32>, tensor<1xf32>, tensor<i32>) -> (tensor<i32>, tensor<?xf32>, tensor<i32>)
+  return %0#1 : tensor<?xf32>
+}

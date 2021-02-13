@@ -50,8 +50,13 @@ void ReportError(ErrorReporter* error_reporter, const char* format, ...) {
   }
 }
 // Returns the int32_t value pointed by ptr.
-const uint32_t* GetIntPtr(const char* ptr) {
-  return reinterpret_cast<const uint32_t*>(ptr);
+const uint32_t GetIntPtr(const char* ptr) {
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  return flatbuffers::EndianScalar(*reinterpret_cast<const uint32_t*>(ptr));
+#else
+  return *reinterpret_cast<const uint32_t*>(ptr);
+#endif
 }
 
 // Verifies flatbuffer format of the model contents and returns the in-memory
@@ -79,7 +84,7 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   }
   const char* buffer_ptr = reinterpret_cast<const char*>(buffer.data()->data());
 
-  uint32_t num_strings = *GetIntPtr(buffer_ptr);
+  uint32_t num_strings = GetIntPtr(buffer_ptr);
   if (num_strings > kMaxNumString) {
     ReportError(error_reporter,
                 "String tensor %s has invalid num of string set: %d",
@@ -100,7 +105,7 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   uint32_t prev_ptr = header_offsets;
   uint32_t offset = sizeof(int32_t);
 
-  if (*GetIntPtr(buffer_ptr + offset) != header_offsets) {
+  if (GetIntPtr(buffer_ptr + offset) != header_offsets) {
     ReportError(error_reporter,
                 "String tensor %s buffer initial offset must be: %d",
                 NameOrEmptyString(tensor.name()), header_offsets);
@@ -108,7 +113,7 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   }
   offset += sizeof(int32_t);
   for (int i = 1, end = num_strings; i <= end; i++, offset += sizeof(int32_t)) {
-    int string_offset = *GetIntPtr(buffer_ptr + offset);
+    int string_offset = GetIntPtr(buffer_ptr + offset);
     if (string_offset < static_cast<int>(prev_ptr) ||
         string_offset > static_cast<int>(buffer_size)) {
       ReportError(error_reporter,
@@ -117,7 +122,7 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
       return false;
     }
   }
-  if (*GetIntPtr(buffer_ptr + offset - sizeof(int32_t)) != buffer_size) {
+  if (GetIntPtr(buffer_ptr + offset - sizeof(int32_t)) != buffer_size) {
     ReportError(error_reporter,
                 "String tensor %s buffer last offset must be %d",
                 NameOrEmptyString(tensor.name()), buffer_size);
@@ -351,6 +356,9 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   for (int i = 0; i < block_rank; i++) {
     int original_block_dim =
         sparsity->traversal_order()->Get(i + original_rank);
+    if (original_block_dim < 0 || original_block_dim >= total_dims) {
+      return absl::nullopt;
+    }
     int block_dim_size =
         sparsity->dim_metadata()->Get(i + original_rank)->dense_size();
     if (block_dim_size == 0) {
@@ -358,7 +366,12 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
     }
 
     expanded_dim_sizes[original_block_dim] = block_dim_size;
-    expanded_dim_sizes[sparsity->block_map()->Get(i)] /= block_dim_size;
+
+    int mapped_block_dim = sparsity->block_map()->Get(i);
+    if (mapped_block_dim < 0 || mapped_block_dim >= total_dims) {
+      return absl::nullopt;
+    }
+    expanded_dim_sizes[mapped_block_dim] /= block_dim_size;
   }
 
   return VerifyAndCountElements(*sparsity, expanded_dim_sizes);
@@ -417,6 +430,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
       break;
     case TensorType_INT64:
       bytes_required *= sizeof(int64_t);
+      break;
+    case TensorType_UINT64:
+      bytes_required *= sizeof(uint64_t);
       break;
     case TensorType_BOOL:
       bytes_required *= sizeof(bool);

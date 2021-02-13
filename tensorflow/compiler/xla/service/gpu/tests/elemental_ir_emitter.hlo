@@ -1,0 +1,683 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+HloModule Test
+
+// CHECK: define void @dot(i8* noalias align 64 dereferenceable(80) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(80) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(48) %[[VAL_2:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_3:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_4:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
+// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [1 x [3 x [4 x float]]]*
+// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [1 x [4 x [5 x float]]]*
+// CHECK:         %[[VAL_9:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_10:.*]] = bitcast i8* %[[VAL_9]] to [1 x [4 x [5 x float]]]*
+// CHECK:         %[[VAL_11:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_12:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_13:.*]] = mul nuw nsw i32 %[[VAL_11]], 20
+// CHECK:         %[[VAL_14:.*]] = add nuw nsw i32 %[[VAL_13]], %[[VAL_12]]
+// CHECK:         %[[VAL_15:.*]] = icmp ult i32 %[[VAL_14]], 20
+// CHECK:         call void @llvm.assume(i1 %[[VAL_15]])
+// CHECK:         %[[VAL_16:.*]] = udiv i32 %[[VAL_14]], 1
+// CHECK:         %[[VAL_17:.*]] = urem i32 %[[VAL_16]], 5
+// CHECK:         %[[VAL_18:.*]] = udiv i32 %[[VAL_14]], 5
+// CHECK:         %[[VAL_19:.*]] = urem i32 %[[VAL_18]], 4
+// CHECK:         %[[VAL_20:.*]] = udiv i32 %[[VAL_14]], 20
+// CHECK:         %[[VAL_21:.*]] = icmp ult i32 %[[VAL_14]], 20
+// CHECK:         br i1 %[[VAL_21]], label %[[VAL_22:.*]], label %[[VAL_23:.*]]
+// CHECK:       dot.in_bounds-after:                              ; preds = %[[VAL_24:.*]], %[[VAL_25:.*]]
+// CHECK:         ret void
+// CHECK:       dot.in_bounds-true:                               ; preds = %[[VAL_25]]
+// CHECK:         store float 0.000000e+00, float* %[[VAL_3]], align 4
+// CHECK:         store i32 0, i32* %[[VAL_4]], align 4
+// CHECK:         br label %[[VAL_26:.*]]
+// CHECK:       dot.3.inner.loop_header:                          ; preds = %[[VAL_27:.*]], %[[VAL_22]]
+// CHECK:         %[[VAL_28:.*]] = load i32, i32* %[[VAL_4]], align 4
+// CHECK:         %[[VAL_29:.*]] = icmp uge i32 %[[VAL_28]], 4
+// CHECK:         br i1 %[[VAL_29]], label %[[VAL_24]], label %[[VAL_27]]
+// CHECK:       dot.3.inner.loop_body:                            ; preds = %[[VAL_26]]
+// CHECK:         %[[VAL_30:.*]] = load float, float* %[[VAL_3]], align 4
+// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [1 x [3 x [4 x float]]], [1 x [3 x [4 x float]]]* %[[VAL_6]], i32 0, i32 0, i32 %[[VAL_19]], i32 %[[VAL_28]]
+// CHECK:         %[[VAL_32:.*]] = load float, float* %[[VAL_31]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [1 x [4 x [5 x float]]], [1 x [4 x [5 x float]]]* %[[VAL_8]], i32 0, i32 0, i32 %[[VAL_28]], i32 %[[VAL_17]]
+// CHECK:         %[[VAL_34:.*]] = load float, float* %[[VAL_33]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_35:.*]] = fmul float %[[VAL_32]], %[[VAL_34]]
+// CHECK:         %[[VAL_36:.*]] = fadd float %[[VAL_30]], %[[VAL_35]]
+// CHECK:         store float %[[VAL_36]], float* %[[VAL_3]], align 4
+// CHECK:         %[[VAL_37:.*]] = add nuw nsw i32 %[[VAL_28]], 1
+// CHECK:         store i32 %[[VAL_37]], i32* %[[VAL_4]], align 4
+// CHECK:         br label %[[VAL_26]]
+// CHECK:       dot.3.inner.loop_exit:                            ; preds = %[[VAL_26]]
+// CHECK:         %[[VAL_38:.*]] = load float, float* %[[VAL_3]], align 4
+// CHECK:         %[[VAL_39:.*]] = bitcast [1 x [4 x [5 x float]]]* %[[VAL_10]] to float*
+// CHECK:         %[[VAL_40:.*]] = getelementptr inbounds float, float* %[[VAL_39]], i32 %[[VAL_14]]
+// CHECK:         store float %[[VAL_38]], float* %[[VAL_40]], align 4
+// CHECK:         br label %[[VAL_23]]
+// CHECK:       }
+ENTRY main {
+  %arg0 = f32[1,3,4]{2,1,0} parameter(0)
+  %arg1 = f32[1,4,5]{2,1,0} parameter(1)
+  ROOT %dot = f32[1,4,5]{2,1,0} dot(%arg0, %arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+
+// -----
+
+HloModule Test
+
+// CHECK: define void @reshape(i8* noalias align 64 dereferenceable(8) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(8) %[[VAL_1:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [2 x float]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [1 x [2 x float]]*
+// CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_7:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_8:.*]] = mul nuw nsw i32 %[[VAL_6]], 2
+// CHECK:         %[[VAL_9:.*]] = add nuw nsw i32 %[[VAL_8]], %[[VAL_7]]
+// CHECK:         %[[VAL_10:.*]] = icmp ult i32 %[[VAL_9]], 2
+// CHECK:         call void @llvm.assume(i1 %[[VAL_10]])
+// CHECK:         %[[VAL_11:.*]] = udiv i32 %[[VAL_9]], 1
+// CHECK:         %[[VAL_12:.*]] = urem i32 %[[VAL_11]], 2
+// CHECK:         %[[VAL_13:.*]] = udiv i32 %[[VAL_9]], 2
+// CHECK:         %[[VAL_14:.*]] = icmp ult i32 %[[VAL_9]], 2
+// CHECK:         br i1 %[[VAL_14]], label %[[VAL_15:.*]], label %[[VAL_16:.*]]
+// CHECK:       reshape.in_bounds-after:                          ; preds = %[[VAL_15]], %[[VAL_17:.*]]
+// CHECK:         ret void
+// CHECK:       reshape.in_bounds-true:                           ; preds = %[[VAL_17]]
+// CHECK:         %[[VAL_18:.*]] = bitcast [2 x float]* %[[VAL_3]] to float*
+// CHECK:         %[[VAL_19:.*]] = getelementptr inbounds float, float* %[[VAL_18]], i32 %[[VAL_9]]
+// CHECK:         %[[VAL_20:.*]] = load float, float* %[[VAL_19]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_21:.*]] = bitcast [1 x [2 x float]]* %[[VAL_5]] to float*
+// CHECK:         %[[VAL_22:.*]] = getelementptr inbounds float, float* %[[VAL_21]], i32 %[[VAL_9]]
+// CHECK:         store float %[[VAL_20]], float* %[[VAL_22]], align 4
+// CHECK:         br label %[[VAL_16]]
+// CHECK:       }
+ENTRY main {
+  %arg0 = f32[2]{0} parameter(0)
+  ROOT %reshape = f32[1,2]{1,0} reshape(%arg0)
+}
+
+// -----
+
+HloModule Test
+
+// CHECK: define void @reduce_window(i8* noalias align 16 dereferenceable(29512) %[[VAL_0:.*]], i8* noalias align 64 dereferenceable(2240) %[[VAL_1:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_2:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_3:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_4:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_5:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_6:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_7:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_8:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_9:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_10:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_11:.*]] = bitcast i8* %[[VAL_10]] to [2 x [17 x [31 x [7 x float]]]]*
+// CHECK:         %[[VAL_12:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_13:.*]] = bitcast i8* %[[VAL_12]] to [2 x [5 x [8 x [7 x float]]]]*
+// CHECK:         %[[VAL_14:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_15:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_16:.*]] = mul nuw nsw i32 %[[VAL_14]], 560
+// CHECK:         %[[VAL_17:.*]] = add nuw nsw i32 %[[VAL_16]], %[[VAL_15]]
+// CHECK:         %[[VAL_18:.*]] = icmp ult i32 %[[VAL_17]], 560
+// CHECK:         call void @llvm.assume(i1 %[[VAL_18]])
+// CHECK:         %[[VAL_19:.*]] = udiv i32 %[[VAL_17]], 1
+// CHECK:         %[[VAL_20:.*]] = urem i32 %[[VAL_19]], 7
+// CHECK:         %[[VAL_21:.*]] = udiv i32 %[[VAL_17]], 7
+// CHECK:         %[[VAL_22:.*]] = urem i32 %[[VAL_21]], 8
+// CHECK:         %[[VAL_23:.*]] = udiv i32 %[[VAL_17]], 56
+// CHECK:         %[[VAL_24:.*]] = urem i32 %[[VAL_23]], 5
+// CHECK:         %[[VAL_25:.*]] = udiv i32 %[[VAL_17]], 280
+// CHECK:         %[[VAL_26:.*]] = icmp ult i32 %[[VAL_17]], 560
+// CHECK:         br i1 %[[VAL_26]], label %[[VAL_27:.*]], label %[[VAL_28:.*]]
+// CHECK:       reduce_window.in_bounds-after:                    ; preds = %[[VAL_29:.*]], %[[VAL_30:.*]]
+// CHECK:         ret void
+// CHECK:       reduce_window.in_bounds-true:                     ; preds = %[[VAL_30]]
+// CHECK:         %[[VAL_31:.*]] = load float, float* bitcast ([4 x i8]* @buffer_for_c_1 to float*), align 4, !invariant.load !4
+// CHECK:         store float %[[VAL_31]], float* %[[VAL_9]], align 4
+// CHECK:         store i32 0, i32* %[[VAL_8]], align 4
+// CHECK:         br label %[[VAL_32:.*]]
+// CHECK:       reduce-window.7.loop_header.window.0:             ; preds = %[[VAL_33:.*]], %[[VAL_27]]
+// CHECK:         %[[VAL_34:.*]] = load i32, i32* %[[VAL_8]], align 4
+// CHECK:         %[[VAL_35:.*]] = icmp uge i32 %[[VAL_34]], 1
+// CHECK:         br i1 %[[VAL_35]], label %[[VAL_29]], label %[[VAL_36:.*]]
+// CHECK:       reduce-window.7.loop_body.window.0:               ; preds = %[[VAL_32]]
+// CHECK:         store i32 0, i32* %[[VAL_7]], align 4
+// CHECK:         br label %[[VAL_37:.*]]
+// CHECK:       reduce-window.7.loop_header.window.1:             ; preds = %[[VAL_38:.*]], %[[VAL_36]]
+// CHECK:         %[[VAL_39:.*]] = load i32, i32* %[[VAL_7]], align 4
+// CHECK:         %[[VAL_40:.*]] = icmp uge i32 %[[VAL_39]], 2
+// CHECK:         br i1 %[[VAL_40]], label %[[VAL_33]], label %[[VAL_41:.*]]
+// CHECK:       reduce-window.7.loop_body.window.1:               ; preds = %[[VAL_37]]
+// CHECK:         store i32 0, i32* %[[VAL_6]], align 4
+// CHECK:         br label %[[VAL_42:.*]]
+// CHECK:       reduce-window.7.loop_header.window.2:             ; preds = %[[VAL_43:.*]], %[[VAL_41]]
+// CHECK:         %[[VAL_44:.*]] = load i32, i32* %[[VAL_6]], align 4
+// CHECK:         %[[VAL_45:.*]] = icmp uge i32 %[[VAL_44]], 2
+// CHECK:         br i1 %[[VAL_45]], label %[[VAL_38]], label %[[VAL_46:.*]]
+// CHECK:       reduce-window.7.loop_body.window.2:               ; preds = %[[VAL_42]]
+// CHECK:         store i32 0, i32* %[[VAL_5]], align 4
+// CHECK:         br label %[[VAL_47:.*]]
+// CHECK:       reduce-window.7.loop_header.window.3:             ; preds = %[[VAL_48:.*]], %[[VAL_46]]
+// CHECK:         %[[VAL_49:.*]] = load i32, i32* %[[VAL_5]], align 4
+// CHECK:         %[[VAL_50:.*]] = icmp uge i32 %[[VAL_49]], 1
+// CHECK:         br i1 %[[VAL_50]], label %[[VAL_43]], label %[[VAL_51:.*]]
+// CHECK:       reduce-window.7.loop_body.window.3:               ; preds = %[[VAL_47]]
+// CHECK:         %[[VAL_52:.*]] = mul nsw i32 %[[VAL_25]], 1
+// CHECK:         %[[VAL_53:.*]] = mul nsw i32 %[[VAL_34]], 1
+// CHECK:         %[[VAL_54:.*]] = add nsw i32 %[[VAL_52]], %[[VAL_53]]
+// CHECK:         %[[VAL_55:.*]] = sub nsw i32 %[[VAL_54]], 0
+// CHECK:         %[[VAL_56:.*]] = srem i32 %[[VAL_55]], 1
+// CHECK:         %[[VAL_57:.*]] = icmp eq i32 %[[VAL_56]], 0
+// CHECK:         %[[VAL_58:.*]] = and i1 true, %[[VAL_57]]
+// CHECK:         %[[VAL_59:.*]] = sdiv i32 %[[VAL_55]], 1
+// CHECK:         %[[VAL_60:.*]] = icmp ult i32 %[[VAL_59]], 2
+// CHECK:         %[[VAL_61:.*]] = and i1 %[[VAL_58]], %[[VAL_60]]
+// CHECK:         %[[VAL_62:.*]] = mul nsw i32 %[[VAL_24]], 4
+// CHECK:         %[[VAL_63:.*]] = mul nsw i32 %[[VAL_39]], 2
+// CHECK:         %[[VAL_64:.*]] = add nsw i32 %[[VAL_62]], %[[VAL_63]]
+// CHECK:         %[[VAL_65:.*]] = sub nsw i32 %[[VAL_64]], 2
+// CHECK:         %[[VAL_66:.*]] = srem i32 %[[VAL_65]], 1
+// CHECK:         %[[VAL_67:.*]] = icmp eq i32 %[[VAL_66]], 0
+// CHECK:         %[[VAL_68:.*]] = and i1 %[[VAL_61]], %[[VAL_67]]
+// CHECK:         %[[VAL_69:.*]] = sdiv i32 %[[VAL_65]], 1
+// CHECK:         %[[VAL_70:.*]] = icmp ult i32 %[[VAL_69]], 17
+// CHECK:         %[[VAL_71:.*]] = and i1 %[[VAL_68]], %[[VAL_70]]
+// CHECK:         %[[VAL_72:.*]] = mul nsw i32 %[[VAL_22]], 4
+// CHECK:         %[[VAL_73:.*]] = mul nsw i32 %[[VAL_44]], 2
+// CHECK:         %[[VAL_74:.*]] = add nsw i32 %[[VAL_72]], %[[VAL_73]]
+// CHECK:         %[[VAL_75:.*]] = sub nsw i32 %[[VAL_74]], 0
+// CHECK:         %[[VAL_76:.*]] = srem i32 %[[VAL_75]], 1
+// CHECK:         %[[VAL_77:.*]] = icmp eq i32 %[[VAL_76]], 0
+// CHECK:         %[[VAL_78:.*]] = and i1 %[[VAL_71]], %[[VAL_77]]
+// CHECK:         %[[VAL_79:.*]] = sdiv i32 %[[VAL_75]], 1
+// CHECK:         %[[VAL_80:.*]] = icmp ult i32 %[[VAL_79]], 31
+// CHECK:         %[[VAL_81:.*]] = and i1 %[[VAL_78]], %[[VAL_80]]
+// CHECK:         %[[VAL_82:.*]] = mul nsw i32 %[[VAL_20]], 1
+// CHECK:         %[[VAL_83:.*]] = mul nsw i32 %[[VAL_49]], 1
+// CHECK:         %[[VAL_84:.*]] = add nsw i32 %[[VAL_82]], %[[VAL_83]]
+// CHECK:         %[[VAL_85:.*]] = sub nsw i32 %[[VAL_84]], 0
+// CHECK:         %[[VAL_86:.*]] = srem i32 %[[VAL_85]], 1
+// CHECK:         %[[VAL_87:.*]] = icmp eq i32 %[[VAL_86]], 0
+// CHECK:         %[[VAL_88:.*]] = and i1 %[[VAL_81]], %[[VAL_87]]
+// CHECK:         %[[VAL_89:.*]] = sdiv i32 %[[VAL_85]], 1
+// CHECK:         %[[VAL_90:.*]] = icmp ult i32 %[[VAL_89]], 7
+// CHECK:         %[[VAL_91:.*]] = and i1 %[[VAL_88]], %[[VAL_90]]
+// CHECK:         br i1 %[[VAL_91]], label %[[VAL_92:.*]], label %[[VAL_93:.*]]
+// CHECK:       in_bounds-after:                                  ; preds = %[[VAL_93]], %[[VAL_92]]
+// CHECK:         %[[VAL_94:.*]] = add nuw nsw i32 %[[VAL_49]], 1
+// CHECK:         store i32 %[[VAL_94]], i32* %[[VAL_5]], align 4
+// CHECK:         br label %[[VAL_47]]
+// CHECK:       reduce-window.7.loop_exit.window.3:               ; preds = %[[VAL_47]]
+// CHECK:         %[[VAL_95:.*]] = add nuw nsw i32 %[[VAL_44]], 1
+// CHECK:         store i32 %[[VAL_95]], i32* %[[VAL_6]], align 4
+// CHECK:         br label %[[VAL_42]]
+// CHECK:       reduce-window.7.loop_exit.window.2:               ; preds = %[[VAL_42]]
+// CHECK:         %[[VAL_96:.*]] = add nuw nsw i32 %[[VAL_39]], 1
+// CHECK:         store i32 %[[VAL_96]], i32* %[[VAL_7]], align 4
+// CHECK:         br label %[[VAL_37]]
+// CHECK:       reduce-window.7.loop_exit.window.1:               ; preds = %[[VAL_37]]
+// CHECK:         %[[VAL_97:.*]] = add nuw nsw i32 %[[VAL_34]], 1
+// CHECK:         store i32 %[[VAL_97]], i32* %[[VAL_8]], align 4
+// CHECK:         br label %[[VAL_32]]
+// CHECK:       reduce-window.7.loop_exit.window.0:               ; preds = %[[VAL_32]]
+// CHECK:         %[[VAL_98:.*]] = load float, float* %[[VAL_9]], align 4
+// CHECK:         %[[VAL_99:.*]] = bitcast [2 x [5 x [8 x [7 x float]]]]* %[[VAL_13]] to float*
+// CHECK:         %[[VAL_100:.*]] = getelementptr inbounds float, float* %[[VAL_99]], i32 %[[VAL_17]]
+// CHECK:         store float %[[VAL_98]], float* %[[VAL_100]], align 4
+// CHECK:         br label %[[VAL_28]]
+// CHECK:       in_bounds-true:                                   ; preds = %[[VAL_51]]
+// CHECK:         %[[VAL_101:.*]] = getelementptr inbounds [2 x [17 x [31 x [7 x float]]]], [2 x [17 x [31 x [7 x float]]]]* %[[VAL_11]], i32 0, i32 %[[VAL_59]], i32 %[[VAL_69]], i32 %[[VAL_79]], i32 %[[VAL_89]]
+// CHECK:         %[[VAL_102:.*]] = load float, float* %[[VAL_101]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_103:.*]] = load float, float* %[[VAL_9]], align 4
+// CHECK:         store float %[[VAL_103]], float* %[[VAL_3]], align 4
+// CHECK:         store float %[[VAL_102]], float* %[[VAL_2]], align 4
+// CHECK:         call void @region_1_3(float* %[[VAL_3]], float* %[[VAL_2]], float* %[[VAL_4]])
+// CHECK:         %[[VAL_104:.*]] = load float, float* %[[VAL_4]], align 4
+// CHECK:         store float %[[VAL_104]], float* %[[VAL_9]], align 4
+// CHECK:         br label %[[VAL_48]]
+// CHECK:       in_bounds-false:                                  ; preds = %[[VAL_51]]
+// CHECK:         br label %[[VAL_48]]
+// CHECK:       }
+
+// CHECK: define internal void @region_1_3(float* dereferenceable(4) %[[VAL_0:.*]], float* dereferenceable(4) %[[VAL_1:.*]], float* dereferenceable(4) %[[VAL_2:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_3:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_4:.*]] = load float, float* %[[VAL_0]], align 4
+// CHECK:         %[[VAL_5:.*]] = load float, float* %[[VAL_1]], align 4
+// CHECK:         %[[VAL_6:.*]] = call float @llvm.maxnum.f32(float %[[VAL_4]], float %[[VAL_5]])
+// CHECK:         store float %[[VAL_6]], float* %[[VAL_3]], align 4
+// CHECK:         %[[VAL_7:.*]] = load float, float* %[[VAL_3]], align 4
+// CHECK:         store float %[[VAL_7]], float* %[[VAL_2]], align 4
+// CHECK:         ret void
+// CHECK:       }
+max {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %c = f32[] maximum(%a, %b)
+}
+
+ENTRY main {
+  %arg0 = f32[2,17,31,7] parameter(0)
+  %c = f32[] constant(0)
+  ROOT %reduce_window = reduce-window(%arg0, %c), window={size=1x2x2x1 stride=1x4x4x1 pad=0_0x2_0x0_2x0_0 lhs_dilate=1x1x1x1 rhs_dilate=1x2x2x1}, to_apply=max
+}
+
+// -----
+
+HloModule Test
+
+// CHECK: define void @pad(i8* noalias align 64 dereferenceable(988) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_2:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_3:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [4 x [6 x float]]*
+// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
+// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_6]] to float*
+// CHECK:         %[[VAL_8:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_9:.*]] = bitcast i8* %[[VAL_8]] to [13 x [19 x float]]*
+// CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_11:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_12:.*]] = mul nuw nsw i32 %[[VAL_10]], 247
+// CHECK:         %[[VAL_13:.*]] = add nuw nsw i32 %[[VAL_12]], %[[VAL_11]]
+// CHECK:         %[[VAL_14:.*]] = icmp ult i32 %[[VAL_13]], 247
+// CHECK:         call void @llvm.assume(i1 %[[VAL_14]])
+// CHECK:         %[[VAL_15:.*]] = udiv i32 %[[VAL_13]], 1
+// CHECK:         %[[VAL_16:.*]] = urem i32 %[[VAL_15]], 19
+// CHECK:         %[[VAL_17:.*]] = udiv i32 %[[VAL_13]], 19
+// CHECK:         %[[VAL_18:.*]] = icmp ult i32 %[[VAL_13]], 247
+// CHECK:         br i1 %[[VAL_18]], label %[[VAL_19:.*]], label %[[VAL_20:.*]]
+// CHECK:       pad.in_bounds-after:                              ; preds = %[[VAL_21:.*]], %[[VAL_22:.*]]
+// CHECK:         ret void
+// CHECK:       pad.in_bounds-true:                               ; preds = %[[VAL_22]]
+// CHECK:         %[[VAL_23:.*]] = sub i32 %[[VAL_17]], 2
+// CHECK:         %[[VAL_24:.*]] = icmp sge i32 %[[VAL_23]], 0
+// CHECK:         %[[VAL_25:.*]] = and i1 true, %[[VAL_24]]
+// CHECK:         %[[VAL_26:.*]] = urem i32 %[[VAL_23]], 2
+// CHECK:         %[[VAL_27:.*]] = icmp eq i32 0, %[[VAL_26]]
+// CHECK:         %[[VAL_28:.*]] = and i1 %[[VAL_25]], %[[VAL_27]]
+// CHECK:         %[[VAL_29:.*]] = sdiv i32 %[[VAL_23]], 2
+// CHECK:         %[[VAL_30:.*]] = icmp slt i32 %[[VAL_29]], 4
+// CHECK:         %[[VAL_31:.*]] = and i1 %[[VAL_28]], %[[VAL_30]]
+// CHECK:         %[[VAL_32:.*]] = sub i32 %[[VAL_16]], 3
+// CHECK:         %[[VAL_33:.*]] = icmp sge i32 %[[VAL_32]], 0
+// CHECK:         %[[VAL_34:.*]] = and i1 %[[VAL_31]], %[[VAL_33]]
+// CHECK:         %[[VAL_35:.*]] = urem i32 %[[VAL_32]], 2
+// CHECK:         %[[VAL_36:.*]] = icmp eq i32 0, %[[VAL_35]]
+// CHECK:         %[[VAL_37:.*]] = and i1 %[[VAL_34]], %[[VAL_36]]
+// CHECK:         %[[VAL_38:.*]] = sdiv i32 %[[VAL_32]], 2
+// CHECK:         %[[VAL_39:.*]] = icmp slt i32 %[[VAL_38]], 6
+// CHECK:         %[[VAL_40:.*]] = and i1 %[[VAL_37]], %[[VAL_39]]
+// CHECK:         br i1 %[[VAL_40]], label %[[VAL_41:.*]], label %[[VAL_42:.*]]
+// CHECK:       in_bounds-after:                                  ; preds = %[[VAL_42]], %[[VAL_41]]
+// CHECK:         %[[VAL_43:.*]] = load float, float* %[[VAL_3]], align 4
+// CHECK:         %[[VAL_44:.*]] = bitcast [13 x [19 x float]]* %[[VAL_9]] to float*
+// CHECK:         %[[VAL_45:.*]] = getelementptr inbounds float, float* %[[VAL_44]], i32 %[[VAL_13]]
+// CHECK:         store float %[[VAL_43]], float* %[[VAL_45]], align 4
+// CHECK:         br label %[[VAL_20]]
+// CHECK:       in_bounds-true:                                   ; preds = %[[VAL_19]]
+// CHECK:         %[[VAL_46:.*]] = getelementptr inbounds [4 x [6 x float]], [4 x [6 x float]]* %[[VAL_5]], i32 0, i32 %[[VAL_29]], i32 %[[VAL_38]]
+// CHECK:         %[[VAL_47:.*]] = load float, float* %[[VAL_46]], align 4, !invariant.load !4
+// CHECK:         store float %[[VAL_47]], float* %[[VAL_3]], align 4
+// CHECK:         br label %[[VAL_21]]
+// CHECK:       in_bounds-false:                                  ; preds = %[[VAL_19]]
+// CHECK:         %[[VAL_48:.*]] = load float, float* %[[VAL_7]], align 4, !invariant.load !4
+// CHECK:         store float %[[VAL_48]], float* %[[VAL_3]], align 4
+// CHECK:         br label %[[VAL_21]]
+// CHECK:       }
+ENTRY main {
+  %arg0 = f32[4,6] parameter(0)
+  %arg1 = f32[] parameter(1)
+  %pad = f32[13,19] pad(%arg0, %arg1), padding=2_4_1x3_5_1
+}
+
+// -----
+
+HloModule Test
+
+// CHECK: define void @transpose(i8* noalias align 64 dereferenceable(96) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [1 x [2 x [3 x [4 x float]]]]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [2 x [1 x [4 x [3 x float]]]]*
+// CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_7:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_8:.*]] = mul nuw nsw i32 %[[VAL_6]], 24
+// CHECK:         %[[VAL_9:.*]] = add nuw nsw i32 %[[VAL_8]], %[[VAL_7]]
+// CHECK:         %[[VAL_10:.*]] = icmp ult i32 %[[VAL_9]], 24
+// CHECK:         call void @llvm.assume(i1 %[[VAL_10]])
+// CHECK:         %[[VAL_11:.*]] = udiv i32 %[[VAL_9]], 1
+// CHECK:         %[[VAL_12:.*]] = urem i32 %[[VAL_11]], 3
+// CHECK:         %[[VAL_13:.*]] = udiv i32 %[[VAL_9]], 3
+// CHECK:         %[[VAL_14:.*]] = urem i32 %[[VAL_13]], 4
+// CHECK:         %[[VAL_15:.*]] = udiv i32 %[[VAL_9]], 12
+// CHECK:         %[[VAL_16:.*]] = urem i32 %[[VAL_15]], 1
+// CHECK:         %[[VAL_17:.*]] = udiv i32 %[[VAL_9]], 12
+// CHECK:         %[[VAL_18:.*]] = icmp ult i32 %[[VAL_9]], 24
+// CHECK:         br i1 %[[VAL_18]], label %[[VAL_19:.*]], label %[[VAL_20:.*]]
+// CHECK:       transpose.in_bounds-after:                        ; preds = %[[VAL_19]], %[[VAL_21:.*]]
+// CHECK:         ret void
+// CHECK:       transpose.in_bounds-true:                         ; preds = %[[VAL_21]]
+// CHECK:         %[[VAL_22:.*]] = getelementptr inbounds [1 x [2 x [3 x [4 x float]]]], [1 x [2 x [3 x [4 x float]]]]* %[[VAL_3]], i32 0, i32 0, i32 %[[VAL_17]], i32 %[[VAL_12]], i32 %[[VAL_14]]
+// CHECK:         %[[VAL_23:.*]] = load float, float* %[[VAL_22]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_24:.*]] = bitcast [2 x [1 x [4 x [3 x float]]]]* %[[VAL_5]] to float*
+// CHECK:         %[[VAL_25:.*]] = getelementptr inbounds float, float* %[[VAL_24]], i32 %[[VAL_9]]
+// CHECK:         store float %[[VAL_23]], float* %[[VAL_25]], align 4
+// CHECK:         br label %[[VAL_20]]
+// CHECK:       }
+ENTRY main {
+  %arg0 = f32[1,2,3,4] parameter(0)
+  %transpose = f32[2,1,4,3] transpose(%arg0), dimensions={1,0,3,2}
+}
+
+// -----
+
+HloModule Test
+
+// CHECK: define void @broadcast(i8* noalias align 64 dereferenceable(40) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [1 x float]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [10 x float]*
+// CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_7:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_8:.*]] = mul nuw nsw i32 %[[VAL_6]], 10
+// CHECK:         %[[VAL_9:.*]] = add nuw nsw i32 %[[VAL_8]], %[[VAL_7]]
+// CHECK:         %[[VAL_10:.*]] = icmp ult i32 %[[VAL_9]], 10
+// CHECK:         call void @llvm.assume(i1 %[[VAL_10]])
+// CHECK:         %[[VAL_11:.*]] = udiv i32 %[[VAL_9]], 1
+// CHECK:         %[[VAL_12:.*]] = icmp ult i32 %[[VAL_9]], 10
+// CHECK:         br i1 %[[VAL_12]], label %[[VAL_13:.*]], label %[[VAL_14:.*]]
+// CHECK:       broadcast.in_bounds-after:                        ; preds = %[[VAL_13]], %[[VAL_15:.*]]
+// CHECK:         ret void
+// CHECK:       broadcast.in_bounds-true:                         ; preds = %[[VAL_15]]
+// CHECK:         %[[VAL_16:.*]] = getelementptr inbounds [1 x float], [1 x float]* %[[VAL_3]], i32 0, i32 0
+// CHECK:         %[[VAL_17:.*]] = load float, float* %[[VAL_16]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_18:.*]] = bitcast [10 x float]* %[[VAL_5]] to float*
+// CHECK:         %[[VAL_19:.*]] = getelementptr inbounds float, float* %[[VAL_18]], i32 %[[VAL_9]]
+// CHECK:         store float %[[VAL_17]], float* %[[VAL_19]], align 4
+// CHECK:         br label %[[VAL_14]]
+// CHECK:       }
+ENTRY main {
+  %arg0 = f32[1] parameter(0)
+  %broadcast = f32[10] broadcast(%arg0), dimensions={0}
+}
+
+// -----
+
+HloModule Test
+
+// CHECK: define void @concatenate(i8* noalias align 64 dereferenceable(2048) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(1920) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(128) %[[VAL_2:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
+// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [32 x [1 x float]]*
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [32 x [15 x float]]*
+// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [32 x [16 x float]]*
+// CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_11:.*]] = mul nuw nsw i32 %[[VAL_9]], 512
+// CHECK:         %[[VAL_12:.*]] = add nuw nsw i32 %[[VAL_11]], %[[VAL_10]]
+// CHECK:         %[[VAL_13:.*]] = icmp ult i32 %[[VAL_12]], 512
+// CHECK:         call void @llvm.assume(i1 %[[VAL_13]])
+// CHECK:         %[[VAL_14:.*]] = udiv i32 %[[VAL_12]], 1
+// CHECK:         %[[VAL_15:.*]] = urem i32 %[[VAL_14]], 16
+// CHECK:         %[[VAL_16:.*]] = udiv i32 %[[VAL_12]], 16
+// CHECK:         %[[VAL_17:.*]] = icmp ult i32 %[[VAL_12]], 512
+// CHECK:         br i1 %[[VAL_17]], label %[[VAL_18:.*]], label %[[VAL_19:.*]]
+// CHECK:       concatenate.in_bounds-after:                      ; preds = %[[VAL_20:.*]], %[[VAL_21:.*]]
+// CHECK:         ret void
+// CHECK:       concatenate.in_bounds-true:                       ; preds = %[[VAL_21]]
+// CHECK:         %[[VAL_22:.*]] = icmp ult i32 %[[VAL_15]], 1
+// CHECK:         br i1 %[[VAL_22]], label %[[VAL_23:.*]], label %[[VAL_24:.*]]
+// CHECK:       concat_index_from_operand_id0:                    ; preds = %[[VAL_18]]
+// CHECK:         %[[VAL_25:.*]] = phi i32 [ 0, %[[VAL_18]] ]
+// CHECK:         %[[VAL_26:.*]] = sub nsw i32 %[[VAL_15]], %[[VAL_25]]
+// CHECK:         %[[VAL_27:.*]] = getelementptr inbounds [32 x [1 x float]], [32 x [1 x float]]* %[[VAL_4]], i32 0, i32 %[[VAL_16]], i32 0
+// CHECK:         %[[VAL_28:.*]] = load float, float* %[[VAL_27]], align 4, !invariant.load !4
+// CHECK:         br label %[[VAL_20]]
+// CHECK:       concat_index_from_operand_id1:                    ; preds = %[[VAL_24]]
+// CHECK:         %[[VAL_29:.*]] = phi i32 [ 1, %[[VAL_24]] ]
+// CHECK:         %[[VAL_30:.*]] = sub nsw i32 %[[VAL_15]], %[[VAL_29]]
+// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [32 x [15 x float]], [32 x [15 x float]]* %[[VAL_6]], i32 0, i32 %[[VAL_16]], i32 %[[VAL_30]]
+// CHECK:         %[[VAL_32:.*]] = load float, float* %[[VAL_31]], align 4, !invariant.load !4
+// CHECK:         br label %[[VAL_20]]
+// CHECK:       concat_index_not_from_operand0:                   ; preds = %[[VAL_18]]
+// CHECK:         %[[VAL_33:.*]] = icmp ult i32 %[[VAL_15]], 16
+// CHECK:         br i1 %[[VAL_33]], label %[[VAL_34:.*]], label %[[VAL_35:.*]]
+// CHECK:       concat_index_not_from_operand1:                   ; preds = %[[VAL_24]]
+// CHECK:         unreachable
+// CHECK:       concatenate.3.merge:                              ; preds = %[[VAL_34]], %[[VAL_23]]
+// CHECK:         %[[VAL_36:.*]] = phi float [ %[[VAL_28]], %[[VAL_23]] ], [ %[[VAL_32]], %[[VAL_34]] ]
+// CHECK:         %[[VAL_37:.*]] = bitcast [32 x [16 x float]]* %[[VAL_8]] to float*
+// CHECK:         %[[VAL_38:.*]] = getelementptr inbounds float, float* %[[VAL_37]], i32 %[[VAL_12]]
+// CHECK:         store float %[[VAL_36]], float* %[[VAL_38]], align 4
+// CHECK:         br label %[[VAL_19]]
+// CHECK:       }
+ENTRY main {
+  %arg0 = f32[32, 1] parameter(0)
+  %arg1 = f32[32, 15] parameter(1)
+  ROOT %concatenate = f32[32, 16] concatenate(%arg0, %arg1), dimensions={1}
+}
+
+// -----
+
+HloModule m
+
+// CHECK: define void @dus(i8* noalias align 16 dereferenceable(8) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_2:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_3:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [2 x i32]*
+// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_6]] to i32*
+// CHECK:         %[[VAL_8:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
+// CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
+// CHECK:         %[[VAL_10:.*]] = mul nuw nsw i32 %[[VAL_8]], 6
+// CHECK:         %[[VAL_11:.*]] = add nuw nsw i32 %[[VAL_10]], %[[VAL_9]]
+// CHECK:         %[[VAL_12:.*]] = icmp ult i32 %[[VAL_11]], 6
+// CHECK:         call void @llvm.assume(i1 %[[VAL_12]])
+// CHECK:         %[[VAL_13:.*]] = udiv i32 %[[VAL_11]], 1
+// CHECK:         %[[VAL_14:.*]] = icmp ult i32 %[[VAL_11]], 6
+// CHECK:         br i1 %[[VAL_14]], label %[[VAL_15:.*]], label %[[VAL_16:.*]]
+// CHECK:       dus.in_bounds-after:                              ; preds = %[[VAL_17:.*]], %[[VAL_18:.*]]
+// CHECK:         ret void
+// CHECK:       dus.in_bounds-true:                               ; preds = %[[VAL_18]]
+// CHECK:         %[[VAL_19:.*]] = load i32, i32* %[[VAL_7]], align 4, !invariant.load !8
+// CHECK:         %[[VAL_20:.*]] = icmp sge i32 0, %[[VAL_19]]
+// CHECK:         %[[VAL_21:.*]] = select i1 %[[VAL_20]], i32 0, i32 %[[VAL_19]]
+// CHECK:         %[[VAL_22:.*]] = icmp sle i32 4, %[[VAL_21]]
+// CHECK:         %[[VAL_23:.*]] = select i1 %[[VAL_22]], i32 4, i32 %[[VAL_21]]
+// CHECK:         %[[VAL_24:.*]] = add i32 %[[VAL_23]], 2
+// CHECK:         %[[VAL_25:.*]] = icmp sge i32 %[[VAL_13]], %[[VAL_23]]
+// CHECK:         %[[VAL_26:.*]] = and i1 true, %[[VAL_25]]
+// CHECK:         %[[VAL_27:.*]] = icmp slt i32 %[[VAL_13]], %[[VAL_24]]
+// CHECK:         %[[VAL_28:.*]] = and i1 %[[VAL_26]], %[[VAL_27]]
+// CHECK:         br i1 %[[VAL_28]], label %[[VAL_29:.*]], label %[[VAL_30:.*]]
+// CHECK:       slice_intersection-after:                         ; preds = %[[VAL_30]], %[[VAL_29]]
+// CHECK:         %[[VAL_31:.*]] = load i32, i32* %[[VAL_3]], align 4
+// CHECK:         %[[VAL_32:.*]] = getelementptr inbounds i32, i32* bitcast ([24 x i8]* @buffer_for_o to i32*), i32 %[[VAL_11]]
+// CHECK:         store i32 %[[VAL_31]], i32* %[[VAL_32]], align 4
+// CHECK:         br label %[[VAL_16]]
+// CHECK:       slice_intersection-true:                          ; preds = %[[VAL_15]]
+// CHECK:         %[[VAL_33:.*]] = sub i32 %[[VAL_13]], %[[VAL_23]]
+// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x i32], [2 x i32]* %[[VAL_5]], i32 0, i32 %[[VAL_33]]
+// CHECK:         %[[VAL_35:.*]] = load i32, i32* %[[VAL_34]], align 4, !invariant.load !8
+// CHECK:         store i32 %[[VAL_35]], i32* %[[VAL_3]], align 4
+// CHECK:         br label %[[VAL_17]]
+// CHECK:       slice_intersection-false:                         ; preds = %[[VAL_15]]
+// CHECK:         %[[VAL_36:.*]] = getelementptr inbounds i32, i32* bitcast ([24 x i8]* @buffer_for_o to i32*), i32 %[[VAL_11]]
+// CHECK:         %[[VAL_37:.*]] = load i32, i32* %[[VAL_36]], align 4
+// CHECK:         store i32 %[[VAL_37]], i32* %[[VAL_3]], align 4
+// CHECK:         br label %[[VAL_17]]
+// CHECK:       }
+
+// CHECK: define void @ds(i8* noalias align 64 dereferenceable(8) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_2:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
+// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [6 x i32]*
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to i32*
+// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [2 x i32]*
+// CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
+// CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !10
+// CHECK:         %[[VAL_11:.*]] = mul nuw nsw i32 %[[VAL_9]], 2
+// CHECK:         %[[VAL_12:.*]] = add nuw nsw i32 %[[VAL_11]], %[[VAL_10]]
+// CHECK:         %[[VAL_13:.*]] = icmp ult i32 %[[VAL_12]], 2
+// CHECK:         call void @llvm.assume(i1 %[[VAL_13]])
+// CHECK:         %[[VAL_14:.*]] = udiv i32 %[[VAL_12]], 1
+// CHECK:         %[[VAL_15:.*]] = icmp ult i32 %[[VAL_12]], 2
+// CHECK:         br i1 %[[VAL_15]], label %[[VAL_16:.*]], label %[[VAL_17:.*]]
+// CHECK:       ds.in_bounds-after:                               ; preds = %[[VAL_16]], %[[VAL_18:.*]]
+// CHECK:         ret void
+// CHECK:       ds.in_bounds-true:                                ; preds = %[[VAL_18]]
+// CHECK:         %[[VAL_19:.*]] = load i32, i32* %[[VAL_6]], align 4, !invariant.load !8
+// CHECK:         %[[VAL_20:.*]] = icmp sge i32 0, %[[VAL_19]]
+// CHECK:         %[[VAL_21:.*]] = select i1 %[[VAL_20]], i32 0, i32 %[[VAL_19]]
+// CHECK:         %[[VAL_22:.*]] = icmp sle i32 4, %[[VAL_21]]
+// CHECK:         %[[VAL_23:.*]] = select i1 %[[VAL_22]], i32 4, i32 %[[VAL_21]]
+// CHECK:         %[[VAL_24:.*]] = add i32 %[[VAL_23]], %[[VAL_14]]
+// CHECK:         %[[VAL_25:.*]] = getelementptr inbounds [6 x i32], [6 x i32]* %[[VAL_4]], i32 0, i32 %[[VAL_24]]
+// CHECK:         %[[VAL_26:.*]] = load i32, i32* %[[VAL_25]], align 4, !invariant.load !8
+// CHECK:         %[[VAL_27:.*]] = bitcast [2 x i32]* %[[VAL_8]] to i32*
+// CHECK:         %[[VAL_28:.*]] = getelementptr inbounds i32, i32* %[[VAL_27]], i32 %[[VAL_12]]
+// CHECK:         store i32 %[[VAL_26]], i32* %[[VAL_28]], align 4
+// CHECK:         br label %[[VAL_17]]
+// CHECK:       }
+ENTRY test {
+  o = s32[6] constant({2,3,4,5,6,7})
+  i = s32[] parameter(0)
+  u = s32[2] parameter(1)
+  dus = s32[6] dynamic-update-slice(o,u,i)
+  a = s32[6] add(dus, dus)
+  j = s32[] parameter(2)
+  ROOT ds = s32[2] dynamic-slice(a, j), dynamic_slice_sizes={2}
+}
+
+// -----
+
+HloModule TensorFlowGatherV1
+
+// CHECK: define void @gather(i8* noalias align 16 dereferenceable(36) %[[VAL_0:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(8) %[[VAL_2:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [3 x [3 x i32]]*
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
+// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [2 x i32]*
+// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [2 x [3 x i32]]*
+// CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_11:.*]] = mul nuw nsw i32 %[[VAL_9]], 6
+// CHECK:         %[[VAL_12:.*]] = add nuw nsw i32 %[[VAL_11]], %[[VAL_10]]
+// CHECK:         %[[VAL_13:.*]] = icmp ult i32 %[[VAL_12]], 6
+// CHECK:         call void @llvm.assume(i1 %[[VAL_13]])
+// CHECK:         %[[VAL_14:.*]] = udiv i32 %[[VAL_12]], 1
+// CHECK:         %[[VAL_15:.*]] = urem i32 %[[VAL_14]], 3
+// CHECK:         %[[VAL_16:.*]] = udiv i32 %[[VAL_12]], 3
+// CHECK:         %[[VAL_17:.*]] = icmp ult i32 %[[VAL_12]], 6
+// CHECK:         br i1 %[[VAL_17]], label %[[VAL_18:.*]], label %[[VAL_19:.*]]
+// CHECK:       gather.in_bounds-after:                           ; preds = %[[VAL_18]], %[[VAL_20:.*]]
+// CHECK:         ret void
+// CHECK:       gather.in_bounds-true:                            ; preds = %[[VAL_20]]
+// CHECK:         %[[VAL_21:.*]] = getelementptr inbounds [2 x i32], [2 x i32]* %[[VAL_6]], i32 0, i32 %[[VAL_16]]
+// CHECK:         %[[VAL_22:.*]] = load i32, i32* %[[VAL_21]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_23:.*]] = icmp sge i32 0, %[[VAL_22]]
+// CHECK:         %[[VAL_24:.*]] = select i1 %[[VAL_23]], i32 0, i32 %[[VAL_22]]
+// CHECK:         %[[VAL_25:.*]] = icmp sle i32 2, %[[VAL_24]]
+// CHECK:         %[[VAL_26:.*]] = select i1 %[[VAL_25]], i32 2, i32 %[[VAL_24]]
+// CHECK:         %[[VAL_27:.*]] = add i32 0, %[[VAL_26]]
+// CHECK:         %[[VAL_28:.*]] = getelementptr inbounds [3 x [3 x i32]], [3 x [3 x i32]]* %[[VAL_4]], i32 0, i32 %[[VAL_27]], i32 %[[VAL_15]]
+// CHECK:         %[[VAL_29:.*]] = load i32, i32* %[[VAL_28]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_30:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_8]] to i32*
+// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds i32, i32* %[[VAL_30]], i32 %[[VAL_12]]
+// CHECK:         store i32 %[[VAL_29]], i32* %[[VAL_31]], align 4
+// CHECK:         br label %[[VAL_19]]
+// CHECK:       }
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  ROOT gather = s32[2,3] gather(operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
+      index_vector_dim=1,
+      slice_sizes={1, 3}
+}
+
+// -----
+
+HloModule Test
+
+// CHECK: define void @iota(i8* noalias align 64 dereferenceable(80) %[[VAL_0:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_1:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_1]] to [2 x [10 x float]]*
+// CHECK:         %[[VAL_3:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_4:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_5:.*]] = mul nuw nsw i32 %[[VAL_3]], 20
+// CHECK:         %[[VAL_6:.*]] = add nuw nsw i32 %[[VAL_5]], %[[VAL_4]]
+// CHECK:         %[[VAL_7:.*]] = icmp ult i32 %[[VAL_6]], 20
+// CHECK:         call void @llvm.assume(i1 %[[VAL_7]])
+// CHECK:         %[[VAL_8:.*]] = udiv i32 %[[VAL_6]], 1
+// CHECK:         %[[VAL_9:.*]] = urem i32 %[[VAL_8]], 10
+// CHECK:         %[[VAL_10:.*]] = udiv i32 %[[VAL_6]], 10
+// CHECK:         %[[VAL_11:.*]] = icmp ult i32 %[[VAL_6]], 20
+// CHECK:         br i1 %[[VAL_11]], label %[[VAL_12:.*]], label %[[VAL_13:.*]]
+// CHECK:       iota.in_bounds-after:                             ; preds = %[[VAL_12]], %[[VAL_14:.*]]
+// CHECK:         ret void
+// CHECK:       iota.in_bounds-true:                              ; preds = %[[VAL_14]]
+// CHECK:         %[[VAL_15:.*]] = udiv i32 %[[VAL_6]], 10
+// CHECK:         %[[VAL_16:.*]] = uitofp i32 %[[VAL_15]] to float
+// CHECK:         %[[VAL_17:.*]] = bitcast [2 x [10 x float]]* %[[VAL_2]] to float*
+// CHECK:         %[[VAL_18:.*]] = getelementptr inbounds float, float* %[[VAL_17]], i32 %[[VAL_6]]
+// CHECK:         store float %[[VAL_16]], float* %[[VAL_18]], align 4
+// CHECK:         br label %[[VAL_13]]
+// CHECK:       }
+ENTRY main {
+  ROOT %iota = f32[2,10] iota(), iota_dimension=0
+}
+
+// -----
+
+HloModule Test
+
+// CHECK: define void @reverse(i8* noalias align 64 dereferenceable(96) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]]) {
+// CHECK:       entry:
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
+// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [2 x [3 x [4 x float]]]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [2 x [3 x [4 x float]]]*
+// CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_7:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_8:.*]] = mul nuw nsw i32 %[[VAL_6]], 24
+// CHECK:         %[[VAL_9:.*]] = add nuw nsw i32 %[[VAL_8]], %[[VAL_7]]
+// CHECK:         %[[VAL_10:.*]] = icmp ult i32 %[[VAL_9]], 24
+// CHECK:         call void @llvm.assume(i1 %[[VAL_10]])
+// CHECK:         %[[VAL_11:.*]] = udiv i32 %[[VAL_9]], 1
+// CHECK:         %[[VAL_12:.*]] = urem i32 %[[VAL_11]], 4
+// CHECK:         %[[VAL_13:.*]] = udiv i32 %[[VAL_9]], 4
+// CHECK:         %[[VAL_14:.*]] = urem i32 %[[VAL_13]], 3
+// CHECK:         %[[VAL_15:.*]] = udiv i32 %[[VAL_9]], 12
+// CHECK:         %[[VAL_16:.*]] = icmp ult i32 %[[VAL_9]], 24
+// CHECK:         br i1 %[[VAL_16]], label %[[VAL_17:.*]], label %[[VAL_18:.*]]
+// CHECK:       reverse.in_bounds-after:                          ; preds = %[[VAL_17]], %[[VAL_19:.*]]
+// CHECK:         ret void
+// CHECK:       reverse.in_bounds-true:                           ; preds = %[[VAL_19]]
+// CHECK:         %[[VAL_20:.*]] = sub i32 2, %[[VAL_14]]
+// CHECK:         %[[VAL_21:.*]] = sub i32 3, %[[VAL_12]]
+// CHECK:         %[[VAL_22:.*]] = getelementptr inbounds [2 x [3 x [4 x float]]], [2 x [3 x [4 x float]]]* %[[VAL_3]], i32 0, i32 %[[VAL_15]], i32 %[[VAL_20]], i32 %[[VAL_21]]
+// CHECK:         %[[VAL_23:.*]] = load float, float* %[[VAL_22]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_24:.*]] = bitcast [2 x [3 x [4 x float]]]* %[[VAL_5]] to float*
+// CHECK:         %[[VAL_25:.*]] = getelementptr inbounds float, float* %[[VAL_24]], i32 %[[VAL_9]]
+// CHECK:         store float %[[VAL_23]], float* %[[VAL_25]], align 4
+// CHECK:         br label %[[VAL_18]]
+// CHECK:       }
+ENTRY main {
+  %arg0 = f32[2,3,4] parameter(0)
+  ROOT %reverse = f32[2,3,4] reverse(%arg0), dimensions={1,2}
+}

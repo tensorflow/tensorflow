@@ -33,13 +33,12 @@ class KernelRunner {
  public:
   KernelRunner(const TfLiteRegistration& registration, TfLiteTensor* tensors,
                int tensors_size, TfLiteIntArray* inputs,
-               TfLiteIntArray* outputs, void* builtin_data,
-               ErrorReporter* error_reporter);
+               TfLiteIntArray* outputs, void* builtin_data);
 
   // Calls init and prepare on the kernel (i.e. TfLiteRegistration) struct. Any
-  // exceptions will be reported through the error_reporter and returned as a
-  // status code here.
-  TfLiteStatus InitAndPrepare(const char* init_data = nullptr);
+  // exceptions will be DebugLog'd and returned as a status code.
+  TfLiteStatus InitAndPrepare(const char* init_data = nullptr,
+                              size_t length = 0);
 
   // Calls init, prepare, and invoke on a given TfLiteRegistration pointer.
   // After successful invoke, results will be available in the output tensor as
@@ -60,7 +59,7 @@ class KernelRunner {
                             ...);
 
  private:
-  static constexpr int kNumScratchBuffers_ = 5;
+  static constexpr int kNumScratchBuffers_ = 12;
 
   static constexpr int kKernelRunnerBufferSize_ = 10000;
   static uint8_t kKernelRunnerBuffer_[kKernelRunnerBufferSize_];
@@ -68,7 +67,6 @@ class KernelRunner {
   SimpleMemoryAllocator* allocator_ = nullptr;
   const TfLiteRegistration& registration_;
   TfLiteTensor* tensors_ = nullptr;
-  ErrorReporter* error_reporter_ = nullptr;
 
   TfLiteContext context_ = {};
   TfLiteNode node_ = {};

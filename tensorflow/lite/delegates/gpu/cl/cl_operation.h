@@ -24,9 +24,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {
@@ -71,7 +71,8 @@ class ClOperation {
                            operation_->work_group_size_);
   }
 
-  absl::Status Tune(const TuningParameters& params);
+  absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
+                    ProfilingCommandQueue* profiling_queue);
 
   absl::Status Compile(const CreationContext& creation_context);
 

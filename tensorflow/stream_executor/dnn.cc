@@ -94,6 +94,8 @@ std::string QuantizedActivationModeString(QuantizedActivationMode mode) {
 
 std::string ActivationModeString(ActivationMode mode) {
   switch (mode) {
+    case ActivationMode::kNone:
+      return "none";
     case ActivationMode::kSigmoid:
       return "sigmoid";
     case ActivationMode::kRelu:

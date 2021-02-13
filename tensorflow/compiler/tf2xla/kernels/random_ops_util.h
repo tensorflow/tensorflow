@@ -37,6 +37,9 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
 // addition, the distribution near the limit is not uniform.
 xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype);
 
+// Combines two signed 32-bit seeds into a single unsigned 64 bit seed.
+xla::XlaOp GetU64FromS32Seeds(xla::XlaOp seed0, xla::XlaOp seed1);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_KERNELS_RANDOM_OPS_UTIL_H_

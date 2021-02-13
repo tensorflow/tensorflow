@@ -57,8 +57,15 @@ void XlaContext::set_args(std::vector<XlaExpression> args) {
   args_ = std::move(args);
 }
 
-XlaContext::XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder)
-    : compiler_(compiler), builder_(builder) {}
+XlaContext::XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
+                       const Graph* graph)
+    : compiler_(compiler), builder_(builder) {
+  if (graph) {
+    for (const Node* node : graph->nodes()) {
+      stack_traces_[node->name()] = node->GetStackTrace();
+    }
+  }
+}
 
 string XlaContext::DebugString() const { return "XLA JIT context"; }
 

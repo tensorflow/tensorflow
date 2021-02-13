@@ -139,20 +139,20 @@ class InitializeTRTResource : public OpKernel {
               engine_instance.serialized_engine().c_str(),
               engine_instance.serialized_engine().size(), nullptr));
       auto raw_engine = engine.get();
-      std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> ctx_vec;
+      std::vector<ExecutionContext> ctx_vec;
       if (num_loaded_engine == 0) {
         // Restore profiles if there are any. Currently only 1 engine is allowed
         // in dynamic mode therefore we call this only for the 0th engine.
         // it is a no-op in implicit batch mode.
         OP_REQUIRES_OK(ctx, resource->profiles_.RestoreProfiles(raw_engine));
         OP_REQUIRES_OK(ctx, resource->profiles_.CreateExecutionContexts(
-                                raw_engine, ctx_vec));
+                                raw_engine, ctx_vec, allocator));
       } else {
         // Multiple engines are only available in static mode. For each engine
         // we have only a single execution context.
-        TrtUniquePtrType<nvinfer1::IExecutionContext> exec_ctx(
-            raw_engine->createExecutionContext());
-        ctx_vec.push_back(std::move(exec_ctx));
+        auto exec_ctx_status = ExecutionContext::Create(raw_engine, allocator);
+        OP_REQUIRES_OK(ctx, exec_ctx_status.status());
+        ctx_vec.push_back(std::move(exec_ctx_status.ValueOrDie()));
       }
       resource->cache_.emplace(engine_input_shapes,
                                absl::make_unique<EngineContext>(

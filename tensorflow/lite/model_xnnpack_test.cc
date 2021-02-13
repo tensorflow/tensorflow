@@ -12,12 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {

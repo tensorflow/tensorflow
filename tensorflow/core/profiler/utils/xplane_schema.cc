@@ -116,6 +116,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"MergeInputTensors", kMergeInputTensors},
       {"ScheduleWithoutSplit", kScheduleWithoutSplit},
       {"ScheduleWithSplit", kScheduleWithSplit},
+      {"ASBSQueue::Schedule", kASBSQueueSchedule},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.
@@ -156,6 +157,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"region_type", kRegionType},
       {"data_type", kDataType},
       {"shape", kTensorShapes},
+      {"layout", kTensorLayout},
       {"kpi_name", kKpiName},
       {"kpi_value", kKpiValue},
       {"element_id", kElementId},
@@ -173,8 +175,12 @@ const StatTypeMap& GetStatTypeMap() {
       {"correlation_id", kCorrelationId},
       {"memcpy_details", kMemcpyDetails},
       {"memalloc_details", kMemallocDetails},
+      {"MemFree_details", kMemFreeDetails},
+      {"Memset_details", kMemsetDetails},
+      {"MemoryResidency_details", kMemoryResidencyDetails},
       {"kernel_details", kKernelDetails},
       {"annotation", kKernelAnnotation},
+      {"nvtx_range", kNVTXRange},
       {"stream", kStream},
       // Stats added when processing traces.
       {"group_id", kGroupId},
@@ -210,6 +216,10 @@ const StatTypeMap& GetStatTypeMap() {
       {"batch_size_after_padding", kBatchSizeAfterPadding},
       {"padding_amount", kPaddingAmount},
       {"batching_input_task_size", kBatchingInputTaskSize},
+      // GPU related metrics.
+      {"theoretical_occupancy_pct", kTheoreticalOccupancyPct},
+      {"occupancy_min_grid_size", kOccupancyMinGridSize},
+      {"occupancy_suggested_block_size", kOccupancySuggestedBlockSize},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;

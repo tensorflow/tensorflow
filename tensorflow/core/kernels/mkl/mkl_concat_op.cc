@@ -448,8 +448,8 @@ class MklConcatOp : public OpKernel {
 
   explicit MklConcatOp(OpKernelConstruction* c)
       : OpKernel(c),
-        eigen_concat_op_(c),
-        data_format_(TensorFormat::FORMAT_NCHW) {}
+        data_format_(TensorFormat::FORMAT_NCHW),
+        eigen_concat_op_(c) {}
 
   void Compute(OpKernelContext* context) override {
     try {

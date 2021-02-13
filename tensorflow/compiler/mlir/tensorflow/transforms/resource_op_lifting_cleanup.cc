@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/BitVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -35,7 +35,7 @@ bool IsResource(Value value) {
 bool IsCastOfResource(Operation &op) {
   auto cast = dyn_cast<TF::CastOp>(op);
   if (!cast) return false;
-  return IsResource(cast.x()) && cast.x().getType() == cast.y().getType();
+  return IsResource(cast.x());
 }
 
 // Removes passthrough ops in the block. The device computation does not need
@@ -117,7 +117,7 @@ void EliminateUnusedResults(
 // multiple uses or unknown uses (for external functions). The cloned function
 // will be marked as private.
 FuncOp CloneFunctionIfNeeded(FuncOp func) {
-  ModuleOp module = func.getParentOfType<ModuleOp>();
+  ModuleOp module = func->getParentOfType<ModuleOp>();
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   if (func_uses.hasValue() && llvm::hasSingleElement(func_uses.getValue()))
     return func;
@@ -146,7 +146,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
       if (!symref) continue;
       if (symref.getValue() != func.getName()) continue;
       op->setAttr(attr.first,
-                  FlatSymbolRefAttr::get(cloned.getName(), op->getContext()));
+                  FlatSymbolRefAttr::get(op->getContext(), cloned.getName()));
       break;
     }
   }
@@ -184,9 +184,9 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
   // Patch up function types (with less number of return values and potentially
   // less number of arguments)
   for (FuncOp func : cloned_branches) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
 
   EliminateUnusedResults(op);
@@ -217,8 +217,8 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   FuncOp cloned_cond = CloneFunctionIfNeeded(cond);
   FuncOp cloned_body = CloneFunctionIfNeeded(body);
-  op.condAttr(FlatSymbolRefAttr::get(cloned_cond.getName(), op.getContext()));
-  op.bodyAttr(FlatSymbolRefAttr::get(cloned_body.getName(), op.getContext()));
+  op.condAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_cond.getName()));
+  op.bodyAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_body.getName()));
 
   // Drop cond/body args and return value. WhileOp result will be dropped later
   // in EliminateUnusedResults. Traverse in reverse order so that indices to be
@@ -232,9 +232,9 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   // Patch up branch function types.
   for (FuncOp func : {cloned_cond, cloned_body}) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
   EliminateUnusedResults(op, &can_eliminate);
 }
@@ -434,7 +434,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
       if (while_region.cond().walk(check_while_cond).wasInterrupted())
         return WalkResult::interrupt();
       // For while region, the body input and output arg should match.
-      CanonicalizeWhileRegion(while_region);
+      (void)CanonicalizeWhileRegion(while_region);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
       FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
       if (!func) return WalkResult::interrupt();

@@ -329,16 +329,6 @@ port::Status CudnnSupport::Init() {
       return port::Status(port::error::INTERNAL, error);
     }
 
-    // Preload sub libs for cudnn 8.0.4+
-#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
-    PreloadCudnnLibrary(cudnnOpsInferVersionCheck, "cudnn_ops_infer");
-    PreloadCudnnLibrary(cudnnOpsTrainVersionCheck, "cudnn_ops_train");
-    PreloadCudnnLibrary(cudnnCnnInferVersionCheck, "cudnn_cnn_infer");
-    PreloadCudnnLibrary(cudnnCnnTrainVersionCheck, "cudnn_cnn_train");
-    PreloadCudnnLibrary(cudnnAdvInferVersionCheck, "cudnn_adv_infer");
-    PreloadCudnnLibrary(cudnnAdvTrainVersionCheck, "cudnn_adv_train");
-#endif
-
     cudnn_.reset(new CudnnAccess(cudnn_handle));
 
     LOG(INFO) << "Loaded cuDNN version " << cudnnGetVersion();
@@ -1133,8 +1123,13 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
                           "Algo requests disallowed tensor op evaluation.");
     }
 
+#if CUDNN_VERSION >= 8000
+    cudnnMathType_t math_type =
+        use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH;
+#else
     cudnnMathType_t math_type =
         use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH;
+#endif
 
 #if CUDNN_VERSION >= 8000
     cudnnRNNBiasMode_t bias_mode = CUDNN_RNN_DOUBLE_BIAS;
@@ -1379,7 +1374,8 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
   int64 params_size_in_bytes = static_cast<int64>(params_size);
 
   FilterDescriptor filter_desc = CreateFilterDescriptor();
-  int filter_dims[] = {static_cast<int>(params_size_in_bytes), 1, 1};
+  int64 filter_dim0 = params_size_in_bytes / CudnnDataTypeToByteSize(data_type);
+  int filter_dims[] = {static_cast<int>(filter_dim0), 1, 1};
   RETURN_IF_CUDNN_ERROR(cudnnSetFilterNdDescriptor(
       /*filterDesc=*/filter_desc.get(), /*dataType=*/data_type,
       /*format=*/CUDNN_TENSOR_NCHW,
@@ -1478,7 +1474,9 @@ class CudnnRnnSequenceTensorDescriptor
   static port::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
       GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
       cudnnDataType_t data_type) {
-    CHECK_GT(max_seq_length, 0);
+    if (max_seq_length <= 0) {
+      return port::Status(port::error::INVALID_ARGUMENT, "max_seq_length <= 0");
+    }
     int dims[] = {batch_size, data_size, 1};
     int strides[] = {dims[1] * dims[2], dims[2], 1};
     TensorDescriptor tensor_desc = CreateTensorDescriptor();
@@ -1496,7 +1494,9 @@ class CudnnRnnSequenceTensorDescriptor
       GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
       const absl::Span<const int>& seq_lengths, bool time_major,
       cudnnDataType_t data_type) {
-    CHECK_GT(max_seq_length, 0);
+    if (max_seq_length <= 0) {
+      return port::Status(port::error::INVALID_ARGUMENT, "max_seq_length <= 0");
+    }
     int dims[] = {batch_size, data_size, 1};
     int strides[] = {dims[1] * dims[2], dims[2], 1};
     TensorDescriptor tensor_desc = CreateTensorDescriptor();
@@ -3294,6 +3294,11 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
 bool CudnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  // Preload sub libs for cudnn 8.0.4+
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+  cudnnOpsInferVersionCheck();
+  cudnnCnnInferVersionCheck();
+#endif
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 
@@ -3333,6 +3338,13 @@ bool CudnnSupport::GetConvolveAlgorithms(
 
 bool CudnnSupport::GetRnnAlgorithms(
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  // Preload sub libs for cudnn 8.0.4+
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+  cudnnOpsInferVersionCheck();
+  cudnnOpsTrainVersionCheck();
+  cudnnAdvInferVersionCheck();
+  cudnnAdvTrainVersionCheck();
+#endif
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
       // clang-format off
     CUDNN_RNN_ALGO_STANDARD,
@@ -3352,6 +3364,13 @@ bool CudnnSupport::GetRnnAlgorithms(
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  // Preload sub libs for cudnn 8.0.4+
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+  cudnnOpsInferVersionCheck();
+  cudnnOpsTrainVersionCheck();
+  cudnnCnnInferVersionCheck();
+  cudnnCnnTrainVersionCheck();
+#endif
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 
@@ -3384,6 +3403,13 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  // Preload sub libs for cudnn 8.0.4+
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+  cudnnOpsInferVersionCheck();
+  cudnnOpsTrainVersionCheck();
+  cudnnCnnInferVersionCheck();
+  cudnnCnnTrainVersionCheck();
+#endif
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 

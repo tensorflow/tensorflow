@@ -13,10 +13,8 @@ package(
 
 config_setting(
     name = "xsmm",
+    define_values = {"tensorflow_xsmm": "1"},
     licenses = ["notice"],
-    values = {
-        "define": "tensorflow_xsmm=1",
-    },
 )
 
 tf_cuda_library(

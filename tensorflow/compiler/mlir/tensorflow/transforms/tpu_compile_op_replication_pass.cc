@@ -71,13 +71,13 @@ class TPUCompileOpReplicationPass
           OpBuilder builder(tpu_compile_op);
           new_compile_op = builder.clone(*tpu_compile_op.getOperation());
           new_compile_op->setAttr(kDeviceAttr,
-                                  StringAttr::get(device_name, &getContext()));
+                                  StringAttr::get(&getContext(), device_name));
           TF::TPUCompileSucceededAssertOp new_assert_op =
               builder.create<TF::TPUCompileSucceededAssertOp>(
                   new_compile_op->getLoc(),
                   new_compile_op->getResult(kStatusResultIndex));
-          new_assert_op.setAttr(kDeviceAttr,
-                                new_compile_op->getAttr(kDeviceAttr));
+          new_assert_op->setAttr(kDeviceAttr,
+                                 new_compile_op->getAttr(kDeviceAttr));
         }
         // Updates the operand to use the result of the newly created
         // tf._TPUCompileMlir op.

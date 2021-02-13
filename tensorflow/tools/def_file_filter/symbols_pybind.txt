@@ -1,4 +1,4 @@
-[cpp_python_util] # util tfe
+[//tensorflow/python/util:cpp_python_util] # util tfe
 tensorflow::swig::IsSequence
 tensorflow::swig::IsSequenceOrComposite
 tensorflow::swig::IsCompositeTensor
@@ -22,18 +22,18 @@ tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
 tensorflow::swig::GetRegisteredPyObject
 
-[util_port] # util_port
+[//tensorflow/core/util:port] # util_port
 tensorflow::IsGoogleCudaEnabled
 tensorflow::IsBuiltWithROCm
 tensorflow::IsBuiltWithNvcc
 tensorflow::GpuSupportsHalfMatMulAndConv
 tensorflow::IsMklEnabled
 
-[stream_executor_pimpl] # stat_summarizer
+[//tensorflow/stream_executor:stream_executor_pimpl] # stat_summarizer
 stream_executor::StreamExecutor::EnablePeerAccessTo
 stream_executor::StreamExecutor::CanEnablePeerAccessTo
 
-[print_model_analysis] # tfprof
+[//tensorflow/core/profiler/internal:print_model_analysis] # tfprof
 tensorflow::tfprof::NewProfiler
 tensorflow::tfprof::DeleteProfiler
 tensorflow::tfprof::AddStep
@@ -43,24 +43,17 @@ tensorflow::tfprof::Profile
 tensorflow::tfprof::PrintModelAnalysis
 tensorflow::tfprof::SerializeToString
 
-[graph_analyzer_tool] # graph_analyzer
+[//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
-[bfloat16_lib] # bfloat16
+[//tensorflow/python:bfloat16_lib] # bfloat16
 tensorflow::RegisterNumpyBfloat16
-tensorflow::Bfloat16PyType
+tensorflow::Bfloat16Dtype
 
-[events_writer] # events_writer
-tensorflow::EventsWriter::Init
-tensorflow::EventsWriter::InitWithSuffix
-tensorflow::EventsWriter::WriteSerializedEvent
-tensorflow::EventsWriter::Flush
-tensorflow::EventsWriter::Close
-
-[py_func_lib] # py_func
+[//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
 
-[framework_internal_impl] # op_def_registry, dtypes
+[//tensorflow/core:framework_internal_impl] # op_def_registry, dtypes
 tensorflow::BaseType
 tensorflow::DataTypeString
 tensorflow::DataTypeIsComplex
@@ -73,29 +66,26 @@ tensorflow::OpRegistry::Global
 tensorflow::OpRegistry::LookUpOpDef
 tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
 
-[lib_internal_impl]  # device_lib
+[//tensorflow/core:lib_internal_impl]  # device_lib
 tensorflow::Status::code
 tensorflow::Status::error_message
 tensorflow::Status::ok()
 
-[device]  # device_lib, tfe, tf_session
-tensorflow::Device::attributes
-
-[device_factory]  # device_lib, tfe, tf_session
+[//tensorflow/core/common_runtime:device_factory]  # device_lib, tfe, tf_session
 tensorflow::DeviceFactory::AddDevices
 tensorflow::DeviceFactory::ListAllPhysicalDevices
 tensorflow::DeviceFactory::GetAnyDeviceDetails
 
-[session_options]  # device_lib, tfe, tf_session
+[//tensorflow/core/common_runtime:session_options]  # device_lib, tfe, tf_session
 tensorflow::SessionOptions::SessionOptions
 
-[quantize_training]  # quantize_training
+[//tensorflow/core/common_runtime:quantize_training]  # quantize_training
 tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 
-[session_state]  # tf_session
+[//tensorflow/core/common_runtime:session_state]  # tf_session
 tensorflow::SessionState::kTensorHandleResourceTypeName
 
-[server_lib] # server_lib
+[//tensorflow/core/data/service:server_lib] # server_lib
 tensorflow::data::GrpcDataServerBase::Join
 tensorflow::data::GrpcDataServerBase::Start
 tensorflow::data::GrpcDataServerBase::Stop
@@ -105,31 +95,25 @@ tensorflow::data::WorkerGrpcDataServer::NumTasks
 tensorflow::data::NewDispatchServer
 tensorflow::data::NewWorkerServer
 
-[protos_all]  # device_lib, dtypes
-tensorflow::DataType_IsValid
-tensorflow::ConfigProto::ConfigProto
-tensorflow::ConfigProto::ParseFromString
-tensorflow::DeviceAttributes::SerializeToString
-
-[py_exception_registry] # py_exception_registry
+[//tensorflow/python:py_exception_registry] # py_exception_registry
 tensorflow::PyExceptionRegistry::Init
 tensorflow::PyExceptionRegistry::Lookup
 
-[kernel_registry] # kernel_registry
+[//tensorflow/python:kernel_registry] # kernel_registry
 tensorflow::swig::TryFindKernelClass
 
-[toco_python_api] # toco_python_api
+[//tensorflow/lite/toco/python:toco_python_api] # toco_python_api
 toco::TocoConvert
 toco::TocoGetPotentiallySupportedOps
 toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
 
-[transform_graph_lib] # transform_graph
+[//tensorflow/tools/graph_transforms:transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
 tensorflow::graph_transforms::ParseTransformParameters
 
-[checkpoint_reader] # py_checkpoint_reader
+[//tensorflow/c:checkpoint_reader] # py_checkpoint_reader
 tensorflow::checkpoint::CheckpointReader
 tensorflow::checkpoint::CheckpointReader::Init
 tensorflow::checkpoint::CheckpointReader::DebugString
@@ -138,21 +122,21 @@ tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap
 tensorflow::checkpoint::CheckpointReader::GetTensor
 tensorflow::checkpoint::CheckpointReader::HasTensor
 
-[tensor_bundle] # py_checkpoint_reader
+[//tensorflow/core/util/tensor_bundle] # py_checkpoint_reader
 tensorflow::BundleReader::BundleReader
 tensorflow::BundleReader::~BundleReader
 
-[ndarray_tensor] # py_checkpoint_reader
+[//tensorflow/python:ndarray_tensor] # py_checkpoint_reader
 tensorflow::TensorToNdarray
 
-[safe_ptr] # py_checkpoint_reader
+[//tensorflow/python:safe_ptr] # py_checkpoint_reader
 tensorflow::detail::PyDecrefDeleter
 tensorflow::make_safe
 
-[python_op_gen] # python_op_gen
+[//tensorflow/python:python_op_gen] # python_op_gen
 tensorflow::GetPythonWrappers
 
-[pywrap_tfe_lib] # tfe
+[//tensorflow/python/eager:pywrap_tfe_lib] # tfe
 tensorflow::TFE_TensorHandleCache
 tensorflow::TFE_TensorHandleCache::Clear
 EagerTensor_CheckExact
@@ -210,17 +194,17 @@ tensorflow::MakeEagerContextThreadLocalData
 tensorflow::GetEagerContextThreadLocalData
 tensorflow::DestroyEagerContextThreadLocalData
 
-[eager_executor] # tfe
+[//tensorflow/core/common_runtime/eager:eager_executor] # tfe
 tensorflow::EagerExecutor::~EagerExecutor
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 
-[tf_status_helper] # tfe
+[//tensorflow/c:tf_status_helper] # tfe
 tensorflow::Set_TF_Status_from_Status
 
-[context] # tfe
+[//tensorflow/core/common_runtime/eager:context] # tfe
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 
-[mlir] # mlir
+[//tensorflow/compiler/mlir/python:mlir] # mlir
 tensorflow::ExperimentalRunPassPipeline
 tensorflow::ExperimentalConvertSavedModelV1ToMlirLite
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
@@ -228,13 +212,13 @@ tensorflow::ExperimentalConvertSavedModelToMlir
 tensorflow::ImportGraphDef
 tensorflow::ImportFunction
 
-[op_gen_lib] # tf_session
+[//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
 
-[graph_constructor] # tf_session
+[//tensorflow/core/common_runtime:graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
 
-[python_api] # tf_session
+[//tensorflow/c:python_api] # tf_session
 tensorflow::AddControlInput
 tensorflow::SetAttr
 tensorflow::ClearAttr
@@ -247,11 +231,11 @@ tensorflow::GetHandleShapeAndType
 tensorflow::SetHandleShapeAndType
 tensorflow::AddWhileInputHack
 
-[numpy_lib] # tf_session
+[//tensorflow/python:numpy_lib] # tf_session
 tensorflow::ImportNumpy
 _tensorflow_numpy_api
 
-[tf_session_helper] # tf_session
+[//tensorflow/python:tf_session_helper] # tf_session
 tensorflow::TF_NewSessionRef
 tensorflow::TF_SessionMakeCallable
 tensorflow::TF_SessionRunCallable
@@ -274,76 +258,76 @@ tensorflow::TF_GraphSetTensorShape_wrapper
 tensorflow::TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper
 tensorflow::TF_TryEvaluateConstant_wrapper
 
-[grappler_item] # tf_item
+[//tensorflow/core/grappler:grappler_item] # tf_item
 tensorflow::grappler::GrapplerItem::MainOpsFanin
 tensorflow::grappler::GrapplerItem::EnqueueOpsFanin
 
-[graph_properties] # tf_item
+[//tensorflow/core/grappler/costs:graph_properties] # tf_item
 tensorflow::grappler::GraphProperties::InferStatically
 tensorflow::grappler::GraphProperties::GetOutputProperties
 
-[grappler_item_builder] # tf_item
+[//tensorflow/core/grappler:grappler_item_builder] # tf_item
 tensorflow::grappler::GrapplerItemFromMetaGraphDef
 
-[topological_sort] # tf_item
+[//tensorflow/core/grappler/utils:topological_sort] # tf_item
 tensorflow::grappler::TopologicalSort
 
-[clusters/utils] # tf_cluster tf_optimizer
+[//tensorflow/core/grappler/clusters:utils] # tf_cluster tf_optimizer
 tensorflow::grappler::GetDeviceInfo
 
-[costs/utils] # tf_optimizer tf_cluster
+[//tensorflow/core/grappler/costs:utils] # tf_optimizer tf_cluster
 tensorflow::grappler::CostGraphToOpPerformanceData
 tensorflow::grappler::GetDeviceInfo
 
-[meta_optimizer] # tf_optimizer
+[//tensorflow/core/grappler/optimizers:meta_optimizer] # tf_optimizer
 tensorflow::grappler::MetaOptimizer::MetaOptimizer
 tensorflow::grappler::MetaOptimizer::Optimize
 tensorflow::grappler::MetaOptimizer::PrintResult
 
-[clusters/cluster] # tf_cluster
+[//tensorflow/core/grappler/clusters:cluster] # tf_cluster
 tensorflow::grappler::Cluster::AllowSoftPlacement
 tensorflow::grappler::Cluster::SetNumWarmupSteps
 tensorflow::grappler::Cluster::DisableDetailedStats
 tensorflow::grappler::Cluster::DetailedStatsEnabled
 
-[single_machine] # tf_cluster
+[//tensorflow/core/grappler/clusters:single_machine] # tf_cluster
 tensorflow::grappler::SingleMachine::SingleMachine
 
-[op_level_cost_estimator] # tf_cluster
+[//tensorflow/core/grappler/costs:op_level_cost_estimator] # tf_cluster
 tensorflow::grappler::OpLevelCostEstimator::OpLevelCostEstimator
 tensorflow::grappler::OpLevelCostEstimator::PredictCosts
 tensorflow::grappler::OpLevelCostEstimator::GetDeviceInfo
 
-[virtual_cluster] # tf_cluster
+[//tensorflow/core/grappler/clusters:virtual_cluster] # tf_cluster
 tensorflow::grappler::VirtualCluster::VirtualCluster
 
-[graph_memory] # tf_cluster
+[//tensorflow/core/grappler/costs:graph_memory] # tf_cluster
 tensorflow::grappler::GraphMemory::InferStatically
 tensorflow::grappler::GraphMemory::InferDynamically
 
-[measuring_cost_estimator] # tf_cluster
+[//tensorflow/core/grappler/costs:measuring_cost_estimator] # tf_cluster
 tensorflow::grappler::MeasuringCostEstimator::MeasuringCostEstimator
 tensorflow::grappler::MeasuringCostEstimator::Initialize
 tensorflow::grappler::MeasuringCostEstimator::PredictCosts
 
-[devices] # tf_cluster
+[//tensorflow/core/grappler:devices] # tf_cluster
 tensorflow::grappler::GetNumAvailableGPUs
 tensorflow::grappler::GetNumAvailableLogicalCPUCores
 
-[traceme_recorder_impl] # profiler
+[//tensorflow/core/profiler/internal:traceme_recorder_impl] # profiler
 tensorflow::profiler::TraceMeRecorder::Record
 
-[profiler_session_impl] # profiler
+[//tensorflow/core/profiler/lib:profiler_session_impl] # profiler
 tensorflow::ProfilerSession::Create
 tensorflow::ProfilerSession::CollectData
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
 
-[profiler_server_impl] # profiler
+[//tensorflow/core/profiler/rpc:profiler_server_impl] # profiler
 tensorflow::profiler::ProfilerServer::StartProfilerServer
 tensorflow::profiler::ProfilerServer::~ProfilerServer
 
-[profiler_client_impl] # profiler
+[//tensorflow/core/profiler/rpc/client:profiler_client_impl] # profiler
 tensorflow::profiler::ProfileGrpc
 tensorflow::profiler::NewSessionGrpc
 tensorflow::profiler::MonitorGrpc
@@ -352,13 +336,13 @@ tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
 tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
 tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
-[status_macros] # tfcompile
+[//tensorflow/compiler/xla:status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
 xla::status_macros::MakeErrorStream::Impl::~Impl
 xla::status_macros::MakeErrorStream::Impl::GetStatus
 xla::status_macros::MakeErrorStream::CheckNotDone
 
-[hlo] # tfcompile
+[//tensorflow/compiler/xla/service:hlo] # tfcompile
 xla::DfsHloVisitorBase::SetVisited
 xla::DfsHloVisitorBase<class xla::HloInstruction.*>::SetVisited
 xla::HloComputation::Accept
@@ -368,42 +352,46 @@ xla::HloInstruction::ToString
 xla::HloInstruction::Accept
 xla::HloInstruction::Visit
 
-[tfcompile_lib] # tfcompile
+[//tensorflow/compiler/aot:tfcompile_lib] # tfcompile
 tensorflow::tfcompile::Main
 
-[model_analyzer_lib] # model_analyzer
+[//tensorflow/python:model_analyzer_lib] # model_analyzer
 tensorflow::grappler::ModelAnalyzer::GenerateReport
 tensorflow::grappler::ModelAnalyzer::ModelAnalyzer
 
-[analytical_cost_estimator] # cost_analyzer
+[//tensorflow/core/grappler/costs:analytical_cost_estimator] # cost_analyzer
 tensorflow::grappler::AnalyticalCostEstimator::Initialize
 tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 
-[cost_analyzer_lib] # cost_analyzer
+[//tensorflow/python:cost_analyzer_lib] # cost_analyzer
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
 
-[flags] # tfe
+[//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
 
-[tensor_float_32_utils] # tensor_float_32
+[//tensorflow/core/platform:tensor_float_32_utils] # tensor_float_32
 tensorflow::enable_tensor_float_32_execution
 tensorflow::tensor_float_32_execution_enabled
 
-[get_compiler_ir] # tfe
+[//tensorflow/compiler/jit:get_compiler_ir] # tfe
 tensorflow::GetCompilerIr
 stream_executor::port::internal_statusor::Helper::Crash
 
-[tensor_handle] # tfe
+[//tensorflow/core/common_runtime/eager:tensor_handle] # tfe
 tensorflow::TensorHandle::Tensor
 
-[python_api_dispatcher] # python_api_dispatcher
+[//tensorflow/python:python_api_dispatcher] # python_api_dispatcher
 tensorflow::PythonAPIDispatcher
 
-[python_tensor_converter] # python_tensor_converter
+[//tensorflow/python:python_tensor_converter] # python_tensor_converter
 tensorflow::PythonTensorConverter
 
-[python_api_info] # python_api_info
+[//tensorflow/python:python_api_info] # python_api_info
 tensorflow::PythonAPIInfo
+
+[//tensorflow/python:python_api_parameter_converter] # python_api_parameter_converter
+tensorflow::ConvertPythonAPIParameters
+tensorflow::CopyPythonAPITensorLists

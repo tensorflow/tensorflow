@@ -20,7 +20,7 @@ py_library(
         "__init__.py",
         "scikit_learn.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras:engine",

@@ -60,8 +60,7 @@ class ConvertInitializeTableFromTextFileV2
     // In the above case, the delimiter will be not used since the key is just a
     // whole line and value is a line number.
     if (op.key_index() != kTextFileIndex_WholeLine ||
-        op.value_index() != kTextFileIndex_LineNumber ||
-        op.vocab_size() != -1) {
+        op.value_index() != kTextFileIndex_LineNumber) {
       return failure();
     }
 
@@ -84,6 +83,9 @@ class ConvertInitializeTableFromTextFileV2
     // Splits into lines.
     SmallVector<StringRef, 8> lines;
     file->getBuffer().split(lines, "\n", -1, false);
+    // The resize method is used since split operator puts tail value in the end
+    // without splitting the leftovers.
+    if (op.vocab_size() != -1) lines.resize(op.vocab_size());
 
     // Map each line to line number, starting from zero.
     SmallVector<int64_t, 8> line_nums;
@@ -116,7 +118,7 @@ void InitTextFileToImportPass::runOnFunction() {
   FuncOp func = getFunction();
 
   patterns.insert<ConvertInitializeTableFromTextFileV2>(context);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace

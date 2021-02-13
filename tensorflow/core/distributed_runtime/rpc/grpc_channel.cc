@@ -53,7 +53,7 @@ Status ValidateHostPortPair(const string& host_port) {
   uint32 port;
   auto colon_index = host_port.find_last_of(':');
   if (!strings::safe_strtou32(host_port.substr(colon_index + 1), &port) ||
-      host_port.substr(0, colon_index).find("/") != string::npos) {
+      host_port.substr(0, colon_index).find('/') != string::npos) {
     return errors::InvalidArgument("Could not interpret \"", host_port,
                                    "\" as a host-port pair.");
   }

@@ -49,6 +49,9 @@ struct TensorT;
 struct Conv2DOptions;
 struct Conv2DOptionsT;
 
+struct Conv3DOptions;
+struct Conv3DOptionsT;
+
 struct Pool2DOptions;
 struct Pool2DOptionsT;
 
@@ -358,6 +361,9 @@ struct CumsumOptionsT;
 struct BroadcastToOptions;
 struct BroadcastToOptionsT;
 
+struct Rfft2dOptions;
+struct Rfft2dOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -395,11 +401,14 @@ enum TensorType {
   TensorType_INT8 = 9,
   TensorType_FLOAT64 = 10,
   TensorType_COMPLEX128 = 11,
+  TensorType_UINT64 = 12,
+  TensorType_RESOURCE = 13,
+  TensorType_VARIANT = 14,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_COMPLEX128
+  TensorType_MAX = TensorType_VARIANT
 };
 
-inline const TensorType (&EnumValuesTensorType())[12] {
+inline const TensorType (&EnumValuesTensorType())[15] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -412,13 +421,16 @@ inline const TensorType (&EnumValuesTensorType())[12] {
     TensorType_COMPLEX64,
     TensorType_INT8,
     TensorType_FLOAT64,
-    TensorType_COMPLEX128
+    TensorType_COMPLEX128,
+    TensorType_UINT64,
+    TensorType_RESOURCE,
+    TensorType_VARIANT
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[13] = {
+  static const char * const names[16] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -431,13 +443,16 @@ inline const char * const *EnumNamesTensorType() {
     "INT8",
     "FLOAT64",
     "COMPLEX128",
+    "UINT64",
+    "RESOURCE",
+    "VARIANT",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_COMPLEX128)) return "";
+  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_VARIANT)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
@@ -800,11 +815,16 @@ enum BuiltinOperator {
   BuiltinOperator_CUMSUM = 128,
   BuiltinOperator_CALL_ONCE = 129,
   BuiltinOperator_BROADCAST_TO = 130,
+  BuiltinOperator_RFFT2D = 131,
+  BuiltinOperator_CONV_3D = 132,
+  BuiltinOperator_IMAG = 133,
+  BuiltinOperator_REAL = 134,
+  BuiltinOperator_COMPLEX_ABS = 135,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_BROADCAST_TO
+  BuiltinOperator_MAX = BuiltinOperator_COMPLEX_ABS
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[131] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[136] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -936,13 +956,18 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[131] {
     BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES,
     BuiltinOperator_CUMSUM,
     BuiltinOperator_CALL_ONCE,
-    BuiltinOperator_BROADCAST_TO
+    BuiltinOperator_BROADCAST_TO,
+    BuiltinOperator_RFFT2D,
+    BuiltinOperator_CONV_3D,
+    BuiltinOperator_IMAG,
+    BuiltinOperator_REAL,
+    BuiltinOperator_COMPLEX_ABS
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[132] = {
+  static const char * const names[137] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1074,13 +1099,18 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "CUMSUM",
     "CALL_ONCE",
     "BROADCAST_TO",
+    "RFFT2D",
+    "CONV_3D",
+    "IMAG",
+    "REAL",
+    "COMPLEX_ABS",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_BROADCAST_TO)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_COMPLEX_ABS)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1191,11 +1221,13 @@ enum BuiltinOptions {
   BuiltinOptions_CumsumOptions = 102,
   BuiltinOptions_CallOnceOptions = 103,
   BuiltinOptions_BroadcastToOptions = 104,
+  BuiltinOptions_Rfft2dOptions = 105,
+  BuiltinOptions_Conv3DOptions = 106,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_BroadcastToOptions
+  BuiltinOptions_MAX = BuiltinOptions_Conv3DOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[105] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[107] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1301,13 +1333,15 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[105] {
     BuiltinOptions_BatchMatMulOptions,
     BuiltinOptions_CumsumOptions,
     BuiltinOptions_CallOnceOptions,
-    BuiltinOptions_BroadcastToOptions
+    BuiltinOptions_BroadcastToOptions,
+    BuiltinOptions_Rfft2dOptions,
+    BuiltinOptions_Conv3DOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[106] = {
+  static const char * const names[108] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1413,13 +1447,15 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "CumsumOptions",
     "CallOnceOptions",
     "BroadcastToOptions",
+    "Rfft2dOptions",
+    "Conv3DOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_BroadcastToOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_Conv3DOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1842,6 +1878,14 @@ template<> struct BuiltinOptionsTraits<tflite::CallOnceOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::BroadcastToOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_BroadcastToOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::Rfft2dOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_Rfft2dOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::Conv3DOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_Conv3DOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2707,6 +2751,22 @@ struct BuiltinOptionsUnion {
   const tflite::BroadcastToOptionsT *AsBroadcastToOptions() const {
     return type == BuiltinOptions_BroadcastToOptions ?
       reinterpret_cast<const tflite::BroadcastToOptionsT *>(value) : nullptr;
+  }
+  tflite::Rfft2dOptionsT *AsRfft2dOptions() {
+    return type == BuiltinOptions_Rfft2dOptions ?
+      reinterpret_cast<tflite::Rfft2dOptionsT *>(value) : nullptr;
+  }
+  const tflite::Rfft2dOptionsT *AsRfft2dOptions() const {
+    return type == BuiltinOptions_Rfft2dOptions ?
+      reinterpret_cast<const tflite::Rfft2dOptionsT *>(value) : nullptr;
+  }
+  tflite::Conv3DOptionsT *AsConv3DOptions() {
+    return type == BuiltinOptions_Conv3DOptions ?
+      reinterpret_cast<tflite::Conv3DOptionsT *>(value) : nullptr;
+  }
+  const tflite::Conv3DOptionsT *AsConv3DOptions() const {
+    return type == BuiltinOptions_Conv3DOptions ?
+      reinterpret_cast<const tflite::Conv3DOptionsT *>(value) : nullptr;
   }
 };
 
@@ -3903,6 +3963,144 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(
 }
 
 flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Conv2DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct Conv3DOptionsT : public flatbuffers::NativeTable {
+  typedef Conv3DOptions TableType;
+  tflite::Padding padding;
+  int32_t stride_d;
+  int32_t stride_w;
+  int32_t stride_h;
+  tflite::ActivationFunctionType fused_activation_function;
+  int32_t dilation_d_factor;
+  int32_t dilation_w_factor;
+  int32_t dilation_h_factor;
+  Conv3DOptionsT()
+      : padding(tflite::Padding_SAME),
+        stride_d(0),
+        stride_w(0),
+        stride_h(0),
+        fused_activation_function(tflite::ActivationFunctionType_NONE),
+        dilation_d_factor(1),
+        dilation_w_factor(1),
+        dilation_h_factor(1) {
+  }
+};
+
+struct Conv3DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef Conv3DOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_PADDING = 4,
+    VT_STRIDE_D = 6,
+    VT_STRIDE_W = 8,
+    VT_STRIDE_H = 10,
+    VT_FUSED_ACTIVATION_FUNCTION = 12,
+    VT_DILATION_D_FACTOR = 14,
+    VT_DILATION_W_FACTOR = 16,
+    VT_DILATION_H_FACTOR = 18
+  };
+  tflite::Padding padding() const {
+    return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
+  }
+  int32_t stride_d() const {
+    return GetField<int32_t>(VT_STRIDE_D, 0);
+  }
+  int32_t stride_w() const {
+    return GetField<int32_t>(VT_STRIDE_W, 0);
+  }
+  int32_t stride_h() const {
+    return GetField<int32_t>(VT_STRIDE_H, 0);
+  }
+  tflite::ActivationFunctionType fused_activation_function() const {
+    return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
+  int32_t dilation_d_factor() const {
+    return GetField<int32_t>(VT_DILATION_D_FACTOR, 1);
+  }
+  int32_t dilation_w_factor() const {
+    return GetField<int32_t>(VT_DILATION_W_FACTOR, 1);
+  }
+  int32_t dilation_h_factor() const {
+    return GetField<int32_t>(VT_DILATION_H_FACTOR, 1);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_PADDING) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_D) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_D_FACTOR) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR) &&
+           verifier.EndTable();
+  }
+  Conv3DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(Conv3DOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Conv3DOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct Conv3DOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_padding(tflite::Padding padding) {
+    fbb_.AddElement<int8_t>(Conv3DOptions::VT_PADDING, static_cast<int8_t>(padding), 0);
+  }
+  void add_stride_d(int32_t stride_d) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_STRIDE_D, stride_d, 0);
+  }
+  void add_stride_w(int32_t stride_w) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_STRIDE_W, stride_w, 0);
+  }
+  void add_stride_h(int32_t stride_h) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_STRIDE_H, stride_h, 0);
+  }
+  void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(Conv3DOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_dilation_d_factor(int32_t dilation_d_factor) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_DILATION_D_FACTOR, dilation_d_factor, 1);
+  }
+  void add_dilation_w_factor(int32_t dilation_w_factor) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_DILATION_W_FACTOR, dilation_w_factor, 1);
+  }
+  void add_dilation_h_factor(int32_t dilation_h_factor) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_DILATION_H_FACTOR, dilation_h_factor, 1);
+  }
+  explicit Conv3DOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  Conv3DOptionsBuilder &operator=(const Conv3DOptionsBuilder &);
+  flatbuffers::Offset<Conv3DOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<Conv3DOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<Conv3DOptions> CreateConv3DOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::Padding padding = tflite::Padding_SAME,
+    int32_t stride_d = 0,
+    int32_t stride_w = 0,
+    int32_t stride_h = 0,
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    int32_t dilation_d_factor = 1,
+    int32_t dilation_w_factor = 1,
+    int32_t dilation_h_factor = 1) {
+  Conv3DOptionsBuilder builder_(_fbb);
+  builder_.add_dilation_h_factor(dilation_h_factor);
+  builder_.add_dilation_w_factor(dilation_w_factor);
+  builder_.add_dilation_d_factor(dilation_d_factor);
+  builder_.add_stride_h(stride_h);
+  builder_.add_stride_w(stride_w);
+  builder_.add_stride_d(stride_d);
+  builder_.add_fused_activation_function(fused_activation_function);
+  builder_.add_padding(padding);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<Conv3DOptions> CreateConv3DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct Pool2DOptionsT : public flatbuffers::NativeTable {
   typedef Pool2DOptions TableType;
@@ -9398,9 +9596,11 @@ struct BatchMatMulOptionsT : public flatbuffers::NativeTable {
   typedef BatchMatMulOptions TableType;
   bool adj_x;
   bool adj_y;
+  bool asymmetric_quantize_inputs;
   BatchMatMulOptionsT()
       : adj_x(false),
-        adj_y(false) {
+        adj_y(false),
+        asymmetric_quantize_inputs(false) {
   }
 };
 
@@ -9408,7 +9608,8 @@ struct BatchMatMulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BatchMatMulOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_ADJ_X = 4,
-    VT_ADJ_Y = 6
+    VT_ADJ_Y = 6,
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 8
   };
   bool adj_x() const {
     return GetField<uint8_t>(VT_ADJ_X, 0) != 0;
@@ -9416,10 +9617,14 @@ struct BatchMatMulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   bool adj_y() const {
     return GetField<uint8_t>(VT_ADJ_Y, 0) != 0;
   }
+  bool asymmetric_quantize_inputs() const {
+    return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_ADJ_X) &&
            VerifyField<uint8_t>(verifier, VT_ADJ_Y) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
            verifier.EndTable();
   }
   BatchMatMulOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9436,6 +9641,9 @@ struct BatchMatMulOptionsBuilder {
   void add_adj_y(bool adj_y) {
     fbb_.AddElement<uint8_t>(BatchMatMulOptions::VT_ADJ_Y, static_cast<uint8_t>(adj_y), 0);
   }
+  void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
+    fbb_.AddElement<uint8_t>(BatchMatMulOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
+  }
   explicit BatchMatMulOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -9451,8 +9659,10 @@ struct BatchMatMulOptionsBuilder {
 inline flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     bool adj_x = false,
-    bool adj_y = false) {
+    bool adj_y = false,
+    bool asymmetric_quantize_inputs = false) {
   BatchMatMulOptionsBuilder builder_(_fbb);
+  builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_adj_y(adj_y);
   builder_.add_adj_x(adj_x);
   return builder_.Finish();
@@ -9565,6 +9775,46 @@ inline flatbuffers::Offset<BroadcastToOptions> CreateBroadcastToOptions(
 }
 
 flatbuffers::Offset<BroadcastToOptions> CreateBroadcastToOptions(flatbuffers::FlatBufferBuilder &_fbb, const BroadcastToOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct Rfft2dOptionsT : public flatbuffers::NativeTable {
+  typedef Rfft2dOptions TableType;
+  Rfft2dOptionsT() {
+  }
+};
+
+struct Rfft2dOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef Rfft2dOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  Rfft2dOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(Rfft2dOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Rfft2dOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct Rfft2dOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit Rfft2dOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  Rfft2dOptionsBuilder &operator=(const Rfft2dOptionsBuilder &);
+  flatbuffers::Offset<Rfft2dOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<Rfft2dOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  Rfft2dOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
@@ -10028,6 +10278,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::BroadcastToOptions *builtin_options_as_BroadcastToOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_BroadcastToOptions ? static_cast<const tflite::BroadcastToOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::Rfft2dOptions *builtin_options_as_Rfft2dOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_Rfft2dOptions ? static_cast<const tflite::Rfft2dOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::Conv3DOptions *builtin_options_as_Conv3DOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_Conv3DOptions ? static_cast<const tflite::Conv3DOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -10478,6 +10734,14 @@ template<> inline const tflite::CallOnceOptions *Operator::builtin_options_as<tf
 
 template<> inline const tflite::BroadcastToOptions *Operator::builtin_options_as<tflite::BroadcastToOptions>() const {
   return builtin_options_as_BroadcastToOptions();
+}
+
+template<> inline const tflite::Rfft2dOptions *Operator::builtin_options_as<tflite::Rfft2dOptions>() const {
+  return builtin_options_as_Rfft2dOptions();
+}
+
+template<> inline const tflite::Conv3DOptions *Operator::builtin_options_as<tflite::Conv3DOptions>() const {
+  return builtin_options_as_Conv3DOptions();
 }
 
 struct OperatorBuilder {
@@ -11510,6 +11774,53 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(flatbuffers::FlatB
       _stride_w,
       _stride_h,
       _fused_activation_function,
+      _dilation_w_factor,
+      _dilation_h_factor);
+}
+
+inline Conv3DOptionsT *Conv3DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new Conv3DOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void Conv3DOptions::UnPackTo(Conv3DOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = padding(); _o->padding = _e; }
+  { auto _e = stride_d(); _o->stride_d = _e; }
+  { auto _e = stride_w(); _o->stride_w = _e; }
+  { auto _e = stride_h(); _o->stride_h = _e; }
+  { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = dilation_d_factor(); _o->dilation_d_factor = _e; }
+  { auto _e = dilation_w_factor(); _o->dilation_w_factor = _e; }
+  { auto _e = dilation_h_factor(); _o->dilation_h_factor = _e; }
+}
+
+inline flatbuffers::Offset<Conv3DOptions> Conv3DOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateConv3DOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<Conv3DOptions> CreateConv3DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Conv3DOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _padding = _o->padding;
+  auto _stride_d = _o->stride_d;
+  auto _stride_w = _o->stride_w;
+  auto _stride_h = _o->stride_h;
+  auto _fused_activation_function = _o->fused_activation_function;
+  auto _dilation_d_factor = _o->dilation_d_factor;
+  auto _dilation_w_factor = _o->dilation_w_factor;
+  auto _dilation_h_factor = _o->dilation_h_factor;
+  return tflite::CreateConv3DOptions(
+      _fbb,
+      _padding,
+      _stride_d,
+      _stride_w,
+      _stride_h,
+      _fused_activation_function,
+      _dilation_d_factor,
       _dilation_w_factor,
       _dilation_h_factor);
 }
@@ -14164,6 +14475,7 @@ inline void BatchMatMulOptions::UnPackTo(BatchMatMulOptionsT *_o, const flatbuff
   (void)_resolver;
   { auto _e = adj_x(); _o->adj_x = _e; }
   { auto _e = adj_y(); _o->adj_y = _e; }
+  { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
 }
 
 inline flatbuffers::Offset<BatchMatMulOptions> BatchMatMulOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BatchMatMulOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -14176,10 +14488,12 @@ inline flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(flatbuff
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BatchMatMulOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _adj_x = _o->adj_x;
   auto _adj_y = _o->adj_y;
+  auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   return tflite::CreateBatchMatMulOptions(
       _fbb,
       _adj_x,
-      _adj_y);
+      _adj_y,
+      _asymmetric_quantize_inputs);
 }
 
 inline CumsumOptionsT *CumsumOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -14231,6 +14545,29 @@ inline flatbuffers::Offset<BroadcastToOptions> CreateBroadcastToOptions(flatbuff
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BroadcastToOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   return tflite::CreateBroadcastToOptions(
+      _fbb);
+}
+
+inline Rfft2dOptionsT *Rfft2dOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new Rfft2dOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void Rfft2dOptions::UnPackTo(Rfft2dOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<Rfft2dOptions> Rfft2dOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateRfft2dOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Rfft2dOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateRfft2dOptions(
       _fbb);
 }
 
@@ -15125,6 +15462,14 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::BroadcastToOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_Rfft2dOptions: {
+      auto ptr = reinterpret_cast<const tflite::Rfft2dOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Conv3DOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -15559,6 +15904,14 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::BroadcastToOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_Rfft2dOptions: {
+      auto ptr = reinterpret_cast<const tflite::Rfft2dOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Conv3DOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -15981,6 +16334,14 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::BroadcastToOptionsT *>(value);
       return CreateBroadcastToOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_Rfft2dOptions: {
+      auto ptr = reinterpret_cast<const tflite::Rfft2dOptionsT *>(value);
+      return CreateRfft2dOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Conv3DOptionsT *>(value);
+      return CreateConv3DOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -16401,6 +16762,14 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_BroadcastToOptions: {
       value = new tflite::BroadcastToOptionsT(*reinterpret_cast<tflite::BroadcastToOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_Rfft2dOptions: {
+      value = new tflite::Rfft2dOptionsT(*reinterpret_cast<tflite::Rfft2dOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_Conv3DOptions: {
+      value = new tflite::Conv3DOptionsT(*reinterpret_cast<tflite::Conv3DOptionsT *>(u.value));
       break;
     }
     default:
@@ -16927,6 +17296,16 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_BroadcastToOptions: {
       auto ptr = reinterpret_cast<tflite::BroadcastToOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_Rfft2dOptions: {
+      auto ptr = reinterpret_cast<tflite::Rfft2dOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<tflite::Conv3DOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -104,8 +104,8 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
 }
 
 StatusOr<Literal> HloRunner::ExecuteWithExecutable(
-    std::unique_ptr<Executable> executable, absl::Span<const Literal> arguments,
-    ExecutionProfile* profile) {
+    std::unique_ptr<Executable> executable,
+    absl::Span<const Literal* const> arguments, ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
@@ -285,9 +285,9 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         VLOG(1) << "Starting outfeed on device " << device;
         for (int64 step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
-          Literal literal;
+          Literal literal(options.outfeed_shape);
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
-              executor, options.outfeed_shape, &literal));
+              executor, &literal));
           if (options.outfeed_values != nullptr) {
             options.outfeed_values->push_back(std::move(literal));
           }

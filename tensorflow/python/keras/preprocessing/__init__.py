@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras data preprocessing utils."""
+"""Provides keras data preprocessing utils to pre-process tf.data.Datasets before they are fed to the model."""
 # pylint: disable=g-import-not-at-top
 from __future__ import absolute_import
 from __future__ import division

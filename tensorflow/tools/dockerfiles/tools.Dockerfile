@@ -22,7 +22,7 @@ LABEL maintainer="Austin Anderson <angerson@google.com>"
 
 RUN apt-get update && apt-get install -y python3 python3-pip bash curl
 RUN curl -sSL https://get.docker.com/ | sh
-RUN pip3 install --upgrade pip setuptools pyyaml absl-py cerberus docker
+RUN pip3 install --upgrade pip setuptools pyyaml absl-py cerberus 'docker<=4.3.0'
 
 WORKDIR /tf
 VOLUME ["/tf"]

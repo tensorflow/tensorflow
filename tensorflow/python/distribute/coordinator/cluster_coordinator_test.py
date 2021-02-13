@@ -17,8 +17,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 import collections
+import contextlib
 import functools
 import os
 import platform
@@ -575,7 +575,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
 
   def testDatasetsShuffledDifferently(self):
     # This test requires at least two workers in the cluster.
-    self.assertGreaterEqual(len(self.coordinator.cluster.workers), 2)
+    self.assertGreaterEqual(len(self.coordinator._cluster.workers), 2)
 
     random_seed.set_random_seed(None)
 
@@ -587,12 +587,12 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
 
     # Get elements from the first two iterators.
     iterator_1 = distributed_iterator._values[0]
-    iterator_1._rebuild_on(self.coordinator.cluster.workers[0])
+    iterator_1._rebuild_on(self.coordinator._cluster.workers[0])
     iterator_1 = iterator_1.fetch()
     elements_in_iterator_1 = [e.numpy() for e in iterator_1]
 
     iterator_2 = distributed_iterator._values[1]
-    iterator_2._rebuild_on(self.coordinator.cluster.workers[1])
+    iterator_2._rebuild_on(self.coordinator._cluster.workers[1])
     iterator_2 = iterator_2.fetch()
     elements_in_iterator_2 = [e.numpy() for e in iterator_2]
 
@@ -677,6 +677,47 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
         coordinator_lib.InputError,
         'error message is Failed copying input tensor from'):
       self.coordinator.join()
+
+  def testRunNotUsedWithClusterCoordinatorSchedule(self):
+
+    @def_function.function
+    def input_fn():
+      return dataset_ops.DatasetV2.range(1, 10)
+
+    with self.strategy.scope():
+      v = variables.Variable(initial_value=1, dtype=dtypes.int64)
+
+      def replica_fn(input_tensor):
+        return input_tensor + v, input_tensor - v
+
+      @def_function.function
+      def worker_fn(iterator):
+        return self.strategy.run(replica_fn, args=(next(iterator),))
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+
+    @contextlib.contextmanager
+    def _assert_raises_usage_error():
+      with self.assertRaisesRegexp(
+          NotImplementedError,
+          "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
+          '`reduce` must be used within a function passed to '
+          '`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`'
+          '.'):
+        yield
+
+    with _assert_raises_usage_error():
+      # Invoking `run` without `coordinator.schedule` should error.
+      self.strategy.run(replica_fn, args=(next(iter(input_fn())),))
+
+    # A proper `schedule` should succeed.
+    rv = self.coordinator.schedule(worker_fn, args=(iter(per_worker_dataset),))
+
+    with _assert_raises_usage_error():
+      # Invoking `run` without `coordinator.schedule` again should error.
+      self.strategy.run(replica_fn, args=(next(iter(input_fn())),))
+
+    self.assertEqual((2, 0), rv.fetch())
 
 
 class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):

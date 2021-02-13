@@ -40,10 +40,15 @@ DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 
 
 @tf_export("experimental.tensorrt.ConversionParams", v1=[])
-class TrtConversionParams(collections.namedtuple("TrtConversionParams", [
-    "rewriter_config_template", "max_workspace_size_bytes", "precision_mode",
-    "minimum_segment_size", "is_dynamic_op", "maximum_cached_engines",
-    "use_calibration", "max_batch_size"])):
+class TrtConversionParams(
+    collections.namedtuple("TrtConversionParams", [
+        "rewriter_config_template",
+        "max_workspace_size_bytes",
+        "precision_mode",
+        "minimum_segment_size",
+        "maximum_cached_engines",
+        "use_calibration",
+    ])):
   """Parameters that are used for TF-TRT conversion.
 
   Fields:
@@ -56,11 +61,6 @@ class TrtConversionParams(collections.namedtuple("TrtConversionParams", [
       TrtPrecisionMode.supported_precision_modes().
     minimum_segment_size: the minimum number of nodes required for a subgraph
       to be replaced by TRTEngineOp.
-    is_dynamic_op: whether to generate dynamic TRT ops which will build the
-      TRT network and engine at run time. i.e. Since TensorRT version < 6.0
-      does not support dynamic dimensions other than the batch dimension, when
-      the TensorFlow graph has a non-batch dimension of dynamic size, we would
-      need to enable this option. This option should be set to True in TF 2.0.
     maximum_cached_engines: max number of cached TRT engines for dynamic TRT
       ops. Created TRT engines for a dynamic dimension are cached. This is the
       maximum number of engines that can be cached. If the number of cached
@@ -76,8 +76,6 @@ class TrtConversionParams(collections.namedtuple("TrtConversionParams", [
       will occur. Please note that accuracy may be negatively affected if
       there is a mismatch between which tensors TRT quantizes and which
       tensors were trained with fake quantization.
-    max_batch_size: max size for the input batch. This parameter is only
-      effective when is_dynamic_op=False which is not supported in TF 2.0.
   """
 
   def __new__(cls,
@@ -87,8 +85,7 @@ class TrtConversionParams(collections.namedtuple("TrtConversionParams", [
               minimum_segment_size=3,
               is_dynamic_op=True,
               maximum_cached_engines=1,
-              use_calibration=True,
-              max_batch_size=1):
+              use_calibration=True):
     raise NotImplementedError(
         "TensorRT integration is not available on Windows.")
 

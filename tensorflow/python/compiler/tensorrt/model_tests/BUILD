@@ -32,6 +32,17 @@ py_library(
     ],
 )
 
+py_library(
+    name = "result_analyzer",
+    srcs = ["result_analyzer.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":model_handler",
+        "//tensorflow/python/compiler/tensorrt:trt_convert_py",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_binary(
     name = "run_models",
     srcs = ["run_models.py"],
@@ -40,6 +51,7 @@ py_binary(
     srcs_version = "PY3",
     deps = [
         ":model_handler",
+        ":result_analyzer",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/compiler/tensorrt:trt_convert_py",

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
@@ -508,7 +509,7 @@ TEST_F(HloEvaluatorTest, DoesReshape) {
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   result.EachCell<NativeT>([&](absl::Span<const int64> indices, NativeT value) {
-    std::vector<int64> rindexes = Permute(permutation, indices);
+    std::vector<int64> rindexes = PermuteInverse(indices, permutation);
     EXPECT_NEAR(value, literal_clone.Get<NativeT>(rindexes), 0.031250);
   });
 }
@@ -4562,6 +4563,116 @@ TEST_F(HloEvaluatorTest, MapBF16) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   Literal expected = LiteralUtil::CreateR1<float>({2.f, 4.f, 6.f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, MapS16) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  map_computation {
+    p = s16[] parameter(0)
+    add = s16[] add(p, p)
+    ROOT conv = f32[] convert(add)
+  }
+
+  ENTRY CopyStartCopyDone {
+    c = s16[3] constant({1, 2, 3})
+    ROOT map = f32[3] map(c), to_apply=map_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({2.f, 4.f, 6.f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, MapU16) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  map_computation {
+    p = u16[] parameter(0)
+    add = u16[] add(p, p)
+    ROOT conv = f32[] convert(add)
+  }
+
+  ENTRY CopyStartCopyDone {
+    c = u16[3] constant({1, 2, 3})
+    ROOT map = f32[3] map(c), to_apply=map_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({2.f, 4.f, 6.f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, DotUpcast) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+  ENTRY DotUpcast {
+    l = s16[4,3]{1,0} parameter(0)
+    r = s8[3,2]{1,0} parameter(1)
+    ROOT result = s32[4,2] dot(l, r), lhs_contracting_dims={1},
+                                      rhs_contracting_dims={0}
+  }
+  )";
+  // lhs:
+  // s16[4,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  //  { 9, 10, 11 },
+  //  { 13, 14, 15 },
+  // }
+  auto lhs_array = absl::make_unique<Array2D<int16>>(4, 3);
+  lhs_array->FillUnique(1);
+  auto lhs_literal = LiteralUtil::CreateR2FromArray2D<int16>(*lhs_array);
+
+  // rhs:
+  // s8[3,2] {
+  //  { 1, 2 },
+  //  { 3, 4 },
+  //  { 5, 6 },
+  // }
+  auto rhs_array = absl::make_unique<Array2D<int8>>(3, 2);
+  rhs_array->FillUnique(1);
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<int8>(*rhs_array);
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          Evaluate({&lhs_literal, &rhs_literal}));
+
+  auto expected_array =
+      Array2D<int32>({{22, 28}, {58, 76}, {94, 124}, {130, 172}});
+  auto expected = LiteralUtil::CreateR2FromArray2D<int32>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, SortC64) {
+  const absl::string_view hlo_text = R"(
+  HloModule m
+
+  sort_lt_comparator {
+    parameter.0 = c64[] parameter(0)
+    real.0 = f32[] real(parameter.0)
+    parameter.1 = c64[] parameter(1)
+    real.1 = f32[] real(parameter.1)
+    ROOT compare = pred[] compare(real.0, real.1), direction=LT
+  }
+
+  ENTRY main {
+    c = c64[3] constant({(2, 0), (4, 0), (6, 0)})
+    ROOT sort = c64[3]{0} sort(c), dimensions={0}, to_apply=sort_lt_comparator
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected =
+      LiteralUtil::CreateR1<std::complex<float>>({2.f, 4.f, 6.f});
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
