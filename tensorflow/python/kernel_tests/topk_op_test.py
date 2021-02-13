@@ -47,7 +47,7 @@ class TopKTest(test.TestCase):
                     sorted=True):  # pylint: disable=redefined-builtin
     np_expected_values = np.array(expected_values)
     np_expected_indices = np.array(expected_indices)
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       values_op, indices_op = nn_ops.top_k(inputs, k, sorted=sorted)
       values, indices = self.evaluate([values_op, indices_op])
 
@@ -196,7 +196,7 @@ class TopKTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testKNegative(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.session(use_gpu=True):
+    with self.session():
       k = array_ops.placeholder(dtypes.int32)
       values, _ = nn_ops.top_k(inputs, k)
       with self.assertRaisesOpError("Need k >= 0, got -7"):
@@ -211,7 +211,7 @@ class TopKTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testTopKGradients(self):
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       inputs = array_ops.placeholder(dtypes.float32, shape=[2, 5])
       values, _ = nn_ops.top_k(inputs, 3)
       grad = sess.run(

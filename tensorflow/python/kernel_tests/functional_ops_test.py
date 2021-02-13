@@ -340,7 +340,7 @@ class FunctionalOpsTest(test.TestCase):
         lambda elem_, input_: (a, b), elems, initializer=(0., 0.))
     loss = l0 + array_ops.stop_gradient(l1)
     grad = gradients_impl.gradients(ys=[loss], xs=[a, b])
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session() as sess:
       self.evaluate(variables.global_variables_initializer())
       self.evaluate(grad)
 
@@ -933,7 +933,7 @@ class FunctionalOpsTest(test.TestCase):
     def ReturnsTooManyArgs(unused_i, v):
       return v, v
 
-    with self.test_session(use_gpu=True):
+    with self.test_session():
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   "must be a scalar"):
         functional_ops.For([0], 10, 1, [0.0], Foo)[0].eval()

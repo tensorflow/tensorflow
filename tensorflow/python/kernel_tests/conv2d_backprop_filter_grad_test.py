@@ -77,7 +77,7 @@ class Conv2DBackpropFilterGradTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testGradientDilatedConv(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.session(use_gpu=True):
+      with self.session():
         for padding in [
             "SAME",
             "VALID",
