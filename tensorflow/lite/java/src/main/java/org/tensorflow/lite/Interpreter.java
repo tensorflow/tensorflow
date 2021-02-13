@@ -19,6 +19,7 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,6 +78,8 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <p>The TFLite library is built against NDK API 19. It may work for Android API levels below 19,
  * but is not guaranteed.
+ *
+ * <p>Note: This class is not thread safe.
  */
 public final class Interpreter implements AutoCloseable {
 
@@ -222,6 +225,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public Interpreter(@NonNull File modelFile, Options options) {
     wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), options);
+    signatureNameList = getSignatureDefNames();
   }
 
   /**
@@ -281,6 +285,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer, Options options) {
     wrapper = new NativeInterpreterWrapper(byteBuffer, options);
+    signatureNameList = getSignatureDefNames();
   }
 
   /**
@@ -370,6 +375,49 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
+   * Runs model inference based on SignatureDef provided through @code methodName.
+   *
+   * <p>See {@link Interpreter#run(Object, Object)} for more details on the allowed input and output
+   * data types.
+   *
+   * @param inputs A Map of inputs from input name in the signatureDef to an input object.
+   * @param outputs a map mapping from output name in SignatureDef to output data.
+   * @param methodName The exported method name identifying the SignatureDef.
+   * @throws IllegalArgumentException if {@code inputs} or {@code outputs} or {@code methodName} is
+   *     null or empty, or if error occurs when running the inference.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public void runSignature(
+      @NonNull Map<String, Object> inputs,
+      @NonNull Map<String, Object> outputs,
+      String methodName) {
+    checkNotClosed();
+    if (methodName == null && signatureNameList.length == 1) {
+      methodName = signatureNameList[0];
+    }
+    if (methodName == null) {
+      throw new IllegalArgumentException(
+          "Input error: SignatureDef methodName should not be null. null is only allowed if the"
+              + " model has a single Signature. Available Signatures: "
+              + Arrays.toString(signatureNameList));
+    }
+    wrapper.runSignature(inputs, outputs, methodName);
+  }
+
+  /* Same as {@link Interpreter#runSignature(Object, Object, String)} but doesn't require
+   * passing a methodName, assuming the model has one SignatureDef. If the model has more than
+   * one SignatureDef it will throw an exception.
+   *
+   * * <p>WARNING: This is an experimental API and subject to change.
+   * */
+  public void runSignature(
+      @NonNull Map<String, Object> inputs, @NonNull Map<String, Object> outputs) {
+    checkNotClosed();
+    runSignature(inputs, outputs, null);
+  }
+
+  /**
    * Expicitly updates allocations for all tensors, if necessary.
    *
    * <p>This will propagate shapes and memory allocations for all dependent tensors using the input
@@ -450,6 +498,61 @@ public final class Interpreter implements AutoCloseable {
     return wrapper.getInputTensor(inputIndex);
   }
 
+  /**
+   * Gets the Tensor associated with the provdied input name and signature method name.
+   *
+   * @param inputName Input name in the signature.
+   * @param methodName The exported method name identifying the SignatureDef, can be null if the
+   *     model has one signature.
+   * @throws IllegalArgumentException if {@code inputName} or {@code methodName} is null or empty,
+   *     or invalid name provided.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public Tensor getInputTensorFromSignature(String inputName, String methodName) {
+    checkNotClosed();
+    if (methodName == null && signatureNameList.length == 1) {
+      methodName = signatureNameList[0];
+    }
+    if (methodName == null) {
+      throw new IllegalArgumentException(
+          "Input error: SignatureDef methodName should not be null. null is only allowed if the"
+              + " model has a single Signature. Available Signatures: "
+              + Arrays.toString(signatureNameList));
+    }
+    return wrapper.getInputTensor(inputName, methodName);
+  }
+
+  /**
+   * Gets the list of SignatureDef exported method names available in the model.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public String[] getSignatureDefNames() {
+    checkNotClosed();
+    return wrapper.getSignatureDefNames();
+  }
+
+  /**
+   * Gets the list of SignatureDefs inputs for method {@code methodName}
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public String[] getSignatureInputs(String methodName) {
+    checkNotClosed();
+    return wrapper.getSignatureInputs(methodName);
+  }
+
+  /**
+   * Gets the list of SignatureDefs outputs for method {@code methodName}
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public String[] getSignatureOutputs(String methodName) {
+    checkNotClosed();
+    return wrapper.getSignatureOutputs(methodName);
+  }
+
   /** Gets the number of output Tensors. */
   public int getOutputTensorCount() {
     checkNotClosed();
@@ -483,6 +586,38 @@ public final class Interpreter implements AutoCloseable {
   public Tensor getOutputTensor(int outputIndex) {
     checkNotClosed();
     return wrapper.getOutputTensor(outputIndex);
+  }
+
+  /**
+   * Gets the Tensor associated with the provdied output name in specifc signature method.
+   *
+   * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
+   * is executed. If you need updated details *before* running inference (e.g., after resizing an
+   * input tensor, which may invalidate output tensor shapes), use {@link #allocateTensors()} to
+   * explicitly trigger allocation and shape propagation. Note that, for graphs with output shapes
+   * that are dependent on input *values*, the output shape may not be fully determined until
+   * running inference.
+   *
+   * @param outputName Output name in the signature.
+   * @param methodName The exported method name identifying the SignatureDef, can be null if the
+   *     model has one signature.
+   * @throws IllegalArgumentException if {@code outputName} or {@code methodName} is null or empty,
+   *     or invalid name provided.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public Tensor getOutputTensorFromSignature(String outputName, String methodName) {
+    checkNotClosed();
+    if (methodName == null && signatureNameList.length == 1) {
+      methodName = signatureNameList[0];
+    }
+    if (methodName == null) {
+      throw new IllegalArgumentException(
+          "Input error: SignatureDef methodName should not be null. null is only allowed if the"
+              + " model has a single Signature. Available Signatures: "
+              + Arrays.toString(signatureNameList));
+    }
+    return wrapper.getOutputTensor(outputName, methodName);
   }
 
   /**
@@ -584,4 +719,5 @@ public final class Interpreter implements AutoCloseable {
   }
 
   NativeInterpreterWrapper wrapper;
+  String[] signatureNameList;
 }

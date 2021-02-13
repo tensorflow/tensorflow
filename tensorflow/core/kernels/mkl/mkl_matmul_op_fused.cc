@@ -49,6 +49,9 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     OP_REQUIRES(
         ctx, transpose_a_ == false,
         errors::InvalidArgument("In[0] of MklMatMul can't be transposed."));
+    if (fused_ops_.size() == 2 && fused_ops_[1] == "LeakyRelu") {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
+    }
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -106,17 +109,17 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     memory::dims weight_dims = memory::dims({channel, k});
     memory::dims bias_dims = memory::dims({channel});
     memory::dims dst_dims = memory::dims({batch, channel});
-    MEMORY_FORMAT src_format = MEMORY_FORMAT::nc;
-    MEMORY_FORMAT weight_format =
-        transpose_b_ ? MEMORY_FORMAT::oi : MEMORY_FORMAT::io;
+    memory::format_tag src_format = memory::format_tag::nc;
+    memory::format_tag weight_format =
+        transpose_b_ ? memory::format_tag::oi : memory::format_tag::io;
 
     // Set weight format for primitive:
     //   1. const, let MKL-DNN determine format because it will be cached;
     //   2. var, keep the original format to avoid reordering.
     MklDnnMatMulFwdParams matmul_params(
         src_dims, weight_dims, bias_dims, dst_dims, src_format,
-        (this->is_weight_const_) ? MEMORY_FORMAT::any : weight_format,
-        MEMORY_FORMAT::nc);
+        (this->is_weight_const_) ? memory::format_tag::any : weight_format,
+        memory::format_tag::nc);
 
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
@@ -131,8 +134,6 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     // The output shape of MatMul is same both for MKL and TF version.
     // They are all NC format, no matter what's the format of input.
     // And the shape of AddOp is also the same with output's shape.
-    auto dst_pd = matmul_pd->PRIMITIVE_DESC_DST;
-
     MklDnnShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(false);
 
@@ -159,7 +160,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
                                   output_tf_shape, output_mkl_shape,
                                   native_format);
         auto output_format_tag =
-            MklTensorFormatToMklDnnDataFormat(MKL_TENSOR_FORMAT_NC);
+            MklTensorFormatToMklDnnDataFormat(MklTensorFormat::FORMAT_NC);
         auto add_md =
             add_mkl_shape.IsMklTensor()
                 ? add_mkl_shape.GetMklLayout()
@@ -179,12 +180,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
                            mkldnn::memory::format_tag::x);
         }
 
-        auto fuse_add_src_ =
-            MEMORY_CONSTRUCTOR(ADD_MD, this->cpu_engine_, add_buf);
-        auto fuse_add_dst_ =
-            MEMORY_CONSTRUCTOR(DST_MD, this->cpu_engine_, dst_buf);
+        auto fuse_add_src_ = memory(add_md, this->cpu_engine_, add_buf);
+        auto fuse_add_dst_ = memory(dst_md, this->cpu_engine_, dst_buf);
         auto reorder_desc =
-            REORDER_PD_CONSTRUCTOR(ADD_MD, DST_MD, this->cpu_engine_);
+            ReorderPd(this->cpu_engine_, add_md, this->cpu_engine_, dst_md);
 
         CreateAndExecuteReorder(reorder_desc, fuse_add_src_, fuse_add_dst_,
                                 this->cpu_engine_, ctx);
@@ -214,19 +213,17 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
                         ? src_mkl_shape.GetMklLayout()
                         : memory::desc(src_dims, MklDnnType<T>(), src_format);
 
-      if (IS_SRC_REORDER_NEEDED(src_md, matmul_pd, matmul_prim)) {
+      if (src_md != matmul_pd->src_desc()) {
         src_mkl.SetUsrMem(src_md, src_data);
-        src_mkl.CheckReorderToOpMem(
-            MEMORY_PD_WITHOUT_DATA(matmul_pd.get()->PRIMITIVE_DESC_SRC,
-                                   this->cpu_engine_),
-            ctx);
+        src_mkl.CheckReorderToOpMem(matmul_pd.get()->src_desc(),
+                                    this->cpu_engine_, ctx);
         src_data = reinterpret_cast<T*>(src_mkl.GetOpMem().get_data_handle());
       }
 
       // Get cached data when weight is const.
       const memory::desc weight_md =
           memory::desc(weight_dims, MklDnnType<T>(), weight_format);
-      if (IS_WEIGHTS_REORDER_NEEDED(weight_md, matmul_pd, matmul_prim)) {
+      if (weight_md != matmul_pd->weights_desc()) {
         T* cached_weight_data = nullptr;
 
         if (this->is_weight_const_) {
@@ -234,13 +231,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
             this->CacheWeight(ctx, matmul_pd, cached_weight_data, weight_tensor,
                               weight_mkl, weight_md);
           }
-#ifdef ENABLE_MKLDNN_V1
-          cached_weight_data = this->GetCachedWeight(
-              ctx, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_pd));
-#else
-          cached_weight_data = this->GetCachedWeight(
-              ctx, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_pd).desc());
-#endif
+          cached_weight_data =
+              this->GetCachedWeight(ctx, matmul_pd->weights_desc());
         }
 
         // Cache weight may fail when it gets different format in different
@@ -250,10 +242,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
           weight_data = cached_weight_data;
         } else {
           weight_mkl.SetUsrMem(weight_md, weight_data);
-          weight_mkl.CheckReorderToOpMem(
-              MEMORY_PD_WITHOUT_DATA(matmul_pd.get()->PRIMITIVE_DESC_WEIGHTS,
-                                     this->cpu_engine_),
-              ctx);
+          weight_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
+                                         this->cpu_engine_, ctx);
           weight_data =
               reinterpret_cast<T*>(weight_mkl.GetOpMem().get_data_handle());
         }
@@ -287,6 +277,9 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         params.post_op_params.push_back({"tanh", {1.0, 0.0, 0.0}});
       } else if (post_op == "Add") {
         params.post_op_params.push_back({"sum", {1.0}});
+      } else if (post_op == "LeakyRelu") {
+        params.post_op_params.push_back(
+            {"leakyrelu", {1.0, leakyrelu_alpha, 0.0}});
       } else {
         OP_REQUIRES_OK(
             ctx, errors::InvalidArgument(
@@ -299,6 +292,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
   bool fuse_add_ = false;
   bool transpose_a_;
   bool transpose_b_;
+  float leakyrelu_alpha = 0.2;
   std::vector<string> fused_ops_;
   const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0;

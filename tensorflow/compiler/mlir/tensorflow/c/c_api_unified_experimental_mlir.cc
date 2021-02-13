@@ -77,8 +77,10 @@ using tensorflow::tracing::TracingTensorHandle;
 namespace {
 
 void RegisterDialects(mlir::MLIRContext& ctx) {
-  mlir::RegisterAllTensorFlowDialects(ctx.getDialectRegistry());
-  ctx.getDialectRegistry().loadAll(&ctx);
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  ctx.appendDialectRegistry(registry);
+  ctx.loadAllAvailableDialects();
 }
 
 Status ConvertDataTypeToTensor(tensorflow::DataType dtype, Builder builder,
@@ -461,7 +463,7 @@ Status MlirAbstractOp::SetAttrFloat(const char* attr_name, float value) {
   return Unimplemented("SetAttrFloat has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrBool(const char* attr_name, bool value) {
-  attrs_[attr_name] = BoolAttr::get(value, context_);
+  attrs_[attr_name] = BoolAttr::get(context_, value);
   return Status::OK();
 }
 Status MlirAbstractOp::SetAttrShape(const char* attr_name, const int64_t* dims,
@@ -646,7 +648,7 @@ Status MlirAbstractOp::AddInputList(
     types.reserve(inputs.size());
     for (AbstractTensorHandle* input : inputs)
       types.push_back(TypeAttr::get(cast<MlirTensor>(input)->getElementType()));
-    attrs_[arg_def.type_list_attr()] = ArrayAttr::get(types, GetContext());
+    attrs_[arg_def.type_list_attr()] = ArrayAttr::get(GetContext(), types);
   }
   return Status::OK();
 }
@@ -668,7 +670,7 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
 
   auto arg_types = body.getArgumentTypes();
   auto result_types = body.getTerminator()->getOperandTypes();
-  func_.setType(FunctionType::get(arg_types, result_types, func_.getContext()));
+  func_.setType(FunctionType::get(func_.getContext(), arg_types, result_types));
   *f = new MlirFunction(std::move(context_), std::move(module_), func_);
   return Status::OK();
 }

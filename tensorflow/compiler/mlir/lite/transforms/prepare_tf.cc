@@ -84,9 +84,10 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
   explicit PrepareTFPass(bool unfold_batch_matmul,
-                         bool allow_bf16_type_legalization) {
+                         bool allow_bf16_and_f16_type_legalization) {
     unfold_batch_matmul_ = unfold_batch_matmul;
-    allow_bf16_type_legalization_ = allow_bf16_type_legalization;
+    allow_bf16_and_f16_type_legalization_ =
+        allow_bf16_and_f16_type_legalization;
   }
   void runOnFunction() override;
 
@@ -101,8 +102,8 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
       llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
       llvm::cl::init(true)};
 
-  Option<bool> allow_bf16_type_legalization_{
-      *this, "tfl-allow-bf16-type-legalization",
+  Option<bool> allow_bf16_and_f16_type_legalization_{
+      *this, "tfl-allow-bf16-and-f16-type-legalization",
       llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
 };
 
@@ -291,10 +292,12 @@ struct ConvertTFConvOpMatchState {
 template <typename ConcreteType, typename TFConvOpType>
 class ConvertTFConvOp : public RewritePattern {
  public:
-  ConvertTFConvOp(MLIRContext *context, bool allow_bf16_type_legalization)
+  ConvertTFConvOp(MLIRContext *context,
+                  bool allow_bf16_and_f16_type_legalization)
       : RewritePattern(TFConvOpType::getOperationName(), 1, context),
         intAttrOne(Builder(context).getI32IntegerAttr(1)),
-        allow_bf16_type_legalization_(allow_bf16_type_legalization) {}
+        allow_bf16_and_f16_type_legalization_(
+            allow_bf16_and_f16_type_legalization) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -311,8 +314,8 @@ class ConvertTFConvOp : public RewritePattern {
     TFConvOpType tf_op = cast<TFConvOpType>(op);
 
     if (!TFTypeIsFloat32Tensor(tf_op.input()) &&
-        !(allow_bf16_type_legalization_ &&
-          TFTypeIsBFloat16Tensor(tf_op.input())))
+        !(allow_bf16_and_f16_type_legalization_ &&
+          TFTypeIsBFloat16OrHalfTensor(tf_op.input())))
       return failure();
 
     if (!TFDataFormatIsNHWC(op)) return failure();
@@ -374,7 +377,7 @@ class ConvertTFConvOp : public RewritePattern {
   const IntegerAttr intAttrOne;
 
  private:
-  bool allow_bf16_type_legalization_;
+  bool allow_bf16_and_f16_type_legalization_;
 };
 
 class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
@@ -862,7 +865,7 @@ struct ConvertTFBroadcastTo : public RewritePattern {
       return failure();
 
     if (!(element_type.isa<BFloat16Type, Float32Type>() ||
-          element_type.isInteger(32)))
+          element_type.isInteger(32) || element_type.isInteger(16)))
       return failure();
 
     auto status_or_const_op =
@@ -1053,8 +1056,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
                                                     /*x=*/tblgen_value_0,
                                                     /*y=*/tblgen_value_1);
       // We need to make sure the Add operands are broadcastable.
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(add_op_1)
-              .value == LogicalResult::Failure) {
+      if (mlir::failed(mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+              add_op_1))) {
         return failure();
       }
     }
@@ -1074,8 +1077,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       multiplier = rewriter.create<::mlir::TF::MulOp>(odsLoc,
                                                       /*x=*/tblgen_value_0,
                                                       /*y=*/tblgen_value_1);
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(multiplier)
-              .value == LogicalResult::Failure) {
+      if (mlir::failed(mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+              multiplier))) {
         return failure();
       }
     }
@@ -1087,8 +1090,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
                                                     /*x=*/tblgen_value_0,
                                                     /*y=*/tblgen_value_1);
       // We need to make sure the Mul operands are broadcastable.
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(mul_op_1)
-              .value == LogicalResult::Failure) {
+      if (mlir::failed(mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+              mul_op_1))) {
         return failure();
       }
     }
@@ -1099,8 +1102,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       mul_op_2 = rewriter.create<::mlir::TF::MulOp>(odsLoc,
                                                     /*x=*/tblgen_value_0,
                                                     /*y=*/tblgen_value_1);
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(mul_op_2)
-              .value == LogicalResult::Failure) {
+      if (mlir::failed(mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+              mul_op_2))) {
         return failure();
       }
     }
@@ -1111,8 +1114,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       sub_op = rewriter.create<::mlir::TF::SubOp>(odsLoc,
                                                   /*x=*/tblgen_value_0,
                                                   /*y=*/tblgen_value_1);
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(sub_op).value ==
-          LogicalResult::Failure) {
+      if (failed(
+              mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(sub_op))) {
         return failure();
       }
     }
@@ -1129,8 +1132,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       add_op_2 = rewriter.create<::mlir::TF::AddOp>(
           odsLoc, tblgen_types, tblgen_values, tblgen_attrs);
       // We need to make sure the Add operands are broadcastable.
-      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(add_op_2)
-              .value == LogicalResult::Failure) {
+      if (mlir::failed(mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+              add_op_2))) {
         return failure();
       }
     }
@@ -1329,7 +1332,7 @@ void PrepareTFPass::runOnFunction() {
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
@@ -1342,9 +1345,9 @@ void PrepareTFPass::runOnFunction() {
   phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
                           ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);
   phase_2_patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
-      ctx, allow_bf16_type_legalization_);
+      ctx, allow_bf16_and_f16_type_legalization_);
 
-  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

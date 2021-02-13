@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
@@ -41,10 +42,7 @@ cc_library(
     features = [
         "-use_header_modules",  # Required for pybind11
     ],
-    visibility = [
-        "//learning/deepmind/courier:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
@@ -63,7 +61,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",
@@ -77,6 +75,7 @@ cc_library(
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -131,6 +130,7 @@ filegroup(
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
     name = "eager_pip",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
@@ -159,7 +159,7 @@ py_library(
 py_library(
     name = "core",
     srcs = ["core.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -171,7 +171,7 @@ py_library(
 py_library(
     name = "cancellation",
     srcs = ["cancellation.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -192,7 +192,7 @@ cuda_py_test(
 py_library(
     name = "executor",
     srcs = ["executor.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -202,7 +202,7 @@ py_library(
 py_library(
     name = "context",
     srcs = ["context.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":executor",
@@ -254,6 +254,7 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "no_tfrt",  # TFRT doesn't support custom device yet.
     ],
     deps = [
         ":context",
@@ -276,7 +277,7 @@ cuda_py_test(
 py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:c_api_util",
@@ -299,7 +300,7 @@ cuda_py_test(
 py_library(
     name = "profiler",
     srcs = ["profiler.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -325,7 +326,7 @@ cuda_py_test(
 py_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/core/profiler:internal",
@@ -340,7 +341,7 @@ py_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",
@@ -354,7 +355,7 @@ py_test(
 py_library(
     name = "tape",
     srcs = ["tape.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
 )
 
@@ -510,6 +511,7 @@ cuda_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:list_ops",
+        "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:resource_variable_ops",
@@ -525,7 +527,7 @@ cuda_py_test(
 py_library(
     name = "test",
     srcs = ["test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":core",
@@ -537,7 +539,7 @@ py_library(
 py_library(
     name = "execute",
     srcs = ["execute.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -555,7 +557,7 @@ py_library(
 py_library(
     name = "graph_only_ops",
     srcs = ["graph_only_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -581,7 +583,7 @@ cuda_py_test(
 
 py_library(
     name = "framework_for_generated_wrappers",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":execute",
@@ -594,7 +596,7 @@ py_library(
 py_library(
     name = "function",
     srcs = ["function.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -631,7 +633,7 @@ pybind_extension(
 py_library(
     name = "backprop",
     srcs = ["backprop.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop_util",
@@ -659,7 +661,7 @@ py_library(
 py_library(
     name = "backprop_util",
     srcs = ["backprop_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:dtypes",
@@ -670,7 +672,7 @@ py_library(
 py_library(
     name = "forwardprop",
     srcs = ["forwardprop.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":forwardprop_util",
@@ -685,7 +687,7 @@ py_library(
 py_library(
     name = "forwardprop_util",
     srcs = ["forwardprop_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -695,7 +697,7 @@ py_library(
 py_library(
     name = "benchmarks_test_base",
     srcs = ["benchmarks_test_base.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [":test"],
 )
@@ -810,7 +812,7 @@ tf_py_test(
 py_library(
     name = "imperative_grad",
     srcs = ["imperative_grad.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:unconnected_gradients",
@@ -818,10 +820,19 @@ py_library(
     ],
 )
 
+# Check that the main TensorFlow python library depends on and links XLA.
+check_deps(
+    name = "def_function_check_deps",
+    required_deps = [
+        "//tensorflow/compiler/jit:xla_kernel_creator",
+    ],
+    deps = [":def_function"],
+)
+
 py_library(
     name = "def_function",
     srcs = ["def_function.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -844,7 +855,7 @@ py_library(
 py_library(
     name = "lift_to_graph",
     srcs = ["lift_to_graph.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:framework_ops",
@@ -916,6 +927,7 @@ tf_xla_py_test(
     tags = [
         "no_mac",
         "no_pip",
+        "no_tfrt",  # TODO(b/177333820)
         "no_windows",
     ],
     use_xla_device = False,
@@ -955,7 +967,7 @@ tf_xla_py_test(
 py_library(
     name = "wrap_function",
     srcs = ["wrap_function.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -1003,7 +1015,7 @@ cuda_py_test(
 py_library(
     name = "remote",
     srcs = ["remote.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -1022,7 +1034,6 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
-        "notap",  # b/175813762
         "optonly",  # times out
     ],
     deps = [
@@ -1132,7 +1143,7 @@ py_binary(
     name = "gradient_input_output_exclusions",
     srcs = ["gradient_input_output_exclusions.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -1150,7 +1161,7 @@ py_test(
         "//tensorflow/python/eager:pywrap_gradient_exclusions.cc",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",  # No point linking the gen script in the pip package.
     ],

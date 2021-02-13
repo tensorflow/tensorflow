@@ -25,7 +25,7 @@
 # Required environment variable(s):
 #   CONTAINER_TYPE:      (CPU | GPU)
 #   OS_TYPE:             (UBUNTU | MACOS)
-#   TF_PYTHON_VERSION:   (python2 | python2.7 | python3.5 | python3.7)
+#   TF_PYTHON_VERSION:   ( python3.6 | python3.7 | python3.8 )
 #   TF_BUILD_FLAGS:      Bazel build flags.
 #                          e.g. TF_BUILD_FLAGS="--config=opt"
 #   TF_TEST_FLAGS:       Bazel test flags.
@@ -192,7 +192,7 @@ check_python_pip_version() {
   # Check if only the major version of python is provided by the user.
   MAJOR_VER_ONLY=0
   if [[ ${#PYTHON_VER} -lt 9 ]]; then
-    # User only provided major version (e.g. 'python2' instead of 'python2.7')
+    # User only provided major version (e.g. 'python3' instead of 'python3.7')
     MAJOR_VER_ONLY=1
   fi
 
@@ -260,7 +260,7 @@ PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/${PIP_TEST_ROOT}/whl"
 mkdir -p "${PIP_WHL_DIR}"
 PIP_WHL_DIR=$(realpath "${PIP_WHL_DIR}") # Get absolute path
 WHL_PATH=""
-# Determine the major.minor versions of python being used (e.g., 2.7).
+# Determine the major.minor versions of python being used (e.g., 3.7).
 # Useful for determining the directory of the local pip installation.
 PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -c1-3)
 
@@ -289,7 +289,7 @@ fi
 check_global_vars
 
 # Check if in a virtualenv and exit if yes.
-IN_VENV=$(python -c 'import sys; print("1" if hasattr(sys, "real_prefix") else "0")')
+IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
 if [[ "$IN_VENV" == "1" ]]; then
   echo "It appears that we are already in a virtualenv. Deactivating..."
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
@@ -469,7 +469,7 @@ install_tensorflow_pip() {
 
   # Install the gast package in the virtualenv. Installing it in user system
   # packages does not appear to port it over when creating a virtualenv.
-  ${PIP_BIN_PATH} install --upgrade "gast==0.3.3" || \
+  ${PIP_BIN_PATH} install --upgrade "gast==0.4.0" || \
     die "Error: gast install, upgrade FAILED"
 
 }

@@ -257,12 +257,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @invalid_function_reused_by_control_flows
-  func @invalid_function_reused_by_control_flows(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32> {
+  func @invalid_function_reused_by_control_flows(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>, %arg2: tensor<3xf32>) -> (tensor<1x2x3xf32>, tensor<3xf32>) {
     // expected-warning @+1 {{unable to refine shape}}
     %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
     // expected-warning @+1 {{unable to refine shape}}
-    %1 = "tf.If"(%arg0, %0) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
-    return %0 : tensor<1x2x3xf32>
+    %1 = "tf.If"(%arg0, %arg2) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<3xf32>) -> tensor<3xf32>
+    return %0, %1 : tensor<1x2x3xf32>, tensor<3xf32>
   }
 
   // CHECK-LABEL: func @reused_if_then_branch
@@ -366,12 +366,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %0 : tensor<?x?x?xf32>
   }
 
-  // Tests that tensor_cast result shapes are refined.
+  // Tests that tensor.cast result shapes are refined.
   // CHECK-LABEL: func @tensor_cast_refine
   func @tensor_cast_refine(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
-    // CHECK: tensor_cast
+    // CHECK: tensor.cast
     // CHECK-SAME: tensor<4xi32> to tensor<4xi32>
-    %0 = tensor_cast %arg0 : tensor<4xi32> to tensor<*xi32>
+    %0 = tensor.cast %arg0 : tensor<4xi32> to tensor<*xi32>
     return %0 : tensor<*xi32>
   }
 
@@ -451,7 +451,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-SAME: -> tensor<1xi32>
   func @partitioned_called_func2() -> (tensor<*xi32>) {
     %0 = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
-    %1 = tensor_cast %0 : tensor<1xi32> to tensor<*xi32>
+    %1 = tensor.cast %0 : tensor<1xi32> to tensor<*xi32>
     return %1 : tensor<*xi32>
   }
 
@@ -787,10 +787,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<1xi32>
   func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<*xi32> {
-   // CHECK: %[[RESULT:.*]] = tensor_cast
+   // CHECK: %[[RESULT:.*]] = tensor.cast
    // CHECK-SAME: tensor<1xi32> to tensor<1xi32>
    // CHECK: return %[[RESULT]] : tensor<1xi32>
-    %1 = tensor_cast %arg0 : tensor<1xi32> to tensor<*xi32>
+    %1 = tensor.cast %arg0 : tensor<1xi32> to tensor<*xi32>
     return %1 : tensor<*xi32>
   }
 
@@ -990,5 +990,59 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   func @while_shape_invariant_body_func_body_result_propagate(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>> {
     %0 = "tf.Identity"(%arg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>>
     return %0 : tensor<*x!tf.resource<tensor<f32>>>
+  }
+
+  // CHECK-LABEL: func @InferFromValueFolding
+  func @InferFromValueFolding(%arg0 : tensor<f32>) -> tensor<*xf32> {
+    %cst1 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+    %mul = "tf.Mul"(%arg0, %arg0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    // Folding will infer that: Pow(%mul, 1.0) -> %mul
+    // However we don't have the actual value for the mul, but we can use the
+    // mul type!
+    // CHECK: tf.Pow
+    // CHECK-SAME: -> tensor<f32>
+    %pow = "tf.Pow"(%mul, %cst1) : (tensor<f32>, tensor<f32>) -> tensor<*xf32>
+    return %pow : tensor<*xf32>
+  }
+
+  // Same as above, but don't infer when the type is "less" static.
+  // CHECK-LABEL: func @DontInferFromValueFolding
+  func @DontInferFromValueFolding(%arg0 : tensor<*xf32>) -> tensor<f32> {
+    %cst1 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+    %mul = "tf.Mul"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    // Folding will infer that: Pow(%mul, 1.0) -> %mul
+    // However we don't want to use the type of the mul as the type is less
+    // static, it'd be lossy.
+    // CHECK: tf.Pow
+    // CHECK-SAME: -> tensor<f32>
+    %pow = "tf.Pow"(%mul, %cst1) : (tensor<*xf32>, tensor<f32>) -> tensor<f32>
+    return %pow : tensor<f32>
+  }
+
+
+  // Test propagation of multiple callers into a function when all the callers
+  // have the same operand types.
+
+  // CHECK-LABEL: func @multi_caller1
+  func @multi_caller1(%arg0: tensor<i32>) -> tensor<*xi32> {
+    // CHECK: tf.PartitionedCall
+    // CHECK-SAME:  -> tensor<i32>
+    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @multi_caller_callee} : (tensor<i32>) -> (tensor<*xi32>)
+    return %0 : tensor<*xi32>
+  }
+  // CHECK-LABEL: func @multi_caller2
+  func @multi_caller2(%arg0: tensor<i32>) -> tensor<*xi32> {
+    // CHECK: tf.PartitionedCall
+    // CHECK-SAME:  -> tensor<i32>
+    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @multi_caller_callee} : (tensor<i32>) -> (tensor<*xi32>)
+    return %0 : tensor<*xi32>
+  }
+
+  // CHECK-LABEL: func private @multi_caller_callee
+  // CHECK-SAME: (%arg0: tensor<i32>) -> tensor<i32>
+  func private @multi_caller_callee(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+    // CHECK: return
+    // CHECK-SAME: tensor<i32>
+    return %arg0 : tensor<*xi32>
   }
 }

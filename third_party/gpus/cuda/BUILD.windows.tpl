@@ -201,14 +201,6 @@ cc_library(
     data = [":cuda-nvvm"],
 )
 
-filegroup(
-    name = "cuda_root",
-    srcs = [
-        "cuda/bin/fatbinary.exe",
-        "cuda/bin/bin2c.exe",
-    ],
-)
-
 bzl_library(
     name = "build_defs_bzl",
     srcs = ["build_defs.bzl"],

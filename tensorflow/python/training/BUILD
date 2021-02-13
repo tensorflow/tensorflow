@@ -76,7 +76,7 @@ py_library(
         "training.py",
         ":deprecated_inclusions_in_training_lib",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":adadelta",
         ":adagrad",
@@ -121,7 +121,7 @@ py_library(
 
 py_library(
     name = "training",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":training_lib",
         "//tensorflow/python/training/tracking:base",
@@ -133,7 +133,7 @@ py_library(
 py_library(
     name = "adadelta",
     srcs = ["adadelta.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":training_ops",
@@ -146,7 +146,7 @@ py_library(
 py_library(
     name = "adagrad_da",
     srcs = ["adagrad_da.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":training_ops",
@@ -161,7 +161,7 @@ py_library(
 py_library(
     name = "adagrad",
     srcs = ["adagrad.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":training_ops",
@@ -177,7 +177,7 @@ py_library(
 py_library(
     name = "adam",
     srcs = ["adam.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":training_ops",
@@ -194,7 +194,7 @@ py_library(
 py_library(
     name = "basic_loops",
     srcs = ["basic_loops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python/util:tf_export",
@@ -204,7 +204,7 @@ py_library(
 py_library(
     name = "checkpoint_ops",
     srcs = ["checkpoint_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:checkpoint_ops_gen",
@@ -218,7 +218,7 @@ py_library(
 py_library(
     name = "checkpoint_utils",
     srcs = ["checkpoint_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":checkpoint_management",
         ":py_checkpoint_reader",
@@ -238,7 +238,7 @@ py_library(
 py_library(
     name = "coordinator",
     srcs = ["coordinator.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
@@ -251,7 +251,7 @@ py_library(
 py_library(
     name = "device_setter",
     srcs = ["device_setter.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":server_lib",
         "//tensorflow/python:device",
@@ -264,14 +264,14 @@ py_library(
 py_library(
     name = "distribution_strategy_context",
     srcs = ["distribution_strategy_context.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow/python/distribute:distribute_lib"],
 )
 
 py_library(
     name = "evaluation",
     srcs = ["evaluation.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":basic_session_run_hooks",
         ":monitored_session",
@@ -290,7 +290,7 @@ py_library(
 py_library(
     name = "ftrl",
     srcs = ["ftrl.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":training_ops",
@@ -304,7 +304,7 @@ py_library(
 py_library(
     name = "gradient_descent",
     srcs = ["gradient_descent.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":training_ops",
@@ -318,7 +318,7 @@ py_library(
 py_library(
     name = "input",
     srcs = ["input.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":queue_runner",
         "//tensorflow/python:array_ops",
@@ -346,7 +346,7 @@ py_library(
 py_library(
     name = "momentum",
     srcs = ["momentum.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":training_ops",
@@ -359,7 +359,7 @@ py_library(
 py_library(
     name = "moving_averages",
     srcs = ["moving_averages.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":slot_creator",
         "//tensorflow/python:control_flow_ops",
@@ -379,7 +379,7 @@ py_library(
 py_library(
     name = "optimizer",
     srcs = ["optimizer.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":slot_creator",
         "//tensorflow/python:array_ops",
@@ -394,6 +394,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -406,7 +407,7 @@ py_library(
 py_library(
     name = "proximal_adagrad",
     srcs = ["proximal_adagrad.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":training_ops",
@@ -420,7 +421,7 @@ py_library(
 py_library(
     name = "proximal_gradient_descent",
     srcs = ["proximal_gradient_descent.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":training_ops",
@@ -433,7 +434,7 @@ py_library(
 py_library(
     name = "quantize_training",
     srcs = ["quantize_training.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:_pywrap_quantize_training",
         "//tensorflow/python:util",
@@ -444,7 +445,7 @@ py_library(
 py_library(
     name = "queue_runner_impl",
     srcs = ["queue_runner_impl.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -459,14 +460,14 @@ py_library(
 py_library(
     name = "queue_runner",
     srcs = ["queue_runner.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [":queue_runner_impl"],
 )
 
 py_library(
     name = "rmsprop",
     srcs = ["rmsprop.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":training_ops",
@@ -481,7 +482,7 @@ py_library(
 py_library(
     name = "session_manager",
     srcs = ["session_manager.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":checkpoint_management",
         "//tensorflow/python:errors",
@@ -497,8 +498,9 @@ py_library(
 py_library(
     name = "slot_creator",
     srcs = ["slot_creator.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:resource_variable_ops",
@@ -511,8 +513,9 @@ py_library(
 py_library(
     name = "summary_io",
     srcs = ["summary_io.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:summary",
         "//tensorflow/python:util",
     ],
 )
@@ -520,7 +523,7 @@ py_library(
 py_library(
     name = "sync_replicas_optimizer",
     srcs = ["sync_replicas_optimizer.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optimizer",
         ":queue_runner",
@@ -543,7 +546,7 @@ py_library(
 py_library(
     name = "tensorboard_logging",
     srcs = ["tensorboard_logging.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:platform",
     ],
@@ -555,7 +558,7 @@ py_library(
         "gen_training_ops.py",
         "training_ops.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:training_ops_gen",
     ],
@@ -564,7 +567,7 @@ py_library(
 py_library(
     name = "warm_starting_util",
     srcs = ["warm_starting_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":checkpoint_ops",
         ":checkpoint_utils",
@@ -587,7 +590,7 @@ py_library(
         "distribute.py",
         "distribution_strategy_context.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/distribute:distribute_lib",
     ],
@@ -794,6 +797,7 @@ tf_py_test(
 py_library(
     name = "py_checkpoint_reader",
     srcs = ["py_checkpoint_reader.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -812,6 +816,7 @@ tf_proto_library(
 py_library(
     name = "checkpoint_management",
     srcs = ["checkpoint_management.py"],
+    srcs_version = "PY3",
     deps = [
         ":training_util",
         "//tensorflow/python:errors",
@@ -850,7 +855,7 @@ cuda_py_test(
 py_library(
     name = "saver",
     srcs = ["saver.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":checkpoint_management",
         ":py_checkpoint_reader",
@@ -881,7 +886,7 @@ py_library(
 py_library(
     name = "saver_test_utils",
     srcs = ["saver_test_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":saver",
         "//tensorflow/python:dtypes",
@@ -984,7 +989,7 @@ tf_py_test(
 py_library(
     name = "basic_session_run_hooks",
     srcs = ["basic_session_run_hooks.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":session_run_hook",
         ":summary_io",
@@ -1006,13 +1011,14 @@ py_library(
 py_library(
     name = "session_run_hook",
     srcs = ["session_run_hook.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_library(
     name = "supervisor",
     srcs = ["supervisor.py"],
+    srcs_version = "PY3",
     deps = [
         ":coordinator",
         ":saver",
@@ -1061,7 +1067,7 @@ tf_py_test(
 py_library(
     name = "server_lib",
     srcs = ["server_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tf_session",
@@ -1073,7 +1079,7 @@ py_library(
 py_library(
     name = "training_util",
     srcs = ["training_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
@@ -1212,6 +1218,9 @@ cuda_py_tests(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:cross_device_ops",
+        "//tensorflow/python/distribute:distribute_utils",
+        "//tensorflow/python/distribute:mirrored_strategy",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -1335,7 +1344,7 @@ tf_py_test(
 py_library(
     name = "monitored_session",
     srcs = ["monitored_session.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":basic_session_run_hooks",
         ":coordinator",

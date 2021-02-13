@@ -123,7 +123,8 @@ def _get_type_from_proto(arg_def=None, attr_def=None):
 def _get_type_info_from_proto(arg_def=None, attr_def=None):
   attr_type = _get_type_from_proto(arg_def, attr_def)
   if not arg_def:
-    return '{}{{tfr.name="{}"}}'.format(attr_type, attr_def.name)
+    return '{}{{tfr.name="{}",tfr.type="{}"}}'.format(
+        attr_type, attr_def.name, attr_def.type)
   else:
     attr_names = []
     if arg_def.number_attr:
@@ -333,7 +334,7 @@ _AG_FIXED_RETURN_TYPE = {
 QN = qual_names.QN
 
 # TODO(mdan): Fix this with an importable module.
-AG_MODULE = api._TRANSPILER._extra_locals['ag__']  # pylint:disable=protected-access
+AG_MODULE = api._TRANSPILER.get_extra_locals()['ag__']  # pylint:disable=protected-access
 
 
 class TFRTypeResolver(type_inference.Resolver):
@@ -1297,15 +1298,15 @@ class TFRGen(transformer.CodeGenerator):
     # TODO(fengliuai): Here we hardcode the node.slice here to get the index
     # type. Use the visit method once the type inference is done.
     # slice_val, slice_ty = self.visit(node.slice)
-    if isinstance(node.slice, ast.Index):
-      if isinstance(node.slice.value, ast.Constant):
+    s = node.slice
+    if not isinstance(s, (ast.Tuple, ast.Slice)):
+      if isinstance(s, ast.Constant):
         # TODO(fengliuai): promote to an assignment
         idx_val = self._ssa_name('cst')
         self._emit_with_loc(
-            '\n{} = constant {} : index'.format(idx_val,
-                                                node.slice.value.value), node)
+            '\n{} = constant {} : index'.format(idx_val, s.value), node)
       else:
-        idx_val, _ = self.visit(node.slice.value)
+        idx_val, _ = self.visit(s)
     else:
       raise NotImplementedError('non-index slice not supported.')
 

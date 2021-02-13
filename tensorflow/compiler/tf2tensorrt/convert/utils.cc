@@ -17,14 +17,12 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
+Status TrtPrecisionModeToName(const TrtPrecisionMode mode, string* name) {
   switch (mode) {
     case TrtPrecisionMode::FP32:
       *name = "FP32";
@@ -36,6 +34,7 @@ Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
       *name = "INT8";
       break;
     default:
+      *name = "UNKNOWN";
       return errors::OutOfRange("Unknown precision mode");
   }
   return Status::OK();
@@ -55,8 +54,6 @@ Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
 }
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-using absl::StrAppend;
-using absl::StrCat;
 
 string DebugString(const nvinfer1::DimensionType type) {
   switch (type) {
@@ -87,6 +84,21 @@ string DebugString(const nvinfer1::Dims& dims) {
   return out;
 }
 
+string DebugString(const DataType tf_type) {
+  switch (tf_type) {
+    case DT_FLOAT:
+      return "DT_FLOAT";
+    case DT_HALF:
+      return "DT_HALF";
+    case DT_INT32:
+      return "DT_INT32";
+    case DT_INT8:
+      return "DT_INT8";
+    default:
+      return "Unknow TF DataType";
+  }
+}
+
 string DebugString(const nvinfer1::DataType trt_dtype) {
   switch (trt_dtype) {
     case nvinfer1::DataType::kFLOAT:
@@ -100,6 +112,12 @@ string DebugString(const nvinfer1::DataType trt_dtype) {
     default:
       return "Invalid TRT data type";
   }
+}
+
+string DebugString(const TrtPrecisionMode mode) {
+  string mode_str;
+  TF_CHECK_OK(TrtPrecisionModeToName(mode, &mode_str));
+  return StrCat("TrtPrecisionMode::", mode_str);
 }
 
 string DebugString(const nvinfer1::Permutation& permutation, int len) {
@@ -163,25 +181,24 @@ bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
   }
   return true;
 }
-
-Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
-                            bool use_implicit_batch, int batch_size,
-                            TensorShape& shape) {
-  TF_RETURN_IF_ERROR(
-      TensorShapeUtils::MakeShape(trt_dims.data(), trt_dims.size(), &shape));
-  if (use_implicit_batch) {
-    shape.InsertDim(0, batch_size);
+Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,
+                             std::vector<PartialTensorShape>* input_shapes) {
+  const int n_inputs = network->getNbInputs();
+  input_shapes->resize(n_inputs);
+  for (int i = 0; i < n_inputs; i++) {
+    const nvinfer1::ITensor* input = network->getInput(i);
+    const nvinfer1::Dims input_dim = input->getDimensions();
+    TF_RETURN_IF_ERROR(TrtDimsToTensorShape(input_dim, &input_shapes->at(i)));
   }
   return Status::OK();
 }
-
-Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
-                            bool use_implicit_batch, int batch_size,
-                            TensorShape& shape) {
+Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                            TensorShape* shape,
+                            absl::optional<int> batch_size) {
   TF_RETURN_IF_ERROR(
-      TensorShapeUtils::MakeShape(trt_dims.d, trt_dims.nbDims, &shape));
-  if (use_implicit_batch) {
-    shape.InsertDim(0, batch_size);
+      TensorShapeUtils::MakeShape(trt_dims.data(), trt_dims.size(), shape));
+  if (batch_size) {
+    shape->InsertDim(0, batch_size.value());
   }
   return Status::OK();
 }

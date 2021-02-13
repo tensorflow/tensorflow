@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
@@ -81,8 +80,16 @@ unique_void_ptr make_type_erased_array(size_t size) {
                          [](void* data) { delete[] static_cast<T*>(data); });
 }
 
-bool IsQuantized(const TfLiteTensor& tensor) {
+bool InterpretAsQuantized(const TfLiteTensor& tensor) {
   if (tensor.quantization.type == kTfLiteNoQuantization) return false;
+
+  // Quantized single-op models with uint8 input/output type are only used for
+  // EdgeTPU tests.
+  // EdgeTPU tests need to read the quantized values as-is to check for
+  // bit-exactness. As a result we don't interpret the tensor as quantized.
+  // TODO(b/176121243): Add an option to interpret uint8 buffers as
+  // non-quantized type and set if from the child class.
+  if (tensor.type == kTfLiteUInt8) return false;
 
   if (tensor.quantization.params != nullptr) {
     auto* quantization =
@@ -317,7 +324,7 @@ bool TfLiteDriver::DataExpectation::QuantizedCheck(bool verbose,
 
 bool TfLiteDriver::DataExpectation::Check(bool verbose,
                                           const TfLiteTensor& tensor) {
-  if (IsQuantized(tensor)) {
+  if (InterpretAsQuantized(tensor)) {
     return QuantizedCheck(verbose, tensor);
   }
 
@@ -346,6 +353,8 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
     case kTfLiteComplex128:
       return TypedCheck<std::complex<double>, std::complex<double>>(verbose,
                                                                     tensor);
+    case kTfLiteFloat64:
+      return TypedCheck<double, double>(verbose, tensor);
     default:
       fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
       return false;
@@ -521,6 +530,21 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
 
       break;
     }
+    case kTfLiteComplex64: {
+      const auto& values = testing::Split<std::complex<float>>(csv_values, ",");
+      if (!CheckSizes<std::complex<float>>(tensor->bytes, values.size()))
+        return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
+    case kTfLiteComplex128: {
+      const auto& values =
+          testing::Split<std::complex<double>>(csv_values, ",");
+      if (!CheckSizes<std::complex<double>>(tensor->bytes, values.size()))
+        return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     default:
       Invalidate(absl::StrCat("Unsupported tensor type ",
                               TfLiteTypeGetName(tensor->type),
@@ -550,7 +574,7 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       new DataExpectation(relative_threshold_, absolute_threshold_,
                           quantization_error_multiplier_));
 
-  if (IsQuantized(*tensor)) {
+  if (InterpretAsQuantized(*tensor)) {
     expected_output_[id]->SetData<float>(csv_values);
     return;
   }
@@ -582,6 +606,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteString:
       expected_output_[id]->SetData<string>(csv_values);
+      break;
+    case kTfLiteFloat64:
+      expected_output_[id]->SetData<double>(csv_values);
       break;
     case kTfLiteComplex64:
       expected_output_[id]->SetData<std::complex<float>>(csv_values);

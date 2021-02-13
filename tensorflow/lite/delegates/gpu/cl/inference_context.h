@@ -52,8 +52,8 @@ struct CLNode {
 
   CLNode() = default;
 
-  CLNode(CLNode&& node);
-  CLNode& operator=(CLNode&& node);
+  CLNode(CLNode&& node) = default;
+  CLNode& operator=(CLNode&& node) = default;
   CLNode(const CLNode&) = delete;
   CLNode& operator=(const CLNode&) = delete;
 };

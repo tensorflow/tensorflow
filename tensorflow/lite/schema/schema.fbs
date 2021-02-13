@@ -45,6 +45,8 @@ enum TensorType : byte {
   FLOAT64 = 10,
   COMPLEX128 = 11,
   UINT64 = 12,
+  RESOURCE = 13,
+  VARIANT = 14,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -217,7 +219,7 @@ table Tensor {
 // ones, but not by much. Moreover, while custom operators accept an opaque
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.
-
+// LINT.IfChange
 enum BuiltinOperator : int32 {
   ADD = 0,
   AVERAGE_POOL_2D = 1,
@@ -357,8 +359,12 @@ enum BuiltinOperator : int32 {
   CALL_ONCE = 129,
   BROADCAST_TO = 130,
   RFFT2D = 131,
+  CONV_3D = 132,
+  IMAG=133,
+  REAL=134,
+  COMPLEX_ABS=135,
 }
-
+// LINT.ThenChange(nnapi_linter/linter.proto)
 
 // Options for the builtin operators.
 union BuiltinOptions {
@@ -467,6 +473,7 @@ union BuiltinOptions {
   CallOnceOptions,
   BroadcastToOptions,
   Rfft2dOptions,
+  Conv3DOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -485,6 +492,17 @@ table Conv2DOptions {
   stride_w:int;
   stride_h:int;
   fused_activation_function:ActivationFunctionType;
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
+}
+
+table Conv3DOptions {
+  padding:Padding;
+  stride_d:int;
+  stride_w:int;
+  stride_h:int;
+  fused_activation_function:ActivationFunctionType;
+  dilation_d_factor:int = 1;
   dilation_w_factor:int = 1;
   dilation_h_factor:int = 1;
 }
@@ -594,7 +612,7 @@ table ConcatenationOptions {
 
 table AddOptions {
   fused_activation_function:ActivationFunctionType;
-  // Parameters supported by version 4.
+  // Parameters supported by version 3.
   pot_scale_int16:bool = true;
 }
 

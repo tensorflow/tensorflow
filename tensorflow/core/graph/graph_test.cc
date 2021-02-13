@@ -787,9 +787,10 @@ void BM_RemoveNode(::testing::benchmark::State& state) {
   const auto registry = OpRegistry::Global();
   GraphConstructorOptions opts;
   for (auto s : state) {
+    state.PauseTiming();
     Graph graph(registry);
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
-    testing::StartTiming();
+    state.ResumeTiming();
     for (Node* n : graph.op_nodes()) {
       graph.RemoveNode(n);
     }

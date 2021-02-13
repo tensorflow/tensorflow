@@ -538,6 +538,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:types",
     ],
 )
 
@@ -557,8 +558,10 @@ BUILTIN_KERNEL_SRCS = [
     "cast.cc",
     "ceil.cc",
     "comparisons.cc",
+    "complex_support.cc",
     "concatenation.cc",
     "conv.cc",
+    "conv3d.cc",
     "cumsum.cc",
     "densify.cc",
     "depth_to_space.cc",
@@ -729,7 +732,6 @@ cc_test(
 cc_library(
     name = "custom_ops",
     srcs = [
-        "complex_support.cc",
         "multinomial.cc",
         "random_standard_normal.cc",
     ],
@@ -1068,6 +1070,21 @@ cc_test(
     size = "small",
     srcs = ["conv_test.cc"],
     tags = ["tflite_nnapi"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "conv3d_test",
+    size = "small",
+    srcs = ["conv3d_test.cc"],
     deps = [
         ":test_main",
         ":test_util",
@@ -2260,6 +2277,7 @@ cc_library(
         ":variable_op_kernels",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
@@ -2360,7 +2378,6 @@ cc_test(
     name = "complex_support_test",
     srcs = ["complex_support_test.cc"],
     deps = [
-        ":custom_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",

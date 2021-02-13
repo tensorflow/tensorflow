@@ -962,6 +962,9 @@ def _slice_helper(tensor, slice_spec, var=None):
       tf.newaxis or scalar int32/int64 tensors.
   """
   tensor = ops.convert_to_tensor(tensor)
+  # TODO(wangpeng): Consider supporting var
+  if var is None and ops._numpy_style_slicing:  # pylint: disable=protected-access
+    return tensor._numpy_style_getitem(slice_spec)  # pylint: disable=protected-access
 
   if isinstance(slice_spec, bool) or \
   (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
@@ -2120,11 +2123,12 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
   """
-  size_splits = ops.convert_to_tensor(num_or_size_splits)
   if isinstance(num_or_size_splits,
                 (numbers.Integral, tensor_shape.Dimension)):
     return gen_array_ops.split(
         axis=axis, num_split=num_or_size_splits, value=value, name=name)
+
+  size_splits = ops.convert_to_tensor(num_or_size_splits)
 
   if size_splits._rank() == 0:
     raise ValueError(
@@ -2292,7 +2296,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
     A transposed `Tensor`.
   """
   with ops.name_scope(name, "transpose", [a]) as name:
-    if not tensor_util.is_tensor(a):
+    if not tensor_util.is_tf_type(a):
       a = ops.convert_to_tensor(a, name="a")
 
     if conjugate and a.dtype.is_complex:
@@ -3058,7 +3062,7 @@ def zeros_like_v2(
 def zeros_like_impl(tensor, dtype, name, optimize=True):
   """Internal implementation for the v1/v2 zeros_like API calls."""
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
-    if not tensor_util.is_tensor(tensor):
+    if not tensor_util.is_tf_type(tensor):
       tensor = ops.convert_to_tensor(tensor, name="tensor")
     tensor_shape = tensor.shape
     tensor_dtype = tensor.dtype
@@ -3506,7 +3510,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   if mode == "CONSTANT":
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
-    if not tensor_util.is_tensor(constant_values) and constant_values == 0:
+    if not tensor_util.is_tf_type(constant_values) and constant_values == 0:
       result = gen_array_ops.pad(tensor, paddings, name=name)
     else:
       result = gen_array_ops.pad_v2(
@@ -6069,14 +6073,14 @@ def searchsorted(sorted_sequence,
     name: Optional name for the operation.
 
   Returns:
-    An N-D `Tensor` the size of values containing the result of applying either
-    lower_bound or upper_bound (depending on side) to each value.  The result
-    is not a global index to the entire `Tensor`, but the index in the last
-    dimension.
+    An N-D `Tensor` the size of `values` containing the result of applying
+    either lower_bound or upper_bound (depending on side) to each value.  The
+    result is not a global index to the entire `Tensor`, but the index in the
+    last dimension.
 
   Raises:
     ValueError: If the last dimension of `sorted_sequence >= 2^31-1` elements.
-                If the total size of values exceeds `2^31 - 1` elements.
+                If the total size of `values` exceeds `2^31 - 1` elements.
                 If the first `N-1` dimensions of the two tensors don't match.
   """
   sequence_size = shape_internal(sorted_sequence)[-1]

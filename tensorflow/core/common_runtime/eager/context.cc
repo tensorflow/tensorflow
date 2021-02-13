@@ -76,8 +76,7 @@ auto* eager_context_created =
 EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
-    const bool lazy_copy_function_remote_inputs, const DeviceMgr* device_mgr,
-    bool device_mgr_owned, Rendezvous* rendezvous,
+    const DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
     DistributedFunctionLibraryRuntime* cluster_flr)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
@@ -95,7 +94,6 @@ EagerContext::EagerContext(
       default_executor_(async),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
-      lazy_copy_function_remote_inputs_(lazy_copy_function_remote_inputs),
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
@@ -326,7 +324,7 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
 
 void EagerContext::ResetClusterFLR(
     DistributedFunctionLibraryRuntime* cluster_flr) {
-  cluster_flr_.Reset(cluster_flr, lazy_copy_function_remote_inputs_);
+  cluster_flr_.Reset(cluster_flr, /*owned=*/true);
 }
 
 EagerExecutor& EagerContext::Executor() {
@@ -408,10 +406,6 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() const {
     return policy_map_it->second;
   }
   return default_device_placement_policy_;
-}
-
-bool EagerContext::LazyCopyFunctionRemoteInputs() const {
-  return lazy_copy_function_remote_inputs_;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -528,7 +522,7 @@ EagerContext::~EagerContext() {
 
   // Custom devices may have obtained references to various context components
   // (executors, thread pool). It's safer to run their destructors early.
-  custom_devices_.clear();
+  custom_device_op_handler_.Clear();
 
   ClearCachesAndThreadExecutors();
   std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
@@ -766,6 +760,10 @@ const FunctionDef* EagerContext::GetFunctionDef(const string& function_name) {
   return func_lib_def_.Find(function_name);
 }
 
+std::vector<string> EagerContext::ListFunctionNames() {
+  return func_lib_def_.ListFunctionNames();
+}
+
 Status EagerContext::RemoveFunction(const string& func) {
   bool is_last_ref = false;
   {
@@ -906,38 +904,15 @@ Status EagerContext::FindCompositeDeviceFromName(
   return errors::NotFound("Unknown composite device: ", device_name);
 }
 
-bool EagerContext::FindCustomDeviceFromName(const string& device_name,
-                                            CustomDevice** dev) const {
-  auto dev_it = custom_devices_.find(device_name);
-  if (dev_it == custom_devices_.end()) {
-    return false;
-  }
-  *dev = dev_it->second.get();
-  return true;
-}
-
 Status EagerContext::RegisterCustomDevice(
     const string& device_name, std::unique_ptr<CustomDevice> device) {
-  DeviceNameUtils::ParsedName parsed;
-  if (!DeviceNameUtils::ParseFullName(device_name, &parsed) ||
-      !parsed.has_job || !parsed.has_replica || !parsed.has_task ||
-      !parsed.has_type || !parsed.has_id) {
-    return errors::InvalidArgument(
-        device_name,
-        " could not be parsed as a device name. Use the full "
-        "/job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num> "
-        "format.");
-  }
   Device* existing_physical_device = nullptr;
   if (FindDeviceFromName(device_name.c_str(), &existing_physical_device).ok()) {
     return errors::AlreadyExists(device_name,
                                  " already registered as a physical device.");
   }
-  if (!custom_devices_.emplace(device_name, std::move(device)).second) {
-    return errors::AlreadyExists(device_name,
-                                 " already registered as a custom device.");
-  }
-  return Status::OK();
+  return custom_device_op_handler_.RegisterCustomDevice(device_name,
+                                                        std::move(device));
 }
 
 Status EagerContext::FindOrCreateCompositeDevice(
@@ -1279,7 +1254,7 @@ Status EagerContext::UpdateRemoteMaster(
     context_view_id_++;
 
     remote_eager_workers_ = std::move(remote_eager_workers);
-    pflr_->InitializeDeviceSet();
+    pflr_->InitializeDeviceAndFlr();
     InitPrioritizedDeviceTypeList();
 
     default_executor_.ClearError();
@@ -1498,7 +1473,7 @@ Status EagerContext::UpdateRemoteWorker(
     remote_contexts_ = remote_contexts;
     remote_eager_workers_ = std::move(remote_eager_workers);
     InitPrioritizedDeviceTypeList();
-    pflr_->InitializeDeviceSet();
+    pflr_->InitializeDeviceAndFlr();
   }
 
   // No need to update remote_device_manager_ since it's not owned for remote

@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
@@ -57,7 +58,8 @@ bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
 }  // namespace
 
 mlir::OwningModuleRef HloToMlirHloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context) {
+    llvm::StringRef input, mlir::MLIRContext* context,
+    bool import_all_computations) {
   HloProto hlo_proto;
   string content(input.data(), input.size());
   if (!LoadHloProto(content, &hlo_proto)) {
@@ -67,8 +69,8 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
 
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
-  auto status =
-      ConvertHloToMlirHlo(module.get(), hlo_proto.mutable_hlo_module());
+  auto status = ConvertHloToMlirHlo(
+      module.get(), hlo_proto.mutable_hlo_module(), import_all_computations);
   if (!status.ok()) {
     LOG(ERROR) << "Hlo module import failed: " << status;
     return nullptr;
@@ -78,7 +80,8 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
 }
 
 mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context) {
+    llvm::StringRef input, mlir::MLIRContext* context,
+    bool import_all_computations) {
   HloProto hlo_proto;
   string content(input.data(), input.size());
 
@@ -91,7 +94,8 @@ mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
   auto hlo_module = std::move(hlo_module_error.ValueOrDie());
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
-  auto status = ConvertHloToMlirHlo(*module, hlo_module.get());
+  auto status =
+      ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations);
   if (!status.ok()) {
     LOG(ERROR) << "HLO Module import failed: " << status;
     return nullptr;
@@ -232,8 +236,29 @@ static mlir::LogicalResult MlirHloToHloTextViaBuilderTranslateFunction(
 
 }  // namespace xla
 
+//----------------------------------------------------------------------------//
+// Hooks for tf-mlir-translate
+//----------------------------------------------------------------------------/
+
+static llvm::cl::opt<bool> import_all_computations(
+    "hlo-import-all-computations",
+    llvm::cl::desc("Enable importing unreachable computations."));
+
+static mlir::OwningModuleRef HloToMlirHloTranslate(llvm::StringRef input,
+                                                   mlir::MLIRContext* context) {
+  return xla::HloToMlirHloTranslateFunction(input, context,
+                                            import_all_computations);
+}
+
+static mlir::OwningModuleRef HloTextToMlirHloTranslate(
+    llvm::StringRef input, mlir::MLIRContext* context) {
+  return xla::HloTextToMlirHloTranslateFunction(input, context,
+                                                import_all_computations);
+}
+
 static void RegisterInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect>();
+  registry.insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
+                  mlir::tensor::TensorDialect>();
 }
 
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTranslate(
@@ -253,10 +278,10 @@ static mlir::TranslateFromMLIRRegistration MlirHloToHloTextViaBuilderTranslate(
     xla::MlirHloToHloTextViaBuilderTranslateFunction, RegisterInputDialects);
 
 static mlir::TranslateToMLIRRegistration HloToHloMlirTranslate(
-    "hlo-to-mlir-hlo", xla::HloToMlirHloTranslateFunction);
+    "hlo-to-mlir-hlo", HloToMlirHloTranslate);
 
 static mlir::TranslateToMLIRRegistration HloTextToHloMlirTranslate(
-    "hlo-text-to-mlir-hlo", xla::HloTextToMlirHloTranslateFunction);
+    "hlo-text-to-mlir-hlo", HloTextToMlirHloTranslate);
 
 // MHLO doesn't support explicit layouts, while XLA service does.
 // TODO(timshen): remove it once MHLO supports explicit layouts.

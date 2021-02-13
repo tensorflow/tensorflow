@@ -47,6 +47,7 @@ cc_library(
 cc_test(
     name = "parse_example_test",
     srcs = ["parse_example_test.cc"],
+    tags = ["no_mac"],  # TODO(b/176113117): Fails to load shared object
     deps = [
         ":parse_example",
         "@flatbuffers",

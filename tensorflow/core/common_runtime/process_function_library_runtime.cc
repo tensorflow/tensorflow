@@ -100,7 +100,9 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
                                       std::unique_ptr<FunctionLibraryRuntime>>),
       next_handle_(0),
       session_metadata_(session_metadata),
-      rendezvous_factory_(std::move(rendezvous_factory)) {
+      rendezvous_factory_(std::move(rendezvous_factory)),
+      optimizer_options_(optimizer_options),
+      graph_def_version_(graph_def_version) {
   if (device_mgr == nullptr) {
     (*flr_map_)[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, config_ ? &(*config_) : nullptr, nullptr,
@@ -108,14 +110,7 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
         session_metadata_, this);
     return;
   }
-  for (Device* d : device_mgr->ListDevices()) {
-    (*flr_map_)[d] = NewFunctionLibraryRuntime(
-        device_mgr, env, config_ ? &(*config_) : nullptr, d, graph_def_version,
-        lib_def_, default_thread_pool, optimizer_options, session_metadata_,
-        this);
-  }
-
-  InitializeDeviceSet();
+  InitializeDeviceAndFlr();
 }
 
 /* static */
@@ -214,7 +209,7 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
                           "function executions");
 }
 
-void ProcessFunctionLibraryRuntime::InitializeDeviceSet() {
+void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr() {
   DeviceMgr const* all_devices = device_mgr_;
   if (parent_ != nullptr && parent_->remote_device_mgr() != nullptr) {
     all_devices = parent_->remote_device_mgr();
@@ -224,6 +219,14 @@ void ProcessFunctionLibraryRuntime::InitializeDeviceSet() {
   device_set_ = std::make_shared<DeviceSet>();
   for (auto d : all_devices->ListDevices()) {
     device_set_->AddDevice(d);
+  }
+  for (Device* d : device_mgr_->ListDevices()) {
+    if ((*flr_map_)[d] == nullptr) {
+      (*flr_map_)[d] = NewFunctionLibraryRuntime(
+          device_mgr_, env_, config_ ? &(*config_) : nullptr, d,
+          graph_def_version_, lib_def_, default_thread_pool_,
+          optimizer_options_, session_metadata_, this);
+    }
   }
 }
 
@@ -995,8 +998,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 }
 
 Status ProcessFunctionLibraryRuntime::GetOutputDevices(
-    FunctionLibraryRuntime::Handle handle, std::vector<Device*>* output_devices,
-    const bool eager_lazy_copy) const {
+    FunctionLibraryRuntime::Handle handle,
+    std::vector<Device*>* output_devices) const {
   MultiDeviceFunctionData* data = IsMultiDevice(handle);
   if (data == nullptr) {
     return errors::InvalidArgument(
@@ -1015,16 +1018,6 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
     Device* target_device = nullptr;
     Device* host = nullptr;
     if (target_flr == nullptr) {
-      if (!eager_lazy_copy) {
-        return errors::Unimplemented(
-            "Currently, outputting tensors on remote devices is not supported."
-            "The ",
-            comp_data.ret_indices[0],
-            "-th return value of the function outputs to target_device: ",
-            target,
-            " Please copy the tensor to local device explicitly using "
-            "tf.identity and return the new Tensor instead.");
-      }
       if (!data->has_remote_outputs) {
         data->has_remote_outputs = true;
       }

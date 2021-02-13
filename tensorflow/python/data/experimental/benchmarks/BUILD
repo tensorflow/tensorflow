@@ -12,7 +12,7 @@ py_binary(
     srcs = ["autotune_benchmark.py"],
     main = "autotune_benchmark.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
@@ -25,6 +25,19 @@ py_binary(
 tf_py_test(
     name = "autotune_benchmark",
     srcs = ["autotune_benchmark.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "parameter_value_benchmark",
+    srcs = ["parameter_value_benchmark.py"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",

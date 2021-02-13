@@ -38,6 +38,7 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -221,7 +222,7 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
   inst->getName().print(os);
   // Print out attributes except for large elementsattributes (which should
   // rarely be the cause why the legalization didn't happen).
-  if (!inst->getMutableAttrDict().getAttrs().empty()) {
+  if (!inst->getAttrDictionary().empty()) {
     os << " {";
     bool first = true;
     for (auto& named_attr : inst->getAttrDictionary()) {
@@ -339,7 +340,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     // Verify that all operations except the terminator have exactly one
     // result of type supported by TFLite.
     for (auto& inst : bb) {
-      if (inst.isKnownTerminator()) break;
+      if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
 
       for (auto result : inst.getResults()) {
         if (!HasValidTFLiteType(result, inst)) {
@@ -522,18 +523,16 @@ class Translator {
       mlir::TFL::CallOnceOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  // Builds custom operators.
-  // Templated on a) data type of custom_option to be stored into flatbuffer,
-  // and b) TFL custom op type.
-  template <typename CustomOptionType, typename TFLOp>
-  BufferOffset<tflite::Operator> BuildCustomOperator(
-      const CustomOptionType& custom_option, const std::string& opcode_name,
-      TFLOp op, const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-
   BufferOffset<tflite::Operator> BuildNumericVerifyOperator(
       mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
+
+  // Builds Assign/Read Variable ops.
+  template <typename T>
+  BufferOffset<tflite::Operator> BuildVariableOperator(
+      T op, const std::string& op_name, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   BufferOffset<tflite::Operator> BuildCustomOperator(
       Operation* inst, mlir::TFL::CustomOp op,
       const std::vector<int32_t>& operands,
@@ -923,28 +922,37 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
                                 builtin_options);
 }
 
-template <typename CustomOptionType, typename TFLOp>
-BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
-    const CustomOptionType& custom_option, const std::string& opcode_name,
-    TFLOp op, const std::vector<int32_t>& operands,
-    const std::vector<int32_t>& results) {
-  std::vector<uint8_t> custom_option_vector(sizeof(CustomOptionType));
-  memcpy(custom_option_vector.data(), &custom_option, sizeof(CustomOptionType));
-  auto opcode_index =
-      GetOpcodeIndex(opcode_name, tflite::BuiltinOperator_CUSTOM);
-  return tflite::CreateOperator(
-      builder_, opcode_index, builder_.CreateVector(operands),
-      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
-      /*builtin_options=*/0,
-      builder_.CreateVector<uint8_t>(custom_option_vector),
-      tflite::CustomOptionsFormat_FLEXBUFFERS);
-}
-
 BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
     mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   float tolerance = op.tolerance().convertToFloat();
-  return BuildCustomOperator(tolerance, "NumericVerify", op, operands, results);
+  bool log_if_failed = op.log_if_failed();
+  auto fbb = absl::make_unique<flexbuffers::Builder>();
+  fbb->Map([&]() {
+    fbb->Float("tolerance", tolerance);
+    fbb->Bool("log_if_failed", log_if_failed);
+  });
+  fbb->Finish();
+  auto f = std::unique_ptr<flexbuffers::Builder>(fbb.release());
+  auto custom_option = f->GetBuffer();
+  auto opcode_index =
+      GetOpcodeIndex("NumericVerify", tflite::BuiltinOperator_CUSTOM);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, builder_.CreateVector<uint8_t>(custom_option),
+      tflite::CustomOptionsFormat_FLEXBUFFERS);
+}
+
+// Builds Assign/Read Variable ops.
+template <typename T>
+BufferOffset<tflite::Operator> Translator::BuildVariableOperator(
+    T op, const std::string& op_name, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto opcode_index = GetOpcodeIndex(op_name, tflite::BuiltinOperator_CUSTOM);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
@@ -1086,6 +1094,18 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
   if (!dialect) {
     inst->emitOpError("dialect is not registered");
     return llvm::None;
+  }
+
+  // TODO(b/149099381): Remove this once the kernels are promoted as
+  // builtin TFLite kernels.
+  // We export the Assign/Read variable ops as custom ops.
+  if (auto read_op = llvm::dyn_cast<mlir::TFL::ReadVariableOp>(inst)) {
+    return BuildVariableOperator<mlir::TFL::ReadVariableOp>(
+        read_op, "ReadVariable", operands, results);
+  } else if (auto assign_op =
+                 llvm::dyn_cast<mlir::TFL::AssignVariableOp>(inst)) {
+    return BuildVariableOperator<mlir::TFL::AssignVariableOp>(
+        assign_op, "AssignVariable", operands, results);
   }
 
   // If TFLite built in op, create operator as a builtin op.
@@ -1375,7 +1395,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
   bool failed_once = false;
   for (auto& inst : bb) {
-    if (inst.isKnownTerminator()) break;
+    if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
     // For "quant.stats" op, it's used to store the quantization parameters info
     // and its output should be then replaced by its input value.
     if (auto quant_stats_op = llvm::dyn_cast<mlir::quant::StatisticsOp>(inst)) {
@@ -1408,6 +1428,17 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
     for (auto val : inst.getResults()) {
       std::string name = UniqueName(val);
+      // For "tfl.numeric_verify" op, the name is used to find out the original
+      // activation tensor rather than its own unique name in the visualization
+      // or debugging tools.
+      auto builtin_code = GetBuiltinOpCode(&inst);
+      if (!builtin_code && dyn_cast<mlir::TFL::NumericVerifyOp>(&inst)) {
+        // The first operand is the quantized activation, the target of this
+        // NumericVerify op.
+        auto quantized_op_val = inst.getOperands().front();
+        name = "NumericVerify/" + UniqueName(quantized_op_val) + ":" +
+               std::to_string(tensor_index_map[quantized_op_val]);
+      }
       if (!build_tensor_and_buffer(val, name)) return llvm::None;
     }
 
@@ -1521,11 +1552,13 @@ llvm::SmallVector<llvm::StringRef, 2> GetStringsFromAttrWithSeparator(
 // Helper method that return list of string for all the StringAttr in the
 // Attribute identified by 'attr_name'.
 std::vector<std::string> GetStringsFromDictionaryAttr(
-    const llvm::SmallVector<mlir::MutableDictionaryAttr, 4>& dict_attrs,
+    const llvm::SmallVector<mlir::DictionaryAttr, 4>& dict_attrs,
     const std::string& attr_name) {
   std::vector<std::string> result;
   for (const auto& arg_attr : dict_attrs) {
-    auto attrs = arg_attr.getAttrs();
+    if (!arg_attr) continue;
+
+    auto attrs = arg_attr.getValue();
     for (const auto attr : attrs) {
       if (attr.first.str() == attr_name) {
         auto array_attr = attr.second.dyn_cast_or_null<mlir::ArrayAttr>();
@@ -1545,7 +1578,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
   // Fetch inputs and outputs from the signature.
-  llvm::SmallVector<mlir::MutableDictionaryAttr, 4> arg_attrs, res_attrs;
+  llvm::SmallVector<mlir::DictionaryAttr, 4> arg_attrs, res_attrs;
   main_op.getAllArgAttrs(arg_attrs);
   main_op.getAllResultAttrs(res_attrs);
   std::vector<std::string> sig_def_inputs =
@@ -1753,21 +1786,22 @@ Optional<std::string> Translator::TranslateInternal() {
 
   if (first_failed_func != -1) {
     std::string failed_flex_ops_summary =
-        GetOpsSummary(failed_flex_ops_, /*summary_title=*/"Flex");
+        GetOpsSummary(failed_flex_ops_, /*summary_title=*/"TF Select");
     std::string failed_custom_ops_summary =
         GetOpsSummary(failed_custom_ops_, /*summary_title=*/"Custom");
     std::string err;
     if (!failed_flex_ops_.empty())
       err +=
-          "Some ops are not supported by the native TFLite runtime, you can "
+          "\nSome ops are not supported by the native TFLite runtime, you can "
           "enable TF kernels fallback using TF Select. See instructions: "
-          "https://www.tensorflow.org/lite/guide/ops_select" +
-          failed_flex_ops_summary;
+          "https://www.tensorflow.org/lite/guide/ops_select \n" +
+          failed_flex_ops_summary + "\n";
     if (!failed_custom_ops_.empty())
       err +=
-          "Some ops in the model are custom ops, See instructions to implement "
-          "custom ops: https://www.tensorflow.org/lite/guide/ops_custom" +
-          failed_custom_ops_summary;
+          "\nSome ops in the model are custom ops, "
+          "See instructions to implement "
+          "custom ops: https://www.tensorflow.org/lite/guide/ops_custom \n" +
+          failed_custom_ops_summary + "\n";
 
     auto& failed_region = named_regions[first_failed_func];
     return failed_region.second->getParentOp()->emitError()

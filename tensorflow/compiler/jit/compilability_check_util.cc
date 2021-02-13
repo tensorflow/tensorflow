@@ -152,10 +152,11 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
   if (node_stack_trace != nullptr) {
     for (const auto& frame : *node_stack_trace) {
       stack_trace.emplace_back(
-          StackFrameView{frame.name, frame.function_name, frame.n});
+          StackFrameView{frame.name, frame.function_name, frame.stack_trace});
     }
   }
-  stack_trace.emplace_back(StackFrameView{node.name(), "", &node});
+  stack_trace.emplace_back(
+      StackFrameView{node.name(), "", node.GetStackTrace()});
 
   RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes;
   IsCompilableNode(node, lib_runtime, &stack_trace,
@@ -175,7 +176,7 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
   if (node_stack_trace != nullptr) {
     for (const auto& frame : *node_stack_trace) {
       stack_trace.emplace_back(
-          StackFrameView{frame.name, frame.function_name, frame.n});
+          StackFrameView{frame.name, frame.function_name, frame.stack_trace});
     }
   }
   stack_trace.emplace_back(StackFrameView{call_def.name(), "", nullptr});
@@ -361,7 +362,7 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   bool is_compilable = true;
   for (const Node* node : fbody->graph->op_nodes()) {
     stack_trace->emplace_back(
-        StackFrameView{node->name(), function.name(), node});
+        StackFrameView{node->name(), function.name(), node->GetStackTrace()});
     is_compilable &= IsCompilableNode(*node, lib_runtime, stack_trace,
                                       &function, uncompilable_nodes);
     stack_trace->pop_back();
@@ -586,7 +587,7 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
                       return StackFrame{
                           std::string(stack_element.name),
                           std::string(stack_element.function_name),
-                          stack_element.n};
+                          stack_element.stack_trace};
                     });
 
   node_info.name = std::string(stack_trace.back().name);

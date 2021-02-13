@@ -286,7 +286,7 @@ class RNNCell(base_layer.Layer):
       # Validate the given batch_size and dtype against inputs if provided.
       inputs = ops.convert_to_tensor_v2_with_dispatch(inputs, name="inputs")
       if batch_size is not None:
-        if tensor_util.is_tensor(batch_size):
+        if tensor_util.is_tf_type(batch_size):
           static_batch_size = tensor_util.constant_value(
               batch_size, partial=True)
         else:

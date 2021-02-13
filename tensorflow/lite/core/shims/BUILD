@@ -1,8 +1,7 @@
 # Description: this package contains shim library targets that forward
 # to the TF Lite C and C++ API targets.  See README.md.
 
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(":build_defs.bzl", "build_test")
@@ -11,12 +10,6 @@ package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-TFLITE_DEFAULT_COPTS = if_not_windows([
-    "-Wall",
-    "-Wno-comment",
-    "-Wno-extern-c-compat",
-])
 
 #------------------------------------------------------------------------------
 # C++ API
@@ -47,7 +40,7 @@ cc_library(
     srcs = [],
     hdrs = FRAMEWORK_LIB_HDRS + CC_API_HDRS,
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "//tensorflow_lite_support:__subpackages__",
@@ -79,7 +72,7 @@ cc_library(
     srcs = [],
     hdrs = CC_API_HDRS,
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    copts = tflite_copts() + tflite_copts_warnings(),
     visibility = ["//tensorflow/lite:__pkg__"],
     deps = [
         "//tensorflow/lite:allocation",
@@ -139,7 +132,7 @@ cc_library(
     name = "c_api",
     hdrs = ["c/c_api.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = TFLITE_DEFAULT_COPTS,
+    copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "//tensorflow_lite_support:__subpackages__",
@@ -151,7 +144,7 @@ cc_library(
     name = "c_api_experimental",
     hdrs = ["c/c_api_experimental.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = TFLITE_DEFAULT_COPTS,
+    copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "//tensorflow_lite_support:__subpackages__",
@@ -163,7 +156,7 @@ cc_library(
     name = "common",
     hdrs = ["c/common.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = TFLITE_DEFAULT_COPTS,
+    copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "//tensorflow_lite_support:__subpackages__",
@@ -175,7 +168,7 @@ cc_library(
     name = "builtin_op_data",
     hdrs = ["c/builtin_op_data.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = TFLITE_DEFAULT_COPTS,
+    copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "//tensorflow_lite_support:__subpackages__",
@@ -190,6 +183,42 @@ build_test(
         ":c_api",
         ":c_api_experimental",
         ":common",
+    ],
+)
+
+#------------------------------------------------------------------------------
+# Testing infrastructure
+
+cc_library(
+    name = "c_shims_test_util",
+    testonly = True,
+    srcs = ["c/shims_test_util.cc"],
+    hdrs = ["c/shims_test_util.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+)
+
+cc_library(
+    name = "cc_shims_test_util",
+    testonly = True,
+    hdrs = ["cc/shims_test_util.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        ":c_shims_test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+build_test(
+    name = "shims_test_util_build_test",
+    targets = [
+        ":c_shims_test_util",
+        ":cc_shims_test_util",
     ],
 )
 

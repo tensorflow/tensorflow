@@ -66,6 +66,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2",
         "@com_google_absl//absl/memory",
     ],
 )

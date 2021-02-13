@@ -419,7 +419,6 @@ class Context(object):
     if execution_mode is None:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
-    self._lazy_remote_inputs_copy = None
     self._use_tfrt = is_tfrt_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -521,9 +520,6 @@ class Context(object):
               opts, self._mirroring_policy)
         if self._default_is_async == ASYNC:
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
-        if self._lazy_remote_inputs_copy is not None:
-          pywrap_tfe.TFE_ContextOptionsSetLazyRemoteInputsCopy(
-              opts, self._lazy_remote_inputs_copy)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
@@ -662,6 +658,17 @@ class Context(object):
     """
     if self._context_handle:
       pywrap_tfe.TFE_ContextClearExecutors(self._context_handle)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def clear_kernel_cache(self):
+    """Clear kernel cache and reset all stateful kernels.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
     else:
       raise ValueError("Context is not initialized.")
 
@@ -1177,11 +1184,16 @@ class Context(object):
       A packed EagerTensor.
     """
     self.ensure_initialized()
-    if self._lazy_remote_inputs_copy is not None and (
-        not self._lazy_remote_inputs_copy):
-      raise ValueError("Packing eager tensors is not supported when "
-                       "lazy_remote_inputs_copy is disabled.")
     return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
+
+  def list_function_names(self):
+    """Get a list of names of registered functions.
+
+    Returns:
+      A set of names of all registered functions for the context.
+    """
+    self.ensure_initialized()
+    return set(pywrap_tfe.TFE_ContextListFunctionNames(self._handle))
 
   def remove_function(self, name):
     """Remove a function from the context.
@@ -1426,11 +1438,16 @@ class Context(object):
 
     self._visible_device_list = visible_device_list
 
-  def get_total_memory_usage(self, dev):
-    """Returns total memory usage in bytes for the current device."""
+  def get_memory_info(self, dev):
+    """Returns a dict of memory info for the device."""
     self._initialize_physical_devices()
     self.ensure_initialized()
-    return pywrap_tfe.TFE_GetTotalMemoryUsage(self._context_handle, dev)
+    return pywrap_tfe.TFE_GetMemoryInfo(self._context_handle, dev)
+
+  # TODO(reedwm): Remove this function
+  def get_total_memory_usage(self, dev):
+    """Returns total memory usage in bytes for the current device."""
+    return self.get_memory_info(dev)["current"]
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
@@ -1668,22 +1685,6 @@ class Context(object):
       if self._context_handle is not None:
         pywrap_tfe.TFE_ContextSetThreadLocalDevicePlacementPolicy(
             self._handle, self._device_policy)
-
-  @property
-  def lazy_remote_inputs_copy(self):
-    return self._lazy_remote_inputs_copy
-
-  @lazy_remote_inputs_copy.setter
-  def lazy_remote_inputs_copy(self, lazy_copy):
-    """Sets whether to copy remote inputs lazily for functions."""
-    if not isinstance(lazy_copy, bool):
-      raise ValueError("Expecting a boolean but got %s" % type(lazy_copy))
-
-    if self._lazy_remote_inputs_copy != lazy_copy:
-      if self._initialized:
-        raise ValueError(
-            "lazy_remote_inputs_copy should be set before being initialized.")
-      self._lazy_remote_inputs_copy = lazy_copy
 
   @property
   def use_tfrt(self):

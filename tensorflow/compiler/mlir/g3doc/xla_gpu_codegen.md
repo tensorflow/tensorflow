@@ -141,7 +141,7 @@ Conclusions:
 *   ElementalIrEmitter ops go for (4), but not incrementally. There is no way to
     do it op by op, because all elementally-emitted ops are connected into the
     same graph. This work can also serve as a unification point of several
-    on-going forces (xla/service/mlir\_gpu, the kernel generator, Linalg).
+    on-going forces (the kernel generator, Linalg).
 *   All other ops go for (1). As a stretch goal, they might be migrated to (3)
     or (4).
 

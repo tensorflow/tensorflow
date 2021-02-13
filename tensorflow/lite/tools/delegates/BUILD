@@ -1,4 +1,4 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 
 package(
     default_visibility = [
@@ -7,7 +7,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-common_copts = ["-Wall"] + tflite_copts()
+common_copts = tflite_copts() + tflite_copts_warnings()
 
 cc_library(
     name = "delegate_provider_hdr",

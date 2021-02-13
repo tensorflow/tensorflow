@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -110,7 +111,7 @@ class LhloFuseLinalgPass
         continue;
       }
 
-      if (auto tensor_cast = dyn_cast<TensorCastOp>(definingOp)) {
+      if (auto tensor_cast = dyn_cast<tensor::CastOp>(definingOp)) {
         auto alias = tensor_cast.source();
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);
@@ -163,17 +164,17 @@ class LhloFuseLinalgPass
       }
     });
     auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-    applyPatternsAndFoldGreedily(func, std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
     SmallVector<LinalgOp, 8> linalg_ops;
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
     for (LinalgOp op : llvm::reverse(linalg_ops)) {
-      for (unsigned id = 0, e = op.getNumInputs(); id < e; ++id) {
+      for (OpOperand& inputOperand : op.getInputOpOperands()) {
         linalg::Aliases aliases;
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
-        if (auto info = fuseProducerOfBuffer(b, op, id, graph)) {
+        if (auto info = fuseProducerOfBuffer(b, inputOperand, graph)) {
           auto originalOp = info->originalProducer.getOperation();
           erase_set.insert(originalOp);
           auto originalOpInLinalgOpsVector = std::find_if(
@@ -184,7 +185,7 @@ class LhloFuseLinalgPass
       }
 
       auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-      applyPatternsAndFoldGreedily(func, std::move(patterns));
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
     for (auto* e : erase_set) e->erase();
   }

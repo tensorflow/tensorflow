@@ -106,6 +106,8 @@ upper_tabs:
       - title: "Operator versions"
         path: /lite/guide/ops_version
         status: experimental
+      - title: "Select operators Allowlist"
+        path: /lite/guide/op_select_allowlist
 
       - heading: "Run Inference with metadata"
       - title: "Overview"
@@ -182,6 +184,10 @@ upper_tabs:
       - title: "Build with CMake"
         path: /lite/guide/build_cmake
         status: experimental
+        section:
+        - title: "Cross compilation for ARM"
+          path: /lite/guide/build_cmake_arm
+
       - title: "Reduce binary size"
         path: /lite/guide/reduce_binary_size
         status: experimental

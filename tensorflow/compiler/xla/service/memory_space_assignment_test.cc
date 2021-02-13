@@ -4152,6 +4152,44 @@ TEST_P(MemorySpaceAssignmentTest, MoveCopyDoneEarlier) {
             find_schedule_index(cos->operand(0)));
 }
 
+TEST_P(MemorySpaceAssignmentTest, WhileAliasedArgumentRequiredAssignmentBug) {
+  // Tests an overly pessimistic assertion when the same HloValue is passed
+  // multiple times to a while HLO. We already handle this case that the two
+  // arguments must alias and get the same allocation in AllocateSegment so the
+  // assertion isn't necessary.
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  while_condition {
+    param1 = (f32[2,4], f32[2,4], f32[2,4]) parameter(0)
+    ROOT cond = pred[] constant(true)
+  }
+
+  while_body {
+    param2 = (f32[2,4], f32[2,4], f32[2,4]) parameter(0)
+    gte2 = f32[2,4] get-tuple-element(param2), index=0
+    gte3 = f32[2,4] get-tuple-element(param2), index=1
+    gte4 = f32[2,4] get-tuple-element(param2), index=2
+    add = f32[2,4] add(gte2, gte3)
+    ROOT tuple2 = (f32[2,4], f32[2,4], f32[2,4]) tuple(add, gte3, gte4)
+  }
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    a = f32[2,4] negate(param0)
+    b = f32[2,4] negate(param0)
+    tuple = (f32[2,4], f32[2,4], f32[2,4]) tuple(a, b, b)
+    while = (f32[2,4], f32[2,4], f32[2,4]) while(tuple), condition=while_condition, body=while_body
+    gte1 = f32[2,4] get-tuple-element(while), index=0
+    gte2 = f32[2,4] get-tuple-element(while), index=1
+    ROOT root = f32[2,4] add(gte1, gte2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
 TEST_P(MemorySpaceAssignmentTest, DisallowedUseBug) {
   // When we have a disallowed use (in this case tanh), we aren't allowed to
   // allocate this use in alternate memory. However, if we have another use

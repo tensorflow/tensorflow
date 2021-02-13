@@ -76,6 +76,7 @@ using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd4DSlow;
 using reference_ops::BroadcastMul4DSlow;
+using reference_ops::BroadcastSub16POTSlow;
 using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
@@ -104,7 +105,6 @@ using reference_ops::Round;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
-using reference_ops::StridedSlice;
 using reference_ops::Sub16;
 
 // TODO(b/80247582) Remove this constant.
@@ -1342,6 +1342,8 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
                        int8_t* im2col_data, CpuBackendContext* context) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -1352,15 +1354,22 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
   const int filter_width = filter_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
 
+  const int input_zero_point = 0;
   const int8_t* gemm_input_data = nullptr;
   int num_input;
+  const bool need_dilated_im2col =
+      dilation_width_factor != 1 || dilation_height_factor != 1;
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;
 
-  if (need_im2col) {
+  if (need_dilated_im2col) {
+    DilatedIm2col(params, input_zero_point, input_shape, input_data,
+                  filter_shape, output_shape, im2col_data);
+    gemm_input_data = im2col_data;
+    num_input = im2col_shape.FlatSize();
+  } else if (need_im2col) {
     TFLITE_DCHECK(im2col_data);
     // symmetric quantization assumes zero point of 0.
-    const int input_zero_point = 0;
 
     Im2col(params, filter_height, filter_width, input_zero_point, input_shape,
            input_data, im2col_shape, im2col_data);
@@ -1476,7 +1485,6 @@ inline void HybridConvPerChannel(
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
   TFLITE_DCHECK_EQ(scratch_shape.FlatSize(), output_shape.FlatSize());
   if (!compute_row_sums || *compute_row_sums) {
-    memset(row_sums, 0, sizeof(int32_t) * filter_rows);
     tensor_utils::ReductionSumVector(filter_data, row_sums, filter_rows,
                                      filter_cols);
     if (compute_row_sums) {
@@ -3246,143 +3254,10 @@ inline void AveragePool(const PoolParams& params,
   }
 }
 
-inline void AveragePool16(const PoolParams& params,
-                          const RuntimeShape& input_shape,
-                          const uint8* input_data,
-                          const RuntimeShape& output_shape,
-                          uint8* output_data) {
-  ruy::profiler::ScopeLabel label("AveragePool/8bit");
-
-  // Here, and in other pooling ops, in order to maintain locality of reference,
-  // to minimize some recalculations, and to load into NEON vector registers, we
-  // use an inner loop down the depth. Since depths can be large and hence we
-  // would need arbitrarily large temporary storage, we divide the work up into
-  // depth tranches just within the batch loop.
-  static constexpr int kPoolingAccTrancheSize = 256;
-
-  TFLITE_DCHECK_LE(params.quantized_activation_min,
-                   params.quantized_activation_max);
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int stride_height = params.stride_height;
-  const int stride_width = params.stride_width;
-
-  uint16 acc[kPoolingAccTrancheSize];
-  for (int batch = 0; batch < batches; ++batch) {
-    // We proceed through the depth in tranches (see comment above). The
-    // depth_base is the depth at the beginning of the tranche. The
-    // tranche_depth is the depth dimension of the tranche.
-    for (int depth_base = 0; depth_base < depth;
-         depth_base += kPoolingAccTrancheSize) {
-      const int tranche_depth =
-          std::min(depth - depth_base, kPoolingAccTrancheSize);
-      for (int out_y = 0; out_y < output_height; ++out_y) {
-        for (int out_x = 0; out_x < output_width; ++out_x) {
-          const int in_x_origin =
-              (out_x * stride_width) - params.padding_values.width;
-          const int in_y_origin =
-              (out_y * stride_height) - params.padding_values.height;
-          const int filter_x_start = std::max(0, -in_x_origin);
-          const int filter_x_end =
-              std::min(params.filter_width, input_width - in_x_origin);
-          const int filter_y_start = std::max(0, -in_y_origin);
-          const int filter_y_end =
-              std::min(params.filter_height, input_height - in_y_origin);
-          const int filter_count =
-              (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
-          memset(acc, 0, tranche_depth * sizeof(acc[0]));
-          const uint8* input_ptr =
-              input_data + depth_base +
-              depth * (in_x_origin +
-                       input_width * (in_y_origin + input_height * batch));
-          for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-            const uint8* input_row_ptr =
-                input_ptr + depth * (fy * input_width + filter_x_start);
-            for (int fx = filter_x_start; fx < filter_x_end; fx++) {
-              const uint8* input_channel_ptr = input_row_ptr;
-              int channel = 0;
-#ifdef USE_NEON
-              for (; channel <= tranche_depth - 16; channel += 16) {
-                uint16x8_t acc_reg[2];
-                for (int i = 0; i < 2; i++) {
-                  acc_reg[i] = vld1q_u16(acc + channel + 8 * i);
-                }
-                uint8x16_t input_reg = vld1q_u8(input_channel_ptr);
-                input_channel_ptr += 16;
-                acc_reg[0] = vaddw_u8(acc_reg[0], vget_low_u8(input_reg));
-                acc_reg[1] = vaddw_u8(acc_reg[1], vget_high_u8(input_reg));
-                for (int i = 0; i < 2; i++) {
-                  vst1q_u16(acc + channel + 8 * i, acc_reg[i]);
-                }
-              }
-              for (; channel <= tranche_depth - 8; channel += 8) {
-                uint16x8_t acc_reg = vld1q_u16(acc + channel);
-                uint8x8_t input_reg = vld1_u8(input_channel_ptr);
-                input_channel_ptr += 8;
-                acc_reg = vaddw_u8(acc_reg, input_reg);
-                vst1q_u16(acc + channel, acc_reg);
-              }
-#endif
-              for (; channel < tranche_depth; ++channel) {
-                acc[channel] += *input_channel_ptr++;
-              }
-              input_row_ptr += depth;
-            }
-          }
-          uint8* output_ptr = output_data + Offset(output_shape, batch, out_y,
-                                                   out_x, depth_base);
-          int channel = 0;
-#ifdef USE_NEON
-#define AVGPOOL_DIVIDING_BY(FILTER_COUNT)                               \
-  if (filter_count == FILTER_COUNT) {                                   \
-    for (; channel <= tranche_depth - 8; channel += 8) {                \
-      uint16 buf[8];                                                    \
-      for (int i = 0; i < 8; i++) {                                     \
-        buf[i] = (acc[channel + i] + FILTER_COUNT / 2) / FILTER_COUNT;  \
-      }                                                                 \
-      uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));                      \
-      buf8 = vmin_u8(buf8, vdup_n_u8(params.quantized_activation_max)); \
-      buf8 = vmax_u8(buf8, vdup_n_u8(params.quantized_activation_min)); \
-      vst1_u8(output_ptr + channel, buf8);                              \
-    }                                                                   \
-  }
-          AVGPOOL_DIVIDING_BY(9)
-          AVGPOOL_DIVIDING_BY(15)
-#undef AVGPOOL_DIVIDING_BY
-          for (; channel <= tranche_depth - 8; channel += 8) {
-            uint16 buf[8];
-            for (int i = 0; i < 8; i++) {
-              buf[i] = (acc[channel + i] + filter_count / 2) / filter_count;
-            }
-            uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));
-            buf8 = vmin_u8(buf8, vdup_n_u8(params.quantized_activation_max));
-            buf8 = vmax_u8(buf8, vdup_n_u8(params.quantized_activation_min));
-            vst1_u8(output_ptr + channel, buf8);
-          }
-#endif
-          for (; channel < tranche_depth; ++channel) {
-            uint16 a = (acc[channel] + filter_count / 2) / filter_count;
-            a = std::max<uint16>(a, params.quantized_activation_min);
-            a = std::min<uint16>(a, params.quantized_activation_max);
-            output_ptr[channel] = static_cast<uint8>(a);
-          }
-        }
-      }
-    }
-  }
-}
-
-inline void AveragePool32(const PoolParams& params,
-                          const RuntimeShape& input_shape,
-                          const uint8* input_data,
-                          const RuntimeShape& output_shape,
-                          uint8* output_data) {
+inline void AveragePool(const PoolParams& params,
+                        const RuntimeShape& input_shape,
+                        const uint8* input_data,
+                        const RuntimeShape& output_shape, uint8* output_data) {
   ruy::profiler::ScopeLabel label("AveragePool/8bit");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
@@ -3513,17 +3388,6 @@ inline void AveragePool32(const PoolParams& params,
         }
       }
     }
-  }
-}
-
-inline void AveragePool(const PoolParams& params,
-                        const RuntimeShape& input_shape,
-                        const uint8* input_data,
-                        const RuntimeShape& output_shape, uint8* output_data) {
-  if (params.filter_height * params.filter_width > 16 * 16) {
-    AveragePool32(params, input_shape, input_data, output_shape, output_data);
-  } else {
-    AveragePool16(params, input_shape, input_data, output_shape, output_data);
   }
 }
 
@@ -5546,36 +5410,32 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
   ruy::profiler::ScopeLabel label("Slice");
-  const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
-  // TODO(dkalenichenko): This op only supports 4D tensors or smaller.
-  TFLITE_DCHECK_LE(op_params.begin_count, 4);
-  TFLITE_DCHECK_LE(op_params.size_count, 4);
+  const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(5, input_shape);
+  TFLITE_DCHECK_LE(op_params.begin_count, 5);
+  TFLITE_DCHECK_LE(op_params.size_count, 5);
   const int begin_count = op_params.begin_count;
   const int size_count = op_params.size_count;
   // We front-pad the begin and size vectors.
-  const int start_b = 4 - begin_count > 0 ? 0 : op_params.begin[0];
-  const int stop_b = (4 - size_count > 0 || op_params.size[0] == -1)
-                         ? ext_shape.Dims(0)
-                         : start_b + op_params.size[0];
-  const int start_h = begin_count < 3 ? 0 : op_params.begin[begin_count - 3];
-  const int stop_h = (size_count < 3 || op_params.size[size_count - 3] == -1)
-                         ? ext_shape.Dims(1)
-                         : start_h + op_params.size[size_count - 3];
-  const int start_w = begin_count < 2 ? 0 : op_params.begin[begin_count - 2];
-  const int stop_w = (size_count < 2 || op_params.size[size_count - 2] == -1)
-                         ? ext_shape.Dims(2)
-                         : start_w + op_params.size[size_count - 2];
-  const int start_d = begin_count < 1 ? 0 : op_params.begin[begin_count - 1];
-  const int stop_d = (size_count < 1 || op_params.size[size_count - 1] == -1)
-                         ? ext_shape.Dims(3)
-                         : start_d + op_params.size[size_count - 1];
+  std::array<int, 5> start;
+  std::array<int, 5> stop;
+  for (int i = 0; i < 5; ++i) {
+    int padded_i = 5 - i;
+    start[i] =
+        begin_count < padded_i ? 0 : op_params.begin[begin_count - padded_i];
+    stop[i] =
+        (size_count < padded_i || op_params.size[size_count - padded_i] == -1)
+            ? ext_shape.Dims(i)
+            : start[i] + op_params.size[size_count - padded_i];
+  }
 
-  for (int in_b = start_b; in_b < stop_b; ++in_b) {
-    for (int in_h = start_h; in_h < stop_h; ++in_h) {
-      for (int in_w = start_w; in_w < stop_w; ++in_w) {
-        const int len = stop_d - start_d;
-        if (len > 0)
-          writer->WriteN(Offset(ext_shape, in_b, in_h, in_w, start_d), len);
+  for (int i0 = start[0]; i0 < stop[0]; ++i0) {
+    for (int i1 = start[1]; i1 < stop[1]; ++i1) {
+      for (int i2 = start[2]; i2 < stop[2]; ++i2) {
+        for (int i3 = start[3]; i3 < stop[3]; ++i3) {
+          const int len = stop[4] - start[4];
+          if (len > 0)
+            writer->WriteN(Offset(ext_shape, i0, i1, i2, i3, start[4]), len);
+        }
       }
     }
   }
@@ -5595,6 +5455,108 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape, TfLiteTensor* output) {
   SequentialTensorWriter<T> writer(input, output);
   return Slice(op_params, input_shape, output_shape, &writer);
+}
+
+// Note: This implementation is only optimized for the case where the inner
+// stride == 1.
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const RuntimeShape& unextended_output_shape,
+                         SequentialTensorWriter<T>* writer) {
+  using strided_slice::LoopCondition;
+  using strided_slice::StartForAxis;
+  using strided_slice::StopForAxis;
+
+  ruy::profiler::ScopeLabel label("StridedSlice");
+
+  // Note that the output_shape is not used herein.
+  tflite::StridedSliceParams params_copy = op_params;
+
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 5);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(5, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(5, unextended_output_shape);
+
+  // Reverse and pad to 5 dimensions because that is what the runtime code
+  // requires (ie. all shapes must be 5D and are given backwards).
+  strided_slice::StridedSlicePadIndices(&params_copy, 5);
+
+  const int start_0 = StartForAxis(params_copy, input_shape, 0);
+  const int stop_0 = StopForAxis(params_copy, input_shape, 0, start_0);
+  const int start_1 = StartForAxis(params_copy, input_shape, 1);
+  const int stop_1 = StopForAxis(params_copy, input_shape, 1, start_1);
+  const int start_2 = StartForAxis(params_copy, input_shape, 2);
+  const int stop_2 = StopForAxis(params_copy, input_shape, 2, start_2);
+  const int start_3 = StartForAxis(params_copy, input_shape, 3);
+  const int stop_3 = StopForAxis(params_copy, input_shape, 3, start_3);
+  const int start_4 = StartForAxis(params_copy, input_shape, 4);
+  const int stop_4 = StopForAxis(params_copy, input_shape, 4, start_4);
+  const bool inner_stride_is_1 = params_copy.strides[4] == 1;
+
+  for (int offset_0 = start_0 * input_shape.Dims(1),
+           end_0 = stop_0 * input_shape.Dims(1),
+           step_0 = params_copy.strides[0] * input_shape.Dims(1);
+       !LoopCondition(offset_0, end_0, params_copy.strides[0]);
+       offset_0 += step_0) {
+    for (int offset_1 = (offset_0 + start_1) * input_shape.Dims(2),
+             end_1 = (offset_0 + stop_1) * input_shape.Dims(2),
+             step_1 = params_copy.strides[1] * input_shape.Dims(2);
+         !LoopCondition(offset_1, end_1, params_copy.strides[1]);
+         offset_1 += step_1) {
+      for (int offset_2 = (offset_1 + start_2) * input_shape.Dims(3),
+               end_2 = (offset_1 + stop_2) * input_shape.Dims(3),
+               step_2 = params_copy.strides[2] * input_shape.Dims(3);
+           !LoopCondition(offset_2, end_2, params_copy.strides[2]);
+           offset_2 += step_2) {
+        for (int offset_3 = (offset_2 + start_3) * input_shape.Dims(4),
+                 end_3 = (offset_2 + stop_3) * input_shape.Dims(4),
+                 step_3 = params_copy.strides[3] * input_shape.Dims(4);
+             !LoopCondition(offset_3, end_3, params_copy.strides[3]);
+             offset_3 += step_3) {
+          // When the stride is 1, the inner loop is equivalent to the
+          // optimized slice inner loop. Otherwise, it is identical to the
+          // strided_slice reference implementation inner loop.
+          if (inner_stride_is_1) {
+            const int len = stop_4 - start_4;
+            if (len > 0) {
+              writer->WriteN(offset_3 + start_4, len);
+            }
+          } else {
+            for (int offset_4 = offset_3 + start_4, end_4 = offset_3 + stop_4;
+                 !LoopCondition(offset_4, end_4, params_copy.strides[4]);
+                 offset_4 += params_copy.strides[4]) {
+              writer->Write(offset_4);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  SequentialTensorWriter<T> writer(input_data, output_data);
+  StridedSlice<T>(op_params, unextended_input_shape, unextended_output_shape,
+                  &writer);
+}
+
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const TfLiteTensor* input,
+                         const RuntimeShape& unextended_output_shape,
+                         TfLiteTensor* output) {
+  SequentialTensorWriter<T> writer(input, output);
+  StridedSlice<T>(op_params, unextended_input_shape, unextended_output_shape,
+                  &writer);
 }
 
 template <typename T>

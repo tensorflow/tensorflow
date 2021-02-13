@@ -88,6 +88,15 @@ inline std::vector<float> Split(const string& s, const string& delimiter) {
 }
 
 template <>
+inline std::vector<double> Split(const string& s, const string& delimiter) {
+  std::vector<double> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(strtod(s.data() + p.first, nullptr));
+  }
+  return fields;
+}
+
+template <>
 inline std::vector<uint8_t> Split(const string& s, const string& delimiter) {
   std::vector<uint8_t> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {

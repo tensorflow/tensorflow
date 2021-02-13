@@ -291,6 +291,7 @@ filegroup(
     name = "mkl_util_hdrs",
     srcs = [
         "mkl_threadpool.h",
+        "mkl_types.h",
         "mkl_util.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -467,19 +468,22 @@ cc_library(
 )
 
 cc_library(
-    name = "abstract_stack_trace",
+    name = "managed_stack_trace",
     hdrs = ["managed_stack_trace.h"],
     visibility = [
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
+        "//tensorflow/core/framework:__pkg__",
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
     deps = [
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stack_frame",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -782,7 +786,6 @@ tf_cc_test(
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_windows"],  # b/150411480
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

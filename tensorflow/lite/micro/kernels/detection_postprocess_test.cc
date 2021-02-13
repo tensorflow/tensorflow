@@ -162,7 +162,7 @@ void TestDetectionPostprocess(
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   micro::KernelRunner runner(*registration, tensors, tensors_size, inputs_array,
-                             outputs_array, nullptr, micro_test::reporter);
+                             outputs_array, nullptr);
 
   // Using generated data as input to operator.
   int data_size = 0;

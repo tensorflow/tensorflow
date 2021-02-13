@@ -27,7 +27,7 @@ def to_categorical(y, num_classes=None, dtype='float32'):
 
   E.g. for use with categorical_crossentropy.
 
-  Arguments:
+  Args:
       y: class vector to be converted into a matrix
           (integers from 0 to num_classes).
       num_classes: total number of classes. If `None`, this would be inferred
@@ -85,7 +85,7 @@ def to_categorical(y, num_classes=None, dtype='float32'):
 def normalize(x, axis=-1, order=2):
   """Normalizes a Numpy array.
 
-  Arguments:
+  Args:
       x: Numpy array to normalize.
       axis: axis along which to normalize.
       order: Normalization order (e.g. `order=2` for L2 norm).

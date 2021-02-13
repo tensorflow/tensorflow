@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -176,6 +177,24 @@ static std::string findCudaExecutable(const std::string binary_name,
   return binary_path;
 }
 
+static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
+                           int cc_minor) {
+  using AlreadyLoggedSetTy =
+      absl::flat_hash_set<std::tuple<std::string, int, int>>;
+
+  static absl::Mutex* mutex = new absl::Mutex;
+  static AlreadyLoggedSetTy* already_logged = new AlreadyLoggedSetTy;
+
+  absl::MutexLock lock(mutex);
+
+  if (already_logged->insert({ptxas_path, cc_major, cc_minor}).second) {
+    LOG(WARNING) << "Falling back to the CUDA driver for PTX compilation; "
+                    "ptxas does not support CC "
+                 << cc_major << "." << cc_minor;
+    LOG(WARNING) << "Used ptxas at " << ptxas_path;
+  }
+}
+
 port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
                                                  const char* ptx_contents,
                                                  GpuAsmOpts options) {
@@ -241,10 +260,7 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
     if (absl::StartsWith(stderr_output, "ptxas fatal   : Value '") &&
         absl::StrContains(stderr_output,
                           "is not defined for option 'gpu-name'")) {
-      LOG(WARNING) << "Your CUDA software stack is old. We fallback to the"
-                   << " NVIDIA driver for some compilation. Update your CUDA"
-                   << " version to get the best performance."
-                   << " The ptxas error was: " << stderr_output;
+      LogPtxasTooOld(ptxas_path, cc_major, cc_minor);
       return tensorflow::errors::Unimplemented(
           ptxas_path, " ptxas too old. Falling back to the driver to compile.");
     }

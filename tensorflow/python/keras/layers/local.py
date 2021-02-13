@@ -58,7 +58,7 @@ class LocallyConnected1D(Layer):
       # now model.output_shape == (None, 6, 32)
   ```
 
-  Arguments:
+  Args:
       filters: Integer, the dimensionality of the output space (i.e. the number
         of output filters in the convolution).
       kernel_size: An integer or tuple/list of a single integer, specifying the
@@ -350,7 +350,7 @@ class LocallyConnected2D(Layer):
       # now model.output_shape == (None, 28, 28, 32)
   ```
 
-  Arguments:
+  Args:
       filters: Integer, the dimensionality of the output space (i.e. the number
         of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the width
@@ -652,7 +652,7 @@ def get_locallyconnected_mask(input_shape, kernel_shape, strides, padding,
   to make it perform an unshared convolution with given `kernel_shape`,
   `strides`, `padding` and `data_format`.
 
-  Arguments:
+  Args:
     input_shape: tuple of size N: `(d_in1, ..., d_inN)` spatial shape of the
       input.
     kernel_shape: tuple of size N, spatial shape of the convolutional kernel /
@@ -704,7 +704,7 @@ def local_conv_matmul(inputs, kernel, kernel_mask, output_shape):
   (the remaining entries in `kernel`) weights. It also does the necessary
   reshapes to make `inputs` and `kernel` 2-D and `output` (N+2)-D.
 
-  Arguments:
+  Args:
       inputs: (N+2)-D tensor with shape `(batch_size, channels_in, d_in1, ...,
         d_inN)` or `(batch_size, d_in1, ..., d_inN, channels_in)`.
       kernel: the unshared weights for N-D convolution,
@@ -749,7 +749,7 @@ def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
   values=kernel, dense_shape=kernel_shape)`, with `.` standing for
   matrix-multiply. It also reshapes `inputs` to 2-D and `output` to (N+2)-D.
 
-  Arguments:
+  Args:
       inputs: (N+2)-D tensor with shape `(batch_size, channels_in, d_in1, ...,
         d_inN)` or `(batch_size, d_in1, ..., d_inN, channels_in)`.
       kernel: a 1-D tensor with shape `(len(kernel_idxs),)` containing all the
@@ -788,7 +788,7 @@ def make_2d(tensor, split_dim):
   Dimensions before (excluding) and after (including) `split_dim` are grouped
   together.
 
-  Arguments:
+  Args:
     tensor: a tensor of shape `(d0, ..., d(N-1))`.
     split_dim: an integer from 1 to N-1, index of the dimension to group
       dimensions before (excluding) and after (including).

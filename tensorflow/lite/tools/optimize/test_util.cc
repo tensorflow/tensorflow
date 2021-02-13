@@ -41,11 +41,17 @@ const char* kConstInputAddModel = "add_with_const_input.bin";
 
 const char* kFloatConcatMax5Max10Max10 = "concat.bin";
 
+const char* kModelWithBroadcastToOp = "broadcast_to.bin";
+
 const char* kModelWithCustomOp = "custom_op.bin";
 
 const char* kModelWithArgMaxOp = "argmax.bin";
 
 const char* kModelWithFCOp = "fc.bin";
+
+const char* kModelWithGatherNDOp = "gather_nd.bin";
+
+const char* kModelWithWhereOp = "where.bin";
 
 const char* kModelMixed = "mixed.bin";
 const char* kModelMixed16x8 = "mixed16x8.bin";

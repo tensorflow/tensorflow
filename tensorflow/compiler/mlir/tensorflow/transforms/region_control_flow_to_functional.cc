@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define DEBUG_TYPE "tf-region-cf-to-functional"
@@ -46,8 +47,8 @@ namespace TF {
 namespace {
 
 struct RegionControlFlowToFunctional
-    : public PassWrapper<RegionControlFlowToFunctional,
-                         OperationPass<ModuleOp>> {
+    : public TF::RegionControlFlowToFunctionalPassBase<
+          RegionControlFlowToFunctional> {
   void runOnOperation() override;
 
  private:
@@ -121,7 +122,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   if (extern_values_passthrough)
     for (auto input : extern_values) return_types.push_back(input.getType());
 
-  auto type = FunctionType::get(input_types, return_types, region.getContext());
+  auto type = FunctionType::get(region.getContext(), input_types, return_types);
 
   // Create new function and extract region body into the function.
   auto outlined_func = builder.create<FuncOp>(loc, name, type);
@@ -216,8 +217,16 @@ bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
   for (auto it : llvm::zip(first.getArgOperands(), second.getArgOperands())) {
     // Get the defining Op, skipping over casts.
     auto get_defining_op = [](Value value) {
-      while (llvm::isa_and_nonnull<CastOp>(value.getDefiningOp()))
-        value = cast<CastOp>(value.getDefiningOp()).getOperand();
+      while (auto cast_op =
+                 llvm::dyn_cast_or_null<CastOp>(value.getDefiningOp())) {
+        // Consider cast compatibility in case
+        //    %cast = "tf.Cast"(%0) : (tensor<2xi64>) -> tensor<2xf32>
+        // is skipped.
+        if (cast_op.SrcT() != cast_op.DstT()) {
+          break;
+        }
+        value = cast_op.getOperand();
+      }
       return value;
     };
     Value first_arg = get_defining_op(std::get<0>(it));
@@ -444,10 +453,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFRegionControlFlowToFunctional() {
   return std::make_unique<RegionControlFlowToFunctional>();
 }
-
-static PassRegistration<RegionControlFlowToFunctional> pass(
-    "tf-region-control-flow-to-functional",
-    "Transform region bases control flow Ops to functional counterparts");
 
 }  // namespace TF
 }  // namespace mlir

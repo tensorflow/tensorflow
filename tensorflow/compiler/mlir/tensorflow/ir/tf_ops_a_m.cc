@@ -667,12 +667,14 @@ static LogicalResult Verify(BroadcastGradientArgsOp op) {
   GetOutputShapeForBroadcastGradientArgs(bcasted_shape, s0_shape, s1_shape, r0,
                                          r1);
 
-  RankedTensorType r0_ty = GetRankedTensorTypeForOperand(op.r0());
-  RankedTensorType r1_ty = GetRankedTensorTypeForOperand(op.r1());
-  if (r0_ty && r0_ty.hasStaticShape() && r0_ty.getShape()[0] != r0.size())
+  // Verify that output types are of rank one and matches the computed result
+  // shape.
+  auto r0_ty = op.r0().getType().dyn_cast<RankedTensorType>();
+  auto r1_ty = op.r1().getType().dyn_cast<RankedTensorType>();
+  if (r0_ty && r0_ty.hasStaticShape() && r0_ty.getDimSize(0) != r0.size())
     return op.emitOpError() << "requires dimension 0 size of 'r0' to be "
                             << r0.size() << " but got " << r0_ty.getShape()[0];
-  if (r1_ty && r1_ty.hasStaticShape() && r1_ty.getShape()[0] != r1.size())
+  if (r1_ty && r1_ty.hasStaticShape() && r1_ty.getDimSize(0) != r1.size())
     return op.emitOpError() << "requires dimension 0 size of 'r1' to be "
                             << r1.size() << " but got " << r1_ty.getShape()[0];
 
@@ -1037,6 +1039,14 @@ LogicalResult HoistCwiseUnaryOutOfConcat::matchAndRewrite(
 //   %1 = tf.ConcatV2(%rhs0, %rhs1, ..., %rhs_n, %rhs_concat_axis)
 //   %2 = tf.Mul(%0, %1)
 //
+// If a minor fraction of the Concat inputs are not of the same binary op kind
+// (tf.Mul in the above example), we will synthesize the binary ops for those
+// inputs. e.g. if we instead have %1 = %lhs_1, then we would synthesize a
+// tf.Mul op over it and a scalar const tensor 1.0. For now this only applies to
+// float32 tensors.
+// TODO(hongm): Implement this op synthesis optimization for other dtypes if
+// needed.
+//
 // Because coefficient-wise binary operations support implicit broadcasting, we
 // should be very careful with this optimization, and do not accidentally
 // produce incorrect concat operations.
@@ -1055,11 +1065,17 @@ class HoistCwiseBinaryOutOfConcat : public OpRewritePattern<TF::ConcatV2Op> {
     int64_t rhs_axis;
     Type lhs_concat_type;
     Type rhs_concat_type;
+    int scalar_operand_idx;  // can be 0 or 1 for the binary op's operands.
   };
 
   // Returns parameters of a binary op hoisting out of concatenation if all of
   // the operands are in one of the compatible configurations.
-  Optional<HoistParams> GetHoistParams(TF::ConcatV2Op op, int64_t axis) const;
+  // All inputs of `op` should be of the same binary op kind (e.g. tf.Mul),
+  // except from the ones in `exceptions`. In that case, we can synthesize that
+  // binary op kind for the values in `exceptions`.
+  Optional<HoistParams> GetHoistParams(
+      TF::ConcatV2Op op, int64_t axis,
+      const llvm::SmallDenseMap<Value, unsigned, 4> &exceptions) const;
 };
 
 LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
@@ -1072,24 +1088,89 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
   if (axis_attr.getNumElements() != 1) return failure();
   int64_t axis =
       axis_attr.getSplatValue<IntegerAttr>().getValue().getSExtValue();
+  // TODO(ezhulenev): Compute axis from rank. e.g. It might be common to concat
+  // on the channels dim for NCHW layout as axis=-2.
+  if (axis < 0) return failure();
 
-  // All concat operands must be defined by ops.
+  // All concat operands must be defined by ops of the same kind (e.g. tf.Mul),
+  // or some other ops that we might convert to using the same op kind above
+  // (e.g. converting op A to tf.Mul(A, 1.0))
+  // TODO(hongm): generalize the code here to support cases where the first arg
+  // has no defining op (e.g. might be a block arg).
   Operation *first_arg_op = op.values().front().getDefiningOp();
   if (first_arg_op == nullptr) return failure();
 
   // All concat operands must be produced by the coeff-wise binary operation.
   if (!first_arg_op->hasTrait<OpTrait::TF::CwiseBinary>()) return failure();
 
-  // All concat operands must be defined by the op of same kind.
-  bool args_same_op = llvm::all_of(op.values(), [&](Value arg) -> bool {
+  // All concat operands must be defined by the op of same kind, except for a
+  // minor portion which we track in `exceptions`.
+  // Map from the operands to operand indices.
+  llvm::SmallDenseMap<Value, unsigned, 4> exceptions;
+  unsigned operand_idx = 0;
+  for (Value arg : op.values()) {
     Operation *arg_op = arg.getDefiningOp();
-    return arg_op && arg_op->getName() == first_arg_op->getName();
-  });
-  if (!args_same_op) return failure();
+    if (arg_op && arg_op->getName() == first_arg_op->getName()) {
+      ++operand_idx;
+      continue;
+    }
+    exceptions[arg] = operand_idx++;
+  }
+  // Recall those inputs to the concat op that are not produced by a binary op
+  // of the `first_arg_op` kind (e.g. tf.Mul) are stored in `exceptions`. If
+  // there are too many exceptions, it might not be cost effective to apply the
+  // concat hoisting optimization here.
+  // Setting the threshold to be 50% as a simple cost model heuristic. e.g. If 1
+  // out of 2 concat inputs is an exception, we don't apply the hoist. If it's 1
+  // out of 3, we do.
+  const float exception_pct_threshold = 0.5;
+  if (static_cast<float>(op.values().size()) * exception_pct_threshold <=
+      exceptions.size())
+    return failure();
 
   // Compute binary operands hoist parameters.
-  auto hoist_params = GetHoistParams(op, axis);
+  auto hoist_params = GetHoistParams(op, axis, exceptions);
   if (!hoist_params.hasValue()) return failure();
+
+  // Process `exceptions`: For each value there, synthesize a binary op of the
+  // above kind, so that the concat hoisting optimization can still apply.
+  if (!exceptions.empty()) {
+    int identity_val;
+    if (isa<AddOp>(first_arg_op) || isa<SubOp>(first_arg_op))
+      identity_val = 0;
+    else if (isa<MulOp>(first_arg_op) || isa<DivOp>(first_arg_op) ||
+             isa<RealDivOp>(first_arg_op))
+      identity_val = 1;
+    else
+      return failure();
+    DenseElementsAttr const_attr;
+    auto scalar_tensor_type =
+        first_arg_op->getOperand(hoist_params->scalar_operand_idx)
+            .getType()
+            .dyn_cast<ShapedType>();
+    Type scalar_dtype = scalar_tensor_type.getElementType();
+    if (scalar_dtype.isa<FloatType>())
+      const_attr = DenseElementsAttr::get(scalar_tensor_type,
+                                          static_cast<float>(identity_val));
+    else
+      return failure();
+
+    // All checks are passes, and we now prepare for rewrite.
+    auto identity_const = rewriter.create<TF::ConstOp>(loc, const_attr);
+    for (const auto &kv : exceptions) {
+      assert(!hoist_params->lhs_args[kv.second]);
+      assert(!hoist_params->rhs_args[kv.second]);
+
+      if (hoist_params->scalar_operand_idx == 1) {
+        hoist_params->lhs_args[kv.second] = kv.first;
+        hoist_params->rhs_args[kv.second] = identity_const;
+      } else {
+        assert(hoist_params->scalar_operand_idx == 0);
+        hoist_params->lhs_args[kv.second] = identity_const;
+        hoist_params->rhs_args[kv.second] = kv.first;
+      }
+    }
+  }
 
   // New lhs and rhs concatenation axis.
   auto axis_type = mlir::RankedTensorType::get({}, rewriter.getIntegerType(64));
@@ -1117,11 +1198,14 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
 }
 
 Optional<HoistCwiseBinaryOutOfConcat::HoistParams>
-HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
-                                            int64_t axis) const {
+HoistCwiseBinaryOutOfConcat::GetHoistParams(
+    TF::ConcatV2Op op, int64_t axis,
+    const llvm::SmallDenseMap<Value, unsigned, 4> &exceptions) const {
+  assert(axis >= 0);
   // Collects lhs or rhs arguments of concat op operands.
   auto args = [&](int operand_idx) -> SmallVector<Value, 8> {
     auto range = llvm::map_range(op.values(), [&](Value arg) {
+      if (exceptions.count(arg)) return Value();
       return arg.getDefiningOp()->getOperand(operand_idx);
     });
     return {range.begin(), range.end()};
@@ -1131,6 +1215,7 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
   // of `axis + 1` rank and axis dim has size `1`.
   auto is_all_tensors = [&](int operand_idx, int axis) -> bool {
     return llvm::all_of(op.values(), [&](Value arg) -> bool {
+      if (exceptions.count(arg)) return true;
       auto operand = arg.getDefiningOp()->getOperand(operand_idx);
       auto ranked = operand.getType().dyn_cast<RankedTensorType>();
       return ranked && ranked.getRank() == (axis + 1) &&
@@ -1141,6 +1226,7 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
   // Returns true if all binary ops operands at `operand_idx` index are scalars.
   auto is_all_scalars = [&](int operand_idx) -> bool {
     return llvm::all_of(op.values(), [&](Value arg) -> bool {
+      if (exceptions.count(arg)) return true;
       auto operand = arg.getDefiningOp()->getOperand(operand_idx);
       auto ranked = operand.getType().dyn_cast<RankedTensorType>();
       return ranked && ranked.hasRank() && ranked.getRank() == 0;
@@ -1162,9 +1248,24 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
   if (is_all_tensors(0, axis) && is_all_scalars(1)) {
     std::array<int64_t, 1> rhs_dims{static_cast<int64_t>(op.values().size())};
     auto rhs_type = RankedTensorType::get(rhs_dims, ranked.getElementType());
-    return HoistParams{args(0), args(1), axis, 0, op.getType(), rhs_type};
+    return HoistParams{args(0),
+                       args(1),
+                       axis,
+                       0,
+                       op.getType(),
+                       rhs_type,
+                       /*scalar_operand_idx=*/1};
+  } else if (is_all_tensors(1, axis) && is_all_scalars(0)) {
+    std::array<int64_t, 1> lhs_dims{static_cast<int64_t>(op.values().size())};
+    auto lhs_type = RankedTensorType::get(lhs_dims, ranked.getElementType());
+    return HoistParams{args(0),
+                       args(1),
+                       0,
+                       axis,
+                       lhs_type,
+                       op.getType(),
+                       /*scalar_operand_idx=*/0};
   }
-
   return None;
 }
 
@@ -1308,7 +1409,7 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
   results.reserve(shapes.size());
   SmallVector<int32_t, 4> cumulative_sum(num_dims, 0);
   RankedTensorType offset_type =
-      RankedTensorType::get({num_dims}, IntegerType::get(32, getContext()));
+      RankedTensorType::get({num_dims}, IntegerType::get(getContext(), 32));
   for (DenseIntElementsAttr shape : shapes) {
     results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
     cumulative_sum[concat_dim] += shape.getValue<int32_t>(concat_dim);
@@ -1663,8 +1764,8 @@ LogicalResult Conv2DBackpropFilterOp::UpdateDataFormat(StringRef data_format) {
   // Permute filter sizes operand.
   OpBuilder builder(getOperation());
   auto filter_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
-      getLoc(), filter_sizes(), StringAttr::get(src_data_format, getContext()),
-      StringAttr::get(data_format, getContext()));
+      getLoc(), filter_sizes(), StringAttr::get(getContext(), src_data_format),
+      StringAttr::get(getContext(), data_format));
   setOperand(1, filter_sizes_permuted);
 
   return success();
@@ -1736,8 +1837,8 @@ LogicalResult Conv2DBackpropInputOp::UpdateDataFormat(StringRef data_format) {
   // Permute input sizes operand.
   OpBuilder builder(getOperation());
   auto input_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
-      getLoc(), input_sizes(), StringAttr::get(src_data_format, getContext()),
-      StringAttr::get(data_format, getContext()));
+      getLoc(), input_sizes(), StringAttr::get(getContext(), src_data_format),
+      StringAttr::get(getContext(), data_format));
   setOperand(0, input_sizes_permuted);
 
   return success();

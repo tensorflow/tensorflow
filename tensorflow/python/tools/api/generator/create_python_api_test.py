@@ -64,6 +64,7 @@ class CreatePythonApiTest(test.TestCase):
   def testFunctionImportIsAdded(self):
     imports, _, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],
+        packages_to_ignore=[],
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=1)
@@ -99,6 +100,7 @@ class CreatePythonApiTest(test.TestCase):
   def testClassImportIsAdded(self):
     imports, _, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],
+        packages_to_ignore=[],
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=2)
@@ -118,6 +120,7 @@ class CreatePythonApiTest(test.TestCase):
   def testConstantIsAdded(self):
     imports, _, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],
+        packages_to_ignore=[],
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=1)
@@ -134,6 +137,7 @@ class CreatePythonApiTest(test.TestCase):
   def testCompatModuleIsAdded(self):
     imports, _, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],
+        packages_to_ignore=[],
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=2,
@@ -146,6 +150,7 @@ class CreatePythonApiTest(test.TestCase):
   def testNestedCompatModulesAreAdded(self):
     imports, _, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],
+        packages_to_ignore=[],
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=2,

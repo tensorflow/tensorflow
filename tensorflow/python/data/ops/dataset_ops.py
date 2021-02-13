@@ -28,6 +28,7 @@ import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import distribute_options
@@ -1505,7 +1506,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
     return ShardDataset(self, num_shards, index)
 
-  def batch(self, batch_size, drop_remainder=False):
+  def batch(self, batch_size, drop_remainder=False, num_parallel_calls=None):
     """Combines consecutive elements of this dataset into batches.
 
     >>> dataset = tf.data.Dataset.range(8)
@@ -1532,11 +1533,21 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
         batch.
+      num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
+        representing the number of batches to compute asynchronously in
+        parallel.
+        If not specified, batches will be computed sequentially. If the value
+        `tf.data.AUTOTUNE` is used, then the number of parallel
+        calls is set dynamically based on available resources.
 
     Returns:
       Dataset: A `Dataset`.
     """
-    return BatchDataset(self, batch_size, drop_remainder)
+    if num_parallel_calls is None:
+      return BatchDataset(self, batch_size, drop_remainder)
+    else:
+      return ParallelBatchDataset(self, batch_size, drop_remainder,
+                                  num_parallel_calls)
 
   def padded_batch(self,
                    batch_size,
@@ -1792,21 +1803,25 @@ name=None))
 
     Args:
       map_func: A function mapping a dataset element to another dataset element.
-      num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
+      num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
-      deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be yielded out
-        of order.  If `deterministic` is `None`, the
-        `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to run deterministically.
+      deterministic: (Optional.) When `num_parallel_calls` is specified, this
+        boolean controls the order in which the transformation produces
+        elements. If set to `False`, the transformation is allowed to yield
+        elements out of order to trade determinism for performance. If not
+        specified, the `tf.data.Options.experimental_deterministic` option
+        (`True` by default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.
     """
     if num_parallel_calls is None:
+      if deterministic is not None:
+        warnings.warn("The `deterministic` argument has no effect unless the "
+                      "`num_parallel_calls` argument is specified.")
       return MapDataset(self, map_func, preserve_cardinality=True)
     else:
       return ParallelMapDataset(
@@ -1926,11 +1941,12 @@ name=None))
         from cycle elements synchronously with no parallelism. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
-      deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be produced out
-        of order.  If `deterministic` is `None`, the
-        `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to run deterministically.
+      deterministic: (Optional.) When `num_parallel_calls` is specified, this
+        boolean controls the order in which the transformation produces
+        elements. If set to `False`, the transformation is allowed to yield
+        elements out of order to trade determinism for performance. If not
+        specified, the `tf.data.Options.experimental_deterministic` option
+        (`True` by default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1942,6 +1958,9 @@ name=None))
       cycle_length = AUTOTUNE
 
     if num_parallel_calls is None:
+      if deterministic is not None:
+        warnings.warn("The `deterministic` argument has no effect unless the "
+                      "`num_parallel_calls` argument is specified.")
       return InterleaveDataset(self, map_func, cycle_length, block_length)
     else:
       return ParallelInterleaveDataset(
@@ -2613,9 +2632,10 @@ class DatasetV1(DatasetV2):
     return DatasetV1Adapter(super(DatasetV1, self).shard(num_shards, index))
 
   @functools.wraps(DatasetV2.batch)
-  def batch(self, batch_size, drop_remainder=False):
-    return DatasetV1Adapter(super(DatasetV1, self).batch(
-        batch_size, drop_remainder))
+  def batch(self, batch_size, drop_remainder=False, num_parallel_calls=None):
+    return DatasetV1Adapter(
+        super(DatasetV1, self).batch(batch_size, drop_remainder,
+                                     num_parallel_calls))
 
   @functools.wraps(DatasetV2.padded_batch)
   def padded_batch(self,
@@ -2661,17 +2681,20 @@ class DatasetV1(DatasetV2):
         If not specified, elements will be processed sequentially. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
-      deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be produced out
-        of order.  If `deterministic` is `None`, the
-        `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to produce elements
-        deterministically.
+      deterministic: (Optional.) When `num_parallel_calls` is specified, this
+        boolean controls the order in which the transformation produces
+        elements. If set to `False`, the transformation is allowed to yield
+        elements out of order to trade determinism for performance. If not
+        specified, the `tf.data.Options.experimental_deterministic` option
+        (`True` by default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.
     """
     if num_parallel_calls is None:
+      if deterministic is not None:
+        warnings.warn("The `deterministic` argument has no effect unless the "
+                      "`num_parallel_calls` argument is specified.")
       return DatasetV1Adapter(
           MapDataset(
               self,
@@ -3028,6 +3051,34 @@ class Options(options_lib.OptionsBase):
       "state is ignored and a warning is logged; FAIL: External state results "
       "in an error.")
 
+  def _to_proto(self):
+    pb = dataset_options_pb2.Options()
+    if self.experimental_deterministic is not None:
+      pb.deterministic = self.experimental_deterministic
+    pb.distribute_options.CopyFrom(self.experimental_distribute._to_proto())  # pylint: disable=protected-access
+    if self.experimental_external_state_policy is not None:
+      pb.external_state_policy = (
+          distribute_options.ExternalStatePolicy._to_proto(  # pylint: disable=protected-access
+              self.experimental_external_state_policy))
+    pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
+    if self.experimental_slack is not None:
+      pb.slack = self.experimental_slack
+    pb.threading_options.CopyFrom(self.experimental_threading._to_proto())  # pylint: disable=protected-access
+    return pb
+
+  def _from_proto(self, pb):
+    if pb.WhichOneof("optional_deterministic") is not None:
+      self.experimental_deterministic = pb.deterministic
+    self.experimental_distribute._from_proto(pb.distribute_options)  # pylint: disable=protected-access
+    if pb.WhichOneof("optional_external_state_policy") is not None:
+      self.experimental_external_state_policy = (
+          distribute_options.ExternalStatePolicy._from_proto(  # pylint: disable=protected-access
+              pb.external_state_policy))
+    self.experimental_optimization._from_proto(pb.optimization_options)  # pylint: disable=protected-access
+    if pb.WhichOneof("optional_slack") is not None:
+      self.experimental_slack = pb.slack
+    self.experimental_threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
+
   def _graph_rewrites(self):
     """Produces lists of enabled, disabled, default static graph rewrites.
 
@@ -3284,6 +3335,11 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
   @property
   def value_type(self):
     return Dataset
+
+  @property
+  def element_spec(self):
+    """The inner element spec."""
+    return self._element_spec
 
   def _serialize(self):
     return (self._element_spec, self._dataset_shape)
@@ -3931,6 +3987,47 @@ class BatchDataset(UnaryDataset):
     return self._structure
 
 
+class ParallelBatchDataset(UnaryDataset):
+  """A `Dataset` that batches contiguous elements from its input in parallel."""
+
+  def __init__(self, input_dataset, batch_size, drop_remainder,
+               num_parallel_calls):
+    """See `Dataset.batch()` for details."""
+    self._input_dataset = input_dataset
+    self._batch_size = ops.convert_to_tensor(
+        batch_size, dtype=dtypes.int64, name="batch_size")
+    self._drop_remainder = ops.convert_to_tensor(
+        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
+    self._num_parallel_calls = ops.convert_to_tensor(
+        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
+
+    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
+    # pylint: disable=protected-access
+    if constant_drop_remainder:
+      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
+      # or `False` (explicitly retaining the remainder).
+      # pylint: disable=g-long-lambda
+      constant_batch_size = tensor_util.constant_value(self._batch_size)
+      self._structure = nest.map_structure(
+          lambda component_spec: component_spec._batch(constant_batch_size),
+          input_dataset.element_spec)
+    else:
+      self._structure = nest.map_structure(
+          lambda component_spec: component_spec._batch(None),
+          input_dataset.element_spec)
+    variant_tensor = gen_dataset_ops.parallel_batch_dataset(
+        input_dataset._variant_tensor,
+        batch_size=self._batch_size,
+        num_parallel_calls=self._num_parallel_calls,
+        drop_remainder=self._drop_remainder,
+        **self._flat_structure)
+    super(ParallelBatchDataset, self).__init__(input_dataset, variant_tensor)
+
+  @property
+  def element_spec(self):
+    return self._structure
+
+
 class _NumpyIterator(object):
   """Iterator over a dataset with elements converted to numpy."""
 
@@ -3943,7 +4040,16 @@ class _NumpyIterator(object):
     return self
 
   def __next__(self):
-    return nest.map_structure(lambda x: x.numpy(), next(self._iterator))
+
+    def to_numpy(x):
+      numpy = x._numpy()  # pylint: disable=protected-access
+      if isinstance(numpy, np.ndarray):
+        # `numpy` shares the same underlying buffer as the `x` Tensor.
+        # Tensors are expected to be immutable, so we disable writes.
+        numpy.setflags(write=False)
+      return numpy
+
+    return nest.map_structure(to_numpy, next(self._iterator))
 
   def next(self):
     return self.__next__()
@@ -4561,6 +4667,15 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     if optimization_configs is None:
       optimization_configs = []
+
+    # We sort the options here before embedding as constant tensors to ensure
+    # that serialization to NodeDef is determinstic.
+    if optimizations_enabled:
+      optimizations_enabled.sort()
+    if optimizations_disabled:
+      optimizations_disabled.sort()
+    if optimizations_default:
+      optimizations_default.sort()
 
     self._optimizations_enabled = convert.optional_param_to_tensor(
         argument_name="optimizations_enabled",

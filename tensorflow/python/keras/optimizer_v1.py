@@ -85,7 +85,7 @@ class Optimizer(object):
   def get_gradients(self, loss, params):
     """Returns gradients of `loss` with respect to `params`.
 
-    Arguments:
+    Args:
         loss: Loss tensor.
         params: List of variables.
 
@@ -118,7 +118,7 @@ class Optimizer(object):
     Should only be called after computing the gradients
     (otherwise the optimizer has no weights).
 
-    Arguments:
+    Args:
         weights: a list of Numpy arrays. The number of arrays and their shape
           must match number of the dimensions of the weights of the optimizer
           (i.e. it should match the output of `get_weights`).
@@ -169,7 +169,7 @@ class SGD(Optimizer):
   Includes support for momentum,
   learning rate decay, and Nesterov momentum.
 
-  Arguments:
+  Args:
       lr: float >= 0. Learning rate.
       momentum: float >= 0. Parameter that accelerates SGD in the relevant
         direction and dampens oscillations.
@@ -239,7 +239,7 @@ class RMSprop(Optimizer):
   at their default values
   (except the learning rate, which can be freely tuned).
 
-  Arguments:
+  Args:
       lr: float >= 0. Learning rate.
       rho: float >= 0.
       epsilon: float >= 0. Fuzz factor. If `None`, defaults to `K.epsilon()`.
@@ -466,7 +466,7 @@ class Adam(Optimizer):
 
   Default parameters follow those provided in the original paper.
 
-  Arguments:
+  Args:
       lr: float >= 0. Learning rate.
       beta_1: float, 0 < beta < 1. Generally close to 1.
       beta_2: float, 0 < beta < 1. Generally close to 1.
@@ -565,7 +565,7 @@ class Adamax(Optimizer):
   It is a variant of Adam based on the infinity norm.
   Default parameters follow those provided in the paper.
 
-  Arguments:
+  Args:
       lr: float >= 0. Learning rate.
       beta_1/beta_2: floats, 0 < beta < 1. Generally close to 1.
       epsilon: float >= 0. Fuzz factor. If `None`, defaults to `K.epsilon()`.
@@ -657,7 +657,7 @@ class Nadam(Optimizer):
   It is recommended to leave the parameters of this optimizer
   at their default values.
 
-  Arguments:
+  Args:
       lr: float >= 0. Learning rate.
       beta_1/beta_2: floats, 0 < beta < 1. Generally close to 1.
       epsilon: float >= 0. Fuzz factor. If `None`, defaults to `K.epsilon()`.

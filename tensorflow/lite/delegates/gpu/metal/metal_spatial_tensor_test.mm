@@ -55,12 +55,14 @@ static absl::Status TensorGenericTest(const BHWC& shape,
 
   tflite::gpu::metal::MetalSpatialTensor tensor;
   RETURN_IF_ERROR(CreateTensor(device, shape, descriptor, &tensor));
-  RETURN_IF_ERROR(tensor.WriteData(tensor_cpu));
-  RETURN_IF_ERROR(tensor.ReadData(&tensor_gpu));
+  RETURN_IF_ERROR(tensor.WriteData(device, tensor_cpu));
+  RETURN_IF_ERROR(tensor.ReadData(device, &tensor_gpu));
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
-      return absl::InternalError("Wrong value.");
+      return absl::InternalError("Wrong value at index - " + std::to_string(i) + ". GPU - " +
+                                 std::to_string(tensor_gpu.data[i]) + ", CPU - " +
+                                 std::to_string(tensor_cpu.data[i]));
     }
   }
   return absl::OkStatus();
@@ -84,8 +86,8 @@ static absl::Status Tensor5DGenericTest(const BHWDC& shape,
 
   tflite::gpu::metal::MetalSpatialTensor tensor;
   RETURN_IF_ERROR(CreateTensor(device, shape, descriptor, &tensor));
-  RETURN_IF_ERROR(tensor.WriteData(tensor_cpu));
-  RETURN_IF_ERROR(tensor.ReadData(&tensor_gpu));
+  RETURN_IF_ERROR(tensor.WriteData(device, tensor_cpu));
+  RETURN_IF_ERROR(tensor.ReadData(device, &tensor_gpu));
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
@@ -136,12 +138,62 @@ static absl::Status TensorTests(DataType data_type, TensorStorageType storage_ty
 
 - (void)testBufferF32 {
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  XCTAssertTrue(TensorTests(DataType::FLOAT32, TensorStorageType::BUFFER, device).ok());
+  auto status = TensorTests(DataType::FLOAT32, TensorStorageType::BUFFER, device);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testBufferF16 {
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  XCTAssertTrue(TensorTests(DataType::FLOAT16, TensorStorageType::BUFFER, device).ok());
+  auto status = TensorTests(DataType::FLOAT16, TensorStorageType::BUFFER, device);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTexture2DF32 {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  auto status = TensorTests(DataType::FLOAT32, TensorStorageType::TEXTURE_2D, device);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTexture2DF16 {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  auto status = TensorTests(DataType::FLOAT16, TensorStorageType::TEXTURE_2D, device);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTexture3DF32 {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  auto status = TensorTests(DataType::FLOAT32, TensorStorageType::TEXTURE_3D, device);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTexture3DF16 {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  auto status = TensorTests(DataType::FLOAT16, TensorStorageType::TEXTURE_3D, device);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTexture2DArrayF32 {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  auto status = TensorTests(DataType::FLOAT32, TensorStorageType::TEXTURE_ARRAY, device);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTexture2DArrayF16 {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  auto status = TensorTests(DataType::FLOAT16, TensorStorageType::TEXTURE_ARRAY, device);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTextureBufferF32 {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  auto status = TensorTests(DataType::FLOAT32, TensorStorageType::IMAGE_BUFFER, device);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTextureBufferF16 {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  auto status = TensorTests(DataType::FLOAT16, TensorStorageType::IMAGE_BUFFER, device);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 @end

@@ -92,3 +92,54 @@ tf_pyclif_proto_library(
     proto_srcfile = "topology.proto",
     visibility = ["//visibility:public"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "tpu_embedding_configuration_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":tpu_embedding_configuration_proto"],
+# )
+#
+# py_proto_library(
+#     name = "optimization_parameters_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":optimization_parameters_proto"],
+# )
+#
+# py_proto_library(
+#     name = "tpu_embedding_output_layout_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":tpu_embedding_output_layout_proto"],
+# )
+#
+# py_proto_library(
+#     name = "topology_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":topology_proto"],
+# )
+#
+# py_proto_library(
+#     name = "dynamic_padding_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":dynamic_padding_proto"],
+# )
+#
+# py_proto_library(
+#     name = "compilation_result_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":compilation_result_proto"],
+# )
+#
+# py_proto_library(
+#     name = "compile_metadata_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":compile_metadata_proto"],
+# )
+# copybara:uncomment_end

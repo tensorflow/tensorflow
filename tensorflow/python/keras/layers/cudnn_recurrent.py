@@ -37,7 +37,7 @@ from tensorflow.python.util.tf_export import keras_export
 class _CuDNNRNN(RNN):
   """Private base class for CuDNNGRU and CuDNNLSTM layers.
 
-  Arguments:
+  Args:
     return_sequences: Boolean. Whether to return the last output
         in the output sequence, or the full sequence.
     return_state: Boolean. Whether to return the last state
@@ -166,7 +166,7 @@ class CuDNNGRU(_CuDNNRNN):
   developer website](https://developer.nvidia.com/cudnn).
   Can only be run on GPU.
 
-  Arguments:
+  Args:
       units: Positive integer, dimensionality of the output space.
       kernel_initializer: Initializer for the `kernel` weights matrix, used for
         the linear transformation of the inputs.
@@ -346,7 +346,7 @@ class CuDNNLSTM(_CuDNNRNN):
   developer website](https://developer.nvidia.com/cudnn).
   Can only be run on GPU.
 
-  Arguments:
+  Args:
       units: Positive integer, dimensionality of the output space.
       kernel_initializer: Initializer for the `kernel` weights matrix, used for
         the linear transformation of the inputs.
