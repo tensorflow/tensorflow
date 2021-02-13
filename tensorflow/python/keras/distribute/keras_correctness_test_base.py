@@ -316,7 +316,7 @@ def compare_results(results_with_ds,
     default_tolerance = 1e-3
     relaxed_tolerance = 1e-3
   else:
-    default_tolerance = 1e-5
+    default_tolerance = 4e-5
     relaxed_tolerance = 1e-4
 
   def _get_compare_result_tolerance(key):
@@ -415,7 +415,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     We only provide a default implementation of this method here. If you need
     more customized way of providing input to your model, overwrite this method.
 
-    Arguments:
+    Args:
       **kwargs: key word arguments about how to create the input dictionaries
 
     Returns:
@@ -522,7 +522,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     We only provide a default implementation of this method here. If you need
     more customized way of providing input to your model, overwrite this method.
 
-    Arguments:
+    Args:
       **kwargs: key word arguments about how to create the input dictionaries
 
     Returns:

@@ -84,6 +84,11 @@ void RecordTFDataIteratorLifetime(uint64 duration_us);
 // The `name` argument identifies the optimization (e.g. "noop_elimination").
 void RecordTFDataOptimization(const string& name, int64 num_changes);
 
+// Records the file name read by a tf.data Dataset.
+//
+// The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
+void RecordTFDataFilename(const string& name, const string& filename);
+
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64 num_features);
 

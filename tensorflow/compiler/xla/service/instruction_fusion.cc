@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
@@ -577,6 +578,12 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         }
         break;
       }
+
+      if (module->config().debug_options().xla_dump_fusion_visualization()) {
+        TF_RETURN_IF_ERROR(RegisterFusionState(
+            *computation,
+            absl::StrCat("InstructionFusion, may_duplicate=", may_duplicate_)));
+      }
     }
 
     if (config_collection_mode_ != FusionConfigCollection::kOff) {
@@ -599,7 +606,6 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     }
     VLOG(1) << "There are " << fused_count << " fused bits that cause "
             << fuse_count << " fusion actions.";
-    VLOG(1) << FusionConfigToString(*fusion_config);
     module->set_config(module_config);
   }
 

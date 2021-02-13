@@ -60,6 +60,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
     ],
 )
 

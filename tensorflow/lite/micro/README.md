@@ -67,3 +67,4 @@ project, we have additional documentation in the [docs](docs/) folder.
 *   [Memory Management](docs/memory_management.md)
 *   [New Platform Support](docs/new_platform_support.md)
 *   [Software Emulation with Renode](docs/renode.md)
+*   [Pre-allocated tensors](docs/preallocated_tensors.md)

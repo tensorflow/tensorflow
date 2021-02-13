@@ -30,7 +30,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 bool IsDepthwiseConvPlus1x1ConvSupported(
     const OperationDef& definition,
@@ -42,7 +41,6 @@ GPUOperation CreateDepthwiseConvPlus1x1Conv(
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 

@@ -30,10 +30,10 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
@@ -100,13 +100,14 @@ class QuantizationDriver {
   explicit QuantizationDriver(FuncOp fn, bool is_signed,
                               bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
-                              bool infer_tensor_range)
+                              bool infer_tensor_range, bool legacy_float_scale)
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
         disable_per_channel_(disable_per_channel),
         op_quant_spec_getter_(op_quant_spec_getter),
-        infer_tensor_range_(infer_tensor_range) {}
+        infer_tensor_range_(infer_tensor_range),
+        legacy_float_scale_(legacy_float_scale) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -291,7 +292,7 @@ class QuantizationDriver {
       llvm::dbgs() << "\n\n\n" << current_op->getName() << "\n";
     }
     fn_.walk([&](Operation *op) {
-      if (op->isKnownTerminator() ||
+      if (op->hasTrait<OpTrait::IsTerminator>() ||
           op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
           llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp>(
               op))
@@ -387,6 +388,10 @@ class QuantizationDriver {
   // Infer output ranges for activation ops and constants. This is usually
   // required for post-training quantization.
   bool infer_tensor_range_;
+
+  // Calculate scales in float instead of double, so that the scales and
+  // quantized values are exactly the same with the TOCO quantizer.
+  bool legacy_float_scale_;
 };
 }  // namespace
 
@@ -438,13 +443,13 @@ bool QuantizationDriver::SetConstantResultParams(Operation *op) {
     // per-axis quantization weight, with symmetric min/max enforced.
     final_type = GetUniformQuantizedPerAxisTypeForWeight(
         attr, it->second, /*symmetric=*/true, /*num_bits=*/8, is_signed_,
-        /*narrow_range=*/true);
+        /*narrow_range=*/true, legacy_float_scale_);
   } else {
     // per-tensor quantization weight
     final_type = GetUniformQuantizedTypeForWeight(
         attr, /*symmetric=*/is_weight && is_signed_,
         /*num_bits=*/8, is_signed_,
-        /*narrow_range_=*/is_weight);
+        /*narrow_range_=*/is_weight, legacy_float_scale_);
   }
   if (auto quant_type = final_type.dyn_cast_or_null<quant::QuantizedType>()) {
     return SetResultParams(op, 0, quant_type);
@@ -483,7 +488,7 @@ QuantParams QuantizationDriver::GetBiasParams(
     op_types.push_back(non_bias_type.params);
   }
   if (op_types.empty()) return {};
-  return func(op_types);
+  return func(op_types, legacy_float_scale_);
 }
 
 bool QuantizationDriver::SetOperandParams(Operation *op, int index,
@@ -532,7 +537,7 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   // quantization pass. These ops can be removed without losing original
   // program accuracy.
   // TODO(fengliuai): make the attribute being part of op definition.
-  quantize.setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
+  quantize->setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
 
   // `original_result` has a use to `quantize`, so this will replace that use
   // by the result of `dequantize`. Remember to reset that use afterwards
@@ -736,7 +741,7 @@ void QuantizationDriver::SetupAllStates() {
   }
 
   fn_.walk([&](Operation *op) {
-    if (op->isKnownTerminator() ||
+    if (op->hasTrait<OpTrait::IsTerminator>() ||
         op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
         llvm::isa<quant::DequantizeCastOp, quant::QuantizeCastOp>(op))
       return;
@@ -920,9 +925,10 @@ void QuantizationDriver::Run() {
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
-                                        bool infer_tensor_ranges) {
+                                        bool infer_tensor_ranges,
+                                        bool legacy_float_scale) {
   QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter,
-                     infer_tensor_ranges)
+                     infer_tensor_ranges, legacy_float_scale)
       .Run();
 }
 

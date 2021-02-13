@@ -21,11 +21,12 @@ limitations under the License.
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -33,25 +34,31 @@ namespace mlir {
 namespace {
 
 // TODO(herhut): Generate these out of op definitions.
-#define MAP_XLA_OPERATION_CWISE_UNARY(fn, sep)                                 \
-  fn(AbsOp) sep fn(CeilOp) sep fn(ClzOp) sep fn(CosOp) sep fn(ExpOp)           \
-      sep fn(Expm1Op) sep fn(FloorOp) sep fn(ImagOp) sep fn(IsFiniteOp)        \
-          sep fn(LogOp) sep fn(Log1pOp) sep fn(LogisticOp) sep fn(NotOp)       \
-              sep fn(NegOp) sep fn(PopulationCountOp) sep fn(RealOp)           \
-                  sep fn(RoundOp) sep fn(RsqrtOp) sep fn(SignOp) sep fn(SinOp) \
-                      sep fn(SqrtOp) sep fn(TanhOp)
+#define MAP_XLA_OPERATION_CWISE_UNARY(fn, sep)                                \
+  fn(AbsOp) sep fn(CeilOp) sep fn(ClzOp) sep fn(ConvertOp) sep fn(CosOp)      \
+      sep fn(ExpOp) sep fn(Expm1Op) sep fn(FloorOp) sep fn(ImagOp)            \
+          sep fn(IsFiniteOp) sep fn(LogOp) sep fn(Log1pOp) sep fn(LogisticOp) \
+              sep fn(NotOp) sep fn(NegOp) sep fn(PopulationCountOp)           \
+                  sep fn(RealOp) sep fn(RoundOp) sep fn(RsqrtOp)              \
+                      sep fn(SignOp) sep fn(SinOp) sep fn(SqrtOp)             \
+                          sep fn(TanhOp)
 
 // TODO(herhut): Generate these out of op definitions.
-#define MAP_XLA_OPERATION_CWISE_BINARY(fn, sep)                           \
-  fn(AddOp) sep fn(Atan2Op) sep fn(ComplexOp) sep fn(DivOp) sep fn(MaxOp) \
-      sep fn(MinOp) sep fn(MulOp) sep fn(PowOp) sep fn(RemOp)             \
-          sep fn(ShiftLeftOp) sep fn(ShiftRightArithmeticOp)              \
-              sep fn(ShiftRightLogicalOp) sep fn(SubOp)
+#define MAP_XLA_OPERATION_CWISE_BINARY(fn, sep)                            \
+  fn(AddOp) sep fn(AndOp) sep fn(Atan2Op) sep fn(ComplexOp) sep fn(DivOp)  \
+      sep fn(MaxOp) sep fn(MinOp) sep fn(MulOp) sep fn(OrOp) sep fn(PowOp) \
+          sep fn(RemOp) sep fn(ShiftLeftOp) sep fn(ShiftRightArithmeticOp) \
+              sep fn(ShiftRightLogicalOp) sep fn(SubOp) sep fn(XorOp)
 
 // TODO(herhut): Generate these out of op definitions.
-#define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep)                         \
-  fn(AcosOp) sep fn(AtanOp) sep fn(ConjOp) sep fn(ErfOp) sep fn(ErfcOp) \
-      sep fn(SinhOp) sep fn(TanOp)
+#define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep)                            \
+  fn(AcosOp) sep fn(AcoshOp) sep fn(AsinOp) sep fn(AsinhOp) sep fn(AtanOp) \
+      sep fn(AtanhOp) sep fn(ConjOp) sep fn(CoshOp) sep fn(DigammaOp)      \
+          sep fn(ErfOp) sep fn(ErfcOp) sep fn(IsInfOp) sep fn(LgammaOp)    \
+              sep fn(SinhOp) sep fn(TanOp)
+
+// TODO(herhut): Generate these out of op definitions.
+#define MAP_CHLO_OPERATION_CWISE_BINARY(fn, sep) fn(ZetaOp)
 
 template <typename OpTy>
 inline void AddLegalOpOnRankedTensor(ConversionTarget *target) {
@@ -99,7 +106,7 @@ struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
     Type indexTy = rewriter.getIndexType();
     Value numElements =
         rewriter.create<shape::NumElementsOp>(loc, indexTy, shape);
-    Value flatShape = rewriter.create<TensorFromElementsOp>(loc, numElements);
+    Value flatShape = rewriter.create<tensor::FromElementsOp>(loc, numElements);
 
     // Flatten operands.
     SmallVector<Value, 3> flatOperands;
@@ -174,7 +181,7 @@ struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
         rewriter.create<shape::ShapeOfOp>(loc, lhs_is_scalar ? rhs : lhs);
     Value num_elements = rewriter.create<shape::NumElementsOp>(loc, shape);
     Value size_tensor =
-        rewriter.create<TensorFromElementsOp>(loc, num_elements);
+        rewriter.create<tensor::FromElementsOp>(loc, num_elements);
     Value reshaped = rewriter.create<mhlo::DynamicReshapeOp>(
         loc, RankedTensorType::get({-1}, scalar_element_type),
         lhs_is_scalar ? rhs : lhs, size_tensor);
@@ -228,7 +235,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
         loc, result_type, IsScalarTensor(rewriter, op, lhs), true);
     OpBuilder if_lhs_scalar_builder =
         if_op.getThenBodyBuilder(rewriter.getListener());
-    Value reshaped_lhs = if_lhs_scalar_builder.create<TensorCastOp>(
+    Value reshaped_lhs = if_lhs_scalar_builder.create<tensor::CastOp>(
         loc, RankedTensorType::get({}, lhs_type.getElementType()), lhs);
     Value if_lhs_scalar_result = if_lhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{reshaped_lhs, rhs},
@@ -247,7 +254,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
                                                  if_rhs_scalar_op.getResult(0));
     OpBuilder if_rhs_scalar_builder =
         if_rhs_scalar_op.getThenBodyBuilder(rewriter.getListener());
-    Value reshaped_rhs = if_rhs_scalar_builder.create<TensorCastOp>(
+    Value reshaped_rhs = if_rhs_scalar_builder.create<tensor::CastOp>(
         loc, RankedTensorType::get({}, lhs_type.getElementType()), rhs);
     Value if_rhs_scalar_result = if_rhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{lhs, reshaped_rhs},
@@ -345,12 +352,12 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     Value extended_lhs = if_builder.create<shape::BroadcastOp>(
         loc, unknown_rank_extent_tensor_type, lhs_shape, ranked_shape_val,
         nullptr);
-    Value extended_lhs_casted = if_builder.create<TensorCastOp>(
+    Value extended_lhs_casted = if_builder.create<tensor::CastOp>(
         loc, known_rank_extent_tensor_type, extended_lhs);
     Value extended_rhs = if_builder.create<shape::BroadcastOp>(
         loc, unknown_rank_extent_tensor_type, rhs_shape, ranked_shape_val,
         nullptr);
-    Value extended_rhs_casted = if_builder.create<TensorCastOp>(
+    Value extended_rhs_casted = if_builder.create<tensor::CastOp>(
         loc, known_rank_extent_tensor_type, extended_rhs);
 
     // 1. Reshape operands to the given rank (with the same number of elements)
@@ -372,7 +379,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     Value result = if_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type},
         ArrayRef<Value>{reshaped_lhs, reshaped_rhs}, op.getAttrs());
-    Value reshaped_result = if_builder.create<TensorCastOp>(
+    Value reshaped_result = if_builder.create<tensor::CastOp>(
         loc, UnrankedTensorType::get(result_element_type), result);
     if_builder.create<scf::YieldOp>(loc, reshaped_result);
   }
@@ -446,7 +453,8 @@ struct TransformUnrankedHloPass
     MLIRContext &ctx = getContext();
     ConversionTarget target(ctx);
     target.addLegalDialect<mhlo::MhloDialect, StandardOpsDialect,
-                           shape::ShapeDialect, scf::SCFDialect>();
+                           shape::ShapeDialect, scf::SCFDialect,
+                           tensor::TensorDialect>();
     target.addLegalOp<FuncOp>();
 #define ADD_LEGAL_MHLO(op) AddLegalOpOnRankedTensor<mhlo::op>(&target)
 #define ADD_LEGAL_CHLO(op) AddLegalOpOnRankedTensor<chlo::op>(&target)
@@ -479,21 +487,20 @@ struct TransformUnrankedHloPass
 
 void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {
-#define MAP_UNARY(op) ElementwiseOpConversion<mhlo::op>
-#define MAP_BINARY(op) ElementwiseOpConversion<mhlo::op>
-#define MAP_CHLO_UNARY(op) ElementwiseOpConversion<chlo::op>
+#define MAP_HLO(op) ElementwiseOpConversion<mhlo::op>
+#define MAP_CHLO(op) ElementwiseOpConversion<chlo::op>
 #define COMMA ,
   // clang-format off
   patterns->insert<
-      MAP_XLA_OPERATION_CWISE_UNARY(MAP_UNARY, COMMA),
-      MAP_XLA_OPERATION_CWISE_BINARY(MAP_BINARY, COMMA),
-      MAP_CHLO_OPERATION_CWISE_UNARY(MAP_CHLO_UNARY, COMMA),
+      MAP_XLA_OPERATION_CWISE_UNARY(MAP_HLO, COMMA),
+      MAP_XLA_OPERATION_CWISE_BINARY(MAP_HLO, COMMA),
+      MAP_CHLO_OPERATION_CWISE_UNARY(MAP_CHLO, COMMA),
+      MAP_CHLO_OPERATION_CWISE_BINARY(MAP_CHLO, COMMA),
       ElementwiseOpConversion<mhlo::CompareOp>,
       ElementwiseOpConversion<mhlo::SelectOp>>(context);
   // clang-format on
-#undef MAP_UNARY
-#undef MAP_BINARY
-#undef MAP_CHLO_UNARY
+#undef MAP_HLO
+#undef MAP_CHLO
 #undef COMMA
   chlo::PopulateForBroadcastingBinaryOp<
       ConvertUnrankedDynamicBroadcastBinaryOp>(context, patterns);

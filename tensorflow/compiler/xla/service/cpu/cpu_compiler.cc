@@ -56,6 +56,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
+#include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -102,10 +104,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
-#include "tensorflow/compiler/xla/service/integral_upcaster.h"
+#include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
+#include "tensorflow/compiler/xla/service/operand_upcaster.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
@@ -182,6 +185,19 @@ CpuCompiler::CpuCompiler() {
     return true;
   }();
   (void)llvm_initialized;
+}
+
+StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
+    std::unique_ptr<HloModuleGroup> module_group,
+    std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+    const CompileOptions& options) {
+  for (const std::vector<se::StreamExecutor*>& se_vector : stream_execs) {
+    if (se_vector.size() != 1) {
+      return Unimplemented(
+          "Model partitioning not implemented for the CPU compiler");
+    }
+  }
+  return LLVMCompiler::Compile(std::move(module_group), stream_execs, options);
 }
 
 /* static */ void CpuCompiler::InitializeLLVMTarget() {
@@ -271,7 +287,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
 
-  pipeline.AddPass<IntegralUpcaster>();
+  pipeline.AddPass<OperandUpcaster>();
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
@@ -290,11 +306,17 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<QrExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
+  pipeline.AddPass<AllGatherDecomposer>();
+  pipeline.AddPass<AllToAllDecomposer>();
 
   // Inline computations with a single call site.
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
+  // Convert BF16 operations to F32 operations so that the CPU backend can
+  // support BF16 operations without directly implementing a BF16 lowering for
+  // most ops.
+  pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
   // After canonicalization, there may be more batch dots that can be
   // simplified.
   pipeline.AddPass<BatchDotSimplification>();
@@ -403,8 +425,6 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pass.AddPass<HloDCE>();
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }
-
-  pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
 
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =
@@ -553,7 +573,7 @@ Status CreateHloProfilingArtifacts(
 
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/,
-    se::DeviceMemoryAllocator* /*device_allocator*/) {
+    const CompileOptions& /*options*/) {
   std::unique_ptr<llvm::TargetMachine> jit_target_machine =
       SimpleOrcJIT::InferTargetMachineForJIT(
           CompilerTargetOptions(module->config()),
@@ -566,12 +586,13 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 
 StatusOr<
     std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-CpuCompiler::RunHloPassesAndBufferAssignement(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-    se::DeviceMemoryAllocator* device_allocator, bool optimize) {
+CpuCompiler::RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
+                                              se::StreamExecutor* executor,
+                                              bool optimize,
+                                              const CompileOptions& options) {
   if (optimize) {
-    TF_ASSIGN_OR_RETURN(
-        module, RunHloPasses(std::move(module), executor, device_allocator));
+    TF_ASSIGN_OR_RETURN(module,
+                        RunHloPasses(std::move(module), executor, options));
   }
 
   // Select an order for emitting the HLO instructions for each computation.
@@ -632,11 +653,13 @@ struct OrcJITPostCompilationHook {
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* /*device_allocator*/) {
+    const CompileOptions& options) {
   VLOG(1) << "Compiling: " << module->name();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
-  auto slow_compile_alarm = SlowCompilationAlarm();
+  std::string slow_compilation_msg =
+      absl::StrCat("Compiling module ", module->name());
+  auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
   TF_RET_CHECK(stream_exec != nullptr);
   absl::call_once(llvm_command_line_options_initialized,

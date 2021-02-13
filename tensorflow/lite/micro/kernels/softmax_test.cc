@@ -20,8 +20,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 
-
-
 namespace tflite {
 namespace testing {
 namespace {
@@ -265,8 +263,7 @@ void ValidateSoftmaxGoldens(TfLiteTensor* tensors, const int tensor_count,
 
   const TfLiteRegistration registration = Register_SOFTMAX();
   micro::KernelRunner runner(registration, tensors, tensor_count, inputs_array,
-                             outputs_array, &builtin_data,
-                             micro_test::reporter);
+                             outputs_array, &builtin_data);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

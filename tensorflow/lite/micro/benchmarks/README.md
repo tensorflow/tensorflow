@@ -29,13 +29,13 @@ visual wakewords model.
 To run the keyword benchmark on x86, run
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TAGS=posix test_keyword_benchmark
+make -f tensorflow/lite/micro/tools/make/Makefile run_keyword_benchmark
 ```
 
 To run the person detection benchmark on x86, run
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TAGS=posix test_person_detection_benchmark
+make -f tensorflow/lite/micro/tools/make/Makefile run_person_detection_benchmark
 ```
 
 ## Run on Xtensa XPG Simulator
@@ -44,7 +44,7 @@ To run the keyword benchmark on the Xtensa XPG simulator, you will need a valid
 Xtensa toolchain and license.  With these set up, run:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=xtensa-xpg XTENSA_CORE=<xtensa core>  TAGS=xtensa_hifimini test_keyword_benchmark -j18
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=xtensa OPTIMIZED_KERNEL_DIR=xtensa TARGET_ARCH=<target architecture> XTENSA_CORE=<xtensa core> run_keyword_benchmark -j18
 ```
 
 ## Run on Sparkfun Edge

@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef PARTY_TENSORFLOW_LITE_CORE_SHIMS_C_C_API_EXPERIMENTAL_H_
-#define PARTY_TENSORFLOW_LITE_CORE_SHIMS_C_C_API_EXPERIMENTAL_H_
+#ifndef TENSORFLOW_LITE_CORE_SHIMS_C_C_API_EXPERIMENTAL_H_
+#define TENSORFLOW_LITE_CORE_SHIMS_C_C_API_EXPERIMENTAL_H_
 
 #include "tensorflow/lite/c/c_api_experimental.h"
 
-#endif  // PARTY_TENSORFLOW_LITE_CORE_SHIMS_C_C_API_EXPERIMENTAL_H_
+#endif  // TENSORFLOW_LITE_CORE_SHIMS_C_C_API_EXPERIMENTAL_H_

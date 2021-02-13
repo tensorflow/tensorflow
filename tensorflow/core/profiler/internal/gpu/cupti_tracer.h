@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
@@ -50,6 +51,8 @@ struct CuptiTracerOptions {
   bool cupti_finalize = false;
   // Whether to call cuCtxSynchronize for each device before Stop().
   bool sync_devices_before_stop = false;
+  // Whether to enable NVTX tracking, we need this for TensorRT tracking.
+  bool enable_nvtx_tracking = false;
 };
 
 class CuptiDriverApiHook {
@@ -111,6 +114,8 @@ class CuptiTracer {
   Status DisableActivityTracing();
   Status Finalize();
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
+  Status HandleNVTXCallback(CUpti_CallbackId cbid,
+                            const CUpti_CallbackData* cbdata);
 
   int num_gpus_;
   absl::optional<CuptiTracerOptions> option_;

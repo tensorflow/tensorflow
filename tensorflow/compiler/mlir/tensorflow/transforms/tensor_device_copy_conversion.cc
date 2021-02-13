@@ -20,8 +20,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -40,7 +40,7 @@ class TensorDeviceCopyConversionPass
  public:
   void runOnFunction() override {
     FuncOp func_op = getFunction();
-    StringAttr empty_string = StringAttr::get("", func_op.getContext());
+    StringAttr empty_string = StringAttr::get(func_op.getContext(), "");
     func_op.walk([&](TF::IdentityOp op) {
       StringAttr arg_device = empty_string;
       mlir::Value arg = op.getOperand();
@@ -60,7 +60,7 @@ class TensorDeviceCopyConversionPass
         arg_device = attr;
       }
 
-      StringAttr op_device = op.getAttrOfType<StringAttr>(kDeviceAttr);
+      StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
       if (!op_device) op_device = empty_string;
       // Skip the folding logic if the argument's device is different from the
       // operation's device.

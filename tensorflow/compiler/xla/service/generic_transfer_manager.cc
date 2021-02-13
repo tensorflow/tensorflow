@@ -145,8 +145,7 @@ Status GenericTransferManager::TransferLiteralToInfeed(
 }
 
 Status GenericTransferManager::TransferLiteralFromOutfeed(
-    se::StreamExecutor* executor, const Shape& literal_shape,
-    MutableBorrowingLiteral literal) {
+    se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   return Unimplemented("Generic transfer from Outfeed");
 }
 

@@ -23,6 +23,7 @@ from functools import partial
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.platform import test
 
 
@@ -382,6 +383,64 @@ class SliceArraysTest(test.TestCase):
     self.assertEqual(
         keras.utils.generic_utils.slice_arrays(input_a, start=0, stop=1),
         [None, None, None])
+
+
+# object() alone isn't compatible with WeakKeyDictionary, which we use to
+# track shared configs.
+class MaybeSharedObject(object):
+  pass
+
+
+class SharedObjectScopeTest(test.TestCase):
+
+  def test_shared_object_saving_scope_single_object_doesnt_export_id(self):
+    with generic_utils.SharedObjectSavingScope() as scope:
+      single_object = MaybeSharedObject()
+      self.assertIsNone(scope.get_config(single_object))
+      single_object_config = scope.create_config({}, single_object)
+      self.assertIsNotNone(single_object_config)
+      self.assertNotIn(generic_utils.SHARED_OBJECT_KEY,
+                       single_object_config)
+
+  def test_shared_object_saving_scope_shared_object_exports_id(self):
+    with generic_utils.SharedObjectSavingScope() as scope:
+      shared_object = MaybeSharedObject()
+      self.assertIsNone(scope.get_config(shared_object))
+      scope.create_config({}, shared_object)
+      first_object_config = scope.get_config(shared_object)
+      second_object_config = scope.get_config(shared_object)
+      self.assertIn(generic_utils.SHARED_OBJECT_KEY,
+                    first_object_config)
+      self.assertIn(generic_utils.SHARED_OBJECT_KEY,
+                    second_object_config)
+      self.assertIs(first_object_config, second_object_config)
+
+  def test_shared_object_loading_scope_noop(self):
+    # Test that, without a context manager scope, adding configs will do
+    # nothing.
+    obj_id = 1
+    obj = MaybeSharedObject()
+    generic_utils._shared_object_loading_scope().set(obj_id, obj)
+    self.assertIsNone(generic_utils._shared_object_loading_scope().get(obj_id))
+
+  def test_shared_object_loading_scope_returns_shared_obj(self):
+    obj_id = 1
+    obj = MaybeSharedObject()
+    with generic_utils.SharedObjectLoadingScope() as scope:
+      scope.set(obj_id, obj)
+      self.assertIs(scope.get(obj_id), obj)
+
+  def test_nested_shared_object_saving_scopes(self):
+    my_obj = MaybeSharedObject()
+    with generic_utils.SharedObjectSavingScope() as scope_1:
+      scope_1.create_config({}, my_obj)
+      with generic_utils.SharedObjectSavingScope() as scope_2:
+        # Nesting saving scopes should return the original scope and should
+        # not clear any objects we're tracking.
+        self.assertIs(scope_1, scope_2)
+        self.assertIsNotNone(scope_2.get_config(my_obj))
+      self.assertIsNotNone(scope_1.get_config(my_obj))
+    self.assertIsNone(generic_utils._shared_object_saving_scope())
 
 
 if __name__ == '__main__':

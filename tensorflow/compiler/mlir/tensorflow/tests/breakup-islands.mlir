@@ -291,7 +291,8 @@ func @next_iteration_sink_control_input() {
     %source:3 = tf_executor.NextIteration.Source : tensor<*xi32>
     %island:2 = tf_executor.island {
       %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
-      %print = "tf.Print"(%const) : (tensor<*xi32>) -> (tensor<*xi32>)
+      %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
+
       tf_executor.yield %const : tensor<*xi32>
     }
     tf_executor.NextIteration.Sink[%source#1] %island#0 : tensor<*xi32>
@@ -306,7 +307,7 @@ func @loop_cond_control_input() {
   tf_executor.graph {
     %island:2 = tf_executor.island {
       %const = "tf.Const"() {value = dense<1> : tensor<i1>} : () -> tensor<*xi1>
-      %print = "tf.Print"(%const) : (tensor<*xi1>) -> (tensor<*xi1>)
+      %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi1>) -> (tensor<*xi1>)
       tf_executor.yield %const : tensor<*xi1>
     }
     %loop_cond:2 = tf_executor.LoopCond %island#0 : tensor<*xi1>
@@ -321,7 +322,7 @@ func @enter_control_input() {
   tf_executor.graph {
     %island:2 = tf_executor.island {
       %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
-      %print = "tf.Print"(%const) : (tensor<*xi32>) -> (tensor<*xi32>)
+      %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
       tf_executor.yield %const : tensor<*xi32>
     }
     %enter:2 = tf_executor.Enter %island#0 frame "some/frame" : tensor<*xi32>
@@ -336,7 +337,7 @@ func @switchn_control_input(%arg1: tensor<i32>) {
   tf_executor.graph {
     %island:2 = tf_executor.island {
       %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
-      %print = "tf.Print"(%const) : (tensor<*xi32>) -> (tensor<*xi32>)
+      %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
       tf_executor.yield %const : tensor<*xi32>
     }
     %switchn:4 = tf_executor._SwitchN %island#0, %arg1 of 3: tensor<*xi32>

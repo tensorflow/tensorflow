@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
@@ -70,7 +70,7 @@ class ConvertTFDilatedConvOp : public OpRewritePattern<Conv2dOpTy> {
 
   // Extract the dilation factor from `block_shape` and pack it in an ArrayAttr.
   llvm::Optional<ArrayAttr> ExtractDilationsAttrFromBlockShape(
-      Value stb_block_shape, Value bts_block_shape,
+      Value stb_block_shape, Value bts_block_shape, int64_t expand_axis,
       PatternRewriter& rewriter) const;
 
  public:
@@ -82,12 +82,12 @@ template <typename Conv2dOpTy>
 LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     Conv2dOpTy op, PatternRewriter& rewriter) const {
   // Make sure Conv2D has 'VALID' padding.
-  if (op.template getAttrOfType<StringAttr>("padding").getValue() != "VALID") {
+  if (op->template getAttrOfType<StringAttr>("padding").getValue() != "VALID") {
     return failure();
   }
   // Make sure dilations are all ones if set.
   const ArrayAttr& dilations =
-      op.template getAttrOfType<ArrayAttr>("dilations");
+      op->template getAttrOfType<ArrayAttr>("dilations");
   if (dilations && !TFIntListIsAllOnes(dilations)) {
     return failure();
   }
@@ -111,7 +111,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
 
   TF::ExpandDimsOp expand_op;
   TF::SqueezeOp squeeze_op;
-  int64_t expand_axis;
+  int64_t expand_axis = -1;
   // Expand + Squeeze op.
   if (llvm::isa<TF::ExpandDimsOp>(prev_op)) {
     if (!llvm::isa<TF::SqueezeOp>(next_op)) {
@@ -127,13 +127,26 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
       expand_axis =
           (*const_op.value().cast<DenseElementsAttr>().getIntValues().begin())
               .getSExtValue();
+      // Canonicalize axis. Some TF python functions, such as
+      // `tf.nn.convolution`, use negative axis.
+      if (expand_axis < 0) {
+        // Always expand 3D input to 4D input.
+        expand_axis += 4;
+      }
     } else {
       return failure();
     }
     // Make sure that the `squeeze_dims` is equal to `expand_axis`.
     auto squeeze_dims = squeeze_op.squeeze_dims();
-    if (squeeze_dims.size() != 1 ||
-        squeeze_dims[0].cast<IntegerAttr>().getInt() != expand_axis) {
+    if (squeeze_dims.size() != 1) {
+      return failure();
+    }
+    int64_t squeeze_axis = squeeze_dims[0].cast<IntegerAttr>().getInt();
+    if (squeeze_axis < 0) {
+      // Always squeeze 4D input to 3D input.
+      squeeze_axis += 4;
+    }
+    if (squeeze_axis != expand_axis) {
       return failure();
     }
 
@@ -183,7 +196,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   }
 
   llvm::Optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(
-      stb_op.block_shape(), bts_op.block_shape(), rewriter);
+      stb_op.block_shape(), bts_op.block_shape(), expand_axis, rewriter);
   if (!dilations_attr.hasValue()) return failure();
 
   if (expand_op) {
@@ -233,14 +246,14 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     for (auto it1 = paddings.begin(), it2 = crops.begin();
          it1 != paddings.end() && it2 != crops.end(); it1++, it2++) {
       if ((*it1).getInt() != (*it2).getInt()) {
-        op.setAttr("padding", rewriter.getStringAttr("SAME"));
+        op->setAttr("padding", rewriter.getStringAttr("SAME"));
         break;
       }
     }
   }
 
   // Set dilations
-  op.setAttr("dilations", dilations_attr.getValue());
+  op->setAttr("dilations", dilations_attr.getValue());
 
   if (expand_op) {
     // If there is `expand_op`, we need to rewire the inputs to bypass the
@@ -259,13 +272,24 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     auto expand_result_type = RankedTensorType::get(
         expand_shape, getElementTypeOrSelf(stb_op.input()));
     expand_op.getResult().setType(expand_result_type);
-    op.getResult().setType(expand_result_type);
+
+    // Update the conv op's output shape.
+    auto bts_output_shape =
+        bts_op.output().getType().cast<ShapedType>().getShape();
+    SmallVector<int64_t, 4> conv_result_shape(bts_output_shape.begin(),
+                                              bts_output_shape.end());
+    conv_result_shape.insert(conv_result_shape.begin() + expand_axis, 1);
+    auto conv_result_type = RankedTensorType::get(
+        conv_result_shape, getElementTypeOrSelf(stb_op.input()));
+    op.getResult().setType(conv_result_type);
 
     squeeze_op.getResult().setType(bts_op.output().getType());
 
     // Connect `biasadd_op` with the output of `squeeze_op`.
-    biasadd_op.setOperand(0, squeeze_op.output());
-    biasadd_op.output().setType(squeeze_op.output().getType());
+    if (biasadd_op) {
+      biasadd_op.setOperand(0, squeeze_op.output());
+      biasadd_op.output().setType(squeeze_op.output().getType());
+    }
   } else {
     if (biasadd_op) biasadd_op.setOperand(0, op.output());
     op.setOperand(0, stb_op.input());
@@ -283,7 +307,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
 template <typename Conv2dOpTy>
 llvm::Optional<ArrayAttr>
 ConvertTFDilatedConvOp<Conv2dOpTy>::ExtractDilationsAttrFromBlockShape(
-    Value stb_block_shape, Value bts_block_shape,
+    Value stb_block_shape, Value bts_block_shape, int64_t expand_axis,
     PatternRewriter& rewriter) const {
   ElementsAttr stb_bs_attr, bts_bs_attr;
   if (!matchPattern(stb_block_shape, m_Constant(&stb_bs_attr)) ||
@@ -297,12 +321,31 @@ ConvertTFDilatedConvOp<Conv2dOpTy>::ExtractDilationsAttrFromBlockShape(
     if (stb_bs_attr.getValue({i}) != bts_bs_attr.getValue({i})) return {};
   }
 
+  int dilation_h_factor = -1, dilation_w_factor = -1;
   // Set dilation factor.
-  if (stb_bs_attr.getNumElements() < 2) return {};
-  int dilation_h_factor =
-      stb_bs_attr.getValue({0}).cast<IntegerAttr>().getInt();
-  int dilation_w_factor =
-      stb_bs_attr.getValue({1}).cast<IntegerAttr>().getInt();
+  if (stb_bs_attr.getNumElements() >= 2) {
+    dilation_h_factor = stb_bs_attr.getValue({0}).cast<IntegerAttr>().getInt();
+    dilation_w_factor = stb_bs_attr.getValue({1}).cast<IntegerAttr>().getInt();
+  } else if (stb_bs_attr.getNumElements() == 1) {
+    // For 1d conv, `tf.nn.convolution` expands NWC to NHWC format after
+    // `SpaceToBatchND`. Therefore, `block_shape` of `stb_op` only has one
+    // dilation factor of W dim, and dilation factor of H dim is set to 1.
+    if (expand_axis == 1) {
+      // NWC -> NHWC
+      dilation_h_factor = 1;
+      dilation_w_factor =
+          stb_bs_attr.getValue({0}).cast<IntegerAttr>().getInt();
+    } else if (expand_axis == 2) {
+      // NHC -> NHWC
+      dilation_h_factor =
+          stb_bs_attr.getValue({0}).cast<IntegerAttr>().getInt();
+      dilation_w_factor = 1;
+    }
+  }
+
+  if (dilation_h_factor == -1 || dilation_w_factor == -1) {
+    return {};
+  }
 
   return rewriter.getI64ArrayAttr({1, dilation_h_factor, dilation_w_factor, 1});
 }

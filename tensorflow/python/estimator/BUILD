@@ -8,7 +8,7 @@ py_library(
     srcs = [
         "estimator_lib.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow:internal",
@@ -36,7 +36,7 @@ py_library(
 py_library(
     name = "exporter",
     srcs = ["exporter.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         ":gc",
@@ -49,7 +49,7 @@ py_library(
 py_library(
     name = "gc",
     srcs = ["gc.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -59,7 +59,7 @@ py_library(
 py_library(
     name = "model_fn",
     srcs = ["model_fn.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         ":export_output",
@@ -71,7 +71,7 @@ py_library(
 py_library(
     name = "training",
     srcs = ["training.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":estimator",
         ":expect_tensorflow_estimator_installed",
@@ -85,7 +85,7 @@ py_library(
 py_library(
     name = "run_config",
     srcs = ["run_config.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -96,7 +96,7 @@ py_library(
 py_library(
     name = "baseline",
     srcs = ["canned/baseline.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":estimator",
         ":expect_tensorflow_estimator_installed",
@@ -111,7 +111,7 @@ py_library(
 py_library(
     name = "boosted_trees",
     srcs = ["canned/boosted_trees.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":boosted_trees_utils",
         ":estimator",
@@ -125,7 +125,7 @@ py_library(
 py_library(
     name = "boosted_trees_utils",
     srcs = ["canned/boosted_trees_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":estimator",
         ":expect_tensorflow_estimator_installed",
@@ -138,7 +138,7 @@ py_library(
 py_library(
     name = "dnn",
     srcs = ["canned/dnn.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":estimator",
         ":expect_tensorflow_estimator_installed",
@@ -154,7 +154,7 @@ py_library(
     name = "dnn_testing_utils",
     testonly = 1,
     srcs = ["canned/dnn_testing_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":estimator",
         ":expect_tensorflow_estimator_installed",
@@ -173,7 +173,7 @@ py_library(
 py_library(
     name = "dnn_linear_combined",
     srcs = ["canned/dnn_linear_combined.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":dnn",
         ":estimator",
@@ -192,7 +192,7 @@ py_library(
     srcs = [
         "util.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -204,7 +204,7 @@ py_library(
     srcs = [
         "estimator.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         ":export_export",
@@ -222,7 +222,7 @@ py_library(
     srcs = [
         "canned/parsing_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -233,7 +233,7 @@ py_library(
 py_library(
     name = "export_output",
     srcs = ["export/export_output.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -246,7 +246,7 @@ py_library(
     srcs = [
         "export/export_lib.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         ":export_export",
@@ -260,7 +260,7 @@ py_library(
     srcs = [
         "export/export.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         ":util",
@@ -272,7 +272,7 @@ py_library(
 py_library(
     name = "head",
     srcs = ["canned/head.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         ":export_output",
@@ -287,7 +287,7 @@ py_library(
 py_library(
     name = "inputs",
     srcs = ["inputs/inputs.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         ":numpy_io",
@@ -299,7 +299,7 @@ py_library(
 py_library(
     name = "linear",
     srcs = ["canned/linear.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":estimator",
         ":expect_tensorflow_estimator_installed",
@@ -314,7 +314,7 @@ py_library(
     name = "linear_testing_utils",
     testonly = 1,
     srcs = ["canned/linear_testing_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":estimator",
         ":expect_tensorflow_estimator_installed",
@@ -332,7 +332,7 @@ py_library(
 py_library(
     name = "metric_keys",
     srcs = ["canned/metric_keys.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         ":model_fn",
@@ -342,7 +342,7 @@ py_library(
 py_library(
     name = "numpy_io",
     srcs = ["inputs/numpy_io.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         ":inputs_queues",
@@ -352,7 +352,7 @@ py_library(
 py_library(
     name = "optimizers",
     srcs = ["canned/optimizers.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -363,7 +363,7 @@ py_library(
 py_library(
     name = "pandas_io",
     srcs = ["inputs/pandas_io.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         ":inputs_queues",
@@ -373,7 +373,7 @@ py_library(
 py_library(
     name = "prediction_keys",
     srcs = ["canned/prediction_keys.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
     ],
@@ -385,7 +385,7 @@ py_library(
         "inputs/queues/feeding_functions.py",
         "inputs/queues/feeding_queue_runner.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -396,7 +396,7 @@ py_library(
 py_library(
     name = "keras",
     srcs = ["keras.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":estimator",
         ":expect_tensorflow_estimator_installed",
@@ -409,6 +409,7 @@ py_library(
 
 py_library(
     name = "expect_tensorflow_estimator_installed",
+    srcs_version = "PY3",
     # This is a dummy rule used as a dependency in open-source.
     # We expect tensorflow_estimator to already be installed.
     visibility = ["//visibility:public"],

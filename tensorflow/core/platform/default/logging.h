@@ -50,16 +50,16 @@ class LogMessage : public std::basic_ostringstream<char> {
   // Change the location of the log message.
   LogMessage& AtLocation(const char* fname, int line);
 
-  // Returns the minimum log level for VLOG statements.
-  // E.g., if MinVLogLevel() is 2, then VLOG(2) statements will produce output,
+  // Returns the maximum log level for VLOG statements.
+  // E.g., if MaxVLogLevel() is 2, then VLOG(2) statements will produce output,
   // but VLOG(3) will not. Defaults to 0.
-  static int64 MinVLogLevel();
+  static int64 MaxVLogLevel();
 
   // Returns whether VLOG level lvl is activated for the file fname.
   //
   // E.g. if the environment variable TF_CPP_VMODULE contains foo=3 and fname is
   // foo.cc and lvl is <= 3, this will return true. It will also return true if
-  // the level is lower or equal to TF_CPP_MIN_VLOG_LEVEL (default zero).
+  // the level is lower or equal to TF_CPP_MAX_VLOG_LEVEL (default zero).
   //
   // It is expected that the result of this query will be cached in the VLOG-ing
   // call site to avoid repeated lookups. This routine performs a hash-map
@@ -117,7 +117,7 @@ class LogMessageNull : public std::basic_ostringstream<char> {
 
 #else
 
-// Otherwise, set TF_CPP_MIN_VLOG_LEVEL environment to update minimum log level
+// Otherwise, set TF_CPP_MAX_VLOG_LEVEL environment to update minimum log level
 // of VLOG, or TF_CPP_VMODULE to set the minimum log level for individual
 // translation units.
 #define VLOG_IS_ON(lvl)                                                     \
@@ -462,7 +462,7 @@ T&& CheckNotNull(const char* file, int line, const char* exprtext, T&& t) {
 
 int64 MinLogLevelFromEnv();
 
-int64 MinVLogLevelFromEnv();
+int64 MaxVLogLevelFromEnv();
 
 }  // namespace internal
 

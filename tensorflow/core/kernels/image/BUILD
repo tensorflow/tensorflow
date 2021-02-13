@@ -64,6 +64,7 @@ exports_files([
     "mirror_pad_op_cpu_impl_5.cc",
     "non_max_suppression_op.cc",
     "non_max_suppression_op.h",
+    "resize_bicubic_op.cc",
     "resize_bilinear_op.cc",
     "resize_bilinear_op.h",
     "resize_nearest_neighbor_op.cc",
@@ -98,6 +99,7 @@ tf_cc_test(
 # Public support libraries ----------------------------------------------------<
 cc_library(
     name = "image",
+    visibility = ["//visibility:public"],
     deps = [
         ":adjust_contrast_op",
         ":adjust_hue_op",

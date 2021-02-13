@@ -21,6 +21,8 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 class GetScalarOfType<int value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
+def NonScalarType : Type<Neg<HasAnyRankOfPred<[0]>>, "Non scalar type">;
+
 // Creates a tf.ReadVariable op that reads a resource `$2` that has the same
 // element type as `$1`. The op created will use location of `$0`.
 def CreateTFReadVariableOp : NativeCodeCall<
@@ -326,8 +328,10 @@ def DecomposeResourceGather : Pat<
 
 // Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
 // tf.TensorScatterUpdate, and tf.AssignVariable.
+// TODO(b/178725329): Support scalar `updates` during decomposition.
 def DecomposeResourceScatterUpdate : Pat<
-  (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
+  (TF_ResourceScatterUpdateOp:$src_op
+    $resource, $indices, NonScalarType:$updates),
   (TF_AssignVariableOp
     $resource,
     (TF_TensorScatterUpdateOp

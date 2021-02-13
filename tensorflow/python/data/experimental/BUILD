@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "experimental",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:dataset_ops",

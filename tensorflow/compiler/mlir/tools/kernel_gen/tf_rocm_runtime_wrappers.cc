@@ -18,7 +18,11 @@ limitations under the License.
 // run on GPUs.
 
 #if TENSORFLOW_USE_ROCM
+
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/logging.h"
@@ -26,13 +30,21 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-#define HIP_REPORT_IF_ERROR(expr)                                       \
-  [](hipError_t result) {                                               \
-    if (!result) return;                                                \
-    const char *name = hipGetErrorName(result);                         \
-    if (!name) name = "<unknown>";                                      \
-    LOG(WARNING) << "'" << #expr << "' failed with '" << name << "'\n"; \
-  }(expr)
+#define HIP_REPORT_IF_ERROR_WITH_CTX(expr, context)                           \
+  [](hipError_t result, tensorflow::OpKernelContext *ctx) {                   \
+    if (!result) return;                                                      \
+    const char *name = hipGetErrorName(result);                               \
+    if (!name) name = "<unknown>";                                            \
+    std::string msg = absl::StrCat("'", #expr, "' failed with '", name, "'"); \
+    if (ctx != nullptr) {                                                     \
+      ctx->CtxFailureWithWarning(                                             \
+          tensorflow::Status{tensorflow::error::INTERNAL, msg});              \
+    } else {                                                                  \
+      LOG(WARNING) << msg << "\n";                                            \
+    }                                                                         \
+  }(expr, context)
+
+#define HIP_REPORT_IF_ERROR(expr) HIP_REPORT_IF_ERROR_WITH_CTX(expr, nullptr)
 
 namespace {
 // Implements a cache for loading modules. The assumption is that we never
@@ -84,16 +96,24 @@ extern "C" void tfKernelGenLaunchKernel(tensorflow::OpKernelContext *ctx,
                                         intptr_t gridZ, intptr_t blockX,
                                         intptr_t blockY, intptr_t blockZ,
                                         void **params) {
+  // For empty grids, we don't need to do anything.
+  if (!gridX || !gridY || !gridZ) {
+    return;
+  }
+
   stream_executor::Stream *se_stream = ctx->op_device_context()->stream();
   auto stream = reinterpret_cast<hipStream_t>(
       se_stream->implementation()->GpuStreamHack());
   hipModule_t module = HipRuntimeCache::get(stream)->loadModule(module_blob);
   hipFunction_t function;
-  HIP_REPORT_IF_ERROR(hipModuleGetFunction(&function, module, kernel_name));
+  HIP_REPORT_IF_ERROR_WITH_CTX(
+      hipModuleGetFunction(&function, module, kernel_name), ctx);
 
-  HIP_REPORT_IF_ERROR(hipModuleLaunchKernel(
-      function, gridX, gridY, gridZ, blockX, blockY, blockZ,
-      /*sharedMemBytes=*/0, stream, params, nullptr));
+  HIP_REPORT_IF_ERROR_WITH_CTX(
+      hipModuleLaunchKernel(function, gridX, gridY, gridZ, blockX, blockY,
+                            blockZ,
+                            /*sharedMemBytes=*/0, stream, params, nullptr),
+      ctx);
 }
 
 #endif  // TENSORFLOW_USE_ROCM

@@ -24,12 +24,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
 
 namespace xla {
@@ -47,20 +47,6 @@ namespace gpu {
 //    GPUs are participating in the op, so we get or create a NcclClique
 //    containing those GPUs.
 //  - We perform the NCCL operation using the clique.
-//
-// Creating NCCL cliques is expensive, so we cache them.  Our policy is, a thunk
-// keeps alive all cliques it's ever used.  When the thunk is destroyed, it
-// releases its handle on the cliques, and cliques whose refcounts go to 0 are
-// destroyed.
-
-// Extra data stored in NcclCollectiveThunk that we didn't want to expose in the
-// header.  In particular, this stores the thunk's cache of all NcclCliques it's
-// ever used.  This causes those cliques to stay alive as long as the thunk
-// lives, which is how we avoid expensive reinitialization of NCCL cliques.
-struct NcclCollectiveConfig::AuxData {
-  tensorflow::mutex mu;
-  absl::flat_hash_set<std::shared_ptr<NcclClique>> cliques TF_GUARDED_BY(mu);
-};
 
 NcclCollectiveConfig::NcclCollectiveConfig() = default;
 NcclCollectiveConfig::NcclCollectiveConfig(NcclCollectiveConfig&&) = default;
@@ -82,12 +68,11 @@ NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction* hlo,
 
   if (hlo->channel_id().has_value()) {
     config.collective_op_kind = RendezvousKey::kCrossModule;
-    config.op_id = hlo->channel_id().value();
+    config.op_id = *hlo->channel_id();
   } else {
     config.collective_op_kind = RendezvousKey::kCrossReplica;
     config.op_id = static_cast<int64>(hlo->GetModule()->unique_id());
   }
-  config.aux_data = std::make_unique<NcclCollectiveConfig::AuxData>();
   return config;
 }
 
@@ -130,19 +115,12 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
       AcquireNcclClique(rendezvous_key, device_ordinal, params.stream,
                         local_participants, params.nccl_unique_id_callback));
   ncclComm_t comm =
-      locked_clique.clique->GetCommForDeviceOrdinal(device_ordinal);
+      locked_clique.clique.GetCommForDeviceOrdinal(device_ordinal);
 
   se::StreamExecutor* executor = params.stream->parent();
   se::gpu::ScopedActivateExecutorContext scoped_context(executor);
 
   TF_RETURN_IF_ERROR(RunNcclCollective(params, comm));
-
-  // Keep the clique we used alive for as long as this Thunk lives.  Creating
-  // new NCCL cliques is expensive, and this is how we avoid thrashing them.
-  {
-    tensorflow::mutex_lock lock(config().aux_data->mu);
-    config().aux_data->cliques.insert(std::move(locked_clique.clique));
-  }
   return Status::OK();
 }
 

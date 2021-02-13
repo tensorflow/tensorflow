@@ -290,6 +290,10 @@ class XlaOpKernelContext {
   // separate specialization of the computation for each DataType.
   const xla::XlaComputation* GetOrCreateMul(const DataType type);
 
+  // Returns stack trace encoded as a string at a given module, or an empty
+  // string if none found.
+  std::string StackTrace() const;
+
  private:
   // Returns the tensor of input `name`.
   const Tensor& GetInputTensorByName(absl::string_view name);

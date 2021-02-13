@@ -823,7 +823,7 @@ class _FunctionConverterData(_ConverterData):
       if idx in map_index_to_variable:
         data = map_index_to_variable[idx].numpy()
       else:
-        data = val_tensor.numpy()
+        data = np.array(val_tensor.numpy())
       self._tensor_data[tensor_name] = _TensorData(
           numpy=data,
           dtype=dtypes.as_dtype(data.dtype).as_datatype_enum,
@@ -1146,6 +1146,16 @@ def convert_variables_to_constants_from_session_graph(
   Returns:
     An optimized GraphDef.
   """
+  # TODO(b/176982859): Find a more satisfying way to update shape information
+  # than clearing it, or migrate users to a workflow that does not require
+  # freezing.
+  for function in graph_def.library.function:
+    if "_input_shapes" in function.attr:
+      for input_arg, shape_attribute in zip(
+          function.signature.input_arg,
+          function.attr["_input_shapes"].list.shape):
+        if dtypes.as_dtype(input_arg.type) == dtypes.resource:
+          shape_attribute.unknown_rank = True
   graph_def, _ = _replace_variables_by_constants(
       converter_data=_SessionConverterData(
           session=session,

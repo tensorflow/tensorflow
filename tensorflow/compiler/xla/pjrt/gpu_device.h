@@ -19,13 +19,13 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 
 namespace xla {
 
-class GpuDevice : public PjRtDevice {
+class GpuDevice : public PjRtStreamExecutorDevice {
  public:
   GpuDevice(int id, std::unique_ptr<LocalDeviceState> local_device_state,
             std::string device_kind, int node_id);

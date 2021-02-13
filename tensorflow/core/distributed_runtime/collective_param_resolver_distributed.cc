@@ -137,13 +137,14 @@ void CollectiveParamResolverDistributed::CompleteGroupAsync(
         "running the same version of Tensorflow on all workers."));
     return;
   }
-  CollectiveParams cp;
-  cp.group.group_key = request->group_key();
-  cp.group.group_size = request->group_size();
-  cp.group.device_type = DeviceType(request->device_type());
-  cp.instance.type = CollectiveType(request->collective_type());
+  auto* cp = new CollectiveParams();
+  core::ScopedUnref unref(cp);
+  cp->group.group_key = request->group_key();
+  cp->group.group_size = request->group_size();
+  cp->group.device_type = DeviceType(request->device_type());
+  cp->instance.type = CollectiveType(request->collective_type());
   CompleteGroupDistributed(
-      request->device_attributes(), &cp, cancel_mgr,
+      request->device_attributes(), cp, cancel_mgr,
       [response, done](const Status& s, const GroupRec* gr) {
         if (s.ok()) {
           mutex_lock l(gr->mu);
@@ -196,14 +197,15 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   }
   StatusCallback done_and_cleanup = [cp, done](const Status& s) {
     done(s);
-    delete cp;
+    cp->Unref();
   };
   CompleteInstanceDistributed(
       request->device(), gr, cp, cancel_mgr,
       [this, gr, cp, response, done_and_cleanup](Status status) {
         if (status.ok()) {
           // Now source_rank should be known, so retrieve it.
-          InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+          bool created_irec;
+          InstanceRec* ir = GetOrCreateInstanceRec(gr, cp, &created_irec);
           {
             mutex_lock l(ir->mu);
             status = ir->status;
@@ -289,7 +291,7 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
           << " is_leader=" << (group_leader_.empty());
   if (group_leader_.empty()) {
     // This is the group leader, so resolution is local.
-    return CompleteGroupLocal(device, cp, done);
+    return CompleteGroupLocal(device, cp, done, cancel_mgr);
   } else if (GetCachedGroup(cp->group.group_key) == nullptr) {
     // Need to update Group cache from the leader.
     CompleteGroupCall* call =
@@ -304,24 +306,24 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
       delete call;
       return;
     }
-    call->Start(
-        [this, device, cp, call, abortion_token, done](const Status& s) {
-          abortion_cancel_mgr_.DeregisterCallback(abortion_token);
-          if (s.ok()) {
-            Status status = UpdateGroupCache(call->resp_);
-            if (status.ok()) {
-              CompleteGroupLocal(device, cp, done);
-            } else {
-              done(status, nullptr);
-            }
-          } else {
-            done(s, nullptr);
-          }
-          delete call;
-        });
+    call->Start([this, device, cp, call, cancel_mgr, abortion_token,
+                 done](const Status& s) {
+      abortion_cancel_mgr_.DeregisterCallback(abortion_token);
+      if (s.ok()) {
+        Status status = UpdateGroupCache(call->resp_);
+        if (status.ok()) {
+          CompleteGroupLocal(device, cp, done, cancel_mgr);
+        } else {
+          done(status, nullptr);
+        }
+      } else {
+        done(s, nullptr);
+      }
+      delete call;
+    });
     return;
   } else {
-    return CompleteGroupLocal(device, cp, done);
+    return CompleteGroupLocal(device, cp, done, cancel_mgr);
   }
 }
 
@@ -340,7 +342,8 @@ Status CollectiveParamResolverDistributed::UpdateInstanceCache(
     const GroupRec* gr, CollectiveParams* cp,
     const CompleteInstanceResponse& resp) {
   int32 source_rank = resp.source_rank();
-  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+  bool created_irec;
+  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp, &created_irec);
   mutex_lock l(ir->mu);
   if (!ir->status.ok()) {
     return ir->status;

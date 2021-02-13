@@ -119,7 +119,8 @@ xla::StatusOr<std::string> GetCompilerIr(
   TF_RETURN_IF_ERROR(args.status());
 
   switch (stage) {
-    case IrExportStage::HLO: {
+    case IrExportStage::HLO:
+    case IrExportStage::HLO_SERIALIZED: {
       XlaCompiler::CompilationResult result;
       TF_RETURN_IF_ERROR(
           compiler.CompileFunction(compile_options, function, *args, &result));
@@ -131,13 +132,23 @@ xla::StatusOr<std::string> GetCompilerIr(
           std::unique_ptr<xla::HloModule> new_module,
           xla::HloModule::CreateFromProto(result.computation->proto(), config));
 
-      return new_module->ToString();
+      if (stage == IrExportStage::HLO_SERIALIZED) {
+        return new_module->ToProto().SerializeAsString();
+      } else {
+        return new_module->ToString();
+      }
     }
-    case IrExportStage::OPTIMIZED_HLO: {
+    case IrExportStage::OPTIMIZED_HLO:
+    case IrExportStage::OPTIMIZED_HLO_SERIALIZED: {
       xla::StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
           options, compile_options, function, cache, *args, compiler);
       TF_RETURN_IF_ERROR(executable.status());
-      return (*executable)->executable()->module().ToString();
+      xla::Executable* new_executable = (*executable)->executable();
+      if (stage == IrExportStage::OPTIMIZED_HLO_SERIALIZED) {
+        return new_executable->module().ToProto().SerializeAsString();
+      } else {
+        return new_executable->module().ToString();
+      }
     }
     case IrExportStage::OPTIMIZED_HLO_DOT: {
       xla::StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(

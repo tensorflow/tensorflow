@@ -145,7 +145,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
     auto int_shape_type = RankedTensorType::get(
         output_type.getShape(),
-        IntegerType::get(bitwidth, rewriter.getContext()));
+        IntegerType::get(rewriter.getContext(), bitwidth));
     auto loc = op.getLoc();
     auto integer_const = rewriter.create<mlir::ConstantOp>(
         loc, DenseIntElementsAttr::get(int_shape_type, values));
@@ -201,7 +201,7 @@ void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
 void LegalizeToStandardPass::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
-  applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
 }
 
 }  // end namespace mhlo

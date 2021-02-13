@@ -15,9 +15,13 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "FuncOp"> {
+def ChloLegalizeToHloPass : FunctionPass<"chlo-legalize-to-hlo"> {
   let summary = "Legalize CHLO to HLO.";
   let constructor = "createChloLegalizeToHloPass()";
+  let options = [
+    Option<"broadcast_only_", "broadcast-only", "bool",
+           /*default=*/"false", "Only lower broadcasting chlo to non-broadcasting equivalents">,
+  ];
 }
 
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {

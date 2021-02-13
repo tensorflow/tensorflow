@@ -50,8 +50,11 @@ func @conv_forward(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2xf16>, %
       feature_group_count = 1,
       batch_group_count = 1,
       result_scale = 1.0,
-      backend_config = {algorithm=0, tensor_ops_enabled = true }
-    }
+      backend_config = {algorithm=0,
+                        operand_0_layout = [3,2,1,0],
+                        operand_1_layout = [3,2,1,0],
+                        result_layout = [3,2,1,0],
+                        tensor_ops_enabled = true}}
     : (memref<1x1x8x8xf16>, memref<1x1x2x2xf16>, memref<1x1x7x7xf16>, memref<32xi8>) -> ()
   return
 }
@@ -60,7 +63,11 @@ func @conv_forward(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2xf16>, %
 func @conv_backfilter(%input : memref<3x56x56x16xf64>, %filter: memref<3x3x3x64xf64>, %output: memref<54x54x16x64xf64>) {
   %scratch = alloc() : memref<23328xui8>
   "lmhlo_gpu.conv_backwardfilter"(%input, %filter, %output, %scratch)
-    { backend_config = {algorithm = 1 : i64, tensor_ops_enabled = false},
+    { backend_config = {algorithm = 1 : i64,
+                        operand_0_layout = [3,2,1,0],
+                        operand_1_layout = [3,2,1,0],
+                        result_layout = [3,2,1,0],
+                        tensor_ops_enabled = false},
       batch_group_count = 1 : i64,
       dimension_numbers = {input_batch_dimension = 0 : i64,
                            input_feature_dimension = 3 : i64,
@@ -86,7 +93,11 @@ func @conv_backfilter(%input : memref<3x56x56x16xf64>, %filter: memref<3x3x3x64x
 func @conv_backinput(%input : memref<4x5x16x16xf64>, %filter : memref<5x3x7x7xf64>, %output : memref<4x3x16x16xf64>) {
   %scratch = alloc() : memref<32xui8>
   "lmhlo_gpu.conv_backwardinput"(%input, %filter, %output, %scratch)
-  { backend_config = {algorithm = 1 : i64, tensor_ops_enabled = false},
+    { backend_config = {algorithm = 1 : i64,
+                        operand_0_layout = [3,2,1,0],
+                        operand_1_layout = [3,2,1,0],
+                        result_layout = [3,2,1,0],
+                        tensor_ops_enabled = false},
     batch_group_count = 1 : i64,
     dimension_numbers = {input_batch_dimension = 0 : i64,
                          input_feature_dimension = 1 : i64,
@@ -103,7 +114,8 @@ func @conv_backinput(%input : memref<4x5x16x16xf64>, %filter : memref<5x3x7x7xf6
     precision_config = [],
     result_scale = 1.000000e+00 : f64,
     rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>}
+    window_strides = dense<1> : tensor<2xi64>,
+    window_reversal = dense<true>: tensor<2xi1>}
   : (memref<4x5x16x16xf64>, memref<5x3x7x7xf64>, memref<4x3x16x16xf64>, memref<32xui8>) -> ()
   return
 }
@@ -113,7 +125,11 @@ func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32xf16>,
   %scratch = alloc() : memref<32xui8>
   "lmhlo_gpu.conv_forward_fused"(%input, %filter, %bias, %output, %scratch)
     {activation_mode = "Relu",
-     backend_config = {algorithm = 0 : i64, tensor_ops_enabled = false},
+     backend_config = {algorithm = 1 : i64,
+                       operand_0_layout = [3,2,1,0],
+                       operand_1_layout = [3,2,1,0],
+                       result_layout = [3,2,1,0],
+                       tensor_ops_enabled = false},
      batch_group_count = 1 : i64,
      dimension_numbers = {input_batch_dimension = 0 : i64,
        input_feature_dimension = 1 : i64,
@@ -140,7 +156,11 @@ func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x
   %scratch = alloc() : memref<0xui8>
   "lmhlo_gpu.conv_forward_fused_with_side_input"(%input, %filter, %bias, %side_input, %output, %scratch)
     {activation_mode = "Relu",
-     backend_config = {algorithm = 0 : i64, tensor_ops_enabled = false},
+     backend_config = {algorithm = 1 : i64,
+                       operand_0_layout = [3,2,1,0],
+                       operand_1_layout = [3,2,1,0],
+                       result_layout = [3,2,1,0],
+                       tensor_ops_enabled = false},
      batch_group_count = 1 : i64,
      dimension_numbers = {input_batch_dimension = 0 : i64,
        input_feature_dimension = 1 : i64,

@@ -57,10 +57,8 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test
 from tensorflow.python.training import momentum
 from tensorflow.python.util import nest
-
 
 TestTuple = collections.namedtuple("TestTuple", "a b")
 SingletonTestTuple = collections.namedtuple("SingletonTestTuple", "a")
@@ -85,7 +83,8 @@ class GroupTestCase(test_util.TensorFlowTestCase):
       c = constant_op.constant(0, name="c")
       control_flow_ops.group(a.op, b.op, c.op, name="root")
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
       node { name: "a" op: "Const"}
       node { name: "b" op: "Const"}
       node { name: "c" op: "Const"}
@@ -99,7 +98,8 @@ class GroupTestCase(test_util.TensorFlowTestCase):
         b = constant_op.constant(0, name="b")
       control_flow_ops.group(a.op, b.op, name="root")
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
       node { name: "a" op: "Const" device: "/task:0" }
       node { name: "b" op: "Const" device: "/task:0" }
       node { name: "root" op: "NoOp" input: "^a" input: "^b" device: "/task:0" }
@@ -116,7 +116,8 @@ class GroupTestCase(test_util.TensorFlowTestCase):
       with g.device("/task:2"):
         control_flow_ops.group(a.op, b.op, c.op, d.op, name="root")
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
       node { name: "a" op: "Const" device: "/task:0"}
       node { name: "b" op: "Const" device: "/task:0"}
       node { name: "c" op: "Const" device: "/task:1"}
@@ -135,7 +136,8 @@ class GroupTestCase(test_util.TensorFlowTestCase):
       b = constant_op.constant(0, name="b")
       control_flow_ops.group([a.op, b.op], name="root")
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
       node { name: "a" op: "Const"}
       node { name: "b" op: "Const"}
       node { name: "root" op: "NoOp" input: "^a" input: "^b" }
@@ -165,8 +167,7 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
         "my_counter", shape=[], initializer=init_ops.zeros_initializer())
     increment_counter = state_ops.assign_add(counter, 1)
     const_with_dep = control_flow_ops.with_dependencies(
-        (increment_counter, constant_op.constant(42)),
-        constant_op.constant(7))
+        (increment_counter, constant_op.constant(42)), constant_op.constant(7))
 
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(0, self.evaluate(counter))
@@ -179,8 +180,7 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
         "my_counter", shape=[], initializer=init_ops.zeros_initializer())
     increment_counter = state_ops.assign_add(counter, 1)
     const_with_dep = control_flow_ops.with_dependencies(
-        [increment_counter, constant_op.constant(42)],
-        constant_op.constant(7))
+        [increment_counter, constant_op.constant(42)], constant_op.constant(7))
 
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(0, self.evaluate(counter))
@@ -364,18 +364,16 @@ class CondTest(test_util.TensorFlowTestCase):
     x = constant_op.constant(2)
     y = constant_op.constant(5)
     z = control_flow_ops.cond(
-        math_ops.less(
-            x,
-            y), lambda: math_ops.multiply(x, 17), lambda: math_ops.add(y, 23))
+        math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
+        lambda: math_ops.add(y, 23))
     self.assertEqual(self.evaluate(z), 34)
 
   def testCondFalse(self):
     x = constant_op.constant(2)
     y = constant_op.constant(1)
     z = control_flow_ops.cond(
-        math_ops.less(
-            x,
-            y), lambda: math_ops.multiply(x, 17), lambda: math_ops.add(y, 23))
+        math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
+        lambda: math_ops.add(y, 23))
     self.assertEqual(self.evaluate(z), 24)
 
   def testCondTrueLegacy(self):
@@ -508,16 +506,18 @@ class ContextTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testControlContextImportScope(self):
+
     class NoABCControlFlowContext(control_flow_ops.ControlFlowContext):
       """A noop wrapper around `ControlFlowContext`.
 
       `ControlFlowContext` is an ABC and therefore cannot be instantiated.
       """
+
       # pylint: disable=useless-super-delegation
 
       def to_control_flow_context_def(self, context_def, export_scope=None):
-        super(NoABCControlFlowContext, self).to_control_flow_context_def(
-            context_def, export_scope)
+        super(NoABCControlFlowContext,
+              self).to_control_flow_context_def(context_def, export_scope)
 
     with self.cached_session():
       constant_op.constant(0, name="a")
@@ -557,8 +557,8 @@ def _get_nested_shape(nested):
 
 
 def _create_tensor_array(size, shape):
-  ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size,
-                                    clear_after_read=False)
+  ta = tensor_array_ops.TensorArray(
+      dtype=dtypes.float32, size=size, clear_after_read=False)
   for i in range(size):
     ta = ta.write(i, array_ops.zeros(shape))
   return ta
@@ -585,30 +585,37 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     else:
       self.assertAllEqual(a, b)
 
-  def _testShape(self, fn_true, fn_false, expected_shape,
-                 strict=False):
+  def _testShape(self, fn_true, fn_false, expected_shape, strict=False):
     condition = array_ops.placeholder(dtypes.bool)
-    output_cond = control_flow_ops.cond(condition, fn_true, fn_false,
-                                        strict=strict)
+    output_cond = control_flow_ops.cond(
+        condition, fn_true, fn_false, strict=strict)
     self.assertEqual(
         _raw_nested_shape(_get_nested_shape(output_cond)),
         _raw_nested_shape(expected_shape))
 
-    output_case = control_flow_ops.case([(condition, fn_true)], fn_false,
+    output_case = control_flow_ops.case([(condition, fn_true)],
+                                        fn_false,
                                         strict=strict)
     self.assertEqual(
         _raw_nested_shape(_get_nested_shape(output_case)),
         _raw_nested_shape(expected_shape))
 
-  def _testReturnValues(self, fn_true, fn_false, expected_value_true,
-                        expected_value_false, strict=False,
-                        check_cond=True, feed_dict=None):
-    if feed_dict is None: feed_dict = {}
+  def _testReturnValues(self,
+                        fn_true,
+                        fn_false,
+                        expected_value_true,
+                        expected_value_false,
+                        strict=False,
+                        check_cond=True,
+                        feed_dict=None):
+    if feed_dict is None:
+      feed_dict = {}
 
     condition = array_ops.placeholder(dtypes.bool)
-    output_cond = control_flow_ops.cond(condition, fn_true, fn_false,
-                                        strict=strict)
-    output_case = control_flow_ops.case([(condition, fn_true)], fn_false,
+    output_cond = control_flow_ops.cond(
+        condition, fn_true, fn_false, strict=strict)
+    output_case = control_flow_ops.case([(condition, fn_true)],
+                                        fn_false,
                                         strict=strict)
 
     with self.cached_session() as sess:
@@ -650,8 +657,12 @@ class DataTypesTest(test_util.TensorFlowTestCase):
   def test_noop(self):
     shape = tensor_shape.TensorShape(None)
     self._testShape(control_flow_ops.no_op, control_flow_ops.no_op, shape)
-    self._testReturnValues(control_flow_ops.no_op, control_flow_ops.no_op,
-                           True, False, check_cond=False)
+    self._testReturnValues(
+        control_flow_ops.no_op,
+        control_flow_ops.no_op,
+        True,
+        False,
+        check_cond=False)
 
   @test_util.run_deprecated_v1
   def test_string(self):
@@ -686,22 +697,24 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     def _build_true_branch(dtype):
 
       def _build():
-        return (array_ops.zeros([2, 2], dtype=dtype),
-                array_ops.ones([3, 3], dtype=dtype))
+        return (array_ops.zeros([2, 2],
+                                dtype=dtype), array_ops.ones([3, 3],
+                                                             dtype=dtype))
 
       return _build
 
     def _build_false_branch(dtype):
 
       def _build():
-        return (array_ops.ones([2, 2], dtype=dtype),
-                array_ops.zeros([3, 3], dtype=dtype))
+        return (array_ops.ones([2, 2],
+                               dtype=dtype), array_ops.zeros([3, 3],
+                                                             dtype=dtype))
 
       return _build
 
     for dtype in (dtypes.float16, dtypes.int8, dtypes.int32, dtypes.uint8):
-      shape = (tensor_shape.TensorShape([2, 2]),
-               tensor_shape.TensorShape([3, 3]))
+      shape = (tensor_shape.TensorShape([2,
+                                         2]), tensor_shape.TensorShape([3, 3]))
       fn_true = _build_true_branch(dtype)
       fn_false = _build_false_branch(dtype)
       self._testShape(fn_true, fn_false, shape)
@@ -733,27 +746,36 @@ class DataTypesTest(test_util.TensorFlowTestCase):
       fn_true, true_tensor = _build_true_branch(dtype)
       fn_false, false_tensor = _build_false_branch(dtype)
       self._testShape(fn_true, fn_false, shape)
-      self._testReturnValues(fn_true, fn_false,
-                             np.zeros([2, 2]), np.ones([2, 2]),
-                             feed_dict={true_tensor: np.zeros([2, 2]),
-                                        false_tensor: np.ones([2, 2])})
+      self._testReturnValues(
+          fn_true,
+          fn_false,
+          np.zeros([2, 2]),
+          np.ones([2, 2]),
+          feed_dict={
+              true_tensor: np.zeros([2, 2]),
+              false_tensor: np.ones([2, 2])
+          })
 
   @test_util.run_deprecated_v1
   def test_sparse_tensors(self):
     shape = tensor_shape.TensorShape([None, None])
 
     def true_fn():
-      return [sparse_tensor.SparseTensor(indices=[[0, 0], [1, 2]],
-                                         values=[1, 2], dense_shape=[3, 4])]
+      return [
+          sparse_tensor.SparseTensor(
+              indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+      ]
 
     def false_fn():
-      return [sparse_tensor.SparseTensor(indices=[[0, 0], [2, 1]],
-                                         values=[3, 4], dense_shape=[3, 4])]
+      return [
+          sparse_tensor.SparseTensor(
+              indices=[[0, 0], [2, 1]], values=[3, 4], dense_shape=[3, 4])
+      ]
 
-    value1 = sparse_tensor.SparseTensorValue(indices=[[0, 0], [1, 2]],
-                                             values=[1, 2], dense_shape=[3, 4])
-    value2 = sparse_tensor.SparseTensorValue(indices=[[0, 0], [2, 1]],
-                                             values=[3, 4], dense_shape=[3, 4])
+    value1 = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+    value2 = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0], [2, 1]], values=[3, 4], dense_shape=[3, 4])
     # Non-strict cond is only available in v1
     if not tf2.enabled():
       self._testShape(true_fn, false_fn, shape)
@@ -775,21 +797,24 @@ class DataTypesTest(test_util.TensorFlowTestCase):
       return _build, (a, b, c)
 
     for dtype in (dtypes.float16, dtypes.int8, dtypes.int32, dtypes.uint8):
-      shape = (tensor_shape.TensorShape([None, 2]),
-               tensor_shape.TensorShape([None]),
+      shape = (tensor_shape.TensorShape([None,
+                                         2]), tensor_shape.TensorShape([None]),
                tensor_shape.TensorShape([3, None]))
       fn_true, true_tensors = _build_branch(dtype, shape)
       fn_false, false_tensors = _build_branch(dtype, shape)
       self._testShape(fn_true, fn_false, shape)
-      self._testReturnValues(fn_true, fn_false,
-                             (np.zeros([2, 2]), np.zeros(5), np.ones([3, 3])),
-                             (np.zeros([2, 2]), np.zeros(5), np.ones([3, 3])),
-                             feed_dict={true_tensors[0]: np.zeros([2, 2]),
-                                        false_tensors[0]: np.zeros([2, 2]),
-                                        true_tensors[1]: np.zeros([5]),
-                                        false_tensors[1]: np.zeros([5]),
-                                        true_tensors[2]: np.ones([3, 3]),
-                                        false_tensors[2]: np.ones([3, 3])})
+      self._testReturnValues(
+          fn_true,
+          fn_false, (np.zeros([2, 2]), np.zeros(5), np.ones([3, 3])),
+          (np.zeros([2, 2]), np.zeros(5), np.ones([3, 3])),
+          feed_dict={
+              true_tensors[0]: np.zeros([2, 2]),
+              false_tensors[0]: np.zeros([2, 2]),
+              true_tensors[1]: np.zeros([5]),
+              false_tensors[1]: np.zeros([5]),
+              true_tensors[2]: np.ones([3, 3]),
+              false_tensors[2]: np.ones([3, 3])
+          })
 
   @test_util.run_deprecated_v1
   def test_tensor_arrays(self):
@@ -811,8 +836,11 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v1_only("b/138741991")
   def test_list(self):
-    shape = [tensor_shape.TensorShape([]), tensor_shape.TensorShape([]),
-             tensor_shape.TensorShape([])]
+    shape = [
+        tensor_shape.TensorShape([]),
+        tensor_shape.TensorShape([]),
+        tensor_shape.TensorShape([])
+    ]
     fn_true = lambda: [constant_op.constant(1), 2, variables.Variable(3.0)]
     fn_false = lambda: [constant_op.constant(3), 4, variables.Variable(5.0)]
     self._testShape(fn_true, fn_false, shape)
@@ -838,19 +866,21 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     fn_tuple = lambda: (constant_op.constant(3),)
 
     with self.assertRaises(ValueError):
-      control_flow_ops.cond(constant_op.constant(True), fn_tensor, fn_list,
-                            strict=True)
+      control_flow_ops.cond(
+          constant_op.constant(True), fn_tensor, fn_list, strict=True)
 
     with self.assertRaises(TypeError):
-      control_flow_ops.cond(constant_op.constant(True), fn_list, fn_tuple,
-                            strict=True)
+      control_flow_ops.cond(
+          constant_op.constant(True), fn_list, fn_tuple, strict=True)
 
     with self.assertRaises(ValueError):
-      control_flow_ops.case([(constant_op.constant(True), fn_tensor)], fn_list,
+      control_flow_ops.case([(constant_op.constant(True), fn_tensor)],
+                            fn_list,
                             strict=True)
 
     with self.assertRaises(TypeError):
-      control_flow_ops.case([(constant_op.constant(True), fn_list)], fn_tuple,
+      control_flow_ops.case([(constant_op.constant(True), fn_list)],
+                            fn_tuple,
                             strict=True)
 
   @test_util.run_deprecated_v1
@@ -875,8 +905,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
       self._testShape(fn_true, fn_false, shape)
       self._testReturnValues(fn_true, fn_false, 1, 3)
     self._testShape(fn_true, fn_false, (shape,), strict=True)
-    self._testReturnValues(fn_true, fn_false, (1,), (3,),
-                           strict=True)
+    self._testReturnValues(fn_true, fn_false, (1,), (3,), strict=True)
 
   @test_util.run_deprecated_v1
   def test_singleton_namedtuple(self):
@@ -887,10 +916,13 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     if not tf2.enabled():
       self._testShape(fn_true, fn_false, shape)
       self._testReturnValues(fn_true, fn_false, 1, 3)
-    self._testShape(fn_true, fn_false, SingletonTestTuple(shape),
-                    strict=True)
-    self._testReturnValues(fn_true, fn_false, SingletonTestTuple(1),
-                           SingletonTestTuple(3), strict=True)
+    self._testShape(fn_true, fn_false, SingletonTestTuple(shape), strict=True)
+    self._testReturnValues(
+        fn_true,
+        fn_false,
+        SingletonTestTuple(1),
+        SingletonTestTuple(3),
+        strict=True)
 
   @test_util.run_deprecated_v1
   def test_tuple(self):
@@ -902,8 +934,8 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def test_namedtuple(self):
-    shape = TestTuple(tensor_shape.TensorShape([]),
-                      tensor_shape.TensorShape([]))
+    shape = TestTuple(
+        tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
     fn_true = lambda: TestTuple(constant_op.constant(1), 2)
     fn_false = lambda: TestTuple(constant_op.constant(3), 4)
     self._testShape(fn_true, fn_false, shape)
@@ -911,22 +943,29 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def test_nested(self):
-    shape = [tensor_shape.TensorShape([]),
-             TestTuple(tensor_shape.TensorShape([]),
-                       [tensor_shape.TensorShape([]),
-                        tensor_shape.TensorShape([])]),
-             tensor_shape.TensorShape([5, 5]),
-             tensor_shape.TensorShape([])]
+    shape = [
+        tensor_shape.TensorShape([]),
+        TestTuple(
+            tensor_shape.TensorShape([]),
+            [tensor_shape.TensorShape([]),
+             tensor_shape.TensorShape([])]),
+        tensor_shape.TensorShape([5, 5]),
+        tensor_shape.TensorShape([])
+    ]
 
     def true_fn():
-      return [constant_op.constant(1),
-              TestTuple(constant_op.constant(2), [3, 4]),
-              array_ops.zeros([5, 5]), 6]
+      return [
+          constant_op.constant(1),
+          TestTuple(constant_op.constant(2), [3, 4]),
+          array_ops.zeros([5, 5]), 6
+      ]
 
     def false_fn():
-      return [constant_op.constant(11),
-              TestTuple(constant_op.constant(12), [13, 14]),
-              array_ops.ones([5, 5]), 16]
+      return [
+          constant_op.constant(11),
+          TestTuple(constant_op.constant(12), [13, 14]),
+          array_ops.ones([5, 5]), 16
+      ]
 
     self._testShape(true_fn, false_fn, shape)
     self._testReturnValues(
@@ -940,10 +979,10 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
     def body(i, matrix):
       result_tuple, unused_matrix = control_flow_ops.cond(
-          constant_op.constant(True),
-          lambda: (TestTuple(matrix * 2, matrix * 4), matrix),
-          lambda: (TestTuple(matrix * 4, matrix * 2), matrix))
-      return [i+1, result_tuple.a]
+          constant_op.constant(True), lambda:
+          (TestTuple(matrix * 2, matrix * 4), matrix), lambda:
+          (TestTuple(matrix * 4, matrix * 2), matrix))
+      return [i + 1, result_tuple.a]
 
     iteration, matrix = control_flow_ops.while_loop(
         lambda i, matrix: i < 10,
@@ -1113,9 +1152,6 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     """Verify disjoint branches across while iterations are run in parallel."""
     if control_flow_v2_toggles.control_flow_v2_enabled():
       self.skipTest("b/138870290")
-    if test.is_built_with_rocm():
-      self.skipTest(
-          "Disable subtest on ROCm due to missing Cholesky op support")
 
     with ops.Graph().as_default() as g:
       nbranches = 7
@@ -1124,16 +1160,20 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               random_ops.random_uniform([nbranches, 8, 512]) + 1e-3))
 
       def make_branch(i, mat, name):
+
         def branch_fn():
           next_i = i + 1
           with ops.device("gpu:0"):
             return next_i, math_ops.reduce_sum(
                 linalg_ops.cholesky(mat, name=name + "_Cholesky"))
+
         return branch_fn
 
       def make_branches(i):
-        return [make_branch(i, matrices[bi], "br{}".format(bi))
-                for bi in range(nbranches)]
+        return [
+            make_branch(i, matrices[bi], "br{}".format(bi))
+            for bi in range(nbranches)
+        ]
 
       def cond(i, _):
         return i < nbranches
@@ -1163,9 +1203,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertLen(chol_node_stats, nbranches)
 
     chol_node_stats = sorted(chol_node_stats, key=lambda stats: stats.node_name)
-    op_start_nanos = [
-        stats.all_start_nanos for stats in chol_node_stats
-    ]
+    op_start_nanos = [stats.all_start_nanos for stats in chol_node_stats]
     op_end_nanos = [
         stats.all_start_nanos + stats.op_end_rel_nanos
         for stats in chol_node_stats
@@ -1494,20 +1532,26 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
   @test_util.enable_control_flow_v2
   @test_util.run_in_graph_and_eager_modes
   def testSkipsUnnecessaryCaptureGradients(self):
+
     @custom_gradient.custom_gradient
     def gradient_trap(t):
+
       def grad(w):
         # Computing this gradient should fail the test
         check_ops.assert_equal(0, 1)
         return w
+
       return t, grad
 
     x = array_ops.constant(0.0, name="x")
     y = array_ops.constant(1.0, name="y")
+
     def cond(s):
       return s < 10.0
+
     def body(s):
-      return s + 2*x + gradient_trap(y)
+      return s + 2 * x + gradient_trap(y)
+
     with backprop.GradientTape() as tape:
       tape.watch(x)
       out = control_flow_ops.while_loop(cond, body, (array_ops.constant(0.0),))
@@ -1547,6 +1591,7 @@ class AssertTest(test_util.TensorFlowTestCase):
       self.evaluate(whiny(False))
 
     self.assertAllEqual(whiny(True), 5)
+
 
 if __name__ == "__main__":
   googletest.main()

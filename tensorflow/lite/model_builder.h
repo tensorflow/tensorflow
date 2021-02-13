@@ -20,7 +20,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MODEL_BUILDER_H_
 #define TENSORFLOW_LITE_MODEL_BUILDER_H_
 
+#include <stddef.h>
+
 #include <memory>
+#include <string>
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 

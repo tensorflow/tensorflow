@@ -12,6 +12,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available", "if_llvm_system_z_available")
 
 package(
     default_visibility = [":friends"],
@@ -55,8 +56,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
-        "//tensorflow/compiler/xla/service/mlir_gpu:kernel_lowering",
-        "//tensorflow/compiler/xla/service/mlir_gpu:passes",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:cuda_libdevice_path",
         "@llvm-project//llvm:Support",
@@ -77,35 +76,13 @@ cc_library(
         "@llvm-project//mlir:SCFToGPUPass",
         "@llvm-project//mlir:SCFToStandard",
         "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-    ],
-)
-
-tf_cc_binary(
-    name = "tf_to_gpu_binary",
-    srcs = [
-        "crash_handler.h",
-        "tf_to_gpu_binary.cc",
-    ],
-    visibility = [
-        "//tensorflow/compiler/mlir/tools/kernel_gen/tests/tf_to_gpu_binary:__pkg__",
-        "//tensorflow/core/kernels/mlir_generated:__pkg__",
-    ],
-    deps = [
-        ":kernel_creator",
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform",
-        "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Pass",
     ],
 )
 
@@ -125,8 +102,10 @@ tf_cc_binary(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:CodeGen",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
@@ -134,7 +113,11 @@ tf_cc_binary(
         "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TargetLLVMIR",
-    ],
+    ] + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+    ]),
 )
 
 tf_cc_binary(
@@ -183,15 +166,16 @@ cc_library(
     srcs = ["tf_cuda_runtime_wrappers.cc"],
     compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
-    deps = [
+    deps = if_cuda_is_configured([
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/stream_executor:stream_header",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ]),
 )
 
 cc_library(
@@ -201,6 +185,7 @@ cc_library(
     copts = if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = if_rocm_is_configured([
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",

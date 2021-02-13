@@ -208,7 +208,7 @@ class QN(object):
     if self.has_subscript():
       return gast.Subscript(
           value=self.parent.ast(),
-          slice=gast.Index(self.qn[-1].ast()),
+          slice=self.qn[-1].ast(),
           ctx=CallerMustSetThis)
     if self.has_attr():
       return gast.Attribute(
@@ -247,16 +247,16 @@ class QnResolver(gast.NodeTransformer):
     # TODO(mdan): This may no longer apply if we overload getitem.
     node = self.generic_visit(node)
     s = node.slice
-    if not isinstance(s, gast.Index):
+    if isinstance(s, (gast.Tuple, gast.Slice)):
       # TODO(mdan): Support range and multi-dimensional indices.
       # Continuing silently because some demos use these.
       return node
-    if isinstance(s.value, gast.Constant):
-      subscript = QN(Literal(s.value.value))
+    if isinstance(s, gast.Constant) and s.value != Ellipsis:
+      subscript = QN(Literal(s.value))
     else:
       # The index may be an expression, case in which a name doesn't make sense.
-      if anno.hasanno(node.slice.value, anno.Basic.QN):
-        subscript = anno.getanno(node.slice.value, anno.Basic.QN)
+      if anno.hasanno(s, anno.Basic.QN):
+        subscript = anno.getanno(s, anno.Basic.QN)
       else:
         return node
     if anno.hasanno(node.value, anno.Basic.QN):

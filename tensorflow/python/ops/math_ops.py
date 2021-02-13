@@ -70,6 +70,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
 import numpy as np
 import six
 from six.moves import builtins
@@ -99,8 +100,16 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
+
+np_dtypes = LazyLoader(
+    "np_dtypes", globals(),
+    "tensorflow.python.ops.numpy_ops.np_dtypes")
+
 
 # Aliases for some automatically-generated names.
 nextafter = gen_math_ops.next_after
@@ -464,8 +473,8 @@ def divide(x, y, name=None):
     return DivideDelegateWithName(x, name) / y
   else:
     # We do conversion here to make sure at least x is a tensor.
-    if not tensor_util.is_tensor(x):
-      dtype = y.dtype.base_dtype if tensor_util.is_tensor(y) else None
+    if not tensor_util.is_tf_type(x):
+      dtype = y.dtype.base_dtype if tensor_util.is_tf_type(y) else None
       x = ops.convert_to_tensor(x, dtype=dtype)
     return x / y
 
@@ -1130,6 +1139,48 @@ ops.Tensor._override_operator("__neg__", gen_math_ops.neg)
 ops.Tensor._override_operator("__abs__", abs)
 
 
+def _maybe_get_dtype(x):
+  """Returns a numpy type if available from x. Skips if x is numpy.ndarray."""
+  # Don't put np.ndarray in this list, because np.result_type looks at the
+  # value (not just dtype) of np.ndarray to decide the result type.
+  if isinstance(x, numbers.Real):
+    return x
+  if isinstance(x, ops.Tensor):
+    return x.dtype.as_numpy_dtype
+  if isinstance(x, dtypes.DType):
+    return x.as_numpy_dtype
+  if isinstance(x, tensor_shape.TensorShape):
+    return np.int32
+  if isinstance(x, (list, tuple)):
+    raise ValueError("Got sequence {}".format(x))
+  return x
+
+
+def maybe_promote_tensors(*tensors, force_same_dtype=True):
+  """Promote tensors if numpy style promotion is enabled."""
+  if not tensors:
+    return tensors
+  if not ops._numpy_style_type_promotion:
+    if not force_same_dtype:
+      return tensors
+    promoted_tensors = []
+    promoted_tensors.append(tensors[0])
+    dtype = tensors[0].dtype.base_dtype
+    for tensor in tensors[1:]:
+      promoted_tensors.append(
+          ops.convert_to_tensor(tensor, dtype, name="x"))
+    return promoted_tensors
+  result_type = np_dtypes._result_type(
+      *[_maybe_get_dtype(x) for x in nest.flatten(tensors)])
+  def _promote_or_cast(x):
+    if isinstance(x, ops.Tensor):
+      x = cast(x, result_type)
+    else:
+      x = ops.convert_to_tensor(x, result_type)
+    return x
+  return [_promote_or_cast(x) for x in tensors]
+
+
 def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   """Register operators with different tensor and scalar versions.
 
@@ -1145,6 +1196,10 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
       try:
+        # force_same_dtype=False to preserve existing TF behavior
+        # TODO(b/178860388): Figure out why binary_op_wrapper and
+        #   r_binary_op_wrapper use different force_same_dtype values.
+        x, y = maybe_promote_tensors(x, y, force_same_dtype=False)
         return func(x, y, name=name)
       except (TypeError, ValueError) as e:
         # Even if dispatching the op failed, the RHS may be a tensor aware
@@ -1175,7 +1230,9 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
 
   def r_binary_op_wrapper(y, x):
     with ops.name_scope(None, op_name, [x, y]) as name:
-      x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
+      # TODO(b/178860388): Figure out why binary_op_wrapper and
+      #   r_binary_op_wrapper use different force_same_dtype values.
+      y, x = maybe_promote_tensors(y, x)
       return func(x, y, name=name)
 
   # Propagate func.__doc__ to the wrappers
@@ -1581,10 +1638,21 @@ _OverrideBinaryOperatorHelper(xor_, "xor")
 ops.Tensor._override_operator("__invert__", invert_)
 
 
-ops.Tensor._override_operator("__lt__", gen_math_ops.less)
-ops.Tensor._override_operator("__le__", gen_math_ops.less_equal)
-ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
-ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
+def _promote_dtypes_decorator(fn):
+  def wrapper(x, y, *args, **kwargs):
+    x, y = maybe_promote_tensors(x, y, force_same_dtype=False)
+    return fn(x, y, *args, **kwargs)
+  return tf_decorator.make_decorator(fn, wrapper)
+
+
+ops.Tensor._override_operator("__lt__", _promote_dtypes_decorator(
+    gen_math_ops.less))
+ops.Tensor._override_operator("__le__", _promote_dtypes_decorator(
+    gen_math_ops.less_equal))
+ops.Tensor._override_operator("__gt__", _promote_dtypes_decorator(
+    gen_math_ops.greater))
+ops.Tensor._override_operator("__ge__", _promote_dtypes_decorator(
+    gen_math_ops.greater_equal))
 
 
 @tf_export("math.equal", "equal")
@@ -1691,6 +1759,7 @@ def tensor_equals(self, other):
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
       (g is None or g.building_function)):
+    self, other = maybe_promote_tensors(self, other)
     return gen_math_ops.equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
@@ -1727,6 +1796,7 @@ def tensor_not_equals(self, other):
   if other is None:
     return True
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+    self, other = maybe_promote_tensors(self, other)
     return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
@@ -2016,7 +2086,7 @@ def reduce_sum_with_dims(input_tensor,
                          keepdims=False,
                          name=None,
                          dims=None):
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._sum(input_tensor, dims, keepdims, name=name))
@@ -2059,6 +2129,7 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor, of the same dtype as the input_tensor.
   """
+  keepdims = bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.euclidean_norm(
@@ -2331,7 +2402,7 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
 
   @end_compatibility
   """
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.mean(
@@ -2491,7 +2562,7 @@ def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.prod
   @end_compatibility
   """
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.prod(
@@ -2678,7 +2749,7 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.min
   @end_compatibility
   """
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._min(
@@ -2805,7 +2876,7 @@ def reduce_max_with_dims(input_tensor,
                          keepdims=False,
                          name=None,
                          dims=None):
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._max(input_tensor, dims, keepdims, name=name))
@@ -2909,7 +2980,7 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.all
   @end_compatibility
   """
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._all(
@@ -3015,7 +3086,7 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.any
   @end_compatibility
   """
-  keepdims = False if keepdims is None else keepdims
+  keepdims = False if keepdims is None else bool(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._any(
@@ -3481,7 +3552,14 @@ def matvec(a,
     return array_ops.squeeze(output, axis=-1)
 
 
-_OverrideBinaryOperatorHelper(matmul, "matmul")
+# TODO(b/178650720): Also support numpy-style type promotion in freestanding TF
+#   functions (e.g. tf.add).
+def matmul_wrapper(a, b, name=None):  # pylint: disable=missing-function-docstring
+  if ops._numpy_style_type_promotion:
+    return a._matmul(b)
+  return matmul(a, b, name=name)
+matmul_wrapper.__doc__ = matmul.__doc__
+_OverrideBinaryOperatorHelper(matmul_wrapper, "matmul")
 
 sparse_matmul = deprecation.deprecated(None, "Use `tf.linalg.matmul` instead")(
     gen_math_ops.sparse_mat_mul)

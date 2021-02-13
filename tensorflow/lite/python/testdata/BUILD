@@ -12,7 +12,10 @@ package(
     licenses = ["notice"],  # Apache 2.0,
 )
 
-exports_files(glob(["*.pb"]))
+exports_files(glob([
+    "*.pb",
+    "*.pbtxt",
+]))
 
 tf_to_tflite(
     name = "permute_float",
@@ -131,7 +134,7 @@ tf_custom_op_py_library(
     srcs = ["double_op.py"],
     dso = [":_double_op.so"],
     kernels = [":double_op_and_kernels"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":gen_double_op_wrapper",
         "//tensorflow/python:framework_for_generated_wrappers",

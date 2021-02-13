@@ -58,10 +58,10 @@ void AnnotateParameterReplication::runOnOperation() {
   ModuleOp m = getOperation();
   OpBuilder builder(m.getContext());
   m.walk([&](tf_device::ClusterFuncOp cluster_func) {
-    auto replicate = cluster_func.getParentOfType<tf_device::ReplicateOp>();
+    auto replicate = cluster_func->getParentOfType<tf_device::ReplicateOp>();
     if (!replicate) return;
     auto mirrored_variable_indices_attr =
-        replicate.getAttrOfType<ArrayAttr>(kMirroredVariableIndicesAttr);
+        replicate->getAttrOfType<ArrayAttr>(kMirroredVariableIndicesAttr);
     llvm::SmallDenseSet<int64_t, 8> mirrored_replicate_args;
     if (mirrored_variable_indices_attr) {
       for (const auto& mirrored_index : mirrored_variable_indices_attr) {

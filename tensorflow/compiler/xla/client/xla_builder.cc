@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
@@ -94,9 +96,12 @@ void SetInstructionAsConstant(HloInstructionProto* instr, int64 id,
   *instr->mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
 }
 
-// Converts a HloComputation into ReducerOr with predicate types.
-HloComputationProto CreateReduceOr(int64 reducer_id,
-                                   HloComputationProto* original_reducer) {
+// Copy `original_reducer` into a new computation proto with `reducer_id` as new
+// id. If `rewrite_into_pred` is true, the instructions in the reducer are
+// rewritten into predicate form.
+HloComputationProto CopyReducer(int64 reducer_id,
+                                HloComputationProto* original_reducer,
+                                bool rewrite_into_pred, int64* global_id) {
   HloComputationProto reducer;
   SetProtoIdAndName(&reducer, StrCat("reduce_or"), kNameSeparator, reducer_id);
   std::vector<int64> operands_id;
@@ -106,19 +111,28 @@ HloComputationProto CreateReduceOr(int64 reducer_id,
         HloOpcode::kParameter) {
       HloInstructionProto* new_param = reducer.add_instructions();
       *new_param = inst;
-      *new_param->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
-      operands_id.push_back(inst.id());
+      new_param->set_id((*global_id)++);
+      *new_param->mutable_name() =
+          GetFullName(inst.name(), '.', new_param->id());
+      if (rewrite_into_pred) {
+        *new_param->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
+      }
+      operands_id.push_back(new_param->id());
     }
     if (inst.id() == original_reducer->root_id()) {
       HloInstructionProto* new_root = reducer.add_instructions();
       *new_root = inst;
-      *new_root->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
-      *new_root->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
+      new_root->set_id((*global_id)++);
+      *new_root->mutable_name() = GetFullName(inst.name(), '.', new_root->id());
+      if (rewrite_into_pred) {
+        *new_root->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
+        *new_root->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
+      }
       new_root->clear_operand_ids();
       for (int64 operand_id : operands_id) {
         new_root->add_operand_ids(operand_id);
       }
-      reducer.set_root_id(inst.id());
+      reducer.set_root_id(new_root->id());
     }
   }
   return reducer;
@@ -132,6 +146,7 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
   }
   return false;
 }
+
 }  // namespace
 
 namespace internal {
@@ -2691,7 +2706,8 @@ XlaOp XlaBuilder::AllGather(XlaOp operand, int64 all_gather_dimension,
                             int64 shard_count,
                             absl::Span<const ReplicaGroup> replica_groups,
                             const absl::optional<ChannelHandle>& channel_id,
-                            const absl::optional<Layout>& layout) {
+                            const absl::optional<Layout>& layout,
+                            const absl::optional<bool> use_global_device_ids) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
@@ -2711,6 +2727,9 @@ XlaOp XlaBuilder::AllGather(XlaOp operand, int64 all_gather_dimension,
     }
     if (channel_id.has_value()) {
       instr.set_channel_id(channel_id->handle());
+    }
+    if (use_global_device_ids.has_value()) {
+      instr.set_use_global_device_ids(use_global_device_ids.value());
     }
 
     TF_ASSIGN_OR_RETURN(
@@ -2830,6 +2849,72 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                            int64 concat_dimension, int64 split_count,
                            const std::vector<ReplicaGroup>& replica_groups,
                            const absl::optional<Layout>& layout) {
+  // Array all_to_all may need to violate layout constraint to be legal so use
+  // the tuple version.
+  if (layout.has_value()) {
+    return AllToAllTuple(operand, split_dimension, concat_dimension,
+                         split_count, replica_groups, layout);
+  }
+  return AllToAllArray(operand, split_dimension, concat_dimension, split_count,
+                       replica_groups);
+}
+
+XlaOp XlaBuilder::AllToAllArray(
+    XlaOp operand, int64 split_dimension, int64 concat_dimension,
+    int64 split_count, const std::vector<ReplicaGroup>& replica_groups) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(
+        const Shape all_to_all_shape,
+        ShapeInference::InferAllToAllShape(*operand_shape, split_dimension,
+                                           concat_dimension, split_count));
+    HloInstructionProto instr;
+    *instr.mutable_shape() = operand_shape->ToProto();
+    if (replica_groups.empty()) {
+      auto* group = instr.add_replica_groups();
+      for (int64 i = 0; i < split_count; ++i) {
+        group->add_replica_ids(i);
+      }
+    } else {
+      for (const ReplicaGroup& group : replica_groups) {
+        *instr.add_replica_groups() = group;
+      }
+    }
+    instr.add_dimensions(split_dimension);
+    TF_ASSIGN_OR_RETURN(
+        XlaOp all_to_all,
+        AddInstruction(std::move(instr), HloOpcode::kAllToAll, {operand}));
+    if (split_dimension == concat_dimension) {
+      return all_to_all;
+    }
+    DimensionVector sizes;
+    for (int64 i = 0; i < operand_shape->rank(); ++i) {
+      if (i != split_dimension) {
+        sizes.push_back(operand_shape->dimensions(i));
+        continue;
+      }
+      sizes.push_back(split_count);
+      sizes.push_back(operand_shape->dimensions(i) / split_count);
+    }
+    all_to_all = Reshape(all_to_all, sizes);
+
+    std::vector<int64> permutation;
+    for (int64 i = 0; i < operand_shape->rank(); ++i) {
+      int64 dim_after_reshape = i >= split_dimension ? i + 1 : i;
+      if (i == concat_dimension) {
+        permutation.push_back(split_dimension);
+      }
+      permutation.push_back(dim_after_reshape);
+    }
+    all_to_all = Transpose(all_to_all, permutation);
+    return Reshape(all_to_all_shape, all_to_all);
+  });
+}
+
+XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64 split_dimension,
+                                int64 concat_dimension, int64 split_count,
+                                const std::vector<ReplicaGroup>& replica_groups,
+                                const absl::optional<Layout>& layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
@@ -3323,7 +3408,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
   *program_shape->mutable_result() =
       ShapeUtil::ChangeElementType(Shape(root->shape()), PRED).ToProto();
 
-  std::vector<HloComputationProto> called_computatons;
+  std::vector<HloComputationProto> called_computations;
   auto operand_is_constant = [&](const HloInstructionProto* instr_proto,
                                  int64 operand_index) -> StatusOr<bool> {
     int64 operand_id = instr_proto->operand_ids(operand_index);
@@ -3336,7 +3421,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
   // graph with have id set to `id`.
   auto process_instruction = [&](const HloInstructionProto* instr_proto,
                                  bool need_rewrite, int64 id,
-                                 absl::Span<int64 const> operand_ids) {
+                                 absl::Span<int64 const> operand_ids,
+                                 int64* global_id) {
     // Rewrite the instruction with following rules:
     // - Unary ops: Convert into bitcast (identity) with type Pred.
     // - Binary ops: Convert into binary or.
@@ -3347,6 +3433,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     // contant False if dimension is static.
     // - Reduce: Convert to reduce or.
     // - Constant: Convert to constant False.
+    // - Reshape, slice, transpose, pad:
+    //   Convert into predicate type with same opcode.
     // - Other ops: Not supported.
     // Create the instruction for the new handle.
     TF_ASSIGN_OR_RETURN(HloOpcode opcode,
@@ -3362,6 +3450,17 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     if (!need_rewrite) {
       *new_instr->mutable_name() =
           GetFullName(instr_proto->opcode(), kNameSeparator, id);
+      if (opcode == HloOpcode::kReduce) {
+        // Copy the reducer to the new module, with a new id that's same as the
+        // reduce op.
+        HloComputationProto* reducer =
+            &embedded_[new_instr->called_computation_ids(0)];
+        int64 reducer_id = (*global_id)++;
+        new_instr->clear_called_computation_ids();
+        new_instr->add_called_computation_ids(reducer_id);
+        called_computations.push_back(CopyReducer(
+            reducer_id, reducer, /*rewrite_into_pred=*/false, global_id));
+      }
       return Status::OK();
     }
     *new_instr->mutable_shape() = ConvertShapeProtoToPred(instr_proto->shape());
@@ -3437,19 +3536,35 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
         break;
       }
       case HloOpcode::kReduce: {
-        int64 reducer_id = new_instr->called_computation_ids(0);
-        called_computatons.push_back(
-            CreateReduceOr(reducer_id, &embedded_[reducer_id]));
+        auto* reducer = &embedded_[new_instr->called_computation_ids(0)];
+        int64 reducer_id = (*global_id)++;
+        new_instr->clear_called_computation_ids();
+        new_instr->add_called_computation_ids(reducer_id);
+        called_computations.push_back(CopyReducer(
+            reducer_id, reducer, /*rewrite_into_pred=*/true, global_id));
         break;
       }
       case HloOpcode::kTuple:
       case HloOpcode::kTranspose:
-      case HloOpcode::kGetTupleElement:
       case HloOpcode::kSlice:
       case HloOpcode::kBroadcast:
       case HloOpcode::kConcatenate:
       case HloOpcode::kReshape:
+      case HloOpcode::kPad:
         break;
+      case HloOpcode::kGetTupleElement: {
+        // Rewrite parameter followed by gte into constants to avoid
+        // rematerializing the tuple parameter (could be very large).
+        int64 operand_handle = instr_proto->operand_ids(0);
+        TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                            LookUpInstructionByHandle(operand_handle));
+        TF_ASSIGN_OR_RETURN(HloOpcode operand_opcode,
+                            StringToHloOpcode(operand_proto->opcode()));
+        if (operand_opcode == HloOpcode::kParameter) {
+          SetInstructionAsConstant(new_instr, id, new_shape, true);
+        }
+        break;
+      }
       case HloOpcode::kGetDimensionSize: {
         int64 dimension = instr_proto->dimensions(0);
         int64 operand_handle = instr_proto->operand_ids(0);
@@ -3543,6 +3658,18 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       should_visit_operand = false;
     }
 
+    if (opcode == HloOpcode::kGetTupleElement) {
+      int64 operand_handle = instr_proto->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          LookUpInstructionByHandle(operand_handle));
+      TF_ASSIGN_OR_RETURN(HloOpcode operand_opcode,
+                          StringToHloOpcode(operand_proto->opcode()));
+      if (operand_opcode == HloOpcode::kParameter) {
+        // Don't rematerialize the whole parameter if it's followed by a GTE.
+        should_visit_operand = false;
+      }
+    }
+
     if (opcode == HloOpcode::kSelect) {
       TF_ASSIGN_OR_RETURN(bool constant_predicate,
                           operand_is_constant(instr_proto, 0));
@@ -3564,10 +3691,11 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     if (next_operand >= instr_proto->operand_ids_size() ||
         !should_visit_operand || InstrIsSetBound(instr_proto)) {
       // No more operands to process, process self.
-      int64 new_id = ++global_id;
+      int64 new_id = global_id++;
       VLOG(3) << "new_id: " << new_id << "instr: " << instr_proto->name();
       TF_RETURN_IF_ERROR(process_instruction(instr_proto, item.need_rewrite,
-                                             new_id, item.processed_operands));
+                                             new_id, item.processed_operands,
+                                             &global_id));
       stacktop_id = new_id;
       seen[item_key] = stacktop_id;
       worklist.pop_back();
@@ -3599,10 +3727,14 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
   module->set_entry_computation_name(entry.name());
   module->set_entry_computation_id(entry.id());
   *module->mutable_host_program_shape() = *program_shape;
-  for (auto& called_comp : called_computatons) {
+  for (auto& called_comp : called_computations) {
     *module->add_computations() = called_comp;
   }
   *module->add_computations() = std::move(entry);
+  // Make sure all ids appear in the computation with ascending order.
+  absl::c_sort(*module->mutable_computations(),
+               [](const HloComputationProto& c1,
+                  const HloComputationProto& c2) { return c1.id() < c2.id(); });
   XLA_VLOG_LINES(3, module->DebugString());
   return std::move(computation);
 }
@@ -4513,10 +4645,11 @@ XlaOp AllGather(const XlaOp operand, int64 all_gather_dimension,
                 int64 shard_count,
                 absl::Span<const ReplicaGroup> replica_groups,
                 const absl::optional<ChannelHandle>& channel_id,
-                const absl::optional<Layout>& layout) {
+                const absl::optional<Layout>& layout,
+                const absl::optional<bool> use_global_device_ids) {
   return operand.builder()->AllGather(operand, all_gather_dimension,
                                       shard_count, replica_groups, channel_id,
-                                      layout);
+                                      layout, use_global_device_ids);
 }
 
 XlaOp CrossReplicaSum(const XlaOp operand,
@@ -4538,6 +4671,15 @@ XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
                const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
                                      split_count, replica_groups, layout);
+}
+
+XlaOp AllToAllTuple(const XlaOp operand, int64 split_dimension,
+                    int64 concat_dimension, int64 split_count,
+                    const std::vector<ReplicaGroup>& replica_groups,
+                    const absl::optional<Layout>& layout) {
+  return operand.builder()->AllToAllTuple(operand, split_dimension,
+                                          concat_dimension, split_count,
+                                          replica_groups, layout);
 }
 
 XlaOp CollectivePermute(

@@ -20,18 +20,20 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
-#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace xla {
@@ -40,7 +42,7 @@ constexpr char kTpuPlatform[] = "tpu";
 
 class TpuDevice : public PjRtDevice {
  public:
-  TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
+  TpuDevice(int id, int task_id, const std::array<int, 3>& coords,
             int core_on_chip);
 
   const std::array<int, 3>& coords() const { return coords_; }
@@ -51,8 +53,31 @@ class TpuDevice : public PjRtDevice {
   static xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
 
+  PjRtClient* client() const override { return nullptr; }
+
+  bool IsAddressable() const override { return false; }
+
+  int id() const override { return id_; }
+
+  int task_id() const override { return task_id_; }
+
+  int local_hardware_id() const override { return -1; }
+
+  absl::string_view device_kind() const override { return device_kind_; }
+
+  Status TransferToInfeed(const LiteralSlice& literal) override {
+    return Unimplemented("Infeed not yet implemented via this API");
+  }
+
+  Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
+    return Unimplemented("Outfeed not yet implemented via this API");
+  }
+
  private:
+  const int id_;
+  const int task_id_;
   const std::array<int, 3> coords_;
+  const std::string device_kind_ = "Cloud TPU";
   // Index of the core of the same chip.
   int core_on_chip_;
 };
@@ -67,7 +92,7 @@ class PyTpuClient {
   explicit PyTpuClient(std::string platform_name,
                        std::unique_ptr<tpu_driver::TpuDriver> driver,
                        std::vector<std::shared_ptr<PjRtDevice>> devices,
-                       int host_id);
+                       int task_id);
   virtual ~PyTpuClient() = default;
 
   PyTpuClient(const PyTpuClient&) = delete;
@@ -90,7 +115,7 @@ class PyTpuClient {
   const std::map<int, std::shared_ptr<PjRtDevice>>& id_to_device() const {
     return id_to_device_;
   }
-  int host_id() const { return host_id_; }
+  int task_id() const { return task_id_; }
   const std::string& platform_name() const { return platform_name_; }
 
   StatusOr<Shape> ChooseCompactLayoutForShape(Shape subshape) {
@@ -115,7 +140,7 @@ class PyTpuClient {
   std::map<int, std::shared_ptr<PjRtDevice>> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<std::shared_ptr<PjRtDevice>> local_devices_;
-  int host_id_;
+  int task_id_;
 
   // A thread pool for scheduling core executions in parallel.
   std::unique_ptr<tensorflow::thread::ThreadPool> pool_;
@@ -298,9 +323,8 @@ class PyTpuExecutable {
     return device_assignment_;
   }
 
-  const std::vector<std::pair<int, int>>& addressable_device_logical_ids()
-      const {
-    return addressable_device_logical_ids_;
+  const std::vector<std::pair<int, int>>& local_logical_device_ids() const {
+    return local_logical_device_ids_;
   }
 
   const std::vector<std::shared_ptr<PjRtDevice>>& local_devices() const {
@@ -320,6 +344,10 @@ class PyTpuExecutable {
   StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
   ExecuteOnLocalDevices(
       absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
+
+  StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
+  ExecuteShardedOnLocalDevices(
+      absl::Span<const std::vector<PyTpuBuffer*>> args);
 
   void Delete() { executables_.clear(); }
 
@@ -341,14 +369,16 @@ class PyTpuExecutable {
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
-  // (i.e. addressable_device_logical_ids_[i] = (i, 0)), but this may not be the
-  // case on multi-host platforms. If there are 4 replicas and 2 partitions on a
-  // single host platform, size of addressable_device_logical_ids_ is 4*2 = 8.
-  std::vector<std::pair<int, int>> addressable_device_logical_ids_;
+  // (i.e. local_logical_device_ids_[i] = (i, 0)), but this may not be the case
+  // on multi-host platforms.
+  // If there are 4 replicas and 2 partitions on a single host platform, size of
+  // local_logical_device_ids_ is 4*2 = 8.
+  std::vector<std::pair<int, int>> local_logical_device_ids_;
 
-  // local_devices_[i] is the Device to which addressable_device_logical_ids_[i]
-  // is assigned. shared_ptrs instead of unique_ptrs to play well with the
-  // Python bindings (see xla.cc).
+  // local_devices_[i] is the Device to which local_logical_device_ids_[i] is
+  // assigned.
+  // shared_ptrs instead of unique_ptrs to play well with the Python bindings
+  // (see xla.cc).
   std::vector<std::shared_ptr<PjRtDevice>> local_devices_;
 
   xla::Shape result_shape_;

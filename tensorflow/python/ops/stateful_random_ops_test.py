@@ -18,11 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import re
 
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.python.distribute import values as dist_values
 from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
@@ -33,7 +33,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
@@ -45,6 +44,7 @@ from tensorflow.python.ops import stateful_random_ops as \
 random
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training.tracking import util as tracking_util
 
 
 g_seeded = None
@@ -637,49 +637,6 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(g1.state.read_value(), g2.state.read_value())
 
   @test_util.run_v2_only
-  def testFunArgAlgIsInt(self):
-    """Tests that `algorithm` is `int` when reconstructed from composite tensor.
-    """
-    @def_function.function
-    def f(g):
-      self.assertIsInstance(g.algorithm, six.integer_types)
-      return g.make_seeds(), g
-    gen = random.Generator.from_seed(123, alg="philox")
-    f(gen)
-
-  @test_util.run_v2_only
-  def testLimitedRetracingWithCompositeTensors(self):
-    """Tests that RNGs with the same shape/dtype won't cause retracing.
-    """
-    trace_count = [0]
-
-    @def_function.function
-    def f(x):
-      trace_count[0] += 1
-      return x.normal([])
-
-    f(random.Generator.from_seed(1))
-    f(random.Generator.from_seed(2))
-    self.assertEqual(trace_count[0], 1)
-
-  def testMostSpecificCompatibleType(self):
-    """Tests GeneratorSpec.most_specific_compatible_type.
-    """
-    spec = random.GeneratorSpec(shape=(2, 3), dtype=dtypes.int32)
-    res = spec.most_specific_compatible_type(
-        random.GeneratorSpec(shape=(2, 3), dtype=dtypes.int32))
-    self.assertEqual(spec, res)
-    with self.assertRaisesWithPredicateMatch(ValueError, ""):
-      spec.most_specific_compatible_type(
-          tensor_spec.TensorSpec(shape=(2, 3), dtype=dtypes.int32))
-    with self.assertRaisesWithPredicateMatch(ValueError, ""):
-      spec.most_specific_compatible_type(
-          random.GeneratorSpec(shape=(2, 4), dtype=dtypes.int32))
-    with self.assertRaisesWithPredicateMatch(ValueError, ""):
-      spec.most_specific_compatible_type(
-          random.GeneratorSpec(shape=(2, 3), dtype=dtypes.int64))
-
-  @test_util.run_v2_only
   def testCreateOutsideMirroredStrat(self):
     """Tests RNG/MirrorStrategy interaction #1.
 
@@ -701,29 +658,6 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       values = results.values
       self.assertAllEqual(2, len(values))
       self.assertAllDifferent(values)
-
-  @test_util.run_v2_only
-  def testMirroredStratParaSyncDisallowed(self):
-    """Tests that generator creation in MirroredStrategy is disallowed.
-    """
-    creators = [
-        lambda: random.Generator.from_seed(1234),
-        random.Generator.from_non_deterministic_state,
-    ]
-    shape = [3, 4]
-    dtype = dtypes.int32
-    strat = MirroredStrategy(devices=["cpu:0", "cpu:1"])
-    for creator in creators:
-      with strat.scope():
-        with self.assertRaisesWithPredicateMatch(
-            ValueError, "disallowed"):
-          creator()  # pylint: disable=cell-var-from-loop
-      def f():
-        gen = creator()  # pylint: disable=cell-var-from-loop
-        return gen.uniform_full_int(shape=shape, dtype=dtype)
-      with self.assertRaisesWithPredicateMatch(
-          ValueError, "disallowed"):
-        strat.extended.call_for_each_replica(fn=f)
 
   @test_util.run_v2_only
   def testMirroredStratParaAsync(self):
@@ -763,6 +697,23 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     g = random.Generator.from_seed(1)
     r2 = g.uniform_full_int(shape=shape, dtype=dtype)
     self.assertAllEqual(r1, r2)
+
+  @test_util.run_v2_only
+  def testRestore(self):
+    """Tests save and restore.
+    """
+    fname = os.path.join(self.get_temp_dir(), "checkpoint")
+    g = random.Generator.from_seed(1)
+    cp = tracking_util.Checkpoint(g=g)
+    def write_restore_compare():
+      cp.write(fname)
+      r1 = g.uniform([], dtype=dtypes.uint32, minval=None)
+      cp.restore(fname)
+      r2 = g.uniform([], dtype=dtypes.uint32, minval=None)
+      self.assertAllEqual(r1, r2)
+    # Run multiple times so that cp.write is called in various RNG states
+    for _ in range(2):
+      write_restore_compare()
 
 
 if __name__ == "__main__":
