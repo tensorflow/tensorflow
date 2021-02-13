@@ -367,8 +367,6 @@ def OperandsBroadcastToOutputType : Constraint<CPred<
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
-def HaveSameType : Constraint<CPred<"$0.getType(), $1.getType()">>;
-
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
 multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
@@ -668,3 +666,21 @@ def FoldNormalizationIntoSoftmax : Pat<
    (AxesIsLastDimension $axes, $max_input),
    (HasOneUse $sub),
    (HasOneUse $max)]>;
+
+def HaveSameType : Constraint<CPred<"($0.getType() == $1.getType())">>;
+
+class AllElementsAre<string val> : Constraint<CPred<
+  "($0.isa<DenseElementsAttr>() && "
+   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isF32() && "
+   "std::all_of($0.cast<DenseElementsAttr>().getValues<float>().begin(), "
+               "$0.cast<DenseElementsAttr>().getValues<float>().end(), "
+               "[](float v){ return v == " #val# ";}))">>;
+
+// Optimize X*1 to X
+def OptimizeMul1ToIdentity : Pat<
+  (TFL_MulOp $input,
+             (ConstantOp $constant),
+             TFL_AF_None),
+  (replaceWithValue $input),
+  [(HaveSameType $input, $constant),
+   (AllElementsAre<"1.0f"> $constant)]>;
