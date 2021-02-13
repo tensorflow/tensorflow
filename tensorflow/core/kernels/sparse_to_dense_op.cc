@@ -37,6 +37,12 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/core/kernels/gpu_utils.h"
+#include "tensorflow/core/kernels/sparse_to_dense_op_gpu.h"
+#include "tensorflow/core/platform/stream_executor.h"
+#endif // GOOGLE_CUDA
+
 namespace tensorflow {
 
 // Operator to convert sparse representations to dense.
@@ -164,5 +170,113 @@ REGISTER_KERNELS_ALL(tstring);
 
 #undef REGISTER_KERNELS_ALL
 #undef REGISTER_KERNELS
+
+#if GOOGLE_CUDA
+template <typename T, typename Index>
+class SparseToDenseGPU : public OpKernel {
+ public:
+  explicit SparseToDenseGPU(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("validate_indices", &validate_indices_));
+  }
+
+  void Compute(OpKernelContext* c) override {
+    auto* stream = c->op_device_context()->stream();
+    OP_REQUIRES(c, stream, errors::Internal("No GPU stream available."));
+
+    // sparse_indices
+    const Tensor& indices = c->input(0);
+    OP_REQUIRES(c, indices.dims() <= 2,
+                errors::InvalidArgument(
+                    "sparse_indices should be a scalar, vector, or matrix, "
+                    "got shape ",
+                    indices.shape().DebugString()));
+    const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
+    const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
+
+    // output_shape
+    const Tensor& output_shape = c->input(1);
+    OP_REQUIRES(
+        c, TensorShapeUtils::IsVector(output_shape.shape()),
+        errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                output_shape.shape().DebugString()));
+    OP_REQUIRES(c, output_shape.NumElements() == num_dims,
+                errors::InvalidArgument(
+                    "output_shape has incorrect number of elements: ",
+                    output_shape.NumElements(), " should be: ", num_dims));
+
+    // sparse_values
+    const Tensor& sparse_values = c->input(2);
+    const int64 num_values = sparse_values.NumElements();
+    OP_REQUIRES(c,
+                sparse_values.dims() == 0 ||
+                    (sparse_values.dims() == 1 && num_values == num_elems),
+                errors::InvalidArgument("sparse_values has incorrect shape ",
+                                        sparse_values.shape().DebugString(),
+                                        ", should be [] or [", num_elems, "]"));
+
+    // default_value
+    const Tensor& default_value = c->input(3);
+    OP_REQUIRES(c, TensorShapeUtils::IsScalar(default_value.shape()),
+                errors::InvalidArgument("default_value should be a scalar."));
+
+    auto output_shape_vec = output_shape.flat<Index>();
+    TensorShape output_tensor_shape;
+    OP_REQUIRES_OK(c, TensorShapeUtils::MakeShape(output_shape_vec.data(),
+                                                  output_shape_vec.size(),
+                                                  &output_tensor_shape));
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(c, c->allocate_output(0, output_tensor_shape, &output));
+
+    Index dense_size = output_shape_vec.data()[0];
+    for (int i = 1; i < output_shape_vec.size(); i++) {
+      dense_size *= output_shape_vec.data()[i];
+    }
+
+    Tensor output_shape_tensor;
+    OP_REQUIRES_OK(c, c->allocate_temp(DataTypeToEnum<Index>::value,
+                                       {output_shape_vec.size()},
+                                       &output_shape_tensor));
+    auto output_shape_ptr = AsDeviceMemory(
+        output_shape_tensor.template flat<Index>().data(),
+        output_shape_tensor.template flat<Index>().size());
+    OP_REQUIRES(c, stream->ThenMemcpy(&output_shape_ptr,
+                                      output_shape_vec.data(),
+                                      num_dims * sizeof(Index)).ok(),
+                errors::InvalidArgument("failed to copy memory from host to "
+                    " device in SparseToDense"));
+
+    functor::LaunchSparseToDense<T, Index>()(
+        c, validate_indices_, indices.flat<Index>().data(),
+        sparse_values.flat<T>().data(), num_elems, num_values,
+        static_cast<Index*>(output_shape_ptr.opaque()), num_dims,
+        default_value.scalar<T>()(), dense_size, output->flat<T>().data());
+  }
+
+ private:
+  bool validate_indices_;
+};
+
+#define REGISTER_GPU_KERNELS(type, index_type)                         \
+  REGISTER_KERNEL_BUILDER(Name("SparseToDense")                        \
+                              .Device(DEVICE_GPU)                      \
+                              .HostMemory("default_value")             \
+                              .HostMemory("output_shape")              \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          SparseToDenseGPU<type, index_type>);
+
+#define REGISTER_GPU_KERNELS_ALL(type) \
+  REGISTER_GPU_KERNELS(type, int32);   \
+  REGISTER_GPU_KERNELS(type, int64);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS_ALL);
+TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS_ALL)
+REGISTER_GPU_KERNELS_ALL(bool)
+
+#undef REGISTER_GPU_KERNELS_ALL
+#undef REGISTER_GPU_KERNELS
+
+#endif // GOOGLE_CUDA
 
 }  // namespace tensorflow
