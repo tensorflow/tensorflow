@@ -1949,9 +1949,19 @@ Status LayoutAssignment::RunOnComputation(
                                   computation->root_instruction()));
       computation->set_root_instruction(new_root);
     } else {
-      // Use the specified shape including tiling info in layout.
-      *(computation->root_instruction()->mutable_shape()) =
-          constraints.ResultLayout()->shape();
+      // Copy the specified tiling info.
+      auto assign_tiling = [&constraints](xla::Shape* subshape,
+                                          const xla::ShapeIndex& index) {
+        if (subshape->IsArray()) {
+          const Shape& result_shape = ShapeUtil::GetSubshape(
+              constraints.ResultLayout()->shape(), index);
+          subshape->mutable_layout()->mutable_tiles()->assign(
+              result_shape.layout().tiles().begin(),
+              result_shape.layout().tiles().end());
+        }
+      };
+      xla::ShapeUtil::ForEachMutableSubshape(
+          computation->root_instruction()->mutable_shape(), assign_tiling);
     }
   }
   return Status::OK();
