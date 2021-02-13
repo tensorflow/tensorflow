@@ -905,6 +905,8 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
 }
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
+  let hasCanonicalizer = 1;
+
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
@@ -973,6 +975,8 @@ def TFL_DepthwiseConv2DOp :
     I32Attr:$depth_multiplier
   );
 
+  let hasCanonicalizer = 1;
+
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 3; }
@@ -1019,6 +1023,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
+
+  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -3929,6 +3935,8 @@ Ba et al. 'Layer Normalization'
   let regions = (region AnyRegion:$internal);
 
   let hasOptions = 1;
+
+  let hasCanonicalizer = 1;
 
   let verifier = [{ return Verify(*this); }];
 
