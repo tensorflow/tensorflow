@@ -418,10 +418,12 @@ StatusOr<HloInstruction*> PartitionBaseCase(
                              ? &*lhs_sharding_transposed_to_match_output
                              : &*rhs_sharding_transposed_to_match_output;
       }
+      CHECK_EQ(Product(slice_sharding->tile_assignment().dimensions()),
+               num_partitions);
       int64 slice_sharding_dim = -1;
       for (int64 i = 0; i < slice_sharding->tile_assignment().num_dimensions();
            ++i) {
-        if (slice_sharding->tile_assignment().dim(i) == num_partitions) {
+        if (slice_sharding->tile_assignment().dim(i) > 1) {
           slice_sharding_dim = i;
           break;
         }
