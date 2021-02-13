@@ -42,7 +42,6 @@ MKL_DEPS = MKL_SHORT_DEPS + [
 
 MKL_TEST_DEPS = [
     ":mkl_input_conversion_op",
-    ":mkl_kernel_util",
     "//tensorflow/cc:cc_ops",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
@@ -440,12 +439,4 @@ tf_mkl_kernel_library(
         "mkl_transpose_op.cc",
     ],
     deps = MKL_DEPS + ["//tensorflow/core/kernels:transpose_op"],
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_kernel_util",
-    srcs = [
-        "mkl_kernel_util.h",
-    ],
-    deps = MKL_DEPS,
 )

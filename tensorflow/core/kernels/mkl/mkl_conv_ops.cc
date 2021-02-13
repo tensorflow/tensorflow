@@ -1857,8 +1857,8 @@ class MklQuantizedConv2DSumReluOp
           .TypeConstraint<input_type>("Tinput")                             \
           .TypeConstraint<qint8>("Tfilter") BIAS_TYPE_CONSTRAINT(bias_type) \
           .TypeConstraint<output_type>("out_type") LABEL,                   \
-      kernel<CPUDevice, input_type, bias_type, output_type, accu_type,      \
-             has_bias, is_depthwise, is_native>);
+      kernel TEMPLATE_ARGS(CPUDevice, input_type, bias_type, output_type,   \
+                           accu_type, has_bias, is_depthwise, is_native));
 
 #define REGISTER_MKL_KERNEL_ALL_INPUT_TYPES(op, kernel, bias_type,            \
                                             output_type, accu_type, has_bias, \
@@ -1886,115 +1886,110 @@ class MklQuantizedConv2DSumReluOp
                                       is_native);
 
 #define LABEL
+#define TEMPLATE_ARGS(CPUDevice, input_type, bias_type, output_type, \
+                      accu_type, has_bias, is_depthwise, is_native)
 #define BIAS_TYPE_CONSTRAINT(bias_type)
-REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("QuantizedConv2DWithBias",
+
+REGISTER_MKL_KERNEL("QuantizedConv2D", NoOp, quint8, float, qint32, qint32,
+                    false, false, false);
+REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("QuantizedConv2DWithBias", NoOp, float,
+                                    qint32, qint32, false, false, false);
+REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("QuantizedConv2DWithBiasAndRelu", NoOp,
+                                    float, qint32, qint32, false, false, false);
+REGISTER_MKL_KERNEL("QuantizedConv2DWithBiasSumAndRelu", NoOp, quint8, float,
+                    qint32, qint32, false, false, false);
+REGISTER_MKL_KERNEL("QuantizedConv2DAndRequantize", NoOp, quint8, float, qint8,
+                    qint8, false, false, false);
+REGISTER_MKL_KERNEL("QuantizedConv2DPerChannel", NoOp, quint8, float, qint32,
+                    qint32, false, false, false);
+REGISTER_MKL_KERNEL("QuantizedConv2DAndRelu", NoOp, quint8, float, qint32,
+                    qint32, false, false, false);
+REGISTER_MKL_KERNEL("QuantizedConv2DAndReluAndRequantize", NoOp, quint8, float,
+                    quint8, quint8, false, false, false);
+REGISTER_MKL_KERNEL("QuantizedDepthwiseConv2D", NoOp, quint8, float, qint32,
+                    qint32, false, false, false);
+REGISTER_MKL_KERNEL("QuantizedDepthwiseConv2DWithBias", NoOp, quint8, float,
+                    qint32, qint32, false, false, false);
+REGISTER_MKL_KERNEL("QuantizedDepthwiseConv2DWithBiasAndRelu", NoOp, quint8,
+                    float, qint32, qint32, false, false, false);
+#undef BIAS_TYPE_CONSTRAINT
+
+#define BIAS_TYPE_CONSTRAINT(bias_type) .TypeConstraint<bias_type>("Tbias")
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES(
+    "QuantizedConv2DWithBiasAndRequantize", NoOp, qint8, qint8, false, false,
+    false);
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES(
+    "QuantizedConv2DWithBiasAndReluAndRequantize", NoOp, quint8, quint8, false,
+    false, false);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
+    "QuantizedConv2DWithBiasSumAndReluAndRequantize", NoOp, quint8, quint8,
+    quint8, false, false, false);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
+    "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize", NoOp, quint8,
+    quint8, qint8, false, false, false);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
+    "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize", NoOp, quint8,
+    quint8, quint8, false, false, false);
+#undef BIAS_TYPE_CONSTRAINT
+#undef TEMPLATE_ARGS
+#undef LABEL
+
+#define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
+#define TEMPLATE_ARGS(CPUDevice, input_type, bias_type, output_type, \
+                      accu_type, has_bias, is_depthwise, is_native)  \
+<CPUDevice, input_type, bias_type, output_type, accu_type, has_bias, is_depthwise, is_native>
+#define BIAS_TYPE_CONSTRAINT(bias_type)
+REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("_MklQuantizedConv2D", MklQuantizedConv2DOp,
+                                    float, qint32, qint32, false, false, true);
+REGISTER_MKL_KERNEL("_MklQuantizedConv2DPerChannel", MklQuantizedConv2DOp,
+                    quint8, float, qint32, qint32, false, false, true);
+REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("_MklQuantizedConv2DWithBias",
                                     MklQuantizedConv2DOp, float, qint32, qint32,
                                     true, false, true);
-REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("QuantizedConv2DWithBiasAndRelu",
+REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("_MklQuantizedConv2DWithBiasAndRelu",
                                     MklQuantizedConv2DReluOp, float, qint32,
                                     qint32, true, false, true);
-REGISTER_MKL_KERNEL("QuantizedConv2DWithBiasSumAndRelu",
+REGISTER_MKL_KERNEL("_MklQuantizedConv2DWithBiasSumAndRelu",
                     MklQuantizedConv2DSumReluOp, quint8, float, qint32, qint32,
                     true, false, true);
-REGISTER_MKL_KERNEL("QuantizedConv2DAndRequantize", MklQuantizedConv2DOp,
+REGISTER_MKL_KERNEL("_MklQuantizedConv2DAndRequantize", MklQuantizedConv2DOp,
                     quint8, float, qint8, qint8, false, false, true);
-REGISTER_MKL_KERNEL("QuantizedConv2DPerChannel", MklQuantizedConv2DOp, quint8,
-                    float, qint32, qint32, false, false, true);
-REGISTER_MKL_KERNEL("QuantizedConv2DAndRelu", MklQuantizedConv2DReluOp, quint8,
-                    float, qint32, qint32, false, false, true);
-REGISTER_MKL_KERNEL("QuantizedConv2DAndReluAndRequantize",
+REGISTER_MKL_KERNEL("_MklQuantizedConv2DAndRelu", MklQuantizedConv2DReluOp,
+                    quint8, float, qint32, qint32, false, false, true);
+REGISTER_MKL_KERNEL("_MklQuantizedConv2DAndReluAndRequantize",
                     MklQuantizedConv2DReluOp, quint8, float, quint8, quint8,
                     false, false, true);
-REGISTER_MKL_KERNEL("QuantizedDepthwiseConv2D", MklQuantizedConv2DOp, quint8,
-                    float, qint32, qint32, false, true, true);
-REGISTER_MKL_KERNEL("QuantizedDepthwiseConv2DWithBias", MklQuantizedConv2DOp,
-                    quint8, float, qint32, qint32, true, true, true);
-REGISTER_MKL_KERNEL("QuantizedDepthwiseConv2DWithBiasAndRelu",
+REGISTER_MKL_KERNEL("_MklQuantizedDepthwiseConv2D", MklQuantizedConv2DOp,
+                    quint8, float, qint32, qint32, false, true, true);
+REGISTER_MKL_KERNEL("_MklQuantizedDepthwiseConv2DWithBias",
+                    MklQuantizedConv2DOp, quint8, float, qint32, qint32, true,
+                    true, true);
+REGISTER_MKL_KERNEL("_MklQuantizedDepthwiseConv2DWithBiasAndRelu",
                     MklQuantizedConv2DReluOp, quint8, float, qint32, qint32,
                     true, true, true);
 #undef BIAS_TYPE_CONSTRAINT
 
 #define BIAS_TYPE_CONSTRAINT(bias_type) .TypeConstraint<bias_type>("Tbias")
 REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES(
-    "QuantizedConv2DWithBiasAndRequantize", MklQuantizedConv2DOp, qint8, qint8,
-    true, false, true);
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES(
-    "QuantizedConv2DWithBiasAndReluAndRequantize", MklQuantizedConv2DReluOp,
-    quint8, quint8, true, false, true);
-REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
-    "QuantizedConv2DWithBiasSumAndReluAndRequantize",
-    MklQuantizedConv2DSumReluOp, quint8, quint8, quint8, true, false, true);
-REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
-    "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize",
-    MklQuantizedConv2DSumReluOp, quint8, quint8, qint8, true, false, true);
-REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
-    "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize",
-    MklQuantizedConv2DReluOp, quint8, quint8, quint8, true, true, true);
-#undef LABEL
-#undef BIAS_TYPE_CONSTRAINT
-
-#define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
-#define BIAS_TYPE_CONSTRAINT(bias_type)
-REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("_MklNativeQuantizedConv2D",
-                                    MklQuantizedConv2DOp, float, qint32, qint32,
-                                    false, false, true);
-REGISTER_MKL_KERNEL("_MklQuantizedConv2DPerChannel", MklQuantizedConv2DOp,
-                    quint8, float, qint32, qint32, false, false, false);
-REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("_MklQuantizedConv2D", MklQuantizedConv2DOp,
-                                    float, qint32, qint32, false, false, false);
-REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("_MklQuantizedConv2DWithBias",
-                                    MklQuantizedConv2DOp, float, qint32, qint32,
-                                    true, false, false);
-REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("_MklQuantizedConv2DWithBiasAndRelu",
-                                    MklQuantizedConv2DReluOp, float, qint32,
-                                    qint32, true, false, false);
-REGISTER_MKL_KERNEL("_MklQuantizedConv2DWithBiasSumAndRelu",
-                    MklQuantizedConv2DSumReluOp, quint8, float, qint32, qint32,
-                    true, false, false);
-REGISTER_MKL_KERNEL("_MklQuantizedConv2DAndRequantize", MklQuantizedConv2DOp,
-                    quint8, float, qint8, qint8, false, false, false);
-REGISTER_MKL_KERNEL("_MklQuantizedConv2DAndRelu", MklQuantizedConv2DReluOp,
-                    quint8, float, qint32, qint32, false, false, false);
-REGISTER_MKL_KERNEL("_MklQuantizedConv2DAndReluAndRequantize",
-                    MklQuantizedConv2DReluOp, quint8, float, quint8, quint8,
-                    false, false, false);
-REGISTER_MKL_KERNEL("_MklQuantizedDepthwiseConv2D", MklQuantizedConv2DOp,
-                    quint8, float, qint32, qint32, false, true, false);
-REGISTER_MKL_KERNEL("_MklQuantizedDepthwiseConv2DWithBias",
-                    MklQuantizedConv2DOp, quint8, float, qint32, qint32, true,
-                    true, false);
-REGISTER_MKL_KERNEL("_MklQuantizedDepthwiseConv2DWithBiasAndRelu",
-                    MklQuantizedConv2DReluOp, quint8, float, qint32, qint32,
-                    true, true, false);
-#undef BIAS_TYPE_CONSTRAINT
-
-#define BIAS_TYPE_CONSTRAINT(bias_type) .TypeConstraint<bias_type>("Tbias")
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES(
     "_MklQuantizedConv2DWithBiasAndRequantize", MklQuantizedConv2DOp, qint8,
-    qint8, true, false, false);
+    qint8, true, false, true);
 REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES(
     "_MklQuantizedConv2DWithBiasAndReluAndRequantize", MklQuantizedConv2DReluOp,
-    quint8, quint8, true, false, false);
+    quint8, quint8, true, false, true);
 REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
     "_MklQuantizedConv2DWithBiasSumAndReluAndRequantize",
-    MklQuantizedConv2DSumReluOp, quint8, quint8, quint8, true, false, false);
+    MklQuantizedConv2DSumReluOp, quint8, quint8, quint8, true, false, true);
 REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
     "_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize",
-    MklQuantizedConv2DSumReluOp, quint8, quint8, qint8, true, false, false);
+    MklQuantizedConv2DSumReluOp, quint8, quint8, qint8, true, false, true);
 REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
     "_MklQuantizedDepthwiseConv2DWithBiasAndReluAndRequantize",
-    MklQuantizedConv2DReluOp, quint8, quint8, quint8, true, true, false);
-#undef LABEL
+    MklQuantizedConv2DReluOp, quint8, quint8, quint8, true, true, true);
 #undef BIAS_TYPE_CONSTRAINT
+#undef TEMPLATE_ARGS
+#undef LABEL
 
 // Register NoOp kernel for ops that will be rewritten to the _Mkl* version
-REGISTER_KERNEL_BUILDER(Name("QuantizedConv2D")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("Tinput")
-                            .TypeConstraint<qint8>("Tfilter")
-                            .TypeConstraint<qint32>("out_type"),
-                        NoOp);
-
 REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<bfloat16>("T"),
