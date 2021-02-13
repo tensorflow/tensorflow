@@ -156,6 +156,8 @@ def get(identifier):
     identifier = str(identifier)
     return deserialize(identifier)
   elif callable(identifier):
+    if inspect.isclass(identifier):
+      identifier = identifier()
     return identifier
   else:
     raise ValueError('Could not interpret initializer identifier: ' +
