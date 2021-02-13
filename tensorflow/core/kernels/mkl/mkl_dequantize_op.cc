@@ -174,18 +174,8 @@ REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklDequantizeOp<CPUDevice, quint8>);
-REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<qint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklDequantizeOp<CPUDevice, qint8>);
-REGISTER_KERNEL_BUILDER(Name("_MklNativeDequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
                         MklDequantizeOp<CPUDevice, quint8, true>);
-REGISTER_KERNEL_BUILDER(Name("_MklNativeDequantize")
+REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
