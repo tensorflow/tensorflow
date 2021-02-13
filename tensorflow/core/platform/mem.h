@@ -62,6 +62,9 @@ std::size_t MallocExtension_GetAllocatedSize(const void* p);
 struct MemoryInfo {
   int64 total = 0;
   int64 free = 0;
+};
+
+struct MemoryBandwidthInfo {
   int64 bw_used = 0;  // memory bandwidth used across all CPU (in MBs/second)
 };
 
@@ -69,6 +72,10 @@ struct MemoryInfo {
 // MemoryInfo structure is INT64_MAX, it means such information is not
 // available.
 MemoryInfo GetMemoryInfo();
+
+// Retrieves the host memory bandwidth information. If any field in the returned
+// structure is INT64_MAX, it means such information is not available.
+MemoryBandwidthInfo GetMemoryBandwidthInfo();
 
 // Returns the amount of RAM available in bytes, or INT64_MAX if unknown.
 static inline int64 AvailableRam() { return GetMemoryInfo().free; }

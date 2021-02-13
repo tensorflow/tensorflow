@@ -96,19 +96,34 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 
   std::function<void(const Status& s, GroupRec* gr)> done_with_cleanup;
   if (cancel_mgr != nullptr) {
+    auto cancelled_mu = std::make_shared<mutex>();
+    // Some callers delete `cancel_mgr` as soon as `done` is called once,
+    // meaning we can't rely on it to avoid calling `done` twice if the local op
+    // is cancelled but the group succeeds.
+    auto cancelled = std::make_shared<bool>(false);
     const CancellationToken token = cancel_mgr->get_cancellation_token();
-    const bool already_cancelled = !cancel_mgr->RegisterCallback(
-        token, [done]() { done(errors::Cancelled("op cancelled"), nullptr); });
+    const bool already_cancelled =
+        !cancel_mgr->RegisterCallback(token, [done, cancelled_mu, cancelled]() {
+          {
+            mutex_lock l(*cancelled_mu);
+            *cancelled = true;
+          }
+          done(errors::Cancelled("op cancelled"), nullptr);
+        });
     if (already_cancelled) {
       done(errors::Cancelled("op cancelled"), nullptr);
       return;
     }
-    done_with_cleanup = [cancel_mgr, done, token](const Status& s,
-                                                  GroupRec* gr) {
-      if (cancel_mgr == nullptr || cancel_mgr->TryDeregisterCallback(token)) {
-        // The operation was never cancelled, so we'll return a normal status.
-        done(s, gr);
+    done_with_cleanup = [cancel_mgr, done, cancelled_mu, cancelled, token](
+                            const Status& s, GroupRec* gr) {
+      {
+        mutex_lock l(*cancelled_mu);
+        if (*cancelled || !cancel_mgr->TryDeregisterCallback(token)) {
+          return;
+        }
       }
+      // The operation was never cancelled, so we'll return a normal status.
+      done(s, gr);
     };
   } else {
     done_with_cleanup = done;

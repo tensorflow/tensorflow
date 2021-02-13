@@ -306,7 +306,8 @@ class DynamicPartitionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testScalarIndexOutOfRange(self):
-    with self.cached_session() as sess:
+    # GPU kernels don't throw exceptions.
+    with self.cached_session(use_gpu=False):
       bad = 17
       data = np.zeros(5)
       partitions = data_flow_ops.dynamic_partition(data, bad, num_partitions=7)
@@ -315,7 +316,8 @@ class DynamicPartitionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testHigherRankIndexOutOfRange(self):
-    with self.cached_session() as sess:
+    # GPU kernels don't throw exceptions.
+    with self.cached_session(use_gpu=False) as sess:
       shape = (2, 3)
       indices = array_ops.placeholder(shape=shape, dtype=np.int32)
       data = np.zeros(shape + (5,))

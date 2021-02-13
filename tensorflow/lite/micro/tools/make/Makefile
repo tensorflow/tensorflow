@@ -93,7 +93,7 @@ third_party/gemmlowp \
 third_party/flatbuffers/include \
 third_party/ruy
 
-TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
+TEST_SCRIPT :=
 
 MICROLITE_LIBS := -lm
 

@@ -107,6 +107,7 @@ class MlirOp : public OpKernel {
       input_descs.push_back(
           std::move(ConvertTensorToDescriptor<InputDataType>(ctx->input(i))));
     }
+    VLOG(4) << ctx->op_kernel().TraceString(*ctx, true);
     auto result_desc = Kernel::Invoke(ctx, input_descs);
     for (const auto& input_desc : input_descs) {
       free(input_desc.descriptor);
