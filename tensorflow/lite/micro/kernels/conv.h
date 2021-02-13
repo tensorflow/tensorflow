@@ -45,9 +45,6 @@ struct OpDataConv {
   // uint8_t these would be 0 and 255.
   int32_t output_activation_min;
   int32_t output_activation_max;
-
-  // Index to buffer for optimizations if applicable.
-  int buffer_idx;
 };
 
 extern const int kConvInputTensor;
@@ -58,19 +55,22 @@ extern const int kConvQuantizedDimension;
 
 // Returns a ConvParams struct with all the parameters needed for a
 // float computation.
-ConvParams ConvParamsFloat(TfLiteConvParams* params, const OpDataConv& data);
+ConvParams ConvParamsFloat(const TfLiteConvParams& params,
+                           const OpDataConv& data);
 
 // Returns a ConvParams struct with all the parameters needed for a
 // quantized computation.
-ConvParams ConvParamsQuantized(TfLiteConvParams* params,
+ConvParams ConvParamsQuantized(const TfLiteConvParams& params,
                                const OpDataConv& data);
 
 TfLiteStatus CalculateOpDataConv(TfLiteContext* context, TfLiteNode* node,
-                                 const TfLiteConvParams* params, int width,
+                                 const TfLiteConvParams& params, int width,
                                  int height, int filter_width,
                                  int filter_height, int out_width,
                                  int out_height, const TfLiteType data_type,
                                  OpDataConv* data);
+
+TfLiteStatus ConvPrepare(TfLiteContext* context, TfLiteNode* node);
 
 }  // namespace tflite
 

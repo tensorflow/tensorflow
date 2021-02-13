@@ -70,17 +70,7 @@ const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor);
 bool HaveSameShapes(const TfLiteEvalTensor* input1,
                     const TfLiteEvalTensor* input2);
 
-inline PaddingType RuntimePaddingType(TfLitePadding padding) {
-  switch (padding) {
-    case TfLitePadding::kTfLitePaddingSame:
-      return PaddingType::kSame;
-    case TfLitePadding::kTfLitePaddingValid:
-      return PaddingType::kValid;
-    case TfLitePadding::kTfLitePaddingUnknown:
-    default:
-      return PaddingType::kNone;
-  }
-}
+PaddingType RuntimePaddingType(TfLitePadding padding);
 
 }  // namespace micro
 }  // namespace tflite
