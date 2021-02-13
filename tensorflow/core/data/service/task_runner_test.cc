@@ -13,13 +13,19 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/core/data/compression_utils.h"
+#include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/data/service/worker.pb.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
 class TestTaskIterator : public TaskIterator {
  public:
   explicit TestTaskIterator(const std::vector<std::vector<Tensor>>& elements)
@@ -28,10 +34,16 @@ class TestTaskIterator : public TaskIterator {
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
     end_of_sequence = index_ >= elements_.size();
     if (!end_of_sequence) {
-      element = elements_[index_++];
+      CompressedElement compressed;
+      TF_RETURN_IF_ERROR(CompressElement(elements_[index_], &compressed));
+      element.emplace_back(DT_VARIANT, TensorShape({}));
+      element[0].scalar<Variant>()() = std::move(compressed);
+      index_ = (index_ + 1) % elements_.size();
     }
     return Status::OK();
   }
+
+  int64 Cardinality() const override { return kInfiniteCardinality; }
 
  private:
   std::vector<std::vector<Tensor>> elements_;
@@ -39,20 +51,24 @@ class TestTaskIterator : public TaskIterator {
 };
 
 // Reads from the task runner, storing results in `*output`.
-Status RunConsumer(int64 consumer_index, int64 start_index,
-                   TaskRunner& task_runner,
-                   std::vector<std::vector<Tensor>>& output) {
-  bool end_of_sequence = false;
-  int64 next_index = start_index;
-  while (!end_of_sequence) {
-    TaskRunner::Request request;
-    request.round_index = next_index++;
-    request.consumer_index = consumer_index;
-    std::vector<Tensor> element;
-    TF_RETURN_IF_ERROR(task_runner.GetNext(request, element, end_of_sequence));
-    if (!end_of_sequence) {
-      output.push_back(element);
-    }
+Status RunConsumer(int64 consumer_index, int64 start_index, int64 end_index,
+                   TaskRunner& task_runner, std::vector<int64>& output) {
+  for (int64 next_index = start_index; next_index < end_index; ++next_index) {
+    GetElementRequest request;
+    request.set_round_index(next_index);
+    request.set_consumer_index(consumer_index);
+    request.set_skipped_previous_round(false);
+    request.set_allow_skip(false);
+    GetElementResponse response;
+    do {
+      TF_RETURN_IF_ERROR(task_runner.GetNext(request, response));
+      if (!response.end_of_sequence()) {
+        std::vector<Tensor> uncompressed;
+        TF_RETURN_IF_ERROR(
+            UncompressElement(response.compressed_element(), &uncompressed));
+        output.push_back(uncompressed[0].flat<int64>()(0));
+      }
+    } while (response.skip_task());
   }
   return Status::OK();
 }
@@ -67,20 +83,15 @@ TEST(FirstComeFirstServedTaskRunner, GetNext) {
   }
   FirstComeFirstServedTaskRunner runner(
       absl::make_unique<TestTaskIterator>(elements));
-  TaskRunner::Request request;
+  GetElementRequest request;
+  GetElementResponse response;
   for (auto& expected_element : elements) {
+    TF_ASSERT_OK(runner.GetNext(request, response));
+    ASSERT_FALSE(response.end_of_sequence());
     std::vector<Tensor> element;
-    bool end_of_sequence;
-    TF_ASSERT_OK(runner.GetNext(request, element, end_of_sequence));
-    ASSERT_FALSE(end_of_sequence);
+    TF_ASSERT_OK(UncompressElement(response.compressed_element(), &element));
     ASSERT_EQ(element.size(), 1);
     test::ExpectEqual(element[0], expected_element[0]);
-  }
-  for (int i = 0; i < 2; ++i) {
-    std::vector<Tensor> element;
-    bool end_of_sequence;
-    TF_ASSERT_OK(runner.GetNext(request, element, end_of_sequence));
-    ASSERT_TRUE(end_of_sequence);
   }
 }
 
@@ -99,7 +110,7 @@ TEST_P(ConsumeParallelTest, ConsumeParallel) {
   }
   RoundRobinTaskRunner runner(absl::make_unique<TestTaskIterator>(elements),
                               num_consumers);
-  std::vector<std::vector<std::vector<Tensor>>> per_consumer_results;
+  std::vector<std::vector<int64>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;
   mutex mu;
   Status error;
@@ -108,8 +119,9 @@ TEST_P(ConsumeParallelTest, ConsumeParallel) {
     per_consumer_results.emplace_back();
     consumers.push_back(absl::WrapUnique(Env::Default()->StartThread(
         {}, absl::StrCat("consumer_", consumer), [&, consumer] {
-          std::vector<std::vector<Tensor>> results;
-          Status s = RunConsumer(consumer, /*start_index=*/0, runner, results);
+          std::vector<int64> results;
+          Status s = RunConsumer(consumer, /*start_index=*/0,
+                                 /*end_index=*/num_elements, runner, results);
           mutex_lock l(mu);
           if (!s.ok()) {
             error = s;
@@ -125,8 +137,7 @@ TEST_P(ConsumeParallelTest, ConsumeParallel) {
   for (int i = 0; i < num_elements; ++i) {
     int consumer = i % num_consumers;
     int round = i / num_consumers;
-    Tensor expected = elements[i][0];
-    test::ExpectEqual(per_consumer_results[consumer][round][0], expected);
+    EXPECT_EQ(per_consumer_results[consumer][round], i);
   }
 }
 
@@ -139,19 +150,20 @@ INSTANTIATE_TEST_SUITE_P(ConsumeParallelTests, ConsumeParallelTest,
                                            std::make_tuple(0, 20)));
 
 TEST(RoundRobinTaskRunner, ConsumeParallelPartialRound) {
-  int64 num_elements = 20;
   int64 num_consumers = 5;
   std::vector<int64> starting_rounds = {12, 11, 11, 12, 12};
-  int64 min_starting_round = 11;
+  int64 end_index = 15;
+  std::vector<std::vector<int64>> expected_consumer_results = {
+      {5, 10, 15}, {1, 6, 11, 16}, {2, 7, 12, 17}, {8, 13, 18}, {9, 14, 19}};
   std::vector<std::vector<Tensor>> elements;
-  for (int64 i = 0; i < num_elements; ++i) {
+  for (int64 i = 0; i < 30; ++i) {
     std::vector<Tensor> element;
     element.push_back(Tensor(i));
     elements.push_back(element);
   }
   RoundRobinTaskRunner runner(absl::make_unique<TestTaskIterator>(elements),
                               num_consumers);
-  std::vector<std::vector<std::vector<Tensor>>> per_consumer_results;
+  std::vector<std::vector<int64>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;
   mutex mu;
   Status error;
@@ -160,9 +172,9 @@ TEST(RoundRobinTaskRunner, ConsumeParallelPartialRound) {
     per_consumer_results.emplace_back();
     consumers.push_back(absl::WrapUnique(Env::Default()->StartThread(
         {}, absl::StrCat("consumer_", consumer), [&, consumer] {
-          std::vector<std::vector<Tensor>> results;
-          Status s =
-              RunConsumer(consumer, starting_rounds[consumer], runner, results);
+          std::vector<int64> results;
+          Status s = RunConsumer(consumer, starting_rounds[consumer], end_index,
+                                 runner, results);
           mutex_lock l(mu);
           if (!s.ok()) {
             error = s;
@@ -176,19 +188,8 @@ TEST(RoundRobinTaskRunner, ConsumeParallelPartialRound) {
   mutex_lock l(mu);
   TF_ASSERT_OK(error);
   for (int consumer = 0; consumer < num_consumers; ++consumer) {
-    auto& results = per_consumer_results[consumer];
-    int start = consumer;
-    int expected_elements = num_elements / num_consumers;
-    if (starting_rounds[consumer] != min_starting_round) {
-      start += num_consumers;
-      expected_elements--;
-    }
-    ASSERT_EQ(results.size(), expected_elements);
-    int index = 0;
-    for (int i = start; i < num_elements; i += num_consumers) {
-      Tensor expected = elements[i][0];
-      test::ExpectEqual(results[index++][0], expected);
-    }
+    EXPECT_EQ(per_consumer_results[consumer],
+              expected_consumer_results[consumer]);
   }
 }
 }  // namespace data

@@ -4,6 +4,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -78,7 +79,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python:__subpackages__",
     ],
 )
 
@@ -172,6 +173,13 @@ tf_cuda_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+# Check that c_api_no_xla does not depend on xla.
+check_deps(
+    name = "c_api_no_xla_check_deps",
+    disallowed_deps = ["//tensorflow/compiler/jit:xla_kernel_creator"],
+    deps = [":c_api_no_xla"],
 )
 
 tf_cuda_library(
@@ -505,11 +513,13 @@ tf_cuda_library(
             "//tensorflow/core:framework",
         ],
     }) + [
-        ":c_api",
+        ":c_api_macros",
+        ":tf_status",
         ":tf_status_helper",
-        ":c_api_internal",
         ":tf_file_statistics",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -684,7 +694,10 @@ tf_cc_test(
     name = "c_api_experimental_test",
     size = "medium",
     srcs = ["c_api_experimental_test.cc"],
-    data = ["testdata/tf_record"],
+    data = [
+        "testdata/tf_record",
+        "//tensorflow/c/experimental/stream_executor/test:test_pluggable_device.so",
+    ],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -704,6 +717,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/types:optional",
     ],
 )

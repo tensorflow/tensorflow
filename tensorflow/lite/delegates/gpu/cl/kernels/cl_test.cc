@@ -63,7 +63,7 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
     RETURN_IF_ERROR(CreateTensor(*creation_context.context, src_shape,
-                                 op_def.src_tensors[0], &src[i]));
+                                 op_def.src_tensors[i], &src[i]));
     RETURN_IF_ERROR(src[i].WriteData(creation_context.queue, src_cpu[i]));
     operation->SetSrc(&src[i], i);
   }
@@ -76,7 +76,7 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
     RETURN_IF_ERROR(CreateTensor(*creation_context.context, dst_shape,
-                                 op_def.dst_tensors[0], &dst[i]));
+                                 op_def.dst_tensors[i], &dst[i]));
 
     operation->SetDst(&dst[i], i);
   }
@@ -111,7 +111,7 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
     RETURN_IF_ERROR(CreateTensor(*creation_context.context, src_shape,
-                                 op_def.src_tensors[0], &src[i]));
+                                 op_def.src_tensors[i], &src[i]));
     RETURN_IF_ERROR(src[i].WriteData(creation_context.queue, src_cpu[i]));
     operation->SetSrc(&src[i], i);
   }
@@ -124,7 +124,7 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
     RETURN_IF_ERROR(CreateTensor(*creation_context.context, dst_shape,
-                                 op_def.dst_tensors[0], &dst[i]));
+                                 op_def.dst_tensors[i], &dst[i]));
 
     operation->SetDst(&dst[i], i);
   }

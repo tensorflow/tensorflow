@@ -35,7 +35,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 template <DataType T, typename S>
 void RearrangeFCWeightsToIOO4I4(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -176,7 +175,6 @@ FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
                       const FullyConnectedAttributes& attr0,
                       const FullyConnectedAttributes& attr1);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 

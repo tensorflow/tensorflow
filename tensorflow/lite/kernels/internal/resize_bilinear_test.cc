@@ -78,7 +78,7 @@ class ResizeBilinearImplTest
     : public ::testing::Test,
       public ::testing::WithParamInterface<tflite::ResizeBilinearParams> {};
 
-TEST_P(ResizeBilinearImplTest, TestResizeBilinear8Bit) {
+TEST_P(ResizeBilinearImplTest, TestResizeBilinearUint8) {
   RandomEngine().seed(38291);
   const int kTestsToRun = 1000;
   const tflite::ResizeBilinearParams op_params = GetParam();
@@ -97,8 +97,8 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinear8Bit) {
   }
 }
 
-TEST_P(ResizeBilinearImplTest, TestResizeBilinear8Bit_2x2) {
-  RandomEngine().seed(38291);
+TEST_P(ResizeBilinearImplTest, TestResizeBilinearUint8_2x2) {
+  RandomEngine().seed(96743);
   const int kTestsToRun = 1000;
   const tflite::ResizeBilinearParams op_params = GetParam();
 
@@ -114,7 +114,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinear8Bit_2x2) {
     if (op_params.align_corners) {
       // Align_corners causes small discrepencies between reference & optimized
       // versions.
-      error_threshold = 3e-4;
+      error_threshold = 1e-3;
     }
     TestOneResizeBilinear<uint8>(op_params, batch, depth, input_width,
                                  input_height, output_width, output_height,
@@ -122,7 +122,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinear8Bit_2x2) {
   }
 }
 
-TEST_P(ResizeBilinearImplTest, TestResizeBilinear) {
+TEST_P(ResizeBilinearImplTest, TestResizeBilinearFloat) {
   RandomEngine().seed(38291);
   const int kTestsToRun = 1000;
   const tflite::ResizeBilinearParams op_params = GetParam();
@@ -139,7 +139,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinear) {
     if (op_params.align_corners) {
       // align_corners causes small discrepencies between reference & optimized
       // versions.
-      error_threshold = 1e-4;
+      error_threshold = 1e-3;
     }
     TestOneResizeBilinear<float>(op_params, batch, depth, input_width,
                                  input_height, output_width, output_height,
@@ -147,7 +147,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinear) {
   }
 }
 
-TEST_P(ResizeBilinearImplTest, TestResizeBilinear_2x2) {
+TEST_P(ResizeBilinearImplTest, TestResizeBilinearFloat_2x2) {
   RandomEngine().seed(38291);
   const int kTestsToRun = 1000;
   const tflite::ResizeBilinearParams op_params = GetParam();
@@ -164,7 +164,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinear_2x2) {
     if (op_params.align_corners) {
       // Align_corners causes small discrepencies between reference & optimized
       // versions.
-      error_threshold = 1e-4;
+      error_threshold = 1e-3;
     }
     TestOneResizeBilinear<float>(op_params, batch, depth, input_width,
                                  input_height, output_width, output_height,
@@ -182,14 +182,12 @@ INSTANTIATE_TEST_SUITE_P(
 
 // A couple of tests to ensure the math behind half_pixel_centers works fine.
 
-TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_3x3to2x2) {
+TEST(ResizeBilinear, TestResizeBilinearHalfPixelCentersFloat_3x3to2x2) {
   // Input: 3x3
   RuntimeShape input_dims_inference({1, 3, 3, 1});
-  // clang-format off
-  std::vector<float> input_data = {1, 2, 3,
-                                   4, 5, 6,
+  std::vector<float> input_data = {1, 2, 3,  //
+                                   4, 5, 6,  //
                                    7, 8, 9};
-  // clang-format on
 
   // Output: 2x2
   RuntimeShape output_dims_inference({1, 2, 2, 1});
@@ -209,10 +207,8 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_3x3to2x2) {
   reference_ops::ResizeBilinear(
       op_params, input_dims_inference, input_data.data(), output_size_dims,
       output_size_data.data(), output_dims_inference, output_data.data());
-  // clang-format off
-  std::vector<float> reference_half_pixel_centers_false = {1, 2.5,
+  std::vector<float> reference_half_pixel_centers_false = {1, 2.5,  //
                                                            5.5, 7};
-  // clang-format on
   for (int i = 0; i < output_buffer_size; i++) {
     EXPECT_EQ(static_cast<float>(output_data[i]),
               static_cast<float>(reference_half_pixel_centers_false[i]));
@@ -223,23 +219,19 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_3x3to2x2) {
   reference_ops::ResizeBilinear(
       op_params, input_dims_inference, input_data.data(), output_size_dims,
       output_size_data.data(), output_dims_inference, output_data.data());
-  // clang-format off
-  std::vector<float> reference_half_pixel_centers_true = {2, 3.5,
+  std::vector<float> reference_half_pixel_centers_true = {2, 3.5,  //
                                                           6.5, 8};
-  // clang-format on
   for (int i = 0; i < output_buffer_size; i++) {
     EXPECT_EQ(static_cast<float>(output_data[i]),
               static_cast<float>(reference_half_pixel_centers_true[i]));
   }
 }
 
-TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x4) {
+TEST(ResizeBilinear, TestResizeBilinearHalfPixelCentersFloat_2x2to4x4) {
   // Input: 2x2
   RuntimeShape input_dims_inference({1, 2, 2, 1});
-  // clang-format off
-  std::vector<float> input_data = {1, 2,
+  std::vector<float> input_data = {1, 2,  //
                                    3, 4};
-  // clang-format on
 
   // Output: 4x4
   RuntimeShape output_dims_inference({1, 4, 4, 1});
@@ -259,13 +251,10 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x4) {
   reference_ops::ResizeBilinear(
       op_params, input_dims_inference, input_data.data(), output_size_dims,
       output_size_data.data(), output_dims_inference, output_data.data());
-  // clang-format off
-  std::vector<float> reference_half_pixel_centers_false =
-      {1,  1.5, 2, 2,
-       2,  2.5, 3, 3,
-       3,  3.5, 4, 4,
-       3,  3.5, 4, 4};
-  // clang-format on
+  std::vector<float> reference_half_pixel_centers_false = {1, 1.5, 2, 2,  //
+                                                           2, 2.5, 3, 3,  //
+                                                           3, 3.5, 4, 4,  //
+                                                           3, 3.5, 4, 4};
   for (int i = 0; i < output_buffer_size; i++) {
     EXPECT_EQ(static_cast<float>(output_data[i]),
               static_cast<float>(reference_half_pixel_centers_false[i]));
@@ -276,13 +265,11 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x4) {
   reference_ops::ResizeBilinear(
       op_params, input_dims_inference, input_data.data(), output_size_dims,
       output_size_data.data(), output_dims_inference, output_data.data());
-  // clang-format off
-  std::vector<float> reference_half_pixel_centers_true =
-      {1,    1.25, 1.75, 2,
-       1.5,  1.75, 2.25, 2.5,
-       2.5,  2.75, 3.25, 3.5,
-       3,    3.25, 3.75, 4};
-  // clang-format on
+  std::vector<float> reference_half_pixel_centers_true = {
+      1,   1.25, 1.75, 2,    //
+      1.5, 1.75, 2.25, 2.5,  //
+      2.5, 2.75, 3.25, 3.5,  //
+      3,   3.25, 3.75, 4};
   for (int i = 0; i < output_buffer_size; i++) {
     EXPECT_EQ(static_cast<float>(output_data[i]),
               static_cast<float>(reference_half_pixel_centers_true[i]));

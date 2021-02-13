@@ -323,7 +323,7 @@ class CpuAllToAllRendezvous
       : xla::Rendezvous<AllToAllParticipantData, std::nullptr_t>(k) {}
 
  protected:
-  xla::StatusOr<ParticipantImplOutput> RunCollectiveOp(
+  xla::StatusOr<std::nullptr_t> RunCollectiveOp(
       const AllToAllParticipantData& /*participant*/) override {
     bool is_primary = InitializationBarrier();
 
@@ -373,7 +373,7 @@ class CpuAllToAllRendezvous
         }
       }
     }
-    return ParticipantImplOutput{is_primary, nullptr};
+    return nullptr;
   }
 };
 
@@ -384,7 +384,7 @@ class CpuCollectivePermuteRendezvous
       : xla::Rendezvous<CollectivePermuteParticipantData, std::nullptr_t>(k) {}
 
  protected:
-  xla::StatusOr<ParticipantImplOutput> RunCollectiveOp(
+  xla::StatusOr<std::nullptr_t> RunCollectiveOp(
       const CollectivePermuteParticipantData& /*participant*/) override {
     bool primary = InitializationBarrier();
 
@@ -415,7 +415,7 @@ class CpuCollectivePermuteRendezvous
         std::memset(p.destination_data.opaque(), 0, p.byte_size);
       }
     }
-    return ParticipantImplOutput{primary, /*custom_output=*/nullptr};
+    return nullptr;
   }
 };
 
@@ -426,7 +426,7 @@ class CpuAllReduceRendezvous
       : xla::Rendezvous<xla::AllReduceParticipantData, std::nullptr_t>(k) {}
 
  protected:
-  xla::StatusOr<ParticipantImplOutput> RunCollectiveOp(
+  xla::StatusOr<std::nullptr_t> RunCollectiveOp(
       const xla::AllReduceParticipantData& participant) override {
     xla::PrimitiveType datatype = participant.buffers.front().primitive_type;
     bool primary = InitializationBarrier();
@@ -465,7 +465,7 @@ class CpuAllReduceRendezvous
           LOG(FATAL) << "Unexpected datatype;";
       }
     }
-    return ParticipantImplOutput{primary, /*custom_output=*/nullptr};
+    return nullptr;
   }
 
  private:

@@ -944,29 +944,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
-  @combinations.generate(combinations.times(
-      combinations.keras_mode_combinations(mode='eager'),
-      combinations.combine(use_keras_tensors=False)))
-  def test_only_some_in_first_arg_derived_from_keras_layer(self):
-    class MyAddAll(layers.Layer):
-
-      def call(self, inputs):
-        x = inputs[0]
-        for inp in inputs[1:]:
-          if inp is not None:
-            x = x + inp
-        return x
-
-    input1 = input_layer_lib.Input(10)
-    input2 = input_layer_lib.Input(10)
-    layer = MyAddAll()
-
-    with self.assertRaisesRegexp(ValueError, 'construct a functional'):
-      layer([0.0, input1, None, input2, None])
-
-  @combinations.generate(combinations.times(
-      combinations.keras_mode_combinations(mode='eager'),
-      combinations.combine(use_keras_tensors=True)))
+  @combinations.generate(combinations.keras_mode_combinations(mode='eager'),)
   def test_only_some_in_first_arg_derived_from_keras_layer_keras_tensors(self):
     # This functionality is unsupported in v1 graphs
 
@@ -1146,7 +1124,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           combinations.keras_mode_combinations(),
-          combinations.keras_tensor_combinations(),
           combinations.combine(share_already_used_layer=[True, False])))
   def test_call_kwarg_derived_from_keras_layer_and_first_arg_is_constant(
       self, share_already_used_layer):
@@ -1246,9 +1223,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
-  @combinations.generate(combinations.times(
-      combinations.keras_mode_combinations(mode='eager'),
-      combinations.keras_tensor_combinations()))
+  @combinations.generate(combinations.keras_mode_combinations(mode='eager'))
   def test_call_some_not_all_nested_in_first_arg_derived_from_keras_layer(self):
     # This functionality is unsupported in v1 graphs
 

@@ -17,18 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
-import numpy as np
-
-from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.platform import test
 
 
-# TODO(b/119837791): Add eager benchmarks too.
-class ChooseFastestBenchmark(test.Benchmark):
+class ChooseFastestBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for static optimizations."""
 
   def benchmark_choose_fastest(self):
@@ -42,9 +36,9 @@ class ChooseFastestBenchmark(test.Benchmark):
 
     merge_dataset = optimization._ChooseFastestDataset(  # pylint: disable=protected-access
         [batch_map_dataset, map_batch_dataset])
-    self._benchmark(map_batch_dataset, "map_batch_dataset")
-    self._benchmark(batch_map_dataset, "batch_map_dataset")
-    self._benchmark(merge_dataset, "merge_dataset")
+    self._benchmark(dataset=map_batch_dataset, name="map_batch_dataset")
+    self._benchmark(dataset=batch_map_dataset, name="batch_map_dataset")
+    self._benchmark(dataset=merge_dataset, name="merge_dataset")
 
   def benchmark_choose_fastest_first_n_iterations(self):
 
@@ -58,48 +52,24 @@ class ChooseFastestBenchmark(test.Benchmark):
     merge_dataset = optimization._ChooseFastestDataset(  # pylint: disable=protected-access
         [batch_map_dataset, map_batch_dataset])
 
-    self._benchmark_first_n(map_batch_dataset, "map_batch_dataset")
-    self._benchmark_first_n(batch_map_dataset, "batch_map_dataset")
-    self._benchmark_first_n(merge_dataset, "merge_dataset")
+    self._benchmark_first_n(dataset=map_batch_dataset, name="map_batch_dataset")
+    self._benchmark_first_n(dataset=batch_map_dataset, name="batch_map_dataset")
+    self._benchmark_first_n(dataset=merge_dataset, name="merge_dataset")
 
   def _benchmark_first_n(self, dataset, name):
     n = 10  # The default num_experiments for ChooseFastestDataset
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    next_element = iterator.get_next()
-
-    deltas = []
-    for _ in range(100):
-      with session.Session() as sess:
-        start = time.time()
-        for _ in range(n):
-          sess.run(next_element.op)
-        end = time.time()
-        deltas.append(end - start)
-    median_wall_time = np.median(deltas) / n
-    self.report_benchmark(
-        iters=n, wall_time=median_wall_time, name=name + "_first_%d" % n)
+    self.run_and_report_benchmark(
+        dataset=dataset,
+        num_elements=n,
+        iters=100,
+        warmup=True,
+        name=name + "_first_%d" % n)
 
   def _benchmark(self, dataset, name):
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    next_element = iterator.get_next()
 
-    with session.Session() as sess:
-      # Run 10 steps to warm up the session caches before taking the first
-      # measurement. Additionally, 10 is the default num_experiments for
-      # ChooseFastestDataset.
-      for _ in range(10):
-        sess.run(next_element.op)
-      deltas = []
-      for _ in range(50):
-        start = time.time()
-        for _ in range(50):
-          sess.run(next_element.op)
-        end = time.time()
-        deltas.append(end - start)
-
-      median_wall_time = np.median(deltas) / 100
-      self.report_benchmark(iters=100, wall_time=median_wall_time, name=name)
+    self.run_and_report_benchmark(
+        dataset=dataset, num_elements=100, iters=100, warmup=True, name=name)
 
 
 if __name__ == "__main__":
-  test.main()
+  benchmark_base.test.main()

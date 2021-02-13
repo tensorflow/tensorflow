@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -77,9 +79,63 @@ int GPUProcessState::BusIdForGPU(TfGpuId tf_gpu_id) {
   return numa_node >= 0 ? numa_node : 0;
 }
 
-Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
-                                            TfGpuId tf_gpu_id,
-                                            size_t total_bytes) {
+// NOLINTNEXTLINE: clang-tidy complains this is unused because of build flags.
+static SubAllocator* CreateSubAllocator(
+    const GPUOptions& options, PlatformGpuId platform_gpu_id,
+    const std::vector<SubAllocator::Visitor>& alloc_visitors,
+    size_t total_bytes, const std::vector<TfGpuId>& peer_gpu_ids) {
+  auto executor = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
+                                                            platform_gpu_id)
+                      .ValueOrDie();
+
+  // FIXME(imintz): Observed OOM issues when using the virtual memory
+  // allocators. This should be reenabled when resolved.
+#if 0 && defined(GOOGLE_CUDA) && CUDA_VERSION >= 10020
+  // Use the old allocator when unified memory is required.
+  // TODO(imintz): Remove the cuMemAlloc capability of this allocator.
+  if (options.per_process_gpu_memory_fraction() > 1.0 ||
+      options.experimental().use_unified_memory()) {
+    return new DeviceMemAllocator(executor, platform_gpu_id,
+                                  /*use_unified_memory=*/true, alloc_visitors,
+                                  {});
+  } else {
+    auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
+        executor->implementation()->GpuContextHack());
+
+    absl::flat_hash_set<PlatformGpuId> platform_peer_gpu_ids;
+    platform_peer_gpu_ids.reserve(peer_gpu_ids.size());
+    for (const TfGpuId tf_gpu_id : peer_gpu_ids) {
+      PlatformGpuId platform_gpu_id;
+      TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
+      platform_peer_gpu_ids.insert(platform_gpu_id);
+    }
+    std::vector<PlatformGpuId> platform_peer_gpu_ids_vec(
+        platform_peer_gpu_ids.begin(), platform_peer_gpu_ids.end());
+
+    // Adjust virtual address space to be slightly larger than the physical
+    // address space in case the BFC allocator performs suboptimal garbage
+    // collection.
+    // TODO(imintz): Update BFC allocator to ensure it doesn't create holes in
+    // the va space.
+    return GpuVirtualMemAllocator::Create(
+               alloc_visitors, {}, *gpu_context, platform_gpu_id,
+               /*virtual_address_space_size=*/total_bytes * 2,
+               platform_peer_gpu_ids_vec)
+        .ValueOrDie()
+        .release();
+  }
+#else
+  return new DeviceMemAllocator(
+      executor, platform_gpu_id,
+      (options.per_process_gpu_memory_fraction() > 1.0 ||
+       options.experimental().use_unified_memory()),
+      alloc_visitors, {});
+#endif
+}
+
+Allocator* GPUProcessState::GetGPUAllocator(
+    const GPUOptions& options, TfGpuId tf_gpu_id, size_t total_bytes,
+    const std::vector<TfGpuId>& peer_gpu_ids) {
   CHECK(process_state_);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -107,14 +163,9 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     while (bus_id >= gpu_visitors_.size()) {
       gpu_visitors_.push_back({});
     }
-    DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
-        DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                  platform_gpu_id)
-            .ValueOrDie(),
-        platform_gpu_id,
-        (options.per_process_gpu_memory_fraction() > 1.0 ||
-         options.experimental().use_unified_memory()),
-        gpu_visitors_[bus_id], {});
+    auto* sub_allocator =
+        CreateSubAllocator(options, platform_gpu_id, gpu_visitors_[bus_id],
+                           total_bytes, peer_gpu_ids);
     GPUBFCAllocator* gpu_bfc_allocator =
         new GPUBFCAllocator(sub_allocator, total_bytes, options,
                             strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
@@ -260,7 +311,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
 
     Allocator* allocator =
         new BFCAllocator(sub_allocator, gpu_host_mem_limit,
-                         true /*allow_growth*/, "gpu_host_bfc" /*name*/);
+                         /*allow_growth=*/true, /*name=*/"gpu_host_bfc");
 
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging

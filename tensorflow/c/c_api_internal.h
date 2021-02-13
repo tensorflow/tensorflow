@@ -157,9 +157,7 @@ struct TF_DeviceList {
 
 struct TF_Function {
   tensorflow::FunctionDef fdef;
-
-  // Graph with nodes with debug stack traces.
-  const tensorflow::Graph* graph_with_debug_info = nullptr;
+  tensorflow::StackTracesMap stack_traces;
 };
 
 struct TF_ApiDefMap {

@@ -26,14 +26,14 @@ py_strict_library(
         "distribute.py",
         "internal.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:types_whitelist",
     ],
     deps = [
         ":doc_typealias",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@typing_extensions_archive//:typing_extensions",
     ],
@@ -44,7 +44,7 @@ py_strict_library(
     srcs = [
         "doc_typealias.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],

@@ -11,7 +11,7 @@ py_library(
         "__init__.py",
         "jit.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":xla",
         "//tensorflow/core:protos_all_py",
@@ -50,7 +50,7 @@ cuda_py_test(
 py_library(
     name = "xla",
     srcs = ["xla.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/compiler/jit:xla_ops_py",
         "//tensorflow/compiler/jit/ops:xla_ops_grad",

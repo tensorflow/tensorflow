@@ -10,7 +10,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "benchmark_base",
     srcs = ["benchmark_base.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:session",

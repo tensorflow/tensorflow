@@ -17,7 +17,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
@@ -49,16 +49,12 @@ static mlir::DenseIntElementsAttr GetI64ElementsAttr(
     absl::Span<const int64> values, mlir::Builder* builder) {
   auto ty = mlir::RankedTensorType::get({static_cast<int64_t>(values.size())},
                                         builder->getIntegerType(64));
-  llvm::SmallVector<int64_t, 4> mlir_values;
-  mlir_values.reserve(values.size());
-  for (const auto& value : values) {
-    mlir_values.push_back(value);
-  }
-  return mlir::DenseIntElementsAttr::get(ty, mlir_values);
+  return mlir::DenseIntElementsAttr::get(
+      ty, llvm::makeArrayRef(values.data(), values.size()));
 }
 
 static mlir::DenseIntElementsAttr ConvertPadding(
-    absl::Span<const std::pair<tensorflow::int64, tensorflow::int64>> padding,
+    absl::Span<const std::pair<int64_t, int64_t>> padding,
     mlir::Builder* builder) {
   llvm::SmallVector<int64_t, 8> elements;
   elements.reserve(padding.size() * 2);
@@ -80,7 +76,7 @@ StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
     return InvalidArgument("unsupported type: %s", ToString(ty).c_str());
   }
 
-  int64 handle = reinterpret_cast<int64>(val.getAsOpaquePointer());
+  int64_t handle = reinterpret_cast<int64_t>(val.getAsOpaquePointer());
   handle_to_shape_[handle] = std::move(shape);
   return XlaOp(handle, this);
 }
@@ -113,6 +109,7 @@ StatusOr<XlaOp> MlirHloBuilder::ConvGeneralDilatedInternal(
       ConvertPadding(padding, &builder_),
       GetI64ElementsAttr(lhs_dilation, &builder_),
       GetI64ElementsAttr(rhs_dilation, &builder_),
+      /*window_reversal=*/nullptr,
       ConvertConvDimensionNumbers(dimension_numbers, &builder_),
       builder_.getI64IntegerAttr(feature_group_count),
       builder_.getI64IntegerAttr(batch_group_count), config_attr);
@@ -469,9 +466,11 @@ StatusOr<XlaOp> MlirHloBuilder::InfeedWithTokenInternal(
   TF_ASSIGN_OR_RETURN(mlir::Type result_type,
                       ConvertShapeToType<mlir::RankedTensorType>(
                           infeed_instruction_shape, builder_));
+  mlir::ArrayAttr layout;
   return MakeXlaOp(
       builder_.create<mlir::mhlo::InfeedOp>(loc_, result_type, GetValue(token),
-                                            /*infeed_config=*/config));
+                                            /*infeed_config=*/config,
+                                            /*layout=*/layout));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::OutfeedWithTokenInternal(

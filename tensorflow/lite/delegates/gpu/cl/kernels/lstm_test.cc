@@ -28,7 +28,10 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-TEST_F(OpenCLOperationTest, LSTM) { LstmTest(&exec_env_); }
+TEST_F(OpenCLOperationTest, LSTM) {
+  auto status = LstmTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
 
 }  // namespace cl
 }  // namespace gpu

@@ -59,7 +59,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -103,16 +103,9 @@ llvm::SmallSet<llvm::StringRef, 1> GetCompositeResourceUserNames(
   return composite_users;
 }
 
-// Checks if `tf.VarHandleOp` has a valid resource subtype and its users are of
-// `tf.ReadVariableOp` and `tf.AssignVariableOp` only.
+// Checks that the only users of `tf.VarHandleOp` are
+// `tf.ReadVariableOp` and `tf.AssignVariableOp`.
 mlir::LogicalResult ValidateVarHandle(TF::VarHandleOp var_handle_op) {
-  auto resource_type =
-      getElementTypeOrSelf(var_handle_op.getType()).cast<TF::ResourceType>();
-  if (resource_type.getSubtypes().size() != 1)
-    return var_handle_op.emitOpError()
-           << "expects resource type to have one subtype, got "
-           << resource_type;
-
   auto composite_ops = GetCompositeResourceUserNames(var_handle_op);
   if (!composite_ops.empty())
     return var_handle_op.emitOpError()
@@ -180,8 +173,8 @@ mlir::LogicalResult PromoteVarHandlesToArguments(
   }
 
   if (!var_handle_shared_names->empty())
-    function.setType(FunctionType::get(func_arg_types, func_type.getResults(),
-                                       function.getContext()));
+    function.setType(FunctionType::get(function.getContext(), func_arg_types,
+                                       func_type.getResults()));
 
   return success();
 }
@@ -402,8 +395,8 @@ void PromoteVarHandlesToArgsPass::runOnOperation() {
     if (failed(CheckSingleBlockFunction(function))) return signalPassFailure();
 
     llvm::SmallVector<std::string, 4> var_handle_shared_names;
-    PromoteVarHandlesToArguments(function, /*add_validation=*/false,
-                                 &var_handle_shared_names);
+    (void)PromoteVarHandlesToArguments(function, /*add_validation=*/false,
+                                       &var_handle_shared_names);
 
     // Add resource names for each `tf.VarHandleOp` that were promoted to
     // resource arguments.
@@ -412,7 +405,7 @@ void PromoteVarHandlesToArgsPass::runOnOperation() {
     for (auto var_name_and_index : llvm::enumerate(var_handle_shared_names))
       function.setArgAttr(var_name_and_index.index() + var_handle_args_offset,
                           kResourceNameArgAttr,
-                          StringAttr::get(var_name_and_index.value(), context));
+                          StringAttr::get(context, var_name_and_index.value()));
   }
 }
 

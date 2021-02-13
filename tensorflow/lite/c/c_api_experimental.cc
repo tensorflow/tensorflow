@@ -24,9 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/interpreter.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif  // __cplusplus
 
 TfLiteStatus TfLiteInterpreterResetVariableTensors(
     TfLiteInterpreter* interpreter) {
@@ -82,6 +80,4 @@ void TfLiteInterpreterOptionsSetEnableDelegateFallback(
   options->enable_delegate_fallback = enable;
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus

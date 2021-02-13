@@ -24,6 +24,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
+namespace gpu {
+class GpuContext;
+}
 
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array. The generated cubin matches the compute
@@ -71,6 +74,11 @@ struct HsacoImage {
 // binary (i.e. a fatbin) as a byte array.
 port::StatusOr<std::vector<uint8>> BundleGpuAsm(
     std::vector<HsacoImage> images, const std::string rocm_root_dir);
+
+// Links multiple relocatable GPU images (e.g. results of ptxas -c) into a
+// single image.
+port::StatusOr<std::vector<uint8>> LinkGpuAsm(
+    gpu::GpuContext* context, std::vector<CubinOrPTXImage> images);
 
 }  // namespace stream_executor
 

@@ -25,8 +25,8 @@ from tensorflow.core.framework import types_pb2
 # protobuf errors where a file is defined twice on MacOS.
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-from tensorflow.python import _pywrap_bfloat16
 from tensorflow.python import _dtypes
+from tensorflow.python.lib.core import _pywrap_bfloat16
 from tensorflow.python.util.tf_export import tf_export
 
 _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
@@ -518,7 +518,7 @@ _TF_TO_NP = {
     types_pb2.DT_INT64:
         np.int64,
     types_pb2.DT_BOOL:
-        np.bool,
+        np.bool_,
     types_pb2.DT_QINT8:
         _np_qint8,
     types_pb2.DT_QUINT8:

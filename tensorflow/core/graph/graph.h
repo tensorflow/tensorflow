@@ -74,7 +74,7 @@ class NodeIter;         // Declared below
 enum class ConstructionContext {
   kNotTracked,     // Not tracked.
   kDirectSession,  // From `tensorflow::DirectSession`, TF1 session API.
-  kFunctionDef,    // From `FunctionDef`, @tf.function.
+  kEagerRuntime,   // Registered from TF2 eager runtime.
 };
 
 class Node {
@@ -536,6 +536,8 @@ class Graph {
   // *node should not be accessed after calling this function.
   // REQUIRES: node->IsOp()
   void RemoveNode(Node* node);
+
+  void Copy(const Graph& src);
 
   // Adds an edge that connects the xth output of `source` to the yth input of
   // `dest` and returns it. Does not update dest's NodeDef.

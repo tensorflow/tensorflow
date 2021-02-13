@@ -19,10 +19,10 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/reader.h"
@@ -169,7 +169,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    bool upgrade_legacy) {
+    MLIRImportOptions options) {
   tensorflow::SavedModelBundle bundle;
   tensorflow::SessionOptions session_options;
   // Force saved model states to be restored to CPU.
@@ -183,8 +183,8 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
     return load_status;
   }
 
-  auto module_or = ConvertSavedModelV1ToMlir(bundle, exported_names, context,
-                                             upgrade_legacy);
+  auto module_or =
+      ConvertSavedModelV1ToMlir(bundle, exported_names, context, options);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
   }
@@ -195,7 +195,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImportLite(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    bool upgrade_legacy) {
+    MLIRImportOptions options) {
   MetaGraphDef meta_graph_def;
   auto status = ReadMetaGraphDefFromSavedModel(std::string(saved_model_dir),
                                                tags, &meta_graph_def);
@@ -205,9 +205,8 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImportLite(
     return status;
   }
 
-  auto module_or =
-      ConvertSavedModelV1ToMlirLite(meta_graph_def, /*debug_info=*/{},
-                                    exported_names, context, upgrade_legacy);
+  auto module_or = ConvertSavedModelV1ToMlirLite(
+      meta_graph_def, /*debug_info=*/{}, exported_names, context, options);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
   }

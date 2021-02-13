@@ -218,19 +218,12 @@ RefcountingHashMap<RendezvousKey, Rendezvous>& GlobalRendezvousMap() {
 
 }  // anonymous namespace
 
-CollectivePermuteConfig GetCollectivePermuteConfig(
-    const HloInstruction* instr) {
-  CollectivePermuteConfig config;
-  auto* collective_permute = Cast<HloCollectivePermuteInstruction>(instr);
-  config.source_target_pairs = collective_permute->source_target_pairs();
-  return config;
-}
-
 CollectivePermuteThunk::CollectivePermuteThunk(
-    ThunkInfo thunk_info, CollectivePermuteConfig&& config,
+    ThunkInfo thunk_info,
+    std::vector<std::pair<int64, int64>> source_target_pairs,
     const BufferAllocation::Slice& src, const BufferAllocation::Slice& dest)
     : Thunk(kCollectivePermute, thunk_info),
-      config_(std::move(config)),
+      source_target_pairs_(std::move(source_target_pairs)),
       src_(src),
       dest_(dest) {}
 
@@ -254,7 +247,7 @@ Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Figure out which replicas our data is copied to.
   std::vector<int64> dest_replicas;
-  for (const auto& src_dest : config_.source_target_pairs) {
+  for (const auto& src_dest : source_target_pairs_) {
     if (src_dest.first == replica_id) {
       dest_replicas.push_back(src_dest.second);
     }
@@ -269,7 +262,7 @@ Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // If no replica writes into us (i.e. we aren't the target of any copies), our
   // contract is that we zero our output.
-  if (absl::c_none_of(config_.source_target_pairs,
+  if (absl::c_none_of(source_target_pairs_,
                       [&](std::pair<int64, int64> src_dest) {
                         return src_dest.second == replica_id;
                       })) {

@@ -208,11 +208,6 @@ template <typename I, typename O,
               std::enable_if_t<std::is_base_of<ParticipantData, I>::value>>
 class Rendezvous {
  public:
-  struct ParticipantImplOutput {
-    bool is_primary;
-    O custom_output;
-  };
-
   virtual ~Rendezvous() {}
   explicit Rendezvous(const RendezvousKey& k) : key_(k) {}
 
@@ -241,13 +236,12 @@ class Rendezvous {
           "rendezvous: %p",
           rendezvous.get());
     });
-    return p.first;
+    return std::move(p.first);
   }
 
  protected:
   // Returns domain-specific output O and whether this replica is primary.
-  virtual StatusOr<ParticipantImplOutput> RunCollectiveOp(
-      const I& participant) = 0;
+  virtual StatusOr<O> RunCollectiveOp(const I& participant) = 0;
 
   // Initialize the rendezvous by the first ("primary") thread which reaches the
   // barrier. Returns whether this thread is primary.
@@ -300,8 +294,8 @@ class Rendezvous {
           participant.device_ordinal, participant.stream, key_.ToString());
     });
 
-    TF_ASSIGN_OR_RETURN(ParticipantImplOutput p, RunCollectiveOp(participant));
-    return std::make_pair(p.custom_output, returned_blocking_counter_);
+    TF_ASSIGN_OR_RETURN(O output, RunCollectiveOp(participant));
+    return std::make_pair(std::move(output), returned_blocking_counter_);
   }
 
   const RendezvousKey key_;

@@ -365,7 +365,7 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
   } ins(%flat_arg : memref<?xi64>) outs(%flat_result : memref<?xi64>) {
   ^bb0(%a : i64, %b : i64):
     %c0 = constant 0 : i64
-    %a_pos = cmpi "sge", %a, %c0 : i64
+    %a_pos = cmpi sge, %a, %c0 : i64
     %a_neg = subi %c0, %a : i64
     %a_abs = select %a_pos, %a, %a_neg : i64
     linalg.yield %a_abs : i64

@@ -48,13 +48,13 @@ const char kScopedAllocatorAttrName[] = "_scoped_allocator";
 // matches op_name, i.e. it looks from the name like this node is
 // of that op type.
 bool HasOpName(const string& node_name, const string& op_name) {
-  size_t begin = node_name.rfind("/");
+  size_t begin = node_name.rfind('/');
   if (begin == string::npos) {
     begin = 0;
   } else {
     ++begin;
   }
-  size_t end = node_name.rfind("_");
+  size_t end = node_name.rfind('_');
   if (end != string::npos) {
     size_t p = end + 1;
     while (p < node_name.size()) {

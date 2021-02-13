@@ -20,9 +20,8 @@ op {
         "A `Tensor` of type T. An alias of `x`. The content "
         "of `y` is undefined if there are duplicates in `i`."
   }
-  summary: <<END
-    Adds v into specified rows of x.
-
+  summary: "Adds v into specified rows of x."
+  description: <<END
     Computes y = x; y[i, :] += v; return y.
 END
 }

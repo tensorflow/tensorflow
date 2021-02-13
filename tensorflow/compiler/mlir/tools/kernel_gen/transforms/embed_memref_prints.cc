@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -46,10 +46,10 @@ Operation* emitCallToPrint(Location loc, StringRef func_name, Value arg,
   if (!callee_func) {
     OpBuilder::InsertionGuard insertGuard(*b);
 
-    auto module = caller_func.getParentOfType<ModuleOp>();
+    auto module = caller_func->getParentOfType<ModuleOp>();
     b->setInsertionPointToStart(module.getBody());
-    auto func_type = FunctionType::get(arg.getType(), /*results=*/llvm::None,
-                                       b->getContext());
+    auto func_type = FunctionType::get(b->getContext(), arg.getType(),
+                                       /*results=*/llvm::None);
     callee_func = b->create<FuncOp>(module.getLoc(), func_name, func_type);
     callee_func.setPrivate();
   }
@@ -106,7 +106,7 @@ struct EmbedMemRefPrintsPass
     : public EmbedMemRefPrintsPassBase<EmbedMemRefPrintsPass> {
   void runOnFunction() override {
     FuncOp func = getFunction();
-    if (!func.getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName))
+    if (!func->getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName))
       return;
 
     Liveness liveness(func);

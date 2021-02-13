@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
-from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import string_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.util.tf_export import keras_export
@@ -91,9 +90,6 @@ class TextVectorization(text_vectorization.TextVectorization,
                          output_sequence_length, pad_to_max_tokens, **kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         "TextVectorization_V1").set(True)
-
-  def _get_vectorization_class(self):
-    return category_encoding_v1.CategoryEncoding
 
   def _get_index_lookup_class(self):
     return string_lookup_v1.StringLookup

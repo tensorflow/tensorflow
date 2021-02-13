@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import abc
+
 from tensorflow.python.distribute import tpu_values as tpu_values_lib
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.eager import context
@@ -68,10 +70,10 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
     else:
       return regrouped_tuple
 
-  if isinstance(v0, dict):
+  if isinstance(v0, abc.Mapping):
     v0keys = v0.keys()
     for v in values[1:]:
-      assert isinstance(v, dict), ("v[0]: %r  v[i]: %r" % (v0, v))
+      assert isinstance(v, abc.Mapping), ("v[0]: %r  v[i]: %r" % (v0, v))
       assert set(v.keys()) == set(v0keys), ("v[0].keys: %s  v[i].keys: %s" %
                                             (set(v0keys), set(v.keys())))
     # Use the actual type in case it is a class inherited from a dict.
@@ -143,21 +145,20 @@ def select_replica(replica_id, structured):
 
 def select_replica_mirrored(replica_id, structured):
   """Specialize a nest of regular & mirrored values for one replica."""
+  assert_mirrored(structured)
+  return select_replica(replica_id, structured)
 
-  def _get_mirrored(x):
-    if isinstance(x, values_lib.DistributedValues):
-      if not is_mirrored(x):
-        raise TypeError(
-            "Expected value to be mirrored across replicas: %s in %s." %
-            (x, structured))
-      packed_var = getattr(x, "_packed_variable", None)
-      if packed_var is not None:
-        return packed_var
-      return x.values[replica_id]
-    else:
-      return x
 
-  return nest.map_structure(_get_mirrored, structured)
+def assert_mirrored(structured):
+  """Raises if the structured is not composed of mirrored or regular values."""
+
+  def _assert_mirrored(x):
+    if isinstance(x, values_lib.DistributedValues) and not is_mirrored(x):
+      raise TypeError(
+          "Expected value to be mirrored across replicas: %s in %s." %
+          (x, structured))
+
+  nest.map_structure(_assert_mirrored, structured)
 
 
 def update_regroup(extended, updates, group):
@@ -178,7 +179,7 @@ def update_regroup(extended, updates, group):
     # If values is just ops, the grouping is enough. Everything in values
     # should have the same type, since we expect every replica to be performing
     # the same computation.
-    if not all(tensor_util.is_tensor(v) for v in values):
+    if not all(tensor_util.is_tf_type(v) for v in values):
       return g
 
     # Otherwise we need tensors with the same values as `values`, but
@@ -246,7 +247,7 @@ def validate_colocate(v, extended):
 
 
 # Variable creation function for sync strategies.
-def _get_and_validate_synchronization(kwargs):
+def _validate_synchronization(kwargs):
   """Validate that given synchronization value is valid."""
   synchronization = kwargs.get("synchronization",
                                vs.VariableSynchronization.AUTO)
@@ -261,11 +262,13 @@ def _get_and_validate_synchronization(kwargs):
     raise ValueError(
         "Invalid variable synchronization mode: %s for variable: %s" %
         (synchronization, kwargs["name"]))
+  if synchronization == vs.VariableSynchronization.AUTO:
+    return vs.VariableSynchronization.ON_WRITE
   return synchronization
 
 
 def _validate_aggregation(kwargs):
-  aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
+  aggregation = kwargs.get("aggregation", vs.VariableAggregation.NONE)
 
   if aggregation not in (vs.VariableAggregation.NONE,
                          vs.VariableAggregation.SUM,
@@ -274,17 +277,6 @@ def _validate_aggregation(kwargs):
     raise ValueError("Invalid variable aggregation mode: %s for variable: %s" %
                      (aggregation, kwargs["name"]))
   return aggregation
-
-
-def _get_variable_policy_class(synchronization, aggregation, policy_mapping):
-  if synchronization == vs.VariableSynchronization.AUTO:
-    if aggregation == vs.VariableAggregation.NONE:
-      # Use AutoPolicy.
-      return policy_mapping.get(synchronization)
-    else:
-      # Revert to OnWritePolicy
-      return policy_mapping.get(vs.VariableSynchronization.ON_WRITE)
-  return policy_mapping.get(synchronization)
 
 
 def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
@@ -297,7 +289,10 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
     var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
   kwargs["collections"] = []
 
-  synchronization = _get_and_validate_synchronization(kwargs)
+  synchronization = _validate_synchronization(kwargs)
+  # Update synchronization in kwargs in case it's AUTO, which is converted to
+  # ON_WRITE.
+  kwargs["synchronization"] = synchronization
   aggregation = _validate_aggregation(kwargs)
   use_var_policy = getattr(strategy.extended, "_use_var_policy", False)
 
@@ -310,8 +305,7 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
   with tape.stop_recording():
     value_list = real_mirrored_creator(**kwargs)
     if use_var_policy:
-      var_policy_cls = _get_variable_policy_class(synchronization, aggregation,
-                                                  policy_mapping)
+      var_policy_cls = policy_mapping.get(synchronization)
       var_policy = var_policy_cls(aggregation=aggregation)
       var_cls = class_mapping.get("VariableClass")
       result = var_cls(strategy, value_list, aggregation, var_policy=var_policy)
@@ -363,35 +357,29 @@ def is_sync_on_read(val):
 
 # The following mapping indicates the policy that you must use for a given
 # variable `synchronization` and `aggregation` pair.
-# AutoPolicy is used for:
-# (synchronization=Auto, aggregation=None)
 # OnWritePolicy is used for:
-# (synchronization=Auto, aggregation=SUM,MEAN,ONLY_FIRST_REPLICA)
+# (synchronization=Auto, aggregation=NONE,SUM,MEAN,ONLY_FIRST_REPLICA)
 # (synchronization=ON_WRITE, aggregation=NONE,SUM,MEAN,ONLY_FIRST_REPLICA)
 # OnReadPolicy is used for:
 # (synchronization=ON_READ, aggregation=NONE,SUM,MEAN,ONLY_FIRST_REPLICA)
 VARIABLE_POLICY_MAPPING = {
-    vs.VariableSynchronization.AUTO: values_lib.AutoPolicy,
     vs.VariableSynchronization.ON_WRITE: values_lib.OnWritePolicy,
     vs.VariableSynchronization.ON_READ: values_lib.OnReadPolicy,
 }
 
 VARIABLE_CLASS_MAPPING = {
     "VariableClass": values_lib.DistributedVariable,
-    vs.VariableSynchronization.AUTO: values_lib.MirroredVariable,
     vs.VariableSynchronization.ON_WRITE: values_lib.MirroredVariable,
     vs.VariableSynchronization.ON_READ: values_lib.SyncOnReadVariable,
 }
 
 TPU_VARIABLE_POLICY_MAPPING = {
-    vs.VariableSynchronization.AUTO: tpu_values_lib.TPUAutoPolicy,
     vs.VariableSynchronization.ON_WRITE: tpu_values_lib.TPUOnWritePolicy,
     vs.VariableSynchronization.ON_READ: tpu_values_lib.TPUOnReadPolicy,
 }
 
 TPU_VARIABLE_CLASS_MAPPING = {
     "VariableClass": tpu_values_lib.TPUDistributedVariable,
-    vs.VariableSynchronization.AUTO: tpu_values_lib.TPUMirroredVariable,
     vs.VariableSynchronization.ON_WRITE: tpu_values_lib.TPUMirroredVariable,
     vs.VariableSynchronization.ON_READ: tpu_values_lib.TPUSyncOnReadVariable,
 }

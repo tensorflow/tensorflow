@@ -45,7 +45,7 @@ py_library(
         "saved_model_experimental.py",
         "saving_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":load_context",
         "//tensorflow/python:lib",
@@ -75,7 +75,7 @@ py_library(
     srcs = [
         "saved_model/load_context.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [],
 )
 

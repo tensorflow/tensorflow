@@ -125,7 +125,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
 
     SmallVector<Location, 3> locations{contraction.getLoc(), bias_add.getLoc()};
     SmallVector<Attribute, 2> fused_ops{StringAttr::get(
-        bias_add.getOperation()->getName().stripDialect(), context)};
+        context, bias_add.getOperation()->getName().stripDialect())};
 
     // BiasAdd may or may not feed into an activation function.
     auto activation = GetActivation(bias_add);
@@ -139,7 +139,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     if (fuse_activation) {
       locations.push_back(activation->getLoc());
       fused_ops.push_back(
-          StringAttr::get(activation->getName().stripDialect(), context));
+          StringAttr::get(context, activation->getName().stripDialect()));
       result_type = activation->getResultTypes().front();
     } else {
       result_type = bias_add.getResult().getType();
@@ -157,7 +157,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     // contraction, with two additions: the list of ops which have been fused
     // together; epsilon (only with FusedBatchNorm).
     std::vector<NamedAttribute> attrs = contraction.getAttrs();
-    ArrayAttr fused_ops_attr = ArrayAttr::get(fused_ops, context);
+    ArrayAttr fused_ops_attr = ArrayAttr::get(context, fused_ops);
     attrs.push_back(
         NamedAttribute(Identifier::get("fused_ops", context), fused_ops_attr));
     // Epsilon is used only in fusions with the FusedBatchNorm op, so we zero it
@@ -194,7 +194,7 @@ class FuseConv2DBiasAdd
                          PatternRewriter &rewriter) const override {
     // Verify that the data formats match and are valid for fusion.
     if (conv.data_format() != bias_add.data_format()) {
-      rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
+      (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
         diag << "data format does not match Conv2D data format ("
              << bias_add.data_format() << " vs " << conv.data_format() << ")";
       });
@@ -202,7 +202,7 @@ class FuseConv2DBiasAdd
     }
     // Verify the data type is supported.
     if (!conv.T().isF32() && !conv.T().isF64()) {
-      rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
+      (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
         diag << "supported data types for _FusedConv2D are float and double, "
              << " but got " << conv.T();
       });
@@ -223,7 +223,7 @@ class FuseMatMulBiasAdd
                          PatternRewriter &rewriter) const override {
     // FusedMatMul kernel supports limited set of data types.
     if (!matmul.T().isF32() && !matmul.T().isBF16()) {
-      rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
+      (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
         diag << "supported data types for _FusedMatMul are float and bfloat16, "
              << " but got " << matmul.T();
       });
@@ -238,7 +238,7 @@ void FusedKernelMatcherPass::runOnFunction() {
   auto func = getFunction();
   patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace

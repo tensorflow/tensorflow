@@ -52,6 +52,11 @@ void PopulateGatherToTorchIndexSelectPatterns(
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                MLIRContext *ctx);
 
+// Collection of rewrite patterns for lowering of dynamic HLOs to LHLO dialect.
+void populateDynamicHLOToLHLOConversionPattern(
+    MLIRContext *context, BufferizeTypeConverter *converter,
+    OwningRewritePatternList *patterns, bool insert_copy = true);
+
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(MLIRContext *context,
                                         BufferizeTypeConverter *converter,
@@ -94,8 +99,14 @@ void PopulateTrigonometricToApproximationPatterns(
 
 namespace chlo {
 
+// Populates a collection of conversion patterns for legalizing broadcasting
+// client-HLO to their non-broadcasting counterparts.
+void PopulateChloBroadcastingPatterns(MLIRContext *context,
+                                      OwningRewritePatternList *patterns);
+
 // Populates a collection of conversion patterns for legalizing client-HLO to
-// HLO.
+// HLO. Includes decomposition of operations and inserting of explicit
+// broadcasts.
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns);
 

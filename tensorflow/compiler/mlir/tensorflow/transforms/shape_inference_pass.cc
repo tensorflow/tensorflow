@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -35,9 +35,6 @@ class ShapeInference : public TensorFlowShapeInferencePassBase<ShapeInference> {
       return signalPassFailure();
   }
 };
-
-PassRegistration<ShapeInference> pass(
-    "tf-shape-inference", "Simple Shape Inference on TensorFlow Dialect");
 
 }  // namespace
 
