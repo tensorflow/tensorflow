@@ -32,6 +32,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
 
 
+# NOTE(vikoth18): Arguments of parameterized tests are lifted into lambdas to make
+# sure they are not executed before the (eager- or graph-mode) test environment
+# has been set up.
+#
 class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
