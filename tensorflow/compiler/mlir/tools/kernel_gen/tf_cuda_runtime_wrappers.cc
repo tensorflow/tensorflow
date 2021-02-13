@@ -19,7 +19,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/logging.h"
@@ -27,14 +30,22 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-#define CUDA_REPORT_IF_ERROR(expr)                                      \
-  [](CUresult result) {                                                 \
-    if (!result) return;                                                \
-    const char *name = nullptr;                                         \
-    cuGetErrorName(result, &name);                                      \
-    if (!name) name = "<unknown>";                                      \
-    LOG(WARNING) << "'" << #expr << "' failed with '" << name << "'\n"; \
-  }(expr)
+#define CUDA_REPORT_IF_ERROR_WITH_CTX(expr, context)                          \
+  [](CUresult result, tensorflow::OpKernelContext *ctx) {                     \
+    if (!result) return;                                                      \
+    const char *name = nullptr;                                               \
+    cuGetErrorName(result, &name);                                            \
+    if (!name) name = "<unknown>";                                            \
+    std::string msg = absl::StrCat("'", #expr, "' failed with '", name, "'"); \
+    if (ctx != nullptr) {                                                     \
+      ctx->CtxFailureWithWarning(                                             \
+          tensorflow::Status{tensorflow::error::INTERNAL, msg});              \
+    } else {                                                                  \
+      LOG(WARNING) << msg << "\n";                                            \
+    }                                                                         \
+  }(expr, context)
+
+#define CUDA_REPORT_IF_ERROR(expr) CUDA_REPORT_IF_ERROR_WITH_CTX(expr, nullptr)
 
 namespace {
 // Implements a cache for loading modules. The assumption is that we never
@@ -84,16 +95,23 @@ extern "C" void tfKernelGenLaunchKernel(tensorflow::OpKernelContext *ctx,
                                         intptr_t gridZ, intptr_t blockX,
                                         intptr_t blockY, intptr_t blockZ,
                                         void **params) {
+  // For empty grids, we don't need to do anything.
+  if (!gridX || !gridY || !gridZ) {
+    return;
+  }
+
   stream_executor::Stream *se_stream = ctx->op_device_context()->stream();
   auto stream =
       reinterpret_cast<CUstream>(se_stream->implementation()->GpuStreamHack());
   CUmodule module = CudaRuntimeCache::get(stream)->loadModule(module_blob);
   CUfunction function;
-  CUDA_REPORT_IF_ERROR(cuModuleGetFunction(&function, module, kernel_name));
+  CUDA_REPORT_IF_ERROR_WITH_CTX(
+      cuModuleGetFunction(&function, module, kernel_name), ctx);
 
-  CUDA_REPORT_IF_ERROR(cuLaunchKernel(function, gridX, gridY, gridZ, blockX,
-                                      blockY, blockZ, /*sharedMemBytes=*/0,
-                                      stream, params, nullptr));
+  CUDA_REPORT_IF_ERROR_WITH_CTX(
+      cuLaunchKernel(function, gridX, gridY, gridZ, blockX, blockY, blockZ,
+                     /*sharedMemBytes=*/0, stream, params, nullptr),
+      ctx);
 }
 
 #endif  // GOOGLE_CUDA

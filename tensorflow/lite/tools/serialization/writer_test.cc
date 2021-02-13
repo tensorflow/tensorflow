@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::ops::builtin::BuiltinOpResolver builtin_op_resolver;
   tflite::InterpreterBuilder(*model, builtin_op_resolver)(&interpreter);
-  tflite::SubgraphWriter writer(&interpreter->primary_subgraph());
+  tflite::ModelWriter writer(interpreter.get());
   std::unique_ptr<uint8_t[]> output_buffer;
   size_t output_buffer_size;
   writer.GetBuffer(&output_buffer, &output_buffer_size);

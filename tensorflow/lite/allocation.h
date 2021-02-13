@@ -17,6 +17,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_ALLOCATION_H_
 #define TENSORFLOW_LITE_ALLOCATION_H_
 
+#include <stddef.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <memory>

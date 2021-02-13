@@ -48,8 +48,9 @@ struct MklDnnMatMulFwdParams {
   memory::dims weight_dims;
   memory::dims bias_dims;
   memory::dims dst_dims;
-  memory::format_tag src_format;
-  memory::format_tag weight_format;
+  MEMORY_FORMAT src_format;
+  MEMORY_FORMAT weight_format;
+  MEMORY_FORMAT dst_format;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -57,17 +58,18 @@ struct MklDnnMatMulFwdParams {
   };
   std::vector<PostOpParam> post_op_params;
 
-  MklDnnMatMulFwdParams(
-      memory::dims src_dims, memory::dims weight_dims, memory::dims bias_dims,
-      memory::dims dst_dims,
-      memory::format_tag src_format = memory::format_tag::any,
-      memory::format_tag weight_format = memory::format_tag::any)
+  MklDnnMatMulFwdParams(memory::dims src_dims, memory::dims weight_dims,
+                        memory::dims bias_dims, memory::dims dst_dims,
+                        MEMORY_FORMAT src_format = MEMORY_FORMAT::any,
+                        MEMORY_FORMAT weight_format = MEMORY_FORMAT::any,
+                        MEMORY_FORMAT dst_format = MEMORY_FORMAT::any)
       : src_dims(src_dims),
         weight_dims(weight_dims),
         bias_dims(bias_dims),
         dst_dims(dst_dims),
         src_format(src_format),
-        weight_format(weight_format) {}
+        weight_format(weight_format),
+        dst_format(dst_format) {}
 };
 
 // With quantization, input, weight, bias, and output can have different types.
@@ -184,7 +186,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
     context_.dst_md.reset(new memory::desc({matmul_fwd_params.dst_dims},
                                            MklDnnType<Toutput>(),
-                                           memory::format_tag::any));
+                                           matmul_fwd_params.dst_format));
 
     context_.bias_md.reset(new memory::desc({matmul_fwd_params.bias_dims},
                                             MklDnnType<Tbias>(),
@@ -202,7 +204,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     mkldnn::post_ops post_ops;
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
-        if (post_op_param.name == "relu") {
+        if (post_op_param.name == "relu" || post_op_param.name == "leakyrelu") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
@@ -236,11 +238,18 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           std::vector<float> scales;
           scales.push_back(post_op_param.param[0]);
           post_ops_attr.set_output_scales(0, scales);
+        } else if (post_op_param.name == "sum") {
+          DCHECK_EQ(post_op_param.param.size(), 1);
+          float op_scale = post_op_param.param[0];
+          post_ops.append_sum(op_scale);
+
         } else {
           DCHECK((post_op_param.name == "relu") ||
                  (post_op_param.name == "relu6") ||
                  (post_op_param.name == "elu") ||
                  (post_op_param.name == "tanh") ||
+                 (post_op_param.name == "sum") ||
+                 (post_op_param.name == "leakyrelu") ||
                  (post_op_param.name == "output_scale"));
         }
       }
@@ -334,12 +343,17 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     // Generate keys for post-ops
     for (auto const& post_op_param : mkldnn_matmul_fwd_dims.post_op_params) {
       if (post_op_param.name == "relu" || post_op_param.name == "relu6" ||
-          post_op_param.name == "elu" || post_op_param.name == "tanh") {
+          post_op_param.name == "elu" || post_op_param.name == "tanh" ||
+          post_op_param.name == "leakyrelu") {
         DCHECK_EQ(post_op_param.param.size(), 3);
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
         key_creator.AddAsKey(post_op_param.param[1]);
         key_creator.AddAsKey(post_op_param.param[2]);
+      } else if (post_op_param.name == "sum") {
+        DCHECK_EQ(post_op_param.param.size(), 1);
+        key_creator.AddAsKey(post_op_param.name);
+        key_creator.AddAsKey(post_op_param.param[0]);
       } else if (post_op_param.name == "output_scale") {
         DCHECK_EQ(post_op_param.param.size(), 1);
         key_creator.AddAsKey(post_op_param.name);

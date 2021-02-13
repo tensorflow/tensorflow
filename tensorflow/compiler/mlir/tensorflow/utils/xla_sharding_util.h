@@ -58,7 +58,7 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
 
 // Remaps outputs of `tf_device.parallel_execute` op that represent concurrent
 // execution of the `tf_device.cluster_func` with its users.
-void RemapOutputsFromLogicalDevices(
+mlir::LogicalResult RemapOutputsFromLogicalDevices(
     const mlir::Location& location,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     mlir::tf_device::ClusterFuncOp cluster_func,

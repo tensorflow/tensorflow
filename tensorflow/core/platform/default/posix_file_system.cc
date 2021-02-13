@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
+
 #if defined(__linux__)
 #include <sys/sendfile.h>
 #endif
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/default/posix_file_system.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/error.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -92,6 +94,34 @@ class PosixRandomAccessFile : public RandomAccessFile {
     *result = StringPiece(scratch, dst - scratch);
     return s;
   }
+
+#if defined(TF_CORD_SUPPORT)
+  Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
+    if (n == 0) {
+      return Status::OK();
+    }
+    if (n < 0) {
+      return errors::InvalidArgument(
+          "Attempting to read ", n,
+          " bytes. You cannot read a negative number of bytes.");
+    }
+
+    char* scratch = new char[n];
+    if (scratch == nullptr) {
+      return errors::ResourceExhausted("Unable to allocate ", n,
+                                       " bytes for file reading.");
+    }
+
+    StringPiece tmp;
+    Status s = Read(offset, n, &tmp, scratch);
+
+    absl::Cord tmp_cord = absl::MakeCordFromExternal(
+        absl::string_view(static_cast<char*>(scratch), tmp.size()),
+        [scratch](absl::string_view) { delete[] scratch; });
+    cord->Append(tmp_cord);
+    return s;
+  }
+#endif
 };
 
 class PosixWritableFile : public WritableFile {
@@ -117,6 +147,19 @@ class PosixWritableFile : public WritableFile {
     }
     return Status::OK();
   }
+
+#if defined(TF_CORD_SUPPORT)
+  // \brief Append 'cord' to the file.
+  Status Append(const absl::Cord& cord) override {
+    for (const auto& chunk : cord.Chunks()) {
+      size_t r = fwrite(chunk.data(), 1, chunk.size(), file_);
+      if (r != chunk.size()) {
+        return IOError(filename_, errno);
+      }
+    }
+    return Status::OK();
+  }
+#endif
 
   Status Close() override {
     if (file_ == nullptr) {

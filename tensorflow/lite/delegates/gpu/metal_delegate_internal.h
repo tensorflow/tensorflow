@@ -33,11 +33,6 @@ bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate,
                                            int tensor_index,
                                            id<MTLBuffer> metal_buffer);
 
-// Binds user-defined MTLComputeCommandEncoder. The delegate puts all GPU tasks
-// into this encoder instead of the internal encoder.
-bool TFLGpuDelegateSetCommandEncoder(TfLiteDelegate* delegate,
-                                     id<MTLComputeCommandEncoder> encoder);
-
 // Binds user-defined MTLCommandBuffer. The delegate puts all GPU tasks
 // into this buffer instead of the internal command buffer.
 bool TFLGpuDelegateSetCommandBuffer(TfLiteDelegate* delegate,

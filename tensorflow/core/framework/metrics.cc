@@ -115,6 +115,10 @@ auto* tf_data_iterator_lifetime_counter = monitoring::Counter<0>::New(
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
 
+auto* tf_data_filename_counter = monitoring::Counter<2>::New(
+    "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
+    "name", "filename");
+
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
     "The number of dense features parsed by ops for parsing tf.Example.");
@@ -216,6 +220,10 @@ void RecordTFDataIteratorLifetime(uint64 duration_us) {
 
 void RecordTFDataOptimization(const string& name, int64 num_changes) {
   tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
+}
+
+void RecordTFDataFilename(const string& name, const string& filename) {
+  tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
 
 void RecordParseDenseFeature(int64 num_features) {

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <queue>
 #include <string>
 #include <utility>
 
@@ -88,45 +89,68 @@ bool SafeToMerge(TF::IfRegionOp source, TF::IfRegionOp destination,
   // If there is an intermediate data or side effect dependency between the
   // ops in destination and the ops in the source, it's not safe to merge
   // them.
-  llvm::SmallSetVector<Operation*, 4> op_stack;
+  std::vector<Operation*> dependencies;
   for (auto* user : destination.getOperation()->getUsers()) {
-    if (!source_ops.contains(user)) op_stack.insert(user);
+    if (!source_ops.contains(user)) dependencies.push_back(user);
   }
   for (Operation& op : destination.then_branch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
-      if (!source_ops.contains(successor)) op_stack.insert(successor);
+      if (!source_ops.contains(successor)) dependencies.push_back(successor);
     }
   }
   for (Operation& op : destination.else_branch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
-      if (!source_ops.contains(successor)) op_stack.insert(successor);
+      if (!source_ops.contains(successor)) dependencies.push_back(successor);
     }
   }
 
   bool safe_to_merge = true;
 
-  while (!op_stack.empty()) {
-    auto* next_op = op_stack.pop_back_val();
-    for (auto* user : next_op->getUsers()) {
+  llvm::SmallPtrSet<Operation*, 4> visited;
+  while (!dependencies.empty()) {
+    Operation* dependency = dependencies.back();
+    dependencies.pop_back();
+    if (visited.count(dependency)) continue;
+    visited.insert(dependency);
+    for (auto* user : dependency->getUsers()) {
       if (source_ops.contains(user)) {
         safe_to_merge = false;
         break;
       } else {
-        op_stack.insert(user);
+        dependencies.push_back(user);
       }
     }
     for (auto* successor :
-         side_effect_analysis.DirectControlSuccessors(next_op)) {
+         side_effect_analysis.DirectControlSuccessors(dependency)) {
       if (source_ops.contains(successor)) {
         safe_to_merge = false;
         break;
       } else {
-        op_stack.insert(successor);
+        dependencies.push_back(successor);
       }
     }
+    // If the op is nested, then also consider the users and successors of the
+    // parent op.
+    if (dependency->getBlock() != destination.getOperation()->getBlock())
+      dependencies.push_back(dependency->getParentOp());
     if (!safe_to_merge) break;
   }
   return safe_to_merge;
+}
+
+// Checks whether a return indice should be kep for `first_if_op` by checking
+// for results in `second_if_op`.
+llvm::SmallVector<int, 4> GetReturnIndicesToKeep(TF::IfRegionOp first_if_op,
+                                                 TF::IfRegionOp second_if_op) {
+  llvm::SmallVector<int, 4> return_indices_to_keep;
+  for (auto& index_and_value : llvm::enumerate(first_if_op.getResults())) {
+    if (!llvm::all_of(index_and_value.value().getUsers(), [&](Operation* op) {
+          return second_if_op->isProperAncestor(op);
+        })) {
+      return_indices_to_keep.push_back(index_and_value.index());
+    }
+  }
+  return return_indices_to_keep;
 }
 
 // Move the body excluding the terminators of else and then regions from
@@ -145,31 +169,105 @@ void MoveBranches(TF::IfRegionOp source, TF::IfRegionOp destination) {
       source_else_body.begin(), std::prev(source_else_body.end()));
 }
 
-Operation* GetIfInsertionPoint(TF::IfRegionOp source,
-                               TF::IfRegionOp destination) {
-  // TODO(b/173422484): Pick this insertion point better.
-  return source.getOperation();
+// Move all ops that depends on the results from `result_op` after `after_op`.
+void MoveResultsAfter(
+    Operation* result_op, Operation* after_op,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+  std::queue<Operation*> queue;
+
+  auto enqueue_deps = [&](Operation* source_op) {
+    for (Operation* user : source_op->getUsers()) {
+      queue.push(user);
+    }
+    source_op->walk([&](Operation* walked_op) {
+      for (Operation* successor :
+           side_effect_analysis.DirectControlSuccessors(walked_op)) {
+        if (!source_op->isProperAncestor(successor)) queue.push(successor);
+      }
+    });
+  };
+  enqueue_deps(result_op);
+
+  while (!queue.empty()) {
+    auto* op = queue.front();
+    queue.pop();
+    while (op->getBlock() != after_op->getBlock()) op = op->getParentOp();
+    if (op->isBeforeInBlock(after_op)) {
+      op->moveAfter(after_op);
+      after_op = op;
+      enqueue_deps(op);
+    }
+  }
 }
 
-TF::IfRegionOp CreateMergedIf(TF::IfRegionOp source,
-                              TF::IfRegionOp destination) {
+TF::IfRegionOp CreateMergedIf(
+    ArrayRef<int> source_return_indices_to_keep,
+    ArrayRef<int> destination_return_indices_to_keep, TF::IfRegionOp source,
+    TF::IfRegionOp destination,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   llvm::SmallVector<Type, 4> merged_return_types;
+  for (int i : destination_return_indices_to_keep)
+    merged_return_types.push_back(destination.getResult(i).getType());
+  for (int i : source_return_indices_to_keep)
+    merged_return_types.push_back(source.getResult(i).getType());
 
   OpBuilder builder(destination);
   // Create new IfRegion with correct merged results.
-  builder.setInsertionPoint(GetIfInsertionPoint(source, destination));
+  builder.setInsertionPoint(source.getOperation());
+
   auto new_if_op = builder.create<TF::IfRegionOp>(
       destination.getLoc(), merged_return_types, destination.cond(),
       destination.is_stateless() && source.is_stateless());
   new_if_op.then_branch().push_back(new Block);
   new_if_op.else_branch().push_back(new Block);
+  // Replace internal usages of merged if ops.
+  for (OpResult result : destination.getResults()) {
+    replaceAllUsesInRegionWith(
+        result,
+        destination.then_branch().front().getTerminator()->getOperand(
+            result.getResultNumber()),
+        source.then_branch());
+    replaceAllUsesInRegionWith(
+        result,
+        destination.else_branch().front().getTerminator()->getOperand(
+            result.getResultNumber()),
+        source.else_branch());
+  }
+
+  MoveResultsAfter(destination.getOperation(), new_if_op.getOperation(),
+                   side_effect_analysis);
+
+  // Replace external usages of merged if ops.
+  int new_return_index = 0;
+  for (int i : destination_return_indices_to_keep) {
+    destination.getResult(i).replaceAllUsesWith(
+        new_if_op.getResult(new_return_index++));
+  }
+  for (int i : source_return_indices_to_keep) {
+    source.getResult(i).replaceAllUsesWith(
+        new_if_op.getResult(new_return_index++));
+  }
+
+  // Create the Yield ops for both branches with merged results.
   llvm::SmallVector<Value, 4> merged_then_yield_values;
+  for (int i : destination_return_indices_to_keep)
+    merged_then_yield_values.push_back(
+        destination.then_branch().front().getTerminator()->getOperand(i));
+  for (int i : source_return_indices_to_keep)
+    merged_then_yield_values.push_back(
+        source.then_branch().front().getTerminator()->getOperand(i));
   builder.setInsertionPointToEnd(&new_if_op.then_branch().front());
   builder.create<TF::YieldOp>(
       destination.then_branch().front().getTerminator()->getLoc(),
       /*operands=*/merged_then_yield_values);
 
   llvm::SmallVector<Value, 4> merged_else_yield_values;
+  for (int i : destination_return_indices_to_keep)
+    merged_else_yield_values.push_back(
+        destination.else_branch().front().getTerminator()->getOperand(i));
+  for (int i : source_return_indices_to_keep)
+    merged_else_yield_values.push_back(
+        source.else_branch().front().getTerminator()->getOperand(i));
   builder.setInsertionPointToEnd(&new_if_op.else_branch().front());
   builder.create<TF::YieldOp>(
       destination.else_branch().front().getTerminator()->getLoc(),
@@ -194,16 +292,29 @@ void OptimizeIfRegions(
     it.first->getSecond().push_back(if_op);
   });
 
-  for (const auto& entry : grouped_if_ops) {
-    llvm::ArrayRef<TF::IfRegionOp> if_ops = entry.second;
-    TF::IfRegionOp first_if_op = if_ops[0];
-    for (int i = 1; i < if_ops.size(); ++i) {
-      TF::IfRegionOp if_op = if_ops[i];
-      if (!SafeToMerge(if_op, first_if_op, side_effect_analysis)) break;
+  for (auto& entry : grouped_if_ops) {
+    auto& if_ops = entry.second;
+    for (auto it = if_ops.begin(); it != if_ops.end(); ++it) {
+      TF::IfRegionOp first_if_op = *it;
+      for (auto it2 = std::next(it); it2 != if_ops.end(); ++it2) {
+        TF::IfRegionOp second_if_op = *it2;
+        if (!SafeToMerge(second_if_op, first_if_op, side_effect_analysis))
+          break;
 
-      auto new_if_op = CreateMergedIf(if_op, first_if_op);
+        // For both check if there are uses outside of IfRegion, keep these as
+        // part of the return and replace the internal uses.
+        auto first_return_indices_to_keep =
+            GetReturnIndicesToKeep(first_if_op, second_if_op);
+        auto second_return_indices_to_keep =
+            GetReturnIndicesToKeep(second_if_op, first_if_op);
 
-      first_if_op = new_if_op;
+        auto new_if_op = CreateMergedIf(
+            second_return_indices_to_keep, first_return_indices_to_keep,
+            second_if_op, first_if_op, side_effect_analysis);
+
+        if_ops.erase(it2--);
+        first_if_op = new_if_op;
+      }
     }
   }
 }

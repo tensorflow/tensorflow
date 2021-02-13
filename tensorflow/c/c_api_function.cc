@@ -196,6 +196,7 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
 
   // Compute body nodes.
   std::vector<const Node*> control_output_nodes;
+  control_output_nodes.reserve(ncontrol_outputs);
   for (int i = 0; i < ncontrol_outputs; ++i) {
     control_output_nodes.push_back(&control_outputs[i]->node);
   }
@@ -213,7 +214,11 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
     TF_DeleteFunction(tf_function);
     return nullptr;
   }
-  tf_function->graph_with_debug_info = &fn_body->graph;
+
+  for (const Node* n : fn_body->graph.nodes()) {
+    tf_function->stack_traces[n->name()] = n->GetStackTrace();
+  }
+
   return tf_function;
 }
 

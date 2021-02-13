@@ -18,14 +18,10 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
-
 namespace tosa {
-
-struct TOSALegalizationPipelineOptions
-    : public PassPipelineOptions<TOSALegalizationPipelineOptions> {};
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass();
 std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass();
@@ -36,7 +32,6 @@ std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass();
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 }  // namespace tosa
-
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_PASSES_H

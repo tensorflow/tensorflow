@@ -144,114 +144,6 @@ class ApproximateTanhLowering
   }
 };
 
-class ApproximateAtan2Lowering
-    : public ApproximateOnExtendedF32Lowering<Atan2Op> {
- public:
-  explicit ApproximateAtan2Lowering(MLIRContext *ctx)
-      : ApproximateOnExtendedF32Lowering<Atan2Op>(ctx) {}
-
-  // Reduces atan2 to atan in the same way XLA does it.
-  Value emitApproximation(ValueRange args, Location loc,
-                          PatternRewriter &rewriter) const override {
-    Value y = args[0];
-    Value x = args[1];
-    assert(x.getType().isF32() && y.getType().isF32() &&
-           "expect f32 arguments");
-    Value ax = rewriter.create<AbsFOp>(loc, x);
-    Value ay = rewriter.create<AbsFOp>(loc, y);
-    Value le_ax_ay = rewriter.create<CmpFOp>(loc, CmpFPredicate::OLE, ax, ay);
-    Value min_ax_ay = rewriter.create<mlir::SelectOp>(loc, le_ax_ay, ax, ay);
-    Value max_ax_ay = rewriter.create<mlir::SelectOp>(loc, le_ax_ay, ay, ax);
-    Value zero_to_one = rewriter.create<DivFOp>(loc, min_ax_ay, max_ax_ay);
-    Value a = emitAtanCoreApproximation(zero_to_one, loc, rewriter);
-
-    Value pi_over_2 =
-        rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(1.57079637f));
-    a = rewriter.create<mlir::SelectOp>(
-        loc, le_ax_ay, rewriter.create<SubFOp>(loc, pi_over_2, a), a);
-
-    Value zero = rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(0));
-    Value lt_x_0 = rewriter.create<CmpFOp>(loc, CmpFPredicate::OLT, x, zero);
-    Value pi =
-        rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(3.14159274f));
-    a = rewriter.create<mlir::SelectOp>(loc, lt_x_0,
-                                        rewriter.create<SubFOp>(loc, pi, a), a);
-
-    Value t = rewriter.create<mlir::SelectOp>(loc, lt_x_0, pi, zero);
-    Value eq_y_0 = rewriter.create<CmpFOp>(loc, CmpFPredicate::OEQ, y, zero);
-    a = rewriter.create<mlir::SelectOp>(loc, eq_y_0, t, a);
-
-    // Propagate nan.
-    Value is_nan = rewriter.create<CmpFOp>(loc, CmpFPredicate::UNO, y, x);
-    Value nan = rewriter.create<ConstantOp>(
-        loc, rewriter.getF32FloatAttr(std::numeric_limits<float>::quiet_NaN()));
-    a = rewriter.create<mlir::SelectOp>(loc, is_nan, nan, a);
-
-    // x and y are +- inf.
-    Value three_pi_over_4 =
-        rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(2.3561945f));
-    Value pi_over_4 = rewriter.create<ConstantOp>(
-        loc, rewriter.getF32FloatAttr(0.785398185f));
-    t = rewriter.create<mlir::SelectOp>(loc, lt_x_0, three_pi_over_4,
-                                        pi_over_4);
-    Value inf = rewriter.create<ConstantOp>(
-        loc, rewriter.getF32FloatAttr(std::numeric_limits<float>::infinity()));
-    Value eq_x_inf = rewriter.create<CmpFOp>(loc, CmpFPredicate::OEQ, x, inf);
-    Value eq_y_inf = rewriter.create<CmpFOp>(loc, CmpFPredicate::OEQ, y, inf);
-    Value all_inf = rewriter.create<mlir::AndOp>(loc, eq_x_inf, eq_y_inf);
-    a = rewriter.create<mlir::SelectOp>(loc, all_inf, t, a);
-
-    return rewriter.create<CopySignOp>(loc, a, y);
-  }
-
- private:
-  // The core atan reduction derives from the heuristic described in
-  // https://arxiv.org/abs/1508.03211 and has a < 0.95 ulp error in the [-1, 1]
-  // range (though that assumed FMA was available, and it is not here).  This is
-  // the same approximation that is also used by XLA.
-  Value emitAtanCoreApproximation(Value x, Location loc,
-                                  PatternRewriter &rewriter) const {
-    auto constant = [&](float c) {
-      return rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(c));
-    };
-
-    // Computes ab + c.
-    auto mul_add = [&](Value a, Value b, Value c) {
-      Value prod = rewriter.create<MulFOp>(loc, a, b);
-      return rewriter.create<AddFOp>(loc, prod, c);
-    };
-
-    Value s = rewriter.create<MulFOp>(loc, x, x);
-    Value r = constant(0.0027856871f);
-    r = mul_add(r, s, constant(-0.0158660002f));
-    r = mul_add(r, s, constant(0.042472221f));
-    r = mul_add(r, s, constant(-0.0749753043f));
-    r = mul_add(r, s, constant(0.106448799f));
-    r = mul_add(r, s, constant(-0.142070308f));
-    r = mul_add(r, s, constant(0.199934542f));
-    r = mul_add(r, s, constant(-0.333331466f));
-    r = rewriter.create<MulFOp>(loc, r, s);
-    return mul_add(r, x, x);
-  }
-};
-
-class ApproximateAtanLowering
-    : public ApproximateOnExtendedF32Lowering<AtanOp> {
- public:
-  explicit ApproximateAtanLowering(MLIRContext *ctx)
-      : ApproximateOnExtendedF32Lowering<AtanOp>(ctx) {}
-
-  // Reduce atan(x) to atan2(x, 1) to subsequently rely on an atan approximation
-  // for the argument range [-1, 1].
-  Value emitApproximation(ValueRange args, Location loc,
-                          PatternRewriter &rewriter) const override {
-    Value x = args.front();
-    assert(x.getType().isF32());
-    Value one = rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(1));
-    return rewriter.create<Atan2Op>(loc, x, one);
-  }
-};
-
 struct LegalizeTrigonometricToApproximationPass
     : public PassWrapper<LegalizeTrigonometricToApproximationPass,
                          FunctionPass> {
@@ -259,7 +151,7 @@ struct LegalizeTrigonometricToApproximationPass
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
-    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 
@@ -273,10 +165,7 @@ createLegalizeTrigonometricToApproximationPass() {
 void PopulateTrigonometricToApproximationPatterns(
     mlir::MLIRContext *context, OwningRewritePatternList *patterns) {
   // clang-format off
-  patterns->insert<
-      ApproximateAtanLowering,
-      ApproximateAtan2Lowering,
-      ApproximateTanhLowering>(context);
+  patterns->insert<ApproximateTanhLowering>(context);
   // clang-format on
 }
 

@@ -20,43 +20,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/time/time.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/profiling_info.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-struct ProfilingInfo {
-  struct DispatchInfo {
-    std::string label;
-    absl::Duration duration;
-  };
-
-  std::vector<DispatchInfo> dispatches;
-
-  absl::Duration GetTotalTime() const;
-
-  // Returns report (string of lines delimited by \n)
-  // This method uses GPU counters and measure GPU time only.
-  // Report has next structure:
-  // Per kernel timing(K kernels):
-  //   conv2d 3.2ms
-  //   ...
-  // --------------------
-  // Accumulated time per operation type:
-  //   conv2d - 14.5ms
-  //   ....
-  // --------------------
-  // Ideal total time: 23.4ms // Total time for all kernels
-  std::string GetDetailedReport() const;
-};
 
 // A wrapper around opencl command queue
 class CLCommandQueue {

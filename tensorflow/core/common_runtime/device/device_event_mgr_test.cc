@@ -149,7 +149,7 @@ class GPUDeviceTestHelper {
         DeviceFactory::NewDevice(DEVICE_GPU, sops, "/job:a/replica:0/task:0");
     gpu_.reset(reinterpret_cast<BaseGPUDevice*>(device_.release()));
     gpu_allocator_ = GPUProcessState::singleton()->GetGPUAllocator(
-        GPUOptions(), TfGpuId(0), memory_limit);
+        GPUOptions(), TfGpuId(0), memory_limit, /*peer_gpu_ids=*/{});
     host_allocator_ = GPUProcessState::singleton()->GetGpuHostAllocator(0);
   }
 

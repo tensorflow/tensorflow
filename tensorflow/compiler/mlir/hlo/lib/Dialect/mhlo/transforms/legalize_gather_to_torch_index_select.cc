@@ -133,7 +133,7 @@ struct LegalizeGatherToTorchIndexSelectPass
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     PopulateGatherToTorchIndexSelectPatterns(&getContext(), &patterns);
-    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 }  // namespace

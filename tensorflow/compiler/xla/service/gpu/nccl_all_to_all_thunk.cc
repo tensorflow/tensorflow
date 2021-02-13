@@ -38,35 +38,29 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-NcclAllToAllConfig GetNcclAllToAllConfig(const HloInstruction* hlo,
-                                         int64 replica_count) {
-  absl::optional<int64> split_dimension =
-      Cast<HloAllToAllInstruction>(hlo)->split_dimension();
-
+static NcclAllToAllConfig GetNcclAllToAllConfig(mlir::lmhlo::AllToAllOp op,
+                                                int64 replica_count) {
   NcclAllToAllConfig config;
-  config.config = GetNcclCollectiveConfig(hlo, replica_count);
-  config.has_split_dimension = split_dimension.has_value();
+  config.config = GetNcclCollectiveConfigForMlir(op, replica_count);
+  config.has_split_dimension = op.split_dimension().hasValue();
   return config;
 }
 
-/*static*/ bool NcclAllToAllThunk::CanImplement(const HloInstruction* hlo) {
-  auto operands_are_supported = [hlo]() {
-    return absl::c_all_of(hlo->operands(), [](HloInstruction* operand) {
-      return LayoutUtil::IsDenseArray(operand->shape()) &&
-             ToNcclDataType(operand->shape().element_type()).ok();
-    });
-  };
-  absl::optional<int64> split_dimension =
-      Cast<HloAllToAllInstruction>(hlo)->split_dimension();
-  return (!split_dimension.has_value() || *split_dimension == 0) &&
-         operands_are_supported();
+/*static*/ bool NcclAllToAllThunk::CanImplement(mlir::lmhlo::AllToAllOp op) {
+  bool operands_are_supported =
+      absl::c_all_of(op.operands(), [](mlir::Value operand) {
+        Shape shape = TypeToShape(operand.getType());
+        return LayoutUtil::IsDenseArray(shape) &&
+               ToNcclDataType(shape.element_type()).ok();
+      });
+  return op.split_dimension().getValueOr(0) == 0 && operands_are_supported;
 }
 
 NcclAllToAllThunk::NcclAllToAllThunk(
-    ThunkInfo thunk_info, NcclAllToAllConfig config,
+    ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op, int64 replica_count,
     std::vector<NcclAllToAllThunk::Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllToAll, thunk_info),
-      config_(std::move(config)),
+      config_(GetNcclAllToAllConfig(op, replica_count)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }

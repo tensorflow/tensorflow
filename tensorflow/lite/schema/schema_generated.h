@@ -49,6 +49,9 @@ struct TensorT;
 struct Conv2DOptions;
 struct Conv2DOptionsT;
 
+struct Conv3DOptions;
+struct Conv3DOptionsT;
+
 struct Pool2DOptions;
 struct Pool2DOptionsT;
 
@@ -399,11 +402,13 @@ enum TensorType {
   TensorType_FLOAT64 = 10,
   TensorType_COMPLEX128 = 11,
   TensorType_UINT64 = 12,
+  TensorType_RESOURCE = 13,
+  TensorType_VARIANT = 14,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_UINT64
+  TensorType_MAX = TensorType_VARIANT
 };
 
-inline const TensorType (&EnumValuesTensorType())[13] {
+inline const TensorType (&EnumValuesTensorType())[15] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -417,13 +422,15 @@ inline const TensorType (&EnumValuesTensorType())[13] {
     TensorType_INT8,
     TensorType_FLOAT64,
     TensorType_COMPLEX128,
-    TensorType_UINT64
+    TensorType_UINT64,
+    TensorType_RESOURCE,
+    TensorType_VARIANT
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[14] = {
+  static const char * const names[16] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -437,13 +444,15 @@ inline const char * const *EnumNamesTensorType() {
     "FLOAT64",
     "COMPLEX128",
     "UINT64",
+    "RESOURCE",
+    "VARIANT",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_UINT64)) return "";
+  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_VARIANT)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
@@ -807,287 +816,301 @@ enum BuiltinOperator {
   BuiltinOperator_CALL_ONCE = 129,
   BuiltinOperator_BROADCAST_TO = 130,
   BuiltinOperator_RFFT2D = 131,
+  BuiltinOperator_CONV_3D = 132,
+  BuiltinOperator_IMAG = 133,
+  BuiltinOperator_REAL = 134,
+  BuiltinOperator_COMPLEX_ABS = 135,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_RFFT2D
+  BuiltinOperator_MAX = BuiltinOperator_COMPLEX_ABS
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[132] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[136] {
   static const BuiltinOperator values[] = {
-      BuiltinOperator_ADD,
-      BuiltinOperator_AVERAGE_POOL_2D,
-      BuiltinOperator_CONCATENATION,
-      BuiltinOperator_CONV_2D,
-      BuiltinOperator_DEPTHWISE_CONV_2D,
-      BuiltinOperator_DEPTH_TO_SPACE,
-      BuiltinOperator_DEQUANTIZE,
-      BuiltinOperator_EMBEDDING_LOOKUP,
-      BuiltinOperator_FLOOR,
-      BuiltinOperator_FULLY_CONNECTED,
-      BuiltinOperator_HASHTABLE_LOOKUP,
-      BuiltinOperator_L2_NORMALIZATION,
-      BuiltinOperator_L2_POOL_2D,
-      BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
-      BuiltinOperator_LOGISTIC,
-      BuiltinOperator_LSH_PROJECTION,
-      BuiltinOperator_LSTM,
-      BuiltinOperator_MAX_POOL_2D,
-      BuiltinOperator_MUL,
-      BuiltinOperator_RELU,
-      BuiltinOperator_RELU_N1_TO_1,
-      BuiltinOperator_RELU6,
-      BuiltinOperator_RESHAPE,
-      BuiltinOperator_RESIZE_BILINEAR,
-      BuiltinOperator_RNN,
-      BuiltinOperator_SOFTMAX,
-      BuiltinOperator_SPACE_TO_DEPTH,
-      BuiltinOperator_SVDF,
-      BuiltinOperator_TANH,
-      BuiltinOperator_CONCAT_EMBEDDINGS,
-      BuiltinOperator_SKIP_GRAM,
-      BuiltinOperator_CALL,
-      BuiltinOperator_CUSTOM,
-      BuiltinOperator_EMBEDDING_LOOKUP_SPARSE,
-      BuiltinOperator_PAD,
-      BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
-      BuiltinOperator_GATHER,
-      BuiltinOperator_BATCH_TO_SPACE_ND,
-      BuiltinOperator_SPACE_TO_BATCH_ND,
-      BuiltinOperator_TRANSPOSE,
-      BuiltinOperator_MEAN,
-      BuiltinOperator_SUB,
-      BuiltinOperator_DIV,
-      BuiltinOperator_SQUEEZE,
-      BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
-      BuiltinOperator_STRIDED_SLICE,
-      BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
-      BuiltinOperator_EXP,
-      BuiltinOperator_TOPK_V2,
-      BuiltinOperator_SPLIT,
-      BuiltinOperator_LOG_SOFTMAX,
-      BuiltinOperator_DELEGATE,
-      BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
-      BuiltinOperator_CAST,
-      BuiltinOperator_PRELU,
-      BuiltinOperator_MAXIMUM,
-      BuiltinOperator_ARG_MAX,
-      BuiltinOperator_MINIMUM,
-      BuiltinOperator_LESS,
-      BuiltinOperator_NEG,
-      BuiltinOperator_PADV2,
-      BuiltinOperator_GREATER,
-      BuiltinOperator_GREATER_EQUAL,
-      BuiltinOperator_LESS_EQUAL,
-      BuiltinOperator_SELECT,
-      BuiltinOperator_SLICE,
-      BuiltinOperator_SIN,
-      BuiltinOperator_TRANSPOSE_CONV,
-      BuiltinOperator_SPARSE_TO_DENSE,
-      BuiltinOperator_TILE,
-      BuiltinOperator_EXPAND_DIMS,
-      BuiltinOperator_EQUAL,
-      BuiltinOperator_NOT_EQUAL,
-      BuiltinOperator_LOG,
-      BuiltinOperator_SUM,
-      BuiltinOperator_SQRT,
-      BuiltinOperator_RSQRT,
-      BuiltinOperator_SHAPE,
-      BuiltinOperator_POW,
-      BuiltinOperator_ARG_MIN,
-      BuiltinOperator_FAKE_QUANT,
-      BuiltinOperator_REDUCE_PROD,
-      BuiltinOperator_REDUCE_MAX,
-      BuiltinOperator_PACK,
-      BuiltinOperator_LOGICAL_OR,
-      BuiltinOperator_ONE_HOT,
-      BuiltinOperator_LOGICAL_AND,
-      BuiltinOperator_LOGICAL_NOT,
-      BuiltinOperator_UNPACK,
-      BuiltinOperator_REDUCE_MIN,
-      BuiltinOperator_FLOOR_DIV,
-      BuiltinOperator_REDUCE_ANY,
-      BuiltinOperator_SQUARE,
-      BuiltinOperator_ZEROS_LIKE,
-      BuiltinOperator_FILL,
-      BuiltinOperator_FLOOR_MOD,
-      BuiltinOperator_RANGE,
-      BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-      BuiltinOperator_LEAKY_RELU,
-      BuiltinOperator_SQUARED_DIFFERENCE,
-      BuiltinOperator_MIRROR_PAD,
-      BuiltinOperator_ABS,
-      BuiltinOperator_SPLIT_V,
-      BuiltinOperator_UNIQUE,
-      BuiltinOperator_CEIL,
-      BuiltinOperator_REVERSE_V2,
-      BuiltinOperator_ADD_N,
-      BuiltinOperator_GATHER_ND,
-      BuiltinOperator_COS,
-      BuiltinOperator_WHERE,
-      BuiltinOperator_RANK,
-      BuiltinOperator_ELU,
-      BuiltinOperator_REVERSE_SEQUENCE,
-      BuiltinOperator_MATRIX_DIAG,
-      BuiltinOperator_QUANTIZE,
-      BuiltinOperator_MATRIX_SET_DIAG,
-      BuiltinOperator_ROUND,
-      BuiltinOperator_HARD_SWISH,
-      BuiltinOperator_IF,
-      BuiltinOperator_WHILE,
-      BuiltinOperator_NON_MAX_SUPPRESSION_V4,
-      BuiltinOperator_NON_MAX_SUPPRESSION_V5,
-      BuiltinOperator_SCATTER_ND,
-      BuiltinOperator_SELECT_V2,
-      BuiltinOperator_DENSIFY,
-      BuiltinOperator_SEGMENT_SUM,
-      BuiltinOperator_BATCH_MATMUL,
-      BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES,
-      BuiltinOperator_CUMSUM,
-      BuiltinOperator_CALL_ONCE,
-      BuiltinOperator_BROADCAST_TO,
-      BuiltinOperator_RFFT2D};
+    BuiltinOperator_ADD,
+    BuiltinOperator_AVERAGE_POOL_2D,
+    BuiltinOperator_CONCATENATION,
+    BuiltinOperator_CONV_2D,
+    BuiltinOperator_DEPTHWISE_CONV_2D,
+    BuiltinOperator_DEPTH_TO_SPACE,
+    BuiltinOperator_DEQUANTIZE,
+    BuiltinOperator_EMBEDDING_LOOKUP,
+    BuiltinOperator_FLOOR,
+    BuiltinOperator_FULLY_CONNECTED,
+    BuiltinOperator_HASHTABLE_LOOKUP,
+    BuiltinOperator_L2_NORMALIZATION,
+    BuiltinOperator_L2_POOL_2D,
+    BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
+    BuiltinOperator_LOGISTIC,
+    BuiltinOperator_LSH_PROJECTION,
+    BuiltinOperator_LSTM,
+    BuiltinOperator_MAX_POOL_2D,
+    BuiltinOperator_MUL,
+    BuiltinOperator_RELU,
+    BuiltinOperator_RELU_N1_TO_1,
+    BuiltinOperator_RELU6,
+    BuiltinOperator_RESHAPE,
+    BuiltinOperator_RESIZE_BILINEAR,
+    BuiltinOperator_RNN,
+    BuiltinOperator_SOFTMAX,
+    BuiltinOperator_SPACE_TO_DEPTH,
+    BuiltinOperator_SVDF,
+    BuiltinOperator_TANH,
+    BuiltinOperator_CONCAT_EMBEDDINGS,
+    BuiltinOperator_SKIP_GRAM,
+    BuiltinOperator_CALL,
+    BuiltinOperator_CUSTOM,
+    BuiltinOperator_EMBEDDING_LOOKUP_SPARSE,
+    BuiltinOperator_PAD,
+    BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
+    BuiltinOperator_GATHER,
+    BuiltinOperator_BATCH_TO_SPACE_ND,
+    BuiltinOperator_SPACE_TO_BATCH_ND,
+    BuiltinOperator_TRANSPOSE,
+    BuiltinOperator_MEAN,
+    BuiltinOperator_SUB,
+    BuiltinOperator_DIV,
+    BuiltinOperator_SQUEEZE,
+    BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
+    BuiltinOperator_STRIDED_SLICE,
+    BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
+    BuiltinOperator_EXP,
+    BuiltinOperator_TOPK_V2,
+    BuiltinOperator_SPLIT,
+    BuiltinOperator_LOG_SOFTMAX,
+    BuiltinOperator_DELEGATE,
+    BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
+    BuiltinOperator_CAST,
+    BuiltinOperator_PRELU,
+    BuiltinOperator_MAXIMUM,
+    BuiltinOperator_ARG_MAX,
+    BuiltinOperator_MINIMUM,
+    BuiltinOperator_LESS,
+    BuiltinOperator_NEG,
+    BuiltinOperator_PADV2,
+    BuiltinOperator_GREATER,
+    BuiltinOperator_GREATER_EQUAL,
+    BuiltinOperator_LESS_EQUAL,
+    BuiltinOperator_SELECT,
+    BuiltinOperator_SLICE,
+    BuiltinOperator_SIN,
+    BuiltinOperator_TRANSPOSE_CONV,
+    BuiltinOperator_SPARSE_TO_DENSE,
+    BuiltinOperator_TILE,
+    BuiltinOperator_EXPAND_DIMS,
+    BuiltinOperator_EQUAL,
+    BuiltinOperator_NOT_EQUAL,
+    BuiltinOperator_LOG,
+    BuiltinOperator_SUM,
+    BuiltinOperator_SQRT,
+    BuiltinOperator_RSQRT,
+    BuiltinOperator_SHAPE,
+    BuiltinOperator_POW,
+    BuiltinOperator_ARG_MIN,
+    BuiltinOperator_FAKE_QUANT,
+    BuiltinOperator_REDUCE_PROD,
+    BuiltinOperator_REDUCE_MAX,
+    BuiltinOperator_PACK,
+    BuiltinOperator_LOGICAL_OR,
+    BuiltinOperator_ONE_HOT,
+    BuiltinOperator_LOGICAL_AND,
+    BuiltinOperator_LOGICAL_NOT,
+    BuiltinOperator_UNPACK,
+    BuiltinOperator_REDUCE_MIN,
+    BuiltinOperator_FLOOR_DIV,
+    BuiltinOperator_REDUCE_ANY,
+    BuiltinOperator_SQUARE,
+    BuiltinOperator_ZEROS_LIKE,
+    BuiltinOperator_FILL,
+    BuiltinOperator_FLOOR_MOD,
+    BuiltinOperator_RANGE,
+    BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+    BuiltinOperator_LEAKY_RELU,
+    BuiltinOperator_SQUARED_DIFFERENCE,
+    BuiltinOperator_MIRROR_PAD,
+    BuiltinOperator_ABS,
+    BuiltinOperator_SPLIT_V,
+    BuiltinOperator_UNIQUE,
+    BuiltinOperator_CEIL,
+    BuiltinOperator_REVERSE_V2,
+    BuiltinOperator_ADD_N,
+    BuiltinOperator_GATHER_ND,
+    BuiltinOperator_COS,
+    BuiltinOperator_WHERE,
+    BuiltinOperator_RANK,
+    BuiltinOperator_ELU,
+    BuiltinOperator_REVERSE_SEQUENCE,
+    BuiltinOperator_MATRIX_DIAG,
+    BuiltinOperator_QUANTIZE,
+    BuiltinOperator_MATRIX_SET_DIAG,
+    BuiltinOperator_ROUND,
+    BuiltinOperator_HARD_SWISH,
+    BuiltinOperator_IF,
+    BuiltinOperator_WHILE,
+    BuiltinOperator_NON_MAX_SUPPRESSION_V4,
+    BuiltinOperator_NON_MAX_SUPPRESSION_V5,
+    BuiltinOperator_SCATTER_ND,
+    BuiltinOperator_SELECT_V2,
+    BuiltinOperator_DENSIFY,
+    BuiltinOperator_SEGMENT_SUM,
+    BuiltinOperator_BATCH_MATMUL,
+    BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES,
+    BuiltinOperator_CUMSUM,
+    BuiltinOperator_CALL_ONCE,
+    BuiltinOperator_BROADCAST_TO,
+    BuiltinOperator_RFFT2D,
+    BuiltinOperator_CONV_3D,
+    BuiltinOperator_IMAG,
+    BuiltinOperator_REAL,
+    BuiltinOperator_COMPLEX_ABS
+  };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char *const names[133] = {"ADD",
-                                         "AVERAGE_POOL_2D",
-                                         "CONCATENATION",
-                                         "CONV_2D",
-                                         "DEPTHWISE_CONV_2D",
-                                         "DEPTH_TO_SPACE",
-                                         "DEQUANTIZE",
-                                         "EMBEDDING_LOOKUP",
-                                         "FLOOR",
-                                         "FULLY_CONNECTED",
-                                         "HASHTABLE_LOOKUP",
-                                         "L2_NORMALIZATION",
-                                         "L2_POOL_2D",
-                                         "LOCAL_RESPONSE_NORMALIZATION",
-                                         "LOGISTIC",
-                                         "LSH_PROJECTION",
-                                         "LSTM",
-                                         "MAX_POOL_2D",
-                                         "MUL",
-                                         "RELU",
-                                         "RELU_N1_TO_1",
-                                         "RELU6",
-                                         "RESHAPE",
-                                         "RESIZE_BILINEAR",
-                                         "RNN",
-                                         "SOFTMAX",
-                                         "SPACE_TO_DEPTH",
-                                         "SVDF",
-                                         "TANH",
-                                         "CONCAT_EMBEDDINGS",
-                                         "SKIP_GRAM",
-                                         "CALL",
-                                         "CUSTOM",
-                                         "EMBEDDING_LOOKUP_SPARSE",
-                                         "PAD",
-                                         "UNIDIRECTIONAL_SEQUENCE_RNN",
-                                         "GATHER",
-                                         "BATCH_TO_SPACE_ND",
-                                         "SPACE_TO_BATCH_ND",
-                                         "TRANSPOSE",
-                                         "MEAN",
-                                         "SUB",
-                                         "DIV",
-                                         "SQUEEZE",
-                                         "UNIDIRECTIONAL_SEQUENCE_LSTM",
-                                         "STRIDED_SLICE",
-                                         "BIDIRECTIONAL_SEQUENCE_RNN",
-                                         "EXP",
-                                         "TOPK_V2",
-                                         "SPLIT",
-                                         "LOG_SOFTMAX",
-                                         "DELEGATE",
-                                         "BIDIRECTIONAL_SEQUENCE_LSTM",
-                                         "CAST",
-                                         "PRELU",
-                                         "MAXIMUM",
-                                         "ARG_MAX",
-                                         "MINIMUM",
-                                         "LESS",
-                                         "NEG",
-                                         "PADV2",
-                                         "GREATER",
-                                         "GREATER_EQUAL",
-                                         "LESS_EQUAL",
-                                         "SELECT",
-                                         "SLICE",
-                                         "SIN",
-                                         "TRANSPOSE_CONV",
-                                         "SPARSE_TO_DENSE",
-                                         "TILE",
-                                         "EXPAND_DIMS",
-                                         "EQUAL",
-                                         "NOT_EQUAL",
-                                         "LOG",
-                                         "SUM",
-                                         "SQRT",
-                                         "RSQRT",
-                                         "SHAPE",
-                                         "POW",
-                                         "ARG_MIN",
-                                         "FAKE_QUANT",
-                                         "REDUCE_PROD",
-                                         "REDUCE_MAX",
-                                         "PACK",
-                                         "LOGICAL_OR",
-                                         "ONE_HOT",
-                                         "LOGICAL_AND",
-                                         "LOGICAL_NOT",
-                                         "UNPACK",
-                                         "REDUCE_MIN",
-                                         "FLOOR_DIV",
-                                         "REDUCE_ANY",
-                                         "SQUARE",
-                                         "ZEROS_LIKE",
-                                         "FILL",
-                                         "FLOOR_MOD",
-                                         "RANGE",
-                                         "RESIZE_NEAREST_NEIGHBOR",
-                                         "LEAKY_RELU",
-                                         "SQUARED_DIFFERENCE",
-                                         "MIRROR_PAD",
-                                         "ABS",
-                                         "SPLIT_V",
-                                         "UNIQUE",
-                                         "CEIL",
-                                         "REVERSE_V2",
-                                         "ADD_N",
-                                         "GATHER_ND",
-                                         "COS",
-                                         "WHERE",
-                                         "RANK",
-                                         "ELU",
-                                         "REVERSE_SEQUENCE",
-                                         "MATRIX_DIAG",
-                                         "QUANTIZE",
-                                         "MATRIX_SET_DIAG",
-                                         "ROUND",
-                                         "HARD_SWISH",
-                                         "IF",
-                                         "WHILE",
-                                         "NON_MAX_SUPPRESSION_V4",
-                                         "NON_MAX_SUPPRESSION_V5",
-                                         "SCATTER_ND",
-                                         "SELECT_V2",
-                                         "DENSIFY",
-                                         "SEGMENT_SUM",
-                                         "BATCH_MATMUL",
-                                         "PLACEHOLDER_FOR_GREATER_OP_CODES",
-                                         "CUMSUM",
-                                         "CALL_ONCE",
-                                         "BROADCAST_TO",
-                                         "RFFT2D",
-                                         nullptr};
+  static const char * const names[137] = {
+    "ADD",
+    "AVERAGE_POOL_2D",
+    "CONCATENATION",
+    "CONV_2D",
+    "DEPTHWISE_CONV_2D",
+    "DEPTH_TO_SPACE",
+    "DEQUANTIZE",
+    "EMBEDDING_LOOKUP",
+    "FLOOR",
+    "FULLY_CONNECTED",
+    "HASHTABLE_LOOKUP",
+    "L2_NORMALIZATION",
+    "L2_POOL_2D",
+    "LOCAL_RESPONSE_NORMALIZATION",
+    "LOGISTIC",
+    "LSH_PROJECTION",
+    "LSTM",
+    "MAX_POOL_2D",
+    "MUL",
+    "RELU",
+    "RELU_N1_TO_1",
+    "RELU6",
+    "RESHAPE",
+    "RESIZE_BILINEAR",
+    "RNN",
+    "SOFTMAX",
+    "SPACE_TO_DEPTH",
+    "SVDF",
+    "TANH",
+    "CONCAT_EMBEDDINGS",
+    "SKIP_GRAM",
+    "CALL",
+    "CUSTOM",
+    "EMBEDDING_LOOKUP_SPARSE",
+    "PAD",
+    "UNIDIRECTIONAL_SEQUENCE_RNN",
+    "GATHER",
+    "BATCH_TO_SPACE_ND",
+    "SPACE_TO_BATCH_ND",
+    "TRANSPOSE",
+    "MEAN",
+    "SUB",
+    "DIV",
+    "SQUEEZE",
+    "UNIDIRECTIONAL_SEQUENCE_LSTM",
+    "STRIDED_SLICE",
+    "BIDIRECTIONAL_SEQUENCE_RNN",
+    "EXP",
+    "TOPK_V2",
+    "SPLIT",
+    "LOG_SOFTMAX",
+    "DELEGATE",
+    "BIDIRECTIONAL_SEQUENCE_LSTM",
+    "CAST",
+    "PRELU",
+    "MAXIMUM",
+    "ARG_MAX",
+    "MINIMUM",
+    "LESS",
+    "NEG",
+    "PADV2",
+    "GREATER",
+    "GREATER_EQUAL",
+    "LESS_EQUAL",
+    "SELECT",
+    "SLICE",
+    "SIN",
+    "TRANSPOSE_CONV",
+    "SPARSE_TO_DENSE",
+    "TILE",
+    "EXPAND_DIMS",
+    "EQUAL",
+    "NOT_EQUAL",
+    "LOG",
+    "SUM",
+    "SQRT",
+    "RSQRT",
+    "SHAPE",
+    "POW",
+    "ARG_MIN",
+    "FAKE_QUANT",
+    "REDUCE_PROD",
+    "REDUCE_MAX",
+    "PACK",
+    "LOGICAL_OR",
+    "ONE_HOT",
+    "LOGICAL_AND",
+    "LOGICAL_NOT",
+    "UNPACK",
+    "REDUCE_MIN",
+    "FLOOR_DIV",
+    "REDUCE_ANY",
+    "SQUARE",
+    "ZEROS_LIKE",
+    "FILL",
+    "FLOOR_MOD",
+    "RANGE",
+    "RESIZE_NEAREST_NEIGHBOR",
+    "LEAKY_RELU",
+    "SQUARED_DIFFERENCE",
+    "MIRROR_PAD",
+    "ABS",
+    "SPLIT_V",
+    "UNIQUE",
+    "CEIL",
+    "REVERSE_V2",
+    "ADD_N",
+    "GATHER_ND",
+    "COS",
+    "WHERE",
+    "RANK",
+    "ELU",
+    "REVERSE_SEQUENCE",
+    "MATRIX_DIAG",
+    "QUANTIZE",
+    "MATRIX_SET_DIAG",
+    "ROUND",
+    "HARD_SWISH",
+    "IF",
+    "WHILE",
+    "NON_MAX_SUPPRESSION_V4",
+    "NON_MAX_SUPPRESSION_V5",
+    "SCATTER_ND",
+    "SELECT_V2",
+    "DENSIFY",
+    "SEGMENT_SUM",
+    "BATCH_MATMUL",
+    "PLACEHOLDER_FOR_GREATER_OP_CODES",
+    "CUMSUM",
+    "CALL_ONCE",
+    "BROADCAST_TO",
+    "RFFT2D",
+    "CONV_3D",
+    "IMAG",
+    "REAL",
+    "COMPLEX_ABS",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_RFFT2D))
-    return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_COMPLEX_ABS)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1199,236 +1222,240 @@ enum BuiltinOptions {
   BuiltinOptions_CallOnceOptions = 103,
   BuiltinOptions_BroadcastToOptions = 104,
   BuiltinOptions_Rfft2dOptions = 105,
+  BuiltinOptions_Conv3DOptions = 106,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_Rfft2dOptions
+  BuiltinOptions_MAX = BuiltinOptions_Conv3DOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[106] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[107] {
   static const BuiltinOptions values[] = {
-      BuiltinOptions_NONE,
-      BuiltinOptions_Conv2DOptions,
-      BuiltinOptions_DepthwiseConv2DOptions,
-      BuiltinOptions_ConcatEmbeddingsOptions,
-      BuiltinOptions_LSHProjectionOptions,
-      BuiltinOptions_Pool2DOptions,
-      BuiltinOptions_SVDFOptions,
-      BuiltinOptions_RNNOptions,
-      BuiltinOptions_FullyConnectedOptions,
-      BuiltinOptions_SoftmaxOptions,
-      BuiltinOptions_ConcatenationOptions,
-      BuiltinOptions_AddOptions,
-      BuiltinOptions_L2NormOptions,
-      BuiltinOptions_LocalResponseNormalizationOptions,
-      BuiltinOptions_LSTMOptions,
-      BuiltinOptions_ResizeBilinearOptions,
-      BuiltinOptions_CallOptions,
-      BuiltinOptions_ReshapeOptions,
-      BuiltinOptions_SkipGramOptions,
-      BuiltinOptions_SpaceToDepthOptions,
-      BuiltinOptions_EmbeddingLookupSparseOptions,
-      BuiltinOptions_MulOptions,
-      BuiltinOptions_PadOptions,
-      BuiltinOptions_GatherOptions,
-      BuiltinOptions_BatchToSpaceNDOptions,
-      BuiltinOptions_SpaceToBatchNDOptions,
-      BuiltinOptions_TransposeOptions,
-      BuiltinOptions_ReducerOptions,
-      BuiltinOptions_SubOptions,
-      BuiltinOptions_DivOptions,
-      BuiltinOptions_SqueezeOptions,
-      BuiltinOptions_SequenceRNNOptions,
-      BuiltinOptions_StridedSliceOptions,
-      BuiltinOptions_ExpOptions,
-      BuiltinOptions_TopKV2Options,
-      BuiltinOptions_SplitOptions,
-      BuiltinOptions_LogSoftmaxOptions,
-      BuiltinOptions_CastOptions,
-      BuiltinOptions_DequantizeOptions,
-      BuiltinOptions_MaximumMinimumOptions,
-      BuiltinOptions_ArgMaxOptions,
-      BuiltinOptions_LessOptions,
-      BuiltinOptions_NegOptions,
-      BuiltinOptions_PadV2Options,
-      BuiltinOptions_GreaterOptions,
-      BuiltinOptions_GreaterEqualOptions,
-      BuiltinOptions_LessEqualOptions,
-      BuiltinOptions_SelectOptions,
-      BuiltinOptions_SliceOptions,
-      BuiltinOptions_TransposeConvOptions,
-      BuiltinOptions_SparseToDenseOptions,
-      BuiltinOptions_TileOptions,
-      BuiltinOptions_ExpandDimsOptions,
-      BuiltinOptions_EqualOptions,
-      BuiltinOptions_NotEqualOptions,
-      BuiltinOptions_ShapeOptions,
-      BuiltinOptions_PowOptions,
-      BuiltinOptions_ArgMinOptions,
-      BuiltinOptions_FakeQuantOptions,
-      BuiltinOptions_PackOptions,
-      BuiltinOptions_LogicalOrOptions,
-      BuiltinOptions_OneHotOptions,
-      BuiltinOptions_LogicalAndOptions,
-      BuiltinOptions_LogicalNotOptions,
-      BuiltinOptions_UnpackOptions,
-      BuiltinOptions_FloorDivOptions,
-      BuiltinOptions_SquareOptions,
-      BuiltinOptions_ZerosLikeOptions,
-      BuiltinOptions_FillOptions,
-      BuiltinOptions_BidirectionalSequenceLSTMOptions,
-      BuiltinOptions_BidirectionalSequenceRNNOptions,
-      BuiltinOptions_UnidirectionalSequenceLSTMOptions,
-      BuiltinOptions_FloorModOptions,
-      BuiltinOptions_RangeOptions,
-      BuiltinOptions_ResizeNearestNeighborOptions,
-      BuiltinOptions_LeakyReluOptions,
-      BuiltinOptions_SquaredDifferenceOptions,
-      BuiltinOptions_MirrorPadOptions,
-      BuiltinOptions_AbsOptions,
-      BuiltinOptions_SplitVOptions,
-      BuiltinOptions_UniqueOptions,
-      BuiltinOptions_ReverseV2Options,
-      BuiltinOptions_AddNOptions,
-      BuiltinOptions_GatherNdOptions,
-      BuiltinOptions_CosOptions,
-      BuiltinOptions_WhereOptions,
-      BuiltinOptions_RankOptions,
-      BuiltinOptions_ReverseSequenceOptions,
-      BuiltinOptions_MatrixDiagOptions,
-      BuiltinOptions_QuantizeOptions,
-      BuiltinOptions_MatrixSetDiagOptions,
-      BuiltinOptions_HardSwishOptions,
-      BuiltinOptions_IfOptions,
-      BuiltinOptions_WhileOptions,
-      BuiltinOptions_DepthToSpaceOptions,
-      BuiltinOptions_NonMaxSuppressionV4Options,
-      BuiltinOptions_NonMaxSuppressionV5Options,
-      BuiltinOptions_ScatterNdOptions,
-      BuiltinOptions_SelectV2Options,
-      BuiltinOptions_DensifyOptions,
-      BuiltinOptions_SegmentSumOptions,
-      BuiltinOptions_BatchMatMulOptions,
-      BuiltinOptions_CumsumOptions,
-      BuiltinOptions_CallOnceOptions,
-      BuiltinOptions_BroadcastToOptions,
-      BuiltinOptions_Rfft2dOptions};
+    BuiltinOptions_NONE,
+    BuiltinOptions_Conv2DOptions,
+    BuiltinOptions_DepthwiseConv2DOptions,
+    BuiltinOptions_ConcatEmbeddingsOptions,
+    BuiltinOptions_LSHProjectionOptions,
+    BuiltinOptions_Pool2DOptions,
+    BuiltinOptions_SVDFOptions,
+    BuiltinOptions_RNNOptions,
+    BuiltinOptions_FullyConnectedOptions,
+    BuiltinOptions_SoftmaxOptions,
+    BuiltinOptions_ConcatenationOptions,
+    BuiltinOptions_AddOptions,
+    BuiltinOptions_L2NormOptions,
+    BuiltinOptions_LocalResponseNormalizationOptions,
+    BuiltinOptions_LSTMOptions,
+    BuiltinOptions_ResizeBilinearOptions,
+    BuiltinOptions_CallOptions,
+    BuiltinOptions_ReshapeOptions,
+    BuiltinOptions_SkipGramOptions,
+    BuiltinOptions_SpaceToDepthOptions,
+    BuiltinOptions_EmbeddingLookupSparseOptions,
+    BuiltinOptions_MulOptions,
+    BuiltinOptions_PadOptions,
+    BuiltinOptions_GatherOptions,
+    BuiltinOptions_BatchToSpaceNDOptions,
+    BuiltinOptions_SpaceToBatchNDOptions,
+    BuiltinOptions_TransposeOptions,
+    BuiltinOptions_ReducerOptions,
+    BuiltinOptions_SubOptions,
+    BuiltinOptions_DivOptions,
+    BuiltinOptions_SqueezeOptions,
+    BuiltinOptions_SequenceRNNOptions,
+    BuiltinOptions_StridedSliceOptions,
+    BuiltinOptions_ExpOptions,
+    BuiltinOptions_TopKV2Options,
+    BuiltinOptions_SplitOptions,
+    BuiltinOptions_LogSoftmaxOptions,
+    BuiltinOptions_CastOptions,
+    BuiltinOptions_DequantizeOptions,
+    BuiltinOptions_MaximumMinimumOptions,
+    BuiltinOptions_ArgMaxOptions,
+    BuiltinOptions_LessOptions,
+    BuiltinOptions_NegOptions,
+    BuiltinOptions_PadV2Options,
+    BuiltinOptions_GreaterOptions,
+    BuiltinOptions_GreaterEqualOptions,
+    BuiltinOptions_LessEqualOptions,
+    BuiltinOptions_SelectOptions,
+    BuiltinOptions_SliceOptions,
+    BuiltinOptions_TransposeConvOptions,
+    BuiltinOptions_SparseToDenseOptions,
+    BuiltinOptions_TileOptions,
+    BuiltinOptions_ExpandDimsOptions,
+    BuiltinOptions_EqualOptions,
+    BuiltinOptions_NotEqualOptions,
+    BuiltinOptions_ShapeOptions,
+    BuiltinOptions_PowOptions,
+    BuiltinOptions_ArgMinOptions,
+    BuiltinOptions_FakeQuantOptions,
+    BuiltinOptions_PackOptions,
+    BuiltinOptions_LogicalOrOptions,
+    BuiltinOptions_OneHotOptions,
+    BuiltinOptions_LogicalAndOptions,
+    BuiltinOptions_LogicalNotOptions,
+    BuiltinOptions_UnpackOptions,
+    BuiltinOptions_FloorDivOptions,
+    BuiltinOptions_SquareOptions,
+    BuiltinOptions_ZerosLikeOptions,
+    BuiltinOptions_FillOptions,
+    BuiltinOptions_BidirectionalSequenceLSTMOptions,
+    BuiltinOptions_BidirectionalSequenceRNNOptions,
+    BuiltinOptions_UnidirectionalSequenceLSTMOptions,
+    BuiltinOptions_FloorModOptions,
+    BuiltinOptions_RangeOptions,
+    BuiltinOptions_ResizeNearestNeighborOptions,
+    BuiltinOptions_LeakyReluOptions,
+    BuiltinOptions_SquaredDifferenceOptions,
+    BuiltinOptions_MirrorPadOptions,
+    BuiltinOptions_AbsOptions,
+    BuiltinOptions_SplitVOptions,
+    BuiltinOptions_UniqueOptions,
+    BuiltinOptions_ReverseV2Options,
+    BuiltinOptions_AddNOptions,
+    BuiltinOptions_GatherNdOptions,
+    BuiltinOptions_CosOptions,
+    BuiltinOptions_WhereOptions,
+    BuiltinOptions_RankOptions,
+    BuiltinOptions_ReverseSequenceOptions,
+    BuiltinOptions_MatrixDiagOptions,
+    BuiltinOptions_QuantizeOptions,
+    BuiltinOptions_MatrixSetDiagOptions,
+    BuiltinOptions_HardSwishOptions,
+    BuiltinOptions_IfOptions,
+    BuiltinOptions_WhileOptions,
+    BuiltinOptions_DepthToSpaceOptions,
+    BuiltinOptions_NonMaxSuppressionV4Options,
+    BuiltinOptions_NonMaxSuppressionV5Options,
+    BuiltinOptions_ScatterNdOptions,
+    BuiltinOptions_SelectV2Options,
+    BuiltinOptions_DensifyOptions,
+    BuiltinOptions_SegmentSumOptions,
+    BuiltinOptions_BatchMatMulOptions,
+    BuiltinOptions_CumsumOptions,
+    BuiltinOptions_CallOnceOptions,
+    BuiltinOptions_BroadcastToOptions,
+    BuiltinOptions_Rfft2dOptions,
+    BuiltinOptions_Conv3DOptions
+  };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char *const names[107] = {"NONE",
-                                         "Conv2DOptions",
-                                         "DepthwiseConv2DOptions",
-                                         "ConcatEmbeddingsOptions",
-                                         "LSHProjectionOptions",
-                                         "Pool2DOptions",
-                                         "SVDFOptions",
-                                         "RNNOptions",
-                                         "FullyConnectedOptions",
-                                         "SoftmaxOptions",
-                                         "ConcatenationOptions",
-                                         "AddOptions",
-                                         "L2NormOptions",
-                                         "LocalResponseNormalizationOptions",
-                                         "LSTMOptions",
-                                         "ResizeBilinearOptions",
-                                         "CallOptions",
-                                         "ReshapeOptions",
-                                         "SkipGramOptions",
-                                         "SpaceToDepthOptions",
-                                         "EmbeddingLookupSparseOptions",
-                                         "MulOptions",
-                                         "PadOptions",
-                                         "GatherOptions",
-                                         "BatchToSpaceNDOptions",
-                                         "SpaceToBatchNDOptions",
-                                         "TransposeOptions",
-                                         "ReducerOptions",
-                                         "SubOptions",
-                                         "DivOptions",
-                                         "SqueezeOptions",
-                                         "SequenceRNNOptions",
-                                         "StridedSliceOptions",
-                                         "ExpOptions",
-                                         "TopKV2Options",
-                                         "SplitOptions",
-                                         "LogSoftmaxOptions",
-                                         "CastOptions",
-                                         "DequantizeOptions",
-                                         "MaximumMinimumOptions",
-                                         "ArgMaxOptions",
-                                         "LessOptions",
-                                         "NegOptions",
-                                         "PadV2Options",
-                                         "GreaterOptions",
-                                         "GreaterEqualOptions",
-                                         "LessEqualOptions",
-                                         "SelectOptions",
-                                         "SliceOptions",
-                                         "TransposeConvOptions",
-                                         "SparseToDenseOptions",
-                                         "TileOptions",
-                                         "ExpandDimsOptions",
-                                         "EqualOptions",
-                                         "NotEqualOptions",
-                                         "ShapeOptions",
-                                         "PowOptions",
-                                         "ArgMinOptions",
-                                         "FakeQuantOptions",
-                                         "PackOptions",
-                                         "LogicalOrOptions",
-                                         "OneHotOptions",
-                                         "LogicalAndOptions",
-                                         "LogicalNotOptions",
-                                         "UnpackOptions",
-                                         "FloorDivOptions",
-                                         "SquareOptions",
-                                         "ZerosLikeOptions",
-                                         "FillOptions",
-                                         "BidirectionalSequenceLSTMOptions",
-                                         "BidirectionalSequenceRNNOptions",
-                                         "UnidirectionalSequenceLSTMOptions",
-                                         "FloorModOptions",
-                                         "RangeOptions",
-                                         "ResizeNearestNeighborOptions",
-                                         "LeakyReluOptions",
-                                         "SquaredDifferenceOptions",
-                                         "MirrorPadOptions",
-                                         "AbsOptions",
-                                         "SplitVOptions",
-                                         "UniqueOptions",
-                                         "ReverseV2Options",
-                                         "AddNOptions",
-                                         "GatherNdOptions",
-                                         "CosOptions",
-                                         "WhereOptions",
-                                         "RankOptions",
-                                         "ReverseSequenceOptions",
-                                         "MatrixDiagOptions",
-                                         "QuantizeOptions",
-                                         "MatrixSetDiagOptions",
-                                         "HardSwishOptions",
-                                         "IfOptions",
-                                         "WhileOptions",
-                                         "DepthToSpaceOptions",
-                                         "NonMaxSuppressionV4Options",
-                                         "NonMaxSuppressionV5Options",
-                                         "ScatterNdOptions",
-                                         "SelectV2Options",
-                                         "DensifyOptions",
-                                         "SegmentSumOptions",
-                                         "BatchMatMulOptions",
-                                         "CumsumOptions",
-                                         "CallOnceOptions",
-                                         "BroadcastToOptions",
-                                         "Rfft2dOptions",
-                                         nullptr};
+  static const char * const names[108] = {
+    "NONE",
+    "Conv2DOptions",
+    "DepthwiseConv2DOptions",
+    "ConcatEmbeddingsOptions",
+    "LSHProjectionOptions",
+    "Pool2DOptions",
+    "SVDFOptions",
+    "RNNOptions",
+    "FullyConnectedOptions",
+    "SoftmaxOptions",
+    "ConcatenationOptions",
+    "AddOptions",
+    "L2NormOptions",
+    "LocalResponseNormalizationOptions",
+    "LSTMOptions",
+    "ResizeBilinearOptions",
+    "CallOptions",
+    "ReshapeOptions",
+    "SkipGramOptions",
+    "SpaceToDepthOptions",
+    "EmbeddingLookupSparseOptions",
+    "MulOptions",
+    "PadOptions",
+    "GatherOptions",
+    "BatchToSpaceNDOptions",
+    "SpaceToBatchNDOptions",
+    "TransposeOptions",
+    "ReducerOptions",
+    "SubOptions",
+    "DivOptions",
+    "SqueezeOptions",
+    "SequenceRNNOptions",
+    "StridedSliceOptions",
+    "ExpOptions",
+    "TopKV2Options",
+    "SplitOptions",
+    "LogSoftmaxOptions",
+    "CastOptions",
+    "DequantizeOptions",
+    "MaximumMinimumOptions",
+    "ArgMaxOptions",
+    "LessOptions",
+    "NegOptions",
+    "PadV2Options",
+    "GreaterOptions",
+    "GreaterEqualOptions",
+    "LessEqualOptions",
+    "SelectOptions",
+    "SliceOptions",
+    "TransposeConvOptions",
+    "SparseToDenseOptions",
+    "TileOptions",
+    "ExpandDimsOptions",
+    "EqualOptions",
+    "NotEqualOptions",
+    "ShapeOptions",
+    "PowOptions",
+    "ArgMinOptions",
+    "FakeQuantOptions",
+    "PackOptions",
+    "LogicalOrOptions",
+    "OneHotOptions",
+    "LogicalAndOptions",
+    "LogicalNotOptions",
+    "UnpackOptions",
+    "FloorDivOptions",
+    "SquareOptions",
+    "ZerosLikeOptions",
+    "FillOptions",
+    "BidirectionalSequenceLSTMOptions",
+    "BidirectionalSequenceRNNOptions",
+    "UnidirectionalSequenceLSTMOptions",
+    "FloorModOptions",
+    "RangeOptions",
+    "ResizeNearestNeighborOptions",
+    "LeakyReluOptions",
+    "SquaredDifferenceOptions",
+    "MirrorPadOptions",
+    "AbsOptions",
+    "SplitVOptions",
+    "UniqueOptions",
+    "ReverseV2Options",
+    "AddNOptions",
+    "GatherNdOptions",
+    "CosOptions",
+    "WhereOptions",
+    "RankOptions",
+    "ReverseSequenceOptions",
+    "MatrixDiagOptions",
+    "QuantizeOptions",
+    "MatrixSetDiagOptions",
+    "HardSwishOptions",
+    "IfOptions",
+    "WhileOptions",
+    "DepthToSpaceOptions",
+    "NonMaxSuppressionV4Options",
+    "NonMaxSuppressionV5Options",
+    "ScatterNdOptions",
+    "SelectV2Options",
+    "DensifyOptions",
+    "SegmentSumOptions",
+    "BatchMatMulOptions",
+    "CumsumOptions",
+    "CallOnceOptions",
+    "BroadcastToOptions",
+    "Rfft2dOptions",
+    "Conv3DOptions",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE,
-                              BuiltinOptions_Rfft2dOptions))
-    return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_Conv3DOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1853,9 +1880,12 @@ template<> struct BuiltinOptionsTraits<tflite::BroadcastToOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_BroadcastToOptions;
 };
 
-template <>
-struct BuiltinOptionsTraits<tflite::Rfft2dOptions> {
+template<> struct BuiltinOptionsTraits<tflite::Rfft2dOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_Rfft2dOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::Conv3DOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_Conv3DOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2723,14 +2753,20 @@ struct BuiltinOptionsUnion {
       reinterpret_cast<const tflite::BroadcastToOptionsT *>(value) : nullptr;
   }
   tflite::Rfft2dOptionsT *AsRfft2dOptions() {
-    return type == BuiltinOptions_Rfft2dOptions
-               ? reinterpret_cast<tflite::Rfft2dOptionsT *>(value)
-               : nullptr;
+    return type == BuiltinOptions_Rfft2dOptions ?
+      reinterpret_cast<tflite::Rfft2dOptionsT *>(value) : nullptr;
   }
   const tflite::Rfft2dOptionsT *AsRfft2dOptions() const {
-    return type == BuiltinOptions_Rfft2dOptions
-               ? reinterpret_cast<const tflite::Rfft2dOptionsT *>(value)
-               : nullptr;
+    return type == BuiltinOptions_Rfft2dOptions ?
+      reinterpret_cast<const tflite::Rfft2dOptionsT *>(value) : nullptr;
+  }
+  tflite::Conv3DOptionsT *AsConv3DOptions() {
+    return type == BuiltinOptions_Conv3DOptions ?
+      reinterpret_cast<tflite::Conv3DOptionsT *>(value) : nullptr;
+  }
+  const tflite::Conv3DOptionsT *AsConv3DOptions() const {
+    return type == BuiltinOptions_Conv3DOptions ?
+      reinterpret_cast<const tflite::Conv3DOptionsT *>(value) : nullptr;
   }
 };
 
@@ -3927,6 +3963,144 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(
 }
 
 flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Conv2DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct Conv3DOptionsT : public flatbuffers::NativeTable {
+  typedef Conv3DOptions TableType;
+  tflite::Padding padding;
+  int32_t stride_d;
+  int32_t stride_w;
+  int32_t stride_h;
+  tflite::ActivationFunctionType fused_activation_function;
+  int32_t dilation_d_factor;
+  int32_t dilation_w_factor;
+  int32_t dilation_h_factor;
+  Conv3DOptionsT()
+      : padding(tflite::Padding_SAME),
+        stride_d(0),
+        stride_w(0),
+        stride_h(0),
+        fused_activation_function(tflite::ActivationFunctionType_NONE),
+        dilation_d_factor(1),
+        dilation_w_factor(1),
+        dilation_h_factor(1) {
+  }
+};
+
+struct Conv3DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef Conv3DOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_PADDING = 4,
+    VT_STRIDE_D = 6,
+    VT_STRIDE_W = 8,
+    VT_STRIDE_H = 10,
+    VT_FUSED_ACTIVATION_FUNCTION = 12,
+    VT_DILATION_D_FACTOR = 14,
+    VT_DILATION_W_FACTOR = 16,
+    VT_DILATION_H_FACTOR = 18
+  };
+  tflite::Padding padding() const {
+    return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
+  }
+  int32_t stride_d() const {
+    return GetField<int32_t>(VT_STRIDE_D, 0);
+  }
+  int32_t stride_w() const {
+    return GetField<int32_t>(VT_STRIDE_W, 0);
+  }
+  int32_t stride_h() const {
+    return GetField<int32_t>(VT_STRIDE_H, 0);
+  }
+  tflite::ActivationFunctionType fused_activation_function() const {
+    return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
+  int32_t dilation_d_factor() const {
+    return GetField<int32_t>(VT_DILATION_D_FACTOR, 1);
+  }
+  int32_t dilation_w_factor() const {
+    return GetField<int32_t>(VT_DILATION_W_FACTOR, 1);
+  }
+  int32_t dilation_h_factor() const {
+    return GetField<int32_t>(VT_DILATION_H_FACTOR, 1);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_PADDING) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_D) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_D_FACTOR) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR) &&
+           verifier.EndTable();
+  }
+  Conv3DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(Conv3DOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Conv3DOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct Conv3DOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_padding(tflite::Padding padding) {
+    fbb_.AddElement<int8_t>(Conv3DOptions::VT_PADDING, static_cast<int8_t>(padding), 0);
+  }
+  void add_stride_d(int32_t stride_d) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_STRIDE_D, stride_d, 0);
+  }
+  void add_stride_w(int32_t stride_w) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_STRIDE_W, stride_w, 0);
+  }
+  void add_stride_h(int32_t stride_h) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_STRIDE_H, stride_h, 0);
+  }
+  void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(Conv3DOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_dilation_d_factor(int32_t dilation_d_factor) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_DILATION_D_FACTOR, dilation_d_factor, 1);
+  }
+  void add_dilation_w_factor(int32_t dilation_w_factor) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_DILATION_W_FACTOR, dilation_w_factor, 1);
+  }
+  void add_dilation_h_factor(int32_t dilation_h_factor) {
+    fbb_.AddElement<int32_t>(Conv3DOptions::VT_DILATION_H_FACTOR, dilation_h_factor, 1);
+  }
+  explicit Conv3DOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  Conv3DOptionsBuilder &operator=(const Conv3DOptionsBuilder &);
+  flatbuffers::Offset<Conv3DOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<Conv3DOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<Conv3DOptions> CreateConv3DOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::Padding padding = tflite::Padding_SAME,
+    int32_t stride_d = 0,
+    int32_t stride_w = 0,
+    int32_t stride_h = 0,
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    int32_t dilation_d_factor = 1,
+    int32_t dilation_w_factor = 1,
+    int32_t dilation_h_factor = 1) {
+  Conv3DOptionsBuilder builder_(_fbb);
+  builder_.add_dilation_h_factor(dilation_h_factor);
+  builder_.add_dilation_w_factor(dilation_w_factor);
+  builder_.add_dilation_d_factor(dilation_d_factor);
+  builder_.add_stride_h(stride_h);
+  builder_.add_stride_w(stride_w);
+  builder_.add_stride_d(stride_d);
+  builder_.add_fused_activation_function(fused_activation_function);
+  builder_.add_padding(padding);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<Conv3DOptions> CreateConv3DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct Pool2DOptionsT : public flatbuffers::NativeTable {
   typedef Pool2DOptions TableType;
@@ -9604,29 +9778,26 @@ flatbuffers::Offset<BroadcastToOptions> CreateBroadcastToOptions(flatbuffers::Fl
 
 struct Rfft2dOptionsT : public flatbuffers::NativeTable {
   typedef Rfft2dOptions TableType;
-  Rfft2dOptionsT() {}
+  Rfft2dOptionsT() {
+  }
 };
 
 struct Rfft2dOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef Rfft2dOptionsT NativeTableType;
   bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) && verifier.EndTable();
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
   }
-  Rfft2dOptionsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      Rfft2dOptionsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<Rfft2dOptions> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  Rfft2dOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(Rfft2dOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Rfft2dOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct Rfft2dOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   explicit Rfft2dOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   Rfft2dOptionsBuilder &operator=(const Rfft2dOptionsBuilder &);
@@ -9643,9 +9814,7 @@ inline flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(
   return builder_.Finish();
 }
 
-flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(
-    flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
@@ -10110,9 +10279,10 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return builtin_options_type() == tflite::BuiltinOptions_BroadcastToOptions ? static_cast<const tflite::BroadcastToOptions *>(builtin_options()) : nullptr;
   }
   const tflite::Rfft2dOptions *builtin_options_as_Rfft2dOptions() const {
-    return builtin_options_type() == tflite::BuiltinOptions_Rfft2dOptions
-               ? static_cast<const tflite::Rfft2dOptions *>(builtin_options())
-               : nullptr;
+    return builtin_options_type() == tflite::BuiltinOptions_Rfft2dOptions ? static_cast<const tflite::Rfft2dOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::Conv3DOptions *builtin_options_as_Conv3DOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_Conv3DOptions ? static_cast<const tflite::Conv3DOptions *>(builtin_options()) : nullptr;
   }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
@@ -10566,10 +10736,12 @@ template<> inline const tflite::BroadcastToOptions *Operator::builtin_options_as
   return builtin_options_as_BroadcastToOptions();
 }
 
-template <>
-inline const tflite::Rfft2dOptions *
-Operator::builtin_options_as<tflite::Rfft2dOptions>() const {
+template<> inline const tflite::Rfft2dOptions *Operator::builtin_options_as<tflite::Rfft2dOptions>() const {
   return builtin_options_as_Rfft2dOptions();
+}
+
+template<> inline const tflite::Conv3DOptions *Operator::builtin_options_as<tflite::Conv3DOptions>() const {
+  return builtin_options_as_Conv3DOptions();
 }
 
 struct OperatorBuilder {
@@ -11602,6 +11774,53 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(flatbuffers::FlatB
       _stride_w,
       _stride_h,
       _fused_activation_function,
+      _dilation_w_factor,
+      _dilation_h_factor);
+}
+
+inline Conv3DOptionsT *Conv3DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new Conv3DOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void Conv3DOptions::UnPackTo(Conv3DOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = padding(); _o->padding = _e; }
+  { auto _e = stride_d(); _o->stride_d = _e; }
+  { auto _e = stride_w(); _o->stride_w = _e; }
+  { auto _e = stride_h(); _o->stride_h = _e; }
+  { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = dilation_d_factor(); _o->dilation_d_factor = _e; }
+  { auto _e = dilation_w_factor(); _o->dilation_w_factor = _e; }
+  { auto _e = dilation_h_factor(); _o->dilation_h_factor = _e; }
+}
+
+inline flatbuffers::Offset<Conv3DOptions> Conv3DOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateConv3DOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<Conv3DOptions> CreateConv3DOptions(flatbuffers::FlatBufferBuilder &_fbb, const Conv3DOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Conv3DOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _padding = _o->padding;
+  auto _stride_d = _o->stride_d;
+  auto _stride_w = _o->stride_w;
+  auto _stride_h = _o->stride_h;
+  auto _fused_activation_function = _o->fused_activation_function;
+  auto _dilation_d_factor = _o->dilation_d_factor;
+  auto _dilation_w_factor = _o->dilation_w_factor;
+  auto _dilation_h_factor = _o->dilation_h_factor;
+  return tflite::CreateConv3DOptions(
+      _fbb,
+      _padding,
+      _stride_d,
+      _stride_w,
+      _stride_h,
+      _fused_activation_function,
+      _dilation_d_factor,
       _dilation_w_factor,
       _dilation_h_factor);
 }
@@ -14329,38 +14548,27 @@ inline flatbuffers::Offset<BroadcastToOptions> CreateBroadcastToOptions(flatbuff
       _fbb);
 }
 
-inline Rfft2dOptionsT *Rfft2dOptions::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline Rfft2dOptionsT *Rfft2dOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new Rfft2dOptionsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void Rfft2dOptions::UnPackTo(
-    Rfft2dOptionsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void Rfft2dOptions::UnPackTo(Rfft2dOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
 }
 
-inline flatbuffers::Offset<Rfft2dOptions> Rfft2dOptions::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<Rfft2dOptions> Rfft2dOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateRfft2dOptions(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(
-    flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const Rfft2dOptionsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
-  return tflite::CreateRfft2dOptions(_fbb);
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Rfft2dOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateRfft2dOptions(
+      _fbb);
 }
 
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -15258,6 +15466,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::Rfft2dOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Conv3DOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -15696,6 +15908,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::Rfft2dOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Conv3DOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -16122,6 +16338,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::Rfft2dOptionsT *>(value);
       return CreateRfft2dOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<const tflite::Conv3DOptionsT *>(value);
+      return CreateConv3DOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -16545,8 +16765,11 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
       break;
     }
     case BuiltinOptions_Rfft2dOptions: {
-      value = new tflite::Rfft2dOptionsT(
-          *reinterpret_cast<tflite::Rfft2dOptionsT *>(u.value));
+      value = new tflite::Rfft2dOptionsT(*reinterpret_cast<tflite::Rfft2dOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_Conv3DOptions: {
+      value = new tflite::Conv3DOptionsT(*reinterpret_cast<tflite::Conv3DOptionsT *>(u.value));
       break;
     }
     default:
@@ -17078,6 +17301,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_Rfft2dOptions: {
       auto ptr = reinterpret_cast<tflite::Rfft2dOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_Conv3DOptions: {
+      auto ptr = reinterpret_cast<tflite::Conv3DOptionsT *>(value);
       delete ptr;
       break;
     }

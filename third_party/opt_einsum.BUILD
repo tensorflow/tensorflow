@@ -24,6 +24,6 @@ py_library(
         "opt_einsum/paths.py",
         "opt_einsum/sharing.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )

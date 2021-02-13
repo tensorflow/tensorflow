@@ -219,23 +219,18 @@ class HeapReadyManager : public ReadyNodeManager {
   Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
   ~HeapReadyManager() override {}
-  void AddNode(const NodeDef* node) override { waiting_queue_.push_back(node); }
+  void AddNode(const NodeDef* node) override;
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
   bool Empty() const override;
 
  protected:
   virtual std::function<bool(const NodeDef*, const NodeDef*)> Greater() = 0;
-  // Move all the nodes in the waiting_queue_ to nodes_.
-  void DrainWaitingQueue();
 
   // nodes_ is the main queue, where we construct heap, and the front is the
   // current node.
   std::vector<const NodeDef*> nodes_;
-  // Newly added nodes are added to waiting_queue_. That way, GetCurrNode(),
-  // which returns the front of the nodes_, always returns the same node,
-  // even if any of new nodes has time_ready smaller than the current node's.
-  std::vector<const NodeDef*> waiting_queue_;
+
   // Comparator functor for heap; stl heap is max heap, so we use "greater than"
   // functor for keeping the smallest time_ready node at the front of heap.
   std::function<bool(const NodeDef*, const NodeDef*)> greater_;
@@ -243,6 +238,9 @@ class HeapReadyManager : public ReadyNodeManager {
   // NodeState structure from SchedulerState to get time_ready of ready nodes.
   // Not owned by FirstReadyManager.
   const std::unordered_map<const NodeDef*, NodeState>* node_map_;
+
+  // Cached curr node. Set back to nullptr from RemoveCurrNode().
+  const NodeDef* curr_node_;
 };
 
 // FirstReadyManager picks a node with the minimum time_ready value.

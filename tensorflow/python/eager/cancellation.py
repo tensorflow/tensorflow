@@ -41,6 +41,3 @@ class CancellationManager(object):
   def get_cancelable_function(self, concrete_function):
     # pylint: disable=protected-access
     return concrete_function._experimental_with_cancellation_manager(self)
-
-  def __del__(self):
-    pywrap_tfe.TFE_DeleteCancellationManager(self._impl)

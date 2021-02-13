@@ -162,7 +162,7 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'inputs\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "compute_mask"

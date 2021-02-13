@@ -4,6 +4,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 # buildifier: disable=same-origin-load
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_libtpu",
     "tf_cuda_cc_test",
 )
 load(
@@ -165,7 +166,9 @@ cc_library(
     ],
     deps = [
         "//tensorflow/c/eager:gradient_checker",
-        "//tensorflow/c/eager:gradients_util",
+        "//tensorflow/c/eager:gradients_internal",
+        "//tensorflow/c/eager:unified_api_testutil",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -183,9 +186,39 @@ tf_cuda_cc_test(
     deps = [
         ":grad_test_helper",
         ":nn_grad",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api_test_util",
         "//tensorflow/c/experimental/gradients/tape:tape_context",
+        "//tensorflow/c/experimental/ops:nn_ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ] + if_libtpu(
+        if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
+        if_true = [],
+    ),
+)
+
+tf_cuda_cc_test(
+    name = "math_grad_test",
+    size = "small",
+    srcs = [
+        "math_grad_test.cc",
     ],
+    args = ["--heap_check=local"],  # TODO(b/174752220): Remove
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
+    deps = [
+        ":grad_test_helper",
+        ":math_grad",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/core/platform:tensor_float_32_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + if_libtpu(
+        if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
+        if_true = [],
+    ),
 )

@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -59,6 +59,10 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return builder.getIntegerType(8);
     case tflite::TensorType_UINT64:
       return builder.getIntegerType(64, /*isSigned=*/false);
+    case tflite::TensorType_RESOURCE:
+      return mlir::TF::ResourceType::get(builder.getContext());
+    case tflite::TensorType_VARIANT:
+      return mlir::TF::VariantType::get(builder.getContext());
   }
 }
 
@@ -90,6 +94,10 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_UINT8;
     case tflite::TensorType_UINT64:
       return tensorflow::DT_UINT64;
+    case tflite::TensorType_RESOURCE:
+      return tensorflow::DT_RESOURCE;
+    case tflite::TensorType_VARIANT:
+      return tensorflow::DT_VARIANT;
   }
 }
 
@@ -99,10 +107,14 @@ StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
       return tflite::TensorType_BOOL;
     case tensorflow::DT_COMPLEX64:
       return tflite::TensorType_COMPLEX64;
+    case tensorflow::DT_COMPLEX128:
+      return tflite::TensorType_COMPLEX128;
     case tensorflow::DT_HALF:
       return tflite::TensorType_FLOAT16;
     case tensorflow::DT_FLOAT:
       return tflite::TensorType_FLOAT32;
+    case tensorflow::DT_DOUBLE:
+      return tflite::TensorType_FLOAT64;
     case tensorflow::DT_INT8:
       return tflite::TensorType_INT8;
     case tensorflow::DT_INT16:
@@ -111,10 +123,16 @@ StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
       return tflite::TensorType_INT32;
     case tensorflow::DT_INT64:
       return tflite::TensorType_INT64;
+    case tensorflow::DT_UINT64:
+      return tflite::TensorType_UINT64;
     case tensorflow::DT_STRING:
       return tflite::TensorType_STRING;
     case tensorflow::DT_UINT8:
       return tflite::TensorType_UINT8;
+    case tensorflow::DT_RESOURCE:
+      return tflite::TensorType_RESOURCE;
+    case tensorflow::DT_VARIANT:
+      return tflite::TensorType_VARIANT;
     default:
       return errors::InvalidArgument("unsupported tensor data type", type);
   }

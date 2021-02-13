@@ -216,7 +216,7 @@ table Tensor {
 // ones, but not by much. Moreover, while custom operators accept an opaque
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.
-
+// LINT.IfChange
 enum BuiltinOperator : int32 {
   ADD = 0,
   AVERAGE_POOL_2D = 1,
@@ -353,7 +353,7 @@ enum BuiltinOperator : int32 {
   BATCH_MATMUL = 126,
   PLACEHOLDER_FOR_GREATER_OP_CODES = 127
 }
-
+// LINT.ThenChange(nnapi_linter/linter.proto)
 
 // Options for the builtin operators.
 union BuiltinOptions {

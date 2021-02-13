@@ -470,11 +470,10 @@ TEST_F(HloRematerializationTest, CopyNotRematerialized) {
 class IndirectUseTest : public HloRematerializationTest,
                         public ::testing::WithParamInterface<bool> {};
 
-TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
-  // Test that an rematerializable instruction is not rematerialized if it has
-  // an indirect use. Test is parameterized on whether the value has an indirect
-  // use, and the instruction should be rematerialized iff the value has no
-  // indirect use. Module:
+TEST_P(IndirectUseTest, IndirectUseRematerialized) {
+  // Test that an rematerializable instruction is rematerialized if it has
+  // indirect use
+  // Module:
   //
   // Entry computation:
   //   F32[] %param = {...}
@@ -492,11 +491,10 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   //   F32[1024] %slice = slice(%concat)
   //
   // The value %bcast is live across the call and rematerialization of %bcast
-  // across that point would reduce peak memory use by 4KB. However, %bcast is
-  // used indirectly in the %negate so rematerialization should not happen.
+  // across that point would reduce peak memory use by 4KB.
   //
-  // This test is parameterized on whether the broadcast has an indirect use or
-  // not. The indirect use is controlled by the index of the GetTupleElement
+  // This test is parameterized on whether the broadcast has an indirect use
+  // or not. The indirect use is controlled by the index of the GetTupleElement
   // instruction. If the element is 0, then the %negate operand aliases %bcast
   // (ie %bcast is used indirectly by %negate), otherwise the %negate operand
   // aliases %add_2.
@@ -539,17 +537,17 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
 
   EXPECT_EQ(entry_computation->instruction_count(), 8);
 
-  // Pick a memory limit some where between 24KB (initial peak memory including
-  // parameter and output) and 20KB (peak memory possible with
+  // Pick a memory limit some where between 24KB (initial peak memory
+  // including parameter and output) and 20KB (peak memory possible with
   // rematerialization).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
                               /*memory_limit_bytes=*/22 * 1024, module.get()));
-  // Rematerialization should only occur if the rematerializable instruction has
-  // no indirect uses.
+  // Rematerialization should only occur if the rematerializable instruction
+  // has no indirect uses.
   if (indirectly_used) {
-    EXPECT_FALSE(changed);
-    EXPECT_EQ(entry_computation->instruction_count(), 8);
+    EXPECT_TRUE(changed);
+    EXPECT_EQ(entry_computation->instruction_count(), 3);
   } else {
     EXPECT_TRUE(changed);
     EXPECT_EQ(entry_computation->instruction_count(), 9);
@@ -633,7 +631,7 @@ ENTRY %entry {
   %negate = f32[64,2]{1,0} negate(f32[64,2]{1,0} broadcast.0)
   %reduce.0 = f32[] reduce(f32[64,2]{1,0} %negate, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
   %reduce.1 = f32[] reduce(f32[64,2]{1,0} %broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
-  %reduce.2 = f32[] reduce(f32[10,2]{1,0} %broadcast.1, f32[] %constant), dimensions={1, 0}, to_apply=%add_float  
+  %reduce.2 = f32[] reduce(f32[10,2]{1,0} %broadcast.1, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
   %add = f32[] add(f32[] %reduce.0, f32[] %reduce.1)
   ROOT %add.2 = f32[] add(f32[] %add, f32[] %reduce.2)
 }
@@ -847,6 +845,199 @@ ENTRY %mycomp (param: f32[1]) -> f32[1024] {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(HloRematerializationTest, RematTupleShape) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_mul_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %x = f32[1024]{0} broadcast(f32[] %p0), dimensions={}
+  %y = f32[1024]{0} broadcast(f32[] %p1), dimensions={}
+  %add = f32[1024] add(%x, %y)
+  %mul = f32[1024] multiply(%x, %y)
+  ROOT %out = (f32[1024], f32[1024]) tuple(%add, %mul)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %fus = (f32[1024]{0}, f32[1024]{0}) fusion(%param.0, %param.1), kind=kLoop,
+    calls=%add_mul_comp
+  %gte.1 = f32[1024]{0} get-tuple-element(%fus), index=0
+  %add = f32[1024]{0} add(f32[1024]{0} %gte.1, f32[1024]{0} %gte.1)
+  %broadcast.1 = f32[1024]{0} broadcast(f32[] %param.0), dimensions={}
+  %mul = f32[1024]{0} multiply(f32[1024]{0} %add, f32[1024]{0} %broadcast.1)
+  %gte.2 = f32[1024]{0} get-tuple-element(%fus), index=1
+  ROOT %add.2 = f32[1024]{0} add(f32[1024]{0} %mul, f32[1024]{0} %gte.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloComputation* computation = module->entry_computation();
+  const HloInstruction* add = computation->root_instruction();
+  ASSERT_THAT(add, op::Add(op::Multiply(), op::GetTupleElement(op::Fusion())));
+  const HloInstruction* fusion = add->operand(0)->operand(0);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_THAT(
+      add, op::Add(op::Multiply(), op::GetTupleElement(AllOf(
+                                       op::Fusion(), ::testing::Ne(fusion)))));
+}
+
+TEST_F(HloRematerializationTest, RematTupleShapeDoubleUse) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_mul_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %x = f32[1024]{0} broadcast(f32[] %p0), dimensions={}
+  %y = f32[1024]{0} broadcast(f32[] %p1), dimensions={}
+  %add = f32[1024] add(%x, %y)
+  %mul = f32[1024] multiply(%x, %y)
+  ROOT %out = (f32[1024], f32[1024]) tuple(%add, %mul)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %fus = (f32[1024]{0}, f32[1024]{0}) fusion(%param.0, %param.1), kind=kLoop,
+    calls=%add_mul_comp
+  %gte.1 = f32[1024]{0} get-tuple-element(%fus), index=0
+  %add = f32[1024]{0} add(f32[1024]{0} %gte.1, f32[1024]{0} %gte.1)
+  %broadcast.1 = f32[1024]{0} broadcast(f32[] %param.0), dimensions={}
+  %mul = f32[1024]{0} multiply(f32[1024]{0} %add, f32[1024]{0} %broadcast.1)
+  %gte.2 = f32[1024]{0} get-tuple-element(%fus), index=1
+  %gte.3 = f32[1024]{0} get-tuple-element(%fus), index=0
+  %add.2 = f32[1024]{0} add(f32[1024]{0} %mul, f32[1024]{0} %gte.2)
+  ROOT %mul.2 = f32[1024]{0} multiply(f32[1024]{0} %add.2, f32[1024]{0} %gte.3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloComputation* computation = module->entry_computation();
+  const HloInstruction* add = computation->root_instruction();
+  ASSERT_THAT(add, op::Multiply(op::Add(op::Multiply(),
+                                        op::GetTupleElement(op::Fusion())),
+                                op::GetTupleElement(op::Fusion())));
+  const HloInstruction* fusion = add->operand(0)->operand(0);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_THAT(
+      add,
+      op::Multiply(
+          op::Add(op::Multiply(), op::GetTupleElement(AllOf(
+                                      op::Fusion(), ::testing::Ne(fusion)))),
+          op::GetTupleElement(AllOf(op::Fusion(), ::testing::Ne(fusion)))));
+  // Check that the rematerialized fusion is the same for both ops.
+  EXPECT_EQ(add->operand(0)->operand(1)->operand(0),
+            add->operand(1)->operand(0));
+}
+
+TEST_F(HloRematerializationTest, RematTupleShapeThroughBitcasts) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_mul_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %x = f32[1024]{0} broadcast(f32[] %p0), dimensions={}
+  %y = f32[1024]{0} broadcast(f32[] %p1), dimensions={}
+  %add = f32[1024] add(%x, %y)
+  %mul = f32[1024] multiply(%x, %y)
+  ROOT %out = (f32[1024], f32[1024]) tuple(%add, %mul)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %fus = (f32[1024]{0}, f32[1024]{0}) fusion(%param.0, %param.1), kind=kLoop,
+    calls=%add_mul_comp
+  %gte.1 = f32[1024]{0} get-tuple-element(%fus), index=0
+  %add = f32[1024]{0} add(f32[1024]{0} %gte.1, f32[1024]{0} %gte.1)
+  %broadcast.1 = f32[1024]{0} broadcast(f32[] %param.0), dimensions={}
+  %mul = f32[1024]{0} multiply(f32[1024]{0} %add, f32[1024]{0} %broadcast.1)
+  %gte.2 = f32[1024]{0} get-tuple-element(%fus), index=1
+  %bc.1 = f32[1024,1]{0,1} bitcast(%mul)
+  %bc.2 = f32[1024,1]{0,1} bitcast(%gte.2)
+  ROOT %add.2 = f32[1024,1]{0,1} add(f32[1024,1]{0,1} %bc.1,
+    f32[1024,1]{0,1} %bc.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloComputation* computation = module->entry_computation();
+  const HloInstruction* add = computation->root_instruction();
+  ASSERT_THAT(add, op::Add(op::Bitcast(op::Multiply()),
+                           op::Bitcast(op::GetTupleElement(op::Fusion()))));
+  const HloInstruction* fusion = add->operand(0)->operand(0)->operand(0);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_THAT(add, op::Add(op::Bitcast(op::Multiply()),
+                           op::Bitcast(op::GetTupleElement(
+                               AllOf(op::Fusion(), ::testing::Ne(fusion))))));
+}
+
+TEST_F(HloRematerializationTest, RematThroughTuple) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_mul_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %x = f32[1024]{0} broadcast(f32[] %p0), dimensions={}
+  %y = f32[1024]{0} broadcast(f32[] %p1), dimensions={}
+  %add = f32[1024] add(%x, %y)
+  %mul = f32[1024] multiply(%x, %y)
+  ROOT %out = (f32[1024], f32[1024]) tuple(%add, %mul)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %fus = (f32[1024]{0}, f32[1024]{0}) fusion(%param.0, %param.1), kind=kLoop,
+    calls=%add_mul_comp
+  %gte.1 = f32[1024]{0} get-tuple-element(%fus), index=0
+  %gte.3 = f32[1024]{0} get-tuple-element(%fus), index=1
+  %add = f32[1024]{0} add(f32[1024]{0} %gte.1, f32[1024]{0} %gte.3)
+  %broadcast.1 = f32[1024]{0} broadcast(f32[] %param.0), dimensions={}
+  %mul = f32[1024]{0} multiply(f32[1024]{0} %add, f32[1024]{0} %broadcast.1)
+  %tpl = (f32[1024]{0}, f32[1024]{0}) tuple(%gte.1, %add)
+  %bc.1 = f32[1024,1]{0,1} bitcast(%mul)
+  %gte.2 = f32[1024]{0} get-tuple-element(%tpl), index=0
+  ROOT %add.2 = f32[1024]{0} add(f32[1024]{0} %gte.2, f32[1024]{0} %add)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  const HloComputation* computation = module->entry_computation();
+  const HloInstruction* add = computation->root_instruction();
+  ASSERT_THAT(add, op::Add(op::GetTupleElement(
+                               op::Tuple(op::GetTupleElement(op::Fusion()), _)),
+                           op::Add()));
+  const HloInstruction* tuple = add->operand(0)->operand(0);
+  const HloInstruction* fusion = tuple->operand(0)->operand(0);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_THAT(
+      add, op::Add(op::GetTupleElement(AllOf(op::Fusion(), ::testing::Ne(tuple),
+                                             ::testing::Ne(fusion))),
+                   op::Add()));
+}
 }  // namespace
 
 }  // namespace xla

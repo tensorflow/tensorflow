@@ -50,6 +50,8 @@ genrule(
     """,
 )
 
+exports_files(["configuration.proto"])
+
 proto_library(
     name = "configuration_proto",
     srcs = [

@@ -148,7 +148,11 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
                compression_type=None,
                buffer_size=None,
                num_parallel_reads=None):
-    """Creates a `TextLineDataset`.
+    r"""Creates a `TextLineDataset`.
+
+    The elements of the dataset will be the lines of the input files, using
+    the newline character '\n' to denote line splits. The newline characters
+    will be stripped off of each element.
 
     Args:
       filenames: A `tf.string` tensor or `tf.data.Dataset` containing one or
@@ -305,6 +309,8 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
                buffer_size=None,
                num_parallel_reads=None):
     """Creates a `TFRecordDataset` to read one or more TFRecord files.
+
+    Each element of the dataset will contain a single TFRecord.
 
     Args:
       filenames: A `tf.string` tensor or `tf.data.Dataset` containing one or

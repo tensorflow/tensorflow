@@ -137,9 +137,17 @@ class GraphExecutionState {
   Status BuildGraph(const BuildGraphOptions& options,
                     std::unique_ptr<ClientGraph>* out);
 
+  // Optimize the graph with the node set specified in `options`.
+  Status OptimizeGraph(
+      const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
+      std::unique_ptr<FunctionLibraryDefinition>* optimized_flib);
+
   // The graph returned by BuildGraph may contain only the pruned
   // graph, whereas some clients may want access to the full graph.
   const Graph* full_graph() { return graph_; }
+
+  // The original function library of this graph.
+  const FunctionLibraryDefinition& flib_def() const { return *flib_def_; }
 
   // Returns the node with the given name, or null if it does not exist.
   const Node* get_node_by_name(const string& name) const {
@@ -178,10 +186,6 @@ class GraphExecutionState {
   // ops as needed.
   Status PruneGraph(const BuildGraphOptions& options, Graph* graph,
                     subgraph::RewriteGraphMetadata* out_rewrite_metadata);
-
-  Status OptimizeGraph(
-      const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
-      std::unique_ptr<FunctionLibraryDefinition>* optimized_flib);
 
   // The GraphExecutionState must store a copy of the original GraphDef if
   // either of the following conditions holds:

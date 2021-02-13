@@ -127,6 +127,57 @@ struct BoolToScaler<false> {
   typedef LegacyScaler Scaler;
 };
 
+template <bool half_pixel_centers, bool align_corners>
+void compute_indices(const Eigen::Index out_size, const Eigen::Index in_size,
+                     const float scale, Eigen::Index* indices) {
+  typename BoolToScaler<half_pixel_centers>::Scaler scaler;
+  for (Eigen::Index i = 0; i < out_size; ++i) {
+    Eigen::Index x = std::min(
+        (align_corners) ? static_cast<Eigen::Index>(roundf(scaler(i, scale)))
+                        : static_cast<Eigen::Index>(floorf(scaler(i, scale))),
+        in_size - 1);
+    if (half_pixel_centers) {
+      x = std::max(static_cast<Eigen::Index>(0), x);
+    }
+    indices[i] = x;
+  }
+}
+
+namespace generator {
+template <typename T, bool half_pixel_centers, bool align_corners>
+class ResizeNearestNeighborGenerator {
+ public:
+  EIGEN_ALWAYS_INLINE ResizeNearestNeighborGenerator(
+      typename TTypes<T, 4>::ConstTensor input,
+      const Eigen::Index output_height, const Eigen::Index output_width,
+      const float height_scale, const float width_scale)
+      : input_(input), ys_(output_height), xs_(output_width) {
+    const Eigen::Index input_height = input.dimension(1);
+    const Eigen::Index input_width = input.dimension(2);
+    compute_indices<half_pixel_centers, align_corners>(
+        output_height, input_height, height_scale, ys_.data());
+    compute_indices<half_pixel_centers, align_corners>(
+        output_width, input_width, width_scale, xs_.data());
+  }
+
+  EIGEN_ALWAYS_INLINE T
+  operator()(const Eigen::array<Eigen::Index, 4>& coords) const {
+    const Eigen::Index b = coords[0];
+    const Eigen::Index y = coords[1];
+    const Eigen::Index x = coords[2];
+    const Eigen::Index c = coords[3];
+
+    const Eigen::Index in_y = ys_[y];
+    const Eigen::Index in_x = xs_[x];
+    return input_(b, in_y, in_x, c);
+  }
+
+ private:
+  typename TTypes<T, 4>::ConstTensor input_;
+  std::vector<Eigen::Index> ys_, xs_;
+};
+}  // namespace generator
+
 // Partial specialization of ResizeNearestNeighbor functor for a CPUDevice.
 namespace functor {
 template <typename T, bool half_pixel_centers, bool align_corners>
@@ -134,76 +185,13 @@ struct ResizeNearestNeighbor<CPUDevice, T, half_pixel_centers, align_corners> {
   bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
-    typename BoolToScaler<half_pixel_centers>::Scaler scaler;
-    const Eigen::Index batch_size = input.dimension(0);
-    const Eigen::Index in_height = input.dimension(1);
-    const Eigen::Index in_width = input.dimension(2);
-    const Eigen::Index channels = input.dimension(3);
-    const Eigen::Index out_height = output.dimension(1);
-    const Eigen::Index out_width = output.dimension(2);
-
-#ifdef PLATFORM_GOOGLE
-    // The parallel version is significantly slower than the serial version
-    // internally. Only call the serial version for now.
-    // TODO(b/145019377): Make the parallel version work for PLATFORM_GOOGLE.
-    for (Eigen::Index b = 0; b < batch_size; ++b) {
-      for (Eigen::Index y = 0; y < out_height; ++y) {
-        Eigen::Index in_y = std::min(
-            (align_corners)
-                ? static_cast<Eigen::Index>(roundf(scaler(y, height_scale)))
-                : static_cast<Eigen::Index>(floorf(scaler(y, height_scale))),
-            in_height - 1);
-        if (half_pixel_centers) {
-          in_y = std::max(static_cast<Eigen::Index>(0), in_y);
-        }
-        for (Eigen::Index x = 0; x < out_width; ++x) {
-          Eigen::Index in_x = std::min(
-              (align_corners)
-                  ? static_cast<Eigen::Index>(roundf(scaler(x, width_scale)))
-                  : static_cast<Eigen::Index>(floorf(scaler(x, width_scale))),
-              in_width - 1);
-          if (half_pixel_centers) {
-            in_x = std::max(static_cast<Eigen::Index>(0), in_x);
-          }
-          std::copy_n(&input(b, in_y, in_x, 0), channels, &output(b, y, x, 0));
-        }
-      }
-    }
-#else
-    auto ParallelResize = [&](Eigen::Index start, Eigen::Index end) {
-      for (Eigen::Index b = start; b < end; ++b) {
-        Eigen::Index x = b % out_width;
-        Eigen::Index y = (b / out_width) % out_height;
-        Eigen::Index bs = (b / out_width) / out_height;
-        Eigen::Index in_y = std::min(
-            (align_corners)
-                ? static_cast<Eigen::Index>(roundf(scaler(y, height_scale)))
-                : static_cast<Eigen::Index>(floorf(scaler(y, height_scale))),
-            in_height - 1);
-        if (half_pixel_centers) {
-          in_y = std::max(static_cast<Eigen::Index>(0), in_y);
-        }
-        Eigen::Index in_x = std::min(
-            (align_corners)
-                ? static_cast<Eigen::Index>(roundf(scaler(x, width_scale)))
-                : static_cast<Eigen::Index>(floorf(scaler(x, width_scale))),
-            in_width - 1);
-        if (half_pixel_centers) {
-          in_x = std::max(static_cast<Eigen::Index>(0), in_x);
-        }
-        std::copy_n(&input(bs, in_y, in_x, 0), channels, &output(bs, y, x, 0));
-      }
-    };
-    Eigen::Index N = batch_size * out_height * out_width;
-    const int input_bytes = channels * sizeof(T);
-    const int output_bytes = channels * sizeof(T);
-    const int compute_cycles = (Eigen::TensorOpCost::ModCost<T>() * 2 +
-                                Eigen::TensorOpCost::DivCost<T>() * 3 +
-                                Eigen::TensorOpCost::AddCost<T>() * 2 +
-                                Eigen::TensorOpCost::MulCost<T>() * 2);
-    const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
-    d.parallelFor(N, cost, ParallelResize);
-#endif  // PLATFORM_GOOGLE
+    const Eigen::Index output_height = output.dimension(1);
+    const Eigen::Index output_width = output.dimension(2);
+    generator::ResizeNearestNeighborGenerator<T, half_pixel_centers,
+                                              align_corners>
+        generator(input, output_height, output_width, height_scale,
+                  width_scale);
+    output.device(d) = output.generate(std::move(generator));
     return true;
   }
 };

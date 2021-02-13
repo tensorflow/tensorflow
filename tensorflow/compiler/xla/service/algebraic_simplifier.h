@@ -138,6 +138,15 @@ class AlgebraicSimplifierOptions {
 
   bool enable_reduce_of_reshape() const { return enable_reduce_of_reshape_; }
 
+  void set_enable_negative_padding_replacement(
+      bool enable_negative_padding_replacement) {
+    enable_negative_padding_replacement_ = enable_negative_padding_replacement;
+  }
+
+  bool enable_negative_padding_replacement() const {
+    return enable_negative_padding_replacement_;
+  }
+
   void set_replace_transpose_with_bitcast(bool replace_transpose_with_bitcast) {
     replace_transpose_with_bitcast_ = replace_transpose_with_bitcast;
   }
@@ -169,6 +178,7 @@ class AlgebraicSimplifierOptions {
   bool enable_floats_are_real_{false};
   bool enable_window_reduce_to_reduce_replacement_{true};
   bool enable_reduce_of_reshape_{true};
+  bool enable_negative_padding_replacement_{true};
   bool replace_transpose_with_bitcast_{true};
   int64 very_small_gather_size_{4};
   Metadata metadata_;

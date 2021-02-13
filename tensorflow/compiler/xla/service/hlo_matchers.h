@@ -417,6 +417,11 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
       new ::xla::testing::HloShardingMatcher(absl::nullopt));
 }
 
+inline ::testing::Matcher<const ::xla::HloInstruction*> Dot() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(::xla::HloOpcode::kDot, {}));
+}
+
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
     ::testing::Matcher<const HloInstruction*> lhs_matcher,
     ::testing::Matcher<const HloInstruction*> rhs_matcher) {

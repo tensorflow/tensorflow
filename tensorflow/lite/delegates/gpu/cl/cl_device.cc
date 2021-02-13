@@ -20,9 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 
 namespace tflite {
 namespace gpu {
@@ -120,41 +122,11 @@ OpenClVersion ParseCLVersion(const std::string& version) {
   }
 }
 
-GpuVendor ParseVendor(const std::string& device_name,
-                      const std::string& vendor_name) {
-  std::string d_name = device_name;
-  std::string v_name = vendor_name;
-  std::transform(d_name.begin(), d_name.end(), d_name.begin(), ::tolower);
-  std::transform(v_name.begin(), v_name.end(), v_name.begin(), ::tolower);
-  if (d_name.find("qualcomm") != std::string::npos ||
-      v_name.find("qualcomm") != std::string::npos) {
-    return GpuVendor::kQualcomm;
-  } else if (d_name.find("mali") != std::string::npos ||
-             v_name.find("mali") != std::string::npos) {
-    return GpuVendor::kMali;
-  } else if (d_name.find("power") != std::string::npos ||
-             v_name.find("power") != std::string::npos) {
-    return GpuVendor::kPowerVR;
-  } else if (d_name.find("nvidia") != std::string::npos ||
-             v_name.find("nvidia") != std::string::npos) {
-    return GpuVendor::kNvidia;
-  } else if (d_name.find("advanced micro devices") != std::string::npos ||
-             v_name.find("advanced micro devices") != std::string::npos) {
-    return GpuVendor::kAMD;
-  } else if (d_name.find("intel") != std::string::npos ||
-             v_name.find("intel") != std::string::npos) {
-    return GpuVendor::kIntel;
-  } else {
-    return GpuVendor::kUnknown;
-  }
-}
-
 // check that gpu_version belong to range min_version-max_version
 // min_version is included and max_version is excluded.
 bool IsGPUVersionInRange(int gpu_version, int min_version, int max_version) {
   return gpu_version >= min_version && gpu_version < max_version;
 }
-}  // namespace
 
 GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   GpuInfo info;
@@ -162,13 +134,9 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   const auto vendor_name = GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
   const auto opencl_c_version =
       GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
-  info.gpu_api = GpuApi::kOpenCl;
-  info.vendor = ParseVendor(device_name, vendor_name);
-  if (info.IsAdreno()) {
-    info.adreno_info = AdrenoInfo(opencl_c_version);
-  } else if (info.IsMali()) {
-    info.mali_info = MaliInfo(device_name);
-  }
+  const std::string gpu_description =
+      absl::StrCat(device_name, " ", vendor_name, " ", opencl_c_version);
+  GetGpuInfoFromDeviceDescription(gpu_description, GpuApi::kOpenCl, &info);
   info.opencl_info.cl_version = ParseCLVersion(opencl_c_version);
   info.opencl_info.extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');
@@ -182,6 +150,9 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
       info.opencl_info.supports_image3d_writes = true;
     }
   }
+
+  info.opencl_info.supports_images =
+      GetDeviceInfo<cl_bool>(id, CL_DEVICE_IMAGE_SUPPORT);
 
   cl_device_fp_config f32_config =
       GetDeviceInfo<cl_device_fp_config>(id, CL_DEVICE_SINGLE_FP_CONFIG);
@@ -269,8 +240,19 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   return info;
 }
 
+}  // namespace
+
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
-    : info_(GpuInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {}
+    : info_(GpuInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {
+  if (info_.IsAdreno() &&
+      info_.adreno_info.adreno_gpu == AdrenoGpu::kAdreno630) {
+    acceleration::AndroidInfo android_info;
+    if (acceleration::RequestAndroidInfo(&android_info).ok()) {
+      info_.adreno_info.compiler_bugs_in_a6xx =
+          android_info.android_sdk_version == "26";
+    }
+  }
+}
 
 CLDevice::CLDevice(const CLDevice& device)
     : info_(device.info_), id_(device.id_), platform_id_(device.platform_id_) {}

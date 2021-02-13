@@ -42,7 +42,7 @@ void ConstantOpDeviceAssignmentPass::runOnOperation() {
 
   module.walk([&](TF::ConstOp op) {
     // Keep the ConstOp if the op already have the device attribute.
-    if (StringAttr device_attr = op.getAttrOfType<StringAttr>(kDeviceAttr)) {
+    if (StringAttr device_attr = op->getAttrOfType<StringAttr>(kDeviceAttr)) {
       return WalkResult::advance();
     }
     OpBuilder builder(op);

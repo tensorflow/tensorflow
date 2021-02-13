@@ -1997,7 +1997,7 @@ class Stream {
   Stream &ThenDoHostCallbackWithStatus(std::function<port::Status()> callback);
 
   // Runs the given callback after the next call to BlockHostUntilDone on this
-  // stream (or after the Stream does BlockHostUntilDone iin its destructor).
+  // stream (or after the Stream does BlockHostUntilDone in its destructor).
   // This can act as a faster alternative to ThenDoHostCallbackWithStatus for
   // some use cases.
   Stream &ThenRunAfterNextBlockHostUntilDone(std::function<void()> callback);

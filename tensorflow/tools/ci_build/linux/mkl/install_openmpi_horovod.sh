@@ -22,7 +22,10 @@ set -e
 # Set default
 OPENMPI_VERSION=${OPENMPI_VERSION:-openmpi-2.1.1}
 OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL:-https://www.open-mpi.org/software/ompi/v2.1/downloads/openmpi-2.1.1.tar.gz}
+INSTALL_HOROVOD_FROM_COMMIT=${INSTALL_HOROVOD_FROM_COMMIT:-no}
+BUILD_SSH=${BUILD_SSH:-no}
 HOROVOD_VERSION=${HOROVOD_VERSION:-0.19.1}
+SSH_CONFIG_PATH=/etc/ssh
 
 # Install Open MPI
 echo "Installing OpenMPI version ${OPENMPI_VERSION} ..."
@@ -54,27 +57,49 @@ echo 'OpenMPI version:'
 mpirun --version
 
 # Install OpenSSH for MPI to communicate between containers
-apt-get clean && apt-get update && \
-    apt-get install -y --no-install-recommends --fix-missing \
-        openssh-client openssh-server libnuma-dev && \
-    rm -rf /var/lib/apt/lists/*
-if [[ $?  == "0" ]]; then
-    echo "PASS: OpenSSH installation"
+if [[ ${BUILD_SSH} == "yes" ]]; then
+	mkdir /tmp/buildssh
+	cd /tmp/buildssh && curl -fSsL -O http://www.zlib.net/zlib-1.2.11.tar.gz && tar -xzvf zlib-1.2.11.tar.gz && \
+		cd /tmp/buildssh/zlib-1.2.11 && ./configure && make && make install
+	cd /tmp/buildssh && curl -fSsL -O https://www.openssl.org/source/openssl-1.1.1.tar.gz && tar -xzvf openssl-1.1.1.tar.gz && \
+		cd  /tmp/buildssh/openssl-1.1.1 && ./config && make  && make test  && make install
+	cd /tmp/buildssh && curl -fSsL -O https://mirrors.sonic.net/pub/OpenBSD/OpenSSH/portable/openssh-8.4p1.tar.gz && \
+		tar -xzvf openssh-8.4p1.tar.gz && cd /tmp/buildssh/openssh-8.4p1 && \
+		./configure --with-md5-passwords  && make && \
+		groupadd sshd && useradd -M -g sshd -c 'sshd privsep' -d /var/empty -s /sbin/nologin sshd && passwd -l sshd && \
+		make install
+	apt-get clean && apt-get update && \
+	    apt-get install -y --no-install-recommends --fix-missing \
+	        libnuma-dev cmake
+        SSH_CONFIG_PATH=/usr/local/etc
 else
-    yum -y update && yum -y install numactl-devel openssh-server openssh-clients && \
-        yum clean all
-    if [[ $?  == "0" ]]; then
-        echo "PASS: OpenSSH installation"
-    else
-        echo "Unsupported Linux distribution. Aborting!" && exit 1
-    fi
+	apt-get clean && apt-get update && \
+	    apt-get install -y --no-install-recommends --fix-missing \
+	        openssh-client openssh-server libnuma-dev cmake && \
+	    rm -rf /var/lib/apt/lists/*
+	if [[ $?  == "0" ]]; then
+	    echo "PASS: OpenSSH installation"
+	else
+	    yum -y update && yum -y install numactl-devel openssh-server openssh-clients cmake && \
+	        yum clean all
+	    if [[ $?  == "0" ]]; then
+	        echo "PASS: OpenSSH installation"
+	    else
+	        echo "Unsupported Linux distribution. Aborting!" && exit 1
+	    fi
+	fi
 fi
 mkdir -p /var/run/sshd
+grep -v StrictHostKeyChecking ${SSH_CONFIG_PATH}/ssh_config > ${SSH_CONFIG_PATH}/ssh_config.new
 # Allow OpenSSH to talk to containers without asking for confirmation
-grep -v StrictHostKeyChecking /etc/ssh/ssh_config > /etc/ssh/ssh_config.new
-echo " StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new
-mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
+echo " StrictHostKeyChecking no" >> ${SSH_CONFIG_PATH}/ssh_config.new
+mv ${SSH_CONFIG_PATH}/ssh_config.new ${SSH_CONFIG_PATH}/ssh_config
 
 # Install Horovod
-HOROVOD_WITH_TENSORFLOW=1
-python3 -m pip install --no-cache-dir horovod==${HOROVOD_VERSION}
+if [[ ${INSTALL_HOROVOD_FROM_COMMIT} == "yes" ]]; then
+	HOROVOD_WITH_TENSORFLOW=1
+	python3 -m pip install --no-cache-dir git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
+else
+	HOROVOD_WITH_TENSORFLOW=1
+	python3 -m pip install --no-cache-dir horovod==${HOROVOD_VERSION}
+fi

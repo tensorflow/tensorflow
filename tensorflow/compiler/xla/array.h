@@ -561,6 +561,7 @@ class Array {
       index *= sizes_[i];
       index += indexes[i];
     }
+    DCHECK_LT(index, this->num_elements());
     return index;
   }
 

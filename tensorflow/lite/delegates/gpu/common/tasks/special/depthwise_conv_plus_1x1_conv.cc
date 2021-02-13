@@ -23,7 +23,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
                    const Convolution2DAttributes& conv_attr,
@@ -264,6 +263,5 @@ GPUOperation CreateDepthwiseConvPlus1x1Conv(
   return result;
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

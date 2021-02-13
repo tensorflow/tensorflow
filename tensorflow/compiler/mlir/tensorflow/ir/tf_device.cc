@@ -22,18 +22,20 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
@@ -512,22 +514,13 @@ LogicalResult Verify(ReplicateOp op) {
 
 void BuildReplicateOp(
     Builder* builder, OperationState* state, int n,
-    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
-        devices,
+    llvm::Optional<DictionaryAttr> devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
 
-  llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
-  device_list.reserve(devices.size());
-  for (auto alias_and_devices : devices) {
-    NamedAttribute device_name_attr = builder->getNamedAttr(
-        alias_and_devices.getFirst(),
-        builder->getStrArrayAttr(alias_and_devices.getSecond()));
-    device_list.emplace_back(device_name_attr);
-  }
-  state->addAttribute("devices", builder->getDictionaryAttr(device_list));
+  if (devices.hasValue()) state->addAttribute("devices", devices.getValue());
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -565,6 +558,28 @@ void ReplicateOp::build(
     OpBuilder& builder, OperationState& state, int n,
     const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
         devices,
+    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
+    ValueRange packed_inputs, TypeRange replica_output_types) {
+  llvm::Optional<DictionaryAttr> devices_attr;
+  if (!devices.empty()) {
+    llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
+    device_list.reserve(devices.size());
+    for (auto alias_and_devices : devices) {
+      NamedAttribute device_name_attr = builder.getNamedAttr(
+          alias_and_devices.getFirst(),
+          builder.getStrArrayAttr(alias_and_devices.getSecond()));
+      device_list.emplace_back(device_name_attr);
+    }
+    devices_attr.emplace(builder.getDictionaryAttr(device_list));
+  }
+
+  BuildReplicateOp(&builder, &state, n, devices_attr, replicated_inputs,
+                   packed_inputs, replica_output_types);
+}
+
+void ReplicateOp::build(
+    OpBuilder& builder, OperationState& state, int n,
+    llvm::Optional<DictionaryAttr> devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
   BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
@@ -609,15 +624,10 @@ bool ReplicateOp::IsPackedBlockArgument(BlockArgument block_arg) {
 // block argument (of the replicate op) and a valid replica is provided.
 unsigned ReplicateOp::GetReplicaOperandIndexForBlockArgument(
     BlockArgument block_arg, unsigned replica) {
-  const int32_t num_replicas = nAttr().getInt();
-  assert(replica < num_replicas && block_arg.getOwner() == &GetBody());
+  MutableArrayRef<OpOperand> operands = GetOperandsForBlockArgument(block_arg);
+  if (operands.size() == 1) return operands.front().getOperandNumber();
 
-  const unsigned num_replicated_args = GetNumReplicatedBlockArguments();
-  if (block_arg.getArgNumber() < num_replicated_args)
-    return block_arg.getArgNumber() * num_replicas + replica;
-
-  return block_arg.getArgNumber() - num_replicated_args +
-         replicated_inputs().size();
+  return operands[replica].getOperandNumber();
 }
 
 // Returns the operand being forwarded as a replicated/packed block argument for
@@ -625,10 +635,39 @@ unsigned ReplicateOp::GetReplicaOperandIndexForBlockArgument(
 // and a valid replica is provided.
 Value ReplicateOp::GetReplicaOperandForBlockArgument(BlockArgument block_arg,
                                                      unsigned replica) {
-  const unsigned operand_index =
-      GetReplicaOperandIndexForBlockArgument(block_arg, replica);
-  return getOperand(operand_index);
+  MutableArrayRef<OpOperand> operands = GetOperandsForBlockArgument(block_arg);
+  if (operands.size() == 1) return operands.front().get();
+
+  return operands[replica].get();
 }
+
+// Returns the list of replica op operands that maps to the given block
+// argument. Returns list with num_replicas elements for replicated operands
+// and list with a single element for packed operands.
+//
+// Requires that block argument is of this replicate op.
+MutableArrayRef<OpOperand> ReplicateOp::GetOperandsForBlockArgument(
+    BlockArgument block_arg) {
+  assert(block_arg.getOwner() == &GetBody());
+
+  unsigned arg_number = block_arg.getArgNumber();
+  unsigned num_replicated_args = GetNumReplicatedBlockArguments();
+  int32_t num_replicas = nAttr().getInt();
+  MutableArrayRef<OpOperand> operands = getOperation()->getOpOperands();
+
+  // All replicated arguments are before packed arguments so return replicated
+  // operands if the given argument is one of the replicated arguments.
+  if (arg_number < num_replicated_args)
+    return operands.slice(arg_number * num_replicas, num_replicas);
+
+  operands = operands.drop_front(num_replicated_args * num_replicas);
+  arg_number -= num_replicated_args;
+  return operands.slice(arg_number, 1);
+}
+
+// Checks if a tf_device.replicate wraps a single operation and the single
+// operation results are perfectly forwarded to the replicate return.
+bool ReplicateOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 
 //===----------------------------------------------------------------------===//
 // Canonicalization patterns

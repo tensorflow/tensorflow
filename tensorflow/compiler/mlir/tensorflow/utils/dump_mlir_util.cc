@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 
 #include "llvm/ADT/StringMap.h"
@@ -29,9 +30,11 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 
-namespace tensorflow {
+using llvm::raw_ostream;
 
+namespace tensorflow {
 namespace {
+
 struct NameCounts {
   mutex counts_mutex;
   llvm::StringMap<int64_t> counts;
@@ -94,10 +97,23 @@ struct WritableFileRawStream : public llvm::raw_ostream {
   // The file being written to.
   std::unique_ptr<WritableFile> file;
 };
+
+struct CrashReproducerStream : public mlir::PassManager::ReproducerStream {
+  CrashReproducerStream(llvm::StringRef name,
+                        std::unique_ptr<WritableFile> file)
+      : name(name), ostream(std::move(file)) {}
+
+  llvm::StringRef description() override { return name; }
+  raw_ostream& os() override { return ostream; }
+
+ private:
+  std::string name;
+  WritableFileRawStream ostream;
+};
 }  // namespace
 
 Status CreateFileForDumping(llvm::StringRef name,
-                            std::unique_ptr<llvm::raw_ostream>* os,
+                            std::unique_ptr<raw_ostream>* os,
                             std::string* filepath, llvm::StringRef dirname) {
   std::string dir;
   if (!dirname.empty())
@@ -139,7 +155,7 @@ Status CreateFileForDumping(llvm::StringRef name,
 
 std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
                              llvm::StringRef dirname) {
-  std::unique_ptr<llvm::raw_ostream> os;
+  std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return result.error_message();
@@ -172,7 +188,7 @@ std::string GetDumpDirFromEnvVar() {
 
 std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
                                 llvm::StringRef dirname) {
-  std::unique_ptr<llvm::raw_ostream> os;
+  std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return result.error_message();
@@ -224,7 +240,21 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
         << "cannot create unique filename, won't enable MLIR crash reproducer.";
     return;
   }
-  pm.enableCrashReproducerGeneration(path, /*genLocalReproducer=*/false);
+
+  mlir::PassManager::ReproducerStreamFactory factory =
+      [path](std::string& error)
+      -> std::unique_ptr<mlir::PassManager::ReproducerStream> {
+    // Try to open the file and generate a raw_ostream.
+    std::unique_ptr<WritableFile> file;
+    Status status = tensorflow::Env::Default()->NewWritableFile(path, &file);
+    if (!status.ok()) {
+      error = absl::StrCat("Failed to create file '", path,
+                           "': ", status.error_message());
+      return nullptr;
+    }
+    return std::make_unique<CrashReproducerStream>(path, std::move(file));
+  };
+  pm.enableCrashReproducerGeneration(factory, /*genLocalReproducer=*/false);
 }
 
 void applyTensorflowAndCLOptions(mlir::PassManager& pm,

@@ -21,6 +21,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_UTIL_H_
 #define TENSORFLOW_LITE_UTIL_H_
 
+#include <stddef.h>
+
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>

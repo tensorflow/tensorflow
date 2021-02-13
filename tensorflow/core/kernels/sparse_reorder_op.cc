@@ -54,9 +54,10 @@ class SparseReorderOp : public OpKernel {
                     "Input shape should be a vector but received shape ",
                     input_shape_in.shape().DebugString()));
 
-    const TensorShape input_shape(input_shape_in.vec<int64>());
+    gtl::ArraySlice<int64> input_shape(input_shape_in.vec<int64>().data(),
+                                       input_shape_in.NumElements());
 
-    gtl::InlinedVector<int64, 8> std_order(input_shape.dims());
+    gtl::InlinedVector<int64, 8> std_order(input_shape.size());
     std::iota(std_order.begin(), std_order.end(), 0);
 
     // Check if the sparse tensor is already ordered correctly

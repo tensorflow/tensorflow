@@ -116,7 +116,7 @@ void TPUColocateCompositeResourceOps::runOnFunction() {
 
   OpBuilder builder(&getContext());
   for (auto execute_launch : execute_launches) {
-    auto replicate = execute_launch.getParentOfType<tf_device::ReplicateOp>();
+    auto replicate = execute_launch->getParentOfType<tf_device::ReplicateOp>();
     if (!replicate) continue;
 
     ColocateCompositeResourceOpsInReplicate(replicate, &builder);

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -130,6 +131,10 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_COMPLEX64;
     case toco::IODataType::COMPLEX128:
       return DT_COMPLEX128;
+    case toco::IODataType::RESOURCE:
+      return DT_RESOURCE;
+    case toco::IODataType::VARIANT:
+      return DT_VARIANT;
     default:
       return DT_INVALID;
   }
@@ -302,6 +307,7 @@ Status ConvertMLIRToTFLiteFlatBuffer(
 
   mlir::PassManager pm(module->getContext(),
                        mlir::OpPassManager::Nesting::Implicit);
+  ::tensorflow::SetCrashReproducer(pm);
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm, session);
   // Convert back to outlined while format for export back to flatbuffer.

@@ -59,6 +59,7 @@ def tflite_ios_static_framework(
     cmd = ("INPUT_FRAMEWORK=\"$(location " + framework_target + ")\" " +
            "BUNDLE_NAME=\"" + bundle_name + "\" " +
            "ALLOWLIST_FILE_PATH=\"$(location " + allowlist_symbols_file + ")\" " +
+           "EXTRACT_SCRIPT_PATH=\"$(location //tensorflow/lite/ios:extract_object_files_main)\" " +
            "OUTPUT=\"$(OUTS)\" " +
            "\"$(location //tensorflow/lite/ios:hide_symbols_with_allowlist)\"")
 
@@ -68,22 +69,23 @@ def tflite_ios_static_framework(
         outs = [name + ".zip"],
         cmd = cmd,
         tools = [
+            "//tensorflow/lite/ios:extract_object_files_main",
             "//tensorflow/lite/ios:hide_symbols_with_allowlist",
         ],
     )
 
 # When the static framework is built with bazel, the all header files are moved
 # to the "Headers" directory with no header path prefixes. This auxiliary rule
-# is used for stripping the path prefix to the "common.h" file included by the
-# "c_api.h" header.
+# is used for stripping the path prefix of header inclusions paths from the
+# provided headers.
 def strip_common_include_path_prefix(name, hdr_labels, prefix = ""):
-    """Create modified header files with the common.h include path stripped out.
+    """Create modified header files with the inclusion path prefixes removed.
 
     Args:
       name: The name to be used as a prefix to the generated genrules.
       hdr_labels: List of header labels to strip out the include path. Each
           label must end with a colon followed by the header file name.
-      prefix: Optional prefix path to prepend to the common.h inclusion path.
+      prefix: Optional prefix path to prepend to the final inclusion path.
     """
 
     for hdr_label in hdr_labels:
@@ -95,7 +97,7 @@ def strip_common_include_path_prefix(name, hdr_labels, prefix = ""):
             srcs = [hdr_label],
             outs = [hdr_filename],
             cmd = """
-            sed 's|#include ".*common.h"|#include "{}common.h"|'\
+            sed -E 's|#include ".*/([^/]+\\.h)"|#include "{}\\1"|g'\
             "$(location {})"\
             > "$@"
             """.format(prefix, hdr_label),

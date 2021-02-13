@@ -31,6 +31,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:side_effect_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",

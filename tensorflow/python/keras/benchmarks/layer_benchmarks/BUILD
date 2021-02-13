@@ -40,12 +40,14 @@ BECHMARK_TAGS = [
 py_library(
     name = "run_xprof",
     srcs = ["run_xprof.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow/python/keras:__subpackages__"],
 )
 
 py_library(
     name = "layer_benchmarks_test_base",
     srcs = ["layer_benchmarks_test_base.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow/python/keras:__subpackages__"],
     deps = [
         ":run_xprof",
@@ -62,5 +64,6 @@ tf_py_test(
     deps = [
         ":layer_benchmarks_test_base",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:benchmark_util",
     ],
 )

@@ -36,6 +36,7 @@ Pod::Spec.new do |s|
     core.source_files = [
       objc_dir + '{apis,sources}/*.{h,m,mm}',
       tfl_dir + 'c/c_api.h',
+      tfl_dir + 'c/c_api_types.h',
       tfl_dir + 'c/common.h',
       tfl_dir + 'delegates/xnnpack/xnnpack_delegate.h',
     ]
