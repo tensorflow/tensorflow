@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -43,34 +42,6 @@ limitations under the License.
 namespace tensorflow {
 
 using test::graph::Constant;
-
-static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const TensorShape dummy_shape({8});
-
-// Helper class for converting MKL tensors to TF tensors and comparing to
-// expected values
-
-class ConvMklToTF : public OpsTestBase {
- public:
-  template <typename T>
-  void ConvertMKL2TF(DataType dtype, const Tensor& first, const Tensor& second,
-                     Tensor& output) {
-    // Create an MKL to TF conversion node and execute it
-    TF_EXPECT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
-                     .Input(FakeInput(dtype))     // Input
-                     .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                     .Attr("T", dtype)
-                     .Attr("_kernel", "MklOp")
-                     .Finalize(node_def()));
-    TF_EXPECT_OK(InitOp());
-    AddInputFromArray<T>(first.shape(), first.flat<T>());
-    AddInputFromArray<uint8>(second.shape(), second.flat<uint8>());
-    TF_ASSERT_OK(RunOpKernel());
-
-    output = *GetOutput(0);
-  }
-  void TestBody(){};
-};
 
 class QuantizedConcatTest : public OpsTestBase {
  protected:
@@ -93,26 +64,16 @@ TEST_F(QuantizedConcatTest, Small8BitDifferentRange) {
 
 void QuantizedConcatTest::TestSmall8Bit(float first_min, float first_max,
                                         float second_min, float second_max) {
-  NodeDefBuilder builder =
-      NodeDefBuilder("quantized_concat_op", NativeFormatEnabled()
-                                                ? "QuantizedConcatV2"
-                                                : "_MklQuantizedConcatV2")
-          .Input(FakeInput(2, DT_QUINT8))
-          .Input(FakeInput(DT_INT32))
-          .Input(FakeInput(2, DT_FLOAT))
-          .Input(FakeInput(2, DT_FLOAT))
-          .Attr("N", 2)
-          .Attr("T", DataTypeToEnum<quint8>::v())
-          .Attr("Tidx", DT_INT32);
-  if (!NativeFormatEnabled()) {
-    // Add MKL metadata tensors
-    builder.Input(FakeInput(2, DT_UINT8))
-        .Input(FakeInput(DT_UINT8))
-        .Input(FakeInput(2, DT_UINT8))
-        .Input(FakeInput(2, DT_UINT8))
-        .Attr("_kernel", "QuantizedMklOp");
-  }
-  TF_ASSERT_OK(builder.Finalize(node_def()));
+  TF_ASSERT_OK(NodeDefBuilder("quantized_concat_op", "_MklQuantizedConcatV2")
+                   .Input(FakeInput(2, DT_QUINT8))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(2, DT_FLOAT))
+                   .Input(FakeInput(2, DT_FLOAT))
+                   .Attr("N", 2)
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("Tidx", DT_INT32)
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   const int first_batch = 2;
   const int first_height = 2;
@@ -152,12 +113,6 @@ void QuantizedConcatTest::TestSmall8Bit(float first_min, float first_max,
   AddInputFromArray<float>(TensorShape({}), {second_min});
   AddInputFromArray<float>(TensorShape({}), {first_max});
   AddInputFromArray<float>(TensorShape({}), {second_max});
-  if (!NativeFormatEnabled()) {
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  }
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
@@ -174,26 +129,16 @@ TEST_F(QuantizedConcatTest, SecondDim8BitSameRange) {
 void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
                                             float second_min,
                                             float second_max) {
-  NodeDefBuilder builder =
-      NodeDefBuilder("quantized_concat_op", NativeFormatEnabled()
-                                                ? "QuantizedConcatV2"
-                                                : "_MklQuantizedConcatV2")
-          .Input(FakeInput(2, DT_QUINT8))
-          .Input(FakeInput(DT_INT32))
-          .Input(FakeInput(2, DT_FLOAT))
-          .Input(FakeInput(2, DT_FLOAT))
-          .Attr("N", 2)
-          .Attr("T", DataTypeToEnum<quint8>::v())
-          .Attr("Tidx", DT_INT32);
-  if (!NativeFormatEnabled()) {
-    // Add MKL metadata tensors
-    builder.Input(FakeInput(2, DT_UINT8))
-        .Input(FakeInput(DT_UINT8))
-        .Input(FakeInput(2, DT_UINT8))
-        .Input(FakeInput(2, DT_UINT8))
-        .Attr("_kernel", "QuantizedMklOp");
-  }
-  TF_ASSERT_OK(builder.Finalize(node_def()));
+  TF_ASSERT_OK(NodeDefBuilder("quantized_concat_op", "_MklQuantizedConcatV2")
+                   .Input(FakeInput(2, DT_QUINT8))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(2, DT_FLOAT))
+                   .Input(FakeInput(2, DT_FLOAT))
+                   .Attr("N", 2)
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("Tidx", DT_INT32)
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   const int first_batch = 2;
   const int first_height = 2;
@@ -234,12 +179,6 @@ void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
   AddInputFromArray<float>(TensorShape({}), {second_min});
   AddInputFromArray<float>(TensorShape({}), {first_max});
   AddInputFromArray<float>(TensorShape({}), {second_max});
-  if (!NativeFormatEnabled()) {
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  }
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);

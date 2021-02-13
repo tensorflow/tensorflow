@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/concat_lib_cpu.h"
+#include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -936,21 +937,21 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConcatV2")
                             .TypeConstraint<quint8>("T")
                             .HostMemory("axis")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklConcatOp<CPUDevice, quint8, NAME_IS_AXIS>);
+                        MklConcatOp<CPUDevice, quint8, NAME_IS_AXIS, true>);
 
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConcatV2")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .HostMemory("axis")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklConcatOp<CPUDevice, qint8, NAME_IS_AXIS>);
+                        MklConcatOp<CPUDevice, qint8, NAME_IS_AXIS, true>);
 
 #define REGISTER_QUANTIZED_CONCATV2(type)                \
   REGISTER_KERNEL_BUILDER(Name("QuantizedConcatV2")      \
                               .Device(DEVICE_CPU)        \
                               .TypeConstraint<type>("T") \
                               .HostMemory("axis"),       \
-                          MklConcatOp<CPUDevice, type, NAME_IS_AXIS, true>)
+                          NoOp)
 
 REGISTER_QUANTIZED_CONCATV2(quint8);
 REGISTER_QUANTIZED_CONCATV2(qint8);
