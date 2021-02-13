@@ -29,6 +29,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",
     ],
@@ -133,6 +134,7 @@ py_test(
     deps = [
         ":options",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:test_base",
     ],
 )
 

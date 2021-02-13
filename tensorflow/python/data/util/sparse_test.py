@@ -33,7 +33,8 @@ from tensorflow.python.platform import test
 
 
 class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testAnySparse(self):
     test_cases = (
         {
@@ -73,7 +74,8 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
     for test_case in test_cases:
       self.assertEqual(
           sparse.any_sparse(test_case["classes"]), test_case["expected"])
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def assertShapesEqual(self, a, b):
     for a, b in zip(nest.flatten(a), nest.flatten(b)):
       self.assertEqual(a.ndims, b.ndims)
@@ -81,7 +83,8 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
         continue
       for c, d in zip(a.as_list(), b.as_list()):
         self.assertEqual(c, d)
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testAsDenseShapes(self):
     test_cases = (
         {
@@ -159,7 +162,8 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertShapesEqual(
           sparse.as_dense_shapes(test_case["types"], test_case["classes"]),
           test_case["expected"])
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testAsDenseTypes(self):
     test_cases = (
         {
@@ -233,7 +237,8 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(
           sparse.as_dense_types(test_case["types"], test_case["classes"]),
           test_case["expected"])
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testGetClasses(self):
     s = sparse_tensor.SparseTensor(indices=[[0]], values=[1], dense_shape=[1])
     d = ops.Tensor
@@ -291,7 +296,8 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
     for test_case in test_cases:
       self.assertEqual(
           sparse.get_classes(test_case["classes"]), test_case["expected"])
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def assertSparseValuesEqual(self, a, b):
     if not isinstance(a, sparse_tensor.SparseTensor):
       self.assertFalse(isinstance(b, sparse_tensor.SparseTensor))

@@ -31,25 +31,30 @@ from tensorflow.python.util import compat
 
 
 class ConvertTest(test_base.DatasetTestBase, parameterized.TestCase):
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testInteger(self):
     resp = convert.optional_param_to_tensor("foo", 3)
     self.assertEqual(3, self.evaluate(resp))
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testIntegerDefault(self):
     resp = convert.optional_param_to_tensor("foo", None)
     self.assertEqual(0, self.evaluate(resp))
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testStringDefault(self):
     resp = convert.optional_param_to_tensor("bar", None, "default",
                                             dtypes.string)
     self.assertEqual(compat.as_bytes("default"), self.evaluate(resp))
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testString(self):
     resp = convert.optional_param_to_tensor("bar", "value", "default",
                                             dtypes.string)
     self.assertEqual(compat.as_bytes("value"), self.evaluate(resp))
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testPartialShapeToTensorKnownDimension(self):
     self.assertAllEqual([1],
                         self.evaluate(
@@ -92,7 +97,8 @@ class ConvertTest(test_base.DatasetTestBase, parameterized.TestCase):
         TypeError, r"The given shape .* must be a 1-D tensor of tf.int64 "
         r"values, but the element type was float32."):
       convert.partial_shape_to_tensor(constant_op.constant([1., 1.]))
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testPartialShapeToTensorMultipleDimensions(self):
     self.assertAllEqual([3, 6],
                         self.evaluate(
@@ -139,7 +145,8 @@ class ConvertTest(test_base.DatasetTestBase, parameterized.TestCase):
                             convert.partial_shape_to_tensor(
                                 constant_op.constant([-1, -1],
                                                      dtype=dtypes.int64))))
-
+  
+  @combinations.generate(test_base.default_test_combinations())
   def testPartialShapeToTensorScalar(self):
     self.assertAllEqual([],
                         self.evaluate(

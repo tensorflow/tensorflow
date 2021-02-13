@@ -53,36 +53,84 @@ from tensorflow.python.util.compat import collections_abc
 class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   # pylint: disable=g-long-lambda,protected-access
-  @parameterized.named_parameters(
-      ("Tensor", lambda: constant_op.constant(37.0), tensor_spec.TensorSpec,
-       [dtypes.float32], [[]]),
-      ("TensorArray", lambda: tensor_array_ops.TensorArray(
-          dtype=dtypes.float32, element_shape=(3,), size=0),
-       tensor_array_ops.TensorArraySpec, [dtypes.variant], [[]]),
-      ("SparseTensor", lambda: sparse_tensor.SparseTensor(
-          indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
-       sparse_tensor.SparseTensorSpec, [dtypes.variant], [None]),
-      ("RaggedTensor", lambda: ragged_factory_ops.constant([[1, 2], [], [4]]),
-       ragged_tensor.RaggedTensorSpec, [dtypes.variant], [None]),
-      ("Nested_0",
-       lambda: (constant_op.constant(37.0), constant_op.constant([1, 2, 3])),
-       tuple, [dtypes.float32, dtypes.int32], [[], [3]]),
-      ("Nested_1", lambda: {
-          "a": constant_op.constant(37.0),
-          "b": constant_op.constant([1, 2, 3])
-      }, dict, [dtypes.float32, dtypes.int32], [[], [3]]),
-      ("Nested_2", lambda: {
-          "a": constant_op.constant(37.0),
-          "b": (sparse_tensor.SparseTensor(
-              indices=[[0, 0]], values=[1],
-              dense_shape=[1, 1]), sparse_tensor.SparseTensor(
-                  indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
-      }, dict, [dtypes.float32, dtypes.variant, dtypes.variant], [
-          [], None, None]
-      ),
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(data=[
+              combinations.NamedObject(
+                  "Tensor", [
+                      lambda: constant_op.constant(37.0),
+                      tensor_spec.TensorSpec,
+                      [dtypes.float32],
+                      [[]]
+                  ]),
+              combinations.NamedObject(
+                  "TensorArray", [
+                      lambda: tensor_array_ops.TensorArray(
+                          dtype=dtypes.float32, element_shape=(3,),
+                          size=0),
+                      tensor_array_ops.TensorArraySpec,
+                      [dtypes.variant],
+                      [[]]
+                  ]),
+              combinations.NamedObject(
+                  "SparseTensor", [
+                      lambda: sparse_tensor.SparseTensor(
+                          indices=[[3, 4]], values=[-1],
+                          dense_shape=[4, 5]),
+                      sparse_tensor.SparseTensorSpec,
+                      [dtypes.variant],
+                      [None]
+                  ]),
+              combinations.NamedObject(
+                  "RaggedTensor", [
+                      lambda: ragged_factory_ops.constant(
+                          [[1, 2], [], [4]]),
+                      ragged_tensor.RaggedTensorSpec,
+                      [dtypes.variant],
+                      [None]
+                  ]),
+              combinations.NamedObject(
+                  "Nested_0", [
+                      lambda: (constant_op.constant(37.0),
+                               constant_op.constant([1, 2, 3])),
+                      tuple,
+                      [dtypes.float32, dtypes.int32],
+                      [[], [3]]
+                  ]),
+              combinations.NamedObject(
+                  "Nested_1", [
+                      lambda: {
+                          "a": constant_op.constant(37.0),
+                          "b": constant_op.constant([1, 2, 3])
+                      },
+                      dict,
+                      [dtypes.float32, dtypes.int32],
+                      [[], [3]]
+                  ]),
+              combinations.NamedObject(
+                  "Nested_2", [
+                      lambda: {
+                          "a": constant_op.constant(37.0),
+                          "b": (sparse_tensor.SparseTensor(
+                              indices=[[0, 0]], values=[1],
+                              dense_shape=[1, 1]), sparse_tensor.SparseTensor(
+                                  indices=[[3, 4]], values=[-1],
+                                  dense_shape=[4, 5]))
+                      },
+                      dict,
+                      [dtypes.float32, dtypes.variant, dtypes.variant],
+                      [[], None, None]
+                  ]),
+          ])
+      )
   )
-  def testFlatStructure(self, value_fn, expected_structure, expected_types,
-                        expected_shapes):
+  def testFlatStructure(self, data):
+    data = data._obj
+    value_fn = data[0]
+    expected_structure = data[1]
+    expected_types = data[2]
+    expected_shapes = data[3]
     value = value_fn()
     s = structure.type_spec_from_value(value)
     self.assertIsInstance(s, expected_structure)
@@ -215,49 +263,67 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
           structure.are_compatible(
               s, structure.type_spec_from_value(incompatible_value)))
 
-  @parameterized.named_parameters(
-      ("Tensor",
-       lambda: constant_op.constant(37.0),
-       lambda: constant_op.constant(42.0),
-       lambda: constant_op.constant([5])),
-      ("TensorArray",
-       lambda: tensor_array_ops.TensorArray(
-           dtype=dtypes.float32, element_shape=(3,), size=0),
-       lambda: tensor_array_ops.TensorArray(
-           dtype=dtypes.float32, element_shape=(3,), size=0),
-       lambda: tensor_array_ops.TensorArray(
-           dtype=dtypes.int32, element_shape=(), size=0)),
-      ("SparseTensor",
-       lambda: sparse_tensor.SparseTensor(
-           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
-       lambda: sparse_tensor.SparseTensor(
-           indices=[[1, 2]], values=[42], dense_shape=[4, 5]),
-       lambda: sparse_tensor.SparseTensor(
-           indices=[[3]], values=[-1], dense_shape=[5]),
-       lambda: sparse_tensor.SparseTensor(
-           indices=[[3, 4]], values=[1.0], dense_shape=[4, 5])),
-      ("RaggedTensor",
-       lambda: ragged_factory_ops.constant([[[1, 2]], [[3]]]),
-       lambda: ragged_factory_ops.constant([[[5]], [[8], [3, 2]]]),
-       lambda: ragged_factory_ops.constant([[[1]], [[2], [3]]],
-                                           ragged_rank=1),
-       lambda: ragged_factory_ops.constant([[[1.0, 2.0]], [[3.0]]]),
-       lambda: ragged_factory_ops.constant([[[1]], [[2]], [[3]]])),
-      ("Nested",
-       lambda: {
-           "a": constant_op.constant(37.0),
-           "b": constant_op.constant([1, 2, 3])},
-       lambda: {
-           "a": constant_op.constant(42.0),
-           "b": constant_op.constant([4, 5, 6])},
-       lambda: {
-           "a": constant_op.constant([1, 2, 3]),
-           "b": constant_op.constant(37.0)
-       }),
-  )  # pyformat: disable
-  def testStructureFromValueEquality(self, value1_fn, value2_fn,
-                                     *not_equal_value_fns):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(value_fns=[
+              combinations.NamedObject(
+                  "Tensor", [
+                      lambda: constant_op.constant(37.0),
+                      lambda: constant_op.constant(42.0),
+                      lambda: constant_op.constant([5])
+                  ]),
+              combinations.NamedObject(
+                  "TensorArray", [
+                      lambda: tensor_array_ops.TensorArray(
+                          dtype=dtypes.float32, element_shape=(3,), size=0),
+                      lambda: tensor_array_ops.TensorArray(
+                          dtype=dtypes.float32, element_shape=(3,), size=0),
+                      lambda: tensor_array_ops.TensorArray(
+                          dtype=dtypes.int32, element_shape=(), size=0)
+                  ]),
+              combinations.NamedObject(
+                  "SparseTensor", [
+                      lambda: sparse_tensor.SparseTensor(
+                          indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
+                      lambda: sparse_tensor.SparseTensor(
+                          indices=[[1, 2]], values=[42], dense_shape=[4, 5]),
+                      lambda: sparse_tensor.SparseTensor(
+                          indices=[[3]], values=[-1], dense_shape=[5]),
+                      lambda: sparse_tensor.SparseTensor(
+                          indices=[[3, 4]], values=[1.0], dense_shape=[4, 5])
+                  ]),
+              combinations.NamedObject(
+                  "RaggedTensor", [
+                      lambda: ragged_factory_ops.constant([[[1, 2]], [[3]]]),
+                      lambda: ragged_factory_ops.constant([[[5]], [[8], [3, 2]]]),
+                      lambda: ragged_factory_ops.constant([[[1]], [[2], [3]]],
+                                                          ragged_rank=1),
+                      lambda: ragged_factory_ops.constant([[[1.0, 2.0]], [[3.0]]]),
+                      lambda: ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
+                  ]),
+              combinations.NamedObject(
+                  "Nested", [
+                      lambda: {
+                          "a": constant_op.constant(37.0),
+                          "b": constant_op.constant([1, 2, 3])},
+                      lambda: {
+                          "a": constant_op.constant(42.0),
+                          "b": constant_op.constant([4, 5, 6])},
+                      lambda: {
+                          "a": constant_op.constant([1, 2, 3]),
+                          "b": constant_op.constant(37.0)
+                      }
+                  ]),
+          ])
+      )
+  )
+  def testStructureFromValueEquality(self, value_fns):
     # pylint: disable=g-generic-assert
+    value_fns = value_fns._obj
+    value1_fn = value_fns[0]
+    value2_fn = value_fns[1]
+    not_equal_value_fns = value_fns[2:]
     s1 = structure.type_spec_from_value(value1_fn())
     s2 = structure.type_spec_from_value(value2_fn())
     self.assertEqual(s1, s1)  # check __eq__ operator.
@@ -274,48 +340,89 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertFalse(s1 == s3)  # check __eq_ operator.
       self.assertFalse(s2 == s3)  # check __eq_ operator.
 
-  @parameterized.named_parameters(
-      ("RaggedTensor_RaggedRank",
-       ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 1),
-       ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 2)),
-      ("RaggedTensor_Shape",
-       ragged_tensor.RaggedTensorSpec([3, None], dtypes.int32, 1),
-       ragged_tensor.RaggedTensorSpec([5, None], dtypes.int32, 1)),
-      ("RaggedTensor_DType",
-       ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 1),
-       ragged_tensor.RaggedTensorSpec(None, dtypes.float32, 1)),
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(specs=[
+              combinations.NamedObject(
+                  "RaggedTensor_RaggedRank", [
+                      ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 1),
+                      ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 2)
+                  ]),
+              combinations.NamedObject(
+                  "RaggedTensor_Shape", [
+                      ragged_tensor.RaggedTensorSpec(
+                          [3, None], dtypes.int32, 1),
+                      ragged_tensor.RaggedTensorSpec(
+                          [5, None], dtypes.int32, 1)
+                  ]),
+              combinations.NamedObject(
+                  "RaggedTensor_DType", [
+                      ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 1),
+                      ragged_tensor.RaggedTensorSpec(None, dtypes.float32, 1)
+                  ]),
+          ])
+      )
   )
-  def testRaggedStructureInequality(self, s1, s2):
+  def testRaggedStructureInequality(self, specs):
+    specs = specs._obj
+    s1 = specs[0]
+    s2 = specs[1]
     # pylint: disable=g-generic-assert
     self.assertNotEqual(s1, s2)  # check __ne__ operator.
     self.assertFalse(s1 == s2)  # check __eq__ operator.
 
-  @parameterized.named_parameters(
-      ("Tensor", lambda: constant_op.constant(37.0),
-       lambda: constant_op.constant(42.0), lambda: constant_op.constant([5])),
-      ("TensorArray", lambda: tensor_array_ops.TensorArray(
-          dtype=dtypes.float32, element_shape=(3,), size=0),
-       lambda: tensor_array_ops.TensorArray(
-           dtype=dtypes.float32, element_shape=(3,), size=0),
-       lambda: tensor_array_ops.TensorArray(
-           dtype=dtypes.int32, element_shape=(), size=0)),
-      ("SparseTensor", lambda: sparse_tensor.SparseTensor(
-          indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
-       lambda: sparse_tensor.SparseTensor(
-           indices=[[1, 2]], values=[42], dense_shape=[4, 5]), lambda:
-       sparse_tensor.SparseTensor(indices=[[3]], values=[-1], dense_shape=[5])),
-      ("Nested", lambda: {
-          "a": constant_op.constant(37.0),
-          "b": constant_op.constant([1, 2, 3])
-      }, lambda: {
-          "a": constant_op.constant(42.0),
-          "b": constant_op.constant([4, 5, 6])
-      }, lambda: {
-          "a": constant_op.constant([1, 2, 3]),
-          "b": constant_op.constant(37.0)
-      }),
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(value_fns=[
+              combinations.NamedObject(
+                  "Tensor", [
+                      lambda: constant_op.constant(37.0),
+                      lambda: constant_op.constant(42.0),
+                      lambda: constant_op.constant([5])
+                  ]),
+              combinations.NamedObject(
+                  "TensorArray", [
+                      lambda: tensor_array_ops.TensorArray(
+                          dtype=dtypes.float32, element_shape=(3,), size=0),
+                      lambda: tensor_array_ops.TensorArray(
+                          dtype=dtypes.float32, element_shape=(3,), size=0),
+                      lambda: tensor_array_ops.TensorArray(
+                          dtype=dtypes.int32, element_shape=(), size=0)
+                  ]),
+              combinations.NamedObject(
+                  "SparseTensor", [
+                      lambda: sparse_tensor.SparseTensor(
+                          indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
+                      lambda: sparse_tensor.SparseTensor(
+                          indices=[[1, 2]], values=[42], dense_shape=[4, 5]),
+                      lambda: sparse_tensor.SparseTensor(
+                          indices=[[3]], values=[-1], dense_shape=[5])
+                  ]),
+              combinations.NamedObject(
+                  "Nested", [
+                      lambda: {
+                          "a": constant_op.constant(37.0),
+                          "b": constant_op.constant([1, 2, 3])
+                      },
+                      lambda: {
+                          "a": constant_op.constant(42.0),
+                          "b": constant_op.constant([4, 5, 6])
+                      },
+                      lambda: {
+                          "a": constant_op.constant([1, 2, 3]),
+                          "b": constant_op.constant(37.0)
+                      }
+                  ]),
+          ])
+      )
   )
-  def testHash(self, value1_fn, value2_fn, value3_fn):
+  def testHash(self, value_fns):
+    value_fns = value_fns._obj
+    value1_fn = value_fns[0]
+    value2_fn = value_fns[1]
+    value3_fn = value_fns[2]
     s1 = structure.type_spec_from_value(value1_fn())
     s2 = structure.type_spec_from_value(value2_fn())
     s3 = structure.type_spec_from_value(value3_fn())
@@ -325,50 +432,60 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertNotEqual(hash(c1), hash(c3))
       self.assertNotEqual(hash(c2), hash(c3))
 
-  @parameterized.named_parameters(
-      (
-          "Tensor",
-          lambda: constant_op.constant(37.0),
-      ),
-      (
-          "SparseTensor",
-          lambda: sparse_tensor.SparseTensor(
-              indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
-      ),
-      ("TensorArray", lambda: tensor_array_ops.TensorArray(
-          dtype=dtypes.float32, element_shape=(), size=1).write(0, 7)),
-      (
-          "RaggedTensor",
-          lambda: ragged_factory_ops.constant([[1, 2], [], [3]]),
-      ),
-      (
-          "Nested_0",
-          lambda: {
-              "a": constant_op.constant(37.0),
-              "b": constant_op.constant([1, 2, 3])
-          },
-      ),
-      (
-          "Nested_1",
-          lambda: {
-              "a":
-                  constant_op.constant(37.0),
-              "b": (sparse_tensor.SparseTensor(
-                  indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
-                    sparse_tensor.SparseTensor(
-                        indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
-          },
-      ),
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(value_fn=[
+              combinations.NamedObject(
+                  "Tensor",
+                  lambda: constant_op.constant(37.0),
+              ),
+              combinations.NamedObject(
+                  "SparseTensor",
+                  lambda: sparse_tensor.SparseTensor(
+                      indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
+              ),
+              combinations.NamedObject(
+                  "TensorArray",
+                  lambda: tensor_array_ops.TensorArray(
+                      dtype=dtypes.float32, element_shape=(), size=1
+                  ).write(0, 7)
+              ),
+              combinations.NamedObject(
+                  "RaggedTensor",
+                  lambda: ragged_factory_ops.constant([[1, 2], [], [3]]),
+              ),
+              combinations.NamedObject(
+                  "Nested_0",
+                  lambda: {
+                      "a": constant_op.constant(37.0),
+                      "b": constant_op.constant([1, 2, 3])
+                  },
+              ),
+              combinations.NamedObject(
+                  "Nested_1",
+                  lambda: {
+                      "a":
+                          constant_op.constant(37.0),
+                      "b": (sparse_tensor.SparseTensor(
+                          indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
+                            sparse_tensor.SparseTensor(
+                                indices=[[3, 4]], values=[-1],
+                                dense_shape=[4, 5]))
+                  },
+              ),
+          ])
+      )
   )
   def testRoundTripConversion(self, value_fn):
+    value_fn = value_fn._obj
     value = value_fn()
     s = structure.type_spec_from_value(value)
 
     def maybe_stack_ta(v):
       if isinstance(v, tensor_array_ops.TensorArray):
         return v.stack()
-      else:
-        return v
+      return v
 
     before = self.evaluate(maybe_stack_ta(value))
     after = self.evaluate(
@@ -410,6 +527,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(st_after.dense_shape.shape.as_list(),
                      st.dense_shape.shape.as_list())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPreserveTensorArrayShape(self):
     ta = tensor_array_ops.TensorArray(
         dtype=dtypes.int32, size=1, element_shape=(3,))
@@ -418,6 +536,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
                                           structure.to_tensor_list(ta_s, ta))
     self.assertEqual(ta_after.element_shape.as_list(), [3])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPreserveInferredTensorArrayShape(self):
     ta = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=1)
     # Shape is inferred from the write.
@@ -427,6 +546,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
                                           structure.to_tensor_list(ta_s, ta))
     self.assertEqual(ta_after.element_shape.as_list(), [3])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testIncompatibleStructure(self):
     # Define three mutually incompatible values/structures, and assert that:
     # 1. Using one structure to flatten a value with an incompatible structure
@@ -492,6 +612,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 1."):
       structure.from_tensor_list(s_nest, flat_sparse_tensor)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testIncompatibleNestedStructure(self):
     # Define three mutually incompatible nested values/structures, and assert
     # that:
@@ -578,52 +699,100 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "Expected 3 tensors but got 2."):
       structure.from_tensor_list(s_2, flat_s_1)
 
-  @parameterized.named_parameters(
-      ("Tensor", dtypes.float32, tensor_shape.TensorShape(
-          []), ops.Tensor, tensor_spec.TensorSpec([], dtypes.float32)),
-      ("SparseTensor", dtypes.int32, tensor_shape.TensorShape(
-          [2, 2]), sparse_tensor.SparseTensor,
-       sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32)),
-      ("TensorArray_0", dtypes.int32,
-       tensor_shape.TensorShape([None, True, 2, 2
-                                ]), tensor_array_ops.TensorArray,
-       tensor_array_ops.TensorArraySpec(
-           [2, 2], dtypes.int32, dynamic_size=None, infer_shape=True)),
-      ("TensorArray_1", dtypes.int32,
-       tensor_shape.TensorShape([True, None, 2, 2
-                                ]), tensor_array_ops.TensorArray,
-       tensor_array_ops.TensorArraySpec(
-           [2, 2], dtypes.int32, dynamic_size=True, infer_shape=None)),
-      ("TensorArray_2", dtypes.int32,
-       tensor_shape.TensorShape([True, False, 2, 2
-                                ]), tensor_array_ops.TensorArray,
-       tensor_array_ops.TensorArraySpec(
-           [2, 2], dtypes.int32, dynamic_size=True, infer_shape=False)),
-      ("RaggedTensor", dtypes.int32, tensor_shape.TensorShape([2, None]),
-       ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32, 1),
-       ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32, 1)),
-      ("Nested", {
-          "a": dtypes.float32,
-          "b": (dtypes.int32, dtypes.string)
-      }, {
-          "a": tensor_shape.TensorShape([]),
-          "b": (tensor_shape.TensorShape([2, 2]), tensor_shape.TensorShape([]))
-      }, {
-          "a": ops.Tensor,
-          "b": (sparse_tensor.SparseTensor, ops.Tensor)
-      }, {
-          "a":
-              tensor_spec.TensorSpec([], dtypes.float32),
-          "b": (sparse_tensor.SparseTensorSpec(
-              [2, 2], dtypes.int32), tensor_spec.TensorSpec([], dtypes.string))
-      }),
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(data=[
+              combinations.NamedObject(
+                  "Tensor", [
+                      dtypes.float32,
+                      tensor_shape.TensorShape([]),
+                      ops.Tensor,
+                      tensor_spec.TensorSpec([], dtypes.float32)
+                  ]),
+              combinations.NamedObject(
+                  "SparseTensor", [
+                      dtypes.int32,
+                      tensor_shape.TensorShape([2, 2]),
+                      sparse_tensor.SparseTensor,
+                      sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32)
+                  ]),
+              combinations.NamedObject(
+                  "TensorArray_0", [
+                      dtypes.int32,
+                      tensor_shape.TensorShape(
+                          [None, True, 2, 2]),
+                      tensor_array_ops.TensorArray,
+                      tensor_array_ops.TensorArraySpec(
+                          [2, 2], dtypes.int32, dynamic_size=None,
+                          infer_shape=True)
+                  ]),
+              combinations.NamedObject(
+                  "TensorArray_1", [
+                      dtypes.int32,
+                      tensor_shape.TensorShape([True, None, 2, 2]),
+                      tensor_array_ops.TensorArray,
+                      tensor_array_ops.TensorArraySpec(
+                          [2, 2], dtypes.int32, dynamic_size=True,
+                          infer_shape=None)
+                  ]),
+              combinations.NamedObject(
+                  "TensorArray_2", [
+                      dtypes.int32,
+                      tensor_shape.TensorShape([True, False, 2, 2]),
+                      tensor_array_ops.TensorArray,
+                      tensor_array_ops.TensorArraySpec(
+                          [2, 2], dtypes.int32, dynamic_size=True,
+                          infer_shape=False)
+                  ]),
+              combinations.NamedObject(
+                  "RaggedTensor", [
+                      dtypes.int32,
+                      tensor_shape.TensorShape([2, None]),
+                      ragged_tensor.RaggedTensorSpec(
+                          [2, None], dtypes.int32, 1),
+                      ragged_tensor.RaggedTensorSpec(
+                          [2, None], dtypes.int32, 1)
+                  ]),
+              combinations.NamedObject(
+                  "Nested", [
+                      {
+                          "a": dtypes.float32,
+                          "b": (dtypes.int32, dtypes.string)
+                      },
+                      {
+                          "a": tensor_shape.TensorShape([]),
+                          "b": (tensor_shape.TensorShape([2, 2]),
+                                tensor_shape.TensorShape([]))
+                      },
+                      {
+                          "a": ops.Tensor,
+                          "b": (sparse_tensor.SparseTensor, ops.Tensor)
+                      },
+                      {
+                          "a":
+                              tensor_spec.TensorSpec([], dtypes.float32),
+                          "b": (
+                              sparse_tensor.SparseTensorSpec(
+                                  [2, 2], dtypes.int32),
+                              tensor_spec.TensorSpec([], dtypes.string)
+                              )
+                      }
+                  ]),
+          ])
+      )
   )
-  def testConvertLegacyStructure(self, output_types, output_shapes,
-                                 output_classes, expected_structure):
+  def testConvertLegacyStructure(self, data):
+    data = data._obj
+    output_types = data[0]
+    output_shapes = data[1]
+    output_classes = data[2]
+    expected_structure = data[3]
     actual_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
     self.assertEqual(actual_structure, expected_structure)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNestedNestedStructure(self):
     s = (tensor_spec.TensorSpec([], dtypes.int64),
          (tensor_spec.TensorSpec([], dtypes.float32),
@@ -652,94 +821,199 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIs(float32_t, actual_float32_t)
     self.assertIs(string_t, actual_string_t)
 
-  @parameterized.named_parameters(
-      ("Tensor", tensor_spec.TensorSpec([], dtypes.float32), 32,
-       tensor_spec.TensorSpec([32], dtypes.float32)),
-      ("TensorUnknown", tensor_spec.TensorSpec([], dtypes.float32), None,
-       tensor_spec.TensorSpec([None], dtypes.float32)),
-      ("SparseTensor", sparse_tensor.SparseTensorSpec([None], dtypes.float32),
-       32, sparse_tensor.SparseTensorSpec([32, None], dtypes.float32)),
-      ("SparseTensorUnknown",
-       sparse_tensor.SparseTensorSpec([4], dtypes.float32), None,
-       sparse_tensor.SparseTensorSpec([None, 4], dtypes.float32)),
-      ("RaggedTensor",
-       ragged_tensor.RaggedTensorSpec([2, None], dtypes.float32, 1), 32,
-       ragged_tensor.RaggedTensorSpec([32, 2, None], dtypes.float32, 2)),
-      ("RaggedTensorUnknown",
-       ragged_tensor.RaggedTensorSpec([4, None], dtypes.float32, 1), None,
-       ragged_tensor.RaggedTensorSpec([None, 4, None], dtypes.float32, 2)),
-      ("Nested", {
-          "a":
-              tensor_spec.TensorSpec([], dtypes.float32),
-          "b": (sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32),
-                tensor_spec.TensorSpec([], dtypes.string))
-      }, 128, {
-          "a":
-              tensor_spec.TensorSpec([128], dtypes.float32),
-          "b": (sparse_tensor.SparseTensorSpec([128, 2, 2], dtypes.int32),
-                tensor_spec.TensorSpec([128], dtypes.string))
-      }),
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(data=[
+              combinations.NamedObject(
+                  "Tensor", [
+                      tensor_spec.TensorSpec([], dtypes.float32),
+                      32,
+                      tensor_spec.TensorSpec([32], dtypes.float32)
+                  ]),
+              combinations.NamedObject(
+                  "TensorUnknown", [
+                      tensor_spec.TensorSpec([], dtypes.float32),
+                      None,
+                      tensor_spec.TensorSpec([None], dtypes.float32)
+                  ]),
+              combinations.NamedObject(
+                  "SparseTensor", [
+                      sparse_tensor.SparseTensorSpec([None], dtypes.float32),
+                      32,
+                      sparse_tensor.SparseTensorSpec([32, None], dtypes.float32)
+                  ]),
+              combinations.NamedObject(
+                  "SparseTensorUnknown", [
+                      sparse_tensor.SparseTensorSpec([4], dtypes.float32),
+                      None,
+                      sparse_tensor.SparseTensorSpec([None, 4], dtypes.float32)
+                  ]),
+              combinations.NamedObject(
+                  "RaggedTensor", [
+                      ragged_tensor.RaggedTensorSpec(
+                          [2, None], dtypes.float32, 1),
+                      32,
+                      ragged_tensor.RaggedTensorSpec(
+                          [32, 2, None], dtypes.float32, 2)
+                  ]),
+              combinations.NamedObject(
+                  "RaggedTensorUnknown", [
+                      ragged_tensor.RaggedTensorSpec(
+                          [4, None], dtypes.float32, 1),
+                      None,
+                      ragged_tensor.RaggedTensorSpec(
+                          [None, 4, None], dtypes.float32, 2)
+                  ]),
+              combinations.NamedObject(
+                  "Nested", [
+                      {
+                          "a":
+                              tensor_spec.TensorSpec([], dtypes.float32),
+                          "b": (
+                              sparse_tensor.SparseTensorSpec(
+                                  [2, 2], dtypes.int32),
+                              tensor_spec.TensorSpec([], dtypes.string)
+                          )
+                      },
+                      128,
+                      {
+                          "a":
+                              tensor_spec.TensorSpec([128], dtypes.float32),
+                          "b": (
+                              sparse_tensor.SparseTensorSpec(
+                                  [128, 2, 2], dtypes.int32),
+                              tensor_spec.TensorSpec([128], dtypes.string)
+                          )
+                      }
+                  ]),
+          ])
+      )
   )
-  def testBatch(self, element_structure, batch_size,
-                expected_batched_structure):
+  def testBatch(self, data):
+    data = data._obj
+    element_structure = data[0]
+    batch_size = data[1]
+    expected_batched_structure = data[2]
     batched_structure = nest.map_structure(
         lambda component_spec: component_spec._batch(batch_size),
         element_structure)
     self.assertEqual(batched_structure, expected_batched_structure)
 
-  @parameterized.named_parameters(
-      ("Tensor", tensor_spec.TensorSpec(
-          [32], dtypes.float32), tensor_spec.TensorSpec([], dtypes.float32)),
-      ("TensorUnknown", tensor_spec.TensorSpec(
-          [None], dtypes.float32), tensor_spec.TensorSpec([], dtypes.float32)),
-      ("SparseTensor", sparse_tensor.SparseTensorSpec([32, None],
-                                                      dtypes.float32),
-       sparse_tensor.SparseTensorSpec([None], dtypes.float32)),
-      ("SparseTensorUnknown",
-       sparse_tensor.SparseTensorSpec([None, 4], dtypes.float32),
-       sparse_tensor.SparseTensorSpec([4], dtypes.float32)),
-      ("RaggedTensor",
-       ragged_tensor.RaggedTensorSpec([32, None, None], dtypes.float32, 2),
-       ragged_tensor.RaggedTensorSpec([None, None], dtypes.float32, 1)),
-      ("RaggedTensorUnknown",
-       ragged_tensor.RaggedTensorSpec([None, None, None], dtypes.float32, 2),
-       ragged_tensor.RaggedTensorSpec([None, None], dtypes.float32, 1)),
-      ("Nested", {
-          "a":
-              tensor_spec.TensorSpec([128], dtypes.float32),
-          "b": (sparse_tensor.SparseTensorSpec([128, 2, 2], dtypes.int32),
-                tensor_spec.TensorSpec([None], dtypes.string))
-      }, {
-          "a":
-              tensor_spec.TensorSpec([], dtypes.float32),
-          "b": (sparse_tensor.SparseTensorSpec(
-              [2, 2], dtypes.int32), tensor_spec.TensorSpec([], dtypes.string))
-      }),
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(data=[
+              combinations.NamedObject(
+                  "Tensor", [
+                      tensor_spec.TensorSpec([32], dtypes.float32),
+                      tensor_spec.TensorSpec([], dtypes.float32)
+                  ]),
+              combinations.NamedObject(
+                  "TensorUnknown", [
+                      tensor_spec.TensorSpec([None], dtypes.float32),
+                      tensor_spec.TensorSpec([], dtypes.float32)
+                  ]),
+              combinations.NamedObject(
+                  "SparseTensor", [
+                      sparse_tensor.SparseTensorSpec(
+                          [32, None], dtypes.float32),
+                      sparse_tensor.SparseTensorSpec([None], dtypes.float32)
+                  ]),
+              combinations.NamedObject(
+                  "SparseTensorUnknown", [
+                      sparse_tensor.SparseTensorSpec([None, 4], dtypes.float32),
+                      sparse_tensor.SparseTensorSpec([4], dtypes.float32)
+                  ]),
+              combinations.NamedObject(
+                  "RaggedTensor", [
+                      ragged_tensor.RaggedTensorSpec([32, None, None],
+                                                     dtypes.float32, 2),
+                      ragged_tensor.RaggedTensorSpec([None, None],
+                                                     dtypes.float32, 1)
+                  ]),
+              combinations.NamedObject(
+                  "RaggedTensorUnknown", [
+                      ragged_tensor.RaggedTensorSpec([None, None, None],
+                                                     dtypes.float32, 2),
+                      ragged_tensor.RaggedTensorSpec([None, None],
+                                                     dtypes.float32, 1)
+                  ]),
+              combinations.NamedObject(
+                  "Nested", [
+                      {
+                          "a":
+                              tensor_spec.TensorSpec([128], dtypes.float32),
+                          "b": (
+                              sparse_tensor.SparseTensorSpec(
+                                  [128, 2, 2], dtypes.int32),
+                              tensor_spec.TensorSpec([None], dtypes.string)
+                          )
+                      },
+                      {
+                          "a":
+                              tensor_spec.TensorSpec([], dtypes.float32),
+                          "b": (
+                              sparse_tensor.SparseTensorSpec(
+                                  [2, 2], dtypes.int32),
+                              tensor_spec.TensorSpec([], dtypes.string)
+                          )
+                      }
+                  ]),
+          ])
+      )
   )
-  def testUnbatch(self, element_structure, expected_unbatched_structure):
+  def testUnbatch(self, data):
+    data = data._obj
+    element_structure = data[0]
+    expected_unbatched_structure = data[1]
     unbatched_structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(), element_structure)
     self.assertEqual(unbatched_structure, expected_unbatched_structure)
 
   # pylint: disable=g-long-lambda
-  @parameterized.named_parameters(
-      ("Tensor", lambda: constant_op.constant([[1.0, 2.0], [3.0, 4.0]]),
-       lambda: constant_op.constant([1.0, 2.0])),
-      ("SparseTensor", lambda: sparse_tensor.SparseTensor(
-          indices=[[0, 0], [1, 1]], values=[13, 27], dense_shape=[2, 2]),
-       lambda: sparse_tensor.SparseTensor(
-           indices=[[0]], values=[13], dense_shape=[2])),
-      ("RaggedTensor", lambda: ragged_factory_ops.constant([[[1]], [[2]]]),
-       lambda: ragged_factory_ops.constant([[1]])),
-      ("Nest", lambda:
-       (constant_op.constant([[1.0, 2.0], [3.0, 4.0]]),
-        sparse_tensor.SparseTensor(
-            indices=[[0, 0], [1, 1]], values=[13, 27], dense_shape=[2, 2])),
-       lambda: (constant_op.constant([1.0, 2.0]),
-                sparse_tensor.SparseTensor(
-                    indices=[[0]], values=[13], dense_shape=[2]))),
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(value_fns=[
+              combinations.NamedObject(
+                  "Tensor", [
+                      lambda: constant_op.constant([[1.0, 2.0], [3.0, 4.0]]),
+                      lambda: constant_op.constant([1.0, 2.0])
+                  ]),
+              combinations.NamedObject(
+                  "SparseTensor", [
+                      lambda: sparse_tensor.SparseTensor(
+                          indices=[[0, 0], [1, 1]], values=[13, 27],
+                          dense_shape=[2, 2]),
+                      lambda: sparse_tensor.SparseTensor(
+                          indices=[[0]], values=[13], dense_shape=[2])
+                  ]),
+              combinations.NamedObject(
+                  "RaggedTensor", [
+                      lambda: ragged_factory_ops.constant([[[1]], [[2]]]),
+                      lambda: ragged_factory_ops.constant([[1]])
+                  ]),
+              combinations.NamedObject(
+                  "Nest", [
+                      lambda: (
+                          constant_op.constant([[1.0, 2.0], [3.0, 4.0]]),
+                          sparse_tensor.SparseTensor(
+                              indices=[[0, 0], [1, 1]], values=[13, 27],
+                              dense_shape=[2, 2])
+                      ),
+                      lambda: (
+                          constant_op.constant([1.0, 2.0]),
+                          sparse_tensor.SparseTensor(
+                              indices=[[0]], values=[13], dense_shape=[2]))
+                  ]),
+          ])
+      )
   )
-  def testToBatchedTensorList(self, value_fn, element_0_fn):
+  def testToBatchedTensorList(self, value_fns):
+    value_fns = value_fns._obj
+    value_fn = value_fns[0]
+    element_0_fn = value_fns[1]
     batched_value = value_fn()
     s = structure.type_spec_from_value(batched_value)
     batched_tensor_list = structure.to_batched_tensor_list(s, batched_value)
@@ -765,6 +1039,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   # pylint: enable=g-long-lambda
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDatasetSpecConstructor(self):
     rt_spec = ragged_tensor.RaggedTensorSpec([10, None], dtypes.int32)
     st_spec = sparse_tensor.SparseTensorSpec([10, 20], dtypes.float32)
@@ -775,12 +1050,14 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Note: shape was automatically converted from a list to a TensorShape.
     self.assertEqual(ds_struct._dataset_shape, tensor_shape.TensorShape([5]))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCustomMapping(self):
     elem = CustomMap(foo=constant_op.constant(37.))
     spec = structure.type_spec_from_value(elem)
     self.assertIsInstance(spec, CustomMap)
     self.assertEqual(spec["foo"], tensor_spec.TensorSpec([], dtypes.float32))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testObjectProxy(self):
     nt_type = collections.namedtuple("A", ["x", "y"])
     proxied = wrapt.ObjectProxy(nt_type(1, 2))
