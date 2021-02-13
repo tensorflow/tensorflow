@@ -494,18 +494,8 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklQuantizeV2Op<CPUDevice, quint8>);
-REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<qint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklQuantizeV2Op<CPUDevice, qint8>);
-REGISTER_KERNEL_BUILDER(Name("_MklNativeQuantizeV2")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
                         MklQuantizeV2Op<CPUDevice, quint8, true>);
-REGISTER_KERNEL_BUILDER(Name("_MklNativeQuantizeV2")
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
