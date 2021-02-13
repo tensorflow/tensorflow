@@ -237,7 +237,7 @@ class SumReductionTest(BaseReductionTest):
     # only on GPU, since it has the more accurate implementation
     if not test.is_gpu_available():
       return
-    for n in (200,500,5000,68000):
+    for n in (200, 500, 5000, 68000):
       arr = np.ones([n], dtype=np.float16)
 
 

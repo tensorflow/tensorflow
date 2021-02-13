@@ -514,7 +514,7 @@ class GeluTest(test.TestCase):
         if gpu and not test.is_gpu_available():
           continue
         delta = 2e-2 if t == np.float16 else 1e-3
-        tol = 2e-2 if t==np.float16 else (1e-4 if t==np.float32 else 1e-6)
+        tol = 2e-2 if t == np.float16 else (1e-4 if t == np.float32 else 1e-6)
         def approx_gelu(x):
           return nn_ops.gelu(x, approximate=True)
         with self.session(use_gpu=gpu):
